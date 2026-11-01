@@ -941,7 +941,7 @@ function evaluate_atomic_clause_match(section, client_info, target_info, port, p
         let has_ip_matchers = length(parse_combined_items(section, [ "ip_cidr", "ip_cidr_text", "ip", "subnets" ])) > 0;
         let has_comm_matchers = length(parse_combined_items(section, [ "community_lists", "community", "rule_set", "rule_set_with_subnets", "domain_ip_lists" ])) > 0;
         let is_geo_catch_all = !has_domain_matchers && !has_ip_matchers && !has_comm_matchers;
-        let is_closed_geo = geo_mode == "include_all" || geo_mode == "exclude_direct";
+        let is_closed_geo = (geo_mode == "include_all" || geo_mode == "exclude_direct") && length(geo_countries) > 0;
 
         if (is_geo_catch_all || is_closed_geo) {
             if (check_geo_filter_pass()) {

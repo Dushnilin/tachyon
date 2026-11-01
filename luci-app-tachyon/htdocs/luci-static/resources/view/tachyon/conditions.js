@@ -1583,6 +1583,27 @@ function createConditionsContent(section) {
     return true;
   }
 
+  function attachPendingConditionListInput(opt) {
+    const baseFormValue = opt.formvalue || form.DynamicList.prototype.formvalue;
+    opt.formvalue = function (sectionId) {
+      const raw = baseFormValue.call(this, sectionId);
+      const list = Array.isArray(raw) ? raw.slice() : raw ? [raw] : [];
+      if (typeof document === "undefined") return list;
+      const widgetEl = document.getElementById(this.cbid(sectionId));
+      if (!widgetEl) return list;
+      const inputs = widgetEl.querySelectorAll(
+        '.add-item input[type="text"], .cbi-dropdown input[type="text"]',
+      );
+      inputs.forEach((inp) => {
+        const val = String((inp && inp.value) || "").trim();
+        if (!val || list.includes(val)) return;
+        if (validateRuleSetOrUrlItem(sectionId, val) !== true) return;
+        list.push(val);
+      });
+      return list;
+    };
+  }
+
   o = section.taboption(
     "domains",
     form.DynamicList,
@@ -1602,6 +1623,7 @@ function createConditionsContent(section) {
     unsetIfPresent(sectionId, "rule_set");
     syncConditionOptionToParentSection(sectionId, "rule_set", null);
   };
+  attachPendingConditionListInput(o);
 
   o = section.taboption(
     "domains",
@@ -1626,6 +1648,7 @@ function createConditionsContent(section) {
       null,
     );
   };
+  attachPendingConditionListInput(o);
 
   o = section.taboption(
     "domains",
@@ -1646,6 +1669,7 @@ function createConditionsContent(section) {
     unsetIfPresent(sectionId, "domain_ip_lists");
     syncConditionOptionToParentSection(sectionId, "domain_ip_lists", null);
   };
+  attachPendingConditionListInput(o);
 
   o = section.taboption(
     "domains",

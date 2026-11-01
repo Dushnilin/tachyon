@@ -396,10 +396,12 @@ function inspect_actual_engine(desired_engine) {
         if (!pid) pid = get_pid_by_name("steer");
         running = pid != "";
     } else {
-        for (let p in [ "/var/run/sing-box.pid", "/var/run/sing-box/sing-box.pid" ]) {
-            pid = read_pid_file(p, "sing-box");
+        for (let p in [ "/var/run/tachyon-core.pid", "/var/run/sing-box.pid", "/var/run/sing-box/sing-box.pid" ]) {
+            pid = read_pid_file(p, "tachyon-core");
+            if (!pid) pid = read_pid_file(p, "sing-box");
             if (pid) break;
         }
+        if (!pid) pid = get_pid_by_name("tachyon-core");
         if (!pid) pid = get_pid_by_name("sing-box");
         running = pid != "";
     }
@@ -423,9 +425,9 @@ function inspect_actual_dns(desired_dns) {
     if (!dnsmasq_pid) dnsmasq_pid = get_pid_by_name("dnsmasq");
     let dnsmasq_running = dnsmasq_pid != "";
 
-    // Check if dnsmasq has Tachyon managed config
+    // Check if dnsmasq has complete Tachyon managed config (including 127.0.0.42 forward)
     let dnsmasq_managed = false;
-    let res = command_capture(sprintf("ucode -L %s %s/dns/apply.uc has-managed-state 2>/dev/null", LIB_DIR, LIB_DIR));
+    let res = command_capture(sprintf("ucode -L %s %s/dns/apply.uc default-config-complete 2>/dev/null", LIB_DIR, LIB_DIR));
     if (res.status == 0) {
         dnsmasq_managed = true;
     } else {
@@ -433,7 +435,7 @@ function inspect_actual_dns(desired_dns) {
         let servers = uci_core.get("dhcp", "@dnsmasq[0]", "server");
         if (servers) {
             let str_srv = sprintf("%J", servers);
-            if (index(str_srv, "127.0.0.42#") >= 0 || index(str_srv, "127.0.0.1#") >= 0)
+            if (index(str_srv, "127.0.0.42") >= 0 || index(str_srv, "127.0.0.1#") >= 0)
                 dnsmasq_managed = true;
         }
     }

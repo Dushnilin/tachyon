@@ -6789,10 +6789,13 @@ const LINKED_CONDITION_OPTION_KEYS = new Set([
   'geoip_country',
 ]);
 
-function getLinkedSectionConditionId(section_id) {
-  if (!section_id || String(section_id).startsWith('cond_')) return null;
+function getLinkedSectionConditionIds(section_id) {
+  if (!section_id || String(section_id).startsWith('cond_')) return [];
+  const ids = [];
   const condId = `cond_${section_id}`;
-  if (uci.get(UCI_PACKAGE, condId, '.type') === 'condition') return condId;
+  if (uci.get(UCI_PACKAGE, condId, '.type') === 'condition') {
+    ids.push(condId);
+  }
   const rawRefs = uci.get(UCI_PACKAGE, section_id, 'condition_refs');
   const refs = Array.isArray(rawRefs)
     ? rawRefs.map((x) => String(x || '').trim()).filter(Boolean)
@@ -6804,27 +6807,38 @@ function getLinkedSectionConditionId(section_id) {
       : [];
   if (
     refs.length === 1 &&
+    !ids.includes(refs[0]) &&
     uci.get(UCI_PACKAGE, refs[0], '.type') === 'condition'
   ) {
     const ctype = String(
       uci.get(UCI_PACKAGE, refs[0], 'condition_type') || 'atomic',
     ).toLowerCase();
-    if (ctype !== 'composite') return refs[0];
+    if (ctype !== 'composite') ids.push(refs[0]);
   }
-  return null;
+  return ids;
+}
+
+function getLinkedSectionConditionId(section_id) {
+  const ids = getLinkedSectionConditionIds(section_id);
+  return ids.length ? ids[0] : null;
 }
 
 function getSectionOrLinkedConditionOption(section_id, key) {
+  const condIds =
+    typeof getLinkedSectionConditionIds === 'function'
+      ? getLinkedSectionConditionIds(section_id)
+      : [getLinkedSectionConditionId(section_id)].filter(Boolean);
   if (
     LINKED_CONDITION_OPTION_KEYS.has(key) &&
     !key.endsWith('_mode') &&
     key !== 'geoip_mode'
   ) {
-    const condId = getLinkedSectionConditionId(section_id);
-    const condVal = condId ? uci.get(UCI_PACKAGE, condId, key) : null;
     const direct = uci.get(UCI_PACKAGE, section_id, key);
+    const hasAnyCondVal = condIds.some(
+      (cid) => uci.get(UCI_PACKAGE, cid, key) != null,
+    );
 
-    if (condVal != null && direct != null) {
+    if (hasAnyCondVal && direct != null) {
       const items = [];
       const seen = new Set();
       const isTextKey = key.endsWith('_text') || key === 'domain';
@@ -6844,17 +6858,14 @@ function getSectionOrLinkedConditionOption(section_id, key) {
           }
         });
       };
-      add(condVal);
+      condIds.forEach((cid) => add(uci.get(UCI_PACKAGE, cid, key)));
       add(direct);
-      return Array.isArray(condVal) || Array.isArray(direct) || !isTextKey
-        ? items
-        : items.join('\n');
+      return Array.isArray(direct) || !isTextKey ? items : items.join('\n');
     }
   }
 
   if (LINKED_CONDITION_OPTION_KEYS.has(key)) {
-    const condId = getLinkedSectionConditionId(section_id);
-    if (condId) {
+    for (const condId of condIds) {
       const condVal = uci.get(UCI_PACKAGE, condId, key);
       if (
         condVal !== null &&
@@ -6886,25 +6897,28 @@ function getSectionOrLinkedConditionOption(section_id, key) {
 
 function syncLinkedConditionOption(section_id, key, value) {
   if (!LINKED_CONDITION_OPTION_KEYS.has(key)) return;
-  const condId = getLinkedSectionConditionId(section_id);
-  if (!condId) return;
-  const existing = uci.get(UCI_PACKAGE, condId, key);
-  if (
-    value === null ||
-    value === undefined ||
-    value === '' ||
-    (Array.isArray(value) && value.length === 0)
-  ) {
-    if (existing !== undefined && existing !== null) {
-      uci.unset(UCI_PACKAGE, condId, key);
-    }
-  } else if (Array.isArray(value)) {
-    if (!stringArraysEqual(normalizeOptionValues(existing), value)) {
+  const condIds = getLinkedSectionConditionIds(section_id);
+  if (!condIds.length) return;
+  condIds.forEach((condId, idx) => {
+    const existing = uci.get(UCI_PACKAGE, condId, key);
+    if (
+      value === null ||
+      value === undefined ||
+      value === '' ||
+      (Array.isArray(value) && value.length === 0) ||
+      idx > 0
+    ) {
+      if (existing !== undefined && existing !== null) {
+        uci.unset(UCI_PACKAGE, condId, key);
+      }
+    } else if (Array.isArray(value)) {
+      if (!stringArraysEqual(normalizeOptionValues(existing), value)) {
+        uci.set(UCI_PACKAGE, condId, key, value);
+      }
+    } else if (String(existing ?? '') !== String(value)) {
       uci.set(UCI_PACKAGE, condId, key, value);
     }
-  } else if (String(existing ?? '') !== String(value)) {
-    uci.set(UCI_PACKAGE, condId, key, value);
-  }
+  });
 }
 
 function getConfigListValues(section_id, key) {
@@ -9579,6 +9593,9 @@ function addDynamicConditionField(section, config) {
     );
     return legacyText ? main.parseValueList(legacyText) : [];
   };
+  o.cfgvalue = function (section_id) {
+    return this.load(section_id);
+  };
 
   o.write = function (section_id, value) {
     writeListOption(section_id, config.key, value);
@@ -9630,6 +9647,9 @@ function addLocalDeviceSubnetDynamicField(section, config) {
       `${config.key}_text`,
     );
     return legacyText ? main.parseValueList(legacyText) : [];
+  };
+  o.cfgvalue = function (section_id) {
+    return this.load(section_id);
   };
   o.write = function (section_id, value) {
     writeListOption(section_id, config.key, value);
@@ -9730,6 +9750,9 @@ function addTextConditionField(section, config) {
     return valuesToText(
       getSectionOrLinkedConditionOption(section_id, config.key),
     );
+  };
+  o.cfgvalue = function (section_id) {
+    return this.load(section_id);
   };
 
   o.write = function (section_id, value) {
@@ -15919,6 +15942,9 @@ function createSectionContent(section) {
       .filter((v) => v && v !== 'all' && v !== 'non-ru');
     return parts;
   };
+  o.cfgvalue = function (section_id) {
+    return this.load(section_id);
+  };
   o.write = function (section_id, value) {
     writeListOption(section_id, 'geoip_country', value);
   };
@@ -16029,6 +16055,9 @@ function createSectionContent(section) {
     loadRulesetValues(this, section_id);
     return getBuiltInRulesetReferences(section_id);
   };
+  builtInRulesetOption.cfgvalue = function (section_id) {
+    return getBuiltInRulesetReferences(section_id);
+  };
   builtInRulesetOption.write = function (section_id, values) {
     writeBuiltInRulesetReferences(section_id, values);
   };
@@ -16092,6 +16121,27 @@ function createSectionContent(section) {
     return form.Flag.prototype.write.apply(this, arguments);
   };
 
+  const attachPendingListInputFormValue = (opt, validator) => {
+    const baseFormValue = opt.formvalue || form.DynamicList.prototype.formvalue;
+    opt.formvalue = function (section_id) {
+      const raw = baseFormValue.call(this, section_id);
+      const list = Array.isArray(raw) ? raw.slice() : raw ? [raw] : [];
+      if (typeof document === 'undefined') return list;
+      const widgetEl = document.getElementById(this.cbid(section_id));
+      if (!widgetEl) return list;
+      const inputs = widgetEl.querySelectorAll(
+        '.add-item input[type="text"], .cbi-dropdown input[type="text"]',
+      );
+      inputs.forEach((inp) => {
+        const val = `${(inp && inp.value) || ''}`.trim();
+        if (!val || list.includes(val)) return;
+        if (typeof validator === 'function' && validator(val) !== true) return;
+        list.push(val);
+      });
+      return list;
+    };
+  };
+
   const ruleSetOption = section.taboption(
     'conditions',
     SettingsDynamicList,
@@ -16108,6 +16158,9 @@ function createSectionContent(section) {
   ruleSetOption.load = function (section_id) {
     return getCustomRulesetReferences(section_id);
   };
+  ruleSetOption.cfgvalue = function (section_id) {
+    return getCustomRulesetReferences(section_id);
+  };
   ruleSetOption.write = function (section_id, value) {
     writeCustomRulesetReferences(section_id, value);
   };
@@ -16121,6 +16174,10 @@ function createSectionContent(section) {
   ruleSetOption.validate = function (section_id, value) {
     return validateCustomRulesetReference(value);
   };
+  attachPendingListInputFormValue(
+    ruleSetOption,
+    validateCustomRulesetReference,
+  );
 
   const dnsRuleSetOption = section.taboption(
     'conditions',
@@ -16137,6 +16194,9 @@ function createSectionContent(section) {
   dnsRuleSetOption.load = function (section_id) {
     return getCustomRulesetReferences(section_id);
   };
+  dnsRuleSetOption.cfgvalue = function (section_id) {
+    return getCustomRulesetReferences(section_id);
+  };
   dnsRuleSetOption.write = function (section_id, value) {
     writeDnsRulesetReferences(section_id, value);
   };
@@ -16146,6 +16206,10 @@ function createSectionContent(section) {
   dnsRuleSetOption.validate = function (_section_id, value) {
     return validateCustomRulesetReference(value);
   };
+  attachPendingListInputFormValue(
+    dnsRuleSetOption,
+    validateCustomRulesetReference,
+  );
 
   const domainIpListsOption = section.taboption(
     'conditions',
@@ -16160,6 +16224,9 @@ function createSectionContent(section) {
   domainIpListsOption.load = function (section_id) {
     return getConfigListValues(section_id, 'domain_ip_lists');
   };
+  domainIpListsOption.cfgvalue = function (section_id) {
+    return getConfigListValues(section_id, 'domain_ip_lists');
+  };
   domainIpListsOption.write = function (section_id, value) {
     writeListOption(section_id, 'domain_ip_lists', value);
   };
@@ -16170,6 +16237,10 @@ function createSectionContent(section) {
   domainIpListsOption.validate = function (_section_id, value) {
     return validatePlainListReference(value);
   };
+  attachPendingListInputFormValue(
+    domainIpListsOption,
+    validatePlainListReference,
+  );
 
   const dnsDomainListsOption = section.taboption(
     'conditions',
@@ -16186,6 +16257,9 @@ function createSectionContent(section) {
   dnsDomainListsOption.load = function (section_id) {
     return getConfigListValues(section_id, 'domain_ip_lists');
   };
+  dnsDomainListsOption.cfgvalue = function (section_id) {
+    return getConfigListValues(section_id, 'domain_ip_lists');
+  };
   dnsDomainListsOption.write = function (section_id, value) {
     writeListOption(section_id, 'domain_ip_lists', value);
   };
@@ -16196,6 +16270,10 @@ function createSectionContent(section) {
   dnsDomainListsOption.validate = function (_section_id, value) {
     return validatePlainListReference(value);
   };
+  attachPendingListInputFormValue(
+    dnsDomainListsOption,
+    validatePlainListReference,
+  );
 
   [
     [

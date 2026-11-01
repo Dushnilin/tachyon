@@ -106,24 +106,20 @@ function sanitizeStaleUciDeletes(targetSectionId?: string): void {
     const values = state.values?.[UCI_PACKAGE] || {};
     const deletes = state.deletes[UCI_PACKAGE];
     for (const sid in deletes) {
-      if (creates[sid] || !values[sid]) {
-        delete deletes[sid];
-        continue;
-      }
-      if (deletes[sid] !== true && typeof deletes[sid] === 'object') {
-        for (const opt in deletes[sid]) {
-          if (!Object.prototype.hasOwnProperty.call(values[sid], opt)) {
-            delete deletes[sid][opt];
-          }
-        }
-        if (Object.keys(deletes[sid]).length === 0) {
+      if (creates[sid]) {
+        if (deletes[sid] === true) {
           delete deletes[sid];
         }
+        continue;
+      }
+      if (!values[sid] && deletes[sid] !== true) {
+        delete deletes[sid];
       }
     }
     if (
       targetSectionId &&
-      (creates[targetSectionId] || !values[targetSectionId])
+      creates[targetSectionId] &&
+      deletes[targetSectionId] === true
     ) {
       delete deletes[targetSectionId];
     }
@@ -1126,7 +1122,9 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
 
   containerEl.classList.add('tachyon-has-studio-deck');
 
-  const existingDeck = containerEl.querySelector('.tachyon-studio-deck');
+  const existingDeck = containerEl.querySelector(
+    `.tachyon-studio-deck--${type}`,
+  );
   if (existingDeck) {
     existingDeck.remove();
   }
@@ -1305,6 +1303,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
   }
 
   const subCacheByUrl = new Map<string, SubCacheEntryInfo>();
+  const subCacheBySid = new Map<string, SubCacheEntryInfo>();
   const expandedSourceIds = new Set<string>();
   const updatingSubTargets = new Set<string>();
 
@@ -1321,6 +1320,158 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
       )
       .then((raw: any) => String(raw || ''))
       .catch(() => '');
+  };
+
+  const populateSubCacheFromSectionCaches = (): Promise<void> => {
+    const subSources = (
+      uci.sections(UCI_PACKAGE, 'outbound_source') || []
+    ).filter((s: any) => s && (s.type || 'subscription') === 'subscription');
+    if (subSources.length === 0) return Promise.resolve();
+
+    const secObjs = uci.sections(UCI_PACKAGE, 'section') || [];
+    const secNames = Array.from(
+      new Set([
+        'Main',
+        ...secObjs.map((sec: any) => String(sec?.name || sec?.['.name'] || '')),
+        ...secObjs.map((sec: any) => String(sec?.['.name'] || '')),
+      ]),
+    ).filter(Boolean);
+
+    return Promise.all(
+      secNames.map((secName) =>
+        readFsText(`/var/run/tachyon/section-cache/${secName}.json`).then(
+          (raw) => {
+            if (!raw) return null;
+            try {
+              return JSON.parse(raw);
+            } catch {
+              return null;
+            }
+          },
+        ),
+      ),
+    ).then((caches) => {
+      const validCaches = caches.filter((c) => c && typeof c === 'object');
+      if (validCaches.length === 0) return;
+
+      const singleSub = subSources.length === 1 ? subSources[0] : null;
+      subSources.forEach((src: any) => {
+        const sid = String(src['.name'] || '');
+        const subUrl = String(src.url || '').trim();
+        if (subUrl && (subCacheByUrl.get(subUrl)?.servers.length || 0) > 0) {
+          return;
+        }
+        const prefix =
+          src.prefix_nodes !== '0' && src.node_prefix
+            ? String(src.node_prefix).trim()
+            : '';
+        const srcTitle = String(src.name || src.label || sid).trim();
+        const serverMap = new Map<string, SubCacheServerItem>();
+        let foundMeta: SubCacheEntryInfo['metadata'] = undefined;
+
+        validCaches.forEach((c: any) => {
+          const namesObj =
+            c.names && typeof c.names === 'object' ? c.names : {};
+          const linksObj =
+            c.links && typeof c.links === 'object' ? c.links : {};
+          const typesObj =
+            c.types && typeof c.types === 'object' ? c.types : {};
+          const outboundsArr = Array.isArray(c.outbounds) ? c.outbounds : [];
+          const subInfos = Array.isArray(c.subscriptionInfos)
+            ? c.subscriptionInfos
+            : [];
+
+          subInfos.forEach((si: any) => {
+            if (!si || typeof si !== 'object') return;
+            const siTitle = String(si.title || '').trim();
+            if (
+              singleSub ||
+              (prefix && siTitle.toLowerCase() === prefix.toLowerCase()) ||
+              (srcTitle && siTitle.toLowerCase() === srcTitle.toLowerCase())
+            ) {
+              foundMeta = {
+                title: siTitle || undefined,
+                traffic: si.traffic,
+                expire: si.expire,
+                webPageUrl: si.webPageUrl,
+                supportUrl: si.supportUrl,
+                announce: si.announce,
+              };
+            }
+          });
+
+          outboundsArr.forEach((code: string) => {
+            const cStr = String(code || '');
+            if (
+              !cStr ||
+              cStr === 'direct-out' ||
+              cStr === 'block-out' ||
+              cStr.endsWith('-urltest-out') ||
+              cStr.endsWith('-priority-out') ||
+              cStr.startsWith('bal-') ||
+              cStr.startsWith('lvl-')
+            ) {
+              return;
+            }
+            const rawName = String(namesObj[cStr] || cStr).trim();
+            const link = String(linksObj[cStr] || '').trim();
+            const rawType = String(typesObj[cStr] || '').toUpperCase();
+            if (
+              rawType === 'URLTEST' ||
+              rawType === 'SELECTOR' ||
+              rawType === 'DIRECT' ||
+              rawType === 'DPI'
+            ) {
+              return;
+            }
+
+            let matches = false;
+            let cleanName = rawName;
+            if (prefix) {
+              if (rawName.startsWith(`${prefix}: `)) {
+                matches = true;
+                cleanName = rawName.slice(prefix.length + 2).trim();
+              } else if (rawName.startsWith(`${prefix} `)) {
+                matches = true;
+                cleanName = rawName.slice(prefix.length + 1).trim();
+              }
+            } else if (singleSub) {
+              matches = true;
+            }
+
+            if (matches && cleanName && !serverMap.has(cleanName)) {
+              const proto =
+                rawType ||
+                (link.includes('://')
+                  ? link.split('://')[0].toUpperCase()
+                  : 'PROXY');
+              const trans = link.includes('://')
+                ? (getProxyUrlTransport(link) || 'TCP').toUpperCase()
+                : '';
+              serverMap.set(cleanName, {
+                name: cleanName,
+                proto,
+                trans,
+                link,
+              });
+            }
+          });
+        });
+
+        const servers = Array.from(serverMap.values());
+        if (servers.length > 0 || foundMeta) {
+          const entry: SubCacheEntryInfo = {
+            mtime: 0,
+            servers,
+            metadata: foundMeta,
+          };
+          subCacheBySid.set(sid, entry);
+          if (subUrl && !subCacheByUrl.has(subUrl)) {
+            subCacheByUrl.set(subUrl, entry);
+          }
+        }
+      });
+    });
   };
 
   const loadSubscriptionCacheMap = () => {
@@ -1340,6 +1491,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
         const jsonBases: string[] = [];
         const urlSet = new Set<string>();
         const metaSet = new Set<string>();
+        const linksSet = new Set<string>();
         const mtimeMap = new Map<string, number>();
 
         list.forEach((ent: any) => {
@@ -1348,6 +1500,8 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
             urlSet.add(fname.slice(0, -4));
           } else if (fname.endsWith('.metadata.json')) {
             metaSet.add(fname.slice(0, -14));
+          } else if (fname.endsWith('.links')) {
+            linksSet.add(fname.slice(0, -6));
           } else if (
             fname.endsWith('.json') &&
             fname.includes('-subscription-')
@@ -1389,7 +1543,10 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                 metaSet.has(inf.base)
                   ? readFsText(`${dir}/${inf.base}.metadata.json`)
                   : Promise.resolve(''),
-              ]).then(([rawJson, rawMeta]) => {
+                linksSet.has(inf.base)
+                  ? readFsText(`${dir}/${inf.base}.links`)
+                  : Promise.resolve(''),
+              ]).then(([rawJson, rawMeta, rawLinks]) => {
                 let parsedJson: any = {};
                 let parsedMeta: any = undefined;
                 try {
@@ -1403,11 +1560,32 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                   parsedMeta = undefined;
                 }
 
+                const linkLines = String(rawLinks || '')
+                  .split(/\r?\n/)
+                  .map((l) => l.trim())
+                  .filter((l) => l.includes('://'));
+                const linkByTag = new Map<string, string>();
+                linkLines.forEach((lnk) => {
+                  const hashIdx = lnk.indexOf('#');
+                  if (hashIdx >= 0) {
+                    try {
+                      const tagPart = decodeURIComponent(
+                        lnk.slice(hashIdx + 1),
+                      ).trim();
+                      if (tagPart && !linkByTag.has(tagPart)) {
+                        linkByTag.set(tagPart, lnk);
+                      }
+                    } catch {
+                      // ignore malformed URI component
+                    }
+                  }
+                });
+
                 const outbounds = Array.isArray(parsedJson?.outbounds)
                   ? parsedJson.outbounds
                   : [];
                 const servers: SubCacheServerItem[] = [];
-                outbounds.forEach((ob: any) => {
+                outbounds.forEach((ob: any, idx: number) => {
                   const name = String(
                     ob?.remark || ob?.tag || ob?.name || '',
                   ).trim();
@@ -1423,7 +1601,14 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                     ob?.transport?.type || 'tcp',
                   ).toUpperCase();
                   const link = String(
-                    ob?.share_link || ob?.__tachyon_link || ob?.link || '',
+                    ob?.share_link ||
+                      ob?.__tachyon_link ||
+                      ob?.link ||
+                      linkByTag.get(name) ||
+                      (linkLines.length === outbounds.length
+                        ? linkLines[idx]
+                        : '') ||
+                      '',
                   ).trim();
                   servers.push({ name, proto, trans, link });
                 });
@@ -1438,6 +1623,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
           );
         });
       })
+      .then(() => populateSubCacheFromSectionCaches())
       .then(() => {
         renderDeck();
       })
@@ -2389,10 +2575,129 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
         : [];
 
       const subUrl = String(raw.url || '').trim();
-      const subCache =
-        stype === 'subscription' && subUrl
-          ? subCacheByUrl.get(subUrl)
-          : undefined;
+      const resolveSubscriptionCache = (): SubCacheEntryInfo | undefined => {
+        if (stype !== 'subscription') return undefined;
+        const fromUrl = subUrl ? subCacheByUrl.get(subUrl) : undefined;
+        if (fromUrl && (fromUrl.servers.length > 0 || fromUrl.metadata)) {
+          return fromUrl;
+        }
+        const fromSid = subCacheBySid.get(sid);
+        if (fromSid && (fromSid.servers.length > 0 || fromSid.metadata)) {
+          return fromSid;
+        }
+        try {
+          const storeMod = (globalThis as any).tachyonStore || null;
+          const sectionsObj =
+            storeMod && typeof storeMod.get === 'function'
+              ? storeMod.get()?.connectionsWidget?.data?.sections || {}
+              : {};
+          const prefix =
+            raw.prefix_nodes !== '0' && raw.node_prefix
+              ? String(raw.node_prefix).trim()
+              : '';
+          const srcTitle = String(raw.name || raw.label || sid).trim();
+          const allSubCount = (
+            uci.sections(UCI_PACKAGE, 'outbound_source') || []
+          ).filter(
+            (s: any) => s && (s.type || 'subscription') === 'subscription',
+          ).length;
+          const singleSub = allSubCount === 1;
+          const srvMap = new Map<string, SubCacheServerItem>();
+          let foundMeta: SubCacheEntryInfo['metadata'] = undefined;
+
+          for (const sec of Object.values(sectionsObj) as any[]) {
+            const subInfos = Array.isArray(sec?.subscriptionInfos)
+              ? sec.subscriptionInfos
+              : [];
+            for (const si of subInfos) {
+              if (!si || typeof si !== 'object') continue;
+              const siTitle = String(si.title || '').trim();
+              if (
+                singleSub ||
+                (prefix && siTitle.toLowerCase() === prefix.toLowerCase()) ||
+                (srcTitle && siTitle.toLowerCase() === srcTitle.toLowerCase())
+              ) {
+                foundMeta = {
+                  title: siTitle || undefined,
+                  traffic: si.traffic,
+                  expire: si.expire,
+                  webPageUrl: si.webPageUrl,
+                  supportUrl: si.supportUrl,
+                  announce: si.announce,
+                };
+              }
+            }
+            const obs = Array.isArray(sec?.outbounds) ? sec.outbounds : [];
+            for (const ob of obs) {
+              if (!ob || ob.urlTestInfo || ob.priorityInfo) continue;
+              const code = String(ob.code || '');
+              if (
+                !code ||
+                code === 'direct-out' ||
+                code === 'block-out' ||
+                code.endsWith('-urltest-out') ||
+                code.endsWith('-priority-out')
+              ) {
+                continue;
+              }
+              const obPrefix = String(ob.prefix || ob.sourceGroup || '').trim();
+              const disp = String(ob.displayName || ob.name || code).trim();
+              const link = String(ob.link || '').trim();
+              const obType = String(ob.type || '').toUpperCase();
+              if (
+                obType === 'URLTEST' ||
+                obType === 'SELECTOR' ||
+                obType === 'DIRECT' ||
+                obType === 'DPI'
+              ) {
+                continue;
+              }
+              let matches = false;
+              let cleanName = disp;
+              if (prefix) {
+                if (obPrefix.toLowerCase() === prefix.toLowerCase()) {
+                  matches = true;
+                } else if (disp.startsWith(`${prefix}: `)) {
+                  matches = true;
+                  cleanName = disp.slice(prefix.length + 2).trim();
+                } else if (disp.startsWith(`${prefix} `)) {
+                  matches = true;
+                  cleanName = disp.slice(prefix.length + 1).trim();
+                }
+              } else if (singleSub) {
+                matches = true;
+              }
+              if (matches && cleanName && !srvMap.has(cleanName)) {
+                const proto =
+                  obType ||
+                  (link.includes('://')
+                    ? link.split('://')[0].toUpperCase()
+                    : 'PROXY');
+                const trans = link.includes('://')
+                  ? (getProxyUrlTransport(link) || 'TCP').toUpperCase()
+                  : '';
+                srvMap.set(cleanName, {
+                  name: cleanName,
+                  proto,
+                  trans,
+                  link,
+                });
+              }
+            }
+          }
+          if (srvMap.size > 0 || foundMeta) {
+            return {
+              mtime: 0,
+              servers: Array.from(srvMap.values()),
+              metadata: foundMeta,
+            };
+          }
+        } catch {
+          // ignore store lookup errors
+        }
+        return fromUrl || fromSid;
+      };
+      const subCache = resolveSubscriptionCache();
 
       const formatBytes = (bytes?: number) => {
         const b = Number(bytes || 0);
@@ -2765,6 +3070,26 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
 
       const inspectorRows: HTMLElement[] = [];
       if (stype === 'subscription') {
+        if (subUrl) {
+          inspectorRows.push(
+            E('div', { class: 'tachyon-studio-source-inspector__row' }, [
+              E(
+                'span',
+                { class: 'tachyon-studio-source-inspector__label' },
+                'URL:',
+              ),
+              E(
+                'span',
+                {
+                  class:
+                    'tachyon-studio-source-inspector__val tachyon-studio-source-inspector__val--mono',
+                  style: 'word-break: break-all;',
+                },
+                subUrl,
+              ),
+            ]),
+          );
+        }
         if (subCache?.metadata) {
           const md = subCache.metadata;
           const infoParts: string[] = [];
@@ -2823,6 +3148,27 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                 renderCompactServersTable(subCache.servers),
               ],
             ),
+          );
+        } else {
+          inspectorRows.push(
+            E('div', { class: 'tachyon-studio-source-inspector__row' }, [
+              E(
+                'span',
+                { class: 'tachyon-studio-source-inspector__label' },
+                tr('Серверы в подписке:', 'Servers in subscription:'),
+              ),
+              E(
+                'span',
+                {
+                  class: 'tachyon-studio-source-inspector__val',
+                  style: 'opacity: 0.75;',
+                },
+                tr(
+                  'Кэш узлов ещё не загружен — нажмите «Обновить» на карточке подписки',
+                  'Cached nodes not loaded yet — click "Update" on the subscription card',
+                ),
+              ),
+            ]),
           );
         }
       }

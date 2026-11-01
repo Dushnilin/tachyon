@@ -1323,7 +1323,7 @@ function start_impl() {
             return status;
     }
     else if (!setting_bool("dont_touch_dhcp", false)) {
-        status = dnsmasq_configure(false);
+        status = dnsmasq_configure(true);
         if (status != 0)
             return status;
     }

@@ -642,6 +642,12 @@ function section_effective_outbound_sources(section) {
                     add_src(outbound_source_section(lvl_ref));
                 }
             }
+            if (length(bal_srcs) == 0 && length(bal_grps) == 0 && length(bal_lvls) == 0) {
+                for (let src in outbound_source_sections()) {
+                    if (!is_dpi_or_desync_source_type(option(src, "source_type", "")))
+                        add_src(src);
+                }
+            }
         }
     }
     if (length(result) == 0 && !has_explicit_non_dpi_sources && type(section) == "object") {

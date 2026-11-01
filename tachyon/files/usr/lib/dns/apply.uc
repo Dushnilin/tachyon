@@ -285,8 +285,8 @@ function dnsmasq_cleanup_legacy_instance() {
 
 function sing_box_dns_listening() {
     let udp = fs.readfile("/proc/net/udp");
-    // 127.0.0.42:53 in hex is 2A00007F:0035
-    if (udp && index(udp, "2A00007F:0035") >= 0)
+    // 127.0.0.42:53 in hex is 2A00007F:0035; 0.0.0.0:53 is 00000000:0035
+    if (udp && (index(udp, "2A00007F:0035") >= 0 || index(udp, "00000000:0035") >= 0))
         return true;
     let udp6 = fs.readfile("/proc/net/udp6");
     if (udp6 && index(udp6, "0035") >= 0)
@@ -427,11 +427,22 @@ function dnsmasq_configure(force) {
 
     if (as_string(force) != "force") {
         let sb_pid = sing_box_running_pid();
+        let wait_attempt = 0;
+        while (sb_pid == "" && wait_attempt < 5) {
+            common.command_status_from_args([ "sleep", "1" ]);
+            sb_pid = sing_box_running_pid();
+            wait_attempt++;
+        }
         if (sb_pid == "") {
             log("tachyon-core is not running; dnsmasq will forward to system DNS until tachyon-core starts", "warn");
             return true;
         }
 
+        let listen_attempt = 0;
+        while (!sing_box_dns_listening() && listen_attempt < 5) {
+            common.command_status_from_args([ "sleep", "1" ]);
+            listen_attempt++;
+        }
         if (!sing_box_dns_listening()) {
             log("tachyon-core DNS inbound (127.0.0.42:53) is not listening yet; dnsmasq will forward to system DNS", "warn");
             return true;

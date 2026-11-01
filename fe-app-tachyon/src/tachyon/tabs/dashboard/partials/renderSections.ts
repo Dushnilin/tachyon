@@ -2401,9 +2401,14 @@ function renderDefaultState({
 
     populateRows();
 
-    return E('div', { class: 'tachyon-dashboard-nodes-table-wrap' }, [
-      E('table', { class: 'tachyon-dashboard-nodes-table' }, [thead, tbody]),
-    ]);
+    return E(
+      'div',
+      {
+        class: 'tachyon-dashboard-nodes-table-wrap',
+        style: 'grid-column: 1 / -1; width: 100%; box-sizing: border-box;',
+      },
+      [E('table', { class: 'tachyon-dashboard-nodes-table' }, [thead, tbody])],
+    );
   }
 
   function renderOutboundsList(list: Tachyon.Outbound[]): HTMLElement[] {

@@ -1559,7 +1559,9 @@ body.dark-theme .tachyon_proto-popover__desc {
 }
 
 .tachyon-dashboard-nodes-table-wrap {
+    grid-column: 1 / -1;
     width: 100%;
+    box-sizing: border-box;
     overflow-x: auto;
     border-radius: 8px;
     border: 1px solid var(--border-color-low, rgba(148, 163, 184, 0.2));

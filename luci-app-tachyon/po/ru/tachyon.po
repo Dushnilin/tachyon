@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-01 18:23+0300\n"
-"PO-Revision-Date: 2026-11-01 18:23+0300\n"
+"POT-Creation-Date: 2026-11-01 19:17+0300\n"
+"PO-Revision-Date: 2026-11-01 19:17+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -1384,6 +1384,9 @@ msgstr "Кэшировать все встроенные списки, базы 
 
 msgid "Cache file path cannot be empty"
 msgstr "Путь к файлу кэша не может быть пустым"
+
+msgid "Cached nodes not loaded yet — click \"Update\" on the subscription card"
+msgstr "Кэш узлов ещё не загружен — нажмите «Обновить» на карточке подписки"
 
 msgid "Camou"
 msgstr "Camou"
@@ -8275,6 +8278,9 @@ msgstr "Серверы в источнике"
 
 msgid "Servers in subscription"
 msgstr "Серверы в подписке"
+
+msgid "Servers in subscription:"
+msgstr "Серверы в подписке:"
 
 msgid "Servers on dashboard"
 msgstr "Серверы на дашборде"

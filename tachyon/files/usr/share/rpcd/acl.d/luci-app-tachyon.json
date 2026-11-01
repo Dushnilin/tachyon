@@ -12,10 +12,32 @@
         "/sbin/logread": [
           "exec"
         ],
+        "/var/run/tachyon/section-cache": [
+          "list",
+          "read"
+        ],
         "/var/run/tachyon/section-cache/*": [
           "read"
         ],
+        "/tmp/run/tachyon/section-cache": [
+          "list",
+          "read"
+        ],
         "/tmp/run/tachyon/section-cache/*": [
+          "read"
+        ],
+        "/etc/tachyon/subscription-cache": [
+          "list",
+          "read"
+        ],
+        "/etc/tachyon/subscription-cache/*": [
+          "read"
+        ],
+        "/tmp/tachyon-core/subscriptions": [
+          "list",
+          "read"
+        ],
+        "/tmp/tachyon-core/subscriptions/*": [
           "read"
         ],
         "/var/run/tachyon/component-actions/*": [

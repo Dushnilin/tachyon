@@ -2287,47 +2287,51 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
     });
   }
 
-  const groupsSection = E("div", { class: "tachyon-studio-deck" }, [
-    E("div", { class: "tachyon-studio-toolbar" }, [
-      E("div", { class: "tachyon-studio-toolbar__top" }, [
-        E("div", { class: "tachyon-studio-toolbar__titles" }, [
-          E(
-            "span",
-            { class: "tachyon-studio-toolbar__kicker" },
-            "SERVER FILTERING • LAYER 2",
-          ),
-          E(
-            "h3",
-            { class: "tachyon-studio-toolbar__title" },
-            _("Layer 2: Reusable Outbound Server Groups"),
-          ),
-          E(
-            "p",
-            { class: "tachyon-studio-toolbar__subtitle" },
-            _(
-              "Filter servers from the global pool by subscription prefix, country flag, regular expression, or protocol. Multiple include filters in a group act as an intersection (AND).",
+  const groupsSection = E(
+    "div",
+    { class: "tachyon-studio-deck tachyon-studio-deck--outbound-groups" },
+    [
+      E("div", { class: "tachyon-studio-toolbar" }, [
+        E("div", { class: "tachyon-studio-toolbar__top" }, [
+          E("div", { class: "tachyon-studio-toolbar__titles" }, [
+            E(
+              "span",
+              { class: "tachyon-studio-toolbar__kicker" },
+              "SERVER FILTERING • LAYER 2",
             ),
-          ),
-        ]),
-        E("div", { class: "tachyon-studio-toolbar__actions" }, [
-          E(
-            "button",
-            {
-              type: "button",
-              class: "tachyon-studio-btn tachyon-studio-btn--primary",
-              click: () =>
-                showOutboundGroupModal(null, () => {
-                  refreshPoolAndRender();
-                  refreshProberGroupOptions();
-                }),
-            },
-            `+ ${_("Add Outbound Group")}`,
-          ),
+            E(
+              "h3",
+              { class: "tachyon-studio-toolbar__title" },
+              _("Layer 2: Reusable Outbound Server Groups"),
+            ),
+            E(
+              "p",
+              { class: "tachyon-studio-toolbar__subtitle" },
+              _(
+                "Filter servers from the global pool by subscription prefix, country flag, regular expression, or protocol. Multiple include filters in a group act as an intersection (AND).",
+              ),
+            ),
+          ]),
+          E("div", { class: "tachyon-studio-toolbar__actions" }, [
+            E(
+              "button",
+              {
+                type: "button",
+                class: "tachyon-studio-btn tachyon-studio-btn--primary",
+                click: () =>
+                  showOutboundGroupModal(null, () => {
+                    refreshPoolAndRender();
+                    refreshProberGroupOptions();
+                  }),
+              },
+              `+ ${_("Add Outbound Group")}`,
+            ),
+          ]),
         ]),
       ]),
-    ]),
-    groupsListWrap,
-  ]);
+      groupsListWrap,
+    ],
+  );
 
   // Manual URL Reachability Tester panel
   const urlInput = E("input", {

@@ -403,6 +403,18 @@ function tag_name_filter_matches(tag, names, name_filter, regex_set, metadata, n
     let name = tag_display_name(tag, names);
     if (array_contains(name_filter, name) || array_contains(name_filter, tag) || regex_set[tag])
         return true;
+    let stored_prefix = trim(as_string(object_or_empty(object_or_empty(metadata).prefixes)[tag] || ""));
+    if (stored_prefix != "") {
+        if (array_contains(name_filter, stored_prefix + ": " + name) ||
+            array_contains(name_filter, stored_prefix + " " + name))
+            return true;
+        if (index(name, stored_prefix + ": ") == 0 &&
+            array_contains(name_filter, trim(substr(name, length(stored_prefix) + 2))))
+            return true;
+        if (index(name, stored_prefix + " ") == 0 &&
+            array_contains(name_filter, trim(substr(name, length(stored_prefix) + 1))))
+            return true;
+    }
     if (name_with_type_indexed != null && array_contains(name_filter, name_with_type_indexed))
         return true;
     if (name_with_type_indexed == null && type(metadata) == "object") {
@@ -3734,7 +3746,7 @@ function add_combined_route_for_clause(config, section) {
         return r;
     };
 
-    let closed_geo = connections.geoip_country_mode_is_closed(section);
+    let closed_geo = connections.geoip_country_mode_is_closed(section) && length(geo_tags) > 0;
     if (closed_geo && (has_domain || has_ruleset || has_ip_cidr || length(discord_cf_subnets) > 0))
         warn("Section " + section_name + ": GeoIP mode '" + country_mode +
             "' defines the whole section, so the other matchers in it are ignored\n");
