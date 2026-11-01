@@ -78,6 +78,33 @@ function bool_value(value, fallback) {
     return value == "1" || value == "true" || value == "yes" || value == "on";
 }
 
+function normalize_urls(primary_url, extra_urls) {
+    let urls = [];
+    let seen = {};
+    let p = trim(as_string(primary_url || "https://www.gstatic.com/generate_204"));
+    if (p == "")
+        p = "https://www.gstatic.com/generate_204";
+    seen[p] = true;
+    push(urls, p);
+    for (let u in array_or_empty(extra_urls)) {
+        for (let tok in split(as_string(u || ""), /[ \t\r\n,]+/)) {
+            tok = trim(as_string(tok));
+            if (tok != "" && !seen[tok]) {
+                seen[tok] = true;
+                push(urls, tok);
+            }
+        }
+    }
+    return urls;
+}
+
+function normalize_strategy(strategy) {
+    let s = lc(trim(as_string(strategy || "worst_case")));
+    if (s == "worst_case" || s == "best_case" || s == "best_case_target" || s == "average")
+        return s;
+    return "worst_case";
+}
+
 function normalize_group(group, tag_name) {
     group = object_or_empty(group);
     let levels = [];
@@ -98,12 +125,17 @@ function normalize_group(group, tag_name) {
         }
     }
 
+    let primary_url = as_string(group.health_url || group.url || "https://www.gstatic.com/generate_204");
+    let extra_urls = group.health_urls != null ? group.health_urls : group.testing_urls;
     return {
         id: as_string(group.id || ""),
         tag: as_string(group.tag || tag_name),
+        kind: as_string(group.kind || "priority"),
         section: as_string(group.section || ""),
         displayName: as_string(group.displayName || group.name || tag_name),
-        health_url: as_string(group.health_url || "https://www.gstatic.com/generate_204"),
+        health_url: primary_url,
+        health_urls: normalize_urls(primary_url, extra_urls),
+        multi_url_strategy: normalize_strategy(group.multi_url_strategy),
         active_check_interval: as_string(group.active_check_interval || "5s"),
         check_timeout: as_string(group.check_timeout || "2s"),
         recovery_check_interval: as_string(group.recovery_check_interval || "15s"),
@@ -111,6 +143,49 @@ function normalize_group(group, tag_name) {
         switch_to_faster_same_priority: bool_value(group.switch_to_faster_same_priority, false),
         fastest_check_interval: as_string(group.fastest_check_interval || "3m"),
         levels
+    };
+}
+
+function normalize_urltest_active_group(group, tag_name, section_name) {
+    group = object_or_empty(group);
+    let active_interval = trim(as_string(group.active_check_interval || ""));
+    let extra_urls = array_or_empty(group.testing_urls);
+    if (active_interval == "" && length(extra_urls) == 0)
+        return null;
+    if (active_interval == "")
+        active_interval = as_string(group.interval || "3m");
+    let outbounds = [];
+    for (let o in array_or_empty(group.outbounds)) {
+        o = as_string(o);
+        if (o != "")
+            push(outbounds, o);
+    }
+    if (length(outbounds) == 0)
+        return null;
+    let primary_url = as_string(group.url || "https://www.gstatic.com/generate_204");
+    return {
+        id: as_string(tag_name),
+        tag: as_string(tag_name),
+        kind: "urltest",
+        section: as_string(section_name || ""),
+        displayName: as_string(group.displayName || tag_name),
+        health_url: primary_url,
+        health_urls: normalize_urls(primary_url, extra_urls),
+        multi_url_strategy: normalize_strategy(group.multi_url_strategy),
+        active_check_interval: active_interval,
+        check_timeout: "3s",
+        recovery_check_interval: as_string(group.interval || "3m"),
+        pick_fastest: true,
+        switch_to_faster_same_priority: false,
+        fastest_check_interval: as_string(group.interval || "3m"),
+        levels: [
+            {
+                id: as_string(tag_name) + "_pool",
+                displayName: as_string(group.displayName || tag_name),
+                order: 1,
+                outbounds
+            }
+        ]
     };
 }
 
@@ -132,10 +207,16 @@ function priority_groups_from_cache() {
     let result = [];
     for (let path in section_cache_files()) {
         let cache = object_or_empty(read_json_file(path));
+        let section_name = as_string(cache.section || "");
         for (let tag_name, group in object_or_empty(cache.priorityGroups)) {
             let normalized = normalize_group(group, tag_name);
             if (normalized.tag != "" && length(normalized.levels) > 0)
                 push(result, normalized);
+        }
+        for (let tag_name, ut_group in object_or_empty(cache.urltestGroups)) {
+            let normalized_ut = normalize_urltest_active_group(ut_group, tag_name, section_name);
+            if (normalized_ut != null)
+                push(result, normalized_ut);
         }
     }
     return result;
@@ -276,6 +357,53 @@ function parse_delay_output(output) {
     return delay >= 0 ? delay : null;
 }
 
+function evaluate_multi_url_delays(delays_by_url, urls, strategy) {
+    let total = length(urls);
+    if (total == 0)
+        return { alive: false, delay: 0, passed: 0, total: 0, full_pass: false };
+    let passed = 0;
+    let max_delay = 0;
+    let min_delay = null;
+    let sum_delay = 0;
+    let primary_delay = null;
+
+    for (let i = 0; i < total; i++) {
+        let u = urls[i];
+        let d = delays_by_url[u];
+        if (d != null && d >= 0) {
+            passed++;
+            if (i == 0)
+                primary_delay = d;
+            if (d > max_delay)
+                max_delay = d;
+            if (min_delay == null || d < min_delay)
+                min_delay = d;
+            sum_delay += d;
+        }
+    }
+
+    if (passed == 0)
+        return { alive: false, delay: 0, passed: 0, total, full_pass: false };
+
+    let full_pass = (passed == total);
+    let combined = max_delay;
+    strategy = normalize_strategy(strategy);
+    if (strategy == "best_case")
+        combined = min_delay != null ? min_delay : max_delay;
+    else if (strategy == "best_case_target")
+        combined = primary_delay != null ? primary_delay : (min_delay != null ? min_delay : max_delay);
+    else if (strategy == "average")
+        combined = int((sum_delay + int(passed / 2)) / passed);
+
+    return {
+        alive: true,
+        delay: combined,
+        passed,
+        total,
+        full_pass
+    };
+}
+
 function clash_probe(tag_name, group) {
     // Health timing can change without regenerating outbounds or restarting the core.
     // Keep the cache fallback for fixtures and groups without a current UCI owner.
@@ -284,25 +412,46 @@ function clash_probe(tag_name, group) {
     let cursor = uci.cursor();
     if (cursor) { cursor.unload(config); cursor.load(config); }
     let live = uci.get_all(config, group.id);
-    let check_timeout = type(live) == "object" && live[".type"] == "priority_group"
+    let check_timeout = type(live) == "object" && (live[".type"] == "priority_group" || live[".type"] == "balancer")
         ? common.option(live, "check_timeout", group.check_timeout) : group.check_timeout;
     let timeout = as_string(duration_to_milliseconds(check_timeout, 2000));
-    let result = module_capture([ "get_proxy_latency", tag_name, timeout, group.health_url ]);
-    if (result.status != 0)
-        return { alive: false, delay: 0 };
+    let urls = array_or_empty(group.health_urls);
+    if (length(urls) == 0)
+        urls = [ as_string(group.health_url || "https://www.gstatic.com/generate_204") ];
 
-    let delay = parse_delay_output(result.output);
-    if (delay == null)
-        return { alive: false, delay: 0 };
-
-    return { alive: true, delay };
+    let delays_by_url = {};
+    for (let u in urls) {
+        let result = module_capture([ "get_proxy_latency", tag_name, timeout, u ]);
+        if (result.status == 0) {
+            let d = parse_delay_output(result.output);
+            if (d != null && d >= 0)
+                delays_by_url[u] = d;
+        }
+    }
+    return evaluate_multi_url_delays(delays_by_url, urls, group.multi_url_strategy);
 }
 
-function fixture_probe(latencies, tag_name) {
-    let value = object_or_empty(latencies)[tag_name];
-    if (value == null || as_string(value) == "" || int(value, 10) < 0)
-        return { alive: false, delay: 0 };
-    return { alive: true, delay: int(value, 10) };
+function fixture_probe(latencies, tag_name, group) {
+    let raw = object_or_empty(latencies)[tag_name];
+    let urls = group != null && length(array_or_empty(group.health_urls)) > 0
+        ? array_or_empty(group.health_urls)
+        : [ as_string((group && group.health_url) || "https://www.gstatic.com/generate_204") ];
+    let strategy = group != null ? group.multi_url_strategy : "worst_case";
+
+    if (type(raw) == "object") {
+        let delays_by_url = {};
+        for (let u in urls) {
+            let v = raw[u];
+            if (v != null && as_string(v) != "" && int(v, 10) >= 0)
+                delays_by_url[u] = int(v, 10);
+        }
+        return evaluate_multi_url_delays(delays_by_url, urls, strategy);
+    }
+
+    if (raw == null || as_string(raw) == "" || int(raw, 10) < 0)
+        return { alive: false, delay: 0, passed: 0, total: length(urls), full_pass: false };
+    let d = int(raw, 10);
+    return { alive: true, delay: d, passed: length(urls), total: length(urls), full_pass: true };
 }
 
 // The delays the core already measured. The clash API keeps a history per
@@ -396,7 +545,9 @@ function measured_delay(tag_name) {
 function choose_from_level(group, level_index, probe, skip_tag) {
     let level = object_or_empty(array_or_empty(group.levels)[level_index]);
     let best = null;
+    let best_fallback = null;
     let candidates = array_or_empty(level.outbounds);
+    let is_multi_url = length(array_or_empty(group.health_urls)) > 1;
 
     // The order the nodes are tried in. With pick_fastest on, the delays the
     // core already measured decide it - one GET on the clash API gives the
@@ -405,7 +556,7 @@ function choose_from_level(group, level_index, probe, skip_tag) {
     // A measured delay says nothing about liveness - the node may have died
     // since the last measurement - so the order only decides who is tried
     // first, and the first node that actually answers wins.
-    let measured = group.pick_fastest ? clash_delays_snapshot() : null;
+    let measured = (!is_multi_url && group.pick_fastest) ? clash_delays_snapshot() : null;
     let ordered_tags = {};
     if (measured != null) {
         let ordered = [];
@@ -414,6 +565,8 @@ function choose_from_level(group, level_index, probe, skip_tag) {
             if (as_string(skip_tag) != "" && tag_name == skip_tag)
                 continue;
             let delay = measured[as_string(tag_name)];
+            if ( type(delay) == "object" )
+                delay = null;
             // A negative delay is a node the core could not reach. It still
             // has a place in the order - last - because it may answer now.
             if (delay == null || delay < 0) {
@@ -441,22 +594,54 @@ function choose_from_level(group, level_index, probe, skip_tag) {
         if (!result.alive)
             continue;
 
-        if (!group.pick_fastest || ordered_tags[as_string(tag_name)])
-            return {
-                tag: tag_name,
-                levelIndex: level_index,
-                delay: result.delay
-            };
+        let full_pass = result.full_pass !== false;
+        let passed = result.passed != null ? int(result.passed) : 1;
+        let total = result.total != null ? int(result.total) : 1;
 
-        if (best == null || result.delay < best.delay)
-            best = {
-                tag: tag_name,
-                levelIndex: level_index,
-                delay: result.delay
-            };
+        if (full_pass) {
+            if (!group.pick_fastest || ordered_tags[as_string(tag_name)]) {
+                let out = {
+                    tag: tag_name,
+                    levelIndex: level_index,
+                    delay: result.delay
+                };
+                if (is_multi_url) {
+                    out.fallback_active = false;
+                    out.passed_urls = passed;
+                    out.total_urls = total;
+                }
+                return out;
+            }
+
+            if (best == null || result.delay < best.delay) {
+                best = {
+                    tag: tag_name,
+                    levelIndex: level_index,
+                    delay: result.delay
+                };
+                if (is_multi_url) {
+                    best.fallback_active = false;
+                    best.passed_urls = passed;
+                    best.total_urls = total;
+                }
+            }
+        } else if (passed > 0) {
+            if (best_fallback == null ||
+                passed > best_fallback.passed_urls ||
+                (passed == best_fallback.passed_urls && result.delay < best_fallback.delay)) {
+                best_fallback = {
+                    tag: tag_name,
+                    levelIndex: level_index,
+                    delay: result.delay,
+                    fallback_active: true,
+                    passed_urls: passed,
+                    total_urls: total
+                };
+            }
+        }
     }
 
-    return best;
+    return best != null ? best : best_fallback;
 }
 
 function choose_from_level_range(group, start_index, end_index, probe, skip_tag) {
@@ -515,9 +700,58 @@ function choose_fastest_same_level(group, level_index, active_tag, probe) {
     return null;
 }
 
+function current_group_selected(group_tag) {
+    let info = priority_clash_info();
+    let curl_args = [ "curl", "-s", "-m", "4", info.base_url + "/proxies/" + urlencode_segment(group_tag) ];
+    if (info.secret != "") {
+        push(curl_args, "-H");
+        push(curl_args, "Authorization: Bearer " + info.secret);
+    }
+    let res = common.command_capture(command_from_args(curl_args));
+    if (res.status != 0)
+        return "";
+    let body = null;
+    try { body = json(res.output); } catch (e) { body = null; }
+    return type(body) == "object" ? as_string(body.now || "") : "";
+}
+
+function trigger_urltest_recheck(group) {
+    let timeout = as_string(duration_to_milliseconds(group.check_timeout, 3000));
+    let res = module_capture([ "get_proxy_latency", group.tag, timeout, group.health_url ]);
+    return res.status == 0;
+}
+
 function set_group_proxy(group, tag_name) {
+    if (group.kind == "urltest") {
+        let sel_tag = group.section != "" ? (group.section + "-out") : "";
+        if (sel_tag != "" && current_group_selected(sel_tag) == group.tag) {
+            trigger_urltest_recheck(group);
+        } else {
+            trigger_urltest_recheck(group);
+        }
+        return true;
+    }
     let result = module_capture([ "set_group_proxy", group.tag, tag_name, "" ]);
     return result.status == 0;
+}
+
+function write_group_status(group, state, selected) {
+    let status_dir = RUNTIME_STATE_DIR + "/priority";
+    if (!ensure_dir(status_dir))
+        return;
+    let payload = {
+        tag: group.tag,
+        kind: group.kind || "priority",
+        active: state.active,
+        levelIndex: state.levelIndex,
+        delay: state.activeDelay,
+        fallback_active: !!(selected && selected.fallback_active),
+        passed_urls: selected && selected.passed_urls != null ? int(selected.passed_urls) : length(array_or_empty(group.health_urls)),
+        total_urls: selected && selected.total_urls != null ? int(selected.total_urls) : length(array_or_empty(group.health_urls)),
+        strategy: group.multi_url_strategy || "worst_case",
+        updated_at: now_seconds()
+    };
+    common.write_json_file(status_dir + "/" + urlencode_segment(group.tag) + ".json", payload);
 }
 
 function switch_group(state, group, selected) {
@@ -527,6 +761,7 @@ function switch_group(state, group, selected) {
     if (state.active == selected.tag) {
         state.levelIndex = selected.levelIndex;
         state.activeDelay = selected.delay;
+        write_group_status(group, state, selected);
         return true;
     }
 
@@ -538,6 +773,7 @@ function switch_group(state, group, selected) {
     state.active = selected.tag;
     state.levelIndex = selected.levelIndex;
     state.activeDelay = selected.delay;
+    write_group_status(group, state, selected);
     return true;
 }
 
@@ -559,6 +795,14 @@ function init_group_state(group) {
 
 function tick_group(state, group) {
     let now = now_seconds();
+
+    if (group.kind == "urltest" && state.active == "") {
+        let current_now = current_group_selected(group.tag);
+        if (current_now != "") {
+            state.active = current_now;
+            state.levelIndex = 0;
+        }
+    }
 
     if (state.active == "" && now >= state.nextActiveCheck) {
         let selected = choose_from_level_range(group, 0, length(group.levels) - 1, clash_probe);
@@ -695,8 +939,8 @@ function select_fixture(group_path, latency_path, start_index, end_index, skip_t
     // The same file feeds the measured-delay snapshot, so the ordering logic
     // runs exactly as it does on a live core.
     fixture_delays_path = as_string(latency_path);
-    let selected = choose_from_level_range(group, start_index, end_index, function(tag_name, _group) {
-        return fixture_probe(latencies, tag_name);
+    let selected = choose_from_level_range(group, start_index, end_index, function(tag_name, grp) {
+        return fixture_probe(latencies, tag_name, grp);
     }, skip_tag);
     write_json(selected == null ? {} : selected);
 }
@@ -704,8 +948,8 @@ function select_fixture(group_path, latency_path, start_index, end_index, skip_t
 function select_faster_fixture(group_path, latency_path, level_index, active_tag) {
     let group = normalize_group(read_json_file(group_path), "fixture");
     let latencies = object_or_empty(read_json_file(latency_path));
-    let selected = choose_fastest_same_level(group, int(level_index || 0), as_string(active_tag), function(tag_name, _group) {
-        return fixture_probe(latencies, tag_name);
+    let selected = choose_fastest_same_level(group, int(level_index || 0), as_string(active_tag), function(tag_name, grp) {
+        return fixture_probe(latencies, tag_name, grp);
     });
     write_json(selected == null ? {} : selected);
 }

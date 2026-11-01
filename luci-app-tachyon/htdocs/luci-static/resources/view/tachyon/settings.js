@@ -2913,6 +2913,10 @@ function createSettingsContent(section, capabilities) {
   );
   o.depends("proxy_mode", "tun");
   o.default = "tun0";
+  o.value("tun0", "tun0 (Default)");
+  o.value("tachyon0", "tachyon0");
+  o.value("singtun0", "singtun0");
+  o.value("utun0", "utun0");
   o.rmempty = false;
 
   o = section.taboption(
@@ -2974,30 +2978,16 @@ function createSettingsContent(section, capabilities) {
   o.nobridges = false;
   o.noinactive = false;
   o.multiple = true;
-  o.filter = function (section_id, value) {
-    // Block specific interface names from being selectable
-    const blocked = ["wan", "phy0-ap0", "phy1-ap0", "pppoe-wan"];
-    if (blocked.includes(value)) {
+  o.filter = function (_section_id, value) {
+    if (
+      !value ||
+      value === "lo" ||
+      value === "loopback" ||
+      value.startsWith("@")
+    ) {
       return false;
     }
-
-    // Try to find the device object by its name
-    const device = this.devices.find((dev) => dev.getName() === value);
-
-    // If no device is found, allow the value
-    if (!device) {
-      return true;
-    }
-
-    // Check the type of the device
-    const type = device.getType();
-
-    // Consider any Wi-Fi / wireless / wlan device as invalid
-    const isWireless =
-      type === "wifi" || type === "wireless" || type.includes("wlan");
-
-    // Allow only non-wireless devices
-    return !isWireless;
+    return true;
   };
 
   o = section.taboption(
@@ -3018,49 +3008,20 @@ function createSettingsContent(section, capabilities) {
     _("Select the network interface to which the traffic will originate"),
   );
   o.noaliases = true;
+  o.nobridges = false;
+  o.noinactive = false;
   o.multiple = false;
   o.depends("enable_output_network_interface", "1");
-  o.filter = function (section_id, value) {
-    // Blocked interface names that should never be selectable
-    const blockedInterfaces = ["br-lan"];
-
-    // Reject immediately if the value matches any blocked interface
-    if (blockedInterfaces.includes(value)) {
-      return false;
-    }
-
-    // Reject lan*
-    if (value.startsWith("lan")) {
-      return false;
-    }
-
-    // Reject tun*, wg*, vpn*, awg*, oc*
+  o.filter = function (_section_id, value) {
     if (
-      value.startsWith("tun") ||
-      value.startsWith("wg") ||
-      value.startsWith("vpn") ||
-      value.startsWith("awg") ||
-      value.startsWith("oc")
+      !value ||
+      value === "lo" ||
+      value === "loopback" ||
+      value.startsWith("@")
     ) {
       return false;
     }
-
-    // Try to find the device object with the given name
-    const device = this.devices.find((dev) => dev.getName() === value);
-
-    // If no device is found, allow the value
-    if (!device) {
-      return true;
-    }
-
-    // Get the device type (e.g., "wifi", "ethernet", etc.)
-    const type = device.getType();
-
-    // Reject wireless-related devices
-    const isWireless =
-      type === "wifi" || type === "wireless" || type.includes("wlan");
-
-    return !isWireless;
+    return true;
   };
 
   o = section.taboption(

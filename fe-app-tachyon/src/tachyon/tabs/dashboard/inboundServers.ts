@@ -1525,6 +1525,24 @@ export function renderCollapsibleInboundsBlock(params: {
           },
           `↑ ${prettyBytes(summary.totalUpload)}`,
         ),
+        E(
+          'button',
+          {
+            type: 'button',
+            class:
+              'tachyon-dual-card__badge tachyon-dual-card__badge--clickable',
+            title: tr(
+              'Сгенерировать единую ссылку подписки (URL / QR) из входящих серверов',
+              'Configure subscription URL & QR code for inbound servers',
+            ),
+            click: (ev: MouseEvent) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+              openServerSubscriptionModal();
+            },
+          },
+          tr('Подписка (URL / QR)', 'Configure subscription'),
+        ),
         ...(showGoToServersLink
           ? [
               E(
@@ -1745,6 +1763,14 @@ function stopServerTabPolling() {
 export function openServerInfoModalForSection(sectionId: string): boolean {
   if (registeredServerController?.showServerInfoModal) {
     registeredServerController.showServerInfoModal(sectionId);
+    return true;
+  }
+  return false;
+}
+
+export function openServerSubscriptionModal(): boolean {
+  if (registeredServerController?.showSubscriptionModal) {
+    registeredServerController.showSubscriptionModal();
     return true;
   }
   return false;

@@ -18,6 +18,7 @@
 let fs = require("fs");
 let common = require("core.common");
 let constants = require("core.constants");
+let exec = require("core.exec");
 let core_ip = require("core.ip");
 let uci_core = require("core.uci");
 let connections = require("config.connections");
@@ -226,12 +227,41 @@ const KNOWN_COMMUNITY_DOMAINS = {
     openai: [ "openai.com", "chatgpt.com", "oaistatic.com", "oaiusercontent.com", "sora.com" ],
     anthropic: [ "anthropic.com", "claude.ai", "claudeusercontent.com" ],
     xai: [ "x.ai", "grok.com" ],
-    xbox: [ "xbox.com", "xboxlive.com", "xboxservices.com", "gamepass.com", "sfx.ms", "xboxab.com" ],
-    playstation: [ "playstation.com", "playstation.net", "sonyentertainmentnetwork.com" ],
+    openrouter: [ "openrouter.ai", "poe.com", "groq.com", "mistral.ai", "together.ai", "fireworks.ai", "deepinfra.com", "cerebras.ai", "replicate.com", "fal.ai", "chutes.ai", "cohere.com", "lmarena.ai" ],
+    cursor: [ "cursor.com", "cursor.sh", "cursorapi.com", "opencode.ai", "models.dev", "windsurf.com", "codeium.com", "grazie.ai", "jetbrains.ai", "trae.ai", "cline.bot", "roocode.com", "kilocode.ai", "lovable.dev", "bolt.new", "v0.dev", "devin.ai", "replit.com", "coderabbit.ai", "context7.com" ],
+    perplexity: [ "perplexity.ai", "pplx.ai", "you.com", "genspark.ai", "consensus.app", "elicit.com", "scite.ai" ],
+    copilot: [ "githubcopilot.com", "copilot-proxy.githubusercontent.com", "copilot.microsoft.com", "sydney.bing.com" ],
+    deepseek: [ "deepseek.com", "chat.deepseek.com", "api.deepseek.com", "kimi.ai", "qwen.ai", "chat.qwen.ai", "minimax.io", "z.ai", "manus.im", "dify.ai" ],
+    midjourney: [ "midjourney.com", "civitai.com", "bfl.ai", "leonardo.ai", "ideogram.ai", "krea.ai", "recraft.ai", "magnific.ai", "stability.ai", "comfy.org", "openart.ai", "tripo3d.ai", "meshy.ai" ],
+    elevenlabs: [ "elevenlabs.io", "suno.com", "udio.com", "runwayml.com", "klingai.com", "lumalabs.ai", "pika.art", "hailuoai.video", "heygen.com", "synthesia.io", "vidu.com", "pixverse.ai" ],
+    huggingface: [ "huggingface.co", "hf.co", "ollama.com", "lmstudio.ai", "openwebui.com", "character.ai", "janitorai.com", "chub.ai", "novelai.net", "wandb.ai", "kaggle.com", "langchain.com" ],
+    xbox: [ "xbox.com", "xboxlive.com", "xboxservices.com", "gamepass.com", "sfx.ms", "xboxab.com", "bethesda.net", "forzamotorsport.net", "halowaypoint.com", "seaofthieves.com", "flightsimulator.com" ],
+    playstation: [ "playstation.com", "playstation.net", "playstationnetwork.com", "sonyentertainmentnetwork.com" ],
+    nintendo: [ "nintendo.com", "nintendo.net", "nintendowifi.net", "pokemon.com" ],
+    ubisoft: [ "ubisoft.com", "ubi.com", "uplay.com", "rainbowsix.com", "battleye.com" ],
+    warthunder: [ "warthunder.com", "gaijin.net", "enlisted.net", "crossout.net" ],
+    blizzard: [ "battle.net", "blizzard.com", "activision.com", "callofduty.com", "worldofwarcraft.com", "playoverwatch.com", "diablo4.com", "playhearthstone.com" ],
+    gog: [ "gog.com", "gogalaxy.com", "gog-statics.com", "cdprojektred.com", "cyberpunk.net", "thewitcher.com" ],
+    wargaming: [ "wargaming.net", "worldoftanks.eu", "worldofwarships.eu", "wotblitz.com" ],
+    hoyoverse: [ "hoyoverse.com", "hoyolab.com", "genshinimpact.com", "kurogames.com", "wutheringwaves.kurogames.com" ],
+    minecraft: [ "minecraft.net", "mojang.com", "minecraftservices.com", "curseforge.com", "modrinth.com", "nexusmods.com", "prismlauncher.org" ],
+    rockstar: [ "rockstargames.com", "cfx.re", "fivem.net", "2k.com" ],
+    pubg: [ "pubg.com", "krafton.com", "reachthefinals.com", "dayz.com", "vrchat.com", "deadbydaylight.com", "pathofexile.com", "warframe.com", "guildwars2.com", "albiononline.com", "easy.ac", "battleye.com" ],
+    supercell: [ "supercell.com", "clashofclans.com", "clashroyale.com", "brawlstars.com" ],
     ads_hagezi_pro: [ "doubleclick.net", "googlesyndication.com", "googleadservices.com", "adservice.google.com", "an.yandex.ru", "mc.yandex.ru" ],
+    xiaomi_smarttv_ads: [ "api.ad.xiaomi.com", "tracking.miui.com", "mistat.xiaomi.com", "sdkconfig.ad.xiaomi.com", "samsungads.com", "lgad.cjpowercast.com" ],
     meta_ads: [ "an.facebook.com", "pixel.facebook.com", "graph.instagram.com" ],
     netflix: [ "netflix.com", "nflxvideo.net", "nflximg.net", "nflxext.com" ],
     spotify: [ "spotify.com", "scdn.co", "spotifycdn.com" ],
+    soundcloud_music: [ "soundcloud.com", "sndcdn.com", "deezer.com", "dzcdn.net", "tidal.com", "qobuz.com", "bandcamp.com", "genius.com", "last.fm", "mixcloud.com", "tunein.com", "discogs.com" ],
+    rutracker_lampa: [ "rutracker.org", "rutor.info", "nnmclub.to", "kinozal.tv", "lostfilm.tv", "kinopub.me", "filmix.ac", "flibusta.is", "z-lib.gs", "annas-archive.org", "sci-hub.se" ],
+    patreon_creators: [ "patreon.com", "medium.com", "substack.com", "deviantart.com", "artstation.com", "pixiv.net", "pximg.net", "gumroad.com", "ko-fi.com", "archiveofourown.org", "ficbook.net", "goodreads.com", "letterboxd.com" ],
+    whatsapp: [ "whatsapp.com", "whatsapp.net", "wa.me" ],
+    messengers: [ "signal.org", "whispersystems.org", "viber.com", "teamspeak.com", "myteamspeak.com", "guilded.gg", "matrix.org", "element.io", "threema.ch", "getsession.org", "simplex.chat", "wire.com" ],
+    reddit: [ "reddit.com", "redd.it", "redditmedia.com", "redditstatic.com" ],
+    zoom_teams: [ "zoom.us", "zoom.com", "meet.google.com", "teams.microsoft.com", "webex.com", "slack.com", "loom.com", "gather.town", "whereby.com", "jitsi.org" ],
+    google_meet: [ "meet.google.com", "stun.l.google.com" ],
+    linkedin: [ "linkedin.com", "licdn.com", "lnkd.in", "slideshare.net", "glassdoor.com", "indeed.com", "wellfound.com", "levels.fyi" ],
     tiktok: [ "tiktok.com", "tiktokv.com", "tiktokcdn.com", "musical.ly" ],
     twitch: [ "twitch.tv", "ttvnw.net", "jtvnw.net" ],
     steam: [ "steampowered.com", "steamcommunity.com", "steamstatic.com", "steamcontent.com" ],
@@ -247,7 +277,52 @@ const KNOWN_COMMUNITY_DOMAINS = {
     docker: [ "docker.com", "docker.io" ],
     tor: [ "torproject.org" ],
     fastly: [ "fastly.net", "fastly.com" ],
-    ai_all: [ "openai.com", "chatgpt.com", "claude.ai", "anthropic.com", "gemini.google.com", "x.ai", "grok.com", "perplexity.ai" ],
+    jetbrains: [ "jetbrains.com", "jetbrains.ai", "kotlinlang.org", "gradle.org", "maven.org", "android.com" ],
+    gitlab_notion: [ "gitlab.com", "atlassian.com", "atlassian.net", "bitbucket.org", "trello.com", "notion.so", "miro.com", "linear.app", "asana.com", "clickup.com", "airtable.com", "postman.com", "sentry.io", "datadoghq.com", "grafana.com" ],
+    figma_adobe: [ "figma.com", "canva.com", "adobe.com", "adobe.io", "behance.net", "framer.com", "webflow.com", "dribbble.com", "freepik.com", "flaticon.com", "envato.com", "shutterstock.com", "unsplash.com", "autodesk.com" ],
+    pkg_registries: [ "hashicorp.com", "npmjs.org", "npmjs.com", "yarnpkg.com", "pnpm.io", "bun.sh", "deno.com", "jsdelivr.net", "pypi.org", "pythonhosted.org", "anaconda.org", "pytorch.org", "crates.io", "rust-lang.org", "golang.org", "pkg.go.dev", "nuget.org", "packagist.org", "brew.sh", "ghcr.io", "quay.io", "k8s.io", "archlinux.org", "alpinelinux.org", "debian.org", "ubuntu.com", "openwrt.org" ],
+    speedtest: [ "speedtest.net", "ookla.com", "fast.com", "2ip.ru", "2ip.io", "whoer.net", "browserleaks.com", "ipleak.net", "ipinfo.io", "check-host.net", "ping.pe" ],
+    crypto: [ "binance.com", "bybit.com", "okx.com", "bitget.com", "bingx.com", "kucoin.com", "gate.io", "htx.com", "mexc.com", "kraken.com", "coinbase.com", "uniswap.org", "jup.ag", "polymarket.com", "tradingview.com", "coinmarketcap.com", "coingecko.com", "defillama.com", "metamask.io", "phantom.app", "tonkeeper.com" ],
+    paypal_fintech: [ "paypal.com", "wise.com", "revolut.com", "stripe.com", "payoneer.com", "skrill.com", "neteller.com", "n26.com", "monzo.com", "interactivebrokers.com", "investing.com", "bloomberg.com" ],
+    games_all: [
+        "steampowered.com", "steamcommunity.com", "steamstatic.com", "steamcontent.com",
+        "epicgames.com", "unrealengine.com", "fortnite.com",
+        "ubisoft.com", "ubi.com", "uplay.com", "rainbowsix.com",
+        "warthunder.com", "gaijin.net", "enlisted.net", "crossout.net",
+        "battle.net", "blizzard.com", "activision.com", "callofduty.com", "worldofwarcraft.com", "playoverwatch.com", "diablo4.com",
+        "riotgames.com", "leagueoflegends.com", "playvalorant.com",
+        "ea.com", "origin.com",
+        "xbox.com", "xboxlive.com", "xboxservices.com", "gamepass.com", "bethesda.net",
+        "playstation.com", "playstation.net", "playstationnetwork.com", "sonyentertainmentnetwork.com",
+        "nintendo.com", "nintendo.net", "nintendowifi.net", "pokemon.com",
+        "gog.com", "gogalaxy.com", "cdprojektred.com", "cyberpunk.net", "thewitcher.com",
+        "wargaming.net", "worldoftanks.eu", "worldofwarships.eu", "wotblitz.com",
+        "hoyoverse.com", "hoyolab.com", "genshinimpact.com", "kurogames.com",
+        "minecraft.net", "mojang.com", "minecraftservices.com", "curseforge.com", "modrinth.com", "nexusmods.com",
+        "rockstargames.com", "cfx.re", "fivem.net", "2k.com",
+        "roblox.com", "rbxcdn.com", "robloxlabs.com",
+        "supercell.com", "clashofclans.com", "clashroyale.com", "brawlstars.com",
+        "escapefromtarkov.com", "battlestategames.com",
+        "faceit.com", "faceit-cdn.net",
+        "pubg.com", "krafton.com", "reachthefinals.com", "dayz.com", "vrchat.com", "deadbydaylight.com", "pathofexile.com", "warframe.com", "battleye.com", "easy.ac"
+    ],
+    ai_all: [
+        "openai.com", "chatgpt.com", "oaistatic.com", "oaiusercontent.com", "sora.com",
+        "claude.ai", "anthropic.com", "claudeusercontent.com",
+        "gemini.google.com", "aistudio.google.com", "makersuite.google.com", "notebooklm.google.com",
+        "notebooklm.google", "bard.google.com", "deepmind.google", "jules.google.com", "idx.google.com",
+        "labs.google", "generativelanguage.googleapis.com", "proactivebackend-pa.googleapis.com",
+        "alkalimakersuite-pa.clients6.google.com", "alkalisuite-pa.clients6.google.com",
+        "x.ai", "grok.com",
+        "openrouter.ai", "poe.com", "groq.com", "mistral.ai", "together.ai", "fireworks.ai", "deepinfra.com", "cerebras.ai", "replicate.com", "fal.ai", "chutes.ai", "cohere.com", "lmarena.ai",
+        "cursor.com", "cursor.sh", "cursorapi.com", "opencode.ai", "models.dev", "windsurf.com", "codeium.com", "grazie.ai", "jetbrains.ai", "trae.ai", "cline.bot", "roocode.com", "kilocode.ai", "lovable.dev", "bolt.new", "v0.dev", "devin.ai", "replit.com", "coderabbit.ai", "context7.com",
+        "perplexity.ai", "pplx.ai", "you.com", "genspark.ai", "consensus.app", "elicit.com", "scite.ai",
+        "githubcopilot.com", "copilot-proxy.githubusercontent.com", "copilot.microsoft.com", "sydney.bing.com",
+        "deepseek.com", "chat.deepseek.com", "api.deepseek.com", "kimi.ai", "qwen.ai", "chat.qwen.ai", "minimax.io", "z.ai", "manus.im", "dify.ai",
+        "midjourney.com", "civitai.com", "bfl.ai", "leonardo.ai", "ideogram.ai", "krea.ai", "recraft.ai", "magnific.ai", "stability.ai", "comfy.org", "openart.ai", "tripo3d.ai", "meshy.ai",
+        "elevenlabs.io", "suno.com", "udio.com", "runwayml.com", "klingai.com", "lumalabs.ai", "pika.art", "hailuoai.video", "heygen.com", "synthesia.io", "vidu.com", "pixverse.ai",
+        "huggingface.co", "hf.co", "ollama.com", "lmstudio.ai", "openwebui.com", "character.ai", "janitorai.com", "chub.ai", "novelai.net", "wandb.ai", "kaggle.com", "langchain.com"
+    ],
     ru_whitelist: [ "gosuslugi.ru", "yandex.ru", "vk.com", "sberbank.ru", "tbank.ru", "ozon.ru", "wildberries.ru" ],
     ru_domains: [ "yandex.ru", "vk.com", "mail.ru", "gosuslugi.ru", "sberbank.ru", "ozon.ru", "wildberries.ru" ],
     ru_only_inside: [ "gosuslugi.ru", "nalog.ru", "mos.ru", "rzd.ru", "sberbank.ru" ],
@@ -261,14 +336,17 @@ const KNOWN_COMMUNITY_DOMAINS = {
         "rbc.ru", "tinkoff.ru", "t-bank.ru", "mos.ru", "ya.ru", "2ch.hk", "pikabu.ru"
     ],
     russia_inside: [
-        "yandex.ru", "vk.com", "mail.ru", "gosuslugi.ru", "sberbank.ru", "rambler.ru",
-        "dzen.ru", "rutube.ru", "ozon.ru", "wildberries.ru", "avito.ru", "kinopoisk.ru",
-        "rbc.ru", "tinkoff.ru", "t-bank.ru", "mos.ru", "ya.ru"
+        "youtube.com", "instagram.com", "facebook.com", "twitter.com", "x.com",
+        "discord.com", "gemini.google.com", "chatgpt.com", "openai.com", "rutracker.org"
     ],
     russia_outside: [
         "yandex.ru", "vk.com", "mail.ru", "gosuslugi.ru", "sberbank.ru", "rambler.ru",
         "dzen.ru", "rutube.ru", "ozon.ru", "wildberries.ru", "avito.ru", "kinopoisk.ru",
         "rbc.ru", "tinkoff.ru", "t-bank.ru", "mos.ru", "ya.ru"
+    ],
+    ukraine_inside: [
+        "vk.com", "ok.ru", "mail.ru", "yandex.ru", "ya.ru", "kaspersky.ru",
+        "1c.ru", "rutube.ru", "dzen.ru"
     ]
 };
 
@@ -292,6 +370,43 @@ const KNOWN_COMMUNITY_SUBNETS = {
     ]
 };
 
+function find_local_community_ruleset_file(community_name) {
+    let candidates = [
+        "/tmp/tachyon-core/rulesets/community-" + community_name + ".trs",
+        "/etc/tachyon/rulesets/community-" + community_name + ".trs",
+        "/tmp/tachyon-core/rulesets/community-" + community_name + ".srs",
+        "/etc/tachyon/rulesets/community-" + community_name + ".srs",
+        "/tmp/sing-box/rulesets/community-" + community_name + ".srs"
+    ];
+    for (let p in candidates) {
+        let st = fs.stat(p);
+        if (st != null && st.type == "file" && (st.size || 0) > 0)
+            return p;
+    }
+    return null;
+}
+
+function check_binary_ruleset_match(community_name, target_value) {
+    if (getenv("TACHYON_PACKAGE_TEST_MODE") != null || getenv("TACHYON_UCI_STATE_FILE") != null)
+        return false;
+    let rs_path = find_local_community_ruleset_file(community_name);
+    if (rs_path == null)
+        return false;
+    let is_trs = substr(rs_path, length(rs_path) - 4) == ".trs";
+    let bins = is_trs
+        ? [ "/usr/bin/tachyon-core", "/usr/bin/sing-box" ]
+        : [ "/usr/bin/sing-box", "/usr/bin/tachyon-core" ];
+    for (let bin in bins) {
+        let st = fs.stat(bin);
+        if (st == null)
+            continue;
+        let out = exec.run_output([ bin, "rule-set", "match", rs_path, target_value ]);
+        if (out != null && out != "" && match(out, /\[[0-9]+\][ \t]+match/) != null)
+            return true;
+    }
+    return false;
+}
+
 function check_community_domain_match(target_domain, community_name) {
     community_name = lc(trim(as_string(community_name)));
     let domains = KNOWN_COMMUNITY_DOMAINS[community_name];
@@ -302,6 +417,8 @@ function check_community_domain_match(target_domain, community_name) {
             }
         }
     }
+    if (check_binary_ruleset_match(community_name, target_domain))
+        return true;
     // Also check direct substring of service name
     if (index(target_domain, community_name) >= 0) {
         return true;
@@ -320,18 +437,26 @@ function check_community_ip_match(target_ip, community_name) {
         }
     }
     // Also check local compiled ruleset list file if exists
-    let subnets_file = "/usr/share/tachyon/rulesets/community-subnets-" + community_name + ".lst";
-    let data = fs.readfile(subnets_file);
-    if (data != null) {
-        for (let line in split(as_string(data), "\n")) {
-            line = trim(line);
-            if (line != "" && index(line, "#") < 0) {
-                if (ipv4_in_cidr(target_ip, line)) {
-                    return true;
+    let lst_candidates = [
+        "/tmp/tachyon-core/rulesets/community-subnets-" + community_name + ".lst",
+        "/etc/tachyon/rulesets/community-subnets-" + community_name + ".lst",
+        "/usr/share/tachyon/rulesets/community-subnets-" + community_name + ".lst"
+    ];
+    for (let subnets_file in lst_candidates) {
+        let data = fs.readfile(subnets_file);
+        if (data != null) {
+            for (let line in split(as_string(data), "\n")) {
+                line = trim(line);
+                if (line != "" && index(line, "#") < 0) {
+                    if (ipv4_in_cidr(target_ip, line)) {
+                        return true;
+                    }
                 }
             }
         }
     }
+    if (check_binary_ruleset_match(community_name, target_ip))
+        return true;
     return false;
 }
 
@@ -344,11 +469,10 @@ function target_matches_country(target_info, cc, is_domain, is_ip) {
         if (domain_matches_suffix(target_info.host, cc)) return true;
         if (cc == "ru" && (domain_matches_suffix(target_info.host, "su") || domain_matches_suffix(target_info.host, "xn--p1ai") || domain_matches_suffix(target_info.host, "рф"))) return true;
         if (check_community_domain_match(target_info.host, "geosite_" + cc)) return true;
-        if (cc == "ru" && check_community_domain_match(target_info.host, "russia_inside")) return true;
+        if (cc == "ru" && check_community_domain_match(target_info.host, "ru_domains")) return true;
     }
     if (is_ip) {
         if (check_community_ip_match(target_info.host, "geoip_" + cc)) return true;
-        if (cc == "ru" && check_community_ip_match(target_info.host, "russia_inside")) return true;
     }
     return false;
 }
@@ -497,18 +621,18 @@ function load_uci_tachyon_config() {
 
 function parse_items_list(val) {
     if (val == null) return [];
-    if (type(val) == "array") {
-        let res = [];
-        for (let item in val) {
-            let s = trim(as_string(item));
-            if (s != "") push(res, s);
-        }
-        return res;
-    }
+    let lines = type(val) == "array" ? val : split(as_string(val), /[\r\n]+/);
     let res = [];
-    for (let part in split(as_string(val), /[ \t,\r\n]+/)) {
-        part = trim(part);
-        if (part != "") push(res, part);
+    for (let raw_line in lines) {
+        let line = replace(as_string(raw_line), /(^|[ \t]+)\/\/.*$/, "");
+        line = replace(line, /(^|[ \t]+)#.*$/, "");
+        line = trim(line);
+        if (line == "")
+            continue;
+        for (let part in split(line, /[ \t,]+/)) {
+            part = trim(part);
+            if (part != "") push(res, part);
+        }
     }
     return res;
 }
@@ -710,11 +834,11 @@ function evaluate_atomic_clause_match(section, client_info, target_info, port, p
         return true;
     };
 
-    let domains = parse_combined_items(section, [ "domain", "domain_text" ]);
+    let domains = [];
     let suffixes = parse_combined_items(section, [ "domain_suffix", "domain_suffix_text" ]);
     let keywords = parse_combined_items(section, [ "domain_keyword", "domain_keyword_text" ]);
     let regexes = parse_combined_items(section, [ "domain_regex", "domain_regex_text" ]);
-    for (let ud in parse_combined_items(section, [ "user_domains", "user_domains_text" ])) {
+    for (let ud in parse_combined_items(section, [ "domain", "domain_text", "user_domains", "user_domains_text" ])) {
         if (substr(ud, 0, 5) == "full:")
             push(domains, substr(ud, 5));
         else if (substr(ud, 0, 7) == "domain:")
@@ -723,8 +847,10 @@ function evaluate_atomic_clause_match(section, client_info, target_info, port, p
             push(keywords, substr(ud, 8));
         else if (substr(ud, 0, 6) == "regex:")
             push(regexes, substr(ud, 6));
-        else
+        else {
+            push(domains, ud);
             push(suffixes, ud);
+        }
     }
 
     // 1. Domain matching

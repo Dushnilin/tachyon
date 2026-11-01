@@ -472,6 +472,10 @@ export const styles = `
     font-weight: 600;
 }
 
+.tachyon_monitoring-page__route[data-rule-tooltip] {
+    cursor: help;
+}
+
 .tachyon_monitoring-page__route--proxy {
     background: rgba(168, 85, 247, 0.14) !important;
     border-color: rgba(168, 85, 247, 0.32) !important;
@@ -520,6 +524,12 @@ export const styles = `
     background: rgba(52, 211, 153, 0.12) !important;
     border-color: rgba(52, 211, 153, 0.3) !important;
     color: #34d399 !important;
+}
+
+.tachyon_monitoring-page__network--quic {
+    background: rgba(99, 102, 241, 0.16) !important;
+    border-color: rgba(129, 140, 248, 0.38) !important;
+    color: #818cf8 !important;
 }
 
 .tachyon_monitoring-page__table td:nth-child(4) .tachyon_monitoring-page__value,

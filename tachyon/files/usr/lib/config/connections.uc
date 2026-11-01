@@ -2680,7 +2680,9 @@ function merge_condition_into_section_object(base_section, positive_conds, negat
         "protocol",
         "excluded_protocol",
         "dscp",
-        "geoip_country"
+        "geoip_country",
+        "source_inbounds",
+        "server_domain_rules"
     ];
     let text_keys = [
         "domain",
@@ -2695,7 +2697,7 @@ function merge_condition_into_section_object(base_section, positive_conds, negat
     ];
 
     let has_modular_conds = length(positive_conds || []) > 0 || length(negative_conds || []) > 0;
-    let sources = has_modular_conds ? (positive_conds || []) : [ base_section ];
+    let sources = [ base_section, ...(positive_conds || []) ];
     let section_filter_list_keys = {
         source_ip_cidr: true,
         source_macs: true,
@@ -2708,7 +2710,9 @@ function merge_condition_into_section_object(base_section, positive_conds, negat
         port: true,
         protocol: true,
         excluded_protocol: true,
-        dscp: true
+        dscp: true,
+        source_inbounds: true,
+        server_domain_rules: true
     };
     let section_filter_text_keys = {
         source_ip_cidr_text: true,
@@ -2944,24 +2948,27 @@ function condition_values(section, kind) {
 
     let values = {};
     let rule_config = GLOBAL_RULE_TEXT_OPTIONS[kind] ? rule_config_or_null() : null;
+    let sources = [ section, ...section_leaf_conditions(section) ];
 
-    for (let key in keys) {
-        let raw = raw_option(section, key);
-        if (raw == null)
-            continue;
+    for (let src in sources) {
+        for (let key in keys) {
+            let raw = raw_option(src, key);
+            if (raw == null)
+                continue;
 
-        let items;
-        if (type(raw) == "array")
-            items = raw;
-        else if (rule_config)
-            items = rule_config.text_list_values(raw);
-        else
-            items = split(trim(as_string(raw)), /[ \t\r\n]+/);
+            let items;
+            if (type(raw) == "array")
+                items = raw;
+            else if (rule_config)
+                items = rule_config.text_list_values(raw);
+            else
+                items = split(trim(as_string(raw)), /[ \t\r\n]+/);
 
-        for (let item in items) {
-            item = trim(as_string(item));
-            if (item != "")
-                values[item] = true;
+            for (let item in items) {
+                item = trim(as_string(item));
+                if (item != "")
+                    values[item] = true;
+            }
         }
     }
 
@@ -3146,7 +3153,8 @@ function geoip_country_mode(section) {
 }
 
 function geoip_country_mode_is_closed(section) {
-    return contains(GEOIP_COUNTRY_CLOSED_MODES, geoip_country_mode(section));
+    return length(geoip_country_list(section)) > 0 &&
+        contains(GEOIP_COUNTRY_CLOSED_MODES, geoip_country_mode(section));
 }
 
 function packet_encoding(section) {
@@ -3168,11 +3176,65 @@ function domain_ip_lists_value(section) {
     return list_option_value_from_array(domain_ip_lists(section));
 }
 
+function source_inbounds(section) {
+    let raw = [];
+    for (let item in whitespace_list_value(section, "source_inbounds"))
+        push(raw, item);
+    for (let cond in section_leaf_conditions(section)) {
+        for (let item in whitespace_list_value(cond, "source_inbounds"))
+            push(raw, item);
+    }
+    let result = [];
+    for (let item in raw) {
+        let val = trim(as_string(item));
+        if (val != "" && !contains(result, val))
+            push(result, val);
+    }
+    return result;
+}
+
+function server_domain_rules(section) {
+    let raw = [];
+    for (let item in list_option(section, "server_domain_rules"))
+        push(raw, item);
+    for (let cond in section_leaf_conditions(section)) {
+        for (let item in list_option(cond, "server_domain_rules"))
+            push(raw, item);
+    }
+    let result = [];
+    for (let item in raw) {
+        let val = trim(as_string(item));
+        if (val != "" && !contains(result, val))
+            push(result, val);
+    }
+    return result;
+}
+
+function section_referenced_by_active_inbound_server(section) {
+    if (section == null || type(section) != "object")
+        return false;
+    let name = section_name(section);
+    if (name == "")
+        return false;
+    for (let srv in uci_core.section_objects(CONFIG_NAME, "server")) {
+        if (!bool_option(srv, "enabled", true))
+            continue;
+        if (option(srv, "routing_mode", "rules") == "section" &&
+            option(srv, "routing_section", "") == name)
+            return true;
+    }
+    return false;
+}
+
 function single_object_has_routing_matchers(section) {
     if (section == null || type(section) != "object")
         return false;
 
     if (has_dns_matchers_single(section))
+        return true;
+
+    if (length(whitespace_list_value(section, "source_inbounds")) > 0 ||
+        length(list_option(section, "server_domain_rules")) > 0)
         return true;
 
     if (length(list_option(section, "domain")) > 0 || option(section, "domain", "") != "" || option(section, "domain_text", "") != "" ||
@@ -3256,6 +3318,7 @@ function section_is_active_provider(section, action) {
     }
 
     return section_has_routing_matchers(section) ||
+        section_referenced_by_active_inbound_server(section) ||
         bool_option(section, "match_all", false) ||
         bool_option(section, "mixed_proxy_enabled", false);
 }
@@ -3711,6 +3774,43 @@ function urltest_testing_url(section, value) {
     return item_option(section, "urltest_settings", value, "urltest_testing_url", fallback);
 }
 
+function urltest_active_check_interval(section, value) {
+    let child = urltest_child(section, value);
+    if (child != null)
+        return trim(child_option_alias(child, [ "urltest_active_check_interval", "active_check_interval" ], ""));
+    let fallback = option(section, "urltest_active_check_interval", "");
+    return trim(item_option(section, "urltest_settings", value, "urltest_active_check_interval", fallback));
+}
+
+function urltest_testing_urls(section, value) {
+    let child = urltest_child(section, value);
+    let raw = child != null
+        ? child_list_alias(child, [ "testing_urls", "urltest_testing_urls", "health_urls" ], [])
+        : item_list(section, "urltest_settings", value, "testing_urls", list_value(section, "testing_urls"));
+    let result = [];
+    let seen = {};
+    for (let item in raw) {
+        for (let tok in split(as_string(item || ""), /[ \t\r\n,]+/)) {
+            tok = trim(as_string(tok));
+            if (tok != "" && !seen[tok]) {
+                seen[tok] = true;
+                push(result, tok);
+            }
+        }
+    }
+    return result;
+}
+
+function urltest_multi_url_strategy(section, value) {
+    let child = urltest_child(section, value);
+    let strategy = child != null
+        ? lc(trim(child_option_alias(child, [ "multi_url_strategy", "urltest_multi_url_strategy" ], "worst_case")))
+        : lc(trim(item_option(section, "urltest_settings", value, "multi_url_strategy", option(section, "multi_url_strategy", "worst_case"))));
+    if (strategy == "worst_case" || strategy == "best_case" || strategy == "best_case_target" || strategy == "average")
+        return strategy;
+    return "worst_case";
+}
+
 function urltest_display_name(section, value) {
     let fallback = as_string(value);
     if (fallback == "urltest" && length(child_items(section, "urltest")) == 0)
@@ -3946,6 +4046,35 @@ function priority_group_display_name(section, value) {
 function priority_group_health_url(section, value) {
     let child = priority_group_child(section, value);
     return child != null ? child_option(child, "health_url", "https://www.gstatic.com/generate_204") : "https://www.gstatic.com/generate_204";
+}
+
+function priority_group_health_urls(section, value) {
+    let child = priority_group_child(section, value);
+    let raw = child != null
+        ? child_list_alias(child, [ "health_urls", "testing_urls" ], [])
+        : [];
+    let result = [];
+    let seen = {};
+    for (let item in raw) {
+        for (let tok in split(as_string(item || ""), /[ \t\r\n,]+/)) {
+            tok = trim(as_string(tok));
+            if (tok != "" && !seen[tok]) {
+                seen[tok] = true;
+                push(result, tok);
+            }
+        }
+    }
+    return result;
+}
+
+function priority_group_multi_url_strategy(section, value) {
+    let child = priority_group_child(section, value);
+    let strategy = child != null
+        ? lc(trim(child_option(child, "multi_url_strategy", "worst_case")))
+        : "worst_case";
+    if (strategy == "worst_case" || strategy == "best_case" || strategy == "best_case_target" || strategy == "average")
+        return strategy;
+    return "worst_case";
 }
 
 function priority_group_active_check_interval(section, value) {
@@ -5636,6 +5765,9 @@ return {
     urltest_check_interval,
     urltest_tolerance,
     urltest_testing_url,
+    urltest_active_check_interval,
+    urltest_testing_urls,
+    urltest_multi_url_strategy,
     urltest_display_name,
     urltest_idle_timeout,
     urltest_interrupt_exist_connections,
@@ -5664,6 +5796,8 @@ return {
     priority_level_items,
     priority_group_display_name,
     priority_group_health_url,
+    priority_group_health_urls,
+    priority_group_multi_url_strategy,
     priority_group_active_check_interval,
     priority_group_check_timeout,
     priority_group_recovery_check_interval,
@@ -5721,6 +5855,9 @@ return {
     is_wdtt_action,
     is_olcrtc_action,
     is_fptn_action,
+    source_inbounds,
+    server_domain_rules,
+    section_referenced_by_active_inbound_server,
     section_has_routing_matchers,
     section_is_active_provider,
     active_provider_sections,

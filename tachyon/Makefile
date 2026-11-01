@@ -221,6 +221,9 @@ define Package/tachyon/install
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./files/etc/config/tachyon $(1)/etc/config/tachyon
 
+	$(INSTALL_DIR) $(1)/lib/upgrade/keep.d
+	$(INSTALL_DATA) ./files/lib/upgrade/keep.d/tachyon $(1)/lib/upgrade/keep.d/tachyon
+
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) ./files/usr/bin/tachyon $(1)/usr/bin/tachyon
 	# Read-only entry point for the LuCI read role; see tests/tachyon_acl_role_split.sh.

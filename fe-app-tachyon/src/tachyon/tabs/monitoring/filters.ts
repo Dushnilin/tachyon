@@ -20,6 +20,8 @@ export interface ClashConnectionMetadata {
   host?: string;
   network?: string;
   processPath?: string;
+  protocol?: string;
+  sniffProtocol?: string;
   sourceIP?: string;
   sourcePort?: string | number;
   type?: string;
@@ -504,7 +506,100 @@ export function getRoute(connection: MonitoredConnection): string {
 }
 
 export function getNetwork(connection: MonitoredConnection): string {
-  return normalizeString(connection.metadata?.network).toLowerCase() || '-';
+  const metadata = connection.metadata || {};
+  const rawNet = normalizeString(metadata.network).toLowerCase();
+  const proto = normalizeString(metadata.protocol).toLowerCase();
+  const sniffProto = normalizeString(metadata.sniffProtocol).toLowerCase();
+  const metaType = normalizeString(metadata.type).toLowerCase();
+  const ruleStr = normalizeString(connection.rule).toLowerCase();
+
+  if (
+    rawNet === 'quic' ||
+    proto === 'quic' ||
+    sniffProto === 'quic' ||
+    metaType.includes('quic') ||
+    /\bprotocol=quic\b/.test(ruleStr)
+  ) {
+    return 'quic';
+  }
+
+  if (rawNet === 'udp') {
+    const portNum = Number(metadata.destinationPort);
+    const hasSniffedHost = Boolean(normalizeString(metadata.host));
+    if (portNum === 443 && hasSniffedHost) {
+      return 'quic';
+    }
+  }
+
+  return rawNet || '-';
+}
+
+function extractReadableRulePart(raw: string): string {
+  if (!raw) return '';
+  return raw
+    .replace(/\binbound=\[[^\]]+\]\s*/gi, '')
+    .replace(/\binbound=[^\s]+\s*/gi, '')
+    .replace(/([a-z0-9_.-]+)-community-([a-z0-9_.-]+)-rs\b/gi, 'community:$2')
+    .replace(/\bcommunity-([a-z0-9_.-]+)-rs\b/gi, 'community:$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function formatMatchedRuleSummary(
+  connection: MonitoredConnection,
+): string {
+  const payload = normalizeString(connection.rulePayload);
+  const rule = normalizeString(connection.rule);
+  if (payload) {
+    return extractReadableRulePart(payload);
+  }
+  if (rule) {
+    return extractReadableRulePart(rule);
+  }
+  return '';
+}
+
+export function getRouteTooltip(
+  connection: MonitoredConnection,
+  routeLabel?: string,
+): string {
+  const tr = (key: string) => (typeof _ === 'function' ? _(key) : key);
+  const resolvedRoute = routeLabel || getRoute(connection);
+  const lines: string[] = [];
+  if (resolvedRoute && resolvedRoute !== '-') {
+    lines.push(`${tr('Section')}: ${resolvedRoute}`);
+  }
+
+  const payload = normalizeString(connection.rulePayload);
+  const rule = normalizeString(connection.rule);
+  if (payload) {
+    lines.push(
+      `${tr('Matched condition')}: ${extractReadableRulePart(payload)}`,
+    );
+  }
+  if (rule) {
+    const cleanedRule = extractReadableRulePart(rule);
+    if (cleanedRule && cleanedRule !== extractReadableRulePart(payload)) {
+      lines.push(`${tr('Rule')}: ${cleanedRule}`);
+    }
+  }
+
+  const chains = Array.isArray(connection.chains)
+    ? connection.chains
+    : Array.isArray(connection.metadata?.chains)
+      ? connection.metadata.chains
+      : [];
+  const leafNode = normalizeString(chains[chains.length - 1]);
+  if (
+    leafNode &&
+    leafNode !== resolvedRoute &&
+    leafNode !== `${resolvedRoute}-out` &&
+    !leafNode.endsWith('-out')
+  ) {
+    lines.push(`${tr('Node')}: ${leafNode}`);
+  }
+
+  return lines.join('\n') || resolvedRoute || '-';
 }
 
 export function sortConnections(
@@ -537,11 +632,16 @@ export function getSearchValues(
     localDeviceChoices,
   );
 
+  const net = getNetwork(connection);
   return [
     connection.id,
     target.primary,
-    getNetwork(connection),
+    net,
+    net === 'quic' ? 'udp' : '',
     getRoute(connection),
+    formatMatchedRuleSummary(connection),
+    normalizeString(connection.rulePayload),
+    normalizeString(connection.rule),
     formatConnectionDuration(connection, pausedAt),
     formatBytes(connection.download),
     formatBytes(connection.upload),

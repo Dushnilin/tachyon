@@ -2434,16 +2434,78 @@ function subscription_update_request(force_value, target_section_name, target_so
     target_source_index = as_string(target_source_index);
 
     if (target_section_name != "") {
-        if (target_source_index != "")
-            add_subscription_update_result(summary, subscription_update_selected_source(sections, target_section_name, target_source_index, force));
-        else
-            add_subscription_update_result(summary, subscription_update_section(find_section(sections, target_section_name), force));
+        let matched_sec = find_section(sections, target_section_name);
+        if (section_name(matched_sec) != "") {
+            if (target_source_index != "")
+                add_subscription_update_result(summary, subscription_update_selected_source(sections, target_section_name, target_source_index, force));
+            else
+                add_subscription_update_result(summary, subscription_update_section(matched_sec, force));
+            print_subscription_update_summary(summary);
+            return;
+        }
+
+        let src_obj = uci_section(target_section_name);
+        if (as_string(src_obj[".type"]) == "outbound_source") {
+            let src_url = trim(as_string(src_obj.url || ""));
+            let matched_any_section = false;
+            if (src_url != "") {
+                for (let sec in sections) {
+                    let sec_id = section_name(sec);
+                    let idx = 0;
+                    for (let entry in connections.subscription_urls(sec)) {
+                        idx++;
+                        if (trim(as_string(entry || "")) == src_url) {
+                            matched_any_section = true;
+                            add_subscription_update_result(summary, subscription_update_selected_source(sections, sec_id, as_string(idx), force));
+                        }
+                    }
+                }
+            }
+            if (!matched_any_section) {
+                let pool_sec = {
+                    ".name": "Pool_" + target_section_name,
+                    "enabled": "1",
+                    "action": "connections",
+                    "proxy_config_type": "subscription",
+                    "outbound_source_refs": [ target_section_name ]
+                };
+                add_subscription_update_result(summary, subscription_update_section(pool_sec, force));
+            }
+            print_subscription_update_summary(summary);
+            return;
+        }
+
+        add_subscription_update_result(summary, 1);
         print_subscription_update_summary(summary);
         return;
     }
 
-    for (let section in sections)
+    let covered_urls = {};
+    for (let section in sections) {
+        for (let u in connections.subscription_urls(section))
+            covered_urls[trim(as_string(u || ""))] = true;
         add_subscription_update_result(summary, subscription_update_section(section, force));
+    }
+
+    for (let src in array_or_empty(uci_core.sections(CONFIG_NAME, "outbound_source"))) {
+        src = object_or_empty(src);
+        let src_id = as_string(src[".name"] || "");
+        let stype = lc(trim(as_string(src.source_type || "subscription")));
+        let src_url = trim(as_string(src.url || ""));
+        if (src_id == "" || as_string(src.enabled || "1") == "0")
+            continue;
+        if ((stype == "subscription" || src_url != "") && match(lc(src_url), /^https?:\/\//) && covered_urls[src_url] !== true) {
+            covered_urls[src_url] = true;
+            let pool_sec = {
+                ".name": "Pool_" + src_id,
+                "enabled": "1",
+                "action": "connections",
+                "proxy_config_type": "subscription",
+                "outbound_source_refs": [ src_id ]
+            };
+            add_subscription_update_result(summary, subscription_update_section(pool_sec, force));
+        }
+    }
 
     print_subscription_update_summary(summary);
 }

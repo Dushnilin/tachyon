@@ -1905,6 +1905,7 @@ function validate_rule(section, sections, context) {
     };
     if (provider_labels[action] != null) {
         if (!connections.section_has_routing_matchers(section) &&
+            !connections.section_referenced_by_active_inbound_server(section) &&
             !bool_option(section, "match_all", false) &&
             !bool_option(section, "mixed_proxy_enabled", false))
             fail_validation(provider_labels[action] + " rule '" + name + "' has no routing conditions. Add domains, community lists, IP/subnet/port/protocol matchers, enable Mixed Proxy, or enable Match All explicitly. Aborted.");

@@ -382,6 +382,9 @@ export namespace Tachyon {
     tolerance?: string | number;
     idleTimeout?: string;
     interruptExistConnections?: boolean;
+    fallbackActive?: boolean;
+    passedUrls?: number;
+    totalUrls?: number;
     outbounds: UrlTestMember[];
   }
 
@@ -405,6 +408,9 @@ export namespace Tachyon {
     switchToFasterSamePriority?: boolean;
     fastestCheckInterval?: string;
     interruptExistConnections?: boolean;
+    fallbackActive?: boolean;
+    passedUrls?: number;
+    totalUrls?: number;
     outbounds: PriorityMember[];
   }
 

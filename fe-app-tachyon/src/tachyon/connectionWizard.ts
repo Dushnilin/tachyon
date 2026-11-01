@@ -408,6 +408,7 @@ const TACHYON_LIST_CATEGORIES: Array<{
     titleEn: 'Censorship & GeoBlock Registries',
     keys: [
       'russia_inside',
+      'ukraine_inside',
       'geoblock',
       'ru_blocked',
       'refilter',
@@ -420,7 +421,21 @@ const TACHYON_LIST_CATEGORIES: Array<{
     id: 'ai',
     titleRu: 'Нейросети и ИИ',
     titleEn: 'AI & LLMs',
-    keys: ['ai_all', 'openai', 'anthropic', 'google_ai', 'xai'],
+    keys: [
+      'ai_all',
+      'openai',
+      'anthropic',
+      'google_ai',
+      'xai',
+      'openrouter',
+      'cursor',
+      'perplexity',
+      'copilot',
+      'deepseek',
+      'midjourney',
+      'elevenlabs',
+      'huggingface',
+    ],
   },
   {
     id: 'media',
@@ -431,7 +446,10 @@ const TACHYON_LIST_CATEGORIES: Array<{
       'twitch',
       'twitch_ads',
       'spotify',
+      'soundcloud_music',
       'netflix',
+      'rutracker_lampa',
+      'patreon_creators',
       'tiktok',
       'hdrezka',
       'anime',
@@ -442,17 +460,41 @@ const TACHYON_LIST_CATEGORIES: Array<{
     id: 'social',
     titleRu: 'Мессенджеры и Соцсети',
     titleEn: 'Messengers & Social Networks',
-    keys: ['discord', 'telegram', 'meta', 'twitter'],
+    keys: [
+      'discord',
+      'telegram',
+      'meta',
+      'whatsapp',
+      'messengers',
+      'twitter',
+      'reddit',
+      'zoom_teams',
+      'google_meet',
+      'linkedin',
+    ],
   },
   {
     id: 'games',
     titleRu: 'Игры и Лаунчеры',
     titleEn: 'Games & Launchers',
     keys: [
+      'games_all',
       'steam',
       'epicgames',
+      'ubisoft',
+      'warthunder',
+      'blizzard',
       'riot',
       'origin',
+      'xbox',
+      'playstation',
+      'nintendo',
+      'gog',
+      'wargaming',
+      'hoyoverse',
+      'minecraft',
+      'rockstar',
+      'pubg',
       'roblox',
       'supercell',
       'escapefromtarkov',
@@ -469,6 +511,10 @@ const TACHYON_LIST_CATEGORIES: Array<{
       'google_play',
       'github',
       'docker',
+      'jetbrains',
+      'gitlab_notion',
+      'figma_adobe',
+      'pkg_registries',
       'hodca',
       'cloudflare',
       'cloudfront',
@@ -476,13 +522,24 @@ const TACHYON_LIST_CATEGORIES: Array<{
       'hetzner',
       'ovh',
       'digitalocean',
+      'speedtest',
+      'crypto',
+      'paypal_fintech',
     ],
   },
   {
     id: 'extra',
     titleRu: 'Медиа, Торренты и 18+',
     titleEn: 'News, Torrents & Adult',
-    keys: ['news', 'torrent', 'tor', 'porn'],
+    keys: [
+      'news',
+      'torrent',
+      'tor',
+      'porn',
+      'ads_hagezi_pro',
+      'win_spy',
+      'xiaomi_smarttv_ads',
+    ],
   },
 ];
 
@@ -755,6 +812,325 @@ const DIRECT_BYPASS_DNS_PRESETS: Array<{
     servers: [],
   },
 ];
+
+export interface WizardQuickPreset {
+  id: string;
+  titleRu: string;
+  titleEn: string;
+  badgeRu: string;
+  badgeEn: string;
+  descRu: string;
+  descEn: string;
+  requiresConnection: boolean;
+  defaultSectionName: string;
+  presetIds: string[];
+  individualLists: string[];
+  enableDirectGamesBypass: boolean;
+  directBypassLists: string[];
+  directBypassDnsPreset: string;
+  enableAdBlockSection: boolean;
+  globalDnsPreset: string;
+  enableAutoUrlTest: boolean;
+  tagsRu: string[];
+  tagsEn: string[];
+}
+
+export const WIZARD_QUICK_PRESETS: WizardQuickPreset[] = [
+  {
+    id: 'ru_all_in_one',
+    titleRu: 'РФ: Всё включено (Рекомендуется)',
+    titleEn: 'Russia: All-in-One (Recommended)',
+    badgeRu: 'ХИТ • В 1 КЛИК',
+    badgeEn: 'RECOMMENDED',
+    descRu:
+      'YouTube, Discord, Telegram, все нейросети (ChatGPT, Claude, Gemini, Grok), Instagram/Meta, X, Spotify и базовый обход РФ — через подписку с автовыбором лучшего сервера (URLTest). Банки РФ, Госуслуги и игры (Steam, Riot, Epic) идут напрямую без потери скорости.',
+    descEn:
+      'YouTube, Discord, Telegram, all AI services (ChatGPT, Claude, Gemini, Grok), Meta, X, Spotify & Russia bypass via subscription with URLTest. RU banks, Gov portals & games (Steam, Riot, Epic) go direct.',
+    requiresConnection: true,
+    defaultSectionName: 'Main',
+    presetIds: ['youtube', 'discord', 'telegram', 'rkn_geoblock', 'ai'],
+    individualLists: ['meta', 'twitter', 'spotify'],
+    enableDirectGamesBypass: true,
+    directBypassLists: [
+      'ru_whitelist',
+      'ru_only_inside',
+      'steam',
+      'riot',
+      'epicgames',
+    ],
+    directBypassDnsPreset: 'yandex_udp',
+    enableAdBlockSection: false,
+    globalDnsPreset: 'yandex_doh',
+    enableAutoUrlTest: true,
+    tagsRu: [
+      'YouTube + Discord + TG',
+      'ChatGPT / Gemini / Claude',
+      'Банки РФ и Steam — напрямую',
+      'Авто-выбор узла (URLTest)',
+    ],
+    tagsEn: [
+      'YouTube + Discord + TG',
+      'ChatGPT / Gemini / Claude',
+      'RU Banks & Steam Direct',
+      'Auto URLTest',
+    ],
+  },
+  {
+    id: 'ru_essential',
+    titleRu: 'РФ: Только обход блокировок + ИИ (Лёгкий)',
+    titleEn: 'Russia: Essential Bypass + AI (Lightweight)',
+    badgeRu: 'БАЗОВЫЙ',
+    badgeEn: 'ESSENTIAL',
+    descRu:
+      'Минимальная конфигурация в 1 секцию: YouTube, Discord, Telegram, базовый список блокировок РФ + геоблок 150+ сервисов и все нейросети (ChatGPT, Claude, Gemini). Всё остальное идёт напрямую через провайдера.',
+    descEn:
+      'Single-section lightweight setup: YouTube, Discord, Telegram, base Russia bypass + GeoBlock 150+ and AI services. Everything else goes direct.',
+    requiresConnection: true,
+    defaultSectionName: 'Main',
+    presetIds: ['youtube', 'discord', 'telegram', 'rkn_geoblock', 'ai'],
+    individualLists: [],
+    enableDirectGamesBypass: false,
+    directBypassLists: [],
+    directBypassDnsPreset: 'yandex_udp',
+    enableAdBlockSection: false,
+    globalDnsPreset: 'keep',
+    enableAutoUrlTest: true,
+    tagsRu: [
+      'YouTube + Discord + TG',
+      'Базовый обход РФ + ИИ',
+      '1 секция без лишнего',
+    ],
+    tagsEn: ['YouTube + Discord + TG', 'Base RU Bypass + AI', 'Single section'],
+  },
+  {
+    id: 'ru_max_adblock',
+    titleRu: 'РФ: Максимальный обход + Антиреклама',
+    titleEn: 'Russia: Maximum Bypass + AdBlock',
+    badgeRu: 'МАКСИМУМ + ADBLOCK',
+    badgeEn: 'MAX + ADBLOCK',
+    descRu:
+      'Полные реестры РКН, Антизапрет и Re:filter, YouTube, Discord, Telegram, все ИИ, соцсети, стриминги (Netflix, Spotify, Twitch), GitHub/Docker + встроенная блокировка рекламы HaGeZi Pro и прямой обход для банков РФ и игр.',
+    descEn:
+      'Full RKN/Antizapret/Re:filter registries, YouTube, Discord, Telegram, AI, social & streaming, GitHub/Docker + HaGeZi Pro AdBlock and direct bypass for RU banks & games.',
+    requiresConnection: true,
+    defaultSectionName: 'Main',
+    presetIds: [
+      'youtube',
+      'discord',
+      'telegram',
+      'rkn_geoblock',
+      'antifilter_refilter',
+      'ai',
+      'social',
+      'streaming',
+    ],
+    individualLists: ['github', 'docker'],
+    enableDirectGamesBypass: true,
+    directBypassLists: [
+      'ru_whitelist',
+      'ru_only_inside',
+      'steam',
+      'riot',
+      'epicgames',
+    ],
+    directBypassDnsPreset: 'yandex_udp',
+    enableAdBlockSection: true,
+    globalDnsPreset: 'yandex_doh',
+    enableAutoUrlTest: true,
+    tagsRu: [
+      'Полные базы РКН + Re:filter',
+      'ИИ + Соцсети + Стримы',
+      'Блокировка рекламы HaGeZi',
+      'Банки РФ и Игры напрямую',
+    ],
+    tagsEn: [
+      'Full RKN + Re:filter',
+      'AI + Social + Streaming',
+      'HaGeZi Pro AdBlock',
+      'RU Banks & Games Direct',
+    ],
+  },
+  {
+    id: 'gaming_stream',
+    titleRu: 'Гейминг, Discord, YouTube и Стримы',
+    titleEn: 'Gaming, Discord, YouTube & Streaming',
+    badgeRu: 'ИГРЫ И СТРИМЫ',
+    badgeEn: 'GAMING',
+    descRu:
+      'Discord (голос и CDN), YouTube, Twitch (без рекламы), Roblox, Brawl Stars/Supercell, EA/Origin и FACEIT через прокси, а Steam, Riot (Valorant/LoL), Epic Games и Escape from Tarkov — строго напрямую с минимальным пингом.',
+    descEn:
+      'Discord voice/CDN, YouTube, Twitch, Roblox, Supercell, EA & FACEIT via proxy; Steam, Riot, Epic Games & Tarkov direct for lowest ping.',
+    requiresConnection: true,
+    defaultSectionName: 'Main',
+    presetIds: ['youtube', 'discord', 'gaming', 'rkn_geoblock', 'ai'],
+    individualLists: ['twitch', 'twitch_ads'],
+    enableDirectGamesBypass: true,
+    directBypassLists: [
+      'steam',
+      'riot',
+      'epicgames',
+      'escapefromtarkov',
+      'ru_whitelist',
+      'ru_only_inside',
+    ],
+    directBypassDnsPreset: 'yandex_udp',
+    enableAdBlockSection: false,
+    globalDnsPreset: 'yandex_udp',
+    enableAutoUrlTest: true,
+    tagsRu: [
+      'Discord + YouTube + Twitch',
+      'Roblox / Supercell / EA',
+      'Steam / Riot / Tarkov — 0 мс мимо VPN',
+    ],
+    tagsEn: [
+      'Discord + YouTube + Twitch',
+      'Roblox / Supercell / EA',
+      'Steam / Riot / Tarkov Direct',
+    ],
+  },
+  {
+    id: 'ua_bypass',
+    titleRu: 'Украина: Обход блокировок (ukraine_inside)',
+    titleEn: 'Ukraine: Censorship Bypass (ukraine_inside)',
+    badgeRu: 'УКРАИНА',
+    badgeEn: 'UKRAINE',
+    descRu:
+      'Готовый маршрут со списком ukraine_inside (заблокированные в Украине сайты, соцсети и сервисы) + нейросети и ИИ через вашу подписку или прокси-ключи с шифрованным Cloudflare DoH DNS.',
+    descEn:
+      'Pre-configured route with ukraine_inside community list + AI services via your subscription or proxy links with Cloudflare DoH DNS.',
+    requiresConnection: true,
+    defaultSectionName: 'Main',
+    presetIds: ['ai'],
+    individualLists: ['ukraine_inside'],
+    enableDirectGamesBypass: false,
+    directBypassLists: [],
+    directBypassDnsPreset: 'yandex_udp',
+    enableAdBlockSection: false,
+    globalDnsPreset: 'cloudflare_doh',
+    enableAutoUrlTest: true,
+    tagsRu: ['Список ukraine_inside', 'Нейросети и ИИ', 'Cloudflare DoH DNS'],
+    tagsEn: ['ukraine_inside list', 'AI Services', 'Cloudflare DoH DNS'],
+  },
+  {
+    id: 'dpi_desync_no_vpn',
+    titleRu: 'Без подписки: Встроенный обход DPI (YouTube + Discord)',
+    titleEn: 'No Subscription: Built-in DPI Desync (YouTube + Discord)',
+    badgeRu: 'БЕЗ ПРОКСИ',
+    badgeEn: 'NO VPN NEEDED',
+    descRu:
+      'Работает без покупки прокси и подписок! Запускает нативный модификатор пакетов Tachyon Core Desync (Fake + Split) для разблокировки YouTube и Discord напрямую через вашего провайдера.',
+    descEn:
+      'Works without any proxy subscription! Enables built-in Tachyon Core Desync (Fake + Split) to unblock YouTube and Discord directly.',
+    requiresConnection: false,
+    defaultSectionName: 'Youtube',
+    presetIds: ['youtube', 'discord'],
+    individualLists: ['russia_inside'],
+    enableDirectGamesBypass: false,
+    directBypassLists: [],
+    directBypassDnsPreset: 'yandex_udp',
+    enableAdBlockSection: false,
+    globalDnsPreset: 'yandex_doh',
+    enableAutoUrlTest: false,
+    tagsRu: [
+      'Не требует подписки',
+      'Tachyon Core Desync',
+      'YouTube + Discord напрямую',
+    ],
+    tagsEn: [
+      'No subscription needed',
+      'Tachyon Core Desync',
+      'YouTube + Discord',
+    ],
+  },
+];
+
+export interface QuickConnectionDetection {
+  valid: boolean;
+  method: OutboundMethodOption['id'];
+  count: number;
+  summaryRu: string;
+  summaryEn: string;
+}
+
+export function detectQuickConnectionInput(
+  rawText: string,
+): QuickConnectionDetection {
+  const trimmed = String(rawText || '').trim();
+  if (!trimmed) {
+    return {
+      valid: false,
+      method: 'subscription',
+      count: 0,
+      summaryRu:
+        'Вставьте ссылку на подписку (https://...) или прокси-ключи (vless://, hy2://, tuic://, trojan://, ss://, vpn://)',
+      summaryEn:
+        'Paste a subscription URL (https://...) or proxy share links (vless://, hy2://, tuic://, trojan://, ss://, vpn://)',
+    };
+  }
+
+  const lines = trimmed
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const firstLine = lines[0] || '';
+
+  if (/^fptnb?:\/\//i.test(firstLine)) {
+    return {
+      valid: true,
+      method: 'fptn',
+      count: 1,
+      summaryRu: '✓ Распознан токен доступа FPTN VPN',
+      summaryEn: '✓ FPTN VPN access token detected',
+    };
+  }
+
+  if (
+    /^vpn:\/\//i.test(firstLine) ||
+    /\[Interface\]/i.test(trimmed) ||
+    /\[Peer\]/i.test(trimmed)
+  ) {
+    return {
+      valid: true,
+      method: 'amnezia_config',
+      count: lines.filter((l) => /^vpn:\/\//i.test(l)).length || 1,
+      summaryRu: '✓ Распознан конфиг AmneziaWG / WireGuard',
+      summaryEn: '✓ AmneziaWG / WireGuard config detected',
+    };
+  }
+
+  const shareLinkRegex =
+    /^(vless|vmess|trojan|ss|ssr|hysteria2|hy2|hysteria|tuic|anytls|naive\+https|naive\+quic|naive|mieru|snell|sudoku|masque|trusttunnel|tewfai|socks5?| socks):\/\//i;
+  const matchedLinks = lines.filter((l) => shareLinkRegex.test(l));
+  if (matchedLinks.length > 0) {
+    return {
+      valid: true,
+      method: 'proxy_links',
+      count: matchedLinks.length,
+      summaryRu: `✓ Распознано прокси-ключей: ${matchedLinks.length}`,
+      summaryEn: `✓ Proxy share links detected: ${matchedLinks.length}`,
+    };
+  }
+
+  if (/^https?:\/\/\S+/i.test(firstLine)) {
+    return {
+      valid: true,
+      method: 'subscription',
+      count: 1,
+      summaryRu: '✓ Распознана ссылка на подписку (URL)',
+      summaryEn: '✓ Subscription URL detected',
+    };
+  }
+
+  return {
+    valid: false,
+    method: 'subscription',
+    count: 0,
+    summaryRu:
+      'Формат не распознан — укажите ссылку https://... или ключи vless://, hy2://, tuic://, trojan://, ss://, vpn://',
+    summaryEn:
+      'Unrecognized format — enter an https:// subscription URL or vless://, hy2://, tuic://, trojan://, ss://, vpn:// links',
+  };
+}
 
 function sanitizeId(raw: string, prefix: string): string {
   const cleaned = String(raw || '')
@@ -1062,6 +1438,7 @@ export function openConnectionWizardModal(
   let inboundCountry = 'RU';
   let inboundOpenFirewall = true;
   let inboundRoutingMode = 'rules';
+  let inboundRoutingSection = '';
 
   const existingSections = (
     uciObj.sections(TACHYON_UCI_PACKAGE, 'section') || []
@@ -1071,8 +1448,138 @@ export function openConnectionWizardModal(
   }));
   if (existingSections.length > 0) {
     targetExistingSection = existingSections[0].id;
+    inboundRoutingSection = existingSections[0].id;
   } else {
     targetMode = 'new';
+  }
+
+  const readyRouterInterfaces = (() => {
+    const set = new Set<string>([
+      'wg0',
+      'awg0',
+      'tun0',
+      'tailscale0',
+      'ovpn0',
+      'wan',
+      'pppoe-wan',
+      'eth0',
+      'eth1',
+      'br-lan',
+    ]);
+    try {
+      const netSecs = uciObj.sections('network', 'interface') || [];
+      for (const ns of netSecs) {
+        const name = String(ns['.name'] || '').trim();
+        const dev = String(ns.device || ns.ifname || '').trim();
+        if (name && name !== 'loopback' && name !== 'lo') set.add(name);
+        if (dev && dev !== 'lo' && !dev.startsWith('@')) set.add(dev);
+      }
+    } catch {
+      // ignore if network config is not loaded
+    }
+    return Array.from(set);
+  })();
+
+  let selectedQuickPresetId = WIZARD_QUICK_PRESETS[0].id;
+  let quickInputText = '';
+
+  function applyQuickPresetToState(presetId: string) {
+    const preset =
+      WIZARD_QUICK_PRESETS.find((p) => p.id === presetId) ||
+      WIZARD_QUICK_PRESETS[0];
+    selectedQuickPresetId = preset.id;
+
+    selectedPresets.clear();
+    for (const pid of preset.presetIds) {
+      selectedPresets.add(pid);
+    }
+
+    selectedIndividualLists.clear();
+    for (const lk of preset.individualLists) {
+      selectedIndividualLists.add(lk);
+    }
+
+    enableDirectGamesBypass = preset.enableDirectGamesBypass;
+    selectedDirectBypassLists.clear();
+    for (const dl of preset.directBypassLists) {
+      selectedDirectBypassLists.add(dl);
+    }
+    directBypassDnsPreset = preset.directBypassDnsPreset || 'yandex_udp';
+    enableAdBlockSection = preset.enableAdBlockSection;
+    globalDnsPreset = preset.globalDnsPreset || 'keep';
+    enableAutoUrlTest = preset.enableAutoUrlTest;
+
+    const matchingExisting = existingSections.find(
+      (s: { id: string; label: string }) =>
+        s.id.toLowerCase() === preset.defaultSectionName.toLowerCase() ||
+        s.label.toLowerCase() === preset.defaultSectionName.toLowerCase(),
+    );
+    if (matchingExisting) {
+      targetMode = 'existing';
+      targetExistingSection = matchingExisting.id;
+      appendPresetsToExisting = true;
+    } else {
+      targetMode = 'new';
+      newSectionName = preset.defaultSectionName;
+    }
+  }
+
+  function syncQuickInputToMethodState(
+    preset: WizardQuickPreset,
+    rawInput: string,
+  ): boolean {
+    const detected = detectQuickConnectionInput(rawInput);
+    if (!preset.requiresConnection && !String(rawInput || '').trim()) {
+      outboundMethod = 'desync';
+      dpiEngineType = 'desync';
+      desyncPresetKey = 'fake_split';
+      if (!connName.trim()) {
+        connName = 'Tachyon Desync';
+      }
+      return true;
+    }
+
+    if (!detected.valid) {
+      showToast(tr(detected.summaryRu, detected.summaryEn), 'error');
+      return false;
+    }
+
+    outboundMethod = detected.method;
+    const trimmed = rawInput.trim();
+    if (detected.method === 'subscription') {
+      subUrl = trimmed.split(/\r?\n/)[0].trim();
+      if (!connName.trim()) {
+        connName = tr('Основная подписка', 'Main Subscription');
+      }
+    } else if (detected.method === 'proxy_links') {
+      proxyLinksText = trimmed;
+      if (!connName.trim()) {
+        connName = tr('Прокси-узлы', 'Proxy Nodes');
+      }
+    } else if (detected.method === 'amnezia_config') {
+      amneziaText = trimmed;
+      if (!connName.trim()) {
+        connName = 'AmneziaWG';
+      }
+    } else if (detected.method === 'fptn') {
+      fptnToken = trimmed.split(/\r?\n/)[0].trim();
+      if (!connName.trim()) {
+        connName = 'FPTN VPN';
+      }
+    }
+    return true;
+  }
+
+  async function runQuickPresetSetup(applyImmediately = true) {
+    const preset =
+      WIZARD_QUICK_PRESETS.find((p) => p.id === selectedQuickPresetId) ||
+      WIZARD_QUICK_PRESETS[0];
+    direction = 'outbound';
+    applyQuickPresetToState(preset.id);
+    if (!syncQuickInputToMethodState(preset, quickInputText)) {
+      return;
+    }
+    await finishOutboundWizard(applyImmediately);
   }
 
   const root = E('div', { class: 'tachyon-wizard' }, []);
@@ -1126,13 +1633,270 @@ export function openConnectionWizardModal(
   }
 
   function renderStep1() {
+    const activePreset =
+      WIZARD_QUICK_PRESETS.find((p) => p.id === selectedQuickPresetId) ||
+      WIZARD_QUICK_PRESETS[0];
+    const detection = detectQuickConnectionInput(quickInputText);
+    const hasQuickText = Boolean(quickInputText.trim());
+
+    const detectionBadgeEl = E(
+      'div',
+      {
+        class: [
+          'tachyon-wizard__quick-detect',
+          !hasQuickText
+            ? 'is-idle'
+            : detection.valid
+              ? 'is-valid'
+              : 'is-invalid',
+        ]
+          .filter(Boolean)
+          .join(' '),
+      },
+      !hasQuickText && !activePreset.requiresConnection
+        ? tr(
+            '✓ Для этого пресета подписка не требуется — используется встроенный Tachyon Core Desync',
+            '✓ No subscription needed for this preset — uses built-in Tachyon Core Desync',
+          )
+        : tr(detection.summaryRu, detection.summaryEn),
+    );
+
+    const quickTextareaEl = E(
+      'textarea',
+      {
+        class:
+          'cbi-input-textarea tachyon-wizard__textarea tachyon-wizard__quick-input',
+        rows: 2,
+        placeholder: activePreset.requiresConnection
+          ? tr(
+              'Вставьте ссылку на подписку (https://...) или прокси-ключи (vless://, hysteria2://, tuic://, trojan://, ss://, vpn://)',
+              'Paste subscription URL (https://...) or proxy links (vless://, hysteria2://, tuic://, trojan://, ss://, vpn://)',
+            )
+          : tr(
+              'Необязательно: оставьте пустым для работы без прокси (Desync) или вставьте подписку https://...',
+              'Optional: leave blank for proxy-free Desync or paste a subscription URL https://...',
+            ),
+        input: (ev: Event) => {
+          quickInputText = (ev.target as HTMLTextAreaElement).value;
+          const nextDet = detectQuickConnectionInput(quickInputText);
+          const nextHasText = Boolean(quickInputText.trim());
+          detectionBadgeEl.className = [
+            'tachyon-wizard__quick-detect',
+            !nextHasText
+              ? 'is-idle'
+              : nextDet.valid
+                ? 'is-valid'
+                : 'is-invalid',
+          ]
+            .filter(Boolean)
+            .join(' ');
+          detectionBadgeEl.textContent =
+            !nextHasText && !activePreset.requiresConnection
+              ? tr(
+                  '✓ Для этого пресета подписка не требуется — используется встроенный Tachyon Core Desync',
+                  '✓ No subscription needed for this preset — uses built-in Tachyon Core Desync',
+                )
+              : tr(nextDet.summaryRu, nextDet.summaryEn);
+        },
+      } as any,
+      quickInputText,
+    ) as HTMLTextAreaElement;
+
+    const pasteBtn = E(
+      'button',
+      {
+        type: 'button',
+        class: 'btn cbi-button tachyon-wizard__quick-paste-btn',
+        click: () => {
+          if (
+            typeof navigator !== 'undefined' &&
+            navigator.clipboard &&
+            typeof navigator.clipboard.readText === 'function'
+          ) {
+            navigator.clipboard
+              .readText()
+              .then((clipText) => {
+                if (clipText && clipText.trim()) {
+                  quickInputText = clipText.trim();
+                  rerender();
+                } else {
+                  quickTextareaEl.focus();
+                }
+              })
+              .catch(() => {
+                quickTextareaEl.focus();
+              });
+          } else {
+            quickTextareaEl.focus();
+          }
+        },
+      },
+      tr('Вставить из буфера', 'Paste from clipboard'),
+    );
+
+    const presetCards = WIZARD_QUICK_PRESETS.map((preset) => {
+      const isSelected = preset.id === activePreset.id;
+      const tags = tr('ru', 'en') === 'ru' ? preset.tagsRu : preset.tagsEn;
+      return E(
+        'div',
+        {
+          role: 'button',
+          tabindex: '0',
+          class: `tachyon-wizard__quick-preset-card ${isSelected ? 'is-selected' : ''}`,
+          'data-quick-preset-id': preset.id,
+          click: () => {
+            selectedQuickPresetId = preset.id;
+            rerender();
+          },
+          keydown: (ev: KeyboardEvent) => {
+            if (ev.key === 'Enter' || ev.key === ' ') {
+              ev.preventDefault();
+              selectedQuickPresetId = preset.id;
+              rerender();
+            }
+          },
+        } as any,
+        [
+          E('div', { class: 'tachyon-wizard__quick-preset-top' }, [
+            E(
+              'span',
+              { class: 'tachyon-wizard__quick-preset-title' },
+              tr(preset.titleRu, preset.titleEn),
+            ),
+            E(
+              'span',
+              {
+                class: `tachyon-wizard__quick-preset-badge ${preset.id === 'ru_all_in_one' ? 'is-hit' : ''}`,
+              },
+              tr(preset.badgeRu, preset.badgeEn),
+            ),
+          ]),
+          E(
+            'div',
+            { class: 'tachyon-wizard__quick-preset-desc' },
+            tr(preset.descRu, preset.descEn),
+          ),
+          E(
+            'div',
+            { class: 'tachyon-wizard__quick-preset-tags' },
+            tags.map((t) =>
+              E('span', { class: 'tachyon-wizard__quick-preset-tag' }, t),
+            ),
+          ),
+        ],
+      );
+    });
+
     return E('div', { class: 'tachyon-wizard__body' }, [
+      E('div', { class: 'tachyon-wizard__quick-hero' }, [
+        E('div', { class: 'tachyon-wizard__quick-hero-head' }, [
+          E('div', { class: 'tachyon-wizard__quick-hero-titles' }, [
+            E('div', { class: 'tachyon-wizard__quick-hero-title' }, [
+              renderZapIcon(16),
+              E(
+                'span',
+                {},
+                tr(
+                  'Быстрый старт по пресету — вставьте подписку и всё запустится',
+                  '1-Click Preset Quick Start — paste subscription & launch',
+                ),
+              ),
+            ]),
+            E(
+              'div',
+              { class: 'tachyon-wizard__quick-hero-sub' },
+              tr(
+                'Выберите готовый сценарий, вставьте ссылку на подписку или ключи прокси и нажмите «Подключить и запустить в 1 клик» — мастер сам создаст секции, правила, URLTest-балансировщик, DNS и включит Tachyon.',
+                'Select a ready-made scenario, paste your subscription URL or proxy links, and click "Connect & Launch in 1 Click" — the wizard automatically creates sections, rules, URLTest balancer, DNS, and starts Tachyon.',
+              ),
+            ),
+          ]),
+        ]),
+
+        E('div', { class: 'tachyon-wizard__quick-presets-grid' }, presetCards),
+
+        E('div', { class: 'tachyon-wizard__quick-input-box' }, [
+          E('div', { class: 'tachyon-wizard__quick-input-head' }, [
+            E(
+              'label',
+              { class: 'tachyon-wizard__label', style: 'margin: 0;' },
+              activePreset.requiresConnection
+                ? tr(
+                    'Ссылка на подписку (URL) или ключи прокси',
+                    'Subscription URL or Proxy Share Links',
+                  )
+                : tr(
+                    'Подписка или ключи (необязательно для режима DPI Desync)',
+                    'Subscription or Links (optional for DPI Desync mode)',
+                  ),
+            ),
+            pasteBtn,
+          ]),
+          quickTextareaEl,
+          detectionBadgeEl,
+        ]),
+
+        E('div', { class: 'tachyon-wizard__quick-actions' }, [
+          E(
+            'button',
+            {
+              type: 'button',
+              class:
+                'btn cbi-button cbi-button-positive important tachyon-wizard__quick-launch-btn',
+              click: () => {
+                void runQuickPresetSetup(true);
+              },
+            },
+            [
+              renderZapIcon(15),
+              ' ',
+              tr(
+                'Подключить и запустить в 1 клик',
+                'Connect & Launch in 1 Click',
+              ),
+            ],
+          ),
+          E(
+            'button',
+            {
+              type: 'button',
+              class: 'btn cbi-button cbi-button-action',
+              click: () => {
+                direction = 'outbound';
+                applyQuickPresetToState(activePreset.id);
+                if (quickInputText.trim()) {
+                  if (
+                    syncQuickInputToMethodState(activePreset, quickInputText)
+                  ) {
+                    step = 3;
+                    rerender();
+                  }
+                  return;
+                }
+                if (!activePreset.requiresConnection) {
+                  syncQuickInputToMethodState(activePreset, '');
+                  step = 3;
+                  rerender();
+                  return;
+                }
+                step = 2;
+                rerender();
+              },
+            },
+            tr(
+              'Настроить детали по шагам (4 шага) →',
+              'Customize Step-by-Step (4 steps) →',
+            ),
+          ),
+        ]),
+      ]),
+
       E(
-        'p',
-        { class: 'tachyon-wizard__subtitle' },
+        'div',
+        { class: 'tachyon-wizard__manual-divider' },
         tr(
-          'Выберите, какое подключение нужно добавить. Мастер автоматически создаст все необходимые сущности с оптимальными настройками.',
-          'Choose what kind of connection to add. The wizard will automatically configure all required entities with optimal defaults.',
+          'Или выберите ручную пошаговую настройку',
+          'Or choose manual step-by-step configuration',
         ),
       ),
       E('div', { class: 'tachyon-wizard__cards-2col' }, [
@@ -1153,16 +1917,16 @@ export function openConnectionWizardModal(
               'div',
               { class: 'tachyon-wizard__choice-title' },
               tr(
-                'Исходящее подключение (Аутбаунд)',
-                'Outbound Connection (Client / DPI)',
+                'Исходящее подключение по шагам (Аутбаунд)',
+                'Step-by-Step Outbound Connection (Client / DPI)',
               ),
             ),
             E(
               'div',
               { class: 'tachyon-wizard__choice-desc' },
               tr(
-                'Подключить подписку, ключи VLESS / Hysteria2 / TUIC / SS, конфиг AmneziaWG / WireGuard, Cloudflare WARP или встроенный нативный Desync ядра Tachyon Core для обхода блокировок.',
-                'Add a subscription URL, VLESS / Hysteria2 / TUIC / SS share links, AmneziaWG / WireGuard config, Cloudflare WARP, or built-in Tachyon Core Desync.',
+                'Ручной выбор протокола (Подписка, VLESS / HY2 / TUIC / SS, AmneziaWG, Cloudflare WARP, Core Desync, Zapret2, OpenVPN, Tor и др.) и детальная настройка списков и DNS.',
+                'Manual protocol selection (Subscription, VLESS / HY2 / TUIC / SS, AmneziaWG, Cloudflare WARP, Core Desync, Zapret2, OpenVPN, Tor, etc.) and granular routing.',
               ),
             ),
           ],
@@ -3482,6 +4246,9 @@ export function openConnectionWizardModal(
           ]),
         );
       } else if (customProto === 'tailscale') {
+        const tsIfaces = Array.from(
+          new Set(['tailscale0', ...readyRouterInterfaces]),
+        );
         formFields.push(
           E('div', { class: 'tachyon-wizard__field' }, [
             E(
@@ -3501,6 +4268,27 @@ export function openConnectionWizardModal(
                 customInterface = (ev.target as HTMLInputElement).value;
               },
             } as any),
+            E(
+              'div',
+              {
+                class: 'tachyon-wizard__chips',
+                style: 'margin-top: 6px;',
+              },
+              tsIfaces.map((ifName) =>
+                E(
+                  'button',
+                  {
+                    type: 'button',
+                    class: `tachyon-wizard__chip ${(customInterface || 'tailscale0') === ifName ? 'is-active' : ''}`,
+                    click: () => {
+                      customInterface = ifName;
+                      rerender();
+                    },
+                  } as any,
+                  ifName,
+                ),
+              ),
+            ),
           ]),
         );
       } else if (customProto === 'tor') {
@@ -3526,6 +4314,12 @@ export function openConnectionWizardModal(
           ]),
         );
       } else if (customProto === 'interface') {
+        const currentSelectedIfaces = new Set(
+          customInterface
+            .split(/[\s,]+/)
+            .map((x) => x.trim())
+            .filter(Boolean),
+        );
         formFields.push(
           E('div', { class: 'tachyon-wizard__field' }, [
             E(
@@ -3545,6 +4339,34 @@ export function openConnectionWizardModal(
                 customInterface = (ev.target as HTMLInputElement).value;
               },
             } as any),
+            E(
+              'div',
+              {
+                class: 'tachyon-wizard__chips',
+                style: 'margin-top: 6px;',
+              },
+              readyRouterInterfaces.map((ifName) => {
+                const isSelected = currentSelectedIfaces.has(ifName);
+                return E(
+                  'button',
+                  {
+                    type: 'button',
+                    class: `tachyon-wizard__chip ${isSelected ? 'is-active' : ''}`,
+                    click: () => {
+                      const next = new Set(currentSelectedIfaces);
+                      if (next.has(ifName)) {
+                        next.delete(ifName);
+                      } else {
+                        next.add(ifName);
+                      }
+                      customInterface = Array.from(next).join(', ');
+                      rerender();
+                    },
+                  } as any,
+                  ifName,
+                );
+              }),
+            ),
           ]),
         );
       } else if (customProto === 'outbound_json') {
@@ -3576,9 +4398,73 @@ export function openConnectionWizardModal(
       }
     }
 
+    const step2QuickPresetBar = E(
+      'div',
+      { class: 'tachyon-wizard__step2-preset-bar' },
+      [
+        E('div', { class: 'tachyon-wizard__step2-preset-head' }, [
+          E('div', { class: 'tachyon-wizard__step2-preset-title' }, [
+            renderZapIcon(14),
+            E(
+              'span',
+              {},
+              tr(
+                'Готовый пресет маршрутизации — запуск сразу с этого шага в 1 клик:',
+                'Ready-made routing preset — 1-click launch right from this step:',
+              ),
+            ),
+          ]),
+        ]),
+        E('div', { class: 'tachyon-wizard__step2-preset-controls' }, [
+          E(
+            'select',
+            {
+              class: 'cbi-input-select tachyon-wizard__select',
+              style: 'flex: 1 1 260px;',
+              change: (ev: Event) => {
+                selectedQuickPresetId = (ev.target as HTMLSelectElement).value;
+                applyQuickPresetToState(selectedQuickPresetId);
+              },
+            } as any,
+            WIZARD_QUICK_PRESETS.filter((p) => p.requiresConnection).map((p) =>
+              E(
+                'option',
+                {
+                  value: p.id,
+                  selected: p.id === selectedQuickPresetId ? true : undefined,
+                },
+                `${tr(p.titleRu, p.titleEn)} — ${tr(p.badgeRu, p.badgeEn)}`,
+              ),
+            ),
+          ),
+          E(
+            'button',
+            {
+              type: 'button',
+              class:
+                'btn cbi-button cbi-button-positive important tachyon-wizard__quick-launch-btn',
+              click: () => {
+                applyQuickPresetToState(selectedQuickPresetId);
+                void finishOutboundWizard(true);
+              },
+            },
+            [
+              renderZapIcon(14),
+              ' ',
+              tr(
+                'Применить пресет и запустить в 1 клик',
+                'Apply Preset & Launch in 1 Click',
+              ),
+            ],
+          ),
+        ]),
+      ],
+    );
+
     return E('div', { class: 'tachyon-wizard__body' }, [
       E('div', { class: 'tachyon-wizard__methods-grid' }, methodCards),
       E('div', { class: 'tachyon-wizard__form-box' }, formFields),
+      step2QuickPresetBar,
     ]);
   }
 
@@ -4695,6 +5581,7 @@ export function openConnectionWizardModal(
                 class: 'cbi-input-select tachyon-wizard__select',
                 change: (ev: Event) => {
                   inboundRoutingMode = (ev.target as HTMLSelectElement).value;
+                  rerender();
                 },
               } as any,
               [
@@ -4721,6 +5608,22 @@ export function openConnectionWizardModal(
                     'Direct via router WAN',
                   ),
                 ),
+                ...(existingSections.length > 0
+                  ? [
+                      E(
+                        'option',
+                        {
+                          value: 'section',
+                          selected:
+                            inboundRoutingMode === 'section' ? true : undefined,
+                        },
+                        tr(
+                          'Весь трафик через выбранную секцию',
+                          'All traffic through selected section',
+                        ),
+                      ),
+                    ]
+                  : []),
               ],
             ),
           ]),
@@ -4743,6 +5646,42 @@ export function openConnectionWizardModal(
             } as any),
           ]),
         ]),
+
+        inboundRoutingMode === 'section' && existingSections.length > 0
+          ? E('div', { class: 'tachyon-wizard__field' }, [
+              E(
+                'label',
+                { class: 'tachyon-wizard__label' },
+                tr(
+                  'Целевая секция маршрутизации для всего трафика Inbound',
+                  'Target Routing Section for All Inbound Traffic',
+                ),
+              ),
+              E(
+                'select',
+                {
+                  class: 'cbi-input-select tachyon-wizard__select',
+                  change: (ev: Event) => {
+                    inboundRoutingSection = (ev.target as HTMLSelectElement)
+                      .value;
+                  },
+                } as any,
+                existingSections.map((sec: { id: string; label: string }) =>
+                  E(
+                    'option',
+                    {
+                      value: sec.id,
+                      selected:
+                        sec.id === inboundRoutingSection ? true : undefined,
+                    },
+                    sec.label === sec.id
+                      ? sec.label
+                      : `${sec.label} (${sec.id})`,
+                  ),
+                ),
+              ),
+            ])
+          : '',
 
         E('div', { class: 'tachyon-wizard__toggle-box' }, [
           E('label', { class: 'tachyon-wizard__checkbox-label' }, [
@@ -4794,6 +5733,9 @@ export function openConnectionWizardModal(
     if (isSubmitting) return;
     isSubmitting = true;
     try {
+      if (applyImmediately) {
+        uciObj.set(TACHYON_UCI_PACKAGE, 'settings', 'enabled', '1');
+      }
       if (typeof uciObj.save === 'function') {
         await Promise.resolve(uciObj.save());
       }
@@ -5550,7 +6492,7 @@ export function openConnectionWizardModal(
 
     // Create AdBlock section BEFORE main proxy section so it has higher priority in UCI order
     if (enableAdBlockSection) {
-      const adLists = ['ads_hagezi_pro', 'win_spy'];
+      const adLists = ['ads_hagezi_pro', 'win_spy', 'xiaomi_smarttv_ads'];
       const adSecId = 'AdBlock_Tachyon';
       const adCondId = 'cond_AdBlock_Tachyon';
       if (!uciObj.get(TACHYON_UCI_PACKAGE, adCondId)) {
@@ -5783,6 +6725,11 @@ export function openConnectionWizardModal(
       uciObj.set(TACHYON_UCI_PACKAGE, secId, 'name', rawSecTitle);
       uciObj.set(TACHYON_UCI_PACKAGE, secId, 'label', rawSecTitle);
       uciObj.set(TACHYON_UCI_PACKAGE, secId, 'action', 'connection');
+    } else if (secId) {
+      uciObj.set(TACHYON_UCI_PACKAGE, secId, 'enabled', '1');
+      if (!uciObj.get(TACHYON_UCI_PACKAGE, secId, 'action')) {
+        uciObj.set(TACHYON_UCI_PACKAGE, secId, 'action', 'connection');
+      }
     }
 
     // Create condition if creating a new section OR appending rules to an existing section
@@ -6102,6 +7049,14 @@ export function openConnectionWizardModal(
       inboundOpenFirewall ? '1' : '0',
     );
     uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'routing_mode', inboundRoutingMode);
+    if (inboundRoutingMode === 'section' && inboundRoutingSection) {
+      uciObj.set(
+        TACHYON_UCI_PACKAGE,
+        srvId,
+        'routing_section',
+        inboundRoutingSection,
+      );
+    }
 
     let needsTlsCert = false;
 

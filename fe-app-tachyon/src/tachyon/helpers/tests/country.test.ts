@@ -69,7 +69,7 @@ describe('country helper', () => {
       detectOutboundCountry({ displayName: 'Custom Relay without country' }),
     ).toMatchObject({
       code: 'OTHER',
-      flag: '🌐',
+      flag: '',
     });
 
     // Fallback to country property if no flag/keyword

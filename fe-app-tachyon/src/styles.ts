@@ -3272,6 +3272,9 @@ header .dropdown-menu {
 
 .tachyon-wizard__pill-btn,
 .tachyon-wizard__chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     padding: 6px 12px;
     border-radius: 999px;
     border: 1px solid var(--border-color-medium, rgba(128, 128, 128, 0.24));
@@ -4328,20 +4331,6 @@ body[data-tachyon-ui-mode="simple"] .cbi-modal .cbi-tabmenu > li[data-tab="advan
     border: 1px solid rgba(139, 92, 246, 0.24);
     margin-left: 6px;
     vertical-align: middle;
-}
-
-/* 2. Hide legacy DPI engines (zapret, zapret2, byedpi, wdtt, olcrtc) in Simple Mode dropdowns */
-body[data-tachyon-ui-mode="simple"] option[value="zapret"],
-body[data-tachyon-ui-mode="simple"] option[value="zapret2"],
-body[data-tachyon-ui-mode="simple"] option[value="byedpi"],
-body[data-tachyon-ui-mode="simple"] option[value="wdtt"],
-body[data-tachyon-ui-mode="simple"] option[value="olcrtc"],
-body[data-tachyon-ui-mode="simple"] li[data-value="zapret"],
-body[data-tachyon-ui-mode="simple"] li[data-value="zapret2"],
-body[data-tachyon-ui-mode="simple"] li[data-value="byedpi"],
-body[data-tachyon-ui-mode="simple"] li[data-value="wdtt"],
-body[data-tachyon-ui-mode="simple"] li[data-value="olcrtc"] {
-    display: none !important;
 }
 
 /* 3. Hide expert low-level fields across Settings, Sections, and Outbounds in Simple Mode */
@@ -6224,8 +6213,9 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
 }
 
 .tachyon-studio-search {
-    min-width: 200px;
-    flex: 0 1 260px;
+    min-width: 220px;
+    flex: 1 1 300px;
+    max-width: 440px;
     padding: 4px 10px !important;
     border-radius: 8px !important;
     border: 1px solid var(--border-color-medium, rgba(128, 128, 128, 0.26)) !important;
@@ -6272,6 +6262,32 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
     flex: 1 1 290px;
     min-width: 240px;
     max-width: 380px;
+}
+
+.tachyon-studio-body--pipeline .tachyon-studio-card--source-compact {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.tachyon-studio-body--pipeline .tachyon-studio-card--source-compact > .tachyon-studio-card__head {
+    flex: 1 1 100%;
+    max-width: 100%;
+    width: 100%;
+}
+
+.tachyon-studio-card--source-compact .tachyon-studio-card__identity {
+    flex: 1 1 260px;
+    min-width: 220px;
+}
+
+.tachyon-studio-source-compact__right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    flex: 0 1 auto;
+    margin-left: auto;
 }
 
 .tachyon-studio-body--pipeline .tachyon-studio-card__pipeline {
@@ -6736,48 +6752,89 @@ button.tachyon-studio-chip:hover {
 }
 
 .tachyon-studio-create__templates {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 8px;
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)) !important;
+    gap: 8px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
 }
 
 .tachyon-studio-create__tpl-card {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    padding: 10px 12px;
-    border-radius: 10px;
-    border: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.24));
-    background: var(--background-color-low, rgba(128, 128, 128, 0.06));
-    color: inherit;
-    text-align: left;
-    cursor: pointer;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: flex-start !important;
+    justify-content: flex-start !important;
+    gap: 10px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    height: auto !important;
+    min-height: 64px !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 10px 12px !important;
+    border-radius: 10px !important;
+    border: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.24)) !important;
+    background: var(--background-color-low, rgba(128, 128, 128, 0.06)) !important;
+    color: inherit !important;
+    text-align: left !important;
+    white-space: normal !important;
+    line-height: 1.35 !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    cursor: pointer !important;
+    user-select: none;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.tachyon-studio-create__tpl-card:hover {
+    border-color: rgba(139, 92, 246, 0.45) !important;
+    background: rgba(139, 92, 246, 0.08) !important;
 }
 
 .tachyon-studio-create__tpl-card.is-selected {
-    border-color: var(--primary-color-high, #8b5cf6);
-    background: rgba(139, 92, 246, 0.14);
+    border-color: var(--primary-color-high, #8b5cf6) !important;
+    background: rgba(139, 92, 246, 0.14) !important;
 }
 
 .tachyon-studio-create__tpl-icon {
     font-size: 18px;
+    flex: 0 0 auto !important;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    margin-top: 2px;
 }
 
 .tachyon-studio-create__tpl-body {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 3px !important;
+    flex: 1 1 0% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    white-space: normal !important;
+    text-align: left !important;
 }
 
 .tachyon-studio-create__tpl-title {
-    font-size: 12.5px;
-    font-weight: 800;
+    font-size: 12.5px !important;
+    font-weight: 800 !important;
+    line-height: 1.3 !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+    width: 100%;
 }
 
 .tachyon-studio-create__tpl-desc {
-    font-size: 11px;
+    font-size: 11px !important;
     opacity: 0.72;
-    line-height: 1.35;
+    line-height: 1.35 !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+    width: 100%;
 }
 
 .tachyon-studio-create__footer {
@@ -6787,6 +6844,62 @@ button.tachyon-studio-chip:hover {
     gap: 8px;
     padding-top: 10px;
     border-top: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.18));
+}
+
+.tachyon-studio-card--source-compact {
+    padding: 10px 14px !important;
+    gap: 8px !important;
+}
+
+.tachyon-studio-source-compact__sections {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: wrap;
+}
+
+.tachyon-studio-source-inspector {
+    display: none;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 6px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--border-color-low, rgba(148, 163, 184, 0.2));
+    font-size: 12px;
+}
+
+.tachyon-studio-card--source-compact.is-expanded .tachyon-studio-source-inspector {
+    display: flex;
+}
+
+.tachyon-studio-source-inspector__row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.tachyon-studio-source-inspector__label {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-color-medium, #94a3b8);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.tachyon-studio-source-inspector__code {
+    font-family: var(--tachyon-font-mono, monospace);
+    font-size: 11.5px;
+    padding: 2px 6px;
+    border-radius: 5px;
+    background: rgba(15, 23, 42, 0.35);
+    word-break: break-all;
+}
+
+.tachyon-studio-source-inspector__links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
 }
 
 /* ==========================================================================
@@ -7117,6 +7230,254 @@ button.tachyon-studio-chip:hover {
     font-size: 11px;
     opacity: 0.74;
     line-height: 1.35;
+}
+
+/* ==========================================================================
+   Wizard Step 1 & Step 2: 1-Click Quick Start Presets
+   ========================================================================== */
+
+.tachyon-wizard__quick-hero {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px 16px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(16, 185, 129, 0.05));
+    border: 1px solid rgba(139, 92, 246, 0.36);
+    box-sizing: border-box;
+}
+
+.tachyon-wizard__quick-hero-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.tachyon-wizard__quick-hero-titles {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.tachyon-wizard__quick-hero-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 14.5px;
+    font-weight: 800;
+    color: var(--text-color-high, inherit);
+}
+
+.tachyon-wizard__quick-hero-title svg {
+    color: #a855f7;
+    flex-shrink: 0;
+}
+
+.tachyon-wizard__quick-hero-sub {
+    font-size: 12px;
+    opacity: 0.82;
+    line-height: 1.4;
+}
+
+.tachyon-wizard__quick-presets-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(235px, 1fr));
+    gap: 8px;
+}
+
+.tachyon-wizard__quick-preset-card {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    justify-content: space-between !important;
+    gap: 6px !important;
+    padding: 11px 13px !important;
+    border-radius: 11px !important;
+    border: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.25)) !important;
+    background: var(--background-color-high, rgba(15, 23, 42, 0.28)) !important;
+    color: inherit !important;
+    text-align: left !important;
+    white-space: normal !important;
+    height: auto !important;
+    min-height: 92px !important;
+    box-sizing: border-box !important;
+    cursor: pointer !important;
+    user-select: none;
+    transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tachyon-wizard__quick-preset-card:hover {
+    border-color: rgba(139, 92, 246, 0.55) !important;
+    background: rgba(139, 92, 246, 0.09) !important;
+}
+
+.tachyon-wizard__quick-preset-card.is-selected {
+    border-color: #8b5cf6 !important;
+    background: rgba(139, 92, 246, 0.16) !important;
+    box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.36);
+}
+
+.tachyon-wizard__quick-preset-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    width: 100%;
+    gap: 8px;
+}
+
+.tachyon-wizard__quick-preset-title {
+    font-size: 12.5px;
+    font-weight: 800;
+    line-height: 1.3;
+}
+
+.tachyon-wizard__quick-preset-badge {
+    font-size: 9.5px;
+    font-weight: 800;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: rgba(139, 92, 246, 0.18);
+    color: #c4b5fd;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.tachyon-wizard__quick-preset-badge.is-hit {
+    background: rgba(16, 185, 129, 0.2);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+.tachyon-wizard__quick-preset-desc {
+    font-size: 11px;
+    opacity: 0.78;
+    line-height: 1.36;
+}
+
+.tachyon-wizard__quick-preset-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 2px;
+}
+
+.tachyon-wizard__quick-preset-tag {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 5px;
+    background: rgba(148, 163, 184, 0.12);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    opacity: 0.9;
+}
+
+.tachyon-wizard__quick-input-box {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: var(--background-color-high, rgba(15, 23, 42, 0.32));
+    border: 1px solid var(--border-color-low, rgba(148, 163, 184, 0.24));
+}
+
+.tachyon-wizard__quick-input-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.tachyon-wizard__quick-paste-btn {
+    padding: 3px 9px !important;
+    font-size: 11px !important;
+    border-radius: 6px !important;
+}
+
+.tachyon-wizard__quick-input {
+    width: 100% !important;
+    min-height: 54px !important;
+    font-family: var(--tachyon-font-mono, monospace);
+    font-size: 12px !important;
+    box-sizing: border-box !important;
+}
+
+.tachyon-wizard__quick-detect {
+    font-size: 11.5px;
+    font-weight: 700;
+    line-height: 1.35;
+}
+
+.tachyon-wizard__quick-detect.is-idle {
+    opacity: 0.72;
+}
+
+.tachyon-wizard__quick-detect.is-valid {
+    color: #10b981;
+}
+
+.tachyon-wizard__quick-detect.is-invalid {
+    color: #f59e0b;
+}
+
+.tachyon-wizard__quick-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.tachyon-wizard__quick-launch-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    font-weight: 800 !important;
+    padding: 8px 16px !important;
+    border-radius: 9px !important;
+}
+
+.tachyon-wizard__manual-divider {
+    font-size: 11.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    opacity: 0.68;
+    margin-top: 4px;
+}
+
+.tachyon-wizard__step2-preset-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 10px;
+    padding: 11px 14px;
+    border-radius: 11px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(16, 185, 129, 0.05));
+    border: 1px solid rgba(139, 92, 246, 0.3);
+}
+
+.tachyon-wizard__step2-preset-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.tachyon-wizard__step2-preset-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+    font-weight: 800;
+}
+
+.tachyon-wizard__step2-preset-controls {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
 }
 
 /* ==========================================================================
@@ -7566,7 +7927,9 @@ button.tachyon-studio-chip:hover {
 .tachyon-dash-widget-row__icon svg,
 .tachyon-dash-preset-card__icon svg,
 .tachyon-dash-preset-pill__icon svg,
-.tachyon-icon-picker__chip svg {
+.tachyon-icon-picker__chip svg,
+.tachyon-wizard__chip svg,
+.tachyon-wizard__pill-btn svg {
     flex-shrink: 0;
     stroke: currentColor;
     vertical-align: middle;

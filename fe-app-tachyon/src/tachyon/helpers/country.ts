@@ -164,19 +164,19 @@ export function getRegionMetadata(
       return {
         id: 'asia',
         label: isRu ? 'Азия и Восток' : 'Asia & Mideast',
-        flag: '🌏',
+        flag: '',
       };
     case 'americas':
       return {
         id: 'americas',
         label: isRu ? 'Америка' : 'Americas',
-        flag: '🌎',
+        flag: '',
       };
     case 'other':
-      return { id: 'other', label: isRu ? 'Другие' : 'Other', flag: '🌍' };
+      return { id: 'other', label: isRu ? 'Другие' : 'Other', flag: '' };
     case 'all':
     default:
-      return { id: 'all', label: isRu ? 'Все' : 'All', flag: '🌐' };
+      return { id: 'all', label: isRu ? 'Все' : 'All', flag: '' };
   }
 }
 
@@ -663,7 +663,7 @@ export function detectOutboundCountry(
 
   return {
     code: 'OTHER',
-    flag: '🌐',
+    flag: '',
     name: translate('Other'),
   };
 }

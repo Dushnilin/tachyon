@@ -1521,7 +1521,7 @@ export function buildDashboardLayoutEditorDom(options?: {
             });
           },
         } as any,
-        '◀ ▲',
+        '← ↑',
       );
 
       const nextBtn = E(
@@ -1549,7 +1549,7 @@ export function buildDashboardLayoutEditorDom(options?: {
             });
           },
         } as any,
-        '▼ ▶',
+        '↓ →',
       );
 
       const activeViewObj =
@@ -1737,8 +1737,8 @@ export function buildDashboardLayoutEditorDom(options?: {
             'span',
             { class: 'tachyon-dash-editor__section-sub' },
             tr(
-              'Перетаскивайте блоки мышью (⠿) или кнопками ◀▲ / ▼▶. Два соседних виджета с шириной 50% автоматически встают рядом в 2 колонки',
-              'Drag blocks with mouse (⠿) or ◀▲ / ▼▶ buttons. Two adjacent 50% widgets automatically sit side-by-side in 2 columns',
+              'Перетаскивайте блоки мышью (⠿) или кнопками ←↑ / ↓→. Два соседних виджета с шириной 50% автоматически встают рядом в 2 колонки',
+              'Drag blocks with mouse (⠿) or ←↑ / ↓→ buttons. Two adjacent 50% widgets automatically sit side-by-side in 2 columns',
             ),
           ),
         ]),

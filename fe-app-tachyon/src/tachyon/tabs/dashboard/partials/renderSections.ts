@@ -7,6 +7,7 @@ import {
   renderAlertTriangleIcon,
   renderCheckIcon,
   renderGlobeIcon,
+  renderPinIcon,
 } from '../../../../icons';
 import {
   isCopyableProxyLink,
@@ -16,6 +17,8 @@ import {
   svgEl,
 } from '../../../../helpers';
 import { prettyBytes } from '../../../../helpers/prettyBytes';
+import { showToast } from '../../../../helpers/showToast';
+import { TachyonShellMethods } from '../../../methods/shell';
 import { Tachyon } from '../../../types';
 import { renderFlagEmojis } from './renderFlagEmojis';
 import { formatServiceStatusMessage } from '../../../helpers/formatServiceStatusMessage';
@@ -31,6 +34,256 @@ import {
 
 const gridHoveredSections = new Set<string>();
 const gridFrozenOutboundOrders = new Map<string, string[]>();
+
+function getUciHandle(): typeof uci | undefined {
+  return typeof uci !== 'undefined' ? uci : undefined;
+}
+
+function getUiHandle(): typeof ui | undefined {
+  return typeof ui !== 'undefined' ? ui : undefined;
+}
+
+function getSectionServerDomainRulesRaw(sectionName: string): string[] {
+  const uciRef = getUciHandle();
+  if (!uciRef || typeof uciRef.get !== 'function' || !sectionName) return [];
+  const raw = uciRef.get('tachyon', sectionName, 'server_domain_rules');
+  if (Array.isArray(raw)) {
+    return raw.map((v) => String(v || '').trim()).filter(Boolean);
+  }
+  if (typeof raw === 'string' && raw.trim()) {
+    return [raw.trim()];
+  }
+  return [];
+}
+
+function matchesServerRuleKey(
+  ruleKey: string,
+  outbound: Tachyon.Outbound,
+): boolean {
+  const k = ruleKey.trim().toLowerCase();
+  if (!k) return false;
+  const code = String(outbound.code || '')
+    .trim()
+    .toLowerCase();
+  const disp = String(outbound.displayName || '')
+    .trim()
+    .toLowerCase();
+  const dispWithFlag = ensureOutboundDisplayFlag(outbound).trim().toLowerCase();
+  return k === code || k === disp || k === dispWithFlag;
+}
+
+function getPinnedDomainsForOutbound(
+  sectionName: string,
+  outbound: Tachyon.Outbound,
+): string[] {
+  const entries = getSectionServerDomainRulesRaw(sectionName);
+  const domains: string[] = [];
+  for (const entry of entries) {
+    const eqIdx = entry.indexOf('=');
+    if (eqIdx <= 0) continue;
+    const srvKey = entry.slice(0, eqIdx).trim();
+    const domPart = entry.slice(eqIdx + 1).trim();
+    if (!matchesServerRuleKey(srvKey, outbound)) continue;
+    for (const token of domPart.split(/[\s,;]+/)) {
+      const t = token.trim();
+      if (t && !domains.includes(t)) {
+        domains.push(t);
+      }
+    }
+  }
+  return domains;
+}
+
+function openPinSitesToServerModal(
+  section: Tachyon.OutboundGroup,
+  outbound: Tachyon.Outbound,
+) {
+  const uiRef = getUiHandle();
+  const uciRef = getUciHandle();
+  if (!uiRef || typeof uiRef.showModal !== 'function' || !uciRef) return;
+
+  const isRu =
+    typeof document !== 'undefined' &&
+    (document.documentElement?.lang || '').toLowerCase().startsWith('ru');
+  const t = (ru: string, en: string) => (isRu ? ru : en);
+
+  const existingDomains = getPinnedDomainsForOutbound(
+    section.sectionName,
+    outbound,
+  );
+  const textareaEl = E(
+    'textarea',
+    {
+      class: 'cbi-input-textarea',
+      rows: 5,
+      placeholder:
+        '2ip.ru\nchatgpt.com\nnetflix.com\nspotify.com\ncommunity:openai',
+      style:
+        'width: 100%; font-family: monospace; font-size: 13px; padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.3); background: rgba(15, 23, 42, 0.35); color: inherit; box-sizing: border-box;',
+    },
+    existingDomains.join('\n'),
+  ) as HTMLTextAreaElement;
+
+  const quickServices = [
+    { key: '2ip.ru', label: '2ip.ru' },
+    { key: 'chatgpt.com', label: 'ChatGPT' },
+    { key: 'claude.ai', label: 'Claude' },
+    { key: 'gemini.google.com', label: 'Gemini' },
+    { key: 'netflix.com', label: 'Netflix' },
+    { key: 'spotify.com', label: 'Spotify' },
+    { key: 'youtube.com', label: 'YouTube' },
+    { key: 'instagram.com', label: 'Instagram' },
+  ];
+
+  const chipsWrap = E(
+    'div',
+    {
+      style: 'display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;',
+    },
+    quickServices.map((item) =>
+      E(
+        'button',
+        {
+          type: 'button',
+          class: 'cbi-button',
+          style:
+            'padding: 2px 9px; font-size: 11px; border-radius: 999px; line-height: 1.5;',
+          click: (ev: MouseEvent) => {
+            ev.preventDefault();
+            const current = textareaEl.value
+              .split(/[\s,;]+/)
+              .map((s) => s.trim())
+              .filter(Boolean);
+            if (!current.includes(item.key)) {
+              current.push(item.key);
+              textareaEl.value = current.join('\n');
+            }
+          },
+        },
+        `+ ${item.label}`,
+      ),
+    ),
+  );
+
+  const saveRule = async (domainsText: string) => {
+    const tokens = domainsText
+      .split(/[\s,;]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const uniqueTokens = Array.from(new Set(tokens));
+    const allEntries = getSectionServerDomainRulesRaw(section.sectionName);
+    const otherEntries = allEntries.filter((entry) => {
+      const eqIdx = entry.indexOf('=');
+      if (eqIdx <= 0) return true;
+      const srvKey = entry.slice(0, eqIdx).trim();
+      return !matchesServerRuleKey(srvKey, outbound);
+    });
+
+    if (uniqueTokens.length > 0) {
+      otherEntries.push(`${outbound.code}=${uniqueTokens.join(', ')}`);
+    }
+
+    if (otherEntries.length > 0) {
+      uciRef.set(
+        'tachyon',
+        section.sectionName,
+        'server_domain_rules',
+        otherEntries,
+      );
+    } else {
+      uciRef.unset?.('tachyon', section.sectionName, 'server_domain_rules');
+    }
+
+    const condRefs = uciRef.get(
+      'tachyon',
+      section.sectionName,
+      'condition_refs',
+    );
+    if (Array.isArray(condRefs) && condRefs.length === 1 && condRefs[0]) {
+      if (otherEntries.length > 0) {
+        uciRef.set('tachyon', condRefs[0], 'server_domain_rules', otherEntries);
+      } else {
+        uciRef.unset?.('tachyon', condRefs[0], 'server_domain_rules');
+      }
+    }
+
+    await uciRef.save();
+    uiRef.hideModal();
+    showToast(
+      uniqueTokens.length > 0
+        ? t(
+            `Привязано сайтов к серверу «${outbound.displayName}»: ${uniqueTokens.length}. Применяем маршрут...`,
+            `Pinned ${uniqueTokens.length} site(s) to server "${outbound.displayName}". Applying route...`,
+          )
+        : t(
+            `Привязка сайтов для сервера «${outbound.displayName}» очищена.`,
+            `Cleared pinned sites for "${outbound.displayName}".`,
+          ),
+      'success',
+    );
+    TachyonShellMethods.serviceActionStart('reload').catch(() => {});
+  };
+
+  uiRef.showModal(
+    t(
+      `Привязка сайтов к серверу: ${outbound.displayName}`,
+      `Pin Sites to Server: ${outbound.displayName}`,
+    ),
+    [
+      E(
+        'p',
+        { style: 'margin: 0 0 10px 0; font-size: 13px; opacity: 0.85;' },
+        t(
+          'Укажите домены или сайты (по одному в строке или через запятую), которые всегда должны идти строго через этот сервер в обход общего балансировщика секции:',
+          'Enter domains or sites (one per line or comma-separated) that should always route directly through this specific server, bypassing the section balancer:',
+        ),
+      ),
+      textareaEl,
+      chipsWrap,
+      E(
+        'div',
+        {
+          class: 'right',
+          style:
+            'margin-top: 14px; display: flex; justify-content: flex-end; gap: 8px;',
+        },
+        [
+          ...(existingDomains.length > 0
+            ? [
+                E(
+                  'button',
+                  {
+                    type: 'button',
+                    class: 'btn cbi-button-reset',
+                    click: () => saveRule(''),
+                  },
+                  t('Очистить привязку', 'Clear Pin'),
+                ),
+              ]
+            : []),
+          E(
+            'button',
+            {
+              type: 'button',
+              class: 'btn',
+              click: () => uiRef.hideModal(),
+            },
+            t('Отмена', 'Cancel'),
+          ),
+          E(
+            'button',
+            {
+              type: 'button',
+              class: 'btn cbi-button-action important',
+              click: () => saveRule(textareaEl.value),
+            },
+            t('Сохранить и применить', 'Save & Apply'),
+          ),
+        ],
+      ),
+    ],
+  );
+}
 
 interface IRenderSectionsProps {
   loading: boolean;
@@ -534,9 +787,9 @@ function renderCountryChips(
       : undefined;
 
   const activeFilterSummary = activeCountryGroup
-    ? `${activeCountryGroup.countryFlag || '🌐'} ${activeCountryGroup.countryName || activeCountryGroup.countryCode}`
+    ? `${activeCountryGroup.countryFlag ? `${activeCountryGroup.countryFlag} ` : ''}${activeCountryGroup.countryName || activeCountryGroup.countryCode}`
     : activeRegionMeta
-      ? `${activeRegionMeta.flag} ${activeRegionMeta.label}`
+      ? `${activeRegionMeta.flag ? `${activeRegionMeta.flag} ` : ''}${activeRegionMeta.label}`
       : '';
 
   const container = E('div', {
@@ -619,7 +872,16 @@ function renderCountryChips(
           },
         },
         [
-          E('span', { class: 'tachyon_dashboard-page__flag-emoji' }, reg.flag),
+          E(
+            'span',
+            {
+              class: 'tachyon_dashboard-page__flag-emoji',
+              style: reg.flag
+                ? undefined
+                : 'display: inline-flex; align-items: center;',
+            },
+            reg.flag || [renderGlobeIcon(12)],
+          ),
           E(
             'span',
             { class: 'tachyon_dashboard-page__region-tab__name' },
@@ -1484,6 +1746,10 @@ function renderDefaultState({
     const outboundDisplayTitle = isAutoGroup
       ? outbound.displayName
       : ensureOutboundDisplayFlag(outbound);
+    const pinnedDomains =
+      !isAutoGroup && !isServiceNode && !isConnectionNode
+        ? getPinnedDomainsForOutbound(section.sectionName, outbound)
+        : [];
 
     return E(
       'div',
@@ -1563,8 +1829,65 @@ function renderDefaultState({
                       ),
                     ]
                   : []),
+                ...(pinnedDomains.length > 0
+                  ? [
+                      E(
+                        'span',
+                        {
+                          class:
+                            'tachyon_dashboard-page__outbound-grid__item__prefix-badge',
+                          style:
+                            'background: rgba(56, 189, 248, 0.14); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;',
+                          title: pinnedDomains.join(', '),
+                          click: (event: MouseEvent) => {
+                            event.stopPropagation();
+                            openPinSitesToServerModal(section, outbound);
+                          },
+                        },
+                        [
+                          renderPinIcon(10),
+                          E(
+                            'span',
+                            {},
+                            `${pinnedDomains.slice(0, 2).join(', ')}${pinnedDomains.length > 2 ? ` +${pinnedDomains.length - 2}` : ''}`,
+                          ),
+                        ],
+                      ),
+                    ]
+                  : []),
               ],
             ),
+            ...(!isAutoGroup && !isServiceNode && !isConnectionNode
+              ? [
+                  E(
+                    'button',
+                    {
+                      type: 'button',
+                      class:
+                        'btn tachyon_dashboard-page__outbound-grid__item__copy-button',
+                      title:
+                        pinnedDomains.length > 0
+                          ? pinnedDomains.join(', ')
+                          : typeof document !== 'undefined' &&
+                              (document.documentElement?.lang || '')
+                                .toLowerCase()
+                                .startsWith('ru')
+                            ? 'Привязать отдельные сайты к этому серверу'
+                            : 'Pin specific sites to this server',
+                      'aria-label': 'Pin sites to server',
+                      style:
+                        pinnedDomains.length > 0
+                          ? 'color: #38bdf8;'
+                          : undefined,
+                      click: (event: MouseEvent) => {
+                        event.stopPropagation();
+                        openPinSitesToServerModal(section, outbound);
+                      },
+                    },
+                    renderGlobeIcon(16),
+                  ),
+                ]
+              : []),
             ...(canCopyLink
               ? [
                   E(

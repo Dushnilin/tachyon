@@ -61,16 +61,54 @@ const RUNETFREEDOM_GEOSITE_MAP = {
     openai: "geosite-openai",
     anthropic: "geosite-anthropic",
     xai: "geosite-xai",
+    openrouter: "geosite-poe",
+    cursor: "geosite-cursor",
+    perplexity: "geosite-perplexity",
+    copilot: "geosite-github-copilot",
+    deepseek: "geosite-deepseek",
+    midjourney: "geosite-comfy",
+    elevenlabs: "geosite-elevenlabs",
+    huggingface: "geosite-huggingface",
     spotify: "geosite-spotify",
     netflix: "geosite-netflix",
+    soundcloud_music: "geosite-soundcloud",
+    rutracker_lampa: "geosite-rutracker",
+    patreon_creators: "geosite-patreon",
+    whatsapp: "geosite-whatsapp",
+    messengers: "geosite-signal",
+    reddit: "geosite-reddit",
+    zoom_teams: "geosite-zoom",
+    linkedin: "geosite-linkedin",
+    games_all: "geosite-category-games-!cn",
+    ubisoft: "geosite-ubisoft",
+    warthunder: "geosite-gaijin",
+    blizzard: "geosite-blizzard",
+    xbox: "geosite-xbox",
+    playstation: "geosite-playstation",
+    nintendo: "geosite-nintendo",
+    gog: "geosite-gog",
+    wargaming: "geosite-wargaming",
+    hoyoverse: "geosite-hoyoverse",
+    minecraft: "geosite-mojang",
+    rockstar: "geosite-rockstar",
+    pubg: "geosite-pubg",
     docker: "geosite-docker",
     tor: "geosite-tor",
-    fastly: "geosite-fastly"
+    fastly: "geosite-fastly",
+    jetbrains: "geosite-jetbrains",
+    gitlab_notion: "geosite-notion",
+    figma_adobe: "geosite-figma",
+    pkg_registries: "geosite-hashicorp",
+    speedtest: "geosite-ookla-speedtest",
+    crypto: "geosite-category-cryptocurrency",
+    paypal_fintech: "geosite-paypal",
+    xiaomi_smarttv_ads: "geosite-xiaomi@ads"
 };
 
 const COMMUNITY_SERVICES = {
     russia_inside: true,
     russia_outside: true,
+    ukraine_inside: true,
     geoblock: true,
     block: true,
     porn: true,
@@ -133,17 +171,54 @@ const COMMUNITY_SERVICES = {
     openai: true,
     anthropic: true,
     xai: true,
+    openrouter: true,
+    cursor: true,
+    perplexity: true,
+    copilot: true,
+    deepseek: true,
+    midjourney: true,
+    elevenlabs: true,
+    huggingface: true,
     spotify: true,
     netflix: true,
+    soundcloud_music: true,
+    rutracker_lampa: true,
+    patreon_creators: true,
+    whatsapp: true,
+    messengers: true,
+    reddit: true,
+    zoom_teams: true,
+    linkedin: true,
+    games_all: true,
+    ubisoft: true,
+    warthunder: true,
+    blizzard: true,
+    xbox: true,
+    playstation: true,
+    nintendo: true,
+    gog: true,
+    wargaming: true,
+    hoyoverse: true,
+    minecraft: true,
+    rockstar: true,
+    pubg: true,
     docker: true,
     tor: true,
-    fastly: true
+    fastly: true,
+    jetbrains: true,
+    gitlab_notion: true,
+    figma_adobe: true,
+    pkg_registries: true,
+    speedtest: true,
+    crypto: true,
+    paypal_fintech: true,
+    xiaomi_smarttv_ads: true
 };
 
 // Classification of community rule-sets based on upstream rule-set generation.
 // Upstream allow-domains (itdoginfo/allow-domains convert.py) compiles:
 // - general lists (russia_inside, russia_outside) and category lists as domain-only ("domains");
-// - SUBNET_SERVICES (meta, twitter, telegram, roblox, google_meet)
+// - SUBNET_SERVICES (meta, twitter, telegram, roblox, google_meet, zoom_teams)
 //   as mixed containing both domain_suffix and ip_cidr ("mixed");
 // - infrastructure / CDN provider lists (cloudflare, cloudfront, hetzner, ovh, digitalocean) as IP subnets ("subnets").
 //   In sing-box 1.14+, these must NOT be placed into DNS response rules (match_response: true) because doing so
@@ -162,7 +237,8 @@ const COMMUNITY_SUBNET_SERVICES = {
     twitter: true,
     telegram: true,
     roblox: true,
-    google_meet: true
+    google_meet: true,
+    zoom_teams: true
 };
 
 const COMMUNITY_INFRASTRUCTURE_SERVICES = {
@@ -177,6 +253,7 @@ const COMMUNITY_INFRASTRUCTURE_SERVICES = {
 const COMMUNITY_DOMAIN_SERVICES = {
     russia_inside: true,
     russia_outside: true,
+    ukraine_inside: true,
     geoblock: true,
     block: true,
     porn: true,
@@ -224,11 +301,47 @@ const COMMUNITY_DOMAIN_SERVICES = {
     openai: true,
     anthropic: true,
     xai: true,
+    openrouter: true,
+    cursor: true,
+    perplexity: true,
+    copilot: true,
+    deepseek: true,
+    midjourney: true,
+    elevenlabs: true,
+    huggingface: true,
     spotify: true,
     netflix: true,
+    soundcloud_music: true,
+    rutracker_lampa: true,
+    patreon_creators: true,
+    whatsapp: true,
+    messengers: true,
+    reddit: true,
+    linkedin: true,
+    games_all: true,
+    ubisoft: true,
+    warthunder: true,
+    blizzard: true,
+    xbox: true,
+    playstation: true,
+    nintendo: true,
+    gog: true,
+    wargaming: true,
+    hoyoverse: true,
+    minecraft: true,
+    rockstar: true,
+    pubg: true,
     docker: true,
     tor: true,
-    fastly: true
+    fastly: true,
+    jetbrains: true,
+    gitlab_notion: true,
+    figma_adobe: true,
+    pkg_registries: true,
+    speedtest: true,
+    crypto: true,
+    paypal_fintech: true,
+    xiaomi_smarttv_ads: true
 };
 
 let as_string = common.as_string;
@@ -258,6 +371,7 @@ function community_kind(name) {
 }
 
 const TACHYON_LISTS_ALIAS_MAP = {
+    geosite_ru: "ru_domains",
     roscomvpn_whitelist: "ru_whitelist",
     roscomvpn_geoblock: "geoblock",
     roscomvpn_ru: "ru_domains",
@@ -267,6 +381,11 @@ const TACHYON_LISTS_ALIAS_MAP = {
     antifilter_community: "antifilter",
     ru_available_only_inside: "ru_only_inside"
 };
+
+function is_non_ru_geoip_community(name) {
+    name = as_string(name);
+    return match(name, /^geoip_[a-z]{2}$/) != null && name != "geoip_ru";
+}
 
 function should_compact_huge_ruleset(name) {
     name = as_string(name);
@@ -309,6 +428,8 @@ function tachyon_lists_trs_url(name) {
 
 function community_trs_url(name) {
     name = as_string(name);
+    if (is_non_ru_geoip_community(name))
+        return "";
     if (COMMUNITY_SERVICES[name] === true)
         return tachyon_lists_trs_url(name);
     return "";
@@ -316,7 +437,7 @@ function community_trs_url(name) {
 
 function community_trs_urls(name) {
     name = as_string(name);
-    if (COMMUNITY_SERVICES[name] !== true)
+    if (is_non_ru_geoip_community(name) || COMMUNITY_SERVICES[name] !== true)
         return [];
     if (should_compact_huge_ruleset(name))
         name = "ru_blocked";
@@ -372,7 +493,7 @@ function fallback_community_url(name) {
 
 function community_url(name) {
     name = as_string(name);
-    if (COMMUNITY_SERVICES[name] === true)
+    if (!is_non_ru_geoip_community(name) && COMMUNITY_SERVICES[name] === true)
         return tachyon_lists_srs_url(name);
 
     return fallback_community_url(name);

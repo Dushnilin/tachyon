@@ -16,6 +16,8 @@ import {
   getSourceCellParts,
   getTargetCellParts,
   getNetwork,
+  formatMatchedRuleSummary,
+  getRouteTooltip,
   sortConnections,
   normalizeSearchValue,
   getSearchValues,
@@ -303,5 +305,52 @@ describe('monitoring filters and resolution', () => {
     });
     expect(searchFiltered.length).toBe(1);
     expect(searchFiltered[0].id).toBe('2');
+  });
+
+  it('distinguishes QUIC from plain UDP and builds matched rule tooltips', () => {
+    const plainUdp: MonitoredConnection = {
+      id: 'u1',
+      lastSeenAt: 1000,
+      metadata: {
+        network: 'udp',
+        destinationIP: '8.8.8.8',
+        destinationPort: 53,
+      },
+    };
+    const quicByPort443Host: MonitoredConnection = {
+      id: 'q1',
+      lastSeenAt: 1000,
+      metadata: {
+        network: 'udp',
+        host: 'gemini.google.com',
+        destinationPort: 443,
+      },
+      chains: ['Main-out', 'NL VLESS #1'],
+      rule: 'inbound=[tproxy-in tproxy6-in] rule_set=[Main-community-google_ai-rs] => route(Main-out)',
+      rulePayload: 'rule_set=Main-community-google_ai-rs',
+    };
+    const quicByProtocol: MonitoredConnection = {
+      id: 'q2',
+      lastSeenAt: 1000,
+      metadata: {
+        network: 'udp',
+        protocol: 'quic',
+        destinationPort: 8443,
+      },
+    };
+
+    expect(getNetwork(plainUdp)).toBe('udp');
+    expect(getNetwork(quicByPort443Host)).toBe('quic');
+    expect(getNetwork(quicByProtocol)).toBe('quic');
+
+    expect(formatMatchedRuleSummary(quicByPort443Host)).toBe(
+      'rule_set=community:google_ai',
+    );
+    const tooltip = getRouteTooltip(quicByPort443Host, 'Main');
+    expect(tooltip).toContain('Section: Main');
+    expect(tooltip).toContain(
+      'Matched condition: rule_set=community:google_ai',
+    );
+    expect(tooltip).toContain('Node: NL VLESS #1');
   });
 });

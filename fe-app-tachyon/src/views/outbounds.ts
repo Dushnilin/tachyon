@@ -4,6 +4,7 @@
 'require baseclass';
 'require form';
 'require fs';
+'require network';
 'require uci';
 'require ui';
 'require view.tachyon.main as main';
@@ -123,52 +124,255 @@ function serverNameList(val) {
     .filter(Boolean);
 }
 
+const SUB_CACHE_DIR = '/etc/tachyon/subscription-cache';
+
+function extractFlagCountryIso(str) {
+  const s = String(str || '');
+  const cps = Array.from(s);
+  for (let i = 0; i < cps.length - 1; i++) {
+    const c1 = cps[i].codePointAt(0);
+    const c2 = cps[i + 1].codePointAt(0);
+    if (c1 >= 0x1f1e6 && c1 <= 0x1f1ff && c2 >= 0x1f1e6 && c2 <= 0x1f1ff) {
+      return (
+        String.fromCharCode(65 + (c1 - 0x1f1e6)) +
+        String.fromCharCode(65 + (c2 - 0x1f1e6))
+      );
+    }
+  }
+  return '';
+}
+
+function readTextSafe(path) {
+  return fs
+    .read(path)
+    .catch(() =>
+      typeof fs.read_direct === 'function'
+        ? fs.read_direct(path, 'text')
+        : Promise.resolve(''),
+    )
+    .then((raw) => String(raw || ''))
+    .catch(() => '');
+}
+
+function readJsonSafe(path) {
+  return readTextSafe(path)
+    .then((raw) => (raw.trim() ? JSON.parse(raw) : {}))
+    .catch(() => ({}));
+}
+
 function loadGlobalPoolChoices() {
   const secNames = (uci.sections(UCI_PACKAGE, 'section') || [])
     .map((s) => s['.name'])
     .filter((n) => n && /^[A-Za-z0-9_-]+$/.test(n));
   if (!secNames.includes('Main')) secNames.unshift('Main');
 
-  const readCache = (secName) => {
-    const path = `${SECTION_CACHE_DIR}/${secName}.json`;
-    return fs
-      .read(path)
-      .catch(() =>
-        typeof fs.read_direct === 'function'
-          ? fs.read_direct(path, 'text')
-          : Promise.resolve('{}'),
-      )
-      .then((raw) => JSON.parse(raw || '{}'))
-      .catch(() => ({}));
-  };
+  const readSecCache = (secName) =>
+    readJsonSafe(`${SECTION_CACHE_DIR}/${secName}.json`);
 
-  return Promise.all(secNames.map(readCache)).then((caches) => {
+  const readSubCaches = () =>
+    fs
+      .list(SUB_CACHE_DIR)
+      .catch(() => [])
+      .then((entries) => {
+        const list = Array.isArray(entries) ? entries : [];
+        const jsonBases = [];
+        const urlFileSet = new Set();
+        const mtimeMap = new Map();
+
+        list.forEach((ent) => {
+          const fname = String((ent && ent.name) || '');
+          if (fname.endsWith('.url')) {
+            urlFileSet.add(fname.slice(0, -4));
+          } else if (
+            fname.endsWith('.json') &&
+            !fname.endsWith('.metadata.json') &&
+            fname.includes('-subscription-')
+          ) {
+            const base = fname.slice(0, -5);
+            jsonBases.push(base);
+            mtimeMap.set(base, Number(ent.mtime || 0));
+          }
+        });
+
+        return Promise.all(
+          jsonBases.map((base) =>
+            (urlFileSet.has(base)
+              ? readTextSafe(`${SUB_CACHE_DIR}/${base}.url`)
+              : Promise.resolve('')
+            ).then((u) => ({
+              base,
+              url: u.trim(),
+              mtime: mtimeMap.get(base) || 0,
+            })),
+          ),
+        ).then((baseInfos) => {
+          // Deduplicate by URL (keep newest mtime) so we don't read duplicate section copies
+          const chosenByKey = new Map();
+          baseInfos.forEach((info) => {
+            const key = info.url || `base:${info.base}`;
+            const prev = chosenByKey.get(key);
+            if (!prev || info.mtime >= prev.mtime) {
+              chosenByKey.set(key, info);
+            }
+          });
+          const chosen = Array.from(chosenByKey.values());
+          return Promise.all(
+            chosen.map((info) =>
+              readJsonSafe(`${SUB_CACHE_DIR}/${info.base}.json`).then(
+                (data) => ({
+                  base: info.base,
+                  url: info.url,
+                  mtime: info.mtime,
+                  outbounds: Array.isArray(data && data.outbounds)
+                    ? data.outbounds
+                    : [],
+                }),
+              ),
+            ),
+          );
+        });
+      })
+      .catch(() => []);
+
+  return Promise.all([
+    Promise.all(secNames.map(readSecCache)),
+    readSubCaches(),
+  ]).then(([caches, subCaches]) => {
     const serverMap = new Map();
     const countrySet = new Set();
     const prefixSet = new Set();
+    const urlToSources = new Map();
+
+    const upsertServer = (name, details) => {
+      const cleanName = String(name || '').trim();
+      if (!cleanName) return;
+      const existing = serverMap.get(cleanName);
+      const proto = String(details.proto || (existing && existing.proto) || '')
+        .trim()
+        .toLowerCase();
+      const trans = String(details.trans || (existing && existing.trans) || '')
+        .trim()
+        .toLowerCase();
+      const sec = String(details.sec || (existing && existing.sec) || '')
+        .trim()
+        .toLowerCase();
+      const port = String(
+        details.port || (existing && existing.port) || '',
+      ).trim();
+      const prefix = String(
+        details.prefix || (existing && existing.prefix) || '',
+      ).trim();
+      const country = String(
+        details.country ||
+          (existing && existing.country) ||
+          extractFlagCountryIso(cleanName) ||
+          '',
+      )
+        .trim()
+        .toUpperCase();
+      if (country.length === 2) countrySet.add(country);
+      if (prefix) prefixSet.add(prefix);
+
+      const pUp = proto.toUpperCase();
+      const tUp = trans.toUpperCase();
+      const badge =
+        pUp && tUp && pUp !== tUp ? `${pUp}+${tUp}` : pUp || tUp || '';
+      const label = badge ? `${cleanName} [${badge}]` : cleanName;
+      const sourceIds = existing ? existing.sourceIds : new Set();
+      if (details.sourceId) sourceIds.add(details.sourceId);
+
+      serverMap.set(cleanName, {
+        value: cleanName,
+        label,
+        proto,
+        trans,
+        sec,
+        port,
+        prefix,
+        country,
+        sourceIds,
+      });
+    };
 
     (uci.sections(UCI_PACKAGE, 'outbound_source') || []).forEach((src) => {
-      if (src.node_prefix) prefixSet.add(String(src.node_prefix).trim());
+      const sid = src['.name'];
+      const pfx =
+        src.prefix_nodes === '0' ? '' : String(src.node_prefix || '').trim();
+      if (pfx) prefixSet.add(pfx);
       const stype = String(src.source_type || 'subscription').toLowerCase();
       if (DPI_SOURCE_TYPES.has(stype)) return;
+
+      if (stype === 'subscription' && src.url) {
+        const u = String(src.url).trim();
+        if (u) {
+          if (!urlToSources.has(u)) urlToSources.set(u, []);
+          urlToSources.get(u).push({ sid, prefix: pfx });
+        }
+      }
+
       const sname = String(src.name || src['.name'] || '').trim();
       asArray(src.proxy_links || src.selector_proxy_links).forEach((link) => {
         const lname =
           (typeof main.getProxyUrlName === 'function' &&
             main.getProxyUrlName(link)) ||
           link;
-        if (lname && !serverMap.has(lname)) {
-          serverMap.set(lname, lname);
+        const m = String(link || '').match(/^([a-z0-9+-]+):\/\//i);
+        const lproto = m ? m[1].toLowerCase() : '';
+        if (lname) {
+          upsertServer(poolServerName(lname, pfx), {
+            proto: lproto,
+            prefix: pfx,
+            sourceId: sid,
+          });
         }
       });
       if (stype !== 'subscription' && stype !== 'proxy_links' && sname) {
-        const badge = stype.toUpperCase();
-        if (!serverMap.has(sname)) {
-          serverMap.set(sname, `${sname} [${badge}]`);
-        }
+        upsertServer(sname, {
+          proto: stype,
+          prefix: pfx,
+          sourceId: sid,
+        });
       }
     });
 
+    // 1. Add all unfiltered servers from /etc/tachyon/subscription-cache
+    (subCaches || []).forEach((sc) => {
+      const matchedSources = (sc.url && urlToSources.get(sc.url)) || [
+        { sid: '', prefix: '' },
+      ];
+      (sc.outbounds || []).forEach((ob) => {
+        if (!ob || typeof ob !== 'object') return;
+        const rawTag = String(ob.tag || ob.name || '').trim();
+        if (!rawTag) return;
+        const proto = String(ob.type || '').toLowerCase();
+        if (proto === 'urltest' || proto === 'selector' || proto === 'direct')
+          return;
+        const trans = String(
+          (ob.transport && ob.transport.type) || 'tcp',
+        ).toLowerCase();
+        const sec =
+          ob.tls && ob.tls.enabled
+            ? ob.tls.reality && ob.tls.reality.enabled
+              ? 'reality'
+              : 'tls'
+            : 'none';
+        const port = String(ob.server_port || ob.port || '');
+
+        matchedSources.forEach((ms) => {
+          const cleanName = poolServerName(rawTag, ms.prefix);
+          upsertServer(cleanName, {
+            proto,
+            trans,
+            sec,
+            port,
+            prefix: ms.prefix,
+            sourceId: ms.sid,
+          });
+        });
+      });
+    });
+
+    // 2. Also merge servers and metadata from section-cache
     caches.forEach((c) => {
       const meta = (c && c.outboundMetadata) || {};
       const groups = (c && c.urltestGroups) || {};
@@ -181,23 +385,31 @@ function loadGlobalPoolChoices() {
       const countries = meta.countries || {};
       const protocols = meta.protocols || {};
       const transports = meta.transports || {};
+      const securities = meta.securities || {};
+      const ports = meta.ports || {};
       const prefixes = meta.prefixes || {};
 
       Object.entries(names).forEach(([tag, rawName]) => {
         if (groups[tag] || pgroups[tag] || hiddenSet.has(tag)) return;
-        const name = poolServerName(rawName, prefixes[tag]);
+        const pfx = String(prefixes[tag] || '').trim();
+        const name = poolServerName(rawName, pfx);
         if (!name) return;
-        const proto = String(protocols[tag] || '').toUpperCase();
-        if (proto === 'URLTEST' || proto === 'SELECTOR') return;
-        const trans = String(transports[tag] || '').toUpperCase();
-        const badge =
-          proto && trans && proto !== trans
-            ? `${proto}+${trans}`
-            : proto || trans;
-        const label = badge ? `${name} [${badge}]` : name;
-        if (!serverMap.has(name)) {
-          serverMap.set(name, label);
-        }
+        const proto = String(protocols[tag] || '').toLowerCase();
+        if (proto === 'urltest' || proto === 'selector') return;
+        const trans = String(transports[tag] || '').toLowerCase();
+        const sec = String(securities[tag] || '').toLowerCase();
+        const port = String(ports[tag] || '');
+        const country = String(countries[tag] || '')
+          .trim()
+          .toUpperCase();
+        upsertServer(name, {
+          proto,
+          trans,
+          sec,
+          port,
+          prefix: pfx,
+          country,
+        });
       });
 
       Object.values(countries).forEach((cc) => {
@@ -213,8 +425,11 @@ function loadGlobalPoolChoices() {
       });
     });
 
-    const servers = Array.from(serverMap.entries())
-      .map(([value, label]) => ({ value, label }))
+    const servers = Array.from(serverMap.values())
+      .map((s) => ({
+        ...s,
+        sourceIds: Array.from(s.sourceIds),
+      }))
       .sort((a, b) => a.label.localeCompare(b.label));
 
     const countryMap = new Map(COMMON_COUNTRIES);
@@ -229,6 +444,110 @@ function loadGlobalPoolChoices() {
 
     const prefixes = Array.from(prefixSet).filter(Boolean);
     return { servers, countries, prefixes };
+  });
+}
+
+function portMatchesSpec(portStr, specList) {
+  const p = Number(portStr);
+  if (!portStr || !Number.isFinite(p)) return false;
+  return specList.some((spec) => {
+    const s = String(spec || '').trim();
+    if (!s) return false;
+    const rangeMatch = s.match(/^(\d+)\s*-\s*(\d+)$/);
+    if (rangeMatch) {
+      const lo = Number(rangeMatch[1]);
+      const hi = Number(rangeMatch[2]);
+      return p >= Math.min(lo, hi) && p <= Math.max(lo, hi);
+    }
+    return Number(s) === p;
+  });
+}
+
+function filterPoolServersForGroup(poolServers, grp) {
+  const list = Array.isArray(poolServers) ? poolServers : [];
+  if (!grp) return list;
+  const mode = String(grp.filter_mode || 'mixed').toLowerCase();
+  const srcRefs = asArray(grp.source_refs);
+
+  const incPfx = asArray(grp.include_prefixes).map((s) => s.toLowerCase());
+  const excPfx = asArray(grp.exclude_prefixes).map((s) => s.toLowerCase());
+  const incCountries = asArray(grp.include_countries).map((s) =>
+    s.toUpperCase(),
+  );
+  const excCountries = asArray(grp.exclude_countries).map((s) =>
+    s.toUpperCase(),
+  );
+  const incNames = new Set(serverNameList(grp.include_outbounds));
+  const excNames = new Set(serverNameList(grp.exclude_outbounds));
+  const incRx = asArray(grp.include_regex)
+    .map((r) => {
+      try {
+        return new RegExp(r, 'i');
+      } catch (_e) {
+        return null;
+      }
+    })
+    .filter(Boolean);
+  const excRx = asArray(grp.exclude_regex)
+    .map((r) => {
+      try {
+        return new RegExp(r, 'i');
+      } catch (_e) {
+        return null;
+      }
+    })
+    .filter(Boolean);
+  const incProto = asArray(grp.include_protocols).map((s) => s.toLowerCase());
+  const excProto = asArray(grp.exclude_protocols).map((s) => s.toLowerCase());
+  const incTrans = asArray(grp.include_transports).map((s) => s.toLowerCase());
+  const excTrans = asArray(grp.exclude_transports).map((s) => s.toLowerCase());
+  const incSec = asArray(grp.include_securities).map((s) => s.toLowerCase());
+  const excSec = asArray(grp.exclude_securities).map((s) => s.toLowerCase());
+  const incPorts = asArray(grp.include_ports);
+  const excPorts = asArray(grp.exclude_ports);
+
+  return list.filter((srv) => {
+    if (
+      srcRefs.length &&
+      Array.isArray(srv.sourceIds) &&
+      srv.sourceIds.length > 0 &&
+      !srv.sourceIds.some((id) => srcRefs.includes(id))
+    ) {
+      return false;
+    }
+    if (mode === 'disabled') return true;
+
+    const name = String(srv.value || '');
+    const pfx = String(srv.prefix || '').toLowerCase();
+    const cc = String(srv.country || extractFlagCountryIso(name)).toUpperCase();
+    const proto = String(srv.proto || '').toLowerCase();
+    const trans = String(srv.trans || '').toLowerCase();
+    const sec = String(srv.sec || '').toLowerCase();
+    const port = String(srv.port || '');
+
+    if (mode === 'include' || mode === 'mixed') {
+      if (incPfx.length && !incPfx.includes(pfx)) return false;
+      if (incCountries.length && !incCountries.includes(cc)) return false;
+      if (incNames.size && !incNames.has(name)) return false;
+      if (incRx.length && !incRx.some((rx) => rx.test(name))) return false;
+      if (incProto.length && !incProto.includes(proto)) return false;
+      if (incTrans.length && !incTrans.includes(trans)) return false;
+      if (incSec.length && !incSec.includes(sec)) return false;
+      if (incPorts.length && !portMatchesSpec(port, incPorts)) return false;
+    }
+
+    if (mode === 'exclude' || mode === 'mixed') {
+      if (excPfx.length && pfx && excPfx.includes(pfx)) return false;
+      if (excCountries.length && cc && excCountries.includes(cc)) return false;
+      if (excNames.has(name)) return false;
+      if (excRx.length && excRx.some((rx) => rx.test(name))) return false;
+      if (excProto.length && proto && excProto.includes(proto)) return false;
+      if (excTrans.length && trans && excTrans.includes(trans)) return false;
+      if (excSec.length && sec && excSec.includes(sec)) return false;
+      if (excPorts.length && portMatchesSpec(port, excPorts)) return false;
+    }
+
+    return true;
   });
 }
 
@@ -265,6 +584,7 @@ function createChipToggleBar(inputEl, choices, isUpper) {
               if (idx >= 0) list.splice(idx, 1);
               else list.push(norm);
               inputEl.value = list.join(', ');
+              inputEl.dispatchEvent(new Event('input'));
               render();
             },
           },
@@ -282,25 +602,156 @@ function createServerChecklistPicker(inputEl) {
   const container = E('div', {
     style: 'margin-top: 6px; min-width: 0; max-width: 100%;',
   });
+  const summaryBar = E('div', {
+    style:
+      'display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; margin-bottom: 6px;',
+  });
+  const selectedChipsBox = E('div', {
+    style: 'display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px;',
+  });
+  const drawerWrap = E('div', {
+    style:
+      'border: 1px solid rgba(128,128,128,0.25); border-radius: 8px; padding: 8px; background: rgba(15, 23, 42, 0.25);',
+  });
+  const searchRow = E('div', {
+    style:
+      'display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 6px;',
+  });
   const searchInput = E('input', {
     type: 'text',
     class: 'cbi-input-text',
     placeholder: _('Search servers in pool...'),
-    style: 'width: 100%; margin-bottom: 6px; font-size: 12px;',
+    style: 'flex: 1; min-width: 160px; font-size: 12px; margin: 0;',
   });
   const listBox = E('div', {
     style:
-      'max-height: 140px; min-width: 0; max-width: 100%; box-sizing: border-box; overflow-x: hidden; overflow-y: auto; border: 1px solid rgba(128,128,128,0.25); border-radius: 6px; padding: 6px; display: flex; flex-wrap: wrap; gap: 4px;',
+      'max-height: 200px; min-width: 0; max-width: 100%; box-sizing: border-box; overflow-x: hidden; overflow-y: auto; display: flex; flex-direction: column; gap: 3px;',
   });
+
   let allServers = [];
+  let isListOpen = true;
+
+  const setSelectedValues = (arr) => {
+    inputEl.value = arr.join(', ');
+    inputEl.dispatchEvent(new Event('input'));
+  };
+
+  const getMergedServers = () => {
+    const selectedList = serverNameList(inputEl.value);
+    const knownMap = new Map();
+    allServers.forEach((s) => knownMap.set(s.value, s));
+    const merged = [...allServers];
+    selectedList.forEach((name) => {
+      if (!knownMap.has(name)) {
+        merged.unshift({
+          value: name,
+          label: name,
+          proto: '',
+          trans: '',
+          isCustom: true,
+        });
+      }
+    });
+    return merged;
+  };
 
   const renderList = () => {
+    const selectedArr = serverNameList(inputEl.value);
+    const selected = new Set(selectedArr);
+    const merged = getMergedServers();
+
+    summaryBar.innerHTML = '';
+    const countBadge = E(
+      'span',
+      {
+        style: `font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; ${
+          selected.size > 0
+            ? 'background: rgba(139, 92, 246, 0.22); color: #c4b5fd; border: 1px solid rgba(139, 92, 246, 0.45);'
+            : 'opacity: 0.72;'
+        }`,
+      },
+      selected.size > 0
+        ? `${_('Selected servers')}: ${selected.size} / ${merged.length || selected.size}`
+        : `${_('Selected servers')}: 0 (${_('Pool')}: ${merged.length})`,
+    );
+
+    const rightBtns = E('div', { style: 'display: flex; gap: 6px;' });
+    if (selected.size > 0) {
+      rightBtns.appendChild(
+        E(
+          'button',
+          {
+            type: 'button',
+            class: 'btn cbi-button',
+            style: 'padding: 2px 8px; font-size: 11px; line-height: 1.4;',
+            click: () => {
+              setSelectedValues([]);
+              renderList();
+            },
+          },
+          _('Clear all'),
+        ),
+      );
+    }
+    rightBtns.appendChild(
+      E(
+        'button',
+        {
+          type: 'button',
+          class: 'btn cbi-button',
+          style: 'padding: 2px 8px; font-size: 11px; line-height: 1.4;',
+          click: () => {
+            isListOpen = !isListOpen;
+            drawerWrap.style.display = isListOpen ? '' : 'none';
+            renderList();
+          },
+        },
+        isListOpen
+          ? `▴ ${_('Hide server list')} (${merged.length})`
+          : `▾ ${_('Choose from server list')} (${merged.length})`,
+      ),
+    );
+    summaryBar.appendChild(countBadge);
+    summaryBar.appendChild(rightBtns);
+
+    selectedChipsBox.innerHTML = '';
+    if (selectedArr.length > 0) {
+      selectedChipsBox.style.display = 'flex';
+      selectedArr.forEach((name) => {
+        selectedChipsBox.appendChild(
+          E(
+            'button',
+            {
+              type: 'button',
+              class: 'btn cbi-button',
+              title: _('Click to remove server from selection'),
+              style:
+                'padding: 2px 8px; font-size: 11px; line-height: 1.35; border-radius: 999px; background: rgba(139, 92, 246, 0.24); border-color: #8b5cf6; color: #ede9fe; font-weight: 600; display: inline-flex; align-items: center; gap: 5px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;',
+              click: () => {
+                const next = serverNameList(inputEl.value).filter(
+                  (x) => x !== name,
+                );
+                setSelectedValues(next);
+                renderList();
+              },
+            },
+            [
+              E('span', {}, `✓ ${name}`),
+              E('span', { style: 'opacity: 0.75; font-weight: 700;' }, '×'),
+            ],
+          ),
+        );
+      });
+    } else {
+      selectedChipsBox.style.display = 'none';
+    }
+
     listBox.innerHTML = '';
-    if (!allServers.length) {
+    if (!merged.length) {
       listBox.appendChild(
         E(
           'span',
-          { style: 'font-size: 11px; opacity: 0.65;' },
+          { style: 'font-size: 11px; opacity: 0.65; padding: 4px;' },
           _(
             'No cached servers found yet — enter server names above or update subscriptions.',
           ),
@@ -308,48 +759,146 @@ function createServerChecklistPicker(inputEl) {
       );
       return;
     }
+
     const q = searchInput.value.trim().toLowerCase();
-    const selected = new Set(serverNameList(inputEl.value));
     const filtered = q
-      ? allServers.filter(
+      ? merged.filter(
           (s) =>
             s.label.toLowerCase().includes(q) ||
             s.value.toLowerCase().includes(q),
         )
-      : allServers;
+      : merged;
 
-    filtered.slice(0, 120).forEach((srv) => {
+    // Sort selected servers to top when no search query, or keep natural order?
+    // Keeping selected highlighted with checkbox makes them easy to spot, and we also show selected chips at top!
+    filtered.slice(0, 200).forEach((srv) => {
       const active = selected.has(srv.value);
+      const cb = E('input', {
+        type: 'checkbox',
+        style: 'margin: 0; cursor: pointer; flex-shrink: 0;',
+      });
+      cb.checked = active;
+
+      const protoBadge =
+        srv.proto || srv.trans
+          ? E(
+              'span',
+              {
+                style:
+                  'font-size: 10px; padding: 1px 6px; border-radius: 4px; background: rgba(148, 163, 184, 0.16); color: #cbd5e1; flex-shrink: 0; font-family: monospace;',
+              },
+              [srv.proto, srv.trans]
+                .filter(Boolean)
+                .map((x) => String(x).toUpperCase())
+                .filter((v, i, a) => a.indexOf(v) === i)
+                .join('+'),
+            )
+          : null;
+
+      const pfxBadge = srv.prefix
+        ? E(
+            'span',
+            {
+              style:
+                'font-size: 10px; padding: 1px 6px; border-radius: 4px; background: rgba(56, 189, 248, 0.16); color: #7dd3fc; flex-shrink: 0;',
+            },
+            srv.prefix,
+          )
+        : null;
+
+      const toggleSrv = (ev) => {
+        if (ev) ev.stopPropagation();
+        const cur = serverNameList(inputEl.value);
+        const idx = cur.indexOf(srv.value);
+        if (idx >= 0) cur.splice(idx, 1);
+        else cur.push(srv.value);
+        setSelectedValues(cur);
+        renderList();
+      };
+
+      cb.addEventListener('click', toggleSrv);
+
       listBox.appendChild(
         E(
-          'button',
+          'div',
           {
-            type: 'button',
-            class: 'btn cbi-button',
-            style: `padding: 2px 7px; font-size: 11px; line-height: 1.35; border-radius: 6px; max-width: 100%; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; ${
-              active
-                ? 'background: rgba(139, 92, 246,0.22); border-color: #8b5cf6; font-weight: 600;'
-                : 'opacity: 0.82;'
-            }`,
-            click: () => {
-              const cur = serverNameList(inputEl.value);
-              const idx = cur.indexOf(srv.value);
-              if (idx >= 0) cur.splice(idx, 1);
-              else cur.push(srv.value);
-              inputEl.value = cur.join(', ');
-              renderList();
-            },
+            style: `display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 8px; border-radius: 6px; cursor: pointer; user-select: none; border: 1px solid ${
+              active ? 'rgba(139, 92, 246, 0.55)' : 'rgba(148, 163, 184, 0.12)'
+            }; background: ${
+              active ? 'rgba(139, 92, 246, 0.18)' : 'rgba(30, 41, 59, 0.35)'
+            };`,
+            click: toggleSrv,
           },
-          srv.label,
+          [
+            E(
+              'div',
+              {
+                style:
+                  'display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1;',
+              },
+              [
+                cb,
+                E(
+                  'span',
+                  {
+                    style: `font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; ${
+                      active ? 'font-weight: 600; color: #f8fafc;' : ''
+                    }`,
+                  },
+                  srv.value,
+                ),
+              ],
+            ),
+            E(
+              'div',
+              {
+                style:
+                  'display: flex; align-items: center; gap: 4px; flex-shrink: 0;',
+              },
+              [pfxBadge, protoBadge].filter(Boolean),
+            ),
+          ],
         ),
       );
     });
   };
 
+  const selectFilteredBtn = E(
+    'button',
+    {
+      type: 'button',
+      class: 'btn cbi-button',
+      style: 'padding: 2px 8px; font-size: 11px; line-height: 1.4;',
+      click: () => {
+        const q = searchInput.value.trim().toLowerCase();
+        const merged = getMergedServers();
+        const filtered = q
+          ? merged.filter(
+              (s) =>
+                s.label.toLowerCase().includes(q) ||
+                s.value.toLowerCase().includes(q),
+            )
+          : merged;
+        const cur = new Set(serverNameList(inputEl.value));
+        filtered.forEach((s) => cur.add(s.value));
+        setSelectedValues(Array.from(cur));
+        renderList();
+      },
+    },
+    _('Select matching'),
+  );
+
   searchInput.addEventListener('input', renderList);
   inputEl.addEventListener('input', renderList);
-  container.appendChild(searchInput);
-  container.appendChild(listBox);
+  searchRow.appendChild(searchInput);
+  searchRow.appendChild(selectFilteredBtn);
+  drawerWrap.appendChild(searchRow);
+  drawerWrap.appendChild(listBox);
+
+  container.appendChild(summaryBar);
+  container.appendChild(selectedChipsBox);
+  container.appendChild(drawerWrap);
+  renderList();
 
   return {
     node: container,
@@ -756,6 +1305,33 @@ function showOutboundGroupModal(existingId, onSaved) {
     style: 'width: 100%;',
   });
 
+  const usedSectionIds = existingId
+    ? (uci.sections(UCI_PACKAGE, 'section') || [])
+        .filter(
+          (s) =>
+            s['.name'] && asArray(s.outbound_group_refs).includes(existingId),
+        )
+        .map((s) => s['.name'])
+    : [];
+
+  const secRefsInput = E('input', {
+    type: 'text',
+    class: 'cbi-input-text',
+    value: usedSectionIds.join(', '),
+    placeholder: _(
+      'Optional: select routing Sections that should use this group',
+    ),
+    style: 'width: 100%;',
+  });
+
+  const sectionChoices = (uci.sections(UCI_PACKAGE, 'section') || [])
+    .filter((s) => s['.name'])
+    .map((s) => ({
+      value: s['.name'],
+      label: s.label || s.name || s['.name'],
+    }));
+  const secChips = createChipToggleBar(secRefsInput, sectionChoices, false);
+
   const sourceChoices = (uci.sections(UCI_PACKAGE, 'outbound_source') || [])
     .filter(
       (s) =>
@@ -863,6 +1439,14 @@ function showOutboundGroupModal(existingId, onSaved) {
           _('Unique identifier (letters, digits, underscores).'),
         ),
         fieldRow(_('Display Name'), nameInput),
+        fieldRow(
+          _('Used in Sections'),
+          secRefsInput,
+          _(
+            'Click sections below to attach this reusable server group to routing Sections.',
+          ),
+          secChips.bar,
+        ),
         fieldRow(
           _('Source Pool References'),
           srcRefsInput,
@@ -1038,6 +1622,11 @@ function showOutboundGroupModal(existingId, onSaved) {
                   else uci.unset(UCI_PACKAGE, rawId, key);
                 };
 
+                updateSectionsRef(
+                  'outbound_group_refs',
+                  rawId,
+                  secRefsInput.value,
+                );
                 setListOrUnset('source_refs', srcRefsInput.value, false);
                 setCsvListOrUnset('include_prefixes', incPfxInput.value);
                 setCsvListOrUnset('exclude_prefixes', excPfxInput.value);
@@ -1157,6 +1746,32 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
 
   // Layer 2: Outbound Server Groups panel
   const groupsListWrap = E('div', { class: 'tachyon-studio-groups-grid' });
+  let cachedPoolServers = [];
+  const expandedGroupIds = new Set();
+  let draggedGroupId = null;
+
+  const refreshPoolAndRender = () => {
+    loadGlobalPoolChoices()
+      .then((pool) => {
+        cachedPoolServers = (pool && pool.servers) || [];
+        renderGroupsRows();
+      })
+      .catch(() => {
+        renderGroupsRows();
+      });
+  };
+
+  function moveGroup(fromId, toId) {
+    if (!fromId || !toId || fromId === toId) return;
+    uci.move(UCI_PACKAGE, fromId, toId);
+    renderGroupsRows();
+    Promise.resolve(uci.save())
+      .then(() => {
+        if (ui && ui.changes && typeof ui.changes.init === 'function')
+          ui.changes.init();
+      })
+      .catch(() => {});
+  }
 
   function renderGroupsRows() {
     groupsListWrap.innerHTML = '';
@@ -1180,60 +1795,292 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
       return;
     }
 
-    groups.forEach((g) => {
+    groups.forEach((g, idx) => {
       const gid = g['.name'];
-      groupsListWrap.appendChild(
-        E(
-          'div',
-          {
-            class: 'tachyon-studio-card tachyon-studio-card--group is-enabled',
+      const isExpanded = expandedGroupIds.has(gid);
+      const matchedServers = filterPoolServersForGroup(cachedPoolServers, g);
+      const usedSections = (uci.sections(UCI_PACKAGE, 'section') || [])
+        .filter(
+          (s) => s['.name'] && asArray(s.outbound_group_refs).includes(gid),
+        )
+        .map((s) => ({
+          id: s['.name'],
+          name: s.label || s.name || s['.name'],
+        }));
+      const usedBalancers = (uci.sections(UCI_PACKAGE, 'balancer') || [])
+        .filter(
+          (b) =>
+            b['.name'] &&
+            (asArray(b.group_refs).includes(gid) ||
+              asArray(b.outbound_group_levels).includes(gid)),
+        )
+        .map((b) => ({
+          id: b['.name'],
+          name: b.name || b.label || b['.name'],
+        }));
+
+      const sectionChips = [];
+      usedSections.forEach((u) => {
+        sectionChips.push(
+          E(
+            'span',
+            {
+              class: 'tachyon-studio-chip tachyon-studio-chip--section',
+              title: `${_('Used in Section')}: ${u.name}`,
+            },
+            u.name,
+          ),
+        );
+      });
+      usedBalancers.forEach((b) => {
+        sectionChips.push(
+          E(
+            'span',
+            {
+              class: 'tachyon-studio-chip tachyon-studio-chip--balancer',
+              title: `${_('Used in Balancer')}: ${b.name}`,
+            },
+            [
+              typeof main !== 'undefined' &&
+              typeof main.renderScaleIcon === 'function'
+                ? main.renderScaleIcon(11)
+                : null,
+              E('span', {}, b.name),
+            ].filter(Boolean),
+          ),
+        );
+      });
+      if (!sectionChips.length) {
+        sectionChips.push(
+          E(
+            'span',
+            { class: 'tachyon-studio-chip tachyon-studio-chip--muted' },
+            _('In pool'),
+          ),
+        );
+      }
+
+      const chevronBtn = E(
+        'button',
+        {
+          type: 'button',
+          class: 'tachyon-studio-action-btn',
+          title: _('Show matching servers'),
+          style: 'padding: 4px 8px; font-size: 12px;',
+          click: (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            if (expandedGroupIds.has(gid)) expandedGroupIds.delete(gid);
+            else expandedGroupIds.add(gid);
+            renderGroupsRows();
           },
-          [
-            E('div', { class: 'tachyon-studio-card__head' }, [
-              E('div', { class: 'tachyon-studio-card__identity' }, [
+        },
+        isExpanded ? '▴' : '▾',
+      );
+
+      const inspectorEl = E(
+        'div',
+        {
+          class: 'tachyon-studio-source-inspector',
+          style: isExpanded
+            ? 'display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(148, 163, 184, 0.16);'
+            : 'display: none;',
+          click: (ev) => ev.stopPropagation(),
+        },
+        [
+          E(
+            'div',
+            {
+              style:
+                'display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;',
+            },
+            [
+              E(
+                'span',
+                { style: 'font-size: 12px; font-weight: 600; opacity: 0.85;' },
+                `${_('Matching servers in pool')} (${matchedServers.length}):`,
+              ),
+              E(
+                'span',
+                { style: 'font-size: 11px; opacity: 0.7;' },
+                summarizeOutboundGroup(g),
+              ),
+            ],
+          ),
+          matchedServers.length > 0
+            ? E(
+                'div',
+                {
+                  style:
+                    'display: flex; flex-wrap: wrap; gap: 5px; max-height: 180px; overflow-y: auto; padding: 4px 0;',
+                },
+                matchedServers.map((srv) =>
+                  E(
+                    'span',
+                    {
+                      class: 'tachyon-studio-chip tachyon-studio-chip--source',
+                      style: 'font-size: 11px; padding: 3px 8px;',
+                    },
+                    srv.label || srv.value,
+                  ),
+                ),
+              )
+            : E(
+                'div',
+                { style: 'font-size: 12px; opacity: 0.68;' },
+                _(
+                  'No servers in the cached pool currently match these group filters.',
+                ),
+              ),
+        ],
+      );
+
+      const orderControls = E(
+        'div',
+        {
+          class: 'tachyon-studio-order',
+          click: (ev) => ev.stopPropagation(),
+        },
+        [
+          E(
+            'span',
+            {
+              class: 'tachyon-studio-order__grip',
+              title: _('Drag to reorder'),
+            },
+            '⋮⋮',
+          ),
+          E('span', { class: 'tachyon-studio-order__idx' }, `#${idx + 1}`),
+          E('div', { class: 'tachyon-studio-order__arrows' }, [
+            E(
+              'button',
+              {
+                type: 'button',
+                class: 'tachyon-studio-order__btn',
+                disabled: idx === 0 ? 'disabled' : null,
+                title: _('Move up'),
+                click: (ev) => {
+                  ev.preventDefault();
+                  ev.stopPropagation();
+                  if (idx > 0) moveGroup(gid, groups[idx - 1]['.name']);
+                },
+              },
+              '↑',
+            ),
+            E(
+              'button',
+              {
+                type: 'button',
+                class: 'tachyon-studio-order__btn',
+                disabled: idx === groups.length - 1 ? 'disabled' : null,
+                title: _('Move down'),
+                click: (ev) => {
+                  ev.preventDefault();
+                  ev.stopPropagation();
+                  if (idx < groups.length - 1)
+                    moveGroup(gid, groups[idx + 1]['.name']);
+                },
+              },
+              '↓',
+            ),
+          ]),
+        ],
+      );
+
+      const card = E(
+        'div',
+        {
+          class: `tachyon-studio-card tachyon-studio-card--group is-enabled ${
+            isExpanded ? 'is-expanded' : ''
+          }`,
+          draggable: 'true',
+          style: 'cursor: pointer;',
+          click: () => {
+            if (expandedGroupIds.has(gid)) expandedGroupIds.delete(gid);
+            else expandedGroupIds.add(gid);
+            renderGroupsRows();
+          },
+        },
+        [
+          E('div', { class: 'tachyon-studio-card__head' }, [
+            E('div', { class: 'tachyon-studio-card__identity' }, [
+              orderControls,
+              E(
+                'div',
+                {
+                  class:
+                    'tachyon-studio-card__icon tachyon-studio-card__icon--proxy',
+                },
+                [main.renderFolderIcon(20)],
+              ),
+              E('div', { class: 'tachyon-studio-card__title-wrap' }, [
+                E('div', { class: 'tachyon-studio-card__title-row' }, [
+                  E(
+                    'span',
+                    { class: 'tachyon-studio-card__title' },
+                    g.name || g.label || gid,
+                  ),
+                  E(
+                    'span',
+                    {
+                      class: 'tachyon-studio-badge tachyon-studio-badge--proto',
+                    },
+                    _('FILTER GROUP'),
+                  ),
+                  E(
+                    'span',
+                    {
+                      class:
+                        'tachyon-studio-badge tachyon-studio-badge--transport',
+                    },
+                    `${_('Servers')}: ${matchedServers.length}`,
+                  ),
+                ]),
+                E(
+                  'div',
+                  { class: 'tachyon-studio-card__sid' },
+                  summarizeOutboundGroup(g),
+                ),
                 E(
                   'div',
                   {
-                    class:
-                      'tachyon-studio-card__icon tachyon-studio-card__icon--proxy',
+                    style:
+                      'display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-top: 5px;',
                   },
-                  [main.renderFolderIcon(20)],
-                ),
-                E('div', { class: 'tachyon-studio-card__title-wrap' }, [
-                  E('div', { class: 'tachyon-studio-card__title-row' }, [
-                    E(
-                      'span',
-                      { class: 'tachyon-studio-card__title' },
-                      g.name || g.label || gid,
-                    ),
+                  [
                     E(
                       'span',
                       {
-                        class:
-                          'tachyon-studio-badge tachyon-studio-badge--proto',
+                        style:
+                          'font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.65; margin-right: 2px;',
                       },
-                      'FILTER GROUP',
+                      `${_('Used in sections')}:`,
                     ),
-                  ]),
-                  E(
-                    'div',
-                    { class: 'tachyon-studio-card__sid' },
-                    summarizeOutboundGroup(g),
-                  ),
-                ]),
+                    ...sectionChips,
+                  ],
+                ),
               ]),
-              E('div', { class: 'tachyon-studio-card__footer' }, [
+            ]),
+            E(
+              'div',
+              {
+                class: 'tachyon-studio-card__footer',
+                click: (ev) => ev.stopPropagation(),
+              },
+              [
                 E(
                   'button',
                   {
                     type: 'button',
                     class:
                       'tachyon-studio-action-btn tachyon-studio-action-btn--primary',
-                    click: () =>
+                    click: (ev) => {
+                      ev.stopPropagation();
                       showOutboundGroupModal(gid, () => {
-                        renderGroupsRows();
+                        refreshPoolAndRender();
                         refreshProberGroupOptions();
-                      }),
+                      });
+                    },
                   },
                   [
                     typeof main.renderSettingsIcon === 'function'
@@ -1249,7 +2096,8 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
                     class:
                       'tachyon-studio-action-btn tachyon-studio-action-btn--danger',
                     title: _('Delete'),
-                    click: () => {
+                    click: (ev) => {
+                      ev.stopPropagation();
                       updateSectionsRef('outbound_group_refs', gid, []);
                       updateBalancersRef('group_refs', gid, []);
                       updateBalancersRef('outbound_group_levels', gid, []);
@@ -1270,11 +2118,43 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
                   },
                   [main.renderTrashIcon(13)],
                 ),
-              ]),
-            ]),
-          ],
-        ),
+                chevronBtn,
+              ],
+            ),
+          ]),
+          inspectorEl,
+        ],
       );
+
+      card.addEventListener('dragstart', (ev) => {
+        draggedGroupId = gid;
+        card.classList.add('is-dragging');
+        if (ev.dataTransfer) {
+          ev.dataTransfer.effectAllowed = 'move';
+          ev.dataTransfer.setData('text/plain', gid);
+        }
+      });
+      card.addEventListener('dragend', () => {
+        draggedGroupId = null;
+        card.classList.remove('is-dragging');
+      });
+      card.addEventListener('dragover', (ev) => {
+        if (!draggedGroupId || draggedGroupId === gid) return;
+        ev.preventDefault();
+        card.classList.add('is-drop-target');
+      });
+      card.addEventListener('dragleave', () => {
+        card.classList.remove('is-drop-target');
+      });
+      card.addEventListener('drop', (ev) => {
+        ev.preventDefault();
+        card.classList.remove('is-drop-target');
+        if (draggedGroupId && draggedGroupId !== gid) {
+          moveGroup(draggedGroupId, gid);
+        }
+      });
+
+      groupsListWrap.appendChild(card);
     });
   }
 
@@ -1306,7 +2186,7 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
           class: 'tachyon-studio-btn tachyon-studio-btn--primary',
           click: () =>
             showOutboundGroupModal(null, () => {
-              renderGroupsRows();
+              refreshPoolAndRender();
               refreshProberGroupOptions();
             }),
         },
@@ -1540,7 +2420,7 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
     probeResults,
   ]);
 
-  renderGroupsRows();
+  refreshPoolAndRender();
   refreshProberGroupOptions();
 
   wrapper.appendChild(groupsSection);
@@ -1930,6 +2810,60 @@ function createOutboundsContent(section) {
     this.write(sectionId, []);
   };
 
+  o = section.taboption(
+    'general',
+    form.DynamicList,
+    '_target_groups',
+    _('Used in Outbound Groups'),
+    _(
+      'Optional: select which Reusable Outbound Server Groups include this connection source in their pool.',
+    ),
+  );
+  o.modalonly = true;
+  o.load = function (sectionId) {
+    this.keylist = [];
+    this.vallist = [];
+    const used = [];
+    (uci.sections(UCI_PACKAGE, 'outbound_group') || []).forEach((g) => {
+      const gid = g['.name'];
+      if (!gid) return;
+      this.value(gid, g.name || g.label || gid);
+      if (asArray(g.source_refs).includes(sectionId)) {
+        used.push(gid);
+      }
+    });
+    return used;
+  };
+  o.cfgvalue = function (sectionId) {
+    const used = [];
+    (uci.sections(UCI_PACKAGE, 'outbound_group') || []).forEach((g) => {
+      const gid = g['.name'];
+      if (gid && asArray(g.source_refs).includes(sectionId)) {
+        used.push(gid);
+      }
+    });
+    return used;
+  };
+  o.write = function (sectionId, value) {
+    const want = new Set(asArray(value));
+    (uci.sections(UCI_PACKAGE, 'outbound_group') || []).forEach((g) => {
+      const gid = g['.name'];
+      if (!gid) return;
+      const cur = asArray(g.source_refs);
+      const has = cur.includes(sectionId);
+      if (want.has(gid) && !has) {
+        uci.set(UCI_PACKAGE, gid, 'source_refs', [...cur, sectionId]);
+      } else if (!want.has(gid) && has) {
+        const next = cur.filter((id) => id !== sectionId);
+        if (next.length) uci.set(UCI_PACKAGE, gid, 'source_refs', next);
+        else uci.unset(UCI_PACKAGE, gid, 'source_refs');
+      }
+    });
+  };
+  o.remove = function (sectionId) {
+    this.write(sectionId, []);
+  };
+
   o = section.taboption('general', form.DummyValue, '_summary', _('Details'));
   o.modalonly = false;
   o.rawhtml = true;
@@ -2053,6 +2987,65 @@ function createOutboundsContent(section) {
       wrap.appendChild(btn);
     });
     return wrap;
+  };
+
+  o = section.taboption(
+    'general',
+    form.Flag,
+    'subscription_update_enabled',
+    _('Auto-update Subscription'),
+    _('Update this subscription automatically'),
+  );
+  o.modalonly = true;
+  o.default = '1';
+  o.depends('source_type', 'subscription');
+
+  o = section.taboption(
+    'general',
+    form.Value,
+    'subscription_update_interval',
+    _('Update Interval'),
+    _('Use sing-box duration format like 1d, 12h or 30m'),
+  );
+  o.modalonly = true;
+  o.default = '1h';
+  o.placeholder = '1h';
+  o.depends({
+    source_type: 'subscription',
+    subscription_update_enabled: '1',
+  });
+
+  o = section.taboption(
+    'general',
+    form.Flag,
+    'download_via_proxy_enabled',
+    _('Download Subscription via Proxy Section'),
+    _('Download subscriptions via the selected section'),
+  );
+  o.modalonly = true;
+  o.default = '0';
+  o.depends('source_type', 'subscription');
+
+  o = section.taboption(
+    'general',
+    form.ListValue,
+    'download_via_proxy_section',
+    _('Proxy Section for Download'),
+    _('Select a section for downloading this subscription'),
+  );
+  o.modalonly = true;
+  o.depends({
+    source_type: 'subscription',
+    download_via_proxy_enabled: '1',
+  });
+  o.load = function (sectionId) {
+    this.keylist = [];
+    this.vallist = [];
+    (uci.sections(UCI_PACKAGE, 'section') || []).forEach((s) => {
+      const sid = s['.name'];
+      if (sid) this.value(sid, s.label || s.name || sid);
+    });
+    return uci.get(UCI_PACKAGE, sectionId, 'download_via_proxy_section');
   };
 
   // ── 2. Proxy Share Links ──────────────────────────────────────────────────
@@ -3791,17 +4784,161 @@ function createOutboundsContent(section) {
   o.placeholder = '9050';
   o.depends('source_type', 'tor');
 
+  const INTERFACE_PRESETS = [
+    ['wg0', 'wg0 (WireGuard)'],
+    ['awg0', 'awg0 (AmneziaWG)'],
+    ['tun0', 'tun0 (OpenVPN / TUN)'],
+    ['tailscale0', 'tailscale0 (Tailscale)'],
+    ['ovpn0', 'ovpn0 (OpenVPN)'],
+    ['wan', 'wan (WAN)'],
+    ['pppoe-wan', 'pppoe-wan (PPPoE WAN)'],
+    ['eth0', 'eth0 (Ethernet 0)'],
+    ['eth1', 'eth1 (Ethernet 1)'],
+    ['br-lan', 'br-lan (LAN Bridge)'],
+  ];
+
+  function collectRouterInterfaceChoices(devices = []) {
+    const map = new Map();
+    (devices || []).forEach((dev) => {
+      if (!dev || typeof dev.getName !== 'function') return;
+      const name = String(dev.getName() || '').trim();
+      if (!name || name === 'lo') return;
+      const type =
+        typeof dev.getType === 'function' ? String(dev.getType() || '') : '';
+      if (type === 'alias') return;
+      const i18n =
+        typeof dev.getI18n === 'function' ? String(dev.getI18n() || '') : '';
+      const up = typeof dev.isUp === 'function' && dev.isUp();
+      const status = up ? '●' : '○';
+      map.set(name, `${status} ${name}${i18n ? ` (${i18n})` : ''}`);
+    });
+    try {
+      (uci.sections('network', 'interface') || []).forEach((sec) => {
+        const sname = sec && sec['.name'];
+        const devName = (sec && (sec.device || sec.ifname)) || sname;
+        if (devName && devName !== 'loopback' && devName !== 'lo') {
+          const d = String(devName).trim();
+          if (d && !map.has(d)) {
+            map.set(
+              d,
+              `${d}${sname && sname !== d ? ` (${sname})` : ''}${sec.proto ? ` [${sec.proto}]` : ''}`,
+            );
+          }
+        }
+        if (
+          sname &&
+          sname !== 'loopback' &&
+          sname !== 'lo' &&
+          !map.has(sname)
+        ) {
+          map.set(sname, `${sname}${sec.proto ? ` [${sec.proto}]` : ''}`);
+        }
+      });
+    } catch (_e) {}
+    INTERFACE_PRESETS.forEach(([val, lbl]) => {
+      if (!map.has(val)) {
+        map.set(val, lbl);
+      }
+    });
+    return Array.from(map.entries()).map(([value, label]) => ({
+      value,
+      label,
+    }));
+  }
+
   o = section.taboption(
     'general',
     form.Value,
     'interface_name',
     _('Network Interface Name'),
-    _('e.g. wg0, awg0, tun0, tailscale0'),
+    _(
+      'Select any existing router interface or preset (e.g. wg0, awg0, tun0, tailscale0, wan, eth0, br-lan).',
+    ),
   );
   o.modalonly = true;
   o.placeholder = 'wg0';
   o.depends('source_type', 'interface');
   o.depends('source_type', 'tailscale');
+  INTERFACE_PRESETS.forEach(([val, lbl]) => o.value(val, lbl));
+  o.load = function (sectionId) {
+    const self = this;
+    const populate = (devs) => {
+      self.keylist = [];
+      self.vallist = [];
+      collectRouterInterfaceChoices(devs).forEach((ch) => {
+        self.value(ch.value, ch.label);
+      });
+    };
+    const devPromise =
+      network && typeof network.getDevices === 'function'
+        ? Promise.resolve(network.getDevices()).catch(() => [])
+        : Promise.resolve([]);
+    return devPromise.then((devs) => {
+      populate(devs || []);
+      return uci.get(UCI_PACKAGE, sectionId, 'interface_name') || '';
+    });
+  };
+  const origIfaceRenderWidget = o.renderWidget;
+  o.renderWidget = function (sectionId, optionIndex, cfgvalue) {
+    const self = this;
+    if (!self.keylist || self.keylist.length <= INTERFACE_PRESETS.length) {
+      collectRouterInterfaceChoices([]).forEach((ch) => {
+        if (!self.keylist || !self.keylist.includes(ch.value)) {
+          self.value(ch.value, ch.label);
+        }
+      });
+    }
+    const node = origIfaceRenderWidget.call(
+      this,
+      sectionId,
+      optionIndex,
+      cfgvalue,
+    );
+    const chipRow = E('div', {
+      style: 'display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;',
+    });
+    const renderChips = (choices) => {
+      chipRow.innerHTML = '';
+      choices.forEach((ch) => {
+        chipRow.appendChild(
+          E(
+            'button',
+            {
+              type: 'button',
+              class: 'btn cbi-button',
+              style:
+                'padding:2px 8px;font-size:11px;line-height:1.4;border-radius:999px;',
+              click: (ev) => {
+                ev.preventDefault();
+                setModalFieldValue(
+                  section,
+                  sectionId,
+                  'interface_name',
+                  ch.value,
+                );
+              },
+            },
+            ch.label,
+          ),
+        );
+      });
+    };
+    renderChips(collectRouterInterfaceChoices([]));
+    if (network && typeof network.getDevices === 'function') {
+      Promise.resolve(network.getDevices())
+        .then((devs) => {
+          const choices = collectRouterInterfaceChoices(devs || []);
+          choices.forEach((ch) => {
+            if (!self.keylist || !self.keylist.includes(ch.value)) {
+              self.value(ch.value, ch.label);
+            }
+          });
+          renderChips(choices);
+        })
+        .catch(() => {});
+    }
+    return E('div', {}, [node, chipRow]);
+  };
 
   o = section.taboption(
     'general',
@@ -4174,65 +5311,6 @@ function createOutboundsContent(section) {
   o.depends('source_type', 'desync');
 
   // ── 11. Advanced & Subscription Options Tab ───────────────────────────────
-  o = section.taboption(
-    'advanced',
-    form.Flag,
-    'subscription_update_enabled',
-    _('Auto-update Subscription'),
-    _('Update this subscription automatically'),
-  );
-  o.modalonly = true;
-  o.default = '1';
-  o.depends('source_type', 'subscription');
-
-  o = section.taboption(
-    'advanced',
-    form.Value,
-    'subscription_update_interval',
-    _('Update Interval'),
-    _('Use sing-box duration format like 1d, 12h or 30m'),
-  );
-  o.modalonly = true;
-  o.default = '1h';
-  o.placeholder = '1h';
-  o.depends({
-    source_type: 'subscription',
-    subscription_update_enabled: '1',
-  });
-
-  o = section.taboption(
-    'advanced',
-    form.Flag,
-    'download_via_proxy_enabled',
-    _('Download Subscription via Proxy Section'),
-    _('Download subscriptions via the selected section'),
-  );
-  o.modalonly = true;
-  o.default = '0';
-  o.depends('source_type', 'subscription');
-
-  o = section.taboption(
-    'advanced',
-    form.ListValue,
-    'download_via_proxy_section',
-    _('Proxy Section for Download'),
-    _('Select a section for downloading this subscription'),
-  );
-  o.modalonly = true;
-  o.depends({
-    source_type: 'subscription',
-    download_via_proxy_enabled: '1',
-  });
-  o.load = function (sectionId) {
-    this.keylist = [];
-    this.vallist = [];
-    (uci.sections(UCI_PACKAGE, 'section') || []).forEach((s) => {
-      const sid = s['.name'];
-      if (sid) this.value(sid, s.label || s.name || sid);
-    });
-    return uci.get(UCI_PACKAGE, sectionId, 'download_via_proxy_section');
-  };
-
   o = section.taboption(
     'advanced',
     form.Flag,

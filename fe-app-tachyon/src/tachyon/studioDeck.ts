@@ -4,7 +4,10 @@ import { getProxyUrlTransport } from '../helpers/getProxyUrlTransport';
 import { formatOutboundType } from '../helpers/formatOutboundType';
 import { openConnectionWizardModal } from './connectionWizard';
 import { tr } from './helpers/i18n';
-import { openServerInfoModalForSection } from './tabs/dashboard/inboundServers';
+import {
+  openServerInfoModalForSection,
+  openServerSubscriptionModal,
+} from './tabs/dashboard/inboundServers';
 import {
   renderZapIcon,
   renderShieldIcon,
@@ -37,6 +40,8 @@ import {
   renderPlayIcon,
   renderGamepad2Icon,
   renderLinkIcon,
+  renderActivityIcon,
+  renderAlertTriangleIcon,
   renderCommunityListServiceIcon,
 } from '../icons';
 
@@ -915,15 +920,17 @@ function openStudioCreateModal(
     templateCardsWrap.innerHTML = '';
     templates.forEach((tpl) => {
       const isSelected = tpl.id === selectedTemplate.id;
+      const selectCard = () => {
+        selectedTemplate = tpl;
+        renderTemplateCards();
+      };
       const card = E(
-        'button',
+        'div',
         {
-          type: 'button',
+          role: 'button',
+          tabIndex: 0,
           class: `tachyon-studio-create__tpl-card ${isSelected ? 'is-selected' : ''}`,
-          click: () => {
-            selectedTemplate = tpl;
-            renderTemplateCards();
-          },
+          click: selectCard,
         },
         [
           E('span', { class: 'tachyon-studio-create__tpl-icon' }, [
@@ -935,6 +942,13 @@ function openStudioCreateModal(
           ]),
         ],
       );
+      card.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
+      card.addEventListener('keydown', (ev: KeyboardEvent) => {
+        if (ev.key === 'Enter' || ev.key === ' ') {
+          ev.preventDefault();
+          selectCard();
+        }
+      });
       templateCardsWrap.appendChild(card);
     });
   };
@@ -1156,8 +1170,8 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
     outbound_source: {
       badge: 'GLOBAL SERVER POOL • LAYER 1',
       title: tr(
-        'Пул серверов, подписки и туннели',
-        'Outbound Sources, Subscriptions & Tunnels',
+        'Уровень 1: Пул серверов, подписки и туннели',
+        'Layer 1: Outbound Sources, Subscriptions & Tunnels',
       ),
       subtitle: tr(
         'Единый пул подписок, ссылок VLESS/Hysteria2, туннелей AmneziaWG/WARP и стратегий обхода DPI.',
@@ -1266,6 +1280,223 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
   const toolbarEl = E('div', { class: 'tachyon-studio-toolbar' });
   const bodyEl = E('div', { class: 'tachyon-studio-body' });
 
+  interface SubCacheServerItem {
+    name: string;
+    proto: string;
+    trans: string;
+  }
+  interface SubCacheEntryInfo {
+    mtime: number;
+    servers: SubCacheServerItem[];
+    metadata?: {
+      title?: string;
+      traffic?: {
+        used?: number;
+        total?: number;
+        isUnlimited?: boolean;
+      };
+      expire?: number;
+      webPageUrl?: string;
+      supportUrl?: string;
+      announce?: string;
+    };
+  }
+
+  const subCacheByUrl = new Map<string, SubCacheEntryInfo>();
+  const expandedSourceIds = new Set<string>();
+  const updatingSubTargets = new Set<string>();
+
+  const readFsText = (path: string): Promise<string> => {
+    if (typeof fs === 'undefined' || typeof fs.read !== 'function') {
+      return Promise.resolve('');
+    }
+    return fs
+      .read(path)
+      .catch(() =>
+        typeof (fs as any).read_direct === 'function'
+          ? (fs as any).read_direct(path, 'text')
+          : Promise.resolve(''),
+      )
+      .then((raw: any) => String(raw || ''))
+      .catch(() => '');
+  };
+
+  const loadSubscriptionCacheMap = () => {
+    if (
+      type !== 'outbound_source' ||
+      typeof fs === 'undefined' ||
+      typeof fs.list !== 'function'
+    ) {
+      return Promise.resolve();
+    }
+    const dir = '/etc/tachyon/subscription-cache';
+    return fs
+      .list(dir)
+      .catch(() => [])
+      .then((entries: any[]) => {
+        const list = Array.isArray(entries) ? entries : [];
+        const jsonBases: string[] = [];
+        const urlSet = new Set<string>();
+        const metaSet = new Set<string>();
+        const mtimeMap = new Map<string, number>();
+
+        list.forEach((ent: any) => {
+          const fname = String((ent && ent.name) || '');
+          if (fname.endsWith('.url')) {
+            urlSet.add(fname.slice(0, -4));
+          } else if (fname.endsWith('.metadata.json')) {
+            metaSet.add(fname.slice(0, -14));
+          } else if (
+            fname.endsWith('.json') &&
+            fname.includes('-subscription-')
+          ) {
+            const base = fname.slice(0, -5);
+            jsonBases.push(base);
+            mtimeMap.set(base, Number(ent.mtime || 0));
+          }
+        });
+
+        return Promise.all(
+          jsonBases.map((base) =>
+            (urlSet.has(base)
+              ? readFsText(`${dir}/${base}.url`)
+              : Promise.resolve('')
+            ).then((u) => ({
+              base,
+              url: u.trim(),
+              mtime: mtimeMap.get(base) || 0,
+            })),
+          ),
+        ).then((infos) => {
+          const byUrl = new Map<
+            string,
+            { base: string; url: string; mtime: number }
+          >();
+          infos.forEach((inf) => {
+            if (!inf.url) return;
+            const prev = byUrl.get(inf.url);
+            if (!prev || inf.mtime >= prev.mtime) {
+              byUrl.set(inf.url, inf);
+            }
+          });
+          const chosen = Array.from(byUrl.values());
+          return Promise.all(
+            chosen.map((inf) =>
+              Promise.all([
+                readFsText(`${dir}/${inf.base}.json`),
+                metaSet.has(inf.base)
+                  ? readFsText(`${dir}/${inf.base}.metadata.json`)
+                  : Promise.resolve(''),
+              ]).then(([rawJson, rawMeta]) => {
+                let parsedJson: any = {};
+                let parsedMeta: any = undefined;
+                try {
+                  parsedJson = rawJson ? JSON.parse(rawJson) : {};
+                } catch (_e) {
+                  parsedJson = {};
+                }
+                try {
+                  parsedMeta = rawMeta ? JSON.parse(rawMeta) : undefined;
+                } catch (_e) {
+                  parsedMeta = undefined;
+                }
+
+                const outbounds = Array.isArray(parsedJson?.outbounds)
+                  ? parsedJson.outbounds
+                  : [];
+                const servers: SubCacheServerItem[] = [];
+                outbounds.forEach((ob: any) => {
+                  const name = String(ob?.tag || ob?.name || '').trim();
+                  const proto = String(ob?.type || '').toUpperCase();
+                  if (
+                    !name ||
+                    proto === 'URLTEST' ||
+                    proto === 'SELECTOR' ||
+                    proto === 'DIRECT'
+                  )
+                    return;
+                  const trans = String(
+                    ob?.transport?.type || 'tcp',
+                  ).toUpperCase();
+                  servers.push({ name, proto, trans });
+                });
+
+                subCacheByUrl.set(inf.url, {
+                  mtime: inf.mtime,
+                  servers,
+                  metadata: parsedMeta,
+                });
+              }),
+            ),
+          );
+        });
+      })
+      .then(() => {
+        renderDeck();
+      })
+      .catch(() => {});
+  };
+
+  const triggerSubscriptionUpdate = async (targetSid?: string) => {
+    const key = targetSid || '__all__';
+    if (updatingSubTargets.has(key) || typeof fs === 'undefined') return;
+    updatingSubTargets.add(key);
+    renderDeck();
+
+    try {
+      const args = targetSid
+        ? ['subscription_update_async', targetSid]
+        : ['subscription_update_async'];
+      const execCmd = async (cmdArgs: string[]): Promise<any> => {
+        if (typeof (fs as any).exec_direct === 'function') {
+          const out = await (fs as any).exec_direct(
+            '/usr/bin/tachyon',
+            cmdArgs,
+            'text',
+          );
+          return out ? JSON.parse(out) : null;
+        }
+        const res = await fs.exec('/usr/bin/tachyon', cmdArgs);
+        return res && res.stdout ? JSON.parse(res.stdout) : null;
+      };
+
+      const startRes = await execCmd(args).catch(() => null);
+      const jobId = startRes?.job_id;
+      if (jobId) {
+        for (let i = 0; i < 40; i++) {
+          await new Promise((r) => setTimeout(r, 1500));
+          const st = await execCmd([
+            'subscription_update_status',
+            String(jobId),
+          ]).catch(() => null);
+          if (!st || !st.running) break;
+        }
+      }
+      if (
+        typeof ui !== 'undefined' &&
+        typeof ui.addNotification === 'function'
+      ) {
+        ui.addNotification(
+          null,
+          E(
+            'p',
+            {},
+            targetSid
+              ? tr('Подписка обновлена.', 'Subscription updated.')
+              : tr('Все подписки обновлены.', 'All subscriptions updated.'),
+          ),
+          'info',
+        );
+      }
+    } catch (_e) {
+      // ignore transient RPC errors
+    } finally {
+      updatingSubTargets.delete(key);
+      await loadSubscriptionCacheMap();
+      renderDeck();
+    }
+  };
+
   const renderDeck = () => {
     const sids: string[] =
       typeof sectionRef.cfgsections === 'function'
@@ -1309,6 +1540,68 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
     }) as HTMLInputElement;
 
     const extraButtons: HTMLElement[] = [];
+    if (type === 'server') {
+      extraButtons.push(
+        E(
+          'button',
+          {
+            type: 'button',
+            class: 'tachyon-studio-btn tachyon-studio-btn--ghost',
+            click: () => {
+              if (openServerSubscriptionModal()) {
+                return;
+              }
+              if (
+                sectionRef &&
+                typeof sectionRef.showSubscriptionModal === 'function'
+              ) {
+                sectionRef.showSubscriptionModal();
+                return;
+              }
+              const subBtn = containerEl.querySelector(
+                '.tachyon-server-subscription-btn',
+              ) as HTMLElement | null;
+              if (subBtn) {
+                subBtn.click();
+              }
+            },
+          },
+          [
+            renderQrCodeIcon(14),
+            E(
+              'span',
+              {},
+              tr('Настроить подписку (URL / QR)', 'Configure subscription'),
+            ),
+          ],
+        ),
+      );
+    }
+    if (type === 'outbound_source') {
+      const isUpdatingAll = updatingSubTargets.has('__all__');
+      extraButtons.push(
+        E(
+          'button',
+          {
+            type: 'button',
+            class: 'tachyon-studio-btn tachyon-studio-btn--ghost',
+            disabled: isUpdatingAll ? 'disabled' : null,
+            click: () => {
+              void triggerSubscriptionUpdate();
+            },
+          },
+          [
+            E(
+              'span',
+              {},
+              isUpdatingAll
+                ? tr('↻ Обновление подписок...', '↻ Updating subscriptions...')
+                : tr('↻ Обновить все подписки', '↻ Update All Subscriptions'),
+            ),
+          ],
+        ),
+      );
+    }
     if (type === 'section' || type === 'outbound_source' || type === 'server') {
       extraButtons.push(
         E(
@@ -2037,25 +2330,76 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
       return card;
     }
 
-    // ── CASE 2: OUTBOUND SOURCE ─────────────────────────────────────────────
+    // ── CASE 2: OUTBOUND SOURCE (Two-Layer Compact Row + Expandable Inspector) ─
     if (type === 'outbound_source') {
       const name = raw.name || raw.label || sid;
       const stype = String(raw.source_type || 'subscription').toLowerCase();
+      const isDpiSource = [
+        'desync',
+        'zapret',
+        'zapret2',
+        'byedpi',
+        'wdtt',
+        'olcrtc',
+      ].includes(stype);
       const usedIn = (uci.sections(UCI_PACKAGE, 'section') || [])
         .filter((s: any) => asArray(s.outbound_source_refs).includes(sid))
         .map((s: any) => ({
           id: s['.name'],
           name: s.label || s.name || s['.name'],
         }));
+      const usedInGroups = !isDpiSource
+        ? (uci.sections(UCI_PACKAGE, 'outbound_group') || [])
+            .filter((g: any) => {
+              const grefs = asArray(g.source_refs);
+              return grefs.length === 0 || grefs.includes(sid);
+            })
+            .map((g: any) => ({
+              id: g['.name'],
+              name: g.name || g.label || g['.name'],
+              explicit: asArray(g.source_refs).includes(sid),
+            }))
+        : [];
+
+      const subUrl = String(raw.url || '').trim();
+      const subCache =
+        stype === 'subscription' && subUrl
+          ? subCacheByUrl.get(subUrl)
+          : undefined;
+
+      const formatBytes = (bytes?: number) => {
+        const b = Number(bytes || 0);
+        if (!Number.isFinite(b) || b <= 0) return '0 B';
+        const gb = b / (1024 * 1024 * 1024);
+        if (gb >= 1) return `${gb.toFixed(1)} GB`;
+        const mb = b / (1024 * 1024);
+        return `${mb.toFixed(0)} MB`;
+      };
+
+      const formatUpdatedTime = (epochSec?: number) => {
+        const ts = Number(epochSec || 0);
+        if (!ts || ts <= 0) return '';
+        try {
+          const d = new Date(ts * 1000);
+          return d.toLocaleString([], {
+            day: '2-digit',
+            month: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+          });
+        } catch (_e) {
+          return '';
+        }
+      };
 
       const links = asArray(raw.proxy_links);
       const parsedLinks = extractLinkProtocolsAndTransports(links);
 
       const typeBadges: HTMLElement[] = [];
-      let iconEl: SVGElement = renderRadioIcon(20);
+      let iconEl: SVGElement = renderRadioIcon(18);
       let tone: 'proxy' | 'dpi' | 'bypass' = 'proxy';
       if (stype === 'subscription') {
-        iconEl = renderRadioIcon(20);
+        iconEl = renderRadioIcon(18);
         typeBadges.push(
           E(
             'span',
@@ -2063,8 +2407,63 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
             tr('ПОДПИСКА', 'SUBSCRIPTION'),
           ),
         );
+        if (subCache && subCache.servers.length > 0) {
+          typeBadges.push(
+            E(
+              'span',
+              { class: 'tachyon-studio-badge tachyon-studio-badge--proto' },
+              `${tr('Узлов', 'Nodes')}: ${subCache.servers.length}`,
+            ),
+          );
+        }
+        const autoUpd = raw.subscription_update_enabled !== '0';
+        const updInt = String(raw.subscription_update_interval || '1h').trim();
+        typeBadges.push(
+          E(
+            'span',
+            { class: 'tachyon-studio-badge tachyon-studio-badge--transport' },
+            autoUpd
+              ? `⟳ ${updInt}`
+              : tr('Автообновление: Выкл', 'Auto-update: Off'),
+          ),
+        );
+        if (
+          raw.download_via_proxy_enabled === '1' &&
+          raw.download_via_proxy_section
+        ) {
+          const dlSec = uci.get(
+            UCI_PACKAGE,
+            String(raw.download_via_proxy_section),
+          );
+          const dlLabel =
+            dlSec?.label ||
+            dlSec?.name ||
+            String(raw.download_via_proxy_section);
+          typeBadges.push(
+            E(
+              'span',
+              { class: 'tachyon-studio-badge tachyon-studio-badge--proto' },
+              `${tr('Через', 'Via')}: ${dlLabel}`,
+            ),
+          );
+        }
+        if (subCache?.metadata?.traffic) {
+          const tf = subCache.metadata.traffic;
+          const quotaText = tf.isUnlimited
+            ? '∞'
+            : tf.total
+              ? `${formatBytes(tf.used)} / ${formatBytes(tf.total)}`
+              : formatBytes(tf.used);
+          typeBadges.push(
+            E(
+              'span',
+              { class: 'tachyon-studio-badge tachyon-studio-badge--transport' },
+              [renderActivityIcon(10), E('span', {}, ` ${quotaText}`)],
+            ),
+          );
+        }
       } else if (stype === 'proxy_links') {
-        iconEl = renderLinkIcon(20);
+        iconEl = renderLinkIcon(18);
         typeBadges.push(
           E(
             'span',
@@ -2090,12 +2489,8 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
             ),
           ),
         );
-      } else if (
-        ['desync', 'zapret', 'zapret2', 'byedpi', 'wdtt', 'olcrtc'].includes(
-          stype,
-        )
-      ) {
-        iconEl = renderShieldIcon(20);
+      } else if (isDpiSource) {
+        iconEl = renderShieldIcon(18);
         tone = 'dpi';
         const preset = raw.desync_preset || 'auto';
         typeBadges.push(
@@ -2106,7 +2501,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
           ),
         );
       } else {
-        iconEl = renderRocketIcon(20);
+        iconEl = renderRocketIcon(18);
         tone = 'bypass';
         typeBadges.push(
           E(
@@ -2117,7 +2512,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
         );
       }
 
-      if (raw.node_prefix) {
+      if (raw.node_prefix && raw.prefix_nodes !== '0') {
         typeBadges.push(
           E(
             'span',
@@ -2130,12 +2525,16 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
       let paramSummary = '';
       if (stype === 'subscription') {
         const u = String(raw.url || '');
-        paramSummary =
-          u.length > 58
-            ? `${u.slice(0, 38)}…${u.slice(-14)}`
+        const shortU =
+          u.length > 52
+            ? `${u.slice(0, 34)}…${u.slice(-12)}`
             : u || tr('URL не указан', 'No URL configured');
+        const updStr = subCache?.mtime
+          ? ` • ${tr('Обновлено', 'Updated')}: ${formatUpdatedTime(subCache.mtime)}`
+          : '';
+        paramSummary = `${shortU}${updStr}`;
       } else if (stype === 'proxy_links') {
-        paramSummary = `${tr('Прокси-ссылки', 'Proxy links')}: ${links.length} ${parsedLinks.protocols.length ? `(${parsedLinks.protocols.join(', ')})` : ''}`;
+        paramSummary = `${tr('Узлов', 'Nodes')}: ${links.length}${parsedLinks.protocols.length ? ` (${parsedLinks.protocols.join(', ')})` : ''}`;
       } else if (stype === 'fptn') {
         const tok = String(raw.access_token || '');
         paramSummary = tok ? `FPTN: ${tok.slice(0, 26)}…` : 'FPTN VPN';
@@ -2145,12 +2544,313 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
         paramSummary = stype.toUpperCase();
       }
 
+      const sectionChips = usedIn.length
+        ? usedIn.map((u: any) =>
+            E(
+              'button',
+              {
+                type: 'button',
+                class: 'tachyon-studio-chip tachyon-studio-chip--section',
+                title: tr(
+                  `Открыть секцию «${u.name}»`,
+                  `Open section "${u.name}"`,
+                ),
+                click: (ev: MouseEvent) => {
+                  ev.preventDefault();
+                  ev.stopPropagation();
+                  if (onNavigateSubTab) {
+                    onNavigateSubTab('sections', u.id);
+                  }
+                },
+              },
+              [renderSubRouteIcon(11), E('span', {}, u.name)],
+            ),
+          )
+        : [
+            E(
+              'span',
+              { class: 'tachyon-studio-chip tachyon-studio-chip--muted' },
+              tr('В пуле', 'In pool'),
+            ),
+          ];
+
+      const groupChips = usedInGroups.map((g: any) =>
+        E(
+          'span',
+          {
+            class: 'tachyon-studio-chip tachyon-studio-chip--balancer',
+            title: g.explicit
+              ? `${tr('В группе серверов', 'In Outbound Group')}: ${g.name}`
+              : `${tr('Доступен в группе (все источники)', 'Included in Group (all sources)')}: ${g.name}`,
+          },
+          [renderTagIcon(11), E('span', {}, g.name)],
+        ),
+      );
+
+      const inspectorRows: HTMLElement[] = [];
+      if (stype === 'subscription' && raw.url) {
+        inspectorRows.push(
+          E('div', { class: 'tachyon-studio-source-inspector__row' }, [
+            E(
+              'span',
+              { class: 'tachyon-studio-source-inspector__label' },
+              'URL:',
+            ),
+            E(
+              'code',
+              { class: 'tachyon-studio-source-inspector__code' },
+              String(raw.url),
+            ),
+          ]),
+        );
+      }
+      if (stype === 'subscription') {
+        const schedParts: string[] = [];
+        const autoUpd = raw.subscription_update_enabled !== '0';
+        schedParts.push(
+          autoUpd
+            ? `${tr('Автообновление', 'Auto-update')}: ${raw.subscription_update_interval || '1h'}`
+            : `${tr('Автообновление', 'Auto-update')}: ${tr('Выключено', 'Disabled')}`,
+        );
+        if (
+          raw.download_via_proxy_enabled === '1' &&
+          raw.download_via_proxy_section
+        ) {
+          const dlSec = uci.get(
+            UCI_PACKAGE,
+            String(raw.download_via_proxy_section),
+          );
+          schedParts.push(
+            `${tr('Обновлять через секцию', 'Update via section')}: ${dlSec?.label || dlSec?.name || raw.download_via_proxy_section}`,
+          );
+        }
+        if (subCache?.mtime) {
+          schedParts.push(
+            `${tr('Последнее обновление', 'Last updated')}: ${formatUpdatedTime(subCache.mtime)}`,
+          );
+        }
+        inspectorRows.push(
+          E('div', { class: 'tachyon-studio-source-inspector__row' }, [
+            E(
+              'span',
+              { class: 'tachyon-studio-source-inspector__label' },
+              tr('Обновление:', 'Update:'),
+            ),
+            E(
+              'span',
+              { class: 'tachyon-studio-source-inspector__val' },
+              schedParts.join(' • '),
+            ),
+          ]),
+        );
+
+        if (subCache?.metadata) {
+          const md = subCache.metadata;
+          const infoParts: string[] = [];
+          if (md.title)
+            infoParts.push(`${tr('Провайдер', 'Title')}: ${md.title}`);
+          if (md.traffic) {
+            const q = md.traffic.isUnlimited
+              ? tr('Безлимит (∞)', 'Unlimited (∞)')
+              : md.traffic.total
+                ? `${formatBytes(md.traffic.used)} / ${formatBytes(md.traffic.total)}`
+                : formatBytes(md.traffic.used);
+            infoParts.push(`${tr('Трафик', 'Traffic')}: ${q}`);
+          }
+          if (md.expire && Number(md.expire) > 0) {
+            try {
+              const expDate = new Date(
+                Number(md.expire) * 1000,
+              ).toLocaleDateString();
+              infoParts.push(`${tr('Истекает', 'Expires')}: ${expDate}`);
+            } catch (_e) {
+              // ignore invalid date
+            }
+          }
+          if (infoParts.length > 0) {
+            inspectorRows.push(
+              E('div', { class: 'tachyon-studio-source-inspector__row' }, [
+                E(
+                  'span',
+                  { class: 'tachyon-studio-source-inspector__label' },
+                  tr('Подписка:', 'Subscription Info:'),
+                ),
+                E(
+                  'span',
+                  { class: 'tachyon-studio-source-inspector__val' },
+                  infoParts.join(' • '),
+                ),
+              ]),
+            );
+          }
+        }
+
+        if (subCache && subCache.servers.length > 0) {
+          inspectorRows.push(
+            E('div', { class: 'tachyon-studio-source-inspector__row' }, [
+              E(
+                'span',
+                { class: 'tachyon-studio-source-inspector__label' },
+                `${tr('Серверы в подписке', 'Servers in subscription')} (${subCache.servers.length}):`,
+              ),
+              E(
+                'div',
+                {
+                  class: 'tachyon-studio-source-inspector__links',
+                  style: 'max-height: 160px; overflow-y: auto;',
+                },
+                subCache.servers.map((srv) =>
+                  E(
+                    'span',
+                    {
+                      class: 'tachyon-studio-chip tachyon-studio-chip--source',
+                    },
+                    `${srv.name} [${srv.proto}${srv.trans && srv.trans !== srv.proto ? '+' + srv.trans : ''}]`,
+                  ),
+                ),
+              ),
+            ]),
+          );
+        }
+      }
+      if (stype === 'proxy_links' && links.length > 0) {
+        inspectorRows.push(
+          E('div', { class: 'tachyon-studio-source-inspector__row' }, [
+            E(
+              'span',
+              { class: 'tachyon-studio-source-inspector__label' },
+              `${tr('Ссылки', 'Links')} (${links.length}):`,
+            ),
+            E(
+              'div',
+              { class: 'tachyon-studio-source-inspector__links' },
+              links.slice(0, 24).map((lnk) => {
+                const hashIdx = lnk.indexOf('#');
+                const tagPart =
+                  hashIdx >= 0
+                    ? decodeURIComponent(lnk.slice(hashIdx + 1))
+                    : '';
+                const protoMatch = lnk.match(/^([a-z0-9+-]+):\/\//i);
+                const proto = protoMatch ? protoMatch[1].toUpperCase() : 'LINK';
+                return E(
+                  'span',
+                  { class: 'tachyon-studio-chip tachyon-studio-chip--source' },
+                  tagPart
+                    ? `${proto}: ${tagPart}`
+                    : `${proto} (${lnk.slice(0, 28)}…)`,
+                );
+              }),
+            ),
+          ]),
+        );
+      }
+      if (raw.node_prefix || raw.subscription_tls_fingerprint) {
+        const metaParts: string[] = [];
+        if (raw.node_prefix) {
+          metaParts.push(`${tr('Префикс', 'Prefix')}: ${raw.node_prefix}`);
+        }
+        if (raw.subscription_tls_fingerprint) {
+          metaParts.push(`uTLS: ${raw.subscription_tls_fingerprint}`);
+        }
+        inspectorRows.push(
+          E('div', { class: 'tachyon-studio-source-inspector__row' }, [
+            E(
+              'span',
+              { class: 'tachyon-studio-source-inspector__label' },
+              tr('Параметры:', 'Options:'),
+            ),
+            E(
+              'span',
+              { class: 'tachyon-studio-source-inspector__val' },
+              metaParts.join(' • '),
+            ),
+          ]),
+        );
+      }
+      inspectorRows.push(
+        E('div', { class: 'tachyon-studio-source-inspector__row' }, [
+          E(
+            'span',
+            { class: 'tachyon-studio-source-inspector__label' },
+            tr('В секциях и группах:', 'In sections & groups:'),
+          ),
+          E('div', { class: 'tachyon-studio-card__chips' }, [
+            ...sectionChips.map(
+              (ch: HTMLElement) => ch.cloneNode(true) as HTMLElement,
+            ),
+            ...groupChips.map(
+              (ch: HTMLElement) => ch.cloneNode(true) as HTMLElement,
+            ),
+          ]),
+        ]),
+      );
+
+      const inspectorEl = E(
+        'div',
+        { class: 'tachyon-studio-source-inspector' },
+        inspectorRows,
+      );
+
+      let isExpanded = expandedSourceIds.has(sid);
+      const chevronEl = E(
+        'button',
+        {
+          type: 'button',
+          class: 'tachyon-studio-action-btn',
+          title: tr('Развернуть детали и серверы', 'Toggle details & servers'),
+          style: 'padding: 4px 8px; font-size: 12px;',
+        },
+        isExpanded ? '▴' : '▾',
+      );
+      const toggleInspector = (ev: MouseEvent) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        isExpanded = !isExpanded;
+        if (isExpanded) expandedSourceIds.add(sid);
+        else expandedSourceIds.delete(sid);
+        card.classList.toggle('is-expanded', isExpanded);
+        chevronEl.textContent = isExpanded ? '▴' : '▾';
+      };
+      chevronEl.addEventListener('click', toggleInspector);
+
+      const isSubUpdating =
+        updatingSubTargets.has(sid) || updatingSubTargets.has('__all__');
+      const updateSubBtn =
+        stype === 'subscription'
+          ? E(
+              'button',
+              {
+                type: 'button',
+                class: 'tachyon-studio-action-btn',
+                disabled: isSubUpdating ? 'disabled' : null,
+                title: tr(
+                  'Обновить эту подписку сейчас',
+                  'Update this subscription now',
+                ),
+                click: (ev: MouseEvent) => {
+                  ev.preventDefault();
+                  ev.stopPropagation();
+                  void triggerSubscriptionUpdate(sid);
+                },
+              },
+              [
+                E(
+                  'span',
+                  {},
+                  isSubUpdating
+                    ? tr('↻ Обновление...', '↻ Updating...')
+                    : tr('↻ Обновить', '↻ Update'),
+                ),
+              ],
+            )
+          : null;
+
       const card = E(
         'div',
         {
-          class: `tachyon-studio-card tachyon-studio-card--source ${enabled ? 'is-enabled' : 'is-disabled'}`,
+          class: `tachyon-studio-card tachyon-studio-card--source tachyon-studio-card--source-compact ${enabled ? 'is-enabled' : 'is-disabled'} ${isExpanded ? 'is-expanded' : ''}`,
           'data-sid': sid,
-          click: openEditModal,
+          click: toggleInspector,
         },
         [
           E('div', { class: 'tachyon-studio-card__head' }, [
@@ -2169,87 +2869,64 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                   ...typeBadges,
                 ]),
                 E('div', { class: 'tachyon-studio-card__sid' }, paramSummary),
+                usedInGroups.length > 0
+                  ? E(
+                      'div',
+                      {
+                        style:
+                          'display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-top: 4px;',
+                      },
+                      [
+                        E(
+                          'span',
+                          {
+                            style:
+                              'font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.65; margin-right: 2px;',
+                          },
+                          tr('В группах:', 'In groups:'),
+                        ),
+                        ...groupChips,
+                      ],
+                    )
+                  : E('span'),
               ]),
             ]),
-            E('div', { class: 'tachyon-studio-card__head-right' }, [
-              createStudioToggleSwitch(sid, enabled, sectionRef, renderDeck),
-            ]),
-          ]),
-          E('div', { class: 'tachyon-studio-card__pipeline' }, [
-            E('div', { class: 'tachyon-studio-card__pipe-stage' }, [
-              E(
-                'span',
-                { class: 'tachyon-studio-card__pipe-label' },
-                tr('Используется в секциях', 'Used in Sections'),
-              ),
+            E('div', { class: 'tachyon-studio-source-compact__right' }, [
               E(
                 'div',
-                { class: 'tachyon-studio-card__chips' },
-                usedIn.length
-                  ? usedIn.map((u: any) =>
-                      E(
-                        'button',
-                        {
-                          type: 'button',
-                          class:
-                            'tachyon-studio-chip tachyon-studio-chip--section',
-                          title: tr(
-                            `Открыть секцию «${u.name}»`,
-                            `Open section "${u.name}"`,
-                          ),
-                          click: (ev: MouseEvent) => {
-                            ev.preventDefault();
-                            ev.stopPropagation();
-                            if (onNavigateSubTab) {
-                              onNavigateSubTab('sections', u.id);
-                            }
-                          },
-                        },
-                        [renderSubRouteIcon(11), E('span', {}, u.name)],
-                      ),
-                    )
-                  : [
-                      E(
-                        'span',
-                        {
-                          class:
-                            'tachyon-studio-chip tachyon-studio-chip--muted',
-                        },
-                        tr(
-                          'В общем пуле (не привязан напрямую)',
-                          'Available in pool (not attached yet)',
-                        ),
-                      ),
-                    ],
+                { class: 'tachyon-studio-source-compact__sections' },
+                sectionChips,
               ),
+              ...(updateSubBtn ? [updateSubBtn] : []),
+              E(
+                'button',
+                {
+                  type: 'button',
+                  class:
+                    'tachyon-studio-action-btn tachyon-studio-action-btn--primary',
+                  click: openEditModal,
+                },
+                [
+                  renderSettingsIcon(13),
+                  E('span', {}, tr('Изменить', 'Configure')),
+                ],
+              ),
+              E(
+                'button',
+                {
+                  type: 'button',
+                  class:
+                    'tachyon-studio-action-btn tachyon-studio-action-btn--danger',
+                  title: tr('Удалить', 'Delete'),
+                  click: handleDelete,
+                },
+                [renderTrashIcon(13)],
+              ),
+              createStudioToggleSwitch(sid, enabled, sectionRef, renderDeck),
+              chevronEl,
             ]),
           ]),
-          E('div', { class: 'tachyon-studio-card__footer' }, [
-            E(
-              'button',
-              {
-                type: 'button',
-                class:
-                  'tachyon-studio-action-btn tachyon-studio-action-btn--primary',
-                click: openEditModal,
-              },
-              [
-                renderSettingsIcon(13),
-                E('span', {}, tr('Изменить', 'Configure')),
-              ],
-            ),
-            E(
-              'button',
-              {
-                type: 'button',
-                class:
-                  'tachyon-studio-action-btn tachyon-studio-action-btn--danger',
-                title: tr('Удалить', 'Delete'),
-                click: handleDelete,
-              },
-              [renderTrashIcon(13)],
-            ),
-          ]),
+          inspectorEl,
         ],
       );
       attachDragAndOrderHandlers(card);
@@ -2279,6 +2956,33 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
       const ips = asArray(raw.ip_cidr);
       const geos = asArray(raw.geoip_country);
       const ports = asArray(raw.ports);
+      const inbounds = asArray(raw.source_inbounds);
+
+      const detectListDuplicateCount = (items: string[]) => {
+        const seen = new Set<string>();
+        let dupes = 0;
+        items.forEach((it) => {
+          const norm = String(it || '')
+            .trim()
+            .toLowerCase()
+            .replace(/^domain:/, '');
+          if (!norm) return;
+          if (seen.has(norm)) dupes += 1;
+          else seen.add(norm);
+        });
+        return dupes;
+      };
+      const domDupes = detectListDuplicateCount(doms);
+      const ipDupes = detectListDuplicateCount(ips);
+      const condIssueParts: string[] = [];
+      if (domDupes > 0) {
+        condIssueParts.push(
+          `${tr('Повторы доменов', 'Duplicate domains')}: ${domDupes}`,
+        );
+      }
+      if (ipDupes > 0) {
+        condIssueParts.push(`${tr('Повторы IP', 'Duplicate IPs')}: ${ipDupes}`);
+      }
 
       const ruleChips: HTMLElement[] = [];
       comm.forEach((srv) => {
@@ -2287,6 +2991,15 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
             'span',
             { class: 'tachyon-studio-chip tachyon-studio-chip--cond' },
             [renderCommunityListServiceIcon(srv, 11), E('span', {}, srv)],
+          ),
+        );
+      });
+      inbounds.forEach((ib) => {
+        ruleChips.push(
+          E(
+            'span',
+            { class: 'tachyon-studio-chip tachyon-studio-chip--section' },
+            [renderRadioIcon(11), E('span', {}, `Inbound: ${ib}`)],
           ),
         );
       });
@@ -2392,6 +3105,20 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                             'tachyon-studio-badge tachyon-studio-badge--block',
                         },
                         'NOT (ИНВЕРСИЯ)',
+                      )
+                    : E('span'),
+                  condIssueParts.length > 0
+                    ? E(
+                        'span',
+                        {
+                          class:
+                            'tachyon-studio-badge tachyon-studio-badge--block',
+                          title: condIssueParts.join(' • '),
+                        },
+                        [
+                          renderAlertTriangleIcon(11),
+                          E('span', {}, ` ${condIssueParts.join(', ')}`),
+                        ],
                       )
                     : E('span'),
                 ]),
@@ -2729,6 +3456,35 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                 : 'TLS'),
       ).toUpperCase();
 
+      let routingMode = String(raw.routing_mode || 'rules').toLowerCase();
+      let routingSectionId = String(raw.routing_section || '').trim();
+      if (routingMode === 'rules') {
+        const allSecs = uci.sections(UCI_PACKAGE, 'section') || [];
+        for (const sec of allSecs) {
+          const secInb = asArray(sec?.source_inbounds);
+          if (secInb.includes(sid)) {
+            routingMode = 'section';
+            routingSectionId = String(sec['.name'] || '');
+            break;
+          }
+        }
+      }
+      let routingSummaryLabel = tr(
+        'Маршрут: По правилам роутера',
+        'Route: By router rules',
+      );
+      if (routingMode === 'direct') {
+        routingSummaryLabel = tr(
+          'Маршрут: Напрямую (WAN)',
+          'Route: Direct (WAN)',
+        );
+      } else if (routingMode === 'section' && routingSectionId) {
+        const targetSec = uci.get(UCI_PACKAGE, routingSectionId);
+        const targetTitle =
+          targetSec?.label || targetSec?.name || routingSectionId;
+        routingSummaryLabel = `${tr('Через секцию', 'Via section')}: ${targetTitle}`;
+      }
+
       const triggerServerInfoModal = (ev: MouseEvent) => {
         ev.preventDefault();
         ev.stopPropagation();
@@ -2800,7 +3556,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                 E(
                   'div',
                   { class: 'tachyon-studio-card__sid' },
-                  `${tr('Порт', 'Port')}: :${port} • ${enabled ? tr('Активен', 'Listening') : tr('Остановлен', 'Stopped')}`,
+                  `${tr('Порт', 'Port')}: :${port} • ${routingSummaryLabel} • ${enabled ? tr('Активен', 'Listening') : tr('Остановлен', 'Stopped')}`,
                 ),
               ]),
             ]),
@@ -2933,4 +3689,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
   }
 
   renderDeck();
+  if (type === 'outbound_source') {
+    void loadSubscriptionCacheMap();
+  }
 }

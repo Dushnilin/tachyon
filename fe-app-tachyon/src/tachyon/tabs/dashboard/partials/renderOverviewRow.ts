@@ -838,6 +838,12 @@ export interface RenderDashboardSectionsAndNodesProps {
   ) => void;
   onUpdateSubscription: (section: Tachyon.OutboundGroup) => void;
   onSectionTypesChanged?: () => void;
+  expandedSections?: Set<string>;
+  onToggleExpandSection?: (sectionCode: string) => void;
+  onOpenSectionModal?: (sectionCode: string) => void;
+  renderSectionAccordionContent?: (
+    section: Tachyon.OutboundGroup,
+  ) => HTMLElement;
 }
 
 export interface SectionEngineMeta {
@@ -2452,6 +2458,9 @@ export function renderDashboardSectionsAndNodes(
     onShowUrlTestInfo,
     onShowPriorityInfo,
     onSectionTypesChanged,
+    expandedSections,
+    onToggleExpandSection,
+    renderSectionAccordionContent,
   } = props;
 
   if (!sections || sections.length === 0) {
@@ -2510,16 +2519,44 @@ export function renderDashboardSectionsAndNodes(
       !resolveSectionEngineMeta(s).isDpiOnly,
   );
 
-  const sectionItems = routingSections.map((section) => {
+  const sectionItems = routingSections.flatMap((section) => {
     const visual = getSectionVisualMeta(section);
     const engineMeta = resolveSectionEngineMeta(section);
     const stats = getSectionStats(section);
     const activeInfo = resolveSectionActiveInfo(section, engineMeta);
-    const isRowSelected = Boolean(
-      selectedSectionCode &&
-        (section.code === selectedSectionCode ||
-          section.sectionName === selectedSectionCode),
+    const isExpanded = Boolean(
+      expandedSections &&
+        (expandedSections.has(section.code) ||
+          expandedSections.has(section.sectionName)),
     );
+    const isRowSelected =
+      isExpanded ||
+      Boolean(
+        selectedSectionCode &&
+          (section.code === selectedSectionCode ||
+            section.sectionName === selectedSectionCode),
+      );
+    const handleRowToggle = () => {
+      if (onToggleExpandSection) {
+        onToggleExpandSection(section.code);
+      } else {
+        onSelectSection(section.code);
+      }
+    };
+    const wrapWithAccordion = (itemEl: HTMLElement): HTMLElement[] => {
+      if (!isExpanded || !renderSectionAccordionContent) {
+        return [itemEl];
+      }
+      const accordionEl = E(
+        'div',
+        {
+          class: 'tachyon-routing-row__accordion',
+          'data-section-accordion': section.sectionName || section.code,
+        } as any,
+        [renderSectionAccordionContent(section)],
+      );
+      return [itemEl, accordionEl];
+    };
     const isLatencyFetching = Boolean(
       latencyFetchingSections[section.sectionName],
     );
@@ -2659,162 +2696,293 @@ export function renderDashboardSectionsAndNodes(
     );
 
     if (sectionsViewMode === 'protocol_matrix') {
-      return E(
-        'div',
-        {
-          class: [
-            'tachyon-routing-matrix-card',
-            isRowSelected ? 'is-selected' : '',
-            section.configError ? 'has-error' : '',
-          ]
-            .filter(Boolean)
-            .join(' '),
-          'data-section-row-metrics': section.sectionName,
-          click: (ev: MouseEvent) => {
-            if (
-              (ev.target as HTMLElement | null)?.closest(
-                'button, a, [data-section-icon-box]',
-              )
-            ) {
-              return;
-            }
-            onSelectSection(section.code);
-          },
-        } as any,
-        [
-          E('div', { class: 'tachyon-routing-matrix-card__left' }, [
-            iconBoxNode,
-            E('div', { class: 'tachyon-routing-matrix-card__info' }, [
-              E('div', { class: 'tachyon-routing-row__title-line' }, [
-                E(
-                  'span',
-                  { class: 'tachyon-routing-row__name' },
-                  section.displayName,
-                ),
-                statusIndicatorNode,
-                ...badgeNodes,
-              ]),
-              E('div', { class: 'tachyon-routing-matrix-card__node' }, [
-                ...renderFlagEmojis(activeInfo.serverName),
-                E('span', { class: 'tachyon-routing-matrix-card__sep' }, '•'),
-                E(
-                  'span',
-                  { class: 'tachyon-routing-matrix-card__sel' },
-                  activeInfo.selectorLabel,
-                ),
+      return wrapWithAccordion(
+        E(
+          'div',
+          {
+            class: [
+              'tachyon-routing-matrix-card',
+              isRowSelected ? 'is-selected' : '',
+              isExpanded ? 'is-expanded' : '',
+              section.configError ? 'has-error' : '',
+            ]
+              .filter(Boolean)
+              .join(' '),
+            'data-section-row-metrics': section.sectionName,
+            click: (ev: MouseEvent) => {
+              if (
+                (ev.target as HTMLElement | null)?.closest(
+                  'button, a, [data-section-icon-box]',
+                )
+              ) {
+                return;
+              }
+              handleRowToggle();
+            },
+          } as any,
+          [
+            E('div', { class: 'tachyon-routing-matrix-card__left' }, [
+              iconBoxNode,
+              E('div', { class: 'tachyon-routing-matrix-card__info' }, [
+                E('div', { class: 'tachyon-routing-row__title-line' }, [
+                  E(
+                    'span',
+                    { class: 'tachyon-routing-row__name' },
+                    section.displayName,
+                  ),
+                  statusIndicatorNode,
+                  ...badgeNodes,
+                ]),
+                E('div', { class: 'tachyon-routing-matrix-card__node' }, [
+                  ...renderFlagEmojis(activeInfo.serverName),
+                  E('span', { class: 'tachyon-routing-matrix-card__sep' }, '•'),
+                  E(
+                    'span',
+                    { class: 'tachyon-routing-matrix-card__sel' },
+                    activeInfo.selectorLabel,
+                  ),
+                ]),
               ]),
             ]),
-          ]),
-          E('div', { class: 'tachyon-routing-matrix-card__right' }, [
-            ...(hideTrafficAndConns
-              ? []
-              : [
-                  E('div', { class: 'tachyon-routing-matrix-card__stats' }, [
-                    E(
-                      'strong',
-                      {
-                        class: 'tachyon-routing-matrix-card__traffic',
-                        'data-row-metric': 'session-total',
-                      } as any,
-                      prettyBytes(totalSectionTraffic),
-                    ),
-                    E('span', { class: 'tachyon-routing-matrix-card__conns' }, [
+            E('div', { class: 'tachyon-routing-matrix-card__right' }, [
+              ...(hideTrafficAndConns
+                ? []
+                : [
+                    E('div', { class: 'tachyon-routing-matrix-card__stats' }, [
+                      E(
+                        'strong',
+                        {
+                          class: 'tachyon-routing-matrix-card__traffic',
+                          'data-row-metric': 'session-total',
+                        } as any,
+                        prettyBytes(totalSectionTraffic),
+                      ),
                       E(
                         'span',
-                        { 'data-row-metric': 'conns' } as any,
-                        String(stats.conns),
+                        { class: 'tachyon-routing-matrix-card__conns' },
+                        [
+                          E(
+                            'span',
+                            { 'data-row-metric': 'conns' } as any,
+                            String(stats.conns),
+                          ),
+                          ` ${tr('соед.', 'conns')}`,
+                        ],
                       ),
-                      ` ${tr('соед.', 'conns')}`,
                     ]),
                   ]),
-                ]),
-            latencyBtnNode,
-          ]),
-        ],
+              latencyBtnNode,
+            ]),
+          ],
+        ),
       );
     }
 
     if (sectionsViewMode === 'compact_tiles') {
-      return E(
-        'div',
-        {
-          class: [
-            'tachyon-routing-compact-tile',
-            isRowSelected ? 'is-selected' : '',
-            section.configError ? 'has-error' : '',
-          ]
-            .filter(Boolean)
-            .join(' '),
-          'data-section-row-metrics': section.sectionName,
-          click: (ev: MouseEvent) => {
-            if (
-              (ev.target as HTMLElement | null)?.closest(
-                'button, a, [data-section-icon-box]',
-              )
-            ) {
-              return;
-            }
-            onSelectSection(section.code);
-          },
-        } as any,
-        [
-          E('div', { class: 'tachyon-routing-compact-tile__top' }, [
-            iconBoxNode,
-            E('div', { class: 'tachyon-routing-compact-tile__titles' }, [
-              E('div', { class: 'tachyon-routing-row__title-line' }, [
-                E(
-                  'span',
-                  { class: 'tachyon-routing-row__name' },
-                  section.displayName,
-                ),
-                statusIndicatorNode,
-              ]),
-              E(
-                'div',
-                { class: 'tachyon-routing-compact-tile__badges' },
-                badgeNodes,
-              ),
-            ]),
-            latencyBtnNode,
-          ]),
-          E('div', { class: 'tachyon-routing-compact-tile__bottom' }, [
-            E(
-              'span',
-              {
-                class: 'tachyon-routing-compact-tile__server',
-                title: activeInfo.serverName,
-              },
-              renderFlagEmojis(activeInfo.serverName),
-            ),
-            ...(hideTrafficAndConns
-              ? []
-              : [
+      return wrapWithAccordion(
+        E(
+          'div',
+          {
+            class: [
+              'tachyon-routing-compact-tile',
+              isRowSelected ? 'is-selected' : '',
+              isExpanded ? 'is-expanded' : '',
+              section.configError ? 'has-error' : '',
+            ]
+              .filter(Boolean)
+              .join(' '),
+            'data-section-row-metrics': section.sectionName,
+            click: (ev: MouseEvent) => {
+              if (
+                (ev.target as HTMLElement | null)?.closest(
+                  'button, a, [data-section-icon-box]',
+                )
+              ) {
+                return;
+              }
+              handleRowToggle();
+            },
+          } as any,
+          [
+            E('div', { class: 'tachyon-routing-compact-tile__top' }, [
+              iconBoxNode,
+              E('div', { class: 'tachyon-routing-compact-tile__titles' }, [
+                E('div', { class: 'tachyon-routing-row__title-line' }, [
                   E(
                     'span',
-                    {
-                      class: 'tachyon-routing-compact-tile__stat',
-                      'data-row-metric': 'session-total',
-                    } as any,
-                    prettyBytes(totalSectionTraffic),
+                    { class: 'tachyon-routing-row__name' },
+                    section.displayName,
                   ),
+                  statusIndicatorNode,
                 ]),
-          ]),
-        ],
+                E(
+                  'div',
+                  { class: 'tachyon-routing-compact-tile__badges' },
+                  badgeNodes,
+                ),
+              ]),
+              latencyBtnNode,
+            ]),
+            E('div', { class: 'tachyon-routing-compact-tile__bottom' }, [
+              E(
+                'span',
+                {
+                  class: 'tachyon-routing-compact-tile__server',
+                  title: activeInfo.serverName,
+                },
+                renderFlagEmojis(activeInfo.serverName),
+              ),
+              ...(hideTrafficAndConns
+                ? []
+                : [
+                    E(
+                      'span',
+                      {
+                        class: 'tachyon-routing-compact-tile__stat',
+                        'data-row-metric': 'session-total',
+                      } as any,
+                      prettyBytes(totalSectionTraffic),
+                    ),
+                  ]),
+            ]),
+          ],
+        ),
       );
     }
 
     if (sectionsViewMode === 'cards_grid') {
-      return E(
+      return wrapWithAccordion(
+        E(
+          'div',
+          {
+            class: [
+              'tachyon-routing-bento-card',
+              isRowSelected ? 'is-selected' : '',
+              isExpanded ? 'is-expanded' : '',
+              section.configError ? 'has-error' : '',
+            ]
+              .filter(Boolean)
+              .join(' '),
+            'data-section-row-metrics': section.sectionName,
+            click: (ev: MouseEvent) => {
+              if (
+                (ev.target as HTMLElement | null)?.closest(
+                  'button, a, [data-section-icon-box]',
+                )
+              ) {
+                return;
+              }
+              handleRowToggle();
+            },
+          } as any,
+          [
+            E('div', { class: 'tachyon-routing-bento-card__head' }, [
+              iconBoxNode,
+              E('div', { class: 'tachyon-routing-bento-card__head-main' }, [
+                E('div', { class: 'tachyon-routing-row__title-line' }, [
+                  E(
+                    'span',
+                    { class: 'tachyon-routing-row__name' },
+                    section.displayName,
+                  ),
+                  statusIndicatorNode,
+                  ...badgeNodes,
+                ]),
+                E(
+                  'div',
+                  { class: 'tachyon-routing-row__subtitle' },
+                  subtitleText,
+                ),
+              ]),
+              latencyBtnNode,
+            ]),
+            E('div', { class: 'tachyon-routing-bento-card__body' }, [
+              E('div', { class: 'tachyon-routing-bento-card__field' }, [
+                E(
+                  'span',
+                  { class: 'tachyon-routing-row__col-label' },
+                  engineMeta.col2Label ||
+                    (engineMeta.isDpiOnly
+                      ? tr('Движок', 'Engine')
+                      : tr('Сервер', 'Server')),
+                ),
+                E(
+                  'span',
+                  {
+                    class: 'tachyon-routing-row__col-value',
+                    title: activeInfo.serverName,
+                  },
+                  renderFlagEmojis(activeInfo.serverName),
+                ),
+              ]),
+              E('div', { class: 'tachyon-routing-bento-card__field' }, [
+                E(
+                  'span',
+                  { class: 'tachyon-routing-row__col-label' },
+                  engineMeta.col3Label ||
+                    (engineMeta.isDpiOnly
+                      ? tr('Стратегия', 'Strategy')
+                      : tr('Селектор', 'Selector')),
+                ),
+                E(
+                  'span',
+                  {
+                    class: 'tachyon-routing-row__col-value',
+                    title: activeInfo.selectorLabel,
+                  },
+                  activeInfo.selectorLabel,
+                ),
+              ]),
+            ]),
+            ...(hideTrafficAndConns
+              ? []
+              : [
+                  E('div', { class: 'tachyon-routing-bento-card__foot' }, [
+                    E('span', { class: 'tachyon-routing-bento-card__metric' }, [
+                      E('span', { class: 'tachyon-routing-row__col-label' }, [
+                        `${tr('Трафик', 'Traffic')}: `,
+                      ]),
+                      E(
+                        'strong',
+                        { 'data-row-metric': 'session-total' } as any,
+                        prettyBytes(totalSectionTraffic),
+                      ),
+                    ]),
+                    E('span', { class: 'tachyon-routing-bento-card__metric' }, [
+                      E('span', { class: 'tachyon-routing-row__col-label' }, [
+                        `${tr('Соед.', 'Conns')}: `,
+                      ]),
+                      E(
+                        'strong',
+                        { 'data-row-metric': 'conns' } as any,
+                        String(stats.conns),
+                      ),
+                    ]),
+                  ]),
+                ]),
+          ],
+        ),
+      );
+    }
+
+    return wrapWithAccordion(
+      E(
         'div',
         {
           class: [
-            'tachyon-routing-bento-card',
+            'tachyon-routing-row',
+            hideTrafficAndConns ? 'tachyon-routing-row--no-traffic' : '',
             isRowSelected ? 'is-selected' : '',
+            isExpanded ? 'is-expanded' : '',
             section.configError ? 'has-error' : '',
           ]
             .filter(Boolean)
             .join(' '),
           'data-section-row-metrics': section.sectionName,
+          title: tr(
+            'Нажмите, чтобы развернуть узлы, балансировщики и условия секции',
+            'Click to expand section nodes, balancers and conditions',
+          ),
           click: (ev: MouseEvent) => {
             if (
               (ev.target as HTMLElement | null)?.closest(
@@ -2823,13 +2991,14 @@ export function renderDashboardSectionsAndNodes(
             ) {
               return;
             }
-            onSelectSection(section.code);
+            handleRowToggle();
           },
         } as any,
         [
-          E('div', { class: 'tachyon-routing-bento-card__head' }, [
+          // Col 1: Service Icon (favicon.ico or SVG) + Name + Status Dot + Protocol/Transport Badges + Subtitle
+          E('div', { class: 'tachyon-routing-row__identity' }, [
             iconBoxNode,
-            E('div', { class: 'tachyon-routing-bento-card__head-main' }, [
+            E('div', { class: 'tachyon-routing-row__titles' }, [
               E('div', { class: 'tachyon-routing-row__title-line' }, [
                 E(
                   'span',
@@ -2838,6 +3007,19 @@ export function renderDashboardSectionsAndNodes(
                 ),
                 statusIndicatorNode,
                 ...badgeNodes,
+                ...(section.configError
+                  ? [
+                      E(
+                        'span',
+                        {
+                          class:
+                            'tachyon_dashboard-page__outbound-section__config-error-badge',
+                          title: section.configError,
+                        },
+                        tr('Есть ошибки', 'Has errors'),
+                      ),
+                    ]
+                  : []),
               ]),
               E(
                 'div',
@@ -2845,287 +3027,167 @@ export function renderDashboardSectionsAndNodes(
                 subtitleText,
               ),
             ]),
-            latencyBtnNode,
           ]),
-          E('div', { class: 'tachyon-routing-bento-card__body' }, [
-            E('div', { class: 'tachyon-routing-bento-card__field' }, [
-              E(
-                'span',
-                { class: 'tachyon-routing-row__col-label' },
-                engineMeta.col2Label ||
-                  (engineMeta.isDpiOnly
-                    ? tr('Движок', 'Engine')
-                    : tr('Сервер', 'Server')),
-              ),
-              E(
-                'span',
-                {
-                  class: 'tachyon-routing-row__col-value',
-                  title: activeInfo.serverName,
-                },
-                renderFlagEmojis(activeInfo.serverName),
-              ),
-            ]),
-            E('div', { class: 'tachyon-routing-bento-card__field' }, [
-              E(
-                'span',
-                { class: 'tachyon-routing-row__col-label' },
-                engineMeta.col3Label ||
-                  (engineMeta.isDpiOnly
-                    ? tr('Стратегия', 'Strategy')
-                    : tr('Селектор', 'Selector')),
-              ),
-              E(
-                'span',
-                {
-                  class: 'tachyon-routing-row__col-value',
-                  title: activeInfo.selectorLabel,
-                },
-                activeInfo.selectorLabel,
-              ),
-            ]),
-          ]),
-          ...(hideTrafficAndConns
-            ? []
-            : [
-                E('div', { class: 'tachyon-routing-bento-card__foot' }, [
-                  E('span', { class: 'tachyon-routing-bento-card__metric' }, [
-                    E('span', { class: 'tachyon-routing-row__col-label' }, [
-                      `${tr('Трафик', 'Traffic')}: `,
-                    ]),
-                    E(
-                      'strong',
-                      { 'data-row-metric': 'session-total' } as any,
-                      prettyBytes(totalSectionTraffic),
-                    ),
-                  ]),
-                  E('span', { class: 'tachyon-routing-bento-card__metric' }, [
-                    E('span', { class: 'tachyon-routing-row__col-label' }, [
-                      `${tr('Соед.', 'Conns')}: `,
-                    ]),
-                    E(
-                      'strong',
-                      { 'data-row-metric': 'conns' } as any,
-                      String(stats.conns),
-                    ),
-                  ]),
-                ]),
-              ]),
-        ],
-      );
-    }
 
-    return E(
-      'div',
-      {
-        class: [
-          'tachyon-routing-row',
-          hideTrafficAndConns ? 'tachyon-routing-row--no-traffic' : '',
-          isRowSelected ? 'is-selected' : '',
-          section.configError ? 'has-error' : '',
-        ]
-          .filter(Boolean)
-          .join(' '),
-        'data-section-row-metrics': section.sectionName,
-        title: tr(
-          'Нажмите, чтобы открыть узлы, балансировщики и условия секции',
-          'Click to open section nodes, balancers and conditions',
-        ),
-        click: (ev: MouseEvent) => {
-          if (
-            (ev.target as HTMLElement | null)?.closest(
-              'button, a, [data-section-icon-box]',
-            )
-          ) {
-            return;
-          }
-          onSelectSection(section.code);
-        },
-      } as any,
-      [
-        // Col 1: Service Icon (favicon.ico or SVG) + Name + Status Dot + Protocol/Transport Badges + Subtitle
-        E('div', { class: 'tachyon-routing-row__identity' }, [
-          iconBoxNode,
-          E('div', { class: 'tachyon-routing-row__titles' }, [
-            E('div', { class: 'tachyon-routing-row__title-line' }, [
-              E(
-                'span',
-                { class: 'tachyon-routing-row__name' },
-                section.displayName,
-              ),
-              statusIndicatorNode,
-              ...badgeNodes,
-              ...(section.configError
-                ? [
+          // Col 2: Сервер / Движок / Действие / Маршрут / DNS-сервер
+          E('div', { class: 'tachyon-routing-row__col' }, [
+            E(
+              'span',
+              { class: 'tachyon-routing-row__col-label' },
+              engineMeta.col2Label ||
+                (engineMeta.isDpiOnly
+                  ? tr('Движок', 'Engine')
+                  : tr('Сервер', 'Server')),
+            ),
+            E(
+              'span',
+              {
+                class: 'tachyon-routing-row__col-value',
+                title: activeInfo.serverName,
+              },
+              renderFlagEmojis(activeInfo.serverName),
+            ),
+          ]),
+
+          // Col 3: Селектор / Стратегия / Правило / Режим / Протокол
+          E('div', { class: 'tachyon-routing-row__col' }, [
+            E(
+              'span',
+              { class: 'tachyon-routing-row__col-label' },
+              engineMeta.col3Label ||
+                (engineMeta.isDpiOnly
+                  ? tr('Стратегия', 'Strategy')
+                  : tr('Селектор', 'Selector')),
+            ),
+            E(
+              activeInfo.isInteractiveSelector ? 'button' : 'span',
+              {
+                ...(activeInfo.isInteractiveSelector ? { type: 'button' } : {}),
+                class: `tachyon-routing-row__selector-pill ${
+                  activeInfo.isInteractiveSelector ? 'is-interactive' : ''
+                }`,
+                title: activeInfo.isInteractiveSelector
+                  ? tr(
+                      'Нажмите для просмотра деталей автовыбора',
+                      'Click to inspect auto-selection details',
+                    )
+                  : activeInfo.selectorLabel,
+                click: activeInfo.isInteractiveSelector
+                  ? (ev: MouseEvent) => {
+                      ev.preventDefault();
+                      ev.stopPropagation();
+                      if (!activeInfo.selectedOutbound) return;
+                      if (activeInfo.hasUrlTest) {
+                        onShowUrlTestInfo(section, activeInfo.selectedOutbound);
+                      } else if (activeInfo.hasPriority) {
+                        onShowPriorityInfo(
+                          section,
+                          activeInfo.selectedOutbound,
+                        );
+                      }
+                    }
+                  : undefined,
+              } as any,
+              [
+                E('span', {}, activeInfo.selectorLabel),
+                ...(activeInfo.isInteractiveSelector
+                  ? [renderInfoIcon24()]
+                  : []),
+              ],
+            ),
+          ]),
+
+          // Col 4 & Col 5: Трафик за сессию и Соединения (скрываются для block / bypass / dns)
+          ...(hideTrafficAndConns
+            ? [
+                E('div', {
+                  class:
+                    'tachyon-routing-row__col tachyon-routing-row__col--empty',
+                }),
+                E('div', {
+                  class:
+                    'tachyon-routing-row__col tachyon-routing-row__col--empty',
+                }),
+              ]
+            : [
+                E(
+                  'div',
+                  {
+                    class:
+                      'tachyon-routing-row__col tachyon-routing-row__col--num',
+                    title: `↓ ${prettyBytes(stats.download || 0)} • ↑ ${prettyBytes(stats.upload || 0)}`,
+                  },
+                  [
+                    E(
+                      'span',
+                      { class: 'tachyon-routing-row__col-label' },
+                      tr('Трафик', 'Traffic'),
+                    ),
                     E(
                       'span',
                       {
-                        class:
-                          'tachyon_dashboard-page__outbound-section__config-error-badge',
-                        title: section.configError,
-                      },
-                      tr('Есть ошибки', 'Has errors'),
+                        class: 'tachyon-routing-row__col-value',
+                        'data-row-metric': 'session-total',
+                      } as any,
+                      prettyBytes(totalSectionTraffic),
                     ),
-                  ]
-                : []),
-            ]),
-            E('div', { class: 'tachyon-routing-row__subtitle' }, subtitleText),
+                    E(
+                      'span',
+                      {
+                        style: 'display:none;',
+                        'data-row-metric': 'session-down',
+                      } as any,
+                      `↓ ${prettyBytes(stats.download || 0)}`,
+                    ),
+                    E(
+                      'span',
+                      {
+                        style: 'display:none;',
+                        'data-row-metric': 'session-up',
+                      } as any,
+                      `↑ ${prettyBytes(stats.upload || 0)}`,
+                    ),
+                  ],
+                ),
+                E(
+                  'div',
+                  {
+                    class:
+                      'tachyon-routing-row__col tachyon-routing-row__col--num',
+                  },
+                  [
+                    E(
+                      'span',
+                      { class: 'tachyon-routing-row__col-label' },
+                      tr('Соед.', 'Conns'),
+                    ),
+                    E(
+                      'span',
+                      {
+                        class: 'tachyon-routing-row__col-value',
+                        'data-row-metric': 'conns',
+                      } as any,
+                      String(stats.conns),
+                    ),
+                  ],
+                ),
+              ]),
+
+          // Col 6: Latency Pill or Green Status Dot + Chevron
+          E('div', { class: 'tachyon-routing-row__right' }, [
+            latencyBtnNode,
+            E(
+              'span',
+              {
+                class: `tachyon-routing-row__chevron ${
+                  isRowSelected ? 'is-selected' : ''
+                } ${isExpanded ? 'is-expanded' : ''}`,
+              },
+              '›',
+            ),
           ]),
-        ]),
-
-        // Col 2: Сервер / Движок / Действие / Маршрут / DNS-сервер
-        E('div', { class: 'tachyon-routing-row__col' }, [
-          E(
-            'span',
-            { class: 'tachyon-routing-row__col-label' },
-            engineMeta.col2Label ||
-              (engineMeta.isDpiOnly
-                ? tr('Движок', 'Engine')
-                : tr('Сервер', 'Server')),
-          ),
-          E(
-            'span',
-            {
-              class: 'tachyon-routing-row__col-value',
-              title: activeInfo.serverName,
-            },
-            renderFlagEmojis(activeInfo.serverName),
-          ),
-        ]),
-
-        // Col 3: Селектор / Стратегия / Правило / Режим / Протокол
-        E('div', { class: 'tachyon-routing-row__col' }, [
-          E(
-            'span',
-            { class: 'tachyon-routing-row__col-label' },
-            engineMeta.col3Label ||
-              (engineMeta.isDpiOnly
-                ? tr('Стратегия', 'Strategy')
-                : tr('Селектор', 'Selector')),
-          ),
-          E(
-            activeInfo.isInteractiveSelector ? 'button' : 'span',
-            {
-              ...(activeInfo.isInteractiveSelector ? { type: 'button' } : {}),
-              class: `tachyon-routing-row__selector-pill ${
-                activeInfo.isInteractiveSelector ? 'is-interactive' : ''
-              }`,
-              title: activeInfo.isInteractiveSelector
-                ? tr(
-                    'Нажмите для просмотра деталей автовыбора',
-                    'Click to inspect auto-selection details',
-                  )
-                : activeInfo.selectorLabel,
-              click: activeInfo.isInteractiveSelector
-                ? (ev: MouseEvent) => {
-                    ev.preventDefault();
-                    ev.stopPropagation();
-                    if (!activeInfo.selectedOutbound) return;
-                    if (activeInfo.hasUrlTest) {
-                      onShowUrlTestInfo(section, activeInfo.selectedOutbound);
-                    } else if (activeInfo.hasPriority) {
-                      onShowPriorityInfo(section, activeInfo.selectedOutbound);
-                    }
-                  }
-                : undefined,
-            } as any,
-            [
-              E('span', {}, activeInfo.selectorLabel),
-              ...(activeInfo.isInteractiveSelector ? [renderInfoIcon24()] : []),
-            ],
-          ),
-        ]),
-
-        // Col 4 & Col 5: Трафик за сессию и Соединения (скрываются для block / bypass / dns)
-        ...(hideTrafficAndConns
-          ? [
-              E('div', {
-                class:
-                  'tachyon-routing-row__col tachyon-routing-row__col--empty',
-              }),
-              E('div', {
-                class:
-                  'tachyon-routing-row__col tachyon-routing-row__col--empty',
-              }),
-            ]
-          : [
-              E(
-                'div',
-                {
-                  class:
-                    'tachyon-routing-row__col tachyon-routing-row__col--num',
-                  title: `↓ ${prettyBytes(stats.download || 0)} • ↑ ${prettyBytes(stats.upload || 0)}`,
-                },
-                [
-                  E(
-                    'span',
-                    { class: 'tachyon-routing-row__col-label' },
-                    tr('Трафик', 'Traffic'),
-                  ),
-                  E(
-                    'span',
-                    {
-                      class: 'tachyon-routing-row__col-value',
-                      'data-row-metric': 'session-total',
-                    } as any,
-                    prettyBytes(totalSectionTraffic),
-                  ),
-                  E(
-                    'span',
-                    {
-                      style: 'display:none;',
-                      'data-row-metric': 'session-down',
-                    } as any,
-                    `↓ ${prettyBytes(stats.download || 0)}`,
-                  ),
-                  E(
-                    'span',
-                    {
-                      style: 'display:none;',
-                      'data-row-metric': 'session-up',
-                    } as any,
-                    `↑ ${prettyBytes(stats.upload || 0)}`,
-                  ),
-                ],
-              ),
-              E(
-                'div',
-                {
-                  class:
-                    'tachyon-routing-row__col tachyon-routing-row__col--num',
-                },
-                [
-                  E(
-                    'span',
-                    { class: 'tachyon-routing-row__col-label' },
-                    tr('Соед.', 'Conns'),
-                  ),
-                  E(
-                    'span',
-                    {
-                      class: 'tachyon-routing-row__col-value',
-                      'data-row-metric': 'conns',
-                    } as any,
-                    String(stats.conns),
-                  ),
-                ],
-              ),
-            ]),
-
-        // Col 6: Latency Pill or Green Status Dot + Chevron
-        E('div', { class: 'tachyon-routing-row__right' }, [
-          latencyBtnNode,
-          E(
-            'span',
-            {
-              class: `tachyon-routing-row__chevron ${
-                isRowSelected ? 'is-selected' : ''
-              }`,
-            },
-            '›',
-          ),
-        ]),
-      ],
+        ],
+      ),
     );
   });
 

@@ -16,9 +16,30 @@ const ROUTING_SECTION_ACTIONS = [
   'proxy',
   'outbound',
   'vpn',
+  'awg',
+  'warp',
+  'anytls',
+  'snell',
+  'mieru',
+  'naive',
+  'sudoku',
+  'masque',
+  'openvpn',
+  'openconnect',
+  'fptn',
+  'desync',
+  'shadowtls',
+  'trusttunnel',
+  'tewfai',
+  'mtproto',
+  'chain',
+  'tailscale',
   'byedpi',
   'zapret',
   'zapret2',
+  'wdtt',
+  'olcrtc',
+  'group',
 ];
 const callNetworkInterfaceDump = rpc.declare({
   object: 'network.interface',
@@ -3362,26 +3383,48 @@ function validateRequiredText(_sectionId, value) {
 }
 
 function isRoutingSectionAction(action) {
+  if (!action) return true;
   return ROUTING_SECTION_ACTIONS.indexOf(`${action || ''}`) !== -1;
 }
 
 function loadRoutingSectionChoices(option) {
-  const sections = option.map?.data?.state?.values?.[UCI_PACKAGE] ?? {};
+  const sectionsMap = option.map?.data?.state?.values?.[UCI_PACKAGE] ?? {};
+  const uciSectionsList =
+    typeof uci !== 'undefined' && typeof uci.sections === 'function'
+      ? uci.sections(UCI_PACKAGE, 'section') || []
+      : [];
 
   option.keylist = [];
   option.vallist = [];
+  const seen = new Set();
 
-  for (const sectionName in sections) {
-    const section = sections[sectionName];
-
+  const addSectionChoice = (sectionName, section) => {
+    if (!sectionName || seen.has(sectionName)) return;
     if (
-      section['.type'] === 'section' &&
+      section &&
+      (section['.type'] === 'section' || !section['.type']) &&
       section.enabled !== '0' &&
       isRoutingSectionAction(section.action)
     ) {
+      seen.add(sectionName);
+      const label = section.label || section.name || sectionName;
+      const actionTag = section.action ? ` (${section.action})` : '';
       option.keylist.push(sectionName);
-      option.vallist.push(section.label || sectionName);
+      option.vallist.push(
+        label === sectionName
+          ? `${label}${actionTag}`
+          : `${label} [${sectionName}]${actionTag}`,
+      );
     }
+  };
+
+  for (const s of uciSectionsList) {
+    if (s && s['.name']) {
+      addSectionChoice(s['.name'], s);
+    }
+  }
+  for (const sectionName in sectionsMap) {
+    addSectionChoice(sectionName, sectionsMap[sectionName]);
   }
 
   return Promise.resolve();
@@ -4182,7 +4225,12 @@ function autoConfigureServer(sectionId) {
   clearServerValidationMessage();
 
   setWidgetValue(sectionId, 'enabled', '1');
-  setWidgetValue(sectionId, 'routing_mode', 'rules');
+  const existingRoutingMode = getCurrentOptionValue(
+    sectionId,
+    'routing_mode',
+    'rules',
+  );
+  setWidgetValue(sectionId, 'routing_mode', existingRoutingMode || 'rules');
   setWidgetValue(sectionId, 'open_firewall_port', '1');
   setWidgetValue(sectionId, 'listen', '0.0.0.0');
 
@@ -7071,6 +7119,7 @@ function showSubscriptionModal(section) {
 }
 
 function configureServerSubscription(section) {
+  section.showSubscriptionModal = () => showSubscriptionModal(section);
   const description = section.description;
   section.description = E('div', {}, [
     E('div', { style: 'margin-bottom:1em' }, [
@@ -7078,7 +7127,7 @@ function configureServerSubscription(section) {
         'button',
         {
           type: 'button',
-          class: 'cbi-button cbi-button-action',
+          class: 'cbi-button cbi-button-action tachyon-server-subscription-btn',
           click: (event) => {
             event.preventDefault();
             showSubscriptionModal(section);

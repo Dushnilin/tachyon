@@ -1917,17 +1917,19 @@ function nft_add_tproxy_rules(table, fakeip_mark, tproxy_port, tproxy6_address, 
     if (!tproxy_intercept_enabled())
         return true;
     run_args_quiet([ "modprobe", "nft_tproxy" ]);
-    if (!nft_add_rule(table, "proxy", [ "ct", "status", "dnat", "meta", "mark", "set", "0", "return" ]) ||
+    let mark_num = int(fakeip_mark);
+    let clear_mask = mark_num > 0 ? sprintf("0x%08x", (~mark_num) & 0xffffffff) : "0xfbffffff";
+    if (!nft_add_rule(table, "proxy", [ "ct", "status", "dnat", "meta", "mark", "set", "meta", "mark", "&", clear_mask, "return" ]) ||
         !nft_add_rule(table, "proxy", [ "fib", "daddr", "type", "local", "return" ]))
         return false;
-    if (!nft_add_rule(table, "proxy", [ "ip", "saddr", ".", "tcp", "sport", "@tachyon_dnat_tcp_v4", "meta", "mark", "set", "0", "return" ]) ||
-        !nft_add_rule(table, "proxy", [ "ip", "daddr", ".", "tcp", "dport", "@tachyon_dnat_tcp_v4", "meta", "mark", "set", "0", "return" ]) ||
-        !nft_add_rule(table, "proxy", [ "ip", "saddr", ".", "udp", "sport", "@tachyon_dnat_udp_v4", "meta", "mark", "set", "0", "return" ]) ||
-        !nft_add_rule(table, "proxy", [ "ip", "daddr", ".", "udp", "dport", "@tachyon_dnat_udp_v4", "meta", "mark", "set", "0", "return" ]) ||
-        !nft_add_rule(table, "proxy", [ "ip6", "saddr", ".", "tcp", "sport", "@tachyon_dnat_tcp_v6", "meta", "mark", "set", "0", "return" ]) ||
-        !nft_add_rule(table, "proxy", [ "ip6", "daddr", ".", "tcp", "dport", "@tachyon_dnat_tcp_v6", "meta", "mark", "set", "0", "return" ]) ||
-        !nft_add_rule(table, "proxy", [ "ip6", "saddr", ".", "udp", "sport", "@tachyon_dnat_udp_v6", "meta", "mark", "set", "0", "return" ]) ||
-        !nft_add_rule(table, "proxy", [ "ip6", "daddr", ".", "udp", "dport", "@tachyon_dnat_udp_v6", "meta", "mark", "set", "0", "return" ]))
+    if (!nft_add_rule(table, "proxy", [ "ip", "saddr", ".", "tcp", "sport", "@tachyon_dnat_tcp_v4", "meta", "mark", "set", "meta", "mark", "&", clear_mask, "return" ]) ||
+        !nft_add_rule(table, "proxy", [ "ip", "daddr", ".", "tcp", "dport", "@tachyon_dnat_tcp_v4", "meta", "mark", "set", "meta", "mark", "&", clear_mask, "return" ]) ||
+        !nft_add_rule(table, "proxy", [ "ip", "saddr", ".", "udp", "sport", "@tachyon_dnat_udp_v4", "meta", "mark", "set", "meta", "mark", "&", clear_mask, "return" ]) ||
+        !nft_add_rule(table, "proxy", [ "ip", "daddr", ".", "udp", "dport", "@tachyon_dnat_udp_v4", "meta", "mark", "set", "meta", "mark", "&", clear_mask, "return" ]) ||
+        !nft_add_rule(table, "proxy", [ "ip6", "saddr", ".", "tcp", "sport", "@tachyon_dnat_tcp_v6", "meta", "mark", "set", "meta", "mark", "&", clear_mask, "return" ]) ||
+        !nft_add_rule(table, "proxy", [ "ip6", "daddr", ".", "tcp", "dport", "@tachyon_dnat_tcp_v6", "meta", "mark", "set", "meta", "mark", "&", clear_mask, "return" ]) ||
+        !nft_add_rule(table, "proxy", [ "ip6", "saddr", ".", "udp", "sport", "@tachyon_dnat_udp_v6", "meta", "mark", "set", "meta", "mark", "&", clear_mask, "return" ]) ||
+        !nft_add_rule(table, "proxy", [ "ip6", "daddr", ".", "udp", "dport", "@tachyon_dnat_udp_v6", "meta", "mark", "set", "meta", "mark", "&", clear_mask, "return" ]))
         return false;
     if (!nft_add_rule(table, "proxy", [ "meta", "mark", "&", fakeip_mark, "==", fakeip_mark, "meta", "l4proto", "tcp", "tproxy", "ip", "to", ":" + as_string(tproxy_port), "counter" ]) ||
         !nft_add_rule(table, "proxy", [ "meta", "mark", "&", fakeip_mark, "==", fakeip_mark, "meta", "l4proto", "udp", "tproxy", "ip", "to", ":" + as_string(tproxy_port), "counter" ]) ||

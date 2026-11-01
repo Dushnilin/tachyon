@@ -341,7 +341,7 @@ function remember_urltest_group_config(state, tag_name, input_group) {
         outbounds: array_or_empty(input_group.outbounds)
     };
 
-    for (let key in [ "url", "interval", "tolerance", "idle_timeout", "interrupt_exist_connections" ]) {
+    for (let key in [ "url", "testing_urls", "multi_url_strategy", "active_check_interval", "interval", "tolerance", "idle_timeout", "interrupt_exist_connections" ]) {
         if (input_group[key] != null)
             output_group[key] = input_group[key];
     }

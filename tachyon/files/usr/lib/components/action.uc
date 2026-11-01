@@ -261,9 +261,9 @@ function sanitize_apk_world() { return cmp.sanitize_apk_world(); }
 //
 // run_logged() itself is not the place: it also runs restarts and probes, and
 // scrubbing world on those would be wrong.
-function run_logged_pkg_install_files(description, files, timeout_seconds) {
+function run_logged_pkg_install_files(description, files, timeout_seconds, force_reinstall) {
     sanitize_apk_world();
-    return run_logged(description, pkg_install_files_command(files), timeout_seconds);
+    return run_logged(description, pkg_install_files_command(files, force_reinstall), timeout_seconds);
 }
 
 function pkg_tx_update_index(proxy_address) { return cmp_inst.pkg_tx_update_index(proxy_address); }
@@ -1998,6 +1998,8 @@ function restore_sing_box_extended_package_variant() {
         return false;
     prepare_sing_box_package_service_install();
     prepare_sing_box_binary_paths_before_package_install();
+    if (pkg_is_installed("tachyon-core"))
+        pkg_remove_sing_box_conflict("tachyon-core");
     pkg_remove_sing_box_conflict("sing-box-tiny");
     pkg_remove_sing_box_conflict("sing-box");
     if (!pkg_install_files([ package_file ], true)) {
@@ -2018,6 +2020,8 @@ function restore_sing_box_extended_package_variant() {
 function replace_sing_box_package_variant(target_package, conflict_package, target_version) {
     prepare_sing_box_package_service_install();
     prepare_sing_box_binary_paths_before_package_install();
+    if (pkg_is_installed("tachyon-core"))
+        pkg_remove_sing_box_conflict("tachyon-core");
     if ((as_string(conflict_package) == "" || !pkg_is_installed(conflict_package)) &&
         (target_package == "sing-box-extended" || !pkg_is_installed("sing-box-extended"))) {
         if (!pkg_install_name_downgrade(target_package, target_version))
@@ -2202,6 +2206,8 @@ function install_sing_box_extended_package(action, target_tag) {
         }
     }
 
+    if (pkg_is_installed("tachyon-core"))
+        run_logged_pkg_remove_sing_box_conflict("tachyon-core", "Removing tachyon-core before sing-box-extended package installation");
     if (!run_logged_pkg_remove_sing_box_conflict("sing-box-tiny", "Removing sing-box-tiny before sing-box-extended package installation")) {
         restore_sing_box_after_failed_extended_package_install(current_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, package_file, cronet_touched);
         action_fail("sing_box", action, "Failed to remove sing-box-tiny before sing-box-extended package installation", current_version, latest_version);
@@ -2393,6 +2399,7 @@ function install_sing_box_extended(action, compressed, target_tag) {
     }
 
     for (let item in [
+        [ "tachyon-core", "Removing tachyon-core package before " + label + " installation" ],
         [ "sing-box-extended", "Removing sing-box-extended package before " + label + " installation" ],
         [ "sing-box-tiny", "Removing sing-box-tiny package before " + label + " installation" ],
         [ "sing-box", "Removing sing-box package before " + label + " installation" ]
@@ -2562,6 +2569,7 @@ function install_tachyon_core(action, target_tag) {
         let had_cfg = file_exists("/etc/tachyon-core/config.json") && copy_file_stream("/etc/tachyon-core/config.json", backup_cfg);
 
         for (let item in [
+            [ "tachyon-core", "Removing previous " + label + " package before installation" ],
             [ "sing-box-extended", "Removing sing-box-extended package before " + label + " installation" ],
             [ "sing-box-tiny", "Removing sing-box-tiny package before " + label + " installation" ],
             [ "sing-box", "Removing sing-box package before " + label + " installation" ]
@@ -2570,7 +2578,23 @@ function install_tachyon_core(action, target_tag) {
                 run_logged_pkg_remove_sing_box_conflict(item[0], item[1]);
         }
 
-        let pkg_ok = run_logged_pkg_install_files("Installing " + label + " package", [ archive_file ], 180);
+        let pkg_ok = run_logged_pkg_install_files("Installing " + label + " package", [ archive_file ], 180, true);
+        if (pkg_ok && (!file_exists("/usr/bin/tachyon-core") || is_symlink_path("/usr/bin/tachyon-core"))) {
+            let fallback_bin = cmp.tmp_dir_path() + "/tachyon-core.pkg-fallback." + owner_pid();
+            let extracted = false;
+            if (str_endswith(release.asset_name, ".apk")) {
+                extracted = command_success(command_from_args([ "tar", "-xzf", archive_file, "-O", "usr/bin/tachyon-core" ]) + " >" + shell_quote(fallback_bin) + " 2>/dev/null") ||
+                    command_success(command_from_args([ "tar", "-xzf", archive_file, "-O", "./usr/bin/tachyon-core" ]) + " >" + shell_quote(fallback_bin) + " 2>/dev/null");
+            } else {
+                extracted = command_success(command_from_args([ "tar", "-xzf", archive_file, "-O", "./data.tar.gz" ]) + " 2>/dev/null | " + command_from_args([ "tar", "-xzf", "-", "-O", "./usr/bin/tachyon-core" ]) + " >" + shell_quote(fallback_bin) + " 2>/dev/null") ||
+                    command_success(command_from_args([ "tar", "-xzf", archive_file, "-O", "data.tar.gz" ]) + " 2>/dev/null | " + command_from_args([ "tar", "-xzf", "-", "-O", "usr/bin/tachyon-core" ]) + " >" + shell_quote(fallback_bin) + " 2>/dev/null");
+            }
+            if (extracted && file_nonempty(fallback_bin) && command_success_from_args([ "chmod", "0755", fallback_bin ])) {
+                remove_file("/usr/bin/tachyon-core");
+                install_staged_file(fallback_bin, "/usr/bin/tachyon-core", "0755");
+            }
+            remove_file(fallback_bin);
+        }
         remove_file(archive_file);
         if (had_cfg && file_exists(backup_cfg)) {
             install_staged_file(backup_cfg, "/etc/tachyon-core/config.json", "0644");
@@ -2583,7 +2607,6 @@ function install_tachyon_core(action, target_tag) {
             remove_file(backup_binary);
             install_legacy_sing_box_symlink();
             install_managed_sing_box_service_script();
-            restart_tachyon_after_successful_change();
             action_fail("sing_box", action, "Failed to install " + label + " package", current_version, latest_version);
         }
 
@@ -2594,7 +2617,6 @@ function install_tachyon_core(action, target_tag) {
             remove_file(backup_binary);
             install_legacy_sing_box_symlink();
             install_managed_sing_box_service_script();
-            restart_tachyon_after_successful_change();
             action_fail("sing_box", action, "Installed " + label + " package failed binary validation", current_version, latest_version);
         }
 
@@ -2605,7 +2627,6 @@ function install_tachyon_core(action, target_tag) {
             remove_file(backup_binary);
             install_legacy_sing_box_symlink();
             install_managed_sing_box_service_script();
-            restart_tachyon_after_successful_change();
             action_fail("sing_box", action, "Installed " + label + " is incompatible with current configuration: " + config_check.reason, current_version, latest_version);
         }
 
@@ -2684,6 +2705,7 @@ function install_tachyon_core(action, target_tag) {
     }
 
     for (let item in [
+        [ "tachyon-core", "Removing tachyon-core package before " + label + " installation" ],
         [ "sing-box-extended", "Removing sing-box-extended package before " + label + " installation" ],
         [ "sing-box-tiny", "Removing sing-box-tiny package before " + label + " installation" ],
         [ "sing-box", "Removing sing-box package before " + label + " installation" ]
@@ -2698,7 +2720,6 @@ function install_tachyon_core(action, target_tag) {
         if (backup_binary != "" && file_exists(backup_binary))
             install_staged_file(backup_binary, "/usr/bin/tachyon-core", "0755");
         install_legacy_sing_box_symlink();
-        restart_tachyon_after_successful_change();
         action_fail("sing_box", action, "Failed to install " + label, current_version, latest_version);
     }
     remove_file(tmp_binary);
@@ -2824,6 +2845,7 @@ function install_sing_box_lx(action, target_tag) {
     }
 
     for (let item in [
+        [ "tachyon-core", "Removing tachyon-core package before " + label + " installation" ],
         [ "sing-box-extended", "Removing sing-box-extended package before " + label + " installation" ],
         [ "sing-box-tiny", "Removing sing-box-tiny package before " + label + " installation" ],
         [ "sing-box", "Removing sing-box package before " + label + " installation" ]

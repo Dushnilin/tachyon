@@ -607,6 +607,22 @@ function active_engine_is_steer() {
     return active_engine != "tachyon-core";
 }
 
+function desired_core_component_name() {
+    let variant = "";
+    try {
+        variant = lc(trim(as_string(require("tachyon_core.variant_state").read_variant_marker() || "")));
+    } catch (e) {
+        variant = "";
+    }
+    if (variant == "extended" || variant == "sing_box_extended")
+        return "sing_box_extended";
+    if (variant == "extended-compressed" || variant == "sing_box_extended_compressed" || variant == "sing_box_compressed")
+        return "sing_box_extended_compressed";
+    if (variant == "lx" || variant == "sing_box_lx")
+        return "sing_box_lx";
+    return "tachyon-core";
+}
+
 function ensure_core_binary_installed() {
     if (getenv("TACHYON_PACKAGE_TEST_MODE") != null || getenv("TACHYON_UCI_STATE_FILE") != null)
         return true;
@@ -614,11 +630,20 @@ function ensure_core_binary_installed() {
         return true;
     if (command_success("command -v tachyon-core") || command_success("command -v sing-box"))
         return true;
+    if (fs.stat(RUNTIME_STATE_DIR + "/component-action.lock") != null)
+        return false;
     let action_uc = LIB_DIR + "/components/action.uc";
     if (fs.stat(action_uc) == null)
         return false;
-    log_message("Core binary is missing (e.g. after sysupgrade); auto-installing tachyon-core...", "info");
-    return module_status(action_uc, [ "component-action", "tachyon-core", "install" ]) == 0;
+    let target = desired_core_component_name();
+    log_message("Core binary is missing (e.g. after sysupgrade); auto-installing " + target + "...", "info");
+    if (module_status(action_uc, [ "component-action", target, "install" ]) == 0)
+        return true;
+    if (target != "tachyon-core") {
+        log_message("Fallback: auto-installing tachyon-core...", "info");
+        return module_status(action_uc, [ "component-action", "tachyon-core", "install" ]) == 0;
+    }
+    return false;
 }
 
 function validate_start_config() {
@@ -856,30 +881,29 @@ function prepare_community_rulesets() {
     let exclusion_lists = exclusions.selected_lists(uci_core.get_all(CONFIG_NAME, "settings"));
     for (let name in exclusion_lists)
         if (exclusions.supported(name)) needed[name] = true;
+    connections.set_item_sections_from_cursor(uci_core.cursor(), CONFIG_NAME);
+    let add_needed_list_items = function(raw_items) {
+        let arr = raw_items;
+        if (type(arr) == "string")
+            arr = split(trim(arr), /[ \t\r\n,]+/);
+        if (type(arr) == "array") {
+            for (let item in arr) {
+                item = trim(as_string(item));
+                if (item != "" && runtime_rulesets_mod.is_community(item))
+                    needed[item] = true;
+            }
+        }
+    };
     let sections = uci_core.get_all(CONFIG_NAME, "section") || {};
     for (let name, section in sections) {
         if (!section || !section.enabled || section.enabled == "0")
             continue;
-        let comms = section.community_lists;
-        if (type(comms) == "string")
-            comms = split(trim(comms), /[ \t\r\n]+/);
-        if (type(comms) == "array") {
-            for (let c in comms) {
-                c = trim(c);
-                if (c != "" && runtime_rulesets_mod.is_community(c))
-                    needed[c] = true;
-            }
-        }
-        let rulesets = section.rule_sets;
-        if (type(rulesets) == "string")
-            rulesets = split(trim(rulesets), /[ \t\r\n]+/);
-        if (type(rulesets) == "array") {
-            for (let r in rulesets) {
-                r = trim(r);
-                if (r != "" && runtime_rulesets_mod.is_community(r))
-                    needed[r] = true;
-            }
-        }
+        add_needed_list_items(section.community_lists);
+        add_needed_list_items(connections.community_lists(section));
+        add_needed_list_items(section.rule_sets);
+        add_needed_list_items(section.rule_set);
+        add_needed_list_items(connections.rule_sets(section));
+        add_needed_list_items(connections.rule_sets_with_subnets(section));
         // geoip_country pulls in geoip_<cc> plus geosite_ru, and the generator
         // references them exactly like community_lists entries. Scanning only
         // community_lists/rule_sets left them uncached, so any section with
@@ -887,6 +911,21 @@ function prepare_community_rulesets() {
         // startup — a GitHub hiccup then killed the core with
         // "initialize rule-set: context deadline exceeded".
         for (let cc in connections.geoip_country_list(section)) {
+            let ip_list = "geoip_" + cc;
+            if (runtime_rulesets_mod.is_community(ip_list))
+                needed[ip_list] = true;
+            if (cc == "ru" && runtime_rulesets_mod.is_community("geosite_ru"))
+                needed["geosite_ru"] = true;
+        }
+    }
+    let conditions_all = uci_core.get_all(CONFIG_NAME, "condition") || {};
+    for (let cname, cond in conditions_all) {
+        if (!cond || cond.enabled == "0")
+            continue;
+        add_needed_list_items(cond.community_lists);
+        add_needed_list_items(cond.rule_set);
+        add_needed_list_items(cond.rule_set_with_subnets);
+        for (let cc in connections.geoip_country_list(cond)) {
             let ip_list = "geoip_" + cc;
             if (runtime_rulesets_mod.is_community(ip_list))
                 needed[ip_list] = true;
@@ -906,13 +945,17 @@ function prepare_community_rulesets() {
         let etc_path = etc_dir + "/community-" + service + ".srs";
 
         if (use_trs && type(runtime_rulesets_mod.is_referenceable_trs_file) == "function") {
-            remove_file(tmp_path);
-            if (runtime_rulesets_mod.is_referenceable_trs_file(tmp_trs_path))
+            if (runtime_rulesets_mod.is_referenceable_trs_file(tmp_trs_path)) {
+                remove_file(tmp_path);
                 continue;
-            if (runtime_rulesets_mod.is_referenceable_trs_file(etc_trs_path)) {
-                if (common.copy_file_stream(etc_trs_path, tmp_trs_path))
-                    continue;
             }
+            if (runtime_rulesets_mod.is_referenceable_trs_file(etc_trs_path)) {
+                if (common.copy_file_stream(etc_trs_path, tmp_trs_path)) {
+                    remove_file(tmp_path);
+                    continue;
+                }
+            }
+            let trs_ok = false;
             if (has_curl && type(runtime_rulesets_mod.community_trs_urls) == "function") {
                 let trs_urls = runtime_rulesets_mod.community_trs_urls(service);
                 let trs_candidates = [];
@@ -936,14 +979,17 @@ function prepare_community_rulesets() {
                         } else if (sz_trs > 524288) {
                             remove_file(etc_trs_path);
                         }
+                        remove_file(tmp_path);
                         remove_file(etc_path);
                         log_message("Pre-downloaded community ruleset " + service + " (.trs) from " + trs_candidate, "info");
+                        trs_ok = true;
                         break;
                     }
                     remove_file(dl_tmp);
                 }
             }
-            continue;
+            if (trs_ok)
+                continue;
         }
 
         // The /tmp copy used to be trusted outright, which is what left the reported
@@ -1043,8 +1089,15 @@ function start_steer_main(active_engine) {
     }
 
     if (!engine_runtime.init_script_present(active_engine)) {
-        log_message("steer is not installed; cannot start the " + active_engine + " engine", "fatal");
-        return 1;
+        let action_uc = LIB_DIR + "/components/action.uc";
+        if (getenv("TACHYON_PACKAGE_TEST_MODE") == null && getenv("TACHYON_UCI_STATE_FILE") == null && fs.stat(action_uc) != null && fs.stat(RUNTIME_STATE_DIR + "/component-action.lock") == null) {
+            log_message("steer is missing (e.g. after sysupgrade); auto-installing " + active_engine + "...", "info");
+            module_status(action_uc, [ "component-action", active_engine, "install" ]);
+        }
+        if (!engine_runtime.init_script_present(active_engine)) {
+            log_message("steer is not installed; cannot start the " + active_engine + " engine", "fatal");
+            return 1;
+        }
     }
 
     // Start the DNS upstream resolver (smartdns) BEFORE steer dnsd so that
@@ -1901,6 +1954,8 @@ function reload(reason) {
         let sing_box_config_hash_before = file_md5(sing_box_config_path);
         let sing_box_pid_result = module_capture(STATE_UC, [ "tachyon-core-service-runtime-pid" ]);
         let sing_box_pid_before = sing_box_pid_result.status == 0 ? trim(sing_box_pid_result.output) : "";
+        restore_rulesets_from_cache();
+        prepare_community_rulesets();
         nft_populate_enabled = plan.needs_nft_rebuild == 1 ? 1 : 0;
         status = singbox_init_config();
         if (status != 0)

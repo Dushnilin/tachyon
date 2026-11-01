@@ -14,7 +14,12 @@ import {
 import { copyToClipboard } from '../../../helpers/copyToClipboard';
 import { showToast } from '../../../helpers/showToast';
 import { prettyBytes } from '../../../helpers/prettyBytes';
-import { renderCheckIcon, renderCopyIcon24, renderXIcon } from '../../../icons';
+import {
+  renderAlertTriangleIcon,
+  renderCheckIcon,
+  renderCopyIcon24,
+  renderXIcon,
+} from '../../../icons';
 import { CustomTachyonMethods, TachyonShellMethods } from '../../methods';
 import { tr, isRussianLanguage } from '../../helpers/i18n';
 import {
@@ -78,6 +83,8 @@ import {
 } from './inboundServers';
 
 let expandedSections = getExpandedSections();
+const expandedRoutingSections = new Set<string>();
+const sectionAccordionTabs = new Map<string, 'nodes' | 'conditions'>();
 
 function toggleSectionExpanded(sectionCode: string) {
   const result = toggleSectionExpansion(expandedSections, sectionCode);
@@ -87,6 +94,15 @@ function toggleSectionExpanded(sectionCode: string) {
   }
   void renderSectionsWidget();
   void renderConnectionsWidget();
+}
+
+function toggleRoutingSectionExpanded(sectionCode: string) {
+  if (expandedRoutingSections.has(sectionCode)) {
+    expandedRoutingSections.delete(sectionCode);
+  } else {
+    expandedRoutingSections.add(sectionCode);
+  }
+  void renderSectionsWidget();
 }
 import { getClashApiSecret } from '../../methods/custom/getClashApiSecret';
 import { measurePriorityLatencies } from './priorityLatency';
@@ -1424,6 +1440,29 @@ function renderUrlTestSelectedValue(info: Tachyon.UrlTestInfo) {
           ]
         : []),
       modeBadge,
+      ...(info.fallbackActive
+        ? [
+            E(
+              'span',
+              {
+                class: 'badge badge-warning',
+                title: _(
+                  'No server reached all health check URLs; fallback mode is active (best partial match selected).',
+                ),
+                style:
+                  'margin-left: 6px; padding: 2px 6px; font-size: 11px; background: rgba(245, 158, 11, 0.22); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.45); border-radius: 3px; display: inline-flex; align-items: center; gap: 3px;',
+              },
+              [
+                renderAlertTriangleIcon(11),
+                E(
+                  'span',
+                  {},
+                  `Fallback (${info.passedUrls ?? 1}/${info.totalUrls ?? 2} URL)`,
+                ),
+              ],
+            ),
+          ]
+        : []),
     ],
   );
 }
@@ -1864,6 +1903,29 @@ function renderPrioritySelectedValue(info: Tachyon.PriorityInfo) {
           ]
         : []),
       modeBadge,
+      ...(info.fallbackActive
+        ? [
+            E(
+              'span',
+              {
+                class: 'badge badge-warning',
+                title: _(
+                  'No server reached all health check URLs; fallback mode is active (best partial match selected).',
+                ),
+                style:
+                  'margin-left: 6px; padding: 2px 6px; font-size: 11px; background: rgba(245, 158, 11, 0.22); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.45); border-radius: 3px; display: inline-flex; align-items: center; gap: 3px;',
+              },
+              [
+                renderAlertTriangleIcon(11),
+                E(
+                  'span',
+                  {},
+                  `Fallback (${info.passedUrls ?? 1}/${info.totalUrls ?? 2} URL)`,
+                ),
+              ],
+            ),
+          ]
+        : []),
     ],
   );
 }
@@ -1992,6 +2054,26 @@ function handleShowPriorityInfo(
     }`,
     body,
   );
+
+  if (typeof fs !== 'undefined' && typeof fs.read === 'function' && info.code) {
+    fs.read(`/var/run/tachyon/priority/${encodeURIComponent(info.code)}.json`)
+      .then((raw) => {
+        if (!raw || !body.isConnected) return;
+        const st = JSON.parse(raw);
+        if (st && typeof st === 'object' && st.fallback_active !== undefined) {
+          info.fallbackActive = Boolean(st.fallback_active);
+          info.passedUrls = Number(st.passed_urls || 0);
+          info.totalUrls = Number(st.total_urls || 0);
+          body.replaceChildren(
+            renderPriorityInfoModal(
+              { ...outbound, priorityInfo: { ...info } },
+              section,
+            ),
+          );
+        }
+      })
+      .catch(() => {});
+  }
 
   // A priority group is a plain selector over raw server tags, so sing-box never
   // measures it and every fallback-level node reads N/A - even though the members
@@ -2350,6 +2432,9 @@ function renderSectionInspectorModalContent(
             failed: false,
             section,
             isCollapsed: false,
+            onToggleCollapse: () => {
+              toggleRoutingSectionExpanded(section.code);
+            },
             collapsedSourceGroups,
             onToggleSourceGroupCollapse: (groupKey: string) => {
               if (collapsedSourceGroups.has(groupKey)) {
@@ -2534,6 +2619,232 @@ function renderSectionInspectorModalContent(
   );
 }
 
+function renderSectionAccordionBody(
+  section: Tachyon.OutboundGroup,
+  proxySectionCount: number,
+): HTMLElement {
+  const sectionsWidget = store.get().sectionsWidget;
+  const bwData = store.get().bandwidthWidget.data;
+  const totData = store.get().trafficTotalWidget.data;
+  const secKey = section.sectionName || section.code;
+  const defaultTab = isServiceGroup(section) ? 'conditions' : 'nodes';
+  const currentTab = sectionAccordionTabs.get(secKey) || defaultTab;
+
+  const tabsBar = E('div', { class: 'tachyon-sec-accordion__header' }, [
+    E('ul', { class: 'cbi-tabmenu tachyon-sec-modal-tabs' }, [
+      E(
+        'li',
+        {
+          class: currentTab === 'nodes' ? 'cbi-tab' : 'cbi-tab-disabled',
+        },
+        [
+          E(
+            'a',
+            {
+              href: '#',
+              click: (e: MouseEvent) => {
+                e.preventDefault();
+                sectionAccordionTabs.set(secKey, 'nodes');
+                void renderSectionsWidget();
+              },
+            },
+            tr('Узлы и балансировщики', 'Nodes & Balancers'),
+          ),
+        ],
+      ),
+      E(
+        'li',
+        {
+          class: currentTab === 'conditions' ? 'cbi-tab' : 'cbi-tab-disabled',
+        },
+        [
+          E(
+            'a',
+            {
+              href: '#',
+              click: (e: MouseEvent) => {
+                e.preventDefault();
+                sectionAccordionTabs.set(secKey, 'conditions');
+                void renderSectionsWidget();
+              },
+            },
+            tr('Условия и правила', 'Conditions & Rules'),
+          ),
+        ],
+      ),
+    ]),
+    E('div', { class: 'tachyon-sec-accordion__actions' }, [
+      E(
+        'button',
+        {
+          type: 'button',
+          class: 'btn cbi-button tachyon-sec-accordion__action-btn',
+          click: (e: MouseEvent) => {
+            e.preventDefault();
+            activeSectionModalTab = currentTab;
+            openSectionInspectorModal(section.code);
+          },
+        },
+        tr('Открыть в модальном окне', 'Open in modal'),
+      ),
+      E(
+        'button',
+        {
+          type: 'button',
+          class: 'btn cbi-button tachyon-sec-accordion__action-btn',
+          click: (e: MouseEvent) => {
+            e.preventDefault();
+            const targetSecId = section.sectionName || section.code;
+            const openEntity = (globalThis as any).__tachyonOpenEntityModal;
+            if (typeof openEntity === 'function' && targetSecId) {
+              openEntity('section', targetSecId, 'sections');
+              return;
+            }
+            const navSub = document.querySelector<HTMLElement>(
+              '.tachyon-sidebar__subitem[data-nav-key="section:sections"]',
+            );
+            if (navSub) {
+              navSub.click();
+            } else {
+              const topTab = document.querySelector<HTMLElement>(
+                '.cbi-tabmenu > li[data-tab="cbi-tachyon-section"] a',
+              );
+              topTab?.click();
+            }
+          },
+        },
+        tr('Настроить секцию и правила →', 'Configure section & rules →'),
+      ),
+    ]),
+  ]);
+
+  const tabBody =
+    currentTab === 'nodes'
+      ? E('div', { class: 'tachyon-sec-modal__nodes-pane' }, [
+          renderSections({
+            loading: false,
+            failed: false,
+            section,
+            isCollapsed: false,
+            onToggleCollapse: () => {
+              toggleRoutingSectionExpanded(section.code);
+            },
+            collapsedSourceGroups,
+            onToggleSourceGroupCollapse: (groupKey: string) => {
+              if (collapsedSourceGroups.has(groupKey)) {
+                collapsedSourceGroups.delete(groupKey);
+              } else {
+                collapsedSourceGroups.add(groupKey);
+              }
+              void renderSectionsWidget();
+            },
+            activeCountryFilter: activeCountryFilters.get(section.sectionName),
+            onFilterCountry: (sectionName: string, countryCode?: string) => {
+              if (countryCode) {
+                activeCountryFilters.set(sectionName, countryCode);
+              } else {
+                activeCountryFilters.delete(sectionName);
+              }
+              void renderSectionsWidget();
+            },
+            activeRegionFilter: activeRegionFilters.get(section.sectionName),
+            onFilterRegion: (sectionName: string, regionCode?: string) => {
+              if (regionCode && regionCode !== 'all') {
+                activeRegionFilters.set(sectionName, regionCode);
+              } else {
+                activeRegionFilters.delete(sectionName);
+              }
+              void renderSectionsWidget();
+            },
+            onTestLatency: (tag: string | string[]) => {
+              if (Array.isArray(tag)) {
+                void handleTestLatency(
+                  'proxy_list',
+                  section.sectionName,
+                  JSON.stringify(tag),
+                  section.latencyTestTimeout,
+                );
+                return;
+              }
+              if (section.withTagSelect) {
+                void handleTestLatency(
+                  'group',
+                  section.sectionName,
+                  tag,
+                  section.latencyTestTimeout,
+                );
+                return;
+              }
+              void handleTestLatency(
+                'proxy',
+                section.sectionName,
+                tag,
+                section.latencyTestTimeout,
+              );
+            },
+            onChooseOutbound: (sectionName, selector, tag) => {
+              void handleChooseOutbound(sectionName, selector, tag);
+            },
+            onCopyOutbound: (_sec, outbound) => {
+              void handleCopyOutbound(outbound);
+            },
+            onShowUrlTestInfo: (sec, outbound) => {
+              handleShowUrlTestInfo(sec, outbound);
+            },
+            onShowPriorityInfo: (sec, outbound) => {
+              handleShowPriorityInfo(sec, outbound);
+            },
+            onUpdateSubscription: (sec) => {
+              void handleUpdateSubscription(sec);
+            },
+            latencyFetching: Boolean(
+              sectionsWidget.latencyFetchingSections[section.sectionName],
+            ),
+            latencyProgress:
+              sectionsWidget.latencyProgressSections[section.sectionName],
+            subscriptionUpdating: Boolean(
+              sectionsWidget.subscriptionUpdatingSections[section.sectionName],
+            ),
+            selectorSwitchingTag:
+              sectionsWidget.selectorSwitchingSections[section.sectionName],
+            onTestSingleOutbound: (sectionName, outboundCode) => {
+              void handleTestSingleOutbound(sectionName, outboundCode);
+            },
+            testingOutboundCodes: singleTestingOutboundCodes,
+            sectionStats: getSectionConnectionStats(
+              section.sectionName || 'main',
+              proxySectionCount || 1,
+              lastRawConnections,
+              {
+                downloadTotal: totData?.downloadTotal,
+                uploadTotal: totData?.uploadTotal,
+                downSpeed: bwData?.down,
+                upSpeed: bwData?.up,
+              },
+              connectionRates,
+            ),
+          }),
+        ])
+      : E('div', { class: 'tachyon-sec-modal__conditions-pane' }, [
+          renderSectionConditionsAndBalancersView(section, {
+            onShowUrlTestInfo: (sec, outbound) => {
+              handleShowUrlTestInfo(sec, outbound);
+            },
+            onShowPriorityInfo: (sec, outbound) => {
+              handleShowPriorityInfo(sec, outbound);
+            },
+            onChooseOutbound: (sectionName, selector, tag) => {
+              void handleChooseOutbound(sectionName, selector, tag);
+            },
+          }),
+        ]);
+
+  return E('div', { class: 'tachyon-sec-accordion__inner' }, [
+    tabsBar,
+    tabBody,
+  ]);
+}
+
 function openSectionInspectorModal(sectionCode: string) {
   const allSections = getSectionsWithCustomLatencies();
   const section =
@@ -2619,15 +2930,19 @@ async function renderSectionsWidget() {
   const dashboardBlocks = renderDashboardSectionsAndNodes({
     sections: sectionsWithCustomLatencies,
     selectedSectionCode: selectedDashboardSectionCode,
-    onSelectSection: (sectionCode: string) => {
+    expandedSections: expandedRoutingSections,
+    onToggleExpandSection: (sectionCode: string) => {
+      toggleRoutingSectionExpanded(sectionCode);
+    },
+    onOpenSectionModal: (sectionCode: string) => {
       selectedDashboardSectionCode = sectionCode;
-      const clickedSec = sectionsWithCustomLatencies.find(
-        (s) => s.code === sectionCode || s.sectionName === sectionCode,
-      );
-      activeSectionModalTab =
-        clickedSec && isServiceGroup(clickedSec) ? 'conditions' : 'nodes';
       openSectionInspectorModal(sectionCode);
       void renderSectionsWidget();
+    },
+    renderSectionAccordionContent: (sec) =>
+      renderSectionAccordionBody(sec, totalSectionCount),
+    onSelectSection: (sectionCode: string) => {
+      toggleRoutingSectionExpanded(sectionCode);
     },
     getSectionStats: (sec) =>
       getSectionConnectionStats(
@@ -4684,6 +4999,7 @@ async function onStoreUpdate(
 
 async function onPageMount() {
   onPageUnmount();
+  expandedRoutingSections.clear();
 
   dashboardMounted = true;
   dashboardMountId += 1;

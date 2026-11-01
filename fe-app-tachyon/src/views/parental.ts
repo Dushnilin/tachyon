@@ -11,16 +11,38 @@
 const UCI_PACKAGE = 'tachyon';
 
 const AVATAR_PRESETS = {
-  '👶': _('Toddler (👶)'),
-  '🧒': _('Child (🧒)'),
-  '🧑': _('Teen (🧑)'),
-  '🎮': _('Gamer (🎮)'),
-  '📱': _('Phone (📱)'),
-  '💻': _('Laptop / PC (💻)'),
-  '🏠': _('Family (🏠)'),
-  '🔒': _('Strict (🔒)'),
-  '🐾': _('Pets / IoT (🐾)'),
+  toddler: _('Toddler'),
+  child: _('Child'),
+  teen: _('Teen'),
+  gamer: _('Gamer'),
+  phone: _('Phone'),
+  laptop: _('Laptop / PC'),
+  family: _('Family'),
+  strict: _('Strict'),
+  iot: _('Pets / IoT'),
 };
+
+function renderAvatarSvgHtml(avatarKey, size = 14) {
+  const k = String(avatarKey || '')
+    .trim()
+    .toLowerCase();
+  if (k === 'gamer' || k === '\u{1F3AE}') {
+    return renderSvgIconHtml('renderGamepad2Icon', size);
+  }
+  if (k === 'phone' || k === '\u{1F4F1}') {
+    return renderSvgIconHtml('renderSmartphoneIcon', size);
+  }
+  if (k === 'laptop' || k === '\u{1F4BB}') {
+    return renderSvgIconHtml('renderLaptopIcon', size);
+  }
+  if (k === 'strict' || k === '\u{1F512}') {
+    return renderSvgIconHtml('renderLockIcon', size);
+  }
+  if (k === 'iot' || k === '\u{1F43E}') {
+    return renderSvgIconHtml('renderPlugIcon', size);
+  }
+  return renderSvgIconHtml('renderUsersIcon', size);
+}
 
 function renderSvgIconHtml(rendererName, size = 12) {
   try {
@@ -309,7 +331,7 @@ function createProfileContent(section) {
   o.rawhtml = true;
   o.modalonly = false;
   o.cfgvalue = function (sectionId) {
-    const avatar = uci.get(UCI_PACKAGE, sectionId, 'avatar') || '👶';
+    const avatar = uci.get(UCI_PACKAGE, sectionId, 'avatar') || 'child';
     const label =
       uci.get(UCI_PACKAGE, sectionId, 'label') ||
       uci.get(UCI_PACKAGE, sectionId, 'name') ||
@@ -323,19 +345,18 @@ function createProfileContent(section) {
 
     return (
       `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">` +
-      `<span style="font-size:1.3rem;line-height:1;">${avatar}</span>` +
+      `<span style="display:inline-flex;align-items:center;line-height:1;">${renderAvatarSvgHtml(avatar, 15)}</span>` +
       `<strong style="font-size:13px;color:inherit;">${label}</strong>` +
       devBadge +
       `</div>`
     );
   };
   o.textvalue = function (sectionId) {
-    const avatar = uci.get(UCI_PACKAGE, sectionId, 'avatar') || '👶';
     const label =
       uci.get(UCI_PACKAGE, sectionId, 'label') ||
       uci.get(UCI_PACKAGE, sectionId, 'name') ||
       sectionId;
-    return `${avatar} ${label}`;
+    return label;
   };
 
   // Assigned Devices column
@@ -515,7 +536,7 @@ function createProfileContent(section) {
     _('Choose a visual icon for this profile'),
   );
   o.modalonly = true;
-  o.default = '👶';
+  o.default = 'child';
   Object.entries(AVATAR_PRESETS).forEach(([icon, label]) => {
     o.value(icon, label);
   });
@@ -763,12 +784,12 @@ function createParentalContent(section) {
     if (profiles.length > 0) {
       profiles.forEach((pName) => {
         const prof = uci.get(UCI_PACKAGE, pName);
-        const avatar = (prof && prof.avatar) || '👶';
+        const avatar = (prof && prof.avatar) || 'child';
         const label = (prof && prof.label) || pName;
         const devCount = prof ? normalizeListValues(prof.device_ip).length : 0;
         items.push(
-          `<span class="badge" style="background:rgba(49,151,149,0.15);color:var(--teal-color, #319795);padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;font-weight:600;display:inline-flex;align-items:center;margin-bottom:2px;border:1px solid rgba(49,151,149,0.3);max-width:100%;word-break:break-all;">` +
-            `${avatar} ${label} (${devCount} ${_('dev.')})` +
+          `<span class="badge" style="background:rgba(49,151,149,0.15);color:var(--teal-color, #319795);padding:2px 6px;border-radius:4px;font-size:11px;margin-right:4px;font-weight:600;display:inline-flex;align-items:center;gap:4px;margin-bottom:2px;border:1px solid rgba(49,151,149,0.3);max-width:100%;word-break:break-all;">` +
+            `${renderAvatarSvgHtml(avatar, 11)} ${label} (${devCount} ${_('dev.')})` +
             `</span>`,
         );
       });
@@ -1137,8 +1158,7 @@ function createParentalContent(section) {
     const profList = uci.sections(UCI_PACKAGE, 'profile') || [];
     profList.forEach((p) => {
       const pName = p['.name'];
-      const pAvatar = p.avatar || '👶';
-      const pLabel = p.label ? `${pAvatar} ${p.label}` : `${pAvatar} ${pName}`;
+      const pLabel = p.label ? p.label : pName;
       this.value(pName, pLabel);
     });
     return form.DynamicList.prototype.load.apply(this, [sectionId]);

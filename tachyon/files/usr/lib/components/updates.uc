@@ -88,7 +88,9 @@ const BUILTIN_SUBNET_URLS = {
     hetzner: getenv("SUBNETS_HETZNER6") ? [ getenv("SUBNETS_HETZNER") || TACHYON_LISTS_SUBNETS_BASE + "/ipv4/hetzner.lst", getenv("SUBNETS_HETZNER6") ] : [ getenv("SUBNETS_HETZNER") || TACHYON_LISTS_SUBNETS_BASE + "/hetzner.lst" ],
     ovh: getenv("SUBNETS_OVH6") ? [ getenv("SUBNETS_OVH") || TACHYON_LISTS_SUBNETS_BASE + "/ipv4/ovh.lst", getenv("SUBNETS_OVH6") ] : [ getenv("SUBNETS_OVH") || TACHYON_LISTS_SUBNETS_BASE + "/ovh.lst" ],
     digitalocean: getenv("SUBNETS_DIGITALOCEAN6") ? [ getenv("SUBNETS_DIGITALOCEAN") || TACHYON_LISTS_SUBNETS_BASE + "/ipv4/digitalocean.lst", getenv("SUBNETS_DIGITALOCEAN6") ] : [ getenv("SUBNETS_DIGITALOCEAN") || TACHYON_LISTS_SUBNETS_BASE + "/digitalocean.lst" ],
-    cloudfront: getenv("SUBNETS_CLOUDFRONT6") ? [ getenv("SUBNETS_CLOUDFRONT") || TACHYON_LISTS_SUBNETS_BASE + "/ipv4/cloudfront.lst", getenv("SUBNETS_CLOUDFRONT6") ] : [ getenv("SUBNETS_CLOUDFRONT") || TACHYON_LISTS_SUBNETS_BASE + "/cloudfront.lst" ]
+    cloudfront: getenv("SUBNETS_CLOUDFRONT6") ? [ getenv("SUBNETS_CLOUDFRONT") || TACHYON_LISTS_SUBNETS_BASE + "/ipv4/cloudfront.lst", getenv("SUBNETS_CLOUDFRONT6") ] : [ getenv("SUBNETS_CLOUDFRONT") || TACHYON_LISTS_SUBNETS_BASE + "/cloudfront.lst" ],
+    google_meet: [ getenv("SUBNETS_GOOGLE_MEET") || TACHYON_LISTS_SUBNETS_BASE + "/google_meet.lst" ],
+    zoom_teams: [ getenv("SUBNETS_ZOOM_TEAMS") || TACHYON_LISTS_SUBNETS_BASE + "/zoom_teams.lst" ]
 };
 let rule_config = null;
 let routing_rulesets_module_value = null;
@@ -354,6 +356,7 @@ function list_option_values(section, key) {
 }
 
 function uci_sections(type_name) {
+    connections.set_item_sections_from_cursor(uci_core.cursor(), CONFIG_NAME);
     return uci_core.section_objects(CONFIG_NAME, as_string(type_name));
 }
 
@@ -2723,7 +2726,15 @@ function import_community_srs_file(service, settings, skip_flash_persist) {
 
     if (use_trs && type(singbox_rulesets_module().community_trs_urls) == "function") {
         let trs_base_urls = singbox_rulesets_module().community_trs_urls(service);
-        for (let trs_url in trs_base_urls) {
+        let trs_candidates = [];
+        for (let tu in trs_base_urls) {
+            let expanded = (core_url_mod && type(core_url_mod.download_candidates) == "function")
+                ? core_url_mod.download_candidates(tu) : [ tu ];
+            for (let ex in expanded)
+                if (!(ex in trs_candidates))
+                    push(trs_candidates, ex);
+        }
+        for (let trs_url in trs_candidates) {
             if (download_to_file(trs_url, tmpfile, service_proxy_address(settings, "lists")) &&
                 file_nonempty(tmpfile) &&
                 singbox_rulesets_module().is_usable_trs_file(tmpfile)) {
@@ -2760,15 +2771,22 @@ function import_community_srs_file(service, settings, skip_flash_persist) {
             log_message("Keeping existing .trs ruleset in /tmp for " + service + " after download failure", "warn");
             return true;
         }
-        log_message("Failed to download .trs preset ruleset " + service, "warn");
-        return false;
+        log_message("Could not download .trs preset ruleset " + service + "; falling back to .srs", "info");
     }
 
-    let srs_urls = [ url ];
+    let srs_base_urls = [ url ];
     let fallback_url = type(singbox_rulesets_module().fallback_community_url) == "function" ?
         singbox_rulesets_module().fallback_community_url(service) : "";
     if (fallback_url != "" && fallback_url != url)
-        push(srs_urls, fallback_url);
+        push(srs_base_urls, fallback_url);
+    let srs_urls = [];
+    for (let su in srs_base_urls) {
+        let expanded = (core_url_mod && type(core_url_mod.download_candidates) == "function")
+            ? core_url_mod.download_candidates(su) : [ su ];
+        for (let ex in expanded)
+            if (!(ex in srs_urls))
+                push(srs_urls, ex);
+    }
     let downloaded = false;
 
     for (let srs_url in srs_urls) {
@@ -3063,7 +3081,22 @@ function import_builtin_subnets_from_rule(section, settings) {
         return true;
 
     let ok = true;
-    for (let service in connections.community_lists(section)) {
+    let section_services = [];
+    for (let s in connections.community_lists(section))
+        if (!(s in section_services)) push(section_services, s);
+    for (let s in connections.rule_sets(section))
+        if (singbox_rulesets_module().is_community(s) && !(s in section_services)) push(section_services, s);
+    for (let s in connections.rule_sets_with_subnets(section))
+        if (singbox_rulesets_module().is_community(s) && !(s in section_services)) push(section_services, s);
+    for (let cc in connections.geoip_country_list(section)) {
+        let ip_list = "geoip_" + as_string(cc);
+        if (singbox_rulesets_module().is_community(ip_list) && !(ip_list in section_services))
+            push(section_services, ip_list);
+        if (as_string(cc) == "ru" && singbox_rulesets_module().is_community("geosite_ru") && !("geosite_ru" in section_services))
+            push(section_services, "geosite_ru");
+    }
+
+    for (let service in section_services) {
         service = as_string(service);
         if (!singbox_rulesets_module().is_community(service))
             continue;
@@ -3700,8 +3733,7 @@ function refresh_remote_rulesets(config_path) {
                 "--connect-timeout", "3", "--max-time", "30", "--request", "PUT",
                 "--output", "/dev/null", "--url", url
             ])) {
-                log_message("Failed to refresh remote rule set '" + tag + "'", "error");
-                ok = false;
+                log_message("Could not refresh remote rule set '" + tag + "' via Clash API; core will retry on schedule", "warn");
             }
         }
     }

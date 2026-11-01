@@ -29,6 +29,8 @@ import {
   getRouteDisplayNameByTag,
   getRouteSections,
   getRoute,
+  getRouteTooltip,
+  formatMatchedRuleSummary,
   getNetwork,
   getTargetCellParts,
   getSourceCellParts,
@@ -447,20 +449,24 @@ function renderControls() {
   }
 }
 
-function renderValue(value: string, className = '') {
+function renderValue(value: string, className = '', customTitle?: string) {
   const text = value || '-';
+  const tooltipText = customTitle || text;
   const element = E(
     'span',
     {
       class: ['tachyon_monitoring-page__value', className]
         .filter(Boolean)
         .join(' '),
-      title: text,
+      title: tooltipText,
     },
     text,
   );
 
   element.setAttribute('data-copy-value', text);
+  if (customTitle && customTitle !== text) {
+    element.setAttribute('data-rule-tooltip', customTitle);
+  }
 
   return element;
 }
@@ -537,9 +543,11 @@ function renderConnectionRow(connection: MonitoredConnection) {
   const networkClass =
     networkLower === 'tcp'
       ? 'tachyon_monitoring-page__network tachyon_monitoring-page__network--tcp'
-      : networkLower === 'udp'
-        ? 'tachyon_monitoring-page__network tachyon_monitoring-page__network--udp'
-        : 'tachyon_monitoring-page__network';
+      : networkLower === 'quic'
+        ? 'tachyon_monitoring-page__network tachyon_monitoring-page__network--quic'
+        : networkLower === 'udp'
+          ? 'tachyon_monitoring-page__network tachyon_monitoring-page__network--udp'
+          : 'tachyon_monitoring-page__network';
 
   const route = getRoute(connection);
   const routeLower = (route || '').toLowerCase();
@@ -581,6 +589,7 @@ function renderConnectionRow(connection: MonitoredConnection) {
   const routeClass = ['tachyon_monitoring-page__route', routeModifier]
     .filter(Boolean)
     .join(' ');
+  const routeTooltip = getRouteTooltip(connection, route);
 
   const row = E(
     'tr',
@@ -590,7 +599,9 @@ function renderConnectionRow(connection: MonitoredConnection) {
     [
       renderTableCell(_('Host'), [renderValue(target.primary)]),
       renderTableCell(_('Type'), [renderValue(network, networkClass)]),
-      renderTableCell(_('Route'), [renderValue(route, routeClass)]),
+      renderTableCell(_('Route'), [
+        renderValue(route, routeClass, routeTooltip),
+      ]),
       renderTableCell(_('Time'), [
         renderValue(formatConnectionDuration(connection)),
       ]),
@@ -756,6 +767,7 @@ function getConnectionRowSignature(connection: MonitoredConnection): string {
     target.primary,
     getNetwork(connection),
     getRoute(connection),
+    formatMatchedRuleSummary(connection),
     source.primary,
     source.ip,
     closingConnectionIds.has(connection.id) ? 'closing' : 'open',

@@ -2828,4 +2828,38 @@ body.dark-theme .tachyon_proto-popover__desc {
     border-top: 1px dashed rgba(239, 68, 68, 0.3);
 }
 
+.tachyon_dashboard-section-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    width: 100%;
+    min-width: 0;
+}
+
+.tachyon_dashboard-section-accordion {
+    display: none;
+    margin-top: -4px;
+    margin-bottom: 6px;
+    padding: 12px 14px;
+    border-radius: 0 0 12px 12px;
+    border: 1px solid var(--tachyon-border-subtle, rgba(148, 163, 184, 0.22));
+    border-top: 0;
+    background: var(--tachyon-bg-surface, rgba(15, 23, 42, 0.32));
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+}
+
+.tachyon_dashboard-section-accordion.is-open {
+    display: block;
+}
+
+.tachyon_dashboard-section-accordion > .tachyon_dashboard-page__outbound-section {
+    margin: 0 !important;
+    border: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
 `;

@@ -954,17 +954,44 @@ export function renderCommunityListServiceIcon(
     k.includes('openai') ||
     k.includes('anthropic') ||
     k.includes('google_ai') ||
-    k.includes('xai')
+    k.includes('xai') ||
+    [
+      'openrouter',
+      'cursor',
+      'perplexity',
+      'copilot',
+      'deepseek',
+      'midjourney',
+      'elevenlabs',
+      'huggingface',
+    ].includes(k)
   ) {
     return renderBotIcon(size);
   }
-  if (['meta', 'twitter', 'tiktok', 'pinterest', 'social'].includes(k)) {
+  if (
+    [
+      'meta',
+      'whatsapp',
+      'messengers',
+      'twitter',
+      'reddit',
+      'zoom_teams',
+      'google_meet',
+      'linkedin',
+      'tiktok',
+      'pinterest',
+      'social',
+    ].includes(k)
+  ) {
     return renderGlobeIcon(size);
   }
   if (
     [
       'spotify',
+      'soundcloud_music',
       'netflix',
+      'rutracker_lampa',
+      'patreon_creators',
       'twitch',
       'twitch_ads',
       'hdrezka',
@@ -977,10 +1004,23 @@ export function renderCommunityListServiceIcon(
   }
   if (
     [
+      'games_all',
       'steam',
       'epicgames',
+      'ubisoft',
+      'warthunder',
+      'blizzard',
       'riot',
       'origin',
+      'xbox',
+      'playstation',
+      'nintendo',
+      'gog',
+      'wargaming',
+      'hoyoverse',
+      'minecraft',
+      'rockstar',
+      'pubg',
       'roblox',
       'supercell',
       'escapefromtarkov',
@@ -995,12 +1035,19 @@ export function renderCommunityListServiceIcon(
     [
       'github',
       'docker',
+      'jetbrains',
+      'gitlab_notion',
+      'figma_adobe',
+      'pkg_registries',
       'cloudflare',
       'cloudfront',
       'fastly',
       'hetzner',
       'ovh',
       'digitalocean',
+      'speedtest',
+      'crypto',
+      'paypal_fintech',
       'cloud',
       'dev_cloud',
     ].includes(k)
@@ -1010,6 +1057,7 @@ export function renderCommunityListServiceIcon(
   if (
     [
       'russia_inside',
+      'ukraine_inside',
       'geoblock',
       'block',
       'ru_blocked',
@@ -1024,7 +1072,7 @@ export function renderCommunityListServiceIcon(
   ) {
     return renderShieldIcon(size);
   }
-  if (['ads_hagezi_pro', 'win_spy'].includes(k)) {
+  if (['ads_hagezi_pro', 'win_spy', 'xiaomi_smarttv_ads'].includes(k)) {
     return renderBanIcon(size);
   }
   if (['apple', 'microsoft', 'ecosystems'].includes(k)) {

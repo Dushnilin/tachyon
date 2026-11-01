@@ -1,0 +1,11 @@
+/etc/config/tachyon
+/etc/tachyon/
+/etc/tachyon-core/
+/etc/steer/
+/etc/init.d/tachyon-core
+/etc/init.d/steer
+/usr/bin/tachyon-core
+/usr/bin/sing-box
+/usr/lib/libcronet.so
+/usr/sbin/steer
+/usr/sbin/steer-nfqws

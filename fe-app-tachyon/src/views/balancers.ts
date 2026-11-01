@@ -282,15 +282,30 @@ function summarizeBalancer(sectionId) {
     ).map(resolveEntityName);
     const interval =
       uci.get(UCI_PACKAGE, sectionId, 'active_check_interval') || '5s';
-    return `${_('Priority Failover')} (${_('Tiers')}: ${levels.length ? levels.join(' → ') : _('Section Pool')}, ${_('Check')}: ${interval})`;
+    const extraUrls = asArray(uci.get(UCI_PACKAGE, sectionId, 'health_urls'));
+    const multiPart = extraUrls.length
+      ? `, +${extraUrls.length} URL (${uci.get(UCI_PACKAGE, sectionId, 'multi_url_strategy') || 'worst_case'})`
+      : '';
+    return `${_('Priority Failover')} (${_('Tiers')}: ${levels.length ? levels.join(' → ') : _('Section Pool')}, ${_('Check')}: ${interval}${multiPart})`;
   }
   const url =
     uci.get(UCI_PACKAGE, sectionId, 'testing_url') ||
     'https://www.gstatic.com/generate_204';
   const interval = uci.get(UCI_PACKAGE, sectionId, 'check_interval') || '3m';
   const tol = uci.get(UCI_PACKAGE, sectionId, 'tolerance') || '50';
+  const activeCheck =
+    uci.get(UCI_PACKAGE, sectionId, 'urltest_active_check_interval') ||
+    uci.get(UCI_PACKAGE, sectionId, 'active_check_interval') ||
+    '';
+  const extraUrls = asArray(uci.get(UCI_PACKAGE, sectionId, 'testing_urls'));
+  const activePart = activeCheck
+    ? `, ${_('Active Check')}: ${activeCheck}`
+    : '';
+  const multiPart = extraUrls.length
+    ? `, +${extraUrls.length} URL (${uci.get(UCI_PACKAGE, sectionId, 'multi_url_strategy') || 'worst_case'})`
+    : '';
   const parts = [
-    `URLTest (${_('Interval')}: ${interval}, ${_('Tolerance')}: ${tol} ms)`,
+    `URLTest (${_('Interval')}: ${interval}, ${_('Tolerance')}: ${tol} ms${activePart}${multiPart})`,
   ];
   const srcRefs = asArray(uci.get(UCI_PACKAGE, sectionId, 'source_refs')).map(
     resolveEntityName,
@@ -378,7 +393,7 @@ function escapeHtml(str) {
 
 function createBalancersContent(section) {
   section.tab('general', _('Policy Settings'));
-  section.tab('pool', _('Server Pool & Filters'));
+  section.tab('pool', _('Server Filters'));
 
   let o = section.taboption('general', form.Flag, 'enabled', _('Enable'));
   o.default = '1';
@@ -489,6 +504,20 @@ function createBalancersContent(section) {
 
   o = section.taboption(
     'general',
+    form.DynamicList,
+    'testing_urls',
+    _('Additional Testing URLs (Multi-URL)'),
+    _(
+      'Optional additional URLs to probe simultaneously with Testing URL. A server is considered fully healthy only when all configured URLs succeed (unless fallback activates).',
+    ),
+  );
+  o.modalonly = true;
+  o.placeholder = 'https://cp.cloudflare.com/generate_204';
+  o.depends('balancer_type', 'urltest');
+  URLTEST_URL_CHOICES.forEach((u) => o.value(u));
+
+  o = section.taboption(
+    'general',
     form.Value,
     'check_interval',
     _('Check Interval'),
@@ -498,6 +527,45 @@ function createBalancersContent(section) {
   o.default = '3m';
   o.placeholder = '3m';
   o.depends('balancer_type', 'urltest');
+
+  o = section.taboption(
+    'general',
+    form.Value,
+    'urltest_active_check_interval',
+    _('Active Check Interval'),
+    _(
+      'Optional fast background health check interval for the currently active server ONLY (e.g. 10s or 15s). Triggers an immediate failover check if the active server stops responding, without pinging the entire pool every few seconds.',
+    ),
+  );
+  o.modalonly = true;
+  o.placeholder = _('Disabled (e.g. 10s)');
+  o.depends('balancer_type', 'urltest');
+  o.cfgvalue = function (sectionId) {
+    return (
+      uci.get(UCI_PACKAGE, sectionId, 'urltest_active_check_interval') ||
+      uci.get(UCI_PACKAGE, sectionId, 'active_check_interval') ||
+      ''
+    );
+  };
+  o.write = function (sectionId, value) {
+    const trimmed = String(value || '').trim();
+    if (trimmed) {
+      uci.set(UCI_PACKAGE, sectionId, 'urltest_active_check_interval', trimmed);
+      uci.set(UCI_PACKAGE, sectionId, 'active_check_interval', trimmed);
+    } else {
+      uci.unset(UCI_PACKAGE, sectionId, 'urltest_active_check_interval');
+      uci.unset(UCI_PACKAGE, sectionId, 'active_check_interval');
+    }
+  };
+  o.remove = function (sectionId) {
+    uci.unset(UCI_PACKAGE, sectionId, 'urltest_active_check_interval');
+    if (
+      (uci.get(UCI_PACKAGE, sectionId, 'balancer_type') || 'urltest') ===
+      'urltest'
+    ) {
+      uci.unset(UCI_PACKAGE, sectionId, 'active_check_interval');
+    }
+  };
 
   o = section.taboption(
     'general',
@@ -567,6 +635,46 @@ function createBalancersContent(section) {
   o.placeholder = 'https://www.gstatic.com/generate_204';
   o.depends('balancer_type', 'priority');
   URLTEST_URL_CHOICES.forEach((u) => o.value(u));
+
+  o = section.taboption(
+    'general',
+    form.DynamicList,
+    'health_urls',
+    _('Additional Health Check URLs (Multi-URL)'),
+    _(
+      'Optional additional URLs to probe simultaneously with Health Check URL. If no server passes 100% of URLs, Fallback mode selects the server with the highest number of reachable URLs (> 0).',
+    ),
+  );
+  o.modalonly = true;
+  o.placeholder = 'https://cp.cloudflare.com/generate_204';
+  o.depends('balancer_type', 'priority');
+  URLTEST_URL_CHOICES.forEach((u) => o.value(u));
+
+  o = section.taboption(
+    'general',
+    form.ListValue,
+    'multi_url_strategy',
+    _('Multi-URL Evaluation Strategy'),
+    _(
+      'How combined latency is calculated across multiple URLs when selecting the best server. Note: background probe count scales with URL count (N servers × M URLs); if no server passes 100% of URLs, automatic partial-match Fallback is activated.',
+    ),
+  );
+  o.modalonly = true;
+  o.default = 'worst_case';
+  o.value(
+    'worst_case',
+    _('Worst-case (Max latency across URLs — penalizes slow routes)'),
+  );
+  o.value('best_case', _('Best-case (Min latency across URLs)'));
+  o.value(
+    'best_case_target',
+    _(
+      'Best-case + Target check (100% URLs must pass, latency measured by primary URL #1)',
+    ),
+  );
+  o.value('average', _('Average (Mean latency across all URLs)'));
+  o.depends('balancer_type', 'urltest');
+  o.depends('balancer_type', 'priority');
 
   o = section.taboption(
     'general',
@@ -657,56 +765,7 @@ function createBalancersContent(section) {
   o.modalonly = true;
   o.default = '1';
 
-  // Tab 2: Server Pool & Filters (subscriptions, groups, countries, regex)
-  o = section.taboption(
-    'pool',
-    form.DynamicList,
-    'source_refs',
-    _('Subscriptions / Outbound Sources'),
-    _(
-      'Select subscriptions or sources from the Outbounds tab. Leave empty to use all servers available in the attached Section.',
-    ),
-  );
-  o.modalonly = true;
-  o.load = function () {
-    this.keylist = [];
-    this.vallist = [];
-    (uci.sections(UCI_PACKAGE, 'outbound_source') || []).forEach((src) => {
-      const sid = src['.name'];
-      if (!sid) return;
-      const stypeLower = String(
-        src.source_type || 'subscription',
-      ).toLowerCase();
-      if (DPI_SOURCE_TYPES.has(stypeLower)) return;
-      const stype = stypeLower.toUpperCase();
-      const pfx = src.node_prefix ? ` [${src.node_prefix}]` : ` [${stype}]`;
-      this.value(sid, `${src.name || src.label || sid}${pfx}`);
-    });
-    return form.DynamicList.prototype.load.apply(this, arguments);
-  };
-
-  o = section.taboption(
-    'pool',
-    form.DynamicList,
-    'group_refs',
-    _('Reusable Outbound Server Groups'),
-    _(
-      'Optionally select pre-filtered Outbound Server Groups from the Outbounds tab.',
-    ),
-  );
-  o.modalonly = true;
-  o.depends('balancer_type', 'urltest');
-  o.load = function () {
-    this.keylist = [];
-    this.vallist = [];
-    (uci.sections(UCI_PACKAGE, 'outbound_group') || []).forEach((grp) => {
-      const gid = grp['.name'];
-      if (!gid) return;
-      this.value(gid, grp.name || grp.label || gid);
-    });
-    return form.DynamicList.prototype.load.apply(this, arguments);
-  };
-
+  // Tab 2: Server Filters (prefixes, countries, servers, protocols, regex)
   o = section.taboption(
     'pool',
     form.ListValue,

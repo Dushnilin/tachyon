@@ -12,6 +12,7 @@ function env(name, fallback) {
 }
 
 const CONFIG_NAME = env("TACHYON_CONFIG_NAME", "tachyon");
+const SERVICE_NAME = env("TACHYON_SERVICE_NAME", "tachyon");
 const RT_TABLES_PATH = env("TACHYON_RT_TABLES", "/etc/iproute2/rt_tables");
 const BIN_PATH = env("TACHYON_BIN", "/usr/bin/tachyon");
 const INIT_PATH = env("TACHYON_INIT", "/etc/init.d/tachyon");

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-01 07:50+0300\n"
-"PO-Revision-Date: 2026-11-01 07:50+0300\n"
+"POT-Creation-Date: 2026-11-01 14:23+0300\n"
+"PO-Revision-Date: 2026-11-01 14:23+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -59,6 +59,9 @@ msgstr "+ добавить"
 msgid "-- Select --"
 msgstr "-- Выбрать --"
 
+msgid "-- Select Inbound Server --"
+msgstr "-- Выберите входящий сервер --"
+
 msgid "-- Select country --"
 msgstr "-- Выберите страну --"
 
@@ -84,7 +87,10 @@ msgid "0 servers cached"
 msgstr "0 серверов в кэше"
 
 msgid "1 (Byte 1 after header)"
-msgstr ""
+msgstr "1 (Байт 1 после заголовка)"
+
+msgid "1-Click Preset Quick Start — paste subscription & launch"
+msgstr "Быстрый старт по пресету — вставьте подписку и всё запустится"
 
 msgid "1. Dashboard Presets (5 layouts)"
 msgstr "1. Готовые пресеты дашборда (5 вариантов)"
@@ -105,7 +111,7 @@ msgid "15 min — Quick"
 msgstr "15 мин — быстрый"
 
 msgid "2 (Byte 2)"
-msgstr ""
+msgstr "2 (Байт 2)"
 
 msgid "2-Mode Rule & Condition Tracer"
 msgstr "Двухрежимный трассировщик правил и условий"
@@ -126,7 +132,7 @@ msgid "2. Which rule is strictly satisfied? (Exact Boolean Match)"
 msgstr "2. Какое правило точно удовлетворяется? (Точное булево совпадение)"
 
 msgid "3 (Byte 3)"
-msgstr ""
+msgstr "3 (Байт 3)"
 
 msgid "3 comma-separated integers or Base64 client_id."
 msgstr "3 целых числа через запятую или client_id в формате Base64."
@@ -138,7 +144,7 @@ msgid "30 min — Standard"
 msgstr "30 мин — стандартный"
 
 msgid "32KB Streamed"
-msgstr ""
+msgstr "32 КБ скачано"
 
 msgid "45 min — Deep (Recommended)"
 msgstr "45 мин — глубокий (рекомендуется)"
@@ -311,6 +317,9 @@ msgstr "Активно (Напрямую)"
 msgid "Active Bootstrap DNS"
 msgstr "Активный Bootstrap DNS"
 
+msgid "Active Check"
+msgstr "Активная проверка"
+
 msgid "Active Check Interval"
 msgstr "Интервал активной проверки"
 
@@ -360,7 +369,7 @@ msgid "Adaptive 2.0 Auto-Learning (auto_tune)"
 msgstr "Автоподбор Adaptive 2.0 (auto_tune)"
 
 msgid "Adaptive Smart Fuzzing (Genetic / Prior Seeds)"
-msgstr ""
+msgstr "Адаптивный умный перебор (Genetic / Prior Seeds)"
 
 msgid "Add Connection (Setup Wizard)"
 msgstr "Добавить подключение (Мастер настройки)"
@@ -416,9 +425,6 @@ msgstr "Добавить секцию"
 msgid "Add a server inbound"
 msgstr "Добавить серверный инбаунд"
 
-msgid "Add a subscription URL, VLESS / Hysteria2 / TUIC / SS share links, AmneziaWG / WireGuard config, Cloudflare WARP, or built-in Tachyon Core Desync."
-msgstr "Подключить подписку, ключи VLESS / Hysteria2 / TUIC / SS, конфиг AmneziaWG / WireGuard, Cloudflare WARP или встроенный нативный Desync ядра Tachyon Core для обхода блокировок."
-
 msgid "Add an outbound source"
 msgstr "Добавить источник серверов"
 
@@ -437,8 +443,14 @@ msgstr "Добавить префикс к узлам"
 msgid "Add to Connections Pool only"
 msgstr "Только в пул подключений (без секции)"
 
+msgid "Additional Health Check URLs (Multi-URL)"
+msgstr "Дополнительные URL проверки доступности (Multi-URL)"
+
 msgid "Additional Individual Devices (IP / MAC)"
 msgstr "Дополнительные устройства (IP / MAC)"
+
+msgid "Additional Testing URLs (Multi-URL)"
+msgstr "Дополнительные URL тестирования (Multi-URL)"
 
 msgid "Additional custom domains (optional, comma or newline separated)"
 msgstr "Дополнительные домены (необязательно, через запятую или с новой строки)"
@@ -446,8 +458,8 @@ msgstr "Дополнительные домены (необязательно, �
 msgid "Additional marking rules found"
 msgstr "Найдены дополнительные правила маркировки"
 
-msgid "Additional or auto-discovered domain suffixes (one per line)."
-msgstr "Дополнительные или автоматически обнаруженные доменные суффиксы (по одному на строку)."
+msgid "Additional or auto-discovered domain suffixes (one per line). Checked for syntax errors and duplicates in real time."
+msgstr "Дополнительные или автоматически обнаруженные доменные суффиксы (по одному в строке). Проверяются на ошибки и дубликаты в реальном времени."
 
 msgid "Additionally exclude servers by protocol, transport, and security. Exclude only servers matching the specified parameters."
 msgstr "Дополнительно исключать серверы по протоколу, транспорту и безопасности. Исключать только серверы, соответствующие указанным параметрам."
@@ -581,6 +593,9 @@ msgstr "Все серверы"
 msgid "All services"
 msgstr "Все сервисы"
 
+msgid "All subscriptions updated."
+msgstr "Все подписки обновлены."
+
 msgid "All subsystems are healthy"
 msgstr "Все подсистемы работают исправно"
 
@@ -589,6 +604,9 @@ msgstr "Все инварианты системы соблюдены. Обры�
 
 msgid "All traffic from these IP addresses will be routed through the section unconditionally, ignoring all other conditions."
 msgstr "Весь трафик от этих IP-адресов будет маршрутизирован через секцию безусловно, игнорируя все остальные условия."
+
+msgid "All traffic through selected section"
+msgstr "Весь трафик через выбранную секцию"
 
 msgid "Allow / Enable ONLY in scheduled hours (White period)"
 msgstr "Разрешать / Включать ТОЛЬКО в указанные часы (Белый список)"
@@ -753,7 +771,7 @@ msgid "Analysis inconclusive."
 msgstr "Анализ не дал однозначного результата."
 
 msgid "Analyzing DPI blocking patterns..."
-msgstr ""
+msgstr "Анализ паттернов блокировки DPI..."
 
 msgid "Anonymized support report copied to clipboard"
 msgstr "Анонимизированный отчет скопирован в буфер обмена"
@@ -778,6 +796,9 @@ msgstr "Применить"
 
 msgid "Apply Best Match"
 msgstr "Применить лучшее совпадение"
+
+msgid "Apply Preset & Launch in 1 Click"
+msgstr "Применить пресет и запустить в 1 клик"
 
 msgid "Apply Recommended DNS"
 msgstr "Применить рекомендованный DNS"
@@ -849,13 +870,13 @@ msgid "Auto"
 msgstr "Авто"
 
 msgid "Auto (Clone target SNI / www.google.com)"
-msgstr ""
+msgstr "Авто (Клонировать целевой SNI / www.google.com)"
 
 msgid "Auto (Default)"
 msgstr "Авто (по умолчанию)"
 
 msgid "Auto (TCP/UDP)"
-msgstr "Auto (TCP/UDP)"
+msgstr "Авто (TCP/UDP)"
 
 msgid "Auto (by rules)"
 msgstr "Авто (по правилам)"
@@ -941,6 +962,9 @@ msgstr "Автовыбор самого быстрого узла из токе�
 msgid "Auto-select fastest server (URLTest)"
 msgstr "Автовыбор самого быстрого сервера (URLTest)"
 
+msgid "Auto-update"
+msgstr "Автообновление"
+
 msgid "Auto-update Hosts Lists"
 msgstr "Автообновление списков Hosts"
 
@@ -949,6 +973,9 @@ msgstr "Автообновление подписки"
 
 msgid "Auto-update mode"
 msgstr "Режим автообновления"
+
+msgid "Auto-update: Off"
+msgstr "Автообновление: Выкл"
 
 msgid "Auto-updated HTTP/HTTPS subscription link (VLESS, Hysteria2, Trojan, SS)"
 msgstr "Автообновляемая HTTP/HTTPS подписка (VLESS, Hysteria2, Trojan, SS)"
@@ -1025,14 +1052,14 @@ msgstr "Доступно"
 msgid "Available actions"
 msgstr "Доступные действия"
 
-msgid "Available in pool (not attached yet)"
-msgstr "В общем пуле (не привязан напрямую)"
-
 msgid "Available memory:"
 msgstr "Доступно памяти:"
 
 msgid "Average"
 msgstr "Среднее"
+
+msgid "Average (Mean latency across all URLs)"
+msgstr "Среднее значение (средний пинг по всем URL)"
 
 msgid "Avg. latency"
 msgstr "Ср. задержка"
@@ -1101,10 +1128,10 @@ msgid "Benchmark completed successfully"
 msgstr "Бенчмарк успешно завершён"
 
 msgid "Benchmark completed! Optimal strategy identified."
-msgstr ""
+msgstr "Тестирование завершено! Найдена оптимальная стратегия."
 
 msgid "Benchmark completed. No working bypass found for this target."
-msgstr ""
+msgstr "Тестирование завершено. Рабочая стратегия обхода для этой цели не найдена."
 
 msgid "Benchmark measures actual latency and resolution reliability of major DNS servers (UDP 53 and encrypted DoH) directly from your router to find the fastest, unblocked upstream for your ISP."
 msgstr "Бенчмарк замеряет реальную задержку и надёжность резолва основных DNS серверов (UDP 53 и шифрованный DoH) напрямую с роутера, чтобы найти самый быстрый и незаблокированный апстрим у вашего провайдера."
@@ -1126,6 +1153,12 @@ msgstr "Bento-карточки"
 
 msgid "Best Strategy"
 msgstr "Лучшая стратегия"
+
+msgid "Best-case (Min latency across URLs)"
+msgstr "Лучший результат (минимальный пинг среди URL)"
+
+msgid "Best-case + Target check (100% URLs must pass, latency measured by primary URL #1)"
+msgstr "Лучший пинг + проверка целей (100% URL должны быть доступны, пинг по основному URL #1)"
 
 msgid "Bidirectional (default)"
 msgstr "Двунаправленный (по умолчанию)"
@@ -1365,13 +1398,13 @@ msgid "Cannot apply"
 msgstr "Невозможно применить"
 
 msgid "Cannot match the loaded rule-set: %s"
-msgstr ""
+msgstr "Не удалось сопоставить загруженный набор правил (rule-set): %s"
 
 msgid "Cannot read the Amnezia .conf file"
 msgstr "Не удалось прочитать файл Amnezia .conf"
 
 msgid "Cannot read the loaded rule-set: %s"
-msgstr ""
+msgstr "Не удалось прочитать загруженный набор правил (rule-set): %s"
 
 msgid "Cannot receive checks result"
 msgstr "Не удалось получить результаты проверки"
@@ -1416,7 +1449,7 @@ msgid "Change subscription URL"
 msgstr "Сменить ссылку подписки"
 
 msgid "ChatGPT / OpenAI Suite"
-msgstr ""
+msgstr "ChatGPT / OpenAI (полный пакет)"
 
 msgid "Check"
 msgstr "Проверка"
@@ -1493,8 +1526,8 @@ msgstr "Проверки пройдены"
 msgid "Checks passed with manual DHCP"
 msgstr "Проверки пройдены с ручным DHCP"
 
-msgid "Child (🧒)"
-msgstr "Ребёнок (🧒)"
+msgid "Child"
+msgstr "Ребёнок"
 
 msgid "China (cn)"
 msgstr "Китай (cn)"
@@ -1514,8 +1547,8 @@ msgstr "Выберите от 1 до 24 DNS-серверов."
 msgid "Choose between 1 and 32 test domains."
 msgstr "Укажите от 1 до 32 доменов для проверки."
 
-msgid "Choose what kind of connection to add. The wizard will automatically configure all required entities with optimal defaults."
-msgstr "Выберите, какое подключение нужно добавить. Мастер автоматически создаст все необходимые сущности с оптимальными настройками."
+msgid "Choose from server list"
+msgstr "Выбрать из списка серверов"
 
 msgid "Choose whether this schedule rule is permanently active (24/7) or restricted to specific hours."
 msgstr "Выберите, действует ли расписание круглосуточно (24/7) или только в заданные часы."
@@ -1556,11 +1589,17 @@ msgstr "Очистить кэш DNS"
 msgid "Clear History"
 msgstr "Очистить историю"
 
+msgid "Clear all"
+msgstr "Сбросить все"
+
 msgid "Click Configure to add services or domains"
 msgstr "Нажмите Изменить для выбора сервисов или доменов"
 
 msgid "Click a ready-made badge theme or use the color pickers to set background and text colors"
 msgstr "Нажмите на готовый пресет бейджа или укажите собственные цвета фона и текста"
+
+msgid "Click sections below to attach this reusable server group to routing Sections."
+msgstr "Нажмите на секции ниже, чтобы привязать эту группу серверов к секциям маршрутизации."
 
 msgid "Click servers from the pool below to exclude them from this group."
 msgstr "Нажмите на серверы из пула ниже, чтобы исключить их из этой группы."
@@ -1577,14 +1616,17 @@ msgstr "Нажмите, чтобы выбрать сайт для иконки (
 msgid "Click to customize prefix colors"
 msgstr "Нажмите для настройки цвета префикса"
 
+msgid "Click to expand section nodes, balancers and conditions"
+msgstr "Нажмите, чтобы развернуть узлы, балансировщики и условия секции"
+
 msgid "Click to hide"
 msgstr "Нажмите, чтобы скрыть"
 
 msgid "Click to inspect auto-selection details"
 msgstr "Нажмите для просмотра деталей автовыбора"
 
-msgid "Click to open section nodes, balancers and conditions"
-msgstr "Нажмите, чтобы открыть узлы, балансировщики и условия секции"
+msgid "Click to remove server from selection"
+msgstr "Нажмите, чтобы убрать сервер из выбранных"
 
 msgid "Click to show"
 msgstr "Нажмите, чтобы показать"
@@ -1710,7 +1752,7 @@ msgid "Collapse top toolbar"
 msgstr "Свернуть панель инструментов"
 
 msgid "Combinatorial Deep Fuzzing (~150-300+)"
-msgstr ""
+msgstr "Глубокий комбинаторный перебор (~150–300+)"
 
 msgid "Combine multiple atomic conditions with boolean logic expressions"
 msgstr "Объединение нескольких условий с помощью булевой логики"
@@ -1832,6 +1874,9 @@ msgstr "Настроить секцию и правила →"
 msgid "Configure subscription"
 msgstr "Настроить подписку"
 
+msgid "Configure subscription URL & QR code for inbound servers"
+msgstr "Сгенерировать единую ссылку подписки (URL / QR) из входящих серверов"
+
 msgid "Configured"
 msgstr "Настроено"
 
@@ -1843,6 +1888,9 @@ msgstr "Конфликт"
 
 msgid "Congestion control"
 msgstr "Контроль перегрузки"
+
+msgid "Connect & Launch in 1 Click"
+msgstr "Подключить и запустить в 1 клик"
 
 msgid "Connect through"
 msgstr "Подключаться через"
@@ -2103,7 +2151,7 @@ msgid "Custom Raw JSON Outbound (sing-box / tachyon-core)"
 msgstr "Собственный JSON-аутбаунд (sing-box / tachyon-core)"
 
 msgid "Custom Target URL(s)..."
-msgstr ""
+msgstr "Свои целевые URL..."
 
 msgid "Custom User-Agent / Client Profile"
 msgstr "Пользовательский User-Agent / Профиль клиента"
@@ -2143,6 +2191,9 @@ msgstr "Пользовательский тег (например, v1.2.3)"
 
 msgid "Custom • Widgets"
 msgstr "Свой макет • Виджеты"
+
+msgid "Customize Step-by-Step (4 steps) →"
+msgstr "Настроить детали по шагам (4 шага) →"
 
 msgid "Customize dashboard widgets, their views, width and order"
 msgstr "Настроить виджеты дашборда, их виды, размер и порядок"
@@ -2424,7 +2475,7 @@ msgid "Decision & Details"
 msgstr "Решение и подробности"
 
 msgid "Decoy hostname injected into fake ClientHello (choose a Russian whitelist domain or enter your own)"
-msgstr ""
+msgstr "Домен-приманка в фейковом ClientHello (выберите домен из белого списка РФ или введите свой)"
 
 msgid "Dedicated cgroup unavailable"
 msgstr "Выделенная cgroup недоступна"
@@ -2598,7 +2649,7 @@ msgid "Direct NFQUEUE Mode (Bypass Proxy Core)"
 msgstr "Прямой режим NFQUEUE (мимо прокси-ядра)"
 
 msgid "Direct Proxy"
-msgstr "Direct Proxy"
+msgstr "Прямой прокси (Direct Proxy)"
 
 msgid "Direct Route (Bypass)"
 msgstr "Прямой маршрут (Bypass)"
@@ -2622,7 +2673,7 @@ msgid "Direct connection"
 msgstr "Прямое подключение"
 
 msgid "Direct connection (WAN): Public IP matches your ISP. Under selective routing (by domains or blocklists), unblocked resources bypass the proxy — this is standard operation."
-msgstr ""
+msgstr "Прямое подключение (WAN): внешний IP совпадает с вашим провайдером. При выборочной маршрутизации (по спискам или доменам) незаблокированные ресурсы идут напрямую — это штатный режим работы."
 
 msgid "Direct connection via ISP"
 msgstr "Прямое подключение через провайдера"
@@ -2678,6 +2729,9 @@ msgstr "Отключён (использовать все серверы пул�
 msgid "Disabled (click to enable)"
 msgstr "Выключено (нажмите для включения)"
 
+msgid "Disabled (e.g. 10s)"
+msgstr "Отключено (например, 10s)"
+
 msgid "Disabled (raw UDP)"
 msgstr "Отключено (обычный сырой UDP)"
 
@@ -2685,7 +2739,7 @@ msgid "Disabling interception is incompatible with action=zapret2 because Tachyo
 msgstr "Отключение перехвата несовместимо с action=zapret2, потому что Tachyon направляет совпавший трафик через NFQUEUE."
 
 msgid "Discord Suite (Gateway + Voice + CDN)"
-msgstr ""
+msgstr "Discord (шлюз + голос + CDN)"
 
 msgid "Disorder (Out-of-order TCP Split)"
 msgstr "Disorder (Отправка сегментов в обратном порядке)"
@@ -2855,11 +2909,14 @@ msgstr "Скачивание"
 msgid "Downloading lists"
 msgstr "Скачивание списков"
 
-msgid "Drag blocks with mouse (⠿) or ◀▲ / ▼▶ buttons. Two adjacent 50% widgets automatically sit side-by-side in 2 columns"
-msgstr "Перетаскивайте блоки мышью (⠿) или кнопками ◀▲ / ▼▶. Два соседних виджета с шириной 50% автоматически встают рядом в 2 колонки"
+msgid "Drag blocks with mouse (⠿) or ←↑ / ↓→ buttons. Two adjacent 50% widgets automatically sit side-by-side in 2 columns"
+msgstr "Перетаскивайте блоки мышью (⠿) или кнопками ←↑ / ↓→. Два соседних виджета с шириной 50% автоматически встают рядом в 2 колонки"
 
 msgid "Drag rows to change priority. The rule at the top is checked first."
 msgstr "Перетащите строки для изменения приоритета. Правило вверху проверяется первым."
+
+msgid "Drag to reorder"
+msgstr "Перетащите для изменения порядка"
 
 msgid "Drag to reorder priority"
 msgstr "Перетащите для изменения приоритета"
@@ -2870,11 +2927,23 @@ msgstr "Перетащите мышкой в другое место макет�
 msgid "Drop subscription nodes whose name contains any of these keywords. Case-insensitive, emoji supported."
 msgstr "Исключать узлы подписки, имя которых содержит любое из этих ключевых слов. Без учёта регистра, поддерживаются эмодзи."
 
+msgid "Duplicate IPs"
+msgstr "Повторы IP"
+
 msgid "Duplicate JSON outbound tag"
 msgstr "Такой тег JSON outbound уже используется"
 
+msgid "Duplicate auto-domains"
+msgstr "Дубликаты авто-доменов"
+
+msgid "Duplicate domains"
+msgstr "Повторы доменов"
+
 msgid "Duplicate value"
 msgstr "Дублирующееся значение"
+
+msgid "Duplicates"
+msgstr "Дубликаты"
 
 msgid "Duration format like 1m, 3m, 30s."
 msgstr "Формат длительности, например 1m, 3m, 30s."
@@ -3128,6 +3197,9 @@ msgstr "Введите положительное целое число в ме�
 msgid "Enter a target domain or IP address to trace how Tachyon routes its traffic across all 7 pipeline stages."
 msgstr "Введите целевой домен или IP-адрес, чтобы отследить маршрутизацию трафика в Tachyon по всем 7 этапам конвейера."
 
+msgid "Enter a valid IP, CIDR subnet, or hostname"
+msgstr "Введите корректный IP-адрес, подсеть CIDR или доменное имя"
+
 msgid "Enter a valid public host and port, and select at least one enabled server."
 msgstr "Укажите корректный публичный хост и порт, затем выберите хотя бы один включённый сервер."
 
@@ -3340,6 +3412,9 @@ msgstr "СРЕДНЕ"
 
 msgid "FDs"
 msgstr "Дескрипторы"
+
+msgid "FILTER GROUP"
+msgstr "ГРУППА ФИЛЬТРАЦИИ"
 
 msgid "FPTN Access Token"
 msgstr "Токен доступа FPTN"
@@ -3648,7 +3723,7 @@ msgid "Fake Repeats (--repeats)"
 msgstr "Повторы фейков (--repeats)"
 
 msgid "Fake SNI (Белый список РФ / Custom)"
-msgstr ""
+msgstr "Фейковый SNI (Белый список РФ / Свой)"
 
 msgid "Fake SNI Domain (Whitelist)"
 msgstr "Fake SNI домен (Белый список РФ)"
@@ -3695,11 +3770,11 @@ msgstr "Резервные DNS серверы должны быть обычны
 msgid "Fallback on unknown DC"
 msgstr "Fallback при неизвестном DC"
 
+msgid "Family"
+msgstr "Семья"
+
 msgid "Family & Device Profiles"
 msgstr "Семейные профили устройств"
-
-msgid "Family (🏠)"
-msgstr "Семья (🏠)"
 
 msgid "Family Profile"
 msgstr "Семейный профиль"
@@ -3708,7 +3783,7 @@ msgid "Family Profiles"
 msgstr "Семейные профили"
 
 msgid "Fast (>1MB/s)"
-msgstr ""
+msgstr "Быстро (>1 МБ/с)"
 
 msgid "Faster DNS health monitoring than the default cycle. Switches bootstrap DNS on failure."
 msgstr "Более быстрый мониторинг состояния DNS, чем стандартный цикл. Переключает bootstrap DNS при сбое."
@@ -3869,8 +3944,8 @@ msgstr "IP игровых консолей"
 msgid "Game Console Optimizer (NAT Type 1)"
 msgstr "Оптимизатор игровых консолей (NAT Type 1)"
 
-msgid "Gamer (🎮)"
-msgstr "Геймер (🎮)"
+msgid "Gamer"
+msgstr "Геймер"
 
 msgid "Games & RU Direct"
 msgstr "Игры и РФ напрямую"
@@ -4106,6 +4181,9 @@ msgstr "Скрыть промежуточные узлы, используемы
 msgid "Hide selected servers."
 msgstr "Скрыть выбранные серверы."
 
+msgid "Hide server list"
+msgstr "Скрыть список серверов"
+
 msgid "Hide servers"
 msgstr "Скрыть серверы"
 
@@ -4174,6 +4252,9 @@ msgstr "Hosts"
 
 msgid "Hosts Lists Update Interval"
 msgstr "Интервал обновления списков Hosts"
+
+msgid "How combined latency is calculated across multiple URLs when selecting the best server. Note: background probe count scales with URL count (N servers × M URLs); if no server passes 100% of URLs, automatic partial-match Fallback is activated."
+msgstr "Способ расчёта итоговой задержки по нескольким URL при выборе лучшего сервера. Примечание: число фоновых проверок растёт пропорционально числу ссылок (N серверов × M ссылок); если ни один сервер не проходит 100% проверок, автоматически включается резервный режим частичного совпадения (Fallback)."
 
 msgid "How many hours of metrics to keep (default 24)."
 msgstr "Сколько часов хранить метрики (по умолчанию 24)."
@@ -4290,13 +4371,13 @@ msgid "Idle timeout"
 msgstr "Таймаут простоя"
 
 msgid "If Tachyon powers your daily networking and keeps your connection fast and secure, consider supporting ongoing development!"
-msgstr ""
+msgstr "Если Tachyon помогает вам каждый день и обеспечивает быстрый и стабильный интернет, поддержите дальнейшую разработку проекта!"
 
 msgid "If all Bootstrap DNS fail 3 times, queries will be sent to your ISP's DNS in plaintext. Only use as a last resort to prevent complete internet loss."
-msgstr ""
+msgstr "Если все загрузочные (Bootstrap) DNS не ответят 3 раза подряд, запросы будут отправлены к DNS провайдера в открытом виде. Используйте только как крайнюю меру против полной потери интернета."
 
 msgid "If all Main DNS fail 3 times, queries will be sent to your ISP's DNS in plaintext. Only use as a last resort to prevent complete internet loss."
-msgstr ""
+msgstr "Если все основные (Main) DNS не ответят 3 раза подряд, запросы будут отправлены к DNS провайдера в открытом виде. Используйте только как крайнюю меру против полной потери интернета."
 
 msgid "If one health check fails with an error, continue running other checks instead of stopping."
 msgstr "Если одна проверка завершается ошибкой, продолжать другие проверки, а не останавливаться."
@@ -4352,6 +4433,21 @@ msgstr "Импортировать группы URLTest подписки"
 msgid "Imported URLTest Idle Timeout"
 msgstr "Таймаут простоя импортированных групп URLTest"
 
+msgid "In Outbound Group"
+msgstr "В группе серверов"
+
+msgid "In groups:"
+msgstr "В группах:"
+
+msgid "In pool"
+msgstr "В пуле"
+
+msgid "In sections & groups:"
+msgstr "В секциях и группах:"
+
+msgid "Inbound"
+msgstr "Входящий (Inbound)"
+
 msgid "Inbound JSON"
 msgstr "Inbound JSON"
 
@@ -4367,11 +4463,17 @@ msgstr "Входящий сервер на роутере (Инбаунд)"
 msgid "Inbound Servers"
 msgstr "Входящие серверы"
 
+msgid "Inbound Servers (Capture All Traffic)"
+msgstr "Входящие серверы (захват всего трафика)"
+
+msgid "Inbound Servers (Capture Traffic)"
+msgstr "Входящие серверы (захват трафика)"
+
 msgid "Inbound VPN & Proxy Servers on Router"
 msgstr "Входящие VPN и прокси-серверы на роутере (Inbound)"
 
 msgid "Incidents & Timeline"
-msgstr ""
+msgstr "Инциденты и хронология"
 
 msgid "Include + Exclude (Intersection AND)"
 msgstr "Включение + Исключение (пересечение И / AND)"
@@ -4445,8 +4547,11 @@ msgstr "Включить отправляет в секцию только вы�
 msgid "Include servers"
 msgstr "Включить серверы"
 
+msgid "Included in Group (all sources)"
+msgstr "Доступен в группе (все источники)"
+
 msgid "Includes TLS Certificate Pinning (pcs / certificate_sha256), XHTTP, and AWG 3.x"
-msgstr ""
+msgstr "Включает привязку TLS-сертификатов (pcs / certificate_sha256), XHTTP и AmneziaWG 3.x"
 
 msgid "Independent DoH/TLS probe"
 msgstr "Независимая проверка DoH/TLS"
@@ -4500,7 +4605,7 @@ msgid "Init timeout (Itime)"
 msgstr "Таймаут init (Itime)"
 
 msgid "Initializing benchmark in sandbox..."
-msgstr ""
+msgstr "Инициализация тестирования в песочнице..."
 
 msgid "Initializing router-level IP & DNS leak test..."
 msgstr "Инициализация проверки утечек IP и DNS с роутера..."
@@ -4524,7 +4629,7 @@ msgid "Inspect live logs, generated engine config and export reports"
 msgstr "Просмотр живых логов, сгенерированного конфига ядра и экспорт отчётов"
 
 msgid "Instagram / Meta (Web + CDN)"
-msgstr ""
+msgstr "Instagram / Meta (веб + CDN)"
 
 msgid "Install"
 msgstr "Установить"
@@ -4703,8 +4808,14 @@ msgstr "Неверный формат IP или MAC-адреса"
 msgid "Invalid IP or MAC address. Expected e.g. 192.168.1.150 or AA:BB:CC:DD:EE:FF"
 msgstr "Неверный IP или MAC-адрес. Ожидается, например, 192.168.1.150 или AA:BB:CC:DD:EE:FF"
 
+msgid "Invalid IPs"
+msgstr "Некорректные IP"
+
 msgid "Invalid JSON format"
 msgstr "Неверный формат JSON"
+
+msgid "Invalid MAC address format (expected AA:BB:CC:DD:EE:FF)"
+msgstr "Неверный формат MAC-адреса (ожидается AA:BB:CC:DD:EE:FF)"
 
 msgid "Invalid Mieru URL: invalid host or port"
 msgstr "Некорректный URL Mieru: неверный хост или порт"
@@ -4826,6 +4937,9 @@ msgstr "Неверный URL VLESS: ошибка разбора"
 msgid "Invalid VMess URL: parsing failed"
 msgstr "Некорректный VMess URL: ошибка разбора"
 
+msgid "Invalid auto-domains"
+msgstr "Ошибки в авто-доменах"
+
 msgid "Invalid domain address"
 msgstr "Неверный домен"
 
@@ -4834,6 +4948,9 @@ msgstr "Некорректный домен: %s"
 
 msgid "Invalid domain: empty prefix value"
 msgstr "Недопустимый домен: пустое значение префикса"
+
+msgid "Invalid domains"
+msgstr "Ошибки в доменах"
 
 msgid "Invalid format. Use an IP address or CIDR subnet"
 msgstr "Неверный формат. Используйте IP-адрес или подсеть CIDR"
@@ -4871,11 +4988,17 @@ msgstr "Некорректный URL прокси: не должен содер�
 msgid "Invalid regular expression"
 msgstr "Неверное регулярное выражение"
 
+msgid "Invalid regular expression: %s"
+msgstr "Некорректное регулярное выражение: %s"
+
 msgid "Invalid time format. Expected HH:MM (e.g. 22:00)"
 msgstr "Неверный формат времени. Ожидается ЧЧ:ММ (например, 22:00)"
 
 msgid "Invalid time format. Use HH:MM (e.g. 08:00 or 22:30)"
 msgstr "Неверный формат времени. Используйте ЧЧ:ММ (например, 08:00 или 22:30)"
+
+msgid "Invalid value"
+msgstr "Некорректное значение"
 
 msgid "Invalid vpn:// link; use a WG/AWG .conf or Amnezia export"
 msgstr "Некорректная ссылка vpn://: используйте WG/AWG .conf или экспорт Amnezia"
@@ -5009,6 +5132,9 @@ msgstr "Путь к ключу"
 msgid "Keyword must not contain spaces or commas"
 msgstr "Ключевое слово не должно содержать пробелов или запятых"
 
+msgid "Keyword must not contain spaces, commas, or slashes"
+msgstr "Ключевое слово не должно содержать пробелы, запятые или слеши"
+
 msgid "LAN Clients"
 msgstr "Локальные клиенты (LAN)"
 
@@ -5039,8 +5165,11 @@ msgstr "Язык ответов диагностики ИИ-доктора"
 msgid "Language updated. Reloading page..."
 msgstr "Язык обновлён. Перезагрузка страницы..."
 
-msgid "Laptop / PC (💻)"
-msgstr "Ноутбук / ПК (💻)"
+msgid "Laptop / PC"
+msgstr "Ноутбук / ПК"
+
+msgid "Last updated"
+msgstr "Последнее обновление"
 
 msgid "Latency"
 msgstr "Задержка"
@@ -5074,6 +5203,9 @@ msgstr "Параметры запуска"
 
 msgid "Layer 1: Global Server Pool (subscriptions, proxy share links, network interfaces, JSON outbounds) imported once and shared across all groups and sections."
 msgstr "Уровень 1: Общий пул серверов (подписки, прокси-ссылки, сетевые интерфейсы, JSON-аутбаунды), импортируемый один раз и доступный во всех группах и секциях."
+
+msgid "Layer 1: Outbound Sources, Subscriptions & Tunnels"
+msgstr "Уровень 1: Пул серверов, подписки и туннели"
 
 msgid "Layer 2: Reusable Outbound Server Groups"
 msgstr "Уровень 2: Переиспользуемые группы серверов (Outbound Groups)"
@@ -5294,6 +5426,9 @@ msgstr "Основной DNS"
 msgid "Main DNS server. If multiple servers are selected, a timeout switches to a backup."
 msgstr "Основной DNS-сервер. Если выбрано несколько серверов, при таймауте происходит переключение на резервный."
 
+msgid "Main Subscription"
+msgstr "Основная подписка"
+
 msgid "Manage Tachyon daemon lifecycle and emergency bypass"
 msgstr "Управление жизненным циклом службы Tachyon и аварийным обходом"
 
@@ -5311,6 +5446,9 @@ msgstr "Ручная проверка доступности URL через се
 
 msgid "Manual list update"
 msgstr "Ручное обновление списков"
+
+msgid "Manual protocol selection (Subscription, VLESS / HY2 / TUIC / SS, AmneziaWG, Cloudflare WARP, Core Desync, Zapret2, OpenVPN, Tor, etc.) and granular routing."
+msgstr "Ручной выбор протокола (Подписка, VLESS / HY2 / TUIC / SS, AmneziaWG, Cloudflare WARP, Core Desync, Zapret2, OpenVPN, Tor и др.) и детальная настройка списков и DNS."
 
 msgid "Manual selection"
 msgstr "Ручной выбор"
@@ -5362,6 +5500,9 @@ msgstr "Сработавшее правило"
 
 msgid "Matched servers"
 msgstr "Подходящие серверы"
+
+msgid "Matching servers in pool"
+msgstr "Подходящие серверы в пуле"
 
 msgid "Max Handshake Attempts"
 msgstr "Максимум попыток рукопожатия"
@@ -5504,6 +5645,9 @@ msgstr "Переместить выше"
 msgid "Move Up (Higher Priority)"
 msgstr "Выше по приоритету"
 
+msgid "Move down"
+msgstr "Вниз"
+
 msgid "Move left / up in grid"
 msgstr "Сдвинуть влево / выше по сетке"
 
@@ -5516,11 +5660,17 @@ msgstr "Переместить боковое меню налево"
 msgid "Move sidebar to the right"
 msgstr "Переместить боковое меню направо"
 
+msgid "Move up"
+msgstr "Вверх"
+
 msgid "Multi-Connection Selection Mode"
 msgstr "Режим работы нескольких подключений в секции"
 
 msgid "Multi-Split (3-way TLS Record + SNI + MidSLD)"
 msgstr "Multi-Split (Тройная нарезка: TLS Record + SNI + MidSLD)"
+
+msgid "Multi-URL Evaluation Strategy"
+msgstr "Стратегия оценки Multi-URL"
 
 msgid "Multiplex"
 msgstr "Мультиплексирование"
@@ -5541,7 +5691,7 @@ msgid "Must be a port (1 - 65535) or port range (e.g. 1000-2000)"
 msgstr "Укажите порт (1 - 65535) или диапазон портов (напр., 1000-2000)"
 
 msgid "My Custom Strategies Only"
-msgstr ""
+msgstr "Только мои пользовательские стратегии"
 
 msgid "My Strategies"
 msgstr "Мои стратегии"
@@ -5759,6 +5909,9 @@ msgstr "Домены пока не обнаружены"
 msgid "No enabled server inbounds configured"
 msgstr "Включённые серверные inbounds не настроены"
 
+msgid "No errors or duplicates found"
+msgstr "Ошибок и дубликатов не найдено"
+
 msgid "No explicit DNS detour; default routing applies"
 msgstr "Отдельный маршрут DNS не задан; применяется маршрутизация по умолчанию"
 
@@ -5806,6 +5959,12 @@ msgstr "Ни одна секция не удовлетворяется стро�
 
 msgid "No sections selected"
 msgstr "Секции не выбраны"
+
+msgid "No server reached all health check URLs; fallback mode is active (best partial match selected)."
+msgstr "Ни один сервер не прошёл проверку по всем URL; активен резервный режим частичного совпадения (Fallback)."
+
+msgid "No servers in the cached pool currently match these group filters."
+msgstr "Ни один сервер в кэшированном пуле сейчас не подходит под фильтры этой группы."
 
 msgid "No servers matched."
 msgstr "Нет подходящих серверов."
@@ -5904,7 +6063,7 @@ msgid "Notify in Telegram"
 msgstr "Уведомлять в Telegram"
 
 msgid "Notify on Automatic Updates"
-msgstr ""
+msgstr "Уведомлять об автообновлениях"
 
 msgid "Notify on Certificate Warnings"
 msgstr "Уведомлять о предупреждениях сертификатов"
@@ -6017,8 +6176,8 @@ msgstr "Ollama (локальный ПК / сервер)"
 msgid "One URL imports the selected enabled servers and updates their connection settings in the client."
 msgstr "Одна ссылка импортирует выбранные включённые серверы и обновляет их настройки подключения в клиенте."
 
-msgid "One domain or rule per line (supports // comments, plain suffixes like youtube.com, or prefixes full:, domain:, keyword:, regex:)."
-msgstr "По одному домену или правилу на строку (поддерживаются комментарии //, обычные суффиксы вроде youtube.com, а также префиксы full:, domain:, keyword:, regex:)."
+msgid "One domain or rule per line (supports // comments, plain suffixes like youtube.com, or prefixes full:, domain:, keyword:, regex:). Checked for syntax errors and duplicates in real time."
+msgstr "По одному домену или правилу в строке (поддерживаются комментарии //, обычные домены вроде youtube.com и префиксы full:, domain:, keyword:, regex:). Проверяется на синтаксические ошибки и дубликаты в реальном времени."
 
 msgid "One domain per line. These settings are saved in this browser and do not change DNS routing."
 msgstr "По одному домену на строку. Список сохраняется в этом браузере и не меняет маршрутизацию DNS."
@@ -6076,6 +6235,9 @@ msgstr "Открыть страницу проекта"
 
 msgid "Open firewall port"
 msgstr "Открыть порт в брандмауэре"
+
+msgid "Open in modal"
+msgstr "Открыть в модальном окне"
 
 msgid "Open inbound settings"
 msgstr "Открыть настройки инбаунда"
@@ -6149,6 +6311,12 @@ msgstr "Опция \"%s\" содержит недопустимое значен
 msgid "Optional HTTP/HTTPS URLs probed through this section's outbound/strategy (e.g. https://i.ytimg.com/generate_204). Leave empty to use the global latency test URL. Note: HTTP/HTTPS probes do not validate UDP game traffic or Discord voice."
 msgstr "Необязательные URL HTTP/HTTPS для проверки через прокси/стратегию этой секции (например, https://i.ytimg.com/generate_204). Оставьте пустым для использования глобального URL проверки задержки. Примечание: HTTP/HTTPS-проверки не проверяют игровой трафик UDP и голосовые каналы Discord."
 
+msgid "Optional additional URLs to probe simultaneously with Health Check URL. If no server passes 100% of URLs, Fallback mode selects the server with the highest number of reachable URLs (> 0)."
+msgstr "Дополнительные URL для одновременной проверки вместе с основным URL. Если ни один сервер не проходит 100% URL, резервный режим (Fallback) выберет сервер с наибольшим числом доступных URL (> 0)."
+
+msgid "Optional additional URLs to probe simultaneously with Testing URL. A server is considered fully healthy only when all configured URLs succeed (unless fallback activates)."
+msgstr "Дополнительные URL для одновременной проверки вместе с основным URL тестирования. Сервер считается полностью исправным только при успешном ответе всех указанных URL (если не сработал резервный режим)."
+
 msgid "Optional boolean expression combining Condition IDs with AND / OR / NOT, e.g. baned_domains AND my_devices."
 msgstr "Необязательное булево выражение, объединяющее ID условий через AND / OR / NOT, например: baned_domains AND my_devices."
 
@@ -6157,6 +6325,9 @@ msgstr "Дополнительный контекст (напр. \"Ростел�
 
 msgid "Optional expression using condition IDs and AND / OR / NOT / parentheses, e.g. (baned_domains AND my_devices) AND NOT whitelist."
 msgstr "Необязательное булево выражение с ID условий, операторами AND / OR / NOT и скобками, например: (baned_domains AND my_devices) AND NOT whitelist."
+
+msgid "Optional fast background health check interval for the currently active server ONLY (e.g. 10s or 15s). Triggers an immediate failover check if the active server stops responding, without pinging the entire pool every few seconds."
+msgstr "Необязательный интервал быстрой фоновой проверки ТОЛЬКО для текущего активного сервера (например, 10s или 15s). Мгновенно переключает маршрут при падении активного сервера, не нагружая весь пул частыми проверками."
 
 msgid "Optional key=value string applied by DPI Strategy Fuzzer (e.g. mode=fake+split split_pos=1 fake_ttl=4)"
 msgstr "Необязательная строка параметров key=value от автоподбора стратегий DPI (например, mode=fake+split split_pos=1 fake_ttl=4)"
@@ -6182,6 +6353,9 @@ msgstr "Опциональные значения должны быть прис
 msgid "Optional — leave empty for default"
 msgstr "Опционально — оставьте пустым для значения по умолчанию"
 
+msgid "Optional: leave blank for proxy-free Desync or paste a subscription URL https://..."
+msgstr "Необязательно: оставьте пустым для работы без прокси (Desync) или вставьте подписку https://..."
+
 msgid "Optional: override TLS SNI for FPTN connection"
 msgstr "Опционально: переопределить TLS SNI для подключения FPTN"
 
@@ -6191,17 +6365,26 @@ msgstr "Опционально: переопределить метод обхо
 msgid "Optional: preferred FPTN server address"
 msgstr "Опционально: предпочитаемый адрес сервера FPTN"
 
+msgid "Optional: select routing Sections that should use this group"
+msgstr "Необязательно: выберите секции маршрутизации, которые будут использовать эту группу"
+
+msgid "Optional: select which Reusable Outbound Server Groups include this connection source in their pool."
+msgstr "Необязательно: выберите переиспользуемые группы серверов, в пул которых входит этот источник."
+
 msgid "Optional: select which routing Sections directly use this connection (you can also pick connections inside each Section)."
 msgstr "Необязательно: выберите секции маршрутизации, которые напрямую используют это подключение (подключения также можно выбрать внутри самой секции)."
 
 msgid "Optionally paste multiple share links (one per line); they will be merged into Proxy Share Links on save."
 msgstr "Вставьте несколько ссылок (по одной на строку) — при сохранении они добавятся в список прокси-ссылок."
 
-msgid "Optionally select pre-filtered Outbound Server Groups from the Outbounds tab."
-msgstr "Необязательно: выберите готовые отфильтрованные группы серверов из вкладки «Пул серверов»."
-
 msgid "Optionally specify individual devices not in a profile. MAC addresses (e.g. AA:BB:CC:DD:EE:FF) work even if the IP changes."
 msgstr "При необходимости укажите отдельные устройства вне профилей. MAC-адреса (напр. AA:BB:CC:DD:EE:FF) работают даже при смене IP."
+
+msgid "Options:"
+msgstr "Параметры:"
+
+msgid "Or choose manual step-by-step configuration"
+msgstr "Или выберите ручную пошаговую настройку"
 
 msgid "Or paste hosts file content:"
 msgstr "Или вставьте содержимое файла hosts:"
@@ -6221,17 +6404,11 @@ msgstr "Другие пиры"
 msgid "Out-of-window TCP Sequence (badseq)"
 msgstr "Смещение TCP Sequence вне окна (badseq)"
 
-msgid "Outbound Connection (Client / DPI)"
-msgstr "Исходящее подключение (Аутбаунд)"
-
 msgid "Outbound JSON Objects"
 msgstr "JSON-объекты аутбаундов"
 
 msgid "Outbound Source"
 msgstr "Подключение в пуле"
-
-msgid "Outbound Sources, Subscriptions & Tunnels"
-msgstr "Пул серверов, подписки и туннели"
 
 msgid "Outbounds"
 msgstr "Пул подключений"
@@ -6332,11 +6509,17 @@ msgstr "Вставьте содержимое или загрузите файл
 msgid "Paste fptn://, fptn:..., or fptnb:... access token."
 msgstr "Вставьте токен доступа fptn://, fptn:... или fptnb:..."
 
+msgid "Paste from clipboard"
+msgstr "Вставить из буфера"
+
 msgid "Paste proxy links one per line; they are added to the connection list"
 msgstr "Вставьте ссылки на прокси по одной в строке; они будут добавлены в список подключений"
 
 msgid "Paste proxy links one per line; they form a URLTest group with automatic fastest selection"
 msgstr "Вставьте ссылки на прокси по одной в строке; они образуют группу URLTest с автоматическим выбором самого быстрого"
+
+msgid "Paste subscription URL (https://...) or proxy links (vless://, hysteria2://, tuic://, trojan://, ss://, vpn://)"
+msgstr "Вставьте ссылку на подписку (https://...) или прокси-ключи (vless://, hysteria2://, tuic://, trojan://, ss://, vpn://)"
 
 msgid "Paste vpn:// share links or upload .conf files using the button above."
 msgstr "Вставьте ссылки vpn:// или загрузите файлы .conf с помощью кнопки выше."
@@ -6410,11 +6593,11 @@ msgstr "Постоянное умное определение"
 msgid "Personal access token to avoid the 60 req/hour per-IP GitHub API limit during update checks. Leave empty if update checks work fine."
 msgstr "Персональный токен, чтобы обойти лимит GitHub API 60 запросов/час на IP при проверке обновлений. Оставьте пустым, если проверка обновлений работает нормально."
 
-msgid "Pets / IoT (🐾)"
-msgstr "Питомцы / IoT (🐾)"
+msgid "Pets / IoT"
+msgstr "Питомцы / IoT"
 
-msgid "Phone (📱)"
-msgstr "Смартфон (📱)"
+msgid "Phone"
+msgstr "Смартфон"
 
 msgid "Pick Fastest Server Within Active Tier"
 msgstr "Выбирать самый быстрый сервер внутри активной ступени"
@@ -6424,6 +6607,9 @@ msgstr "Выбирать самый быстрый сервер внутри с�
 
 msgid "Pin P2P policy to the torrent client's own ports, comma separated. Each entry is \"proto\", \"proto:port\" or \"proto:port-port\" (tcp/udp). Without a port the whole protocol is matched."
 msgstr "Привязка политики P2P к портам торрент-клиента через запятую. Каждая запись: \"proto\", \"proto:port\" или \"proto:port-port\" (tcp/udp). Без указания порта правило применяется ко всему протоколу."
+
+msgid "Pin Specific Server to Sites"
+msgstr "Привязка отдельного сервера к сайтам"
 
 msgid "Pin on dashboard"
 msgstr "Закрепить на дашборде"
@@ -6511,6 +6697,9 @@ msgstr "Интервал опроса должен быть не менее 1 с
 
 msgid "Polymorphic Entropy Mode"
 msgstr "Полиморфный профиль энтропии"
+
+msgid "Pool"
+msgstr "Пул"
 
 msgid "Port"
 msgstr "Порт"
@@ -6809,9 +6998,6 @@ msgstr "Прокси-ссылки (vless://, hysteria2://, ss:// и др.)"
 msgid "Proxy link is unavailable"
 msgstr "Ссылка прокси недоступна"
 
-msgid "Proxy links"
-msgstr "Прокси-ссылки"
-
 msgid "Proxy outbound is inactive or not configured for local testing."
 msgstr "Исходящий прокси неактивен или не настроен для локального тестирования."
 
@@ -6849,7 +7035,7 @@ msgid "QUIC (HTTP/3)"
 msgstr "QUIC (HTTP/3)"
 
 msgid "QUIC / HTTP/3 (UDP 443)"
-msgstr ""
+msgstr "QUIC / HTTP/3 (UDP 443)"
 
 msgid "QUIC Congestion Control"
 msgstr "Алгоритм управления перегрузкой QUIC"
@@ -6864,7 +7050,7 @@ msgid "Querying direct connection and proxy outbound..."
 msgstr "Опрос прямого подключения и исходящего прокси..."
 
 msgid "Quick Benchmark (Presets ~30+)"
-msgstr ""
+msgstr "Быстрый подбор (пресеты ~30+)"
 
 msgid "Quick Routing Presets (tachyon-lists)"
 msgstr "Быстрые пакеты маршрутизации (tachyon-lists)"
@@ -6943,6 +7129,9 @@ msgstr "Ошибка чтения"
 
 msgid "Ready to benchmark DNS providers"
 msgstr "Готов к тестированию DNS провайдеров"
+
+msgid "Ready-made routing preset — 1-click launch right from this step:"
+msgstr "Готовый пресет маршрутизации — запуск сразу с этого шага в 1 клик:"
 
 msgid "Reality Camouflage Domain (SNI)"
 msgstr "Домен маскировки Reality (SNI)"
@@ -7069,6 +7258,9 @@ msgstr "Удаление успешно завершено!"
 
 msgid "Remove"
 msgstr "Удалить"
+
+msgid "Remove duplicates"
+msgstr "Удалить дубликаты"
 
 msgid "Remove servers from the specified countries from this level."
 msgstr "Удалить серверы из указанных стран с этого уровня."
@@ -7232,9 +7424,6 @@ msgstr "Продолжить обновление"
 msgid "Return NXDOMAIN for blocked domains (recommended). When enabled, blocked domains are not resolved at all. When disabled, only direct connections are rejected."
 msgstr "Возвращать NXDOMAIN для заблокированных доменов (рекомендуется). При включении заблокированные домены вообще не резолвятся. При выключении отклоняются только прямые соединения."
 
-msgid "Reusable Outbound Server Groups"
-msgstr "Переиспользуемые группы серверов"
-
 msgid "Reusable URLTest and Priority selection policies decoupled from specific server pools."
 msgstr "Переиспользуемые балансировщики URLTest и Priority, отделённые от конкретных пулов серверов."
 
@@ -7286,6 +7475,9 @@ msgstr "Направлять весь не-локальный LAN-трафик �
 msgid "Route all remaining traffic through this section without requiring specific domain/IP conditions."
 msgstr "Направлять весь не совпавший выше трафик через эту секцию без дополнительных условий."
 
+msgid "Route all traffic arriving on selected local Inbound Servers (from the Server tab) through this section."
+msgstr "Направлять весь трафик, приходящий на выбранные локальные входящие серверы (из вкладки «Сервер»), через эту секцию."
+
 msgid "Route bot API requests through this section. Leave empty to use the default mixed proxy."
 msgstr "Маршрутизировать запросы API бота через эту секцию. Оставьте пустым для использования смешанного прокси по умолчанию."
 
@@ -7316,11 +7508,23 @@ msgstr "Маршрутизировать запросы к этому DNS-сер
 msgid "Route selected services or domains through subscriptions, VLESS, AWG, or balancers"
 msgstr "Маршрутизация выбранных сервисов или доменов через подписки, VLESS, AWG или балансировщики"
 
+msgid "Route specific domains or sites through an individual server of this section (bypassing the general balancer/selector). Format: ServerName=domain1.com, domain2.com"
+msgstr "Направлять указанные домены или сайты через конкретный сервер этой секции (в обход общего балансировщика/селектора). Формат: ИмяСервера=domain1.com, domain2.com"
+
 msgid "Route this connection's upstream traffic through another routing Section."
 msgstr "Направлять исходящий трафик этого подключения через другую секцию маршрутизации (каскад)."
 
+msgid "Route traffic arriving from selected local Inbound servers (created in the Server tab) through this condition/section."
+msgstr "Направлять трафик, приходящий от выбранных локальных входящих серверов (созданных во вкладке «Сервер»), через это условие или секцию."
+
 msgid "Route via Proxy"
 msgstr "Через прокси"
+
+msgid "Route: By router rules"
+msgstr "Маршрут: По правилам роутера"
+
+msgid "Route: Direct (WAN)"
+msgstr "Маршрут: Напрямую (WAN)"
 
 msgid "Routed DNS"
 msgstr "Маршрутизированный DNS"
@@ -7416,7 +7620,7 @@ msgid "Routing sections"
 msgstr "Секции маршрутизации"
 
 msgid "RuTracker Suite"
-msgstr ""
+msgstr "RuTracker (зеркала и трекеры)"
 
 msgid "Rule"
 msgstr "Правило"
@@ -7437,7 +7641,7 @@ msgid "Rule Summary"
 msgstr "Сводка правила"
 
 msgid "Rule set must be an HTTP(S) URL or a local .trs / .srs / .json / .lst / .txt path"
-msgstr ""
+msgstr "Набор правил должен быть HTTP(S)-ссылкой или локальным путём к файлу .trs / .srs / .json / .lst / .txt"
 
 msgid "Rule set settings"
 msgstr "Настройки набора правил"
@@ -7503,7 +7707,7 @@ msgid "SECURE"
 msgstr "ЗАЩИЩЕНО"
 
 msgid "SECURE: Public IP is concealed behind the proxy outbound."
-msgstr ""
+msgstr "ЗАЩИЩЕНО: Ваш внешний IP скрыт за прокси-сервером."
 
 msgid "SLOW"
 msgstr "МЕДЛЕННО"
@@ -7727,6 +7931,9 @@ msgstr "Выберите готовый пресет цвета фона или 
 msgid "Select a preset text color or enter any HEX/CSS color (leave empty for automatic palette)"
 msgstr "Выберите готовый пресет цвета текста или введите любой HEX/CSS-цвет (оставьте пустым для автоматической палитры)"
 
+msgid "Select a ready-made scenario, paste your subscription URL or proxy links, and click \"Connect & Launch in 1 Click\" — the wizard automatically creates sections, rules, URLTest balancer, DNS, and starts Tachyon."
+msgstr "Выберите готовый сценарий, вставьте ссылку на подписку или ключи прокси и нажмите «Подключить и запустить в 1 клик» — мастер сам создаст секции, правила, URLTest-балансировщик, DNS и включит Tachyon."
+
 msgid "Select a section"
 msgstr "Выберите секцию"
 
@@ -7745,9 +7952,6 @@ msgstr "Выберите файл Amnezia .conf размером до 64 КиБ"
 msgid "Select an existing URLTest or Priority group"
 msgstr "Выберите существующую группу URLTest или Приоритет"
 
-msgid "Select an existing network interface"
-msgstr "Выберите существующий сетевой интерфейс"
-
 msgid "Select an exported .tachyon-profile.json file or paste its JSON contents below."
 msgstr "Выберите экспортированный файл .tachyon-profile.json или вставьте его JSON-содержимое ниже."
 
@@ -7759,6 +7963,9 @@ msgstr "Выберите и упорядочите секции, через ко
 
 msgid "Select any connections from the Connections Pool (Zapret2, Zapret, ByeDPI, Desync, Subscriptions, AmneziaWG, FPTN, OpenVPN, WARP, etc.). Order matters: the 2nd item is used as failover when the 1st fails."
 msgstr "Выберите любые подключения из «Пула подключений» (Zapret2, Zapret, ByeDPI, Desync, подписки, AmneziaWG, FPTN, OpenVPN, WARP и др.). Порядок задаёт приоритет: 2-е сработает только после отказа 1-го и т.д."
+
+msgid "Select any existing router interface or preset (e.g. wg0, awg0, tun0, tailscale0, wan, eth0, br-lan)."
+msgstr "Выберите любой существующий сетевой интерфейс роутера или готовый пресет (например: wg0, awg0, tun0, tailscale0, wan, eth0, br-lan)."
 
 msgid "Select at least one section to merge"
 msgstr "Выберите хотя бы одну секцию для объединения"
@@ -7775,14 +7982,17 @@ msgstr "Выберите дни, когда гостевой доступ раз
 msgid "Select existing conditions to combine. Self-references and circular chains (A -> B -> A) are automatically blocked."
 msgstr "Выберите существующие условия для объединения. Самоссылки и циклические цепочки (A -> B -> A) блокируются автоматически."
 
-msgid "Select network interface for VPN connection"
-msgstr "Выберите интерфейс для VPN-подключения"
+msgid "Select matching"
+msgstr "Выбрать найденные"
 
 msgid "Select one or more Conditions created in the Conditions tab and choose how they work together in this section."
 msgstr "Выберите одно или несколько условий, созданных во вкладке «Условия», и укажите, как они будут работать в составе секции."
 
 msgid "Select one or more country ISO codes (e.g. ru, us, de, nl, fr, fi, se, tr, cn, jp, sg, by, kz, ua)."
 msgstr "Выберите один или несколько ISO-кодов стран (напр. ru, us, de, nl, fr, fi, se, tr, cn, jp, sg, by, kz, ua)."
+
+msgid "Select or add ready-made router network interfaces (wg0, awg0, tun0, tailscale0, wan, eth0, br-lan, etc.) for direct interface routing."
+msgstr "Выберите или добавьте готовые сетевые интерфейсы роутера (wg0, awg0, tun0, tailscale0, wan, eth0, br-lan и др.) для прямой маршрутизации через интерфейс."
 
 msgid "Select or enter a User-Agent"
 msgstr "Выберите или введите User-Agent"
@@ -7813,9 +8023,6 @@ msgstr "Выберите конкретные серверы из пула дл�
 
 msgid "Select specific servers from the pool to include in this auto-selection."
 msgstr "Выберите конкретные серверы из пула для включения в этот автовыбор."
-
-msgid "Select subscriptions or sources from the Outbounds tab. Leave empty to use all servers available in the attached Section."
-msgstr "Выберите подписки или источники из вкладки «Пул серверов». Оставьте пустым, чтобы использовать все серверы привязанной секции."
 
 msgid "Select the Local (LAN) or External (WAN / DDNS) router address advertised in client connection links and QR codes."
 msgstr "Выберите локальный (LAN) или внешний (WAN / DDNS) адрес роутера, который будет подставляться в клиентские ссылки и QR-коды."
@@ -7871,6 +8078,9 @@ msgstr "Домены и поддомены из выбранных списко�
 msgid "Selected section"
 msgstr "Выбранная секция"
 
+msgid "Selected servers"
+msgstr "Выбрано серверов"
+
 msgid "Selected: specified devices become guests. Inverted: all devices on the network become guests EXCEPT the trusted ones (Zero-Trust)."
 msgstr "Выборочный: указанные устройства становятся гостевыми. Инвертированный: все устройства в сети считаются гостевыми, КРОМЕ доверенных (Zero-Trust)."
 
@@ -7911,7 +8121,7 @@ msgid "Send a Telegram notification when a URLTest group switches to a new serve
 msgstr "Отправлять уведомление в Telegram при переключении группы URLTest на новый сервер."
 
 msgid "Send a Telegram notification when components are automatically updated."
-msgstr ""
+msgstr "Отправлять уведомление в Telegram при автоматическом обновлении компонентов."
 
 msgid "Send a Telegram notification when proxy subscriptions are successfully updated."
 msgstr "Отправлять уведомление в Telegram при успешном обновлении подписок прокси."
@@ -7958,8 +8168,11 @@ msgstr "Адрес сервера (Endpoint Host / IP)"
 msgid "Server Endpoint Port"
 msgstr "Порт сервера (Endpoint Port)"
 
+msgid "Server Filters"
+msgstr "Фильтры серверов"
+
 msgid "Server Fleet & Rankings"
-msgstr ""
+msgstr "Пул серверов и рейтинг"
 
 msgid "Server Host / IP"
 msgstr "Хост / IP сервера"
@@ -7975,9 +8188,6 @@ msgstr "Server Name Indication — оставьте пустым для испо
 
 msgid "Server Name Prefix"
 msgstr "Префикс имён серверов"
-
-msgid "Server Pool & Filters"
-msgstr "Пул серверов и фильтры"
 
 msgid "Server Port"
 msgstr "Порт сервера"
@@ -8034,7 +8244,7 @@ msgid "Server probe failed"
 msgstr "Проверка сервера не удалась"
 
 msgid "Server received fakes"
-msgstr ""
+msgstr "Сервер принял фейковые пакеты"
 
 msgid "Server share links (one per line)"
 msgstr "Ссылки на серверы (по одной на строке)"
@@ -8047,6 +8257,9 @@ msgstr "Сервер недоступен"
 
 msgid "Servers"
 msgstr "Серверы"
+
+msgid "Servers in subscription"
+msgstr "Серверы в подписке"
 
 msgid "Servers on dashboard"
 msgstr "Серверы на дашборде"
@@ -8152,6 +8365,9 @@ msgstr "Не удалось показать конфигурацию Tachyon Co
 
 msgid "Show details"
 msgstr "Показать подробности"
+
+msgid "Show matching servers"
+msgstr "Показать подходящие серверы"
 
 msgid "Show metadata on dashboard"
 msgstr "Показывать метаданные на дашборде"
@@ -8328,7 +8544,7 @@ msgid "Specify a file path"
 msgstr "Укажите путь к файлу"
 
 msgid "Specify a port (1-65535) or port range (e.g. 2000-2010)"
-msgstr ""
+msgstr "Укажите порт (1–65535) или диапазон портов (например, 2000-2010)"
 
 msgid "Specify a website domain (e.g. youtube.com, discord.com, chatgpt.com) to automatically load its favicon.ico on the Dashboard, or leave empty for automatic detection."
 msgstr "Укажите домен сайта (например, youtube.com, discord.com, chatgpt.com) для автоматической загрузки его иконки favicon.ico на дашборде, либо оставьте пустым для автоопределения."
@@ -8376,7 +8592,7 @@ msgid "Stage 1: Exploration Scan"
 msgstr "Этап 1: Разведочное сканирование"
 
 msgid "Stage 2: Stability Verification"
-msgstr ""
+msgstr "Этап 2: Проверка стабильности"
 
 msgid "Standalone ByeDPI autostart is enabled"
 msgstr "Автозапуск отдельной службы ByeDPI включен"
@@ -8498,11 +8714,14 @@ msgstr "Процесс Steer работает"
 msgid "Steer service exist"
 msgstr "Служба Steer существует"
 
+msgid "Step-by-Step Outbound Connection (Client / DPI)"
+msgstr "Исходящее подключение по шагам (Аутбаунд)"
+
 msgid "Stop"
 msgstr "Стоп"
 
 msgid "Stop Benchmark"
-msgstr ""
+msgstr "Остановить подбор"
 
 msgid "Stop Tachyon"
 msgstr "Остановить Tachyon"
@@ -8535,7 +8754,7 @@ msgid "Strategy & Parameters"
 msgstr "Стратегия и параметры"
 
 msgid "Strategy Fuzzer & Auto-Tuner"
-msgstr ""
+msgstr "Автоподбор стратегий обхода DPI (Fuzzer)"
 
 msgid "Strategy Name"
 msgstr "Имя стратегии"
@@ -8552,8 +8771,8 @@ msgstr "Стратегия удалена"
 msgid "Strategy preset source"
 msgstr "Источник пресета стратегии"
 
-msgid "Strict (🔒)"
-msgstr "Строгий (🔒)"
+msgid "Strict"
+msgstr "Строгий"
 
 msgid "Strict ECH + DoQ DNS Enforcer"
 msgstr "Строгий ECH + DoQ DNS Enforcer"
@@ -8576,6 +8795,9 @@ msgstr "Подсети из списка будут извлечены и доб
 msgid "Subscription"
 msgstr "Подписка"
 
+msgid "Subscription Info:"
+msgstr "Подписка:"
+
 msgid "Subscription QR code"
 msgstr "QR-код подписки"
 
@@ -8584,6 +8806,9 @@ msgstr "URL подписки"
 
 msgid "Subscription URL (HTTPS)"
 msgstr "Ссылка на подписку (HTTPS URL)"
+
+msgid "Subscription URL or Proxy Share Links"
+msgstr "Ссылка на подписку (URL) или ключи прокси"
 
 msgid "Subscription URL settings"
 msgstr "Настройки URL подписки"
@@ -8600,6 +8825,9 @@ msgstr "Ключевые слова включения подписки"
 msgid "Subscription info:"
 msgstr "Информация о подписке:"
 
+msgid "Subscription or Links (optional for DPI Desync mode)"
+msgstr "Подписка или ключи (необязательно для режима DPI Desync)"
+
 msgid "Subscription settings saved. Use Save & Apply to activate them."
 msgstr "Настройки подписки сохранены. Нажмите «Сохранить и применить», чтобы включить их."
 
@@ -8609,11 +8837,11 @@ msgstr "Обновление подписки завершилось ошибк�
 msgid "Subscription update interval"
 msgstr "Интервал обновления подписки"
 
+msgid "Subscription updated."
+msgstr "Подписка обновлена."
+
 msgid "Subscriptions"
 msgstr "Подписки"
-
-msgid "Subscriptions / Outbound Sources"
-msgstr "Подписки / Источники серверов"
 
 msgid "Subscriptions updated"
 msgstr "Подписки обновлены"
@@ -8675,11 +8903,14 @@ msgstr "Переключение языка интерфейса..."
 msgid "Sync System Time (NTP)"
 msgstr "Синхронизировать время (NTP)"
 
+msgid "Syntax errors"
+msgstr "Синтаксические ошибки"
+
 msgid "Synthesize with AI"
 msgstr "Синтезировать с помощью ИИ"
 
 msgid "Synthesizing..."
-msgstr ""
+msgstr "Генерация..."
 
 msgid "System & Backup"
 msgstr "Система и бэкап"
@@ -8691,7 +8922,7 @@ msgid "System FDs allocated:"
 msgstr "Выделено системных FD:"
 
 msgid "System Health & Daemons"
-msgstr ""
+msgstr "Состояние системы и служб"
 
 msgid "System Health & Subsystems"
 msgstr "Состояние системы и подсистем"
@@ -9002,8 +9233,11 @@ msgstr "Классификация цели"
 msgid "Target Family Profiles"
 msgstr "Семейные профили"
 
-msgid "Target IPv4/IPv6 addresses or CIDR blocks, one per line or comma-separated (supports // comments)."
-msgstr "Целевые адреса IPv4/IPv6 или подсети CIDR, по одному на строку или через запятую (поддерживаются комментарии //)."
+msgid "Target IPv4/IPv6 addresses or CIDR blocks, one per line or comma-separated (supports // comments). Checked for syntax errors and duplicates in real time."
+msgstr "Целевые IPv4/IPv6-адреса или подсети CIDR, по одному в строке или через запятую (поддерживаются комментарии //). Проверяются на ошибки и дубликаты в реальном времени."
+
+msgid "Target Routing Section for All Inbound Traffic"
+msgstr "Целевая секция маршрутизации для всего трафика Inbound"
 
 msgid "Target Scope"
 msgstr "Область действия"
@@ -9020,8 +9254,8 @@ msgstr "Цель доступна — блокировок DPI не обнару
 msgid "Teal"
 msgstr "Бирюзовый"
 
-msgid "Teen (🧑)"
-msgstr "Подросток (🧑)"
+msgid "Teen"
+msgstr "Подросток"
 
 msgid "Telegram"
 msgstr "Telegram"
@@ -9039,7 +9273,7 @@ msgid "Telegram Channel"
 msgstr "Telegram канал"
 
 msgid "Telegram Suite (Web + Bot API)"
-msgstr ""
+msgstr "Telegram (Web + Bot API)"
 
 msgid "Test Connection"
 msgstr "Проверить подключение"
@@ -9225,7 +9459,7 @@ msgid "This will replace the current Tachyon settings with the snapshot"
 msgstr "Это заменит текущие настройки Tachyon на снапшот"
 
 msgid "Throttled at 16KB"
-msgstr ""
+msgstr "Замедление на 16 КБ (ТСПУ)"
 
 msgid "Throttling / Deep Inspection"
 msgstr "Замедление / Глубокий анализ пакетов"
@@ -9263,8 +9497,14 @@ msgstr "Таймаут"
 msgid "Timeout in milliseconds for each probe request through this section."
 msgstr "Таймаут в миллисекундах для каждого проверочного запроса через эту секцию."
 
-msgid "Toddler (👶)"
-msgstr "Малыш (👶)"
+msgid "Title"
+msgstr "Провайдер"
+
+msgid "Toddler"
+msgstr "Малыш"
+
+msgid "Toggle details & servers"
+msgstr "Развернуть детали и серверы"
 
 msgid "Token is required when the bot is enabled"
 msgstr "Токен обязателен, когда бот включён"
@@ -9435,7 +9675,7 @@ msgid "Turkey (tr)"
 msgstr "Турция (tr)"
 
 msgid "Twitch Suite (Live Stream + HLS CDN)"
-msgstr ""
+msgstr "Twitch (прямые эфиры + HLS CDN)"
 
 msgid "Two-letter ISO country code (e.g. RU, NL, DE) advertised as a flag emoji in client links and subscriptions."
 msgstr "Двухбуквенный ISO-код страны (например: RU, NL, DE), отображаемый в виде флага в клиентских ссылках и подписках."
@@ -9641,6 +9881,9 @@ msgstr "Неизвестная ошибка"
 msgid "Unlimited"
 msgstr "Без ограничений"
 
+msgid "Unlimited (∞)"
+msgstr "Безлимит (∞)"
+
 msgid "Unreachable"
 msgstr "Недоступен"
 
@@ -9694,6 +9937,18 @@ msgstr "Обновить подписки"
 
 msgid "Update this subscription automatically"
 msgstr "Обновлять эту подписку автоматически"
+
+msgid "Update this subscription now"
+msgstr "Обновить эту подписку сейчас"
+
+msgid "Update via section"
+msgstr "Обновлять через секцию"
+
+msgid "Update:"
+msgstr "Обновление:"
+
+msgid "Updated"
+msgstr "Обновлено"
 
 msgid "Updated/duplicates:"
 msgstr "Обновлено/дубликаты:"
@@ -9824,8 +10079,20 @@ msgstr "Используется"
 msgid "Used in"
 msgstr "Секции"
 
+msgid "Used in Balancer"
+msgstr "Используется в балансировщике"
+
+msgid "Used in Outbound Groups"
+msgstr "Используется в группах серверов"
+
+msgid "Used in Section"
+msgstr "Используется в секции"
+
 msgid "Used in Sections"
 msgstr "Используется в секциях"
+
+msgid "Used in sections"
+msgstr "В секциях"
 
 msgid "User ID / UUID"
 msgstr "Идентификатор / UUID пользователя"
@@ -9878,6 +10145,9 @@ msgstr "Валидно"
 msgid "Validates sing-box config before restart to prevent boot loops on broken configs."
 msgstr "Проверять конфигурацию sing-box перед перезапуском, чтобы предотвратить циклические перезагрузки."
 
+msgid "Validation errors detected"
+msgstr "Обнаружены ошибки в списке"
+
 msgid "Validation errors:"
 msgstr "Ошибки валидации:"
 
@@ -9908,11 +10178,17 @@ msgstr "Проверка готовности роутера и служб..."
 msgid "Versions"
 msgstr "Версии"
 
+msgid "Via"
+msgstr "Через"
+
 msgid "Via component"
 msgstr "Через компонент"
 
 msgid "Via country.is"
 msgstr "Через country.is"
+
+msgid "Via section"
+msgstr "Через секцию"
 
 msgid "Video streaming"
 msgstr "Видео"
@@ -10131,10 +10407,13 @@ msgid "Working"
 msgstr "Рабочих"
 
 msgid "Working only"
-msgstr ""
+msgstr "Только рабочие"
+
+msgid "Worst-case (Max latency across URLs — penalizes slow routes)"
+msgstr "Худший результат (максимальный пинг среди URL — штрафует медленные маршруты)"
 
 msgid "X / Twitter Suite (API + Media CDN)"
-msgstr ""
+msgstr "X / Twitter (API + медиа CDN)"
 
 msgid "XHTTP mode"
 msgstr "Режим XHTTP"
@@ -10155,7 +10434,7 @@ msgid "You can select Output Network Interface, by default autodetect"
 msgstr "Вы можете выбрать выходной сетевой интерфейс, по умолчанию автоопределение"
 
 msgid "YouTube Full Suite (Web + 4K Stream + CDN)"
-msgstr ""
+msgstr "YouTube (веб + поток 4K + CDN)"
 
 msgid "Zapret"
 msgstr "Zapret"
@@ -10382,14 +10661,14 @@ msgstr "например, torrent|gaming, VIP"
 msgid "e.g. vless, hysteria2, amneziawg"
 msgstr "например, vless, hysteria2, amneziawg"
 
-msgid "e.g. wg0, awg0, tun0, tailscale0"
-msgstr "например, wg0, awg0, tun0, tailscale0"
-
 msgid "e.g. ws, grpc"
 msgstr "например: ws, grpc"
 
 msgid "e.g. youtube.com, discord.com, chatgpt.com, rutracker.org (or empty for auto)"
 msgstr "Например: youtube.com, discord.com, chatgpt.com, rutracker.org (или пусто для авто)"
+
+msgid "en"
+msgstr "ru"
 
 msgid "endpoints OK"
 msgstr "эндпоинтов доступно"
@@ -10413,7 +10692,7 @@ msgid "lx"
 msgstr "lx"
 
 msgid "midsld (Middle of SLD domain)"
-msgstr ""
+msgstr "midsld (середина домена второго уровня)"
 
 msgid "midsld, sni, or byte offset (1..1400)"
 msgstr "midsld, sni или смещение в байтах (1..1400)"
@@ -10467,7 +10746,7 @@ msgid "sites"
 msgstr "сайтов"
 
 msgid "sni (Start of SNI extension)"
-msgstr ""
+msgstr "sni (начало расширения SNI)"
 
 msgid "srv"
 msgstr "серв."
@@ -10649,6 +10928,18 @@ msgstr "— стабильно (TProxy)"
 msgid "← Back"
 msgstr "← Назад"
 
+msgid "↻ Update"
+msgstr "↻ Обновить"
+
+msgid "↻ Update All Subscriptions"
+msgstr "↻ Обновить все подписки"
+
+msgid "↻ Updating subscriptions..."
+msgstr "↻ Обновление подписок..."
+
+msgid "↻ Updating..."
+msgstr "↻ Обновление..."
+
 msgid "▲ Hide full catalog"
 msgstr "▲ Скрыть полный каталог списков"
 
@@ -10660,6 +10951,99 @@ msgstr "● Нормальный отклик"
 
 msgid "● High latency"
 msgstr "● Высокий пинг"
+
+msgid "✓ No subscription needed for this preset — uses built-in Tachyon Core Desync"
+msgstr "✓ Для этого пресета подписка не требуется — используется встроенный Tachyon Core Desync"
+
+msgid "Child (🧒)"
+msgstr "Ребёнок (🧒)"
+
+msgid "Drag blocks with mouse (⠿) or ◀▲ / ▼▶ buttons. Two adjacent 50% widgets automatically sit side-by-side in 2 columns"
+msgstr "Перетаскивайте блоки мышью (⠿) или кнопками ◀▲ / ▼▶. Два соседних виджета с шириной 50% автоматически встают рядом в 2 колонки"
+
+msgid "Family (🏠)"
+msgstr "Семья (🏠)"
+
+msgid "Gamer (🎮)"
+msgstr "Геймер (🎮)"
+
+msgid "Laptop / PC (💻)"
+msgstr "Ноутбук / ПК (💻)"
+
+msgid "Pets / IoT (🐾)"
+msgstr "Питомцы / IoT (🐾)"
+
+msgid "Phone (📱)"
+msgstr "Смартфон (📱)"
+
+msgid "Strict (🔒)"
+msgstr "Строгий (🔒)"
+
+msgid "Teen (🧑)"
+msgstr "Подросток (🧑)"
+
+msgid "Toddler (👶)"
+msgstr "Малыш (👶)"
+
+msgid "Attached to sections:"
+msgstr "Привязан к секциям:"
+
+msgid "How combined latency is calculated across multiple URLs when selecting the best server."
+msgstr "Способ расчёта итоговой задержки по нескольким URL при выборе лучшего сервера."
+
+msgid "Outbound Sources, Subscriptions & Tunnels"
+msgstr "Пул серверов, подписки и туннели"
+
+msgid "Additional or auto-discovered domain suffixes (one per line)."
+msgstr "Дополнительные или автоматически обнаруженные доменные суффиксы (по одному на строку)."
+
+msgid "One domain or rule per line (supports // comments, plain suffixes like youtube.com, or prefixes full:, domain:, keyword:, regex:)."
+msgstr "По одному домену или правилу на строку (поддерживаются комментарии //, обычные суффиксы вроде youtube.com, а также префиксы full:, domain:, keyword:, regex:)."
+
+msgid "Select an existing network interface"
+msgstr "Выберите существующий сетевой интерфейс"
+
+msgid "Select network interface for VPN connection"
+msgstr "Выберите интерфейс для VPN-подключения"
+
+msgid "Target IPv4/IPv6 addresses or CIDR blocks, one per line or comma-separated (supports // comments)."
+msgstr "Целевые адреса IPv4/IPv6 или подсети CIDR, по одному на строку или через запятую (поддерживаются комментарии //)."
+
+msgid "e.g. wg0, awg0, tun0, tailscale0"
+msgstr "например, wg0, awg0, tun0, tailscale0"
+
+msgid "Add a subscription URL, VLESS / Hysteria2 / TUIC / SS share links, AmneziaWG / WireGuard config, Cloudflare WARP, or built-in Tachyon Core Desync."
+msgstr "Подключить подписку, ключи VLESS / Hysteria2 / TUIC / SS, конфиг AmneziaWG / WireGuard, Cloudflare WARP или встроенный нативный Desync ядра Tachyon Core для обхода блокировок."
+
+msgid "Choose what kind of connection to add. The wizard will automatically configure all required entities with optimal defaults."
+msgstr "Выберите, какое подключение нужно добавить. Мастер автоматически создаст все необходимые сущности с оптимальными настройками."
+
+msgid "Outbound Connection (Client / DPI)"
+msgstr "Исходящее подключение (Аутбаунд)"
+
+msgid "Available in pool (not attached yet)"
+msgstr "В общем пуле (не привязан напрямую)"
+
+msgid "Click to open section nodes, balancers and conditions"
+msgstr "Нажмите, чтобы открыть узлы, балансировщики и условия секции"
+
+msgid "Optionally select pre-filtered Outbound Server Groups from the Outbounds tab."
+msgstr "Необязательно: выберите готовые отфильтрованные группы серверов из вкладки «Пул серверов»."
+
+msgid "Proxy links"
+msgstr "Прокси-ссылки"
+
+msgid "Reusable Outbound Server Groups"
+msgstr "Переиспользуемые группы серверов"
+
+msgid "Select subscriptions or sources from the Outbounds tab. Leave empty to use all servers available in the attached Section."
+msgstr "Выберите подписки или источники из вкладки «Пул серверов». Оставьте пустым, чтобы использовать все серверы привязанной секции."
+
+msgid "Server Pool & Filters"
+msgstr "Пул серверов и фильтры"
+
+msgid "Subscriptions / Outbound Sources"
+msgstr "Подписки / Источники серверов"
 
 msgid "If Tachyon powers your daily networking and keeps your connection fast and secure, consider supporting ongoing development! ☕ 🧀 🌭"
 msgstr "Если Tachyon помогает вам и делает работу в сети комфортной, вы можете поддержать проект и автора! ☕ 🧀 🌭"
@@ -10977,7 +11361,7 @@ msgid "Custom strategy string (CLI)"
 msgstr "Своя строка стратегии (CLI)"
 
 msgid "Discord Voice & Chat (UDP + TLS)"
-msgstr "Discord Voice & Chat (UDP + TLS)"
+msgstr "Discord Голос и Чат (UDP + TLS)"
 
 msgid "FPTN Access Token (fptn://)"
 msgstr "Токен доступа FPTN (fptn://)"
@@ -10992,7 +11376,7 @@ msgid "Password / Key / Token"
 msgstr "Пароль / Ключ / Токен"
 
 msgid "YouTube / Google Video (TLS split + QUIC fake)"
-msgstr "YouTube / Google Video (TLS split + QUIC fake)"
+msgstr "YouTube / Google Video (разделение TLS + фейк QUIC)"
 
 msgid "✓ Create Connection"
 msgstr "✓ Создать подключение"
@@ -11283,7 +11667,7 @@ msgid "Universal proxy platform routing engine"
 msgstr "Универсальный движок маршрутизации и проксирования"
 
 msgid "WireGuard over TURN Tunnel"
-msgstr "WireGuard over TURN Tunnel"
+msgstr "WireGuard поверх TURN-туннеля"
 
 msgid "Zero config mesh VPN daemon"
 msgstr "Mesh VPN-демон с нулевой конфигурацией"
@@ -11643,13 +12027,13 @@ msgid "Block (RKN)"
 msgstr "RKN Block"
 
 msgid "RKN Block"
-msgstr "RKN Block"
+msgstr "Блокировки РКН"
 
 msgid "News"
-msgstr "News"
+msgstr "СМИ и Новости"
 
 msgid "Geo Block"
-msgstr "Geo Block"
+msgstr "Геоблок"
 
 msgid "WDTT"
 msgstr "WDTT"
@@ -11667,10 +12051,10 @@ msgid "⚡ Quick Benchmark (Presets ~12-14)"
 msgstr "⚡ Быстрый бенчмарк (Пресеты ~12-14)"
 
 msgid "🎬 YouTube Suite (Web + 4K Stream)"
-msgstr "🎬 YouTube Suite (Web + 4K Stream)"
+msgstr "🎬 YouTube (веб + поток 4K)"
 
 msgid "💬 Discord Suite (API + WSS + CDN)"
-msgstr "💬 Discord Suite (API + WSS + CDN)"
+msgstr "💬 Discord (API + WSS + CDN)"
 
 msgid "🔍 Combinatorial Deep Fuzzing (~40-80+)"
 msgstr "🔍 Комбинаторный глубокий фаззинг (~40-80+)"
@@ -11761,12 +12145,6 @@ msgstr "Загрузка…"
 
 msgid "Monitoring & Analytics"
 msgstr "Мониторинг и аналитика"
-
-msgid "Move down"
-msgstr "Вниз"
-
-msgid "Move up"
-msgstr "Вверх"
 
 msgid "OpenWrt Network Interfaces"
 msgstr "Сетевые интерфейсы OpenWrt"

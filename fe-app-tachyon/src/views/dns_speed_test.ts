@@ -57,7 +57,7 @@ function normalizeDomains(value) {
 }
 
 function renderFallbackSettingsSvg(size = 14) {
-  if (typeof document === 'undefined') return '⚙';
+  if (typeof document === 'undefined') return '*';
   const span = document.createElement('span');
   span.className = 'tachyon-fallback-icon';
   span.style.display = 'inline-flex';

@@ -81,8 +81,12 @@ ucode -L "$ROOT_DIR/tachyon/files/usr/lib" "$ROOT_DIR/tachyon/files/usr/lib/nft/
 grep -E 'nft[[:space:]]+add[[:space:]]+rule[[:space:]]+inet[[:space:]]+TachyonTable[[:space:]]+mangle[[:space:]]+ct[[:space:]]+status[[:space:]]+dnat[[:space:]]+return' "$NFT_LOG" || \
   fail "expected ct status dnat return in chain mangle"
 
-grep -E 'nft[[:space:]]+add[[:space:]]+rule[[:space:]]+inet[[:space:]]+TachyonTable[[:space:]]+proxy[[:space:]]+ct[[:space:]]+status[[:space:]]+dnat([[:space:]]+meta[[:space:]]+mark[[:space:]]+set[[:space:]]+0)?[[:space:]]+return' "$NFT_LOG" || \
-  fail "expected ct status dnat return in chain proxy"
+grep -E 'nft[[:space:]]+add[[:space:]]+rule[[:space:]]+inet[[:space:]]+TachyonTable[[:space:]]+proxy[[:space:]]+ct[[:space:]]+status[[:space:]]+dnat[[:space:]]+meta[[:space:]]+mark[[:space:]]+set[[:space:]]+meta[[:space:]]+mark[[:space:]]+&[[:space:]]+0xfbffffff[[:space:]]+return' "$NFT_LOG" || \
+  fail "expected ct status dnat to clear only fakeip_mark bit (0xfbffffff) in chain proxy"
+
+if grep -E 'nft[[:space:]]+add[[:space:]]+rule[[:space:]]+inet[[:space:]]+TachyonTable[[:space:]]+proxy[[:space:]]+.*meta[[:space:]]+mark[[:space:]]+set[[:space:]]+0[[:space:]]+return' "$NFT_LOG"; then
+  fail "chain proxy must never zero out entire meta mark (breaks mwan3 fwmark)"
+fi
 
 grep -E 'nft[[:space:]]+add[[:space:]]+rule[[:space:]]+inet[[:space:]]+TachyonTable[[:space:]]+mangle_forward[[:space:]]+ct[[:space:]]+status[[:space:]]+dnat[[:space:]]+return' "$NFT_LOG" || \
   fail "expected ct status dnat return in chain mangle_forward"
