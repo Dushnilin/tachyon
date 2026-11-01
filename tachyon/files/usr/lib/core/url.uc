@@ -285,16 +285,18 @@ function download_candidates(value) {
     if (value == "")
         return [];
 
+    // Mirrors only serve GitHub resources. Inspect the authority before
+    // normalization: a provider URL may itself contain a GitHub URL in its path.
+    let source_host = lc(host(value));
+    let is_github = match(source_host, /^(github\.com|api\.github\.com|([a-z0-9-]+\.)?githubusercontent\.com)$/) != null;
+    if ((scheme(value) != "http" && scheme(value) != "https") || !is_github)
+        return [ value ];
+
     value = normalize_github_raw(value);
 
     let candidates = [ value ];
-    let is_github = index(value, "github.com") >= 0 ||
-                    index(value, "api.github.com") >= 0 ||
-                    index(value, "raw.githubusercontent.com") >= 0 ||
-                    index(value, "githubusercontent.com") >= 0;
-    let is_http = substr(value, 0, 7) == "http://" || substr(value, 0, 8) == "https://";
 
-    if (is_github || is_http) {
+    if (is_github) {
         let is_release = index(value, "/releases/") >= 0;
 
         // jsDelivr CDN works for file blobs but not release binaries

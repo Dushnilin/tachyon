@@ -1119,7 +1119,7 @@ function write_user_agent_candidates(path, configured_user_agent, preferred_user
 
     let result = [];
     let seen = {};
-    let candidates = [ default_user_agent, preferred_user_agent ];
+    let candidates = [ preferred_user_agent, default_user_agent ];
     for (let profile in auto_user_agent_profiles)
         push(candidates, profile);
 
@@ -1653,7 +1653,7 @@ function user_agent_candidates(configured_user_agent, preferred_user_agent, defa
 
     let result = [];
     let seen = {};
-    let candidates = [ default_user_agent, preferred_user_agent ];
+    let candidates = [ preferred_user_agent, default_user_agent ];
     for (let profile in auto_user_agent_profiles)
         push(candidates, profile);
 
@@ -1714,6 +1714,7 @@ function download_subscription(url, filepath, http_proxy_address, headers_filepa
             let args = [
                 "curl", "-fL", "-sS",
                 "--connect-timeout", timeout,
+                "--max-time", "30",
                 "--speed-time", timeout,
                 "--speed-limit", "1",
                 "--max-redirs", "5",
@@ -1750,9 +1751,12 @@ function download_subscription(url, filepath, http_proxy_address, headers_filepa
                 push(args, "-H");
                 push(args, header);
             }
+            push(args, "--write-out", "%{http_code}");
             push(args, target_url);
 
-            let status = command_status_from_args(args);
+            let response = common.command_capture(command_from_args(args));
+            let status = response == null ? 1 : response.status;
+            let http_status = response == null ? 0 : int(response.output);
             if (status == 0 && file_nonempty(tmpfile)) {
                 let downloaded_body = fs.readfile(tmpfile);
                 if (downloaded_body != null && crypt4.is_crypt4(downloaded_body)) {
@@ -1774,6 +1778,15 @@ function download_subscription(url, filepath, http_proxy_address, headers_filepa
 
             unlink_path(tmpfile);
             unlink_path(headers_tmpfile);
+
+            // Provider subscriptions need a different client profile after
+            // rejection. GitHub may be IP-blocked, so keep its mirror fallback.
+            if (status == 22 && (http_status == 401 || http_status == 403)) {
+                if (length(candidates) == 1)
+                    return 22;
+                saw_http_or_other_failure = true;
+                break;
+            }
 
             if (status == 5) {
                 // Proxy/SSL tunnel failure — no point retrying this URL
@@ -2205,6 +2218,7 @@ function download_subscription_into_cache(section_name_value, subscription_url, 
     }
 
     let attempt_index = 0;
+    let deferred_proxy_fallback = false;
     for (let effective_user_agent in user_agent_candidates(subscription_user_agent, cached_user_agent, default_user_agent)) {
         attempt_index++;
         unlink_path(raw_tmpfile);
@@ -2217,8 +2231,15 @@ function download_subscription_into_cache(section_name_value, subscription_url, 
         let direct_transport_failed = _last_download_transport_failed;
         if (download_status != 0 && service_proxy_address_value == "" && sing_box_service_running()) {
             let fallback_proxy = SB_SERVICE_MIXED_INBOUND_ADDRESS + ":" + SB_SERVICE_MIXED_INBOUND_PORT;
-            log_message("Direct subscription download failed for rule '" + section_name_value + "'; retrying via active service proxy " + fallback_proxy, "info");
-            download_status = download_subscription(subscription_url, raw_tmpfile, fallback_proxy, headers_tmpfile, effective_user_agent, effective_hwid, subscription_device_headers, allow_insecure);
+            if (download_status == 22 && subscription_user_agent == "") {
+                // Try the other direct client profiles before a potentially
+                // slow proxy retry. Keep proxy fallback for IP-based rejection.
+                deferred_proxy_fallback = true;
+            }
+            else {
+                log_message("Direct subscription download failed for rule '" + section_name_value + "'; retrying via active service proxy " + fallback_proxy, "info");
+                download_status = download_subscription(subscription_url, raw_tmpfile, fallback_proxy, headers_tmpfile, effective_user_agent, effective_hwid, subscription_device_headers, allow_insecure);
+            }
         }
         if (download_status != 0) {
             if (metadata_output_path != "")
@@ -2290,6 +2311,13 @@ function download_subscription_into_cache(section_name_value, subscription_url, 
     unlink_path(headers_tmpfile);
     unlink_path(normalized_tmpfile);
     unlink_path(metadata_tmpfile);
+    if (deferred_proxy_fallback && sing_box_service_running()) {
+        let fallback_proxy = SB_SERVICE_MIXED_INBOUND_ADDRESS + ":" + SB_SERVICE_MIXED_INBOUND_PORT;
+        log_message("Direct subscription client profiles failed for rule '" + section_name_value + "'; retrying via active service proxy " + fallback_proxy, "info");
+        return download_subscription_into_cache(section_name_value, subscription_url, subscription_json_path,
+            subscription_url_cache_path, fallback_proxy, subscription_user_agent, subscription_hwid,
+            source_index, cache_section, metadata_output_path, sections, subscription_device_headers, allow_insecure, effective_engine);
+    }
     if (subscription_user_agent != "")
         log_message("Configured subscription request profile for rule '" + section_name_value + "' did not produce valid proxy entries", "error");
     else

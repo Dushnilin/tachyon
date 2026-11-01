@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-01 18:20+0300\n"
-"PO-Revision-Date: 2026-11-01 18:20+0300\n"
+"POT-Creation-Date: 2026-11-01 18:22+0300\n"
+"PO-Revision-Date: 2026-11-01 18:22+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -80,7 +80,7 @@ msgstr ""
 msgid "-- Select --"
 msgstr ""
 
-#: src/views/conditions.ts:1996
+#: src/views/conditions.ts:2012
 msgid "-- Select Inbound Server --"
 msgstr ""
 
@@ -140,7 +140,7 @@ msgstr ""
 msgid "1. Router Primary DNS"
 msgstr ""
 
-#: src/views/conditions.ts:233
+#: src/views/conditions.ts:249
 msgid "1. Where is the argument present? (Presence Search)"
 msgstr ""
 
@@ -161,7 +161,7 @@ msgstr ""
 msgid "2 (Byte 2)"
 msgstr ""
 
-#: src/views/conditions.ts:433
+#: src/views/conditions.ts:449
 msgid "2-Mode Rule & Condition Tracer"
 msgstr ""
 
@@ -169,7 +169,7 @@ msgstr ""
 msgid "2-letter ISO codes, e.g. RU, NL, DE"
 msgstr ""
 
-#: src/views/conditions.ts:2142
+#: src/views/conditions.ts:2158
 msgid "2-letter ISO country codes (e.g. ru, us, de, nl). Automatically downloads and caches the corresponding GeoIP rule-sets."
 msgstr ""
 
@@ -181,7 +181,7 @@ msgstr ""
 msgid "2. Visual Dashboard Layout (2-Column Grid Canvas)"
 msgstr ""
 
-#: src/views/conditions.ts:238
+#: src/views/conditions.ts:254
 msgid "2. Which rule is strictly satisfied? (Exact Boolean Match)"
 msgstr ""
 
@@ -334,7 +334,7 @@ msgstr ""
 msgid "ALPN Protocols (comma-separated)"
 msgstr ""
 
-#: src/views/conditions.ts:1375
+#: src/views/conditions.ts:1391
 #: src/views/section.ts:15807
 msgid "AND (all selected conditions must match)"
 msgstr ""
@@ -657,7 +657,7 @@ msgstr ""
 msgid "Additional marking rules found"
 msgstr ""
 
-#: src/views/conditions.ts:1744
+#: src/views/conditions.ts:1760
 msgid "Additional or auto-discovered domain suffixes (one per line). Checked for syntax errors and duplicates in real time."
 msgstr ""
 
@@ -713,7 +713,7 @@ msgstr ""
 msgid "Advanced & Subscription Options"
 msgstr ""
 
-#: src/views/conditions.ts:1414
+#: src/views/conditions.ts:1430
 msgid "Advanced Boolean Expression"
 msgstr ""
 
@@ -917,7 +917,7 @@ msgstr ""
 msgid "Allowed Start Time"
 msgstr ""
 
-#: src/views/conditions.ts:884
+#: src/views/conditions.ts:900
 #: src/views/section.ts:7927
 msgid "Allowed domain prefixes are full:, keyword:, and regex:"
 msgstr ""
@@ -946,7 +946,7 @@ msgstr ""
 msgid "Also add tachyon-lists rules to the selected section"
 msgstr ""
 
-#: src/views/conditions.ts:1514
+#: src/views/conditions.ts:1530
 msgid "Also route IP/CIDR subnets included in the selected community lists (in addition to domains)."
 msgstr ""
 
@@ -1153,7 +1153,7 @@ msgstr ""
 msgid "Apply Strategy To"
 msgstr ""
 
-#: src/views/conditions.ts:2059
+#: src/views/conditions.ts:2075
 #: src/views/section.ts:16589
 msgid "Apply rules of this section only to selected protocols."
 msgstr ""
@@ -1196,21 +1196,21 @@ msgstr ""
 msgid "At least one Admin Chat ID is required"
 msgstr ""
 
-#: src/views/conditions.ts:932
+#: src/views/conditions.ts:948
 #: src/views/section.ts:8073
 msgid "At least one valid IP or subnet must be specified."
 msgstr ""
 
-#: src/views/conditions.ts:915
+#: src/views/conditions.ts:931
 #: src/views/section.ts:7958
 msgid "At least one valid domain must be specified."
 msgstr ""
 
-#: src/views/conditions.ts:1271
+#: src/views/conditions.ts:1287
 msgid "Atomic Matchers"
 msgstr ""
 
-#: src/views/conditions.ts:1265
+#: src/views/conditions.ts:1281
 msgid "Atomic conditions match traffic properties directly. Composite conditions combine other conditions with AND, OR, and NOT."
 msgstr ""
 
@@ -1342,7 +1342,7 @@ msgstr ""
 msgid "Auto-configure Tailscale firewall zone"
 msgstr ""
 
-#: src/views/conditions.ts:1743
+#: src/views/conditions.ts:1759
 #: src/views/section.ts:10048
 #: src/views/section.ts:16025
 msgid "Auto-detected Domains"
@@ -1579,7 +1579,7 @@ msgstr ""
 msgid "Beginning of the schedule interval (e.g. 22:00)"
 msgstr ""
 
-#: src/views/conditions.ts:2161
+#: src/views/conditions.ts:2177
 #: src/views/section.ts:15928
 msgid "Belarus (by)"
 msgstr ""
@@ -1650,7 +1650,7 @@ msgstr ""
 msgid "Bidirectional (default)"
 msgstr ""
 
-#: src/views/conditions.ts:2041
+#: src/views/conditions.ts:2057
 #: src/views/section.ts:16556
 #: src/views/section.ts:16591
 msgid "BitTorrent / P2P"
@@ -1764,7 +1764,7 @@ msgstr ""
 msgid "Boolean Condition Expression (Optional)"
 msgstr ""
 
-#: src/views/conditions.ts:1370
+#: src/views/conditions.ts:1386
 msgid "Boolean Operator"
 msgstr ""
 
@@ -2225,7 +2225,7 @@ msgstr ""
 msgid "Child"
 msgstr ""
 
-#: src/views/conditions.ts:2158
+#: src/views/conditions.ts:2174
 #: src/views/section.ts:15925
 msgid "China (cn)"
 msgstr ""
@@ -2290,7 +2290,7 @@ msgstr ""
 msgid "Cipher"
 msgstr ""
 
-#: src/views/conditions.ts:211
+#: src/views/conditions.ts:227
 msgid "Circular condition reference detected: %s"
 msgstr ""
 
@@ -2602,7 +2602,7 @@ msgstr ""
 msgid "Community Lists"
 msgstr ""
 
-#: src/views/conditions.ts:1444
+#: src/views/conditions.ts:1460
 msgid "Community Service Lists"
 msgstr ""
 
@@ -2627,7 +2627,7 @@ msgid "Components"
 msgstr ""
 
 #: src/tachyon/studioDeck.ts:699
-#: src/views/conditions.ts:1272
+#: src/views/conditions.ts:1288
 msgid "Composite Boolean Rule (AND / OR / NOT)"
 msgstr ""
 
@@ -2643,15 +2643,15 @@ msgstr ""
 msgid "Condition"
 msgstr ""
 
-#: src/views/conditions.ts:208
+#: src/views/conditions.ts:224
 msgid "Condition '%s' cannot reference itself"
 msgstr ""
 
-#: src/views/conditions.ts:1253
+#: src/views/conditions.ts:1269
 msgid "Condition Name"
 msgstr ""
 
-#: src/views/conditions.ts:1264
+#: src/views/conditions.ts:1280
 msgid "Condition Type"
 msgstr ""
 
@@ -3232,7 +3232,7 @@ msgstr ""
 msgid "DIRECT (WAN)"
 msgstr ""
 
-#: src/views/conditions.ts:2044
+#: src/views/conditions.ts:2060
 #: src/views/section.ts:16559
 #: src/views/section.ts:16594
 msgid "DNS"
@@ -3519,7 +3519,7 @@ msgstr ""
 msgid "DPI throttling: stream cut off after ~16KB payload transfer"
 msgstr ""
 
-#: src/views/conditions.ts:2114
+#: src/views/conditions.ts:2130
 msgid "DSCP Marks (QoS)"
 msgstr ""
 
@@ -3702,20 +3702,20 @@ msgstr ""
 msgid "Delete the snapshot"
 msgstr ""
 
-#: src/views/conditions.ts:156
+#: src/views/conditions.ts:172
 msgid "Dest IP"
 msgstr ""
 
-#: src/views/conditions.ts:1785
+#: src/views/conditions.ts:1801
 msgid "Destination IP / CIDR Subnets"
 msgstr ""
 
-#: src/views/conditions.ts:1883
+#: src/views/conditions.ts:1899
 msgid "Destination IPs or CIDR blocks to exclude from this condition."
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3640
-#: src/views/conditions.ts:2024
+#: src/views/conditions.ts:2040
 msgid "Destination Ports"
 msgstr ""
 
@@ -3804,7 +3804,7 @@ msgstr ""
 msgid "Devices that are isolated as guests. Enter IP or MAC addresses, or pick from active LAN devices."
 msgstr ""
 
-#: src/views/conditions.ts:1241
+#: src/views/conditions.ts:1257
 msgid "Devices, IPs & Ports"
 msgstr ""
 
@@ -4120,7 +4120,7 @@ msgstr ""
 msgid "Domain test sections"
 msgstr ""
 
-#: src/views/conditions.ts:245
+#: src/views/conditions.ts:261
 msgid "Domain, IP/subnet, MAC, port, or service list (e.g. youtube.com, 1.1.1.1, discord)"
 msgstr ""
 
@@ -4128,14 +4128,14 @@ msgstr ""
 msgid "Domain, URL, or IP (e.g. instagram.com or 1.1.1.1)"
 msgstr ""
 
-#: src/views/conditions.ts:151
+#: src/views/conditions.ts:167
 #: src/views/section.ts:10047
 #: src/views/section.ts:15995
 #: src/views/section.ts:18592
 msgid "Domains"
 msgstr ""
 
-#: src/views/conditions.ts:1240
+#: src/views/conditions.ts:1256
 msgid "Domains & Lists"
 msgstr ""
 
@@ -4143,7 +4143,7 @@ msgstr ""
 msgid "Domains & Subnets"
 msgstr ""
 
-#: src/views/conditions.ts:1680
+#: src/views/conditions.ts:1696
 msgid "Domains & Suffixes"
 msgstr ""
 
@@ -4272,7 +4272,7 @@ msgid "Drop subscription nodes whose name contains any of these keywords. Case-i
 msgstr ""
 
 #: src/tachyon/studioDeck.ts:3441
-#: src/views/conditions.ts:1228
+#: src/views/conditions.ts:1244
 msgid "Duplicate IPs"
 msgstr ""
 
@@ -4280,21 +4280,21 @@ msgstr ""
 msgid "Duplicate JSON outbound tag"
 msgstr ""
 
-#: src/views/conditions.ts:1213
+#: src/views/conditions.ts:1229
 msgid "Duplicate auto-domains"
 msgstr ""
 
 #: src/tachyon/studioDeck.ts:3437
-#: src/views/conditions.ts:1196
+#: src/views/conditions.ts:1212
 msgid "Duplicate domains"
 msgstr ""
 
-#: src/views/conditions.ts:769
+#: src/views/conditions.ts:785
 #: src/views/section.ts:7384
 msgid "Duplicate value"
 msgstr ""
 
-#: src/views/conditions.ts:1064
+#: src/views/conditions.ts:1080
 msgid "Duplicates"
 msgstr ""
 
@@ -4343,13 +4343,13 @@ msgstr ""
 msgid "Eligible components for auto-update"
 msgstr ""
 
-#: src/views/conditions.ts:131
+#: src/views/conditions.ts:145
 msgid "Empty composite rule"
 msgstr ""
 
 #: src/tachyon/tabs/updates/initController.ts:1200
 #: src/views/balancers.ts:455
-#: src/views/conditions.ts:1243
+#: src/views/conditions.ts:1259
 #: src/views/outbounds.ts:2961
 #: src/views/parental.ts:323
 #: src/views/parental.ts:762
@@ -4662,7 +4662,7 @@ msgstr ""
 msgid "Enter a target domain or IP address to trace how Tachyon routes its traffic across all 7 pipeline stages."
 msgstr ""
 
-#: src/views/conditions.ts:1854
+#: src/views/conditions.ts:1870
 msgid "Enter a valid IP, CIDR subnet, or hostname"
 msgstr ""
 
@@ -4750,7 +4750,7 @@ msgstr ""
 msgid "Every day"
 msgstr ""
 
-#: src/views/conditions.ts:374
+#: src/views/conditions.ts:390
 msgid "Exact match"
 msgstr ""
 
@@ -4832,12 +4832,12 @@ msgstr ""
 msgid "Exclude matching servers"
 msgstr ""
 
-#: src/views/conditions.ts:2133
+#: src/views/conditions.ts:2149
 #: src/views/section.ts:15849
 msgid "Exclude selected countries"
 msgstr ""
 
-#: src/views/conditions.ts:2134
+#: src/views/conditions.ts:2150
 msgid "Exclude selected countries (route direct)"
 msgstr ""
 
@@ -4871,7 +4871,7 @@ msgstr ""
 msgid "Exclude servers with specified protocols."
 msgstr ""
 
-#: src/views/conditions.ts:2085
+#: src/views/conditions.ts:2101
 #: src/views/section.ts:16551
 msgid "Exclude traffic types"
 msgstr ""
@@ -4880,7 +4880,7 @@ msgstr ""
 msgid "Excluded"
 msgstr ""
 
-#: src/views/conditions.ts:1882
+#: src/views/conditions.ts:1898
 msgid "Excluded Destination IPs / Subnets"
 msgstr ""
 
@@ -5582,7 +5582,7 @@ msgstr ""
 msgid "Finished with code"
 msgstr ""
 
-#: src/views/conditions.ts:2155
+#: src/views/conditions.ts:2171
 #: src/views/section.ts:15922
 msgid "Finland (fi)"
 msgstr ""
@@ -5684,7 +5684,7 @@ msgstr ""
 msgid "Found"
 msgstr ""
 
-#: src/views/conditions.ts:2154
+#: src/views/conditions.ts:2170
 #: src/views/section.ts:15921
 msgid "France (fr)"
 msgstr ""
@@ -5729,7 +5729,7 @@ msgstr ""
 msgid "Full-device VPN tunnel with DPI-resistant junk packet & header obfuscation"
 msgstr ""
 
-#: src/views/conditions.ts:1832
+#: src/views/conditions.ts:1848
 msgid "Fully Routed IPs / Hostnames (Direct NFT)"
 msgstr ""
 
@@ -5770,7 +5770,7 @@ msgstr ""
 msgid "Gaming"
 msgstr ""
 
-#: src/views/conditions.ts:1239
+#: src/views/conditions.ts:1255
 msgid "General & Logic"
 msgstr ""
 
@@ -5830,7 +5830,7 @@ msgstr ""
 msgid "Generating…"
 msgstr ""
 
-#: src/views/conditions.ts:172
+#: src/views/conditions.ts:188
 msgid "GeoIP"
 msgstr ""
 
@@ -5839,7 +5839,7 @@ msgstr ""
 msgid "GeoIP Countries"
 msgstr ""
 
-#: src/views/conditions.ts:2141
+#: src/views/conditions.ts:2157
 msgid "GeoIP Countries (2-letter ISO)"
 msgstr ""
 
@@ -5847,7 +5847,7 @@ msgstr ""
 msgid "GeoIP Mode"
 msgstr ""
 
-#: src/views/conditions.ts:2124
+#: src/views/conditions.ts:2140
 msgid "GeoIP routing mode"
 msgstr ""
 
@@ -5855,7 +5855,7 @@ msgstr ""
 msgid "GeoSite / GeoIP"
 msgstr ""
 
-#: src/views/conditions.ts:2151
+#: src/views/conditions.ts:2167
 #: src/views/section.ts:15918
 msgid "Germany (de)"
 msgstr ""
@@ -5944,7 +5944,7 @@ msgstr ""
 msgid "Guest mode isolates guest devices from local LAN and router administration, while allowing internet access with daily quotas and schedules."
 msgstr ""
 
-#: src/views/conditions.ts:2045
+#: src/views/conditions.ts:2061
 #: src/views/section.ts:16560
 #: src/views/section.ts:16595
 msgid "HTTP"
@@ -6207,7 +6207,7 @@ msgstr ""
 msgid "How many hours of metrics to keep (default 24)."
 msgstr ""
 
-#: src/views/conditions.ts:1371
+#: src/views/conditions.ts:1387
 msgid "How member conditions are combined."
 msgstr ""
 
@@ -6247,7 +6247,7 @@ msgstr ""
 msgid "How often to check whether a higher-priority DNS server has recovered."
 msgstr ""
 
-#: src/views/conditions.ts:1254
+#: src/views/conditions.ts:1270
 msgid "Human-readable name of this reusable condition."
 msgstr ""
 
@@ -6301,7 +6301,7 @@ msgstr ""
 msgid "IPs"
 msgstr ""
 
-#: src/views/conditions.ts:1833
+#: src/views/conditions.ts:1849
 msgid "IPs, CIDR blocks, or hostnames pre-resolved and added directly into the nftables routing set."
 msgstr ""
 
@@ -6462,7 +6462,7 @@ msgstr ""
 msgid "In pool"
 msgstr ""
 
-#: src/views/conditions.ts:165
+#: src/views/conditions.ts:181
 msgid "Inbound"
 msgstr ""
 
@@ -6490,7 +6490,7 @@ msgstr ""
 msgid "Inbound Servers (Capture All Traffic)"
 msgstr ""
 
-#: src/views/conditions.ts:1989
+#: src/views/conditions.ts:2005
 msgid "Inbound Servers (Capture Traffic)"
 msgstr ""
 
@@ -6589,12 +6589,12 @@ msgstr ""
 msgid "Include only matching servers"
 msgstr ""
 
-#: src/views/conditions.ts:2132
+#: src/views/conditions.ts:2148
 #: src/views/section.ts:15850
 msgid "Include selected countries"
 msgstr ""
 
-#: src/views/conditions.ts:2135
+#: src/views/conditions.ts:2151
 msgid "Include selected countries and all other traffic"
 msgstr ""
 
@@ -6602,7 +6602,7 @@ msgstr ""
 msgid "Include selected countries and everything else"
 msgstr ""
 
-#: src/views/conditions.ts:2125
+#: src/views/conditions.ts:2141
 msgid "Include selected countries: route selected GeoIP countries via this section. Exclude selected countries: route all GeoIP traffic except selected countries via this section. Exclude selected countries (route direct): selected GeoIP countries go direct while all other traffic routes via this section. Include selected countries and all other traffic: route both selected countries and any non-excluded traffic via this section."
 msgstr ""
 
@@ -6996,7 +6996,7 @@ msgstr ""
 msgid "Invalid IP or MAC address. Expected e.g. 192.168.1.150 or AA:BB:CC:DD:EE:FF"
 msgstr ""
 
-#: src/views/conditions.ts:1231
+#: src/views/conditions.ts:1247
 msgid "Invalid IPs"
 msgstr ""
 
@@ -7005,7 +7005,7 @@ msgstr ""
 msgid "Invalid JSON format"
 msgstr ""
 
-#: src/views/conditions.ts:1971
+#: src/views/conditions.ts:1987
 msgid "Invalid MAC address format (expected AA:BB:CC:DD:EE:FF)"
 msgstr ""
 
@@ -7173,13 +7173,13 @@ msgstr ""
 msgid "Invalid VMess URL: parsing failed"
 msgstr ""
 
-#: src/views/conditions.ts:1218
+#: src/views/conditions.ts:1234
 msgid "Invalid auto-domains"
 msgstr ""
 
 #: src/validators/validateDomain.ts:67
 #: src/validators/validateDomain.ts:73
-#: src/views/conditions.ts:862
+#: src/views/conditions.ts:878
 #: src/views/section.ts:7907
 msgid "Invalid domain address"
 msgstr ""
@@ -7194,7 +7194,7 @@ msgstr ""
 msgid "Invalid domain: empty prefix value"
 msgstr ""
 
-#: src/views/conditions.ts:1199
+#: src/views/conditions.ts:1215
 msgid "Invalid domains"
 msgstr ""
 
@@ -7223,7 +7223,7 @@ msgstr ""
 msgid "Invalid port number. Must be between 1 and 65535"
 msgstr ""
 
-#: src/views/conditions.ts:1575
+#: src/views/conditions.ts:1591
 #: src/views/section.ts:8089
 msgid "Invalid port or range. Use 80 or 1000-2000"
 msgstr ""
@@ -7248,7 +7248,7 @@ msgstr ""
 msgid "Invalid regular expression"
 msgstr ""
 
-#: src/views/conditions.ts:852
+#: src/views/conditions.ts:868
 msgid "Invalid regular expression: %s"
 msgstr ""
 
@@ -7260,7 +7260,7 @@ msgstr ""
 msgid "Invalid time format. Use HH:MM (e.g. 08:00 or 22:30)"
 msgstr ""
 
-#: src/views/conditions.ts:782
+#: src/views/conditions.ts:798
 msgid "Invalid value"
 msgstr ""
 
@@ -7268,7 +7268,7 @@ msgstr ""
 msgid "Invalid vpn:// link; use a WG/AWG .conf or Amnezia export"
 msgstr ""
 
-#: src/views/conditions.ts:1433
+#: src/views/conditions.ts:1449
 msgid "Invert Condition (NOT)"
 msgstr ""
 
@@ -7321,7 +7321,7 @@ msgstr ""
 msgid "JSON outbound settings"
 msgstr ""
 
-#: src/views/conditions.ts:2159
+#: src/views/conditions.ts:2175
 #: src/views/section.ts:15926
 msgid "Japan (jp)"
 msgstr ""
@@ -7386,7 +7386,7 @@ msgstr ""
 msgid "Junk size for transport packet"
 msgstr ""
 
-#: src/views/conditions.ts:2162
+#: src/views/conditions.ts:2178
 #: src/views/section.ts:15929
 msgid "Kazakhstan (kz)"
 msgstr ""
@@ -7448,7 +7448,7 @@ msgstr ""
 msgid "Keyword must not contain spaces or commas"
 msgstr ""
 
-#: src/views/conditions.ts:838
+#: src/views/conditions.ts:854
 msgid "Keyword must not contain spaces, commas, or slashes"
 msgstr ""
 
@@ -7464,11 +7464,11 @@ msgstr ""
 msgid "LAN Devices"
 msgstr ""
 
-#: src/views/conditions.ts:1922
+#: src/views/conditions.ts:1938
 msgid "LAN client IP addresses or subnets (e.g. 192.168.1.50/32)."
 msgstr ""
 
-#: src/views/conditions.ts:1961
+#: src/views/conditions.ts:1977
 msgid "LAN client MAC addresses (e.g. AA:BB:CC:DD:EE:FF). Resolved automatically via DHCP leases and ARP."
 msgstr ""
 
@@ -7629,7 +7629,7 @@ msgstr ""
 msgid "Listening port"
 msgstr ""
 
-#: src/views/conditions.ts:142
+#: src/views/conditions.ts:158
 msgid "Lists"
 msgstr ""
 
@@ -7950,18 +7950,18 @@ msgstr ""
 msgid "Match traffic by packet DSCP mark (assigned in Windows via Policy-Based QoS). Examples: 46 (EF), 0x2e, 34 (AF41)"
 msgstr ""
 
-#: src/views/conditions.ts:358
-#: src/views/conditions.ts:370
+#: src/views/conditions.ts:374
+#: src/views/conditions.ts:386
 #: src/views/section.ts:3455
 #: src/views/section.ts:3461
 msgid "Matched"
 msgstr ""
 
-#: src/views/conditions.ts:384
+#: src/views/conditions.ts:400
 msgid "Matched Conditions"
 msgstr ""
 
-#: src/views/conditions.ts:394
+#: src/views/conditions.ts:410
 msgid "Matched Sections"
 msgstr ""
 
@@ -8026,7 +8026,7 @@ msgstr ""
 msgid "Median; successful queries: %s / %s. Click for details."
 msgstr ""
 
-#: src/views/conditions.ts:1384
+#: src/views/conditions.ts:1400
 msgid "Member Conditions"
 msgstr ""
 
@@ -8281,7 +8281,7 @@ msgstr ""
 msgid "NOT (invert selected conditions)"
 msgstr ""
 
-#: src/views/conditions.ts:1377
+#: src/views/conditions.ts:1393
 msgid "NOT (none of the selected conditions match)"
 msgstr ""
 
@@ -8338,11 +8338,11 @@ msgstr ""
 msgid "Need expert knobs? Advanced Mode →"
 msgstr ""
 
-#: src/views/conditions.ts:1434
+#: src/views/conditions.ts:1450
 msgid "Negate the result of this condition."
 msgstr ""
 
-#: src/views/conditions.ts:2152
+#: src/views/conditions.ts:2168
 #: src/views/section.ts:15919
 msgid "Netherlands (nl)"
 msgstr ""
@@ -8547,7 +8547,7 @@ msgstr ""
 msgid "No enabled server inbounds configured"
 msgstr ""
 
-#: src/views/conditions.ts:1055
+#: src/views/conditions.ts:1071
 msgid "No errors or duplicates found"
 msgstr ""
 
@@ -8567,7 +8567,7 @@ msgstr ""
 msgid "No issues found"
 msgstr ""
 
-#: src/views/conditions.ts:174
+#: src/views/conditions.ts:190
 msgid "No matchers set"
 msgstr ""
 
@@ -8591,7 +8591,7 @@ msgstr ""
 msgid "No release description available."
 msgstr ""
 
-#: src/views/conditions.ts:314
+#: src/views/conditions.ts:330
 msgid "No response from rule tracer."
 msgstr ""
 
@@ -8607,7 +8607,7 @@ msgstr ""
 msgid "No rules use Zapret2"
 msgstr ""
 
-#: src/views/conditions.ts:338
+#: src/views/conditions.ts:354
 msgid "No section is strictly satisfied by the supplied arguments."
 msgstr ""
 
@@ -8689,8 +8689,8 @@ msgstr ""
 #: src/tachyon/connectionWizard.ts:3383
 #: src/tachyon/tabs/diagnostic/partials/renderAiDoctorModal.ts:246
 #: src/views/balancers.ts:75
-#: src/views/conditions.ts:388
-#: src/views/conditions.ts:398
+#: src/views/conditions.ts:404
+#: src/views/conditions.ts:414
 #: src/views/outbounds.ts:4743
 #: src/views/outbounds.ts:4873
 #: src/views/outbounds.ts:5053
@@ -8876,7 +8876,7 @@ msgstr ""
 msgid "Number of junk packets before handshake (1-10)"
 msgstr ""
 
-#: src/views/conditions.ts:2115
+#: src/views/conditions.ts:2131
 msgid "Numeric (0-63), hex (0x2e), or class name (ef, cs5, af41)."
 msgstr ""
 
@@ -8884,7 +8884,7 @@ msgstr ""
 msgid "OOB Values (-o)"
 msgstr ""
 
-#: src/views/conditions.ts:1376
+#: src/views/conditions.ts:1392
 #: src/views/section.ts:15808
 msgid "OR (any selected condition matches)"
 msgstr ""
@@ -8980,7 +8980,7 @@ msgstr ""
 msgid "One URL imports the selected enabled servers and updates their connection settings in the client."
 msgstr ""
 
-#: src/views/conditions.ts:1681
+#: src/views/conditions.ts:1697
 msgid "One domain or rule per line (supports // comments, plain suffixes like youtube.com, or prefixes full:, domain:, keyword:, regex:). Checked for syntax errors and duplicates in real time."
 msgstr ""
 
@@ -9185,7 +9185,7 @@ msgstr ""
 msgid "Optional context (e.g. \"Rostelecom, YouTube 4K buffering is slow\")..."
 msgstr ""
 
-#: src/views/conditions.ts:1415
+#: src/views/conditions.ts:1431
 msgid "Optional expression using condition IDs and AND / OR / NOT / parentheses, e.g. (baned_domains AND my_devices) AND NOT whitelist."
 msgstr ""
 
@@ -9397,7 +9397,7 @@ msgstr ""
 msgid "Parsed records:"
 msgstr ""
 
-#: src/views/conditions.ts:373
+#: src/views/conditions.ts:389
 msgid "Partial presence match — other AND conditions not supplied"
 msgstr ""
 
@@ -9611,7 +9611,7 @@ msgstr ""
 msgid "Pipeline"
 msgstr ""
 
-#: src/views/conditions.ts:1659
+#: src/views/conditions.ts:1675
 msgid "Plain Domain/IP Lists (.lst / .txt)"
 msgstr ""
 
@@ -9727,7 +9727,7 @@ msgstr ""
 msgid "Port"
 msgstr ""
 
-#: src/views/conditions.ts:268
+#: src/views/conditions.ts:284
 msgid "Port (e.g. 443)"
 msgstr ""
 
@@ -9743,7 +9743,7 @@ msgstr ""
 msgid "Port for the local mixed proxy of this section"
 msgstr ""
 
-#: src/views/conditions.ts:1580
+#: src/views/conditions.ts:1596
 #: src/views/outbounds.ts:4613
 #: src/views/section.ts:13340
 #: src/views/section.ts:8096
@@ -9758,7 +9758,7 @@ msgstr ""
 msgid "Port or Range"
 msgstr ""
 
-#: src/views/conditions.ts:1583
+#: src/views/conditions.ts:1599
 #: src/views/section.ts:8100
 msgid "Port range start must be less than or equal to end"
 msgstr ""
@@ -9767,7 +9767,7 @@ msgstr ""
 msgid "Port range start must not exceed its end"
 msgstr ""
 
-#: src/views/conditions.ts:168
+#: src/views/conditions.ts:184
 #: src/views/outbounds.ts:1200
 #: src/views/outbounds.ts:1202
 #: src/views/section.ts:10045
@@ -9812,7 +9812,7 @@ msgstr ""
 msgid "Pre-shared key"
 msgstr ""
 
-#: src/views/conditions.ts:1445
+#: src/views/conditions.ts:1461
 msgid "Predefined service domain/subnet lists."
 msgstr ""
 
@@ -10041,7 +10041,7 @@ msgstr ""
 msgid "Protection"
 msgstr ""
 
-#: src/views/conditions.ts:170
+#: src/views/conditions.ts:186
 #: src/views/outbounds.ts:1188
 #: src/views/outbounds.ts:1190
 msgid "Proto"
@@ -10210,7 +10210,7 @@ msgstr ""
 msgid "QR: Token"
 msgstr ""
 
-#: src/views/conditions.ts:2042
+#: src/views/conditions.ts:2058
 #: src/views/section.ts:16557
 #: src/views/section.ts:16592
 msgid "QUIC (HTTP/3)"
@@ -10285,7 +10285,7 @@ msgstr ""
 msgid "RAM usage:"
 msgstr ""
 
-#: src/views/conditions.ts:2048
+#: src/views/conditions.ts:2064
 #: src/views/section.ts:16563
 #: src/views/section.ts:16598
 msgid "RDP"
@@ -10475,7 +10475,7 @@ msgstr ""
 msgid "Registration Detour"
 msgstr ""
 
-#: src/views/conditions.ts:906
+#: src/views/conditions.ts:922
 #: src/views/section.ts:7949
 msgid "Regular expression must not contain spaces or commas"
 msgstr ""
@@ -10517,7 +10517,7 @@ msgstr ""
 msgid "Remote Hosts Lists"
 msgstr ""
 
-#: src/views/conditions.ts:1614
+#: src/views/conditions.ts:1630
 msgid "Remote or local sing-box rule-set URLs or paths (domains only)."
 msgstr ""
 
@@ -10532,7 +10532,7 @@ msgstr ""
 msgid "Remove"
 msgstr ""
 
-#: src/views/conditions.ts:1115
+#: src/views/conditions.ts:1131
 msgid "Remove duplicates"
 msgstr ""
 
@@ -10564,7 +10564,7 @@ msgstr ""
 msgid "Require a username and password for the local mixed proxy"
 msgstr ""
 
-#: src/views/conditions.ts:361
+#: src/views/conditions.ts:377
 msgid "Requires other AND operands"
 msgstr ""
 
@@ -10821,7 +10821,7 @@ msgstr ""
 msgid "Route Router's Own Traffic"
 msgstr ""
 
-#: src/views/conditions.ts:1513
+#: src/views/conditions.ts:1529
 msgid "Route Subnets from Community Lists"
 msgstr ""
 
@@ -10885,7 +10885,7 @@ msgstr ""
 msgid "Route this connection's upstream traffic through another routing Section."
 msgstr ""
 
-#: src/views/conditions.ts:1990
+#: src/views/conditions.ts:2006
 msgid "Route traffic arriving from selected local Inbound servers (created in the Server tab) through this condition/section."
 msgstr ""
 
@@ -11050,7 +11050,7 @@ msgstr ""
 msgid "Rule Name"
 msgstr ""
 
-#: src/views/conditions.ts:1613
+#: src/views/conditions.ts:1629
 msgid "Rule Sets (.srs / .json / URL)"
 msgstr ""
 
@@ -11058,11 +11058,11 @@ msgstr ""
 msgid "Rule Sets (.srs / .json)"
 msgstr ""
 
-#: src/views/conditions.ts:1634
+#: src/views/conditions.ts:1650
 msgid "Rule Sets with Subnets"
 msgstr ""
 
-#: src/views/conditions.ts:1350
+#: src/views/conditions.ts:1366
 msgid "Rule Summary"
 msgstr ""
 
@@ -11080,7 +11080,7 @@ msgstr ""
 msgid "Rule sets"
 msgstr ""
 
-#: src/views/conditions.ts:1635
+#: src/views/conditions.ts:1651
 msgid "Rule-sets that also extract IP/CIDR subnets into nftables."
 msgstr ""
 
@@ -11151,7 +11151,7 @@ msgstr ""
 msgid "Running"
 msgstr ""
 
-#: src/views/conditions.ts:301
+#: src/views/conditions.ts:317
 msgid "Running 2-mode rule tracer..."
 msgstr ""
 
@@ -11163,7 +11163,7 @@ msgstr ""
 msgid "Running diagnostics…"
 msgstr ""
 
-#: src/views/conditions.ts:2149
+#: src/views/conditions.ts:2165
 #: src/views/section.ts:15916
 msgid "Russia (ru)"
 msgstr ""
@@ -11196,7 +11196,7 @@ msgstr ""
 msgid "SNI / Host"
 msgstr ""
 
-#: src/views/conditions.ts:2047
+#: src/views/conditions.ts:2063
 #: src/views/section.ts:16562
 #: src/views/section.ts:16597
 msgid "SSH"
@@ -11210,7 +11210,7 @@ msgstr ""
 msgid "STOPPED"
 msgstr ""
 
-#: src/views/conditions.ts:2043
+#: src/views/conditions.ts:2059
 #: src/views/section.ts:16558
 #: src/views/section.ts:16593
 msgid "STUN (P2P Calls)"
@@ -11568,7 +11568,7 @@ msgstr ""
 msgid "Select days when guest access is permitted. Leave empty for all days."
 msgstr ""
 
-#: src/views/conditions.ts:1385
+#: src/views/conditions.ts:1401
 msgid "Select existing conditions to combine. Self-references and circular chains (A -> B -> A) are automatically blocked."
 msgstr ""
 
@@ -11684,7 +11684,7 @@ msgstr ""
 msgid "Select which routing Sections use this Balancer (automatically updates the section's Attached Balancers)."
 msgstr ""
 
-#: src/views/conditions.ts:1297
+#: src/views/conditions.ts:1313
 msgid "Select which routing Sections use this Condition (automatically updates the section's Attached Conditions)."
 msgstr ""
 
@@ -12057,7 +12057,7 @@ msgid "Service stopped"
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/initController.ts:4833
-#: src/views/conditions.ts:136
+#: src/views/conditions.ts:150
 msgid "Services"
 msgstr ""
 
@@ -12271,12 +12271,12 @@ msgstr ""
 msgid "Sing-box version is compatible (newer than 1.12.4)"
 msgstr ""
 
-#: src/views/conditions.ts:2160
+#: src/views/conditions.ts:2176
 #: src/views/section.ts:15927
 msgid "Singapore (sg)"
 msgstr ""
 
-#: src/views/conditions.ts:2025
+#: src/views/conditions.ts:2041
 msgid "Single ports or ranges (e.g. 80, 443, 1000-2000)."
 msgstr ""
 
@@ -12362,17 +12362,17 @@ msgstr ""
 #: src/tachyon/tabs/monitoring/initController.ts:614
 #: src/tachyon/tabs/monitoring/initController.ts:669
 #: src/views/balancers.ts:586
-#: src/views/conditions.ts:161
+#: src/views/conditions.ts:177
 #: src/views/outbounds.ts:2511
 #: src/views/section.ts:18309
 msgid "Source"
 msgstr ""
 
-#: src/views/conditions.ts:1921
+#: src/views/conditions.ts:1937
 msgid "Source Device IPs / Subnets"
 msgstr ""
 
-#: src/views/conditions.ts:1960
+#: src/views/conditions.ts:1976
 msgid "Source Device MAC Addresses"
 msgstr ""
 
@@ -12380,11 +12380,11 @@ msgstr ""
 msgid "Source Devices"
 msgstr ""
 
-#: src/views/conditions.ts:254
+#: src/views/conditions.ts:270
 msgid "Source IP (e.g. 192.168.1.50)"
 msgstr ""
 
-#: src/views/conditions.ts:261
+#: src/views/conditions.ts:277
 msgid "Source MAC (e.g. AA:BB:CC:11:22:33)"
 msgstr ""
 
@@ -12937,7 +12937,7 @@ msgstr ""
 msgid "Supported"
 msgstr ""
 
-#: src/views/conditions.ts:2156
+#: src/views/conditions.ts:2172
 #: src/views/section.ts:15923
 msgid "Sweden (se)"
 msgstr ""
@@ -12958,7 +12958,7 @@ msgstr ""
 msgid "Sync System Time (NTP)"
 msgstr ""
 
-#: src/views/conditions.ts:1067
+#: src/views/conditions.ts:1083
 msgid "Syntax errors"
 msgstr ""
 
@@ -13065,7 +13065,7 @@ msgstr ""
 msgid "TCP connect timed out before TLS handshake — host is blocked at the IP layer. DPI bypass cannot unblock this; route via VPN/Proxy outbound instead."
 msgstr ""
 
-#: src/views/conditions.ts:2046
+#: src/views/conditions.ts:2062
 #: src/views/section.ts:16561
 #: src/views/section.ts:16596
 msgid "TLS / HTTPS"
@@ -13433,7 +13433,7 @@ msgstr ""
 msgid "Target Family Profiles"
 msgstr ""
 
-#: src/views/conditions.ts:1786
+#: src/views/conditions.ts:1802
 msgid "Target IPv4/IPv6 addresses or CIDR blocks, one per line or comma-separated (supports // comments). Checked for syntax errors and duplicates in real time."
 msgstr ""
 
@@ -13905,7 +13905,7 @@ msgstr ""
 msgid "Total targets"
 msgstr ""
 
-#: src/views/conditions.ts:416
+#: src/views/conditions.ts:432
 #: src/views/section.ts:18210
 msgid "Trace"
 msgstr ""
@@ -13914,7 +13914,7 @@ msgstr ""
 msgid "Trace Route"
 msgstr ""
 
-#: src/views/conditions.ts:408
+#: src/views/conditions.ts:424
 msgid "Tracer error"
 msgstr ""
 
@@ -13966,12 +13966,12 @@ msgstr ""
 msgid "Traffic from these IP addresses, CIDRs, or MAC addresses will never be routed through this section, even if other conditions match."
 msgstr ""
 
-#: src/views/conditions.ts:2086
+#: src/views/conditions.ts:2102
 #: src/views/section.ts:16552
 msgid "Traffic of specified protocols (e.g. BitTorrent, QUIC, STUN) will bypass this section."
 msgstr ""
 
-#: src/views/conditions.ts:2058
+#: src/views/conditions.ts:2074
 #: src/views/section.ts:16588
 msgid "Traffic type filter"
 msgstr ""
@@ -14085,7 +14085,7 @@ msgstr ""
 msgid "Tunnels (WARP / FPTN / AWG)"
 msgstr ""
 
-#: src/views/conditions.ts:2157
+#: src/views/conditions.ts:2173
 #: src/views/section.ts:15924
 msgid "Turkey (tr)"
 msgstr ""
@@ -14239,7 +14239,7 @@ msgstr ""
 msgid "URLs of remote hosts files to download and apply. Supports standard hosts format: <code>IP domain</code>."
 msgstr ""
 
-#: src/views/conditions.ts:1660
+#: src/views/conditions.ts:1676
 msgid "URLs or local paths to plain-text domain/IP lists."
 msgstr ""
 
@@ -14252,7 +14252,7 @@ msgstr ""
 msgid "UUID / Password"
 msgstr ""
 
-#: src/views/conditions.ts:2163
+#: src/views/conditions.ts:2179
 #: src/views/section.ts:15930
 msgid "Ukraine (ua)"
 msgstr ""
@@ -14348,12 +14348,12 @@ msgstr ""
 msgid "Unique identifier (letters, digits, underscores)."
 msgstr ""
 
-#: src/views/conditions.ts:2153
+#: src/views/conditions.ts:2169
 #: src/views/section.ts:15920
 msgid "United Kingdom (gb)"
 msgstr ""
 
-#: src/views/conditions.ts:2150
+#: src/views/conditions.ts:2166
 #: src/views/section.ts:15917
 msgid "United States (us)"
 msgstr ""
@@ -14720,8 +14720,8 @@ msgstr ""
 #: src/tachyon/studioDeck.ts:3842
 #: src/views/balancers.ts:495
 #: src/views/balancers.ts:512
-#: src/views/conditions.ts:1278
-#: src/views/conditions.ts:1296
+#: src/views/conditions.ts:1294
+#: src/views/conditions.ts:1312
 #: src/views/outbounds.ts:1534
 #: src/views/outbounds.ts:3024
 #: src/views/outbounds.ts:3042
@@ -14826,8 +14826,8 @@ msgstr ""
 #: src/validators/validateVlessUrl.ts:115
 #: src/validators/validateVmessUrl.ts:66
 #: src/validators/validateVpnUrl.ts:147
-#: src/views/conditions.ts:899
-#: src/views/conditions.ts:912
+#: src/views/conditions.ts:915
+#: src/views/conditions.ts:928
 #: src/views/section.ts:7942
 #: src/views/section.ts:7955
 msgid "Valid"
@@ -14837,18 +14837,18 @@ msgstr ""
 msgid "Validates sing-box config before restart to prevent boot loops on broken configs."
 msgstr ""
 
-#: src/views/conditions.ts:1084
+#: src/views/conditions.ts:1100
 msgid "Validation errors detected"
 msgstr ""
 
-#: src/views/conditions.ts:824
+#: src/views/conditions.ts:840
 #: src/views/section.ts:7380
 msgid "Validation errors:"
 msgstr ""
 
-#: src/views/conditions.ts:835
-#: src/views/conditions.ts:846
-#: src/views/conditions.ts:889
+#: src/views/conditions.ts:851
+#: src/views/conditions.ts:862
+#: src/views/conditions.ts:905
 #: src/views/section.ts:7932
 msgid "Value cannot be empty"
 msgstr ""
@@ -15186,7 +15186,7 @@ msgstr ""
 msgid "Widgets & Views"
 msgstr ""
 
-#: src/views/conditions.ts:334
+#: src/views/conditions.ts:350
 msgid "Winning Section (Exact Match)"
 msgstr ""
 
@@ -15450,7 +15450,7 @@ msgstr ""
 msgid "e.g. Backup"
 msgstr ""
 
-#: src/views/conditions.ts:1258
+#: src/views/conditions.ts:1274
 msgid "e.g. Banned Domains or My Devices"
 msgstr ""
 
@@ -15544,7 +15544,7 @@ msgstr ""
 msgid "e.g. reality, tls, none"
 msgstr ""
 
-#: src/views/conditions.ts:2148
+#: src/views/conditions.ts:2164
 msgid "e.g. ru, nl, de"
 msgstr ""
 
