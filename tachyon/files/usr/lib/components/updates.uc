@@ -3539,6 +3539,71 @@ function config_has_local_rulesets(config_path) {
     return false;
 }
 
+function ruleset_api_tag(value) {
+    let encoded = "";
+    for (let i = 0; i < length(value); i++) {
+        let c = substr(value, i, 1);
+        encoded += match(c, /^[A-Za-z0-9_.~-]$/) ? c : sprintf("%%%02X", ord(c));
+    }
+    return encoded;
+}
+
+function refresh_remote_rulesets(config_path) {
+    let cfg = read_json_file(config_path);
+    if (type(cfg) != "object")
+        return false;
+    let tags = [];
+    let seen = {};
+    for (let rs in array_or_empty(cfg.route && cfg.route.rule_set)) {
+        if (type(rs) != "object" || rs.type != "remote" || as_string(rs.tag || "") == "" || seen[rs.tag])
+            continue;
+        seen[rs.tag] = true;
+        push(tags, rs.tag);
+    }
+    if (length(tags) == 0)
+        return true;
+
+    let api = cfg.experimental && cfg.experimental.clash_api;
+    let address = as_string(api && api.external_controller || "");
+    if (address == "") {
+        log_message("Cannot refresh remote rule sets: Clash API is not configured", "error");
+        return false;
+    }
+    address = replace(address, /^0\.0\.0\.0:/, "127.0.0.1:");
+    address = replace(address, /^\[::\]:/, "[::1]:");
+
+    // Keep the controller secret out of process arguments. mktemp creates a
+    // private file; curl's config parser unescapes the JSON-quoted header.
+    let request_config = temp_path();
+    if (request_config == "")
+        return false;
+    let content = "silent\n";
+    if (as_string(api.secret || "") != "")
+        content += "header = " + sprintf("%J", "Authorization: Bearer " + api.secret) + "\n";
+    let ok = true;
+    try {
+        if (fs.writefile(request_config, content) == null)
+            ok = false;
+        else for (let tag in tags) {
+            let url = "http://" + address + "/providers/rules/" + ruleset_api_tag(tag);
+            if (!command_success_from_args([
+                "curl", "--config", request_config, "--fail", "--noproxy", "*",
+                "--connect-timeout", "3", "--max-time", "30", "--request", "PUT",
+                "--output", "/dev/null", "--url", url
+            ])) {
+                log_message("Failed to refresh remote rule set '" + tag + "'", "error");
+                ok = false;
+            }
+        }
+    }
+    catch (e) {
+        log_message("Could not refresh remote rule sets", "error");
+        ok = false;
+    }
+    remove_file(request_config);
+    return ok;
+}
+
 function reload_singbox_after_list_update() {
     let sing_box_pid = trim(module_output([ LIB_DIR + "/service/state.uc", "tachyon-core-service-runtime-pid" ]));
     if (sing_box_pid == "" || int(sing_box_pid) <= 0)
@@ -3566,9 +3631,13 @@ function reload_singbox_after_list_update() {
         module_success([ PRIORITY_UC, "start-runtime" ]);
         module_success([ DNS_FAILOVER_UC, "start-runtime" ]);
         write_current_reload_state_clean();
-        return ok;
+        if (!ok)
+            return false;
     }
-    return true;
+    // Remote .srs/.json sets are owned by the core, not the plain-list importer.
+    // Refresh after reload: reloading can restart the core's interval timer,
+    // indefinitely postponing downloads when configuration changes frequently.
+    return refresh_remote_rulesets(sing_box_config_path);
 }
 
 function list_update_steer_catalog(settings) {
@@ -3724,11 +3793,12 @@ function list_update() {
 
     release_runtime_lock(RELOAD_LOCK_DIR);
 
+    if (ok && !triggered_bg_reload && !reload_singbox_after_list_update())
+        ok = false;
+
     if (ok) {
         write_list_update_timestamp(now_seconds());
         log_message("Lists update completed successfully", "info");
-        if (!triggered_bg_reload)
-            reload_singbox_after_list_update();
         update_list_status(false, true, "done", "Lists and rule sets successfully updated");
     }
     else {
