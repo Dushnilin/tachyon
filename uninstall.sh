@@ -354,7 +354,7 @@ if command -v apk >/dev/null 2>&1 && [ -d "/lib/apk/db" ]; then
             sed -i -E "/^${_pkg}([><= ].*)?$/d" /etc/apk/world 2>/dev/null || true
         fi
         if apk info -e "$_pkg" >/dev/null 2>&1; then
-            apk del "$_pkg" >/dev/null 2>&1 || true
+            apk del --no-network --repositories-file /dev/null "$_pkg" >/dev/null 2>&1 || true
         fi
     done
     if [ "$OPT_KEEP_BINARIES" -eq 0 ]; then
@@ -363,7 +363,7 @@ if command -v apk >/dev/null 2>&1 && [ -d "/lib/apk/db" ]; then
                 sed -i -E "/^${_pkg}([><= ].*)?$/d" /etc/apk/world 2>/dev/null || true
             fi
             if apk info -e "$_pkg" >/dev/null 2>&1; then
-                apk del "$_pkg" >/dev/null 2>&1 || true
+                apk del --no-network --repositories-file /dev/null "$_pkg" >/dev/null 2>&1 || true
             fi
         done
         if [ "$OPT_PURGE" -eq 1 ] || [ ! -f /etc/init.d/sing-box ] || grep -q "Tachyon managed sing-box" /etc/init.d/sing-box 2>/dev/null; then
@@ -371,7 +371,7 @@ if command -v apk >/dev/null 2>&1 && [ -d "/lib/apk/db" ]; then
                 sed -i -E '/^sing-box([><= ].*)?$/d' /etc/apk/world 2>/dev/null || true
             fi
             if apk info -e "sing-box" >/dev/null 2>&1; then
-                apk del "sing-box" >/dev/null 2>&1 || true
+                apk del --no-network --repositories-file /dev/null "sing-box" >/dev/null 2>&1 || true
             fi
             rm -f /usr/bin/sing-box 2>/dev/null || true
         fi

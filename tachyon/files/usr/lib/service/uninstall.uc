@@ -234,8 +234,8 @@ function uninstall_tachyon(purge_config, keep_binaries) {
     log_step("Removing Tachyon packages...");
     if (fs.stat("/bin/opkg") != null || fs.stat("/usr/bin/opkg") != null) {
         run_cmd(["opkg", "remove", "--force-depends", "--force-remove", "luci-i18n-tachyon-ru", "luci-app-tachyon", "tachyon"]);
-    } else if (fs.stat("/sbin/apk") != null || fs.stat("/usr/sbin/apk") != null) {
-        run_cmd(["apk", "del", "luci-i18n-tachyon-ru", "luci-app-tachyon", "tachyon"]);
+    } else if (fs.stat("/sbin/apk") != null || fs.stat("/usr/sbin/apk") != null || fs.stat("/usr/bin/apk") != null) {
+        run_cmd(["apk", "del", "--no-network", "--repositories-file", "/dev/null", "luci-i18n-tachyon-ru", "luci-app-tachyon", "tachyon"]);
     }
 
     // Clean translations and LuCI views

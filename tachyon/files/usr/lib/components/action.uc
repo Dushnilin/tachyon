@@ -263,7 +263,15 @@ function sanitize_apk_world() { return cmp.sanitize_apk_world(); }
 // scrubbing world on those would be wrong.
 function run_logged_pkg_install_files(description, files, timeout_seconds, force_reinstall) {
     sanitize_apk_world();
-    return run_logged(description, pkg_install_files_command(files, force_reinstall), timeout_seconds);
+    if (run_logged(description, pkg_install_files_command(files, force_reinstall), timeout_seconds))
+        return true;
+    if (is_apk() && cmp_inst.apk_satisfy_missing_files_deps(files)) {
+        let offline_args = [ "apk", "add", "--allow-untrusted", "--force-overwrite", "--no-network", "--repositories-file", "/dev/null" ];
+        for (let file in files)
+            push(offline_args, file);
+        return run_logged(description + " (offline fallback)", command_from_args(offline_args) + " </dev/null", timeout_seconds);
+    }
+    return false;
 }
 
 function pkg_tx_update_index(proxy_address) { return cmp_inst.pkg_tx_update_index(proxy_address); }
@@ -1457,7 +1465,7 @@ function remove_optional_component(component, package_name, label, runtime_modul
 
     let current_version = provider_package_version(runtime_module);
     let command = is_apk() ?
-        command_from_args([ "apk", "del", package_name ]) + " </dev/null" :
+        command_from_args([ "apk", "del", "--no-network", "--repositories-file", "/dev/null", package_name ]) + " </dev/null" :
         command_from_args([ "opkg", "remove", "--force-depends", package_name ]) + " </dev/null";
     if (!run_logged("Removing " + label + " package", command, 60))
         action_fail(component, "remove", "Failed to remove " + label + " package", current_version);
@@ -2246,7 +2254,7 @@ function install_sing_box_extended_package(action, target_tag) {
     if (!pkg_is_installed("sing-box-extended") && file_exists("/usr/bin/sing-box"))
         remove_file("/usr/bin/sing-box");
 
-    if (!run_logged("Installing sing-box-extended package " + release.asset_name, pkg_install_files_command([ package_file ], true), PKG_INSTALL_TIMEOUT)) {
+    if (!run_logged_pkg_install_files("Installing sing-box-extended package " + release.asset_name, [ package_file ], PKG_INSTALL_TIMEOUT, true)) {
         restore_sing_box_after_failed_extended_package_install(current_variant, backup_binary, backup_cronet, previous_marker, previous_version_state, package_file, cronet_touched);
         action_fail("sing_box", action, "Failed to install sing-box-extended package", current_version, latest_version);
     }

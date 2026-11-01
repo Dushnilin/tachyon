@@ -24,6 +24,11 @@ PKG_IS_APK=0
 # package manager state file.
 APK_WORLD_FILE="${TACHYON_APK_WORLD_FILE:-/etc/apk/world}"
 APK_INSTALLED_DB="${TACHYON_APK_INSTALLED_DB:-/lib/apk/db/installed}"
+APK_REPOS_FILE="${TACHYON_APK_REPOS_FILE:-/etc/apk/repositories}"
+APK_REPOS_DIR="${TACHYON_APK_REPOS_DIR:-/etc/apk/repositories.d}"
+APK_REPO_PROBE_TIMEOUT_SECONDS="${TACHYON_APK_REPO_PROBE_TIMEOUT_SECONDS:-5}"
+APK_FILTERED_REPOS_FILE=""
+APK_REPOS_PREPARED=0
 # Two lists, not one plus a flag: the removal set and the world-scrub set are
 # genuinely different. Duplicating the package names at each call site is how
 # they drift apart, and they had.
@@ -520,16 +525,159 @@ apk_run() {
     return 227
 }
 
+probe_apk_repo_url() {
+    _pru_url="$1"
+    case "$FETCHER" in
+        curl)
+            curl --connect-timeout "$APK_REPO_PROBE_TIMEOUT_SECONDS" \
+                 --max-time "$APK_REPO_PROBE_TIMEOUT_SECONDS" \
+                 -fsSL "$_pru_url" -o /dev/null >/dev/null 2>&1
+            ;;
+        wget)
+            run_with_deadline "$APK_REPO_PROBE_TIMEOUT_SECONDS" \
+                wget -q -T "$APK_REPO_PROBE_TIMEOUT_SECONDS" \
+                     -O /dev/null "$_pru_url" >/dev/null 2>&1
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+prepare_apk_repositories() {
+    [ "$PKG_IS_APK" -eq 1 ] || return 0
+    [ "$DRY_RUN" -eq 1 ] && return 0
+    [ "$APK_REPOS_PREPARED" -eq 1 ] && return 0
+    APK_REPOS_PREPARED=1
+    APK_FILTERED_REPOS_FILE=""
+
+    _repo_sources=""
+    [ -f "$APK_REPOS_FILE" ] && _repo_sources="$APK_REPOS_FILE"
+    if [ -d "$APK_REPOS_DIR" ]; then
+        for _rf in "$APK_REPOS_DIR"/*.list; do
+            [ -f "$_rf" ] && _repo_sources="$_repo_sources $_rf"
+        done
+    fi
+    [ -n "$_repo_sources" ] || return 0
+
+    _filtered_out="$TMP_DIR/apk-repositories.list"
+    : >"$_filtered_out"
+    _ok_origins=" "
+    _bad_origins=" "
+    _had_unreachable=0
+
+    # shellcheck disable=SC2086
+    while IFS= read -r _raw_line || [ -n "$_raw_line" ]; do
+        _line="$(printf '%s' "$_raw_line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+        case "$_line" in
+            ""|\#*) continue ;;
+            http://*|https://*)
+                _origin="$(printf '%s' "$_line" | sed -n 's|^\(https\{0,1\}://[^/]*\).*|\1|p' | tr 'A-Z' 'a-z')"
+                _host="${_origin#*://}"
+                case "$_bad_origins" in
+                    *" $_origin "*)
+                        continue
+                        ;;
+                esac
+                if probe_apk_repo_url "$_line"; then
+                    _ok_origins="${_ok_origins}${_origin} "
+                    printf '%s\n' "$_line" >>"$_filtered_out"
+                else
+                    case "$_ok_origins" in
+                        *" $_origin "*)
+                            _had_unreachable=1
+                            warn "Skipping broken APK repository feed: $_line (non-critical)"
+                            ;;
+                        *)
+                            _bad_origins="${_bad_origins}${_origin} "
+                            _had_unreachable=1
+                            warn "Skipping unreachable APK repository host: ${_host:-$_origin} (non-critical)"
+                            ;;
+                    esac
+                fi
+                ;;
+            *)
+                printf '%s\n' "$_line" >>"$_filtered_out"
+                ;;
+        esac
+    done <<EOF_REPOS
+$(cat $_repo_sources 2>/dev/null || true)
+EOF_REPOS
+
+    if [ "$_had_unreachable" -eq 1 ]; then
+        APK_FILTERED_REPOS_FILE="$_filtered_out"
+    else
+        rm -f "$_filtered_out"
+    fi
+    return 0
+}
+
+heal_apk_world() {
+    [ "$PKG_IS_APK" -eq 1 ] || return 0
+    [ "$DRY_RUN" -eq 1 ] && return 0
+    [ -f "$APK_WORLD_FILE" ] || return 0
+    apk add --simulate --no-network --repositories-file /dev/null >/dev/null 2>&1 && return 0
+    _sim_out="$(apk add --simulate --no-network --repositories-file /dev/null 2>&1 || true)"
+    _bad_pkgs="$(printf '%s\n' "$_sim_out" | sed -n 's/.*world\[\([A-Za-z0-9._+-]*\).*/\1/p' | sort -u)"
+    [ -n "$_bad_pkgs" ] || return 0
+    for _bp in $_bad_pkgs; do
+        [ -n "$_bp" ] || continue
+        if pkg_is_installed "$_bp"; then
+            sed -i -E "s/^${_bp}[ \t<>=~].*\$/${_bp}/" "$APK_WORLD_FILE" 2>/dev/null || true
+        else
+            sed -i -E "/^${_bp}([ \t<>=~].*)?\$/d" "$APK_WORLD_FILE" 2>/dev/null || true
+        fi
+    done
+    return 0
+}
+
+apk_satisfy_missing_local_deps() {
+    [ "$PKG_IS_APK" -eq 1 ] || return 0
+    [ "$DRY_RUN" -eq 1 ] && return 0
+    [ "$#" -gt 0 ] || return 0
+    heal_apk_world
+    _sim_out="$(apk add --simulate --allow-untrusted --force-overwrite --no-network --repositories-file /dev/null "$@" 2>&1 || true)"
+    _missing_deps="$(printf '%s\n' "$_sim_out" | sed -n 's/^[[:space:]]*\([A-Za-z0-9._+-][A-Za-z0-9._+-]*\)[[:space:]]*(no such package):.*/\1/p' | sort -u)"
+    [ -n "$_missing_deps" ] || return 0
+    for _md in $_missing_deps; do
+        [ -n "$_md" ] || continue
+        warn "Package $_md is unavailable in repositories; registering virtual placeholder"
+        apk_run apk-virtual-dep 30 add --no-network --repositories-file /dev/null --force-non-repository --virtual "$_md" || true
+    done
+    return 0
+}
+
+apk_can_install_local_offline() {
+    [ "$PKG_IS_APK" -eq 1 ] || return 1
+    [ "$#" -gt 0 ] || return 0
+    for _f in "$@"; do
+        [ -f "$_f" ] || return 0
+    done
+    heal_apk_world
+    apk add --simulate --allow-untrusted --force-overwrite --no-network --repositories-file /dev/null "$@" >/dev/null 2>&1
+}
+
 pkg_update_index() {
     [ "$PACKAGE_INDEX_UPDATED" -eq 1 ] && return 0
     if [ "$DRY_RUN" -eq 1 ]; then msg "[dry-run] would refresh $PKG_MANAGER package indexes"; PACKAGE_INDEX_UPDATED=1; return 0; fi
     msg "Refreshing $PKG_MANAGER package indexes"
     if [ "$PKG_IS_APK" -eq 1 ]; then
-        apk_run apk-update 180 update || return 1
+        prepare_apk_repositories
+        if [ -n "$APK_FILTERED_REPOS_FILE" ] && [ ! -s "$APK_FILTERED_REPOS_FILE" ]; then
+            warn "All APK repositories are unreachable; continuing with installed/local packages"
+        elif [ -n "$APK_FILTERED_REPOS_FILE" ]; then
+            apk_run apk-update 180 update --force-missing-repositories --timeout 15 --repositories-file "$APK_FILTERED_REPOS_FILE" ||
+                warn "APK index refresh reported repository errors; continuing"
+        else
+            apk_run apk-update 180 update --force-missing-repositories --timeout 15 ||
+                warn "APK index refresh reported repository errors; continuing"
+        fi
     else
-        run_logged_timeout opkg-update 180 opkg update || return 1
+        run_logged_timeout opkg-update 180 opkg update ||
+            warn "opkg index refresh reported repository errors; continuing"
     fi
     PACKAGE_INDEX_UPDATED=1
+    return 0
 }
 
 pkg_install_names() {
@@ -537,7 +685,15 @@ pkg_install_names() {
     if [ "$DRY_RUN" -eq 1 ]; then msg "[dry-run] would install dependencies: $*"; return 0; fi
     msg "Installing packages: $*"
     if [ "$PKG_IS_APK" -eq 1 ]; then
-        apk_run apk-add "$PACKAGE_TIMEOUT_SECONDS" add "$@"
+        heal_apk_world
+        prepare_apk_repositories
+        if [ -n "$APK_FILTERED_REPOS_FILE" ] && [ ! -s "$APK_FILTERED_REPOS_FILE" ]; then
+            return 1
+        elif [ -n "$APK_FILTERED_REPOS_FILE" ]; then
+            apk_run apk-add "$PACKAGE_TIMEOUT_SECONDS" add --force-missing-repositories --timeout 15 --repositories-file "$APK_FILTERED_REPOS_FILE" "$@"
+        else
+            apk_run apk-add "$PACKAGE_TIMEOUT_SECONDS" add --force-missing-repositories --timeout 15 "$@"
+        fi
     else
         run_logged_timeout opkg-add "$PACKAGE_TIMEOUT_SECONDS" opkg install "$@"
     fi
@@ -546,7 +702,7 @@ pkg_install_names() {
 ensure_package() {
     _pkg="$1"
     pkg_is_installed "$_pkg" && return 0
-    pkg_update_index || return 1
+    pkg_update_index || true
     pkg_install_names "$_pkg"
 }
 
@@ -554,12 +710,16 @@ ensure_bootstrap_ucode_runtime() {
     if [ "$DRY_RUN" -eq 0 ] && [ "$PKG_IS_APK" -eq 1 ] && grep -qE "^ip-tiny([ \t<>=~].*)?\$" "$APK_WORLD_FILE" 2>/dev/null; then
         scrub_apk_world "ip-tiny"
     fi
+    if command_exists ucode && ucode -e 'require("fs"); require("uci");' >/dev/null 2>&1; then
+        return 0
+    fi
     if ! command_exists ucode; then
-        pkg_update_index || return 1
+        pkg_update_index || true
         pkg_install_names ucode || return 1
     fi
-    ensure_package ucode-mod-fs || return 1
-    ensure_package ucode-mod-uci || return 1
+    ensure_package ucode-mod-fs || true
+    ensure_package ucode-mod-uci || true
+    command_exists ucode && ucode -e 'require("fs"); require("uci");' >/dev/null 2>&1
 }
 
 kmod_is_available() {
@@ -591,7 +751,7 @@ release_ip_tiny_conflict() {
            pkg_is_installed ip-tiny; then
             msg "Releasing conflicting ip-tiny before installing ip-full"
             scrub_apk_world "ip-tiny"
-            apk_run apk-del-ip-tiny "$PACKAGE_TIMEOUT_SECONDS" del --force-broken-world ip-tiny || true
+            apk_run apk-del-ip-tiny "$PACKAGE_TIMEOUT_SECONDS" del --no-network --repositories-file /dev/null --force-broken-world ip-tiny || true
         fi
     elif pkg_is_installed ip-tiny; then
         msg "Removing conflicting ip-tiny before installing ip-full"
@@ -609,9 +769,15 @@ ensure_runtime_dependencies() {
         kmod_is_available "$_kmod" || _missing="$_missing $_kmod"
     done
     [ -z "$_missing" ] && return 0
-    pkg_update_index || return 1
+    pkg_update_index || true
     # shellcheck disable=SC2086
-    pkg_install_names $_missing
+    if ! pkg_install_names $_missing; then
+        warn "Batch dependency installation had errors; retrying packages individually"
+        for _pkg in $_missing; do
+            pkg_install_names "$_pkg" || warn "Could not install $_pkg from repository (may be built-in or unavailable in feed); continuing"
+        done
+    fi
+    return 0
 }
 
 install_release_helper() {
@@ -1078,7 +1244,7 @@ remove_legacy_packages() {
             # config/migration.uc, and destroying it here left the user with
             # nothing to fall back on if the migration did not cover their
             # setup. Removing the package is enough to stop the service.
-            apk_run apk-legacy-cleanup "$PACKAGE_TIMEOUT_SECONDS" del $_legacy_pkgs || warn "Could not remove legacy packages (will scrub world file)"
+            apk_run apk-legacy-cleanup "$PACKAGE_TIMEOUT_SECONDS" --no-network --repositories-file /dev/null del $_legacy_pkgs || warn "Could not remove legacy packages (will scrub world file)"
         fi
         # Legacy names only. The no-argument scrub uses WORLD_SCRUB_PACKAGES,
         # which also lists tachyon and luci-app-tachyon - the packages this
@@ -1251,9 +1417,33 @@ download_release() {
 pkg_install_local_bundle() {
     [ "$DRY_RUN" -eq 1 ] && { msg "[dry-run] would install local package transaction: $*"; return 0; }
     if [ "$PKG_IS_APK" -eq 1 ]; then
+        heal_apk_world
+        if apk_can_install_local_offline "$@"; then
+            set -- --force-overwrite --no-network --repositories-file /dev/null "$@"
+        else
+            prepare_apk_repositories
+            if [ -n "$APK_FILTERED_REPOS_FILE" ] && [ ! -s "$APK_FILTERED_REPOS_FILE" ]; then
+                apk_satisfy_missing_local_deps "$@"
+                set -- --force-overwrite --no-network --repositories-file /dev/null "$@"
+            elif [ -n "$APK_FILTERED_REPOS_FILE" ]; then
+                if apk_run apk-transaction "$PACKAGE_TIMEOUT_SECONDS" add --allow-untrusted --force-overwrite --force-missing-repositories --timeout 15 --repositories-file "$APK_FILTERED_REPOS_FILE" "$@"; then
+                    return 0
+                fi
+                warn "Online APK transaction failed; satisfying missing dependencies offline"
+                apk_satisfy_missing_local_deps "$@"
+                set -- --force-overwrite --no-network --repositories-file /dev/null "$@"
+            else
+                if apk_run apk-transaction "$PACKAGE_TIMEOUT_SECONDS" add --allow-untrusted --force-overwrite --force-missing-repositories --timeout 15 "$@"; then
+                    return 0
+                fi
+                warn "Online APK transaction failed; satisfying missing dependencies offline"
+                apk_satisfy_missing_local_deps "$@"
+                set -- --force-overwrite --no-network --repositories-file /dev/null "$@"
+            fi
+        fi
         apk_run apk-transaction "$PACKAGE_TIMEOUT_SECONDS" add --allow-untrusted "$@"
     else
-        run_logged_timeout opkg-transaction "$PACKAGE_TIMEOUT_SECONDS" opkg install --force-reinstall --force-overwrite --force-downgrade "$@"
+        run_logged_timeout opkg-transaction "$PACKAGE_TIMEOUT_SECONDS" opkg install --force-reinstall --force-overwrite --force-downgrade --force-depends "$@"
     fi
 }
 

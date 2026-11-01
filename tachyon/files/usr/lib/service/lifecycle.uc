@@ -2129,7 +2129,7 @@ function package_manager_remove_if_installed(package_name) {
     package_name = as_string(package_name);
     if (command_success_from_args([ "sh", "-c", "command -v apk" ])) {
         if (command_success_from_args([ "apk", "info", "-e", package_name ]))
-            command_success_from_args([ "apk", "del", package_name ]);
+            command_success_from_args([ "apk", "del", "--no-network", "--repositories-file", "/dev/null", package_name ]);
         return;
     }
 

@@ -520,7 +520,8 @@ function pkg_is_installed(package_name) {
 // that subsequent package transactions do not trip over removed variants
 // or pinned hash/version constraints from local package installations.
 function sanitize_apk_world() {
-    if (!is_apk() || !file_exists("/etc/apk/world"))
+    let world_file = getenv("TACHYON_APK_WORLD_FILE") || "/etc/apk/world";
+    if (!is_apk() || !file_exists(world_file))
         return;
     let removable_if_uninstalled = [
         "tachyon-core",
@@ -528,19 +529,40 @@ function sanitize_apk_world() {
         "steer-extended", "steer", "steer-core",
         "steer-obfs", "steer-tgws", "steer-vless", "steer-xsteer", "steer-proxy", "steer-hysteria2",
         "zapret2", "zapret",
-        "byedpi",
+        "byedpi", "wdtt", "olcrtc", "fptn",
+        "forkop", "luci-app-forkop", "podkop", "luci-app-podkop", "netshift", "luci-app-netshift",
         "luci-i18n-tachyon-ru"
     ];
     for (let pkg in removable_if_uninstalled) {
         if (!pkg_is_installed(pkg))
-            command_success("sed -i -E " + shell_quote("/^" + pkg + "([><= ].*)?$/d") + " /etc/apk/world 2>/dev/null");
+            command_success("sed -i -E " + shell_quote("/^" + pkg + "([><= ].*)?$/d") + " " + shell_quote(world_file) + " 2>/dev/null");
     }
     if (pkg_is_installed("ip-full") || !pkg_is_installed("ip-tiny"))
-        command_success("sed -i -E " + shell_quote("/^ip-tiny([><=~ \t].*)?$/d") + " /etc/apk/world 2>/dev/null");
+        command_success("sed -i -E " + shell_quote("/^ip-tiny([><=~ \t].*)?$/d") + " " + shell_quote(world_file) + " 2>/dev/null");
     // Strip pinned version/hash constraints (e.g. pkg><HASH= or pkg=ver)
     // from /etc/apk/world for all managed packages so local .apk upgrades succeed
-    let pattern = "^(tachyon|tachyon-core|luci-app-tachyon|luci-i18n-tachyon-[a-z_-]+|steer|steer-extended|steer-core|steer-(obfs|tgws|vless|xsteer|proxy|hysteria2)|zapret|zapret2|byedpi|sing-box|sing-box-extended|sing-box-tiny|sing-box-lx)[><=].*$";
-    command_success("sed -i -E " + shell_quote("s/" + pattern + "/\\1/") + " /etc/apk/world 2>/dev/null");
+    let pattern = "^(tachyon|tachyon-core|luci-app-tachyon|luci-i18n-tachyon-[a-z_-]+|steer|steer-extended|steer-core|steer-(obfs|tgws|vless|xsteer|proxy|hysteria2)|zapret|zapret2|byedpi|wdtt|olcrtc|fptn|sing-box|sing-box-extended|sing-box-tiny|sing-box-lx)[><=].*$";
+    command_success("sed -i -E " + shell_quote("s/" + pattern + "/\\1/") + " " + shell_quote(world_file) + " 2>/dev/null");
+
+    // Heal any remaining broken world entries (e.g. third-party packages no longer
+    // in repositories or stale version pins) so subsequent apk transactions succeed.
+    if (!command_success_from_args([ "apk", "add", "--simulate", "--no-network", "--repositories-file", "/dev/null" ])) {
+        let sim_out = command_output_lenient(command_from_args([ "apk", "add", "--simulate", "--no-network", "--repositories-file", "/dev/null" ]) + " 2>&1");
+        let seen = {};
+        for (let line in split(sim_out, "\n")) {
+            let m = match(as_string(line), /world\[([A-Za-z0-9._+-]+)/);
+            if (!m || !m[1])
+                continue;
+            let bad_pkg = as_string(m[1]);
+            if (seen[bad_pkg] == true)
+                continue;
+            seen[bad_pkg] = true;
+            if (pkg_is_installed(bad_pkg))
+                command_success("sed -i -E " + shell_quote("s/^" + bad_pkg + "[><=~ \t].*$/" + bad_pkg + "/") + " " + shell_quote(world_file) + " 2>/dev/null");
+            else
+                command_success("sed -i -E " + shell_quote("/^" + bad_pkg + "([><=~ \t].*)?$/d") + " " + shell_quote(world_file) + " 2>/dev/null");
+        }
+    }
 }
 
 // ============================================================================
