@@ -2,9 +2,11 @@
 import { svgEl } from '../../../helpers';
 import { tr } from '../../helpers/i18n';
 import {
+  renderBanIcon,
   renderBarChart2Icon,
   renderCheckIcon,
   renderCompassIcon,
+  renderGlobeIcon,
   renderLayersIcon,
   renderLayoutGridIcon,
   renderPlusIcon,
@@ -16,7 +18,24 @@ import {
   renderTargetIcon,
   renderTrendingUpIcon,
   renderUsersIcon,
+  renderZapIcon,
 } from '../../../icons';
+
+export interface DashboardSectionTypeFilter {
+  proxy: boolean;
+  dpi: boolean;
+  dns: boolean;
+  direct: boolean;
+  block: boolean;
+}
+
+export const DEFAULT_SECTION_TYPE_FILTER: DashboardSectionTypeFilter = {
+  proxy: true,
+  dpi: true,
+  dns: false,
+  direct: false,
+  block: false,
+};
 
 export type DashboardWidgetId =
   | 'kpi'
@@ -47,6 +66,7 @@ export interface DashboardWidgetPlacement {
 export interface DashboardLayoutConfig {
   preset: DashboardPresetId;
   widgets: DashboardWidgetPlacement[];
+  sectionTypes?: DashboardSectionTypeFilter;
 }
 
 export interface DashboardWidgetViewOption {
@@ -616,6 +636,18 @@ function clonePlacements(
   }));
 }
 
+export function cloneSectionTypeFilter(
+  filter?: DashboardSectionTypeFilter,
+): DashboardSectionTypeFilter {
+  return {
+    proxy: filter?.proxy !== false,
+    dpi: filter?.dpi !== false,
+    dns: Boolean(filter?.dns),
+    direct: Boolean(filter?.direct),
+    block: Boolean(filter?.block),
+  };
+}
+
 export function getPresetDefinition(
   presetId: string,
 ): DashboardPresetDefinition {
@@ -740,6 +772,7 @@ export function normalizeDashboardLayoutConfig(
   return {
     preset: detectedPreset || 'custom',
     widgets: normalizedWidgets,
+    sectionTypes: cloneSectionTypeFilter((raw as any)?.sectionTypes),
   };
 }
 
@@ -772,6 +805,7 @@ export function getDashboardLayoutConfig(): DashboardLayoutConfig {
     return {
       preset: cachedLayoutConfig.preset,
       widgets: clonePlacements(cachedLayoutConfig.widgets),
+      sectionTypes: cloneSectionTypeFilter(cachedLayoutConfig.sectionTypes),
     };
   }
 
@@ -793,6 +827,9 @@ export function getDashboardLayoutConfig(): DashboardLayoutConfig {
           return {
             preset: cachedLayoutConfig.preset,
             widgets: clonePlacements(cachedLayoutConfig.widgets),
+            sectionTypes: cloneSectionTypeFilter(
+              cachedLayoutConfig.sectionTypes,
+            ),
           };
         }
       }
@@ -815,6 +852,9 @@ export function getDashboardLayoutConfig(): DashboardLayoutConfig {
           return {
             preset: cachedLayoutConfig.preset,
             widgets: clonePlacements(cachedLayoutConfig.widgets),
+            sectionTypes: cloneSectionTypeFilter(
+              cachedLayoutConfig.sectionTypes,
+            ),
           };
         }
       }
@@ -828,7 +868,32 @@ export function getDashboardLayoutConfig(): DashboardLayoutConfig {
   return {
     preset: fallback.preset,
     widgets: clonePlacements(fallback.widgets),
+    sectionTypes: cloneSectionTypeFilter(fallback.sectionTypes),
   };
+}
+
+export function getDashboardSectionTypeFilter(): DashboardSectionTypeFilter {
+  const cfg = getDashboardLayoutConfig();
+  return cloneSectionTypeFilter(cfg.sectionTypes);
+}
+
+export function saveDashboardSectionTypeFilter(
+  filter: Partial<DashboardSectionTypeFilter>,
+  options?: { syncUci?: boolean; sectionId?: string; silent?: boolean },
+): DashboardLayoutConfig {
+  const current = getDashboardLayoutConfig();
+  const currentTypes = getDashboardSectionTypeFilter();
+  const nextTypes: DashboardSectionTypeFilter = {
+    ...currentTypes,
+    ...filter,
+  };
+  return saveDashboardLayoutConfig(
+    {
+      ...current,
+      sectionTypes: nextTypes,
+    },
+    options,
+  );
 }
 
 export function getWidgetPlacement(
@@ -919,10 +984,12 @@ export function applyDashboardPreset(
   options?: { syncUci?: boolean; sectionId?: string },
 ): DashboardLayoutConfig {
   const preset = getPresetDefinition(presetId);
+  const current = getDashboardLayoutConfig();
   return saveDashboardLayoutConfig(
     {
       preset: preset.id,
       widgets: clonePlacements(preset.widgets),
+      sectionTypes: cloneSectionTypeFilter(current.sectionTypes),
     },
     options,
   );
@@ -1694,12 +1761,252 @@ export function buildDashboardLayoutEditorDom(options?: {
             ])
           : E('span', { style: 'display:none;' }),
       ]),
+      E('div', { class: 'tachyon-dash-editor__section' }, [
+        E('div', { class: 'tachyon-dash-editor__section-head' }, [
+          E(
+            'span',
+            { class: 'tachyon-dash-editor__section-title' },
+            tr(
+              '3. Отображаемые типы секций маршрутизации',
+              '3. Displayed Routing Section Types',
+            ),
+          ),
+          E(
+            'span',
+            { class: 'tachyon-dash-editor__section-sub' },
+            tr(
+              'Включайте или отключайте категории правил (прокси, обход DPI, DNS, прямой выход, блокировка) в блоке секций дашборда',
+              'Enable or disable rule categories (proxy, DPI bypass, DNS, direct WAN, block) in the dashboard sections block',
+            ),
+          ),
+        ]),
+        renderSectionTypesSelectorDom(
+          cloneSectionTypeFilter(currentCfg.sectionTypes),
+          (nextTypes) => {
+            currentCfg.sectionTypes = nextTypes;
+            commitChange({
+              preset: currentCfg.preset,
+              widgets: currentCfg.widgets,
+              sectionTypes: nextTypes,
+            });
+          },
+        ),
+      ]),
     );
   }
 
   (root as any)._layoutConfig = currentCfg;
   renderEditorContent();
   return root;
+}
+
+export interface SectionTypeDefinition {
+  id: keyof DashboardSectionTypeFilter;
+  titleRu: string;
+  titleEn: string;
+  descRu: string;
+  descEn: string;
+  icon: () => SVGElement;
+}
+
+export const SECTION_TYPE_DEFINITIONS: SectionTypeDefinition[] = [
+  {
+    id: 'proxy',
+    titleRu: 'Прокси и туннели',
+    titleEn: 'Proxy & Tunnels',
+    descRu:
+      'Маршруты через внешние прокси-серверы: VLESS, Trojan, Shadowsocks, WireGuard, Hysteria2 и др.',
+    descEn:
+      'Outbound proxy routes: VLESS, Trojan, Shadowsocks, WireGuard, Hysteria2, etc.',
+    icon: () => renderShieldIcon(15),
+  },
+  {
+    id: 'dpi',
+    titleRu: 'Обход DPI (Байпас)',
+    titleEn: 'DPI Bypass',
+    descRu:
+      'Секции обхода блокировок: Tachyon Core Desync, Zapret2 (nfqws2), ByeDPI, WDTT, OLCRTC.',
+    descEn:
+      'DPI bypass engines: Tachyon Core Desync, Zapret2 (nfqws2), ByeDPI, WDTT, OLCRTC.',
+    icon: () => renderZapIcon(15),
+  },
+  {
+    id: 'dns',
+    titleRu: 'Маршрутизация DNS',
+    titleEn: 'DNS Routing',
+    descRu:
+      'Направленные DNS-серверы и DoH/DoT резолверы (например, YandexDns, dns-ai).',
+    descEn:
+      'Targeted upstream DNS servers and DoH/DoT resolvers (e.g. YandexDns, dns-ai).',
+    icon: () => renderCompassIcon(15),
+  },
+  {
+    id: 'direct',
+    titleRu: 'Прямой выход мимо прокси (WAN / Bypass)',
+    titleEn: 'Direct WAN Bypass',
+    descRu:
+      'Секции прямого выхода в интернет без проксирования (ByPass, direct, WAN).',
+    descEn:
+      'Sections routed directly via WAN without proxy (ByPass, direct, WAN).',
+    icon: () => renderGlobeIcon(15),
+  },
+  {
+    id: 'block',
+    titleRu: 'Блокировка трафика (Reject)',
+    titleEn: 'Traffic Block (Reject)',
+    descRu: 'Секции отклонения нежелательного трафика и правил блокировки.',
+    descEn: 'Sections that reject matching traffic and ad-blocking rules.',
+    icon: () => renderBanIcon(15),
+  },
+];
+
+export function renderSectionTypesSelectorDom(
+  initialFilter: DashboardSectionTypeFilter,
+  onChange: (nextFilter: DashboardSectionTypeFilter) => void,
+): HTMLElement {
+  let currentFilter = { ...initialFilter };
+  const container = E('div', { class: 'tachyon-section-types-list' });
+
+  const renderCards = () => {
+    const cards = SECTION_TYPE_DEFINITIONS.map((def) => {
+      const isEnabled = Boolean(currentFilter[def.id]);
+      return E(
+        'div',
+        {
+          class: `tachyon-section-type-card ${isEnabled ? 'is-active' : ''}`,
+          click: (ev: MouseEvent) => {
+            ev.preventDefault();
+            const next = {
+              ...currentFilter,
+              [def.id]: !isEnabled,
+            };
+            currentFilter = next;
+            onChange(next);
+            renderCards();
+          },
+        },
+        [
+          E('div', { class: 'tachyon-section-type-card__info' }, [
+            E('span', { class: 'tachyon-section-type-card__icon' }, [
+              def.icon(),
+            ]),
+            E('div', { class: 'tachyon-section-type-card__text' }, [
+              E('div', { class: 'tachyon-section-type-card__title-row' }, [
+                E(
+                  'span',
+                  { class: 'tachyon-section-type-card__title' },
+                  tr(def.titleRu, def.titleEn),
+                ),
+                E(
+                  'span',
+                  {
+                    class: `tachyon-section-type-card__badge ${
+                      isEnabled ? 'is-enabled' : 'is-disabled'
+                    }`,
+                  },
+                  isEnabled
+                    ? tr('Включено', 'Enabled')
+                    : tr('Скрыто', 'Hidden'),
+                ),
+              ]),
+              E(
+                'div',
+                { class: 'tachyon-section-type-card__desc' },
+                tr(def.descRu, def.descEn),
+              ),
+            ]),
+          ]),
+          E(
+            'div',
+            {
+              class: `tachyon-section-type-card__switch ${
+                isEnabled ? 'is-on' : 'is-off'
+              }`,
+            },
+            [E('span', { class: 'tachyon-section-type-card__switch-knob' })],
+          ),
+        ],
+      );
+    });
+
+    container.replaceChildren(...cards);
+  };
+
+  renderCards();
+  return container;
+}
+
+export function openDashboardSectionTypesModal(
+  onUpdated?: (filter: DashboardSectionTypeFilter) => void,
+): void {
+  const uiObj = (globalThis as any).ui;
+  if (!uiObj || typeof uiObj.showModal !== 'function') return;
+
+  let current = getDashboardSectionTypeFilter();
+
+  const selectorDom = renderSectionTypesSelectorDom(current, (next) => {
+    current = next;
+    saveDashboardSectionTypeFilter(next);
+    if (onUpdated) onUpdated(next);
+  });
+
+  const footer = E(
+    'div',
+    {
+      style:
+        'display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:16px;padding-top:12px;border-top:1px solid var(--border-color-low, rgba(148,163,184,0.18));flex-wrap:wrap;',
+    },
+    [
+      E(
+        'button',
+        {
+          type: 'button',
+          class: 'btn cbi-button',
+          click: (ev: MouseEvent) => {
+            ev.preventDefault();
+            current = { ...DEFAULT_SECTION_TYPE_FILTER };
+            saveDashboardSectionTypeFilter(current);
+            if (onUpdated) onUpdated(current);
+            uiObj.hideModal();
+          },
+        },
+        tr('По умолчанию', 'Reset to Default'),
+      ),
+      E(
+        'button',
+        {
+          type: 'button',
+          class: 'btn cbi-button cbi-button-apply',
+          click: (ev: MouseEvent) => {
+            ev.preventDefault();
+            uiObj.hideModal();
+          },
+        },
+        tr('Готово', 'Done'),
+      ),
+    ],
+  );
+
+  uiObj.showModal(
+    tr('Настройка типов секций на дашборде', 'Dashboard Section Types Filter'),
+    [
+      E('div', { class: 'tachyon-section-types-modal' }, [
+        E(
+          'p',
+          {
+            style:
+              'margin:0 0 10px 0;font-size:12px;opacity:0.8;line-height:1.45;',
+          },
+          tr(
+            'Выберите, какие категории правил маршрутизации отображать в блоке «Секции маршрутизации» на Дашборде.',
+            'Choose which categories of routing rules should be displayed in the Dashboard Routing Sections block.',
+          ),
+        ),
+        selectorDom,
+        footer,
+      ]),
+    ],
+  );
 }
 
 export function renderDashboardLayoutSettingsPanel(

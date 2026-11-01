@@ -10,6 +10,7 @@ import {
   renderLockIcon,
   renderSettingsIcon,
   renderShieldIcon,
+  renderSlidersIcon,
   renderSparklesIcon,
   renderZapIcon,
 } from '../../../../icons';
@@ -18,7 +19,11 @@ import { Tachyon } from '../../../types';
 import { getProxyUrlTransport } from '../../../../helpers/getProxyUrlTransport';
 import { ensureOutboundDisplayFlag } from '../../../helpers/country';
 import { formatServiceStatusMessage } from '../../../helpers/formatServiceStatusMessage';
-import { getWidgetViewMode } from '../dashboardLayout';
+import {
+  getDashboardSectionTypeFilter,
+  getWidgetViewMode,
+  openDashboardSectionTypesModal,
+} from '../dashboardLayout';
 import { renderFlagEmojis } from './renderFlagEmojis';
 
 export interface KpiRowMetrics {
@@ -832,6 +837,7 @@ export interface RenderDashboardSectionsAndNodesProps {
     outbound: Tachyon.Outbound,
   ) => void;
   onUpdateSubscription: (section: Tachyon.OutboundGroup) => void;
+  onSectionTypesChanged?: () => void;
 }
 
 export interface SectionEngineMeta {
@@ -2311,6 +2317,126 @@ function resolveSectionActiveInfo(
   };
 }
 
+export const DPI_ENGINES = new Set([
+  'zapret',
+  'zapret2',
+  'byedpi',
+  'desync',
+  'wdtt',
+  'olcrtc',
+]);
+
+export const SYSTEM_NON_PROXY_ENGINES = new Set([
+  'block',
+  'reject',
+  'bypass',
+  'direct',
+  'dns',
+]);
+
+export type SectionRoutingCategory =
+  | 'proxy'
+  | 'dpi'
+  | 'dns'
+  | 'direct'
+  | 'block'
+  | 'other';
+
+export function resolveSectionCategory(
+  s: Tachyon.OutboundGroup,
+  engineMeta?: SectionEngineMeta,
+): SectionRoutingCategory {
+  const meta = engineMeta || resolveSectionEngineMeta(s);
+  const action = (s.action || '').toLowerCase().trim();
+  const primaryEngine = (meta.primaryEngine || '').toLowerCase().trim();
+  const name = (s.sectionName || s.code || '').toLowerCase().trim();
+  const displayName = (s.displayName || '').toLowerCase().trim();
+
+  // 1. Блокировка (Block / Reject)
+  if (
+    action === 'block' ||
+    action === 'reject' ||
+    primaryEngine === 'block' ||
+    primaryEngine === 'reject' ||
+    name === 'block' ||
+    displayName === 'block' ||
+    name === 'reject' ||
+    displayName === 'reject' ||
+    name.includes('block') ||
+    displayName.includes('block')
+  ) {
+    return 'block';
+  }
+
+  // 2. Маршрутизация DNS (DNS Routing)
+  if (
+    action === 'dns' ||
+    primaryEngine === 'dns' ||
+    (!name.includes('zapret') &&
+      !displayName.includes('zapret') &&
+      (name === 'dns' ||
+        displayName === 'dns' ||
+        name.startsWith('dns-') ||
+        displayName.startsWith('dns-') ||
+        name.endsWith('-dns-server') ||
+        displayName.endsWith('-dns-server') ||
+        name.includes('dns') ||
+        displayName.includes('dns')))
+  ) {
+    return 'dns';
+  }
+
+  // 3. Обход DPI (DPI Bypass)
+  const isDpi =
+    DPI_ENGINES.has(action) ||
+    DPI_ENGINES.has(primaryEngine) ||
+    Boolean(
+      meta.isDpiOnly &&
+        DPI_ENGINES.has(meta.primaryEngine?.toLowerCase() || ''),
+    ) ||
+    name.includes('zapret') ||
+    displayName.includes('zapret') ||
+    name.includes('byedpi') ||
+    displayName.includes('byedpi') ||
+    name.includes('desync') ||
+    displayName.includes('desync') ||
+    name.includes('wdtt') ||
+    displayName.includes('wdtt') ||
+    name.includes('olcrtc') ||
+    displayName.includes('olcrtc');
+
+  if (isDpi) {
+    return 'dpi';
+  }
+
+  // 4. Прямой выход мимо прокси (Bypass / Direct / WAN)
+  if (
+    action === 'bypass' ||
+    action === 'direct' ||
+    primaryEngine === 'bypass' ||
+    primaryEngine === 'direct' ||
+    name === 'bypass' ||
+    displayName === 'bypass' ||
+    name === 'direct' ||
+    displayName === 'direct' ||
+    name.includes('bypass') ||
+    displayName.includes('bypass') ||
+    name.includes('direct') ||
+    displayName.includes('direct') ||
+    name.includes('wan') ||
+    displayName.includes('wan')
+  ) {
+    return 'direct';
+  }
+
+  // 5. Прокси
+  if (s.outbounds && s.outbounds.length > 0) {
+    return 'proxy';
+  }
+
+  return 'proxy';
+}
+
 export function renderDashboardSectionsAndNodes(
   props: RenderDashboardSectionsAndNodesProps,
 ): HTMLElement[] {
@@ -2325,97 +2451,34 @@ export function renderDashboardSectionsAndNodes(
     onTestSectionLatency,
     onShowUrlTestInfo,
     onShowPriorityInfo,
+    onSectionTypesChanged,
   } = props;
 
   if (!sections || sections.length === 0) {
     return [];
   }
 
-  // Исключаем системные block / bypass / direct / dns из блока «Секции маршрутизации» на Дашборде
-  const DPI_ENGINES = new Set([
-    'zapret',
-    'zapret2',
-    'byedpi',
-    'desync',
-    'wdtt',
-    'olcrtc',
-  ]);
-
-  const SYSTEM_NON_PROXY_ENGINES = new Set([
-    'block',
-    'reject',
-    'bypass',
-    'direct',
-    'dns',
-  ]);
+  // Фильтруем категории секций по пользовательским настройкам Дашборда
+  const typeFilter = getDashboardSectionTypeFilter();
 
   const routingSections = sections.filter((s) => {
-    const action = (s.action || '').toLowerCase().trim();
     const engineMeta = resolveSectionEngineMeta(s);
-    const primaryEngine = (engineMeta.primaryEngine || '').toLowerCase().trim();
-    const name = (s.sectionName || s.code || '').toLowerCase().trim();
-    const displayName = (s.displayName || '').toLowerCase().trim();
+    const category = resolveSectionCategory(s, engineMeta);
 
-    // 1. Исключаем системные не-прокси действия (block, reject, bypass, direct, dns) ВСЕГДА
-    if (
-      SYSTEM_NON_PROXY_ENGINES.has(action) ||
-      SYSTEM_NON_PROXY_ENGINES.has(primaryEngine)
-    ) {
-      return false;
+    switch (category) {
+      case 'proxy':
+        return Boolean(typeFilter.proxy);
+      case 'dpi':
+        return Boolean(typeFilter.dpi);
+      case 'dns':
+        return Boolean(typeFilter.dns);
+      case 'direct':
+        return Boolean(typeFilter.direct);
+      case 'block':
+        return Boolean(typeFilter.block);
+      default:
+        return true;
     }
-
-    // 2. Секции обхода DPI (Zapret2, Zapret, ByeDPI, Core Desync и т.д.)
-    const isDpi =
-      DPI_ENGINES.has(action) ||
-      DPI_ENGINES.has(primaryEngine) ||
-      Boolean(
-        engineMeta.isDpiOnly &&
-          DPI_ENGINES.has(engineMeta.primaryEngine?.toLowerCase() || ''),
-      ) ||
-      name.includes('zapret') ||
-      displayName.includes('zapret') ||
-      name.includes('byedpi') ||
-      displayName.includes('byedpi') ||
-      name.includes('desync') ||
-      displayName.includes('desync') ||
-      name.includes('wdtt') ||
-      displayName.includes('wdtt') ||
-      name.includes('olcrtc') ||
-      displayName.includes('olcrtc');
-
-    // 3. Если это не DPI-секция, исключаем системные имена (block, reject, bypass, direct, wan, dns, failover)
-    if (!isDpi) {
-      if (
-        name.includes('block') ||
-        displayName.includes('block') ||
-        name.includes('reject') ||
-        displayName.includes('reject') ||
-        name.includes('bypass') ||
-        displayName.includes('bypass') ||
-        name.includes('direct') ||
-        displayName.includes('direct') ||
-        name.includes('wan') ||
-        displayName.includes('wan') ||
-        name.includes('dns') ||
-        displayName.includes('dns') ||
-        name.includes('failover') ||
-        displayName.includes('failover')
-      ) {
-        return false;
-      }
-    }
-
-    // 4. Секции обхода DPI всегда отображаются
-    if (isDpi) {
-      return true;
-    }
-
-    // 5. Прокси-секции с активными серверами/аутбаундами всегда отображаются
-    if (s.outbounds && s.outbounds.length > 0) {
-      return true;
-    }
-
-    return true;
   });
 
   if (!routingSections || routingSections.length === 0) {
@@ -3082,37 +3145,62 @@ export function renderDashboardSectionsAndNodes(
         { class: 'tachyon-routing-sections-block__title' },
         tr('Секции маршрутизации', 'Routing sections'),
       ),
-      proxySections.length > 0
-        ? E(
-            'button',
-            {
-              type: 'button',
-              id: 'dashboard-test-all-sections-button',
-              class: 'tachyon-routing-sections-block__test-all-btn',
-              disabled: isTestingAllSections ? true : undefined,
-              click: () => {
-                onTestAllSections();
-              },
-            } as any,
-            isTestingAllSections
-              ? [
-                  renderLoaderCircleIcon24(),
-                  E(
-                    'span',
-                    {},
-                    tr('Проверка всех секций...', 'Testing all sections...'),
-                  ),
-                ]
-              : [
-                  E('span', {}, '↻'),
-                  E(
-                    'span',
-                    {},
-                    tr('Проверить все секции', 'Test all sections'),
-                  ),
-                ],
-          )
-        : '',
+      E('div', { class: 'tachyon-routing-sections-block__actions' }, [
+        E(
+          'button',
+          {
+            type: 'button',
+            id: 'dashboard-section-types-filter-button',
+            class: 'tachyon-routing-sections-block__filter-btn',
+            title: tr(
+              'Настроить отображаемые категории секций на дашборде',
+              'Configure displayed section categories on dashboard',
+            ),
+            click: () => {
+              openDashboardSectionTypesModal(() => {
+                if (onSectionTypesChanged) {
+                  onSectionTypesChanged();
+                }
+              });
+            },
+          } as any,
+          [
+            renderSlidersIcon(12),
+            E('span', {}, tr('Типы секций', 'Section Types')),
+          ],
+        ),
+        proxySections.length > 0
+          ? E(
+              'button',
+              {
+                type: 'button',
+                id: 'dashboard-test-all-sections-button',
+                class: 'tachyon-routing-sections-block__test-all-btn',
+                disabled: isTestingAllSections ? true : undefined,
+                click: () => {
+                  onTestAllSections();
+                },
+              } as any,
+              isTestingAllSections
+                ? [
+                    renderLoaderCircleIcon24(),
+                    E(
+                      'span',
+                      {},
+                      tr('Проверка всех секций...', 'Testing all sections...'),
+                    ),
+                  ]
+                : [
+                    E('span', {}, '↻'),
+                    E(
+                      'span',
+                      {},
+                      tr('Проверить все секции', 'Test all sections'),
+                    ),
+                  ],
+            )
+          : '',
+      ]),
     ]),
     E('div', { class: listClass }, sectionItems),
   ]);

@@ -1,6 +1,7 @@
 import { prettyBytes } from '../../../helpers/prettyBytes';
 import { getOutboundTagBySection } from '../../runtimeTags';
 import { Tachyon } from '../../types';
+import { getDashboardSectionTypeFilter } from '../dashboard/dashboardLayout';
 import {
   formatDuration,
   formatEndpoint,
@@ -169,14 +170,6 @@ export function buildRouteDisplayNames(sections: Tachyon.ConfigSection[]): {
       ]);
     });
 
-  const NON_MONITORED_ACTIONS = new Set([
-    'block',
-    'reject',
-    'bypass',
-    'direct',
-    'dns',
-  ]);
-
   const DPI_SECTION_ACTIONS = new Set([
     'zapret',
     'zapret2',
@@ -213,25 +206,46 @@ export function buildRouteDisplayNames(sections: Tachyon.ConfigSection[]): {
         lowerName.includes('olcrtc') ||
         lowerDisplayName.includes('olcrtc');
 
-      const isNonMonitored =
-        NON_MONITORED_ACTIONS.has(action) ||
-        (!isDpiSection &&
-          (lowerName.includes('block') ||
-            lowerDisplayName.includes('block') ||
-            lowerName.includes('reject') ||
-            lowerDisplayName.includes('reject') ||
-            lowerName.includes('bypass') ||
-            lowerDisplayName.includes('bypass') ||
-            lowerName.includes('direct') ||
-            lowerDisplayName.includes('direct') ||
-            lowerName.includes('wan') ||
-            lowerDisplayName.includes('wan') ||
-            lowerName.includes('dns') ||
-            lowerDisplayName.includes('dns') ||
-            lowerName.includes('failover') ||
-            lowerDisplayName.includes('failover')));
+      const typeFilter = getDashboardSectionTypeFilter();
+      let isCategoryAllowed = true;
+      if (isDpiSection) {
+        isCategoryAllowed = Boolean(typeFilter.dpi);
+      } else if (
+        action === 'block' ||
+        action === 'reject' ||
+        lowerName.includes('block') ||
+        lowerDisplayName.includes('block') ||
+        lowerName.includes('reject') ||
+        lowerDisplayName.includes('reject')
+      ) {
+        isCategoryAllowed = Boolean(typeFilter.block);
+      } else if (
+        action === 'bypass' ||
+        action === 'direct' ||
+        lowerName.includes('bypass') ||
+        lowerDisplayName.includes('bypass') ||
+        lowerName.includes('direct') ||
+        lowerDisplayName.includes('direct') ||
+        lowerName.includes('wan') ||
+        lowerDisplayName.includes('wan')
+      ) {
+        isCategoryAllowed = Boolean(typeFilter.direct);
+      } else if (
+        action === 'dns' ||
+        lowerName.includes('dns') ||
+        lowerDisplayName.includes('dns')
+      ) {
+        isCategoryAllowed = Boolean(typeFilter.dns);
+      } else if (
+        lowerName.includes('failover') ||
+        lowerDisplayName.includes('failover')
+      ) {
+        isCategoryAllowed = false;
+      } else {
+        isCategoryAllowed = Boolean(typeFilter.proxy);
+      }
 
-      if (!isNonMonitored) {
+      if (isCategoryAllowed) {
         routeSectionItems.push({ sectionName, displayName });
       }
       map[getOutboundTagBySection(sectionName)] = displayName;

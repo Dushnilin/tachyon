@@ -17,13 +17,21 @@ function asArray(val) {
   const out = [];
   lines.forEach((line) => {
     const cleaned = String(line)
-      .replace(/(^|\s+)\/\/.*$/, '')
-      .replace(/(^|\s+)#.*$/, '')
+      .replace(/^(full|keyword|regex):[ \t]*(\/\/|#).*$/, '')
+      .split('//')[0]
+      .split('#')[0]
       .trim();
     if (!cleaned) return;
     cleaned.split(/[\s,]+/).forEach((tok) => {
       const t = tok.trim();
-      if (t) out.push(t);
+      if (
+        t &&
+        !t.startsWith('//') &&
+        !t.startsWith('#') &&
+        !/^[-=_*~]{2,}$/.test(t)
+      ) {
+        out.push(t);
+      }
     });
   });
   return out;

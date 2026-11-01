@@ -41,6 +41,7 @@ import {
 } from './filters';
 import { handleMonitoringValueCopy } from './clipboard';
 import { normalizeString, parseStartedAt } from './formatters';
+import { subscribeDashboardLayoutChanges } from '../dashboard/dashboardLayout';
 
 interface MonitoringControllerDependencies {
   loadLocalDeviceChoices?: () => Promise<LocalDeviceChoices>;
@@ -57,6 +58,7 @@ let monitoringMountId = 0;
 let monitoringLifecycleRegistered = false;
 let monitoringControllerInitialized = false;
 let serviceStateUnsubscribe: (() => void) | null = null;
+let layoutChangeUnsubscribe: (() => void) | null = null;
 let renderTimer: ReturnType<typeof setInterval> | null = null;
 let connectionsPollTimer: ReturnType<typeof setInterval> | null = null;
 let connectionsSocketUrl = '';
@@ -283,25 +285,7 @@ function renderRouteFilterOptions() {
   const routes = Array.from(uniqueRoutes)
     .filter((name) => {
       const lower = name.toLowerCase().trim();
-      if (
-        lower.includes('zapret') ||
-        lower.includes('byedpi') ||
-        lower.includes('desync') ||
-        lower.includes('wdtt') ||
-        lower.includes('olcrtc')
-      ) {
-        return true;
-      }
-      return (
-        !lower.includes('block') &&
-        !lower.includes('reject') &&
-        !lower.includes('bypass') &&
-        !lower.includes('direct') &&
-        !lower.includes('wan') &&
-        !lower.includes('dns') &&
-        !lower.includes('failover') &&
-        lower !== '-'
-      );
+      return lower !== '-' && !lower.includes('failover');
     })
     .sort();
 
@@ -1326,6 +1310,11 @@ async function onPageMount() {
   void loadLocalDevices();
   void loadRouteDisplayNames();
 
+  layoutChangeUnsubscribe?.();
+  layoutChangeUnsubscribe = subscribeDashboardLayoutChanges(() => {
+    void loadRouteDisplayNames();
+  });
+
   if (getCachedRuntimeUiState()) {
     void refreshRuntimeUiState({ force: true });
   } else {
@@ -1406,6 +1395,8 @@ function onPageUnmount() {
   stopConnectionsUpdates();
   serviceStateUnsubscribe?.();
   serviceStateUnsubscribe = null;
+  layoutChangeUnsubscribe?.();
+  layoutChangeUnsubscribe = null;
 
   document.removeEventListener('selectionchange', flushRenderAfterSelection);
   document.removeEventListener('copy', handleMonitoringValueCopy);

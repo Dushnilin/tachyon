@@ -2719,6 +2719,9 @@ async function renderSectionsWidget() {
     onUpdateSubscription: (section) => {
       void handleUpdateSubscription(section);
     },
+    onSectionTypesChanged: () => {
+      void renderSectionsWidget();
+    },
   });
 
   if (existingModal && selectedDashboardSectionCode) {

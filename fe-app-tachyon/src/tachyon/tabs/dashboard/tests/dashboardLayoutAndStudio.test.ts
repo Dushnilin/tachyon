@@ -530,4 +530,118 @@ describe('Dashboard Widgets, Presets, Transport Badges & Studio Deck', () => {
     expect(showServerInfoModalMock).toHaveBeenCalledWith('TewFai');
     expect(mockServerSectionRef.renderMoreOptionsModal).not.toHaveBeenCalled();
   });
+
+  it('correctly filters dashboard routing section types and updates upon config change', async () => {
+    const layoutMod = await import('../dashboardLayout');
+    const { resolveSectionCategory } = await import(
+      '../partials/renderOverviewRow'
+    );
+
+    // Default filters
+    const filter = layoutMod.getDashboardSectionTypeFilter();
+    expect(filter.proxy).toBe(true);
+    expect(filter.dpi).toBe(true);
+    expect(filter.dns).toBe(false);
+    expect(filter.direct).toBe(false);
+    expect(filter.block).toBe(false);
+
+    // Classification
+    expect(
+      resolveSectionCategory({ action: 'block', '.name': 'block' } as any),
+    ).toBe('block');
+    expect(
+      resolveSectionCategory({ action: 'bypass', '.name': 'ByPass' } as any),
+    ).toBe('direct');
+    expect(
+      resolveSectionCategory({ action: 'dns', '.name': 'YandexDns' } as any),
+    ).toBe('dns');
+    expect(
+      resolveSectionCategory({ action: 'zapret2', '.name': 'yt' } as any),
+    ).toBe('dpi');
+    expect(
+      resolveSectionCategory({
+        action: 'proxy',
+        protocol: 'vless',
+        '.name': 'main',
+      } as any),
+    ).toBe('proxy');
+
+    // Update filter
+    layoutMod.saveDashboardSectionTypeFilter({
+      ...filter,
+      dns: true,
+      block: true,
+    });
+
+    const updated = layoutMod.getDashboardSectionTypeFilter();
+    expect(updated.dns).toBe(true);
+    expect(updated.block).toBe(true);
+    expect(updated.direct).toBe(false);
+  });
+
+  it('does not render comment lines as domain chips on condition Studio Deck card', async () => {
+    const containerEl = createDummyElement('div');
+    const mockCondSectionRef = {
+      sectiontype: 'condition',
+      cfgsections: () => ['main_cond'],
+      renderMoreOptionsModal: vi.fn(),
+      remove: vi.fn(),
+    };
+
+    (globalThis as any).uci.sections = (_pkg: string, type: string) => {
+      if (type === 'section') {
+        return [
+          {
+            '.name': 'main_sec',
+            name: 'Main',
+            condition_refs: ['main_cond'],
+          },
+        ];
+      }
+      return [];
+    };
+
+    (globalThis as any).uci.get = (
+      _pkg: string,
+      sec: string,
+      opt?: string,
+    ): any => {
+      const condData: Record<string, any> = {
+        '.name': 'main_cond',
+        '.type': 'condition',
+        name: 'Main',
+        enabled: '1',
+        condition_type: 'atomic',
+        community_lists: ['ru_blocked_all'],
+        domain: `// ====== Xiaomi ======
+Xiaomi
+Mi
+xiaomi.com`,
+      };
+      if (sec === 'main_cond') {
+        return opt ? condData[opt] : condData;
+      }
+      return undefined;
+    };
+
+    studioDeckMod.mountTachyonStudioDeck({
+      type: 'condition',
+      sectionRef: mockCondSectionRef,
+      containerEl,
+    });
+
+    const chips = containerEl.querySelectorAll('.tachyon-studio-chip');
+    const chipTexts = chips.map((c: any) => c.textContent.trim());
+
+    // Should NOT contain comments or separator symbols
+    expect(chipTexts.some((t: string) => t.includes('//'))).toBe(false);
+    expect(chipTexts.some((t: string) => t.includes('======'))).toBe(false);
+
+    // Should contain valid domain entries and service list
+    expect(chipTexts.some((t: string) => t.includes('ru_blocked_all'))).toBe(
+      true,
+    );
+    expect(chipTexts.some((t: string) => t.includes('Xiaomi'))).toBe(true);
+    expect(chipTexts.some((t: string) => t.includes('Mi'))).toBe(true);
+  });
 });

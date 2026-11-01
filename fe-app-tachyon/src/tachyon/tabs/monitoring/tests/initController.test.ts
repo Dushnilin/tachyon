@@ -244,25 +244,7 @@ describe('monitoring initController', () => {
 
     const routes = Array.from(uniqueRoutes).filter((name) => {
       const lower = name.toLowerCase().trim();
-      if (
-        lower.includes('zapret') ||
-        lower.includes('byedpi') ||
-        lower.includes('desync') ||
-        lower.includes('wdtt') ||
-        lower.includes('olcrtc')
-      ) {
-        return true;
-      }
-      return (
-        !lower.includes('block') &&
-        !lower.includes('reject') &&
-        !lower.includes('bypass') &&
-        !lower.includes('direct') &&
-        !lower.includes('wan') &&
-        !lower.includes('dns') &&
-        !lower.includes('failover') &&
-        lower !== '-'
-      );
+      return lower !== '-' && !lower.includes('failover');
     });
 
     expect(routes).toContain('Zapret2 (Direct DPI Bypass)');

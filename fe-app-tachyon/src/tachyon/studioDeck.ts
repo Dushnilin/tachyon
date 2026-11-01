@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { parseValueList } from '../helpers/parseValueList';
 import { getProxyUrlTransport } from '../helpers/getProxyUrlTransport';
 import { formatOutboundType } from '../helpers/formatOutboundType';
 import { openConnectionWizardModal } from './connectionWizard';
@@ -62,14 +63,7 @@ export interface StudioDeckMountOptions {
 }
 
 function asArray(val: unknown): string[] {
-  if (!val) return [];
-  if (Array.isArray(val)) {
-    return val.map((x) => String(x || '').trim()).filter(Boolean);
-  }
-  return String(val)
-    .split(/[\s,]+/)
-    .map((x) => x.trim())
-    .filter(Boolean);
+  return parseValueList(val);
 }
 
 function stripPrefix(tok: string): string {

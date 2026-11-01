@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-01 07:16+0300\n"
-"PO-Revision-Date: 2026-11-01 07:16+0300\n"
+"POT-Creation-Date: 2026-11-01 07:50+0300\n"
+"PO-Revision-Date: 2026-11-01 07:50+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -130,6 +130,9 @@ msgstr ""
 
 msgid "3 comma-separated integers or Base64 client_id."
 msgstr "3 целых числа через запятую или client_id в формате Base64."
+
+msgid "3. Displayed Routing Section Types"
+msgstr "3. Отображаемые типы секций маршрутизации"
 
 msgid "30 min — Standard"
 msgstr "30 мин — стандартный"
@@ -1526,6 +1529,9 @@ msgstr "Выберите, устанавливать ли обновления �
 msgid "Choose whether to restrict the entire internet (with optional daily screen time quota) or only specific sites/domains (by scheduled hours). Screen time quotas can also be set per child directly in Profiles."
 msgstr "Выберите, ограничивать ли весь интернет (с возможностью суточной квоты экранного времени) или только конкретные сайты/домены (в часы по расписанию). Суточную квоту экранного времени также можно задать для каждого ребенка прямо в Профилях."
 
+msgid "Choose which categories of routing rules should be displayed in the Dashboard Routing Sections block."
+msgstr "Выберите, какие категории правил маршрутизации отображать в блоке «Секции маршрутизации» на Дашборде."
+
 msgid "Choose which routing sections to apply this schedule to."
 msgstr "Выберите секции маршрутизации, к которым применяется данное расписание."
 
@@ -1816,6 +1822,9 @@ msgstr "Изменить"
 
 msgid "Configure User-Agent in the item settings"
 msgstr "Настройте User-Agent в параметрах элемента"
+
+msgid "Configure displayed section categories on dashboard"
+msgstr "Настроить отображаемые категории секций на дашборде"
 
 msgid "Configure section & rules →"
 msgstr "Настроить секцию и правила →"
@@ -2386,6 +2395,9 @@ msgstr "Тёмный"
 
 msgid "Dashboard"
 msgstr "Дашборд"
+
+msgid "Dashboard Section Types Filter"
+msgstr "Настройка типов секций на дашборде"
 
 msgid "Dashboard Widgets & Presets Setup"
 msgstr "Настройка виджетов и пресетов дашборда"
@@ -3007,6 +3019,9 @@ msgstr "Включить встроенный DNS-резолвер для дом
 
 msgid "Enable list updates"
 msgstr "Включить обновление списков"
+
+msgid "Enable or disable rule categories (proxy, DPI bypass, DNS, direct WAN, block) in the dashboard sections block"
+msgstr "Включайте или отключайте категории правил (прокси, обход DPI, DNS, прямой выход, блокировка) в блоке секций дашборда"
 
 msgid "Enable subscription"
 msgstr "Включить подписку"
@@ -7091,6 +7106,9 @@ msgstr "Сбросить настройки"
 msgid "Reset Stats"
 msgstr "Сбросить статистику"
 
+msgid "Reset to Default"
+msgstr "По умолчанию"
+
 msgid "Reset to Factory Defaults"
 msgstr "Сбросить к исходным настройкам"
 
@@ -7630,6 +7648,9 @@ msgstr "Фильтр сужения пула серверов секции"
 
 msgid "Section Rules Content"
 msgstr "Содержимое правил секции"
+
+msgid "Section Types"
+msgstr "Типы секций"
 
 msgid "Section action"
 msgstr "Действие секции"

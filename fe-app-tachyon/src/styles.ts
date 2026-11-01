@@ -1961,6 +1961,159 @@ header .dropdown-menu {
     background: rgba(148, 130, 224, 0.1);
 }
 
+.tachyon-routing-sections-block__actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.tachyon-routing-sections-block__filter-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color-medium, rgba(128, 128, 128, 0.26));
+    background: var(--background-color-low, rgba(128, 128, 128, 0.08));
+    color: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color 0.14s ease, background-color 0.14s ease;
+}
+
+.tachyon-routing-sections-block__filter-btn:hover {
+    border-color: rgba(148, 130, 224, 0.42);
+    background: rgba(148, 130, 224, 0.1);
+}
+
+.tachyon-section-types-modal {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: min(520px, 90vw);
+}
+
+.tachyon-section-types-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.tachyon-section-type-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color-low, rgba(148, 163, 184, 0.18));
+    background: var(--background-color-low, rgba(128, 128, 128, 0.04));
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.tachyon-section-type-card:hover {
+    border-color: rgba(148, 130, 224, 0.36);
+    background: rgba(148, 130, 224, 0.06);
+}
+
+.tachyon-section-type-card.is-active {
+    border-color: rgba(148, 130, 224, 0.55);
+}
+
+.tachyon-section-type-card__info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.tachyon-section-type-card__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    background: rgba(148, 130, 224, 0.12);
+    color: #9482e0;
+    flex-shrink: 0;
+}
+
+.tachyon-section-type-card__text {
+    min-width: 0;
+}
+
+.tachyon-section-type-card__title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.tachyon-section-type-card__title {
+    font-size: 13px;
+    font-weight: 700;
+    color: inherit;
+}
+
+.tachyon-section-type-card__badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 9999px;
+    letter-spacing: 0.02em;
+}
+
+.tachyon-section-type-card__badge.is-enabled {
+    background: rgba(34, 197, 94, 0.16);
+    color: #22c55e;
+}
+
+.tachyon-section-type-card__badge.is-disabled {
+    background: rgba(148, 163, 184, 0.14);
+    color: rgba(148, 163, 184, 0.8);
+}
+
+.tachyon-section-type-card__desc {
+    font-size: 11px;
+    opacity: 0.72;
+    margin-top: 3px;
+    line-height: 1.35;
+}
+
+.tachyon-section-type-card__switch {
+    width: 38px;
+    height: 22px;
+    border-radius: 9999px;
+    background: rgba(148, 163, 184, 0.22);
+    position: relative;
+    flex-shrink: 0;
+    transition: background-color 0.2s ease;
+}
+
+.tachyon-section-type-card.is-active .tachyon-section-type-card__switch {
+    background: #9482e0;
+}
+
+.tachyon-section-type-card__switch-knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #ffffff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+    transition: transform 0.2s ease;
+}
+
+.tachyon-section-type-card.is-active .tachyon-section-type-card__switch-knob {
+    transform: translateX(16px);
+}
+
 .tachyon-routing-sections-list {
     display: flex;
     flex-direction: column;
