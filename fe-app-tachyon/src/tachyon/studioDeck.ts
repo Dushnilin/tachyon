@@ -3208,7 +3208,10 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
 
       const inspectorEl = E(
         'div',
-        { class: 'tachyon-studio-source-inspector' },
+        {
+          class: 'tachyon-studio-source-inspector',
+          click: (ev: MouseEvent) => ev.stopPropagation(),
+        },
         inspectorRows,
       );
 
@@ -3226,11 +3229,44 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
       const toggleInspector = (ev: MouseEvent) => {
         ev.preventDefault();
         ev.stopPropagation();
+        const prevTop =
+          card && typeof card.getBoundingClientRect === 'function'
+            ? card.getBoundingClientRect().top
+            : null;
         isExpanded = !isExpanded;
         if (isExpanded) expandedSourceIds.add(sid);
         else expandedSourceIds.delete(sid);
         card.classList.toggle('is-expanded', isExpanded);
         chevronEl.textContent = isExpanded ? '▴' : '▾';
+        if (
+          prevTop !== null &&
+          card &&
+          typeof card.getBoundingClientRect === 'function'
+        ) {
+          const restoreAnchor = () => {
+            const nextTop = card.getBoundingClientRect().top;
+            const delta = nextTop - prevTop;
+            if (Math.abs(delta) > 1) {
+              const mainContent = document.getElementById('maincontent');
+              if (
+                mainContent &&
+                mainContent.scrollHeight > mainContent.clientHeight
+              ) {
+                mainContent.scrollTop += delta;
+              }
+              if (
+                typeof window !== 'undefined' &&
+                typeof window.scrollBy === 'function'
+              ) {
+                window.scrollBy(0, delta);
+              }
+            }
+          };
+          restoreAnchor();
+          if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(restoreAnchor);
+          }
+        }
       };
       chevronEl.addEventListener('click', toggleInspector);
 

@@ -365,7 +365,7 @@ function loadGlobalPoolChoices() {
       });
       (sc.outbounds || []).forEach((ob, idx) => {
         if (!ob || typeof ob !== 'object') return;
-        const rawTag = String(ob.tag || ob.name || '').trim();
+        const rawTag = String(ob.remark || ob.tag || ob.name || '').trim();
         if (!rawTag) return;
         const proto = String(ob.type || '').toLowerCase();
         if (proto === 'urltest' || proto === 'selector' || proto === 'direct')
@@ -380,12 +380,22 @@ function loadGlobalPoolChoices() {
               : 'tls'
             : 'none';
         const port = String(ob.server_port || ob.port || '');
-        const resolvedLink =
-          linkByTag.get(rawTag) ||
-          (Array.isArray(sc.links) && sc.links[idx] ? sc.links[idx] : '');
 
         matchedSources.forEach((ms) => {
           const cleanName = poolServerName(rawTag, ms.prefix);
+          const resolvedLink = String(
+            ob.share_link ||
+              ob.__tachyon_link ||
+              ob.link ||
+              linkByTag.get(cleanName) ||
+              linkByTag.get(rawTag) ||
+              (Array.isArray(sc.links) &&
+              sc.links.length === (sc.outbounds || []).length &&
+              sc.links[idx]
+                ? sc.links[idx]
+                : '') ||
+              '',
+          ).trim();
           upsertServer(cleanName, {
             proto,
             trans,
@@ -399,6 +409,8 @@ function loadGlobalPoolChoices() {
       });
     });
 
+    const knownPrefixes = Array.from(prefixSet).filter(Boolean);
+
     // 2. Also merge servers and metadata from section-cache
     caches.forEach((c) => {
       const meta = (c && c.outboundMetadata) || {};
@@ -408,22 +420,71 @@ function loadGlobalPoolChoices() {
       const hiddenSet = new Set(
         Array.isArray(rawHidden) ? rawHidden : Object.keys(rawHidden),
       );
-      const names = meta.names || {};
-      const countries = meta.countries || {};
-      const protocols = meta.protocols || {};
-      const transports = meta.transports || {};
-      const securities = meta.securities || {};
-      const ports = meta.ports || {};
-      const prefixes = meta.prefixes || {};
-      const links = meta.links || (c && c.outboundLinks) || {};
+      const names =
+        meta.names && Object.keys(meta.names).length
+          ? meta.names
+          : (c && c.names) || {};
+      const countries =
+        meta.countries && Object.keys(meta.countries).length
+          ? meta.countries
+          : (c && c.countries) || {};
+      const protocols =
+        meta.protocols && Object.keys(meta.protocols).length
+          ? meta.protocols
+          : (c && (c.protocols || c.types)) || {};
+      const transports =
+        meta.transports && Object.keys(meta.transports).length
+          ? meta.transports
+          : (c && c.transports) || {};
+      const securities =
+        meta.securities && Object.keys(meta.securities).length
+          ? meta.securities
+          : (c && c.securities) || {};
+      const ports =
+        meta.ports && Object.keys(meta.ports).length
+          ? meta.ports
+          : (c && c.ports) || {};
+      const prefixes =
+        meta.prefixes && Object.keys(meta.prefixes).length
+          ? meta.prefixes
+          : (c && c.prefixes) || {};
+      const links =
+        meta.links && Object.keys(meta.links).length
+          ? meta.links
+          : (c && (c.outboundLinks || c.links)) || {};
 
       Object.entries(names).forEach(([tag, rawName]) => {
         if (groups[tag] || pgroups[tag] || hiddenSet.has(tag)) return;
-        const pfx = String(prefixes[tag] || '').trim();
-        const name = poolServerName(rawName, pfx);
+        if (
+          tag === 'direct-out' ||
+          tag === 'block-out' ||
+          tag.endsWith('-urltest-out') ||
+          tag.endsWith('-priority-out') ||
+          tag.startsWith('bal-') ||
+          tag.startsWith('lvl-')
+        )
+          return;
+        let pfx = String(prefixes[tag] || '').trim();
+        const rawStr = String(rawName || '').trim();
+        if (!pfx && rawStr) {
+          for (let i = 0; i < knownPrefixes.length; i++) {
+            const kp = knownPrefixes[i];
+            if (rawStr.startsWith(`${kp}: `)) {
+              pfx = kp;
+              break;
+            }
+          }
+        }
+        const name = poolServerName(rawStr, pfx);
         if (!name) return;
         const proto = String(protocols[tag] || '').toLowerCase();
-        if (proto === 'urltest' || proto === 'selector') return;
+        if (
+          proto === 'urltest' ||
+          proto === 'selector' ||
+          proto === 'direct' ||
+          proto === 'dpi'
+        )
+          return;
         const trans = String(transports[tag] || '').toLowerCase();
         const sec = String(securities[tag] || '').toLowerCase();
         const port = String(ports[tag] || '');
@@ -1922,6 +1983,56 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
         }
       };
 
+      let groupExpanded = isExpanded;
+      const expandedInspectorStyle =
+        'display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(148, 163, 184, 0.16);';
+      let card: HTMLElement | null = null;
+      const toggleGroupExpanded = () => {
+        const prevTop =
+          card && typeof card.getBoundingClientRect === 'function'
+            ? card.getBoundingClientRect().top
+            : null;
+        groupExpanded = !groupExpanded;
+        if (groupExpanded) expandedGroupIds.add(gid);
+        else expandedGroupIds.delete(gid);
+        if (card) card.classList.toggle('is-expanded', groupExpanded);
+        inspectorEl.setAttribute(
+          'style',
+          groupExpanded ? expandedInspectorStyle : 'display: none;',
+        );
+        chevronBtn.textContent = groupExpanded ? '▴' : '▾';
+        if (
+          prevTop !== null &&
+          card &&
+          typeof card.getBoundingClientRect === 'function'
+        ) {
+          const restoreAnchor = () => {
+            if (!card) return;
+            const nextTop = card.getBoundingClientRect().top;
+            const delta = nextTop - prevTop;
+            if (Math.abs(delta) > 1) {
+              const mainContent = document.getElementById('maincontent');
+              if (
+                mainContent &&
+                mainContent.scrollHeight > mainContent.clientHeight
+              ) {
+                mainContent.scrollTop += delta;
+              }
+              if (
+                typeof window !== 'undefined' &&
+                typeof window.scrollBy === 'function'
+              ) {
+                window.scrollBy(0, delta);
+              }
+            }
+          };
+          restoreAnchor();
+          if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(restoreAnchor);
+          }
+        }
+      };
+
       const chevronBtn = E(
         'button',
         {
@@ -1932,21 +2043,17 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
           click: (ev) => {
             ev.preventDefault();
             ev.stopPropagation();
-            if (expandedGroupIds.has(gid)) expandedGroupIds.delete(gid);
-            else expandedGroupIds.add(gid);
-            renderGroupsRows();
+            toggleGroupExpanded();
           },
         },
-        isExpanded ? '▴' : '▾',
+        groupExpanded ? '▴' : '▾',
       );
 
       const inspectorEl = E(
         'div',
         {
           class: 'tachyon-studio-source-inspector',
-          style: isExpanded
-            ? 'display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(148, 163, 184, 0.16);'
-            : 'display: none;',
+          style: groupExpanded ? expandedInspectorStyle : 'display: none;',
           click: (ev) => ev.stopPropagation(),
         },
         [
@@ -1990,7 +2097,43 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
                         pUp && tUp && pUp !== tUp
                           ? `${pUp} • ${tUp}`
                           : pUp || tUp || 'PROXY';
-                      const resolvedLink = String(srv.link || '').trim();
+                      let resolvedLink = String(srv.link || '').trim();
+                      if (!resolvedLink) {
+                        try {
+                          const storeMod = globalThis.tachyonStore || null;
+                          const sectionsObj =
+                            storeMod && typeof storeMod.get === 'function'
+                              ? storeMod.get()?.connectionsWidget?.data
+                                  ?.sections || {}
+                              : {};
+                          const srvName = String(
+                            srv.value || srv.label || '',
+                          ).trim();
+                          for (const sec of Object.values(sectionsObj)) {
+                            const obs = Array.isArray(sec?.outbounds)
+                              ? sec.outbounds
+                              : [];
+                            for (const ob of obs) {
+                              const n = String(
+                                ob?.displayName || ob?.name || '',
+                              ).trim();
+                              if (
+                                (n === srvName ||
+                                  n.endsWith(`: ${srvName}`) ||
+                                  n.endsWith(` ${srvName}`)) &&
+                                ob?.link &&
+                                String(ob.link).includes('://')
+                              ) {
+                                resolvedLink = String(ob.link).trim();
+                                break;
+                              }
+                            }
+                            if (resolvedLink) break;
+                          }
+                        } catch (_e) {
+                          // ignore
+                        }
+                      }
                       return E('tr', {}, [
                         E(
                           'td',
@@ -2118,18 +2261,16 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
         ],
       );
 
-      const card = E(
+      card = E(
         'div',
         {
           class: `tachyon-studio-card tachyon-studio-card--group is-enabled ${
-            isExpanded ? 'is-expanded' : ''
+            groupExpanded ? 'is-expanded' : ''
           }`,
           draggable: 'true',
           style: 'cursor: pointer;',
           click: () => {
-            if (expandedGroupIds.has(gid)) expandedGroupIds.delete(gid);
-            else expandedGroupIds.add(gid);
-            renderGroupsRows();
+            toggleGroupExpanded();
           },
         },
         [

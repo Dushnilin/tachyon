@@ -833,6 +833,10 @@ function add_tls(url, security, default_tls) {
             mlkem_preference = query.supportX25519MLKEM768;
         if (mlkem_preference == null)
             mlkem_preference = query["support-x25519mlkem768"];
+        if (mlkem_preference == null)
+            mlkem_preference = query.pq;
+        if (mlkem_preference == null)
+            mlkem_preference = query.post_quantum;
         if (mlkem_preference == null) {
             let extra = xhttp_extra_settings(query);
             mlkem_preference = extra.support_x25519mlkem768;
@@ -840,7 +844,11 @@ function add_tls(url, security, default_tls) {
                 mlkem_preference = extra.supportX25519MLKEM768;
             if (mlkem_preference == null)
                 mlkem_preference = extra["support-x25519mlkem768"];
+            if (mlkem_preference == null && trim(as_string(extra.pqv || extra.mldsa65Verify || "")) != "")
+                mlkem_preference = "true";
         }
+        if (mlkem_preference == null && trim(as_string(query.pqv || query.mldsa65Verify || "")) != "")
+            mlkem_preference = "true";
         if (mlkem_preference != null)
             tls.reality.support_x25519mlkem768 = is_true(mlkem_preference);
     }
@@ -2325,6 +2333,8 @@ function add_clash_tls(outbound, options) {
         tls.reality = { enabled: true, public_key: options.reality_public_key };
         if (options.reality_short_id != "")
             tls.reality.short_id = options.reality_short_id;
+        if (options.reality_support_mlkem != null && options.reality_support_mlkem != "")
+            tls.reality.support_x25519mlkem768 = is_true(options.reality_support_mlkem);
     }
     else if (options.fingerprint != "") {
         tls.utls = { enabled: true, fingerprint: options.fingerprint };
@@ -2369,6 +2379,9 @@ function parse_clash_record(record) {
         grpc_service_name: as_string(record["grpc-opts.grpc-service-name"]),
         reality_public_key: as_string(record["reality-opts.public-key"]),
         reality_short_id: as_string(record["reality-opts.short-id"]),
+        reality_support_mlkem: record["reality-opts.support_x25519mlkem768"] != null ? as_string(record["reality-opts.support_x25519mlkem768"]) :
+            (record["reality-opts.supportX25519MLKEM768"] != null ? as_string(record["reality-opts.supportX25519MLKEM768"]) :
+            (record["reality-opts.support-x25519mlkem768"] != null ? as_string(record["reality-opts.support-x25519mlkem768"]) : "")),
         alpn: normalized_clash_alpn(record.alpn || ""),
         fingerprint: normalize_utls_fingerprint(as_string(record["client-fingerprint"] || record.fingerprint))
     };
@@ -3376,6 +3389,10 @@ function xray_tls_from_stream(stream, network) {
             mlkem_pref = settings.support_x25519mlkem768;
         if (mlkem_pref == null)
             mlkem_pref = settings.supportX25519MLKEM768;
+        if (mlkem_pref == null)
+            mlkem_pref = settings["support-x25519mlkem768"];
+        if (mlkem_pref == null && xray_first_string([reality.mldsa65Verify, reality.pqv, settings.mldsa65Verify, settings.pqv]) != "")
+            mlkem_pref = true;
         if (mlkem_pref != null)
             tls.reality.support_x25519mlkem768 = is_true(mlkem_pref);
         if (!tls.utls)
@@ -4785,6 +4802,9 @@ function content_requires_ucode_normalizer(input_file, headers_file) {
         index(data, "awg_config") >= 0 || index(data, "wg_config") >= 0)
         return true;
     if (index(data, "\"balancers\"") >= 0 || index(data, "\"observatory\"") >= 0 || index(data, "\"burstObservatory\"") >= 0)
+        return true;
+    if (index(data, "support_x25519mlkem768") >= 0 || index(data, "supportX25519MLKEM768") >= 0 ||
+        index(data, "support-x25519mlkem768") >= 0 || index(data, "mldsa65Verify") >= 0 || index(data, "pqv=") >= 0)
         return true;
 
     return false;

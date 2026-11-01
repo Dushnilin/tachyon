@@ -14,6 +14,17 @@ ${UpdatesTab.styles}
 ${PartialStyles}
 
 /* Scroll stability & theme anchoring isolation + Soft Violet Brand Accent */
+html,
+body,
+#maincontent,
+.main,
+.main-right,
+.cbi-map,
+.cbi-page-actions,
+footer {
+    overflow-anchor: none !important;
+}
+
 [id^="cbi-${TACHYON_CBI_PREFIX}"],
 .tachyon-view,
 #modal_overlay,
@@ -6918,7 +6929,8 @@ button.tachyon-studio-chip:hover {
     font-size: 12px;
 }
 
-.tachyon-studio-card--source-compact.is-expanded .tachyon-studio-source-inspector {
+.tachyon-studio-card--source-compact.is-expanded .tachyon-studio-source-inspector,
+.tachyon-studio-card--group.is-expanded .tachyon-studio-source-inspector {
     display: flex;
 }
 

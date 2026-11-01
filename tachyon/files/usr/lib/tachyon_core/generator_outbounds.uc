@@ -601,6 +601,10 @@ function apply_link_tls(outbound, scheme, query) {
             mlkem_preference = query.supportX25519MLKEM768;
         if (mlkem_preference == null)
             mlkem_preference = query["support-x25519mlkem768"];
+        if (mlkem_preference == null)
+            mlkem_preference = query.pq;
+        if (mlkem_preference == null)
+            mlkem_preference = query.post_quantum;
         if (mlkem_preference == null && as_string(query.extra || "") != "") {
             try {
                 let extra_obj = json(as_string(query.extra));
@@ -610,9 +614,13 @@ function apply_link_tls(outbound, scheme, query) {
                         mlkem_preference = extra_obj.supportX25519MLKEM768;
                     if (mlkem_preference == null)
                         mlkem_preference = extra_obj["support-x25519mlkem768"];
+                    if (mlkem_preference == null && trim(as_string(extra_obj.pqv || extra_obj.mldsa65Verify || "")) != "")
+                        mlkem_preference = "true";
                 }
             } catch (e) {}
         }
+        if (mlkem_preference == null && trim(as_string(query.pqv || query.mldsa65Verify || "")) != "")
+            mlkem_preference = "true";
         if (mlkem_preference != null)
             tls.reality.support_x25519mlkem768 = bool_query(mlkem_preference);
     }
