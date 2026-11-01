@@ -123,23 +123,47 @@ function xhttp_copy_known_settings(target, source) {
         "xPaddingBytes",
         "x_padding_bytes",
         "noGRPCHeader",
+        "noGrpcHeader",
         "no_grpc_header",
+        "noSSEHeader",
+        "noSseHeader",
+        "no_sse_header",
         "scMaxEachPostBytes",
         "sc_max_each_post_bytes",
         "scMinPostsIntervalMs",
         "sc_min_posts_interval_ms",
         "scStreamUpServerSecs",
         "sc_stream_up_server_secs",
+        "scMaxBufferedPosts",
+        "sc_max_buffered_posts",
+        "scMaxConcurrentPosts",
+        "sc_max_concurrent_posts",
+        "serverMaxHeaderBytes",
+        "server_max_header_bytes",
         "sessionPlacement",
         "SessionIDPlacement",
         "sessionIDPlacement",
+        "sessionIdPlacement",
         "session_placement",
+        "session_id_placement",
         "sessionKey",
         "SessionIDKey",
         "sessionIDKey",
+        "sessionIdKey",
         "session_key",
-        "scMaxBufferedPosts",
-        "sc_max_buffered_posts",
+        "session_id_key",
+        "sessionTable",
+        "SessionIDTable",
+        "sessionIDTable",
+        "sessionIdTable",
+        "session_table",
+        "session_id_table",
+        "sessionLength",
+        "SessionIDLength",
+        "sessionIDLength",
+        "sessionIdLength",
+        "session_length",
+        "session_id_length",
         "seqPlacement",
         "seq_placement",
         "seqKey",
@@ -168,6 +192,9 @@ function xhttp_copy_known_settings(target, source) {
         if (xhttp_value_present(source[key]))
             target[key] = source[key];
     }
+
+    if (type(source.headers) == "object" && length(keys(source.headers)) > 0)
+        target.headers = source.headers;
 }
 
 function xhttp_merge_extra_settings(target, value) {
@@ -328,8 +355,44 @@ function xhttp_normalize_xmux(value) {
     xhttp_optional_xmux_range(result, "max_connections", xhttp_object_setting_value(source, "maxConnections", "max_connections"));
     xhttp_optional_xmux_range(result, "c_max_reuse_times", xhttp_object_setting_value(source, "cMaxReuseTimes", "c_max_reuse_times"));
     xhttp_optional_xmux_range(result, "h_max_request_times", xhttp_object_setting_value(source, "hMaxRequestTimes", "h_max_request_times"));
-    xhttp_optional_xmux_range(result, "h_max_reusable_secs", xhttp_object_setting_value(source, "hMaxReusableSecs", "h_max_reusable_secs"));
+    let max_reusable = xhttp_object_setting_value(source, "hMaxReusableSecs", "h_max_reusable_secs");
+    if (max_reusable == null)
+        max_reusable = source.maxReusableSecs;
+    xhttp_optional_xmux_range(result, "h_max_reusable_secs", max_reusable);
     xhttp_optional_xmux_integer(result, "h_keep_alive_period", xhttp_object_setting_value(source, "hKeepAlivePeriod", "h_keep_alive_period"));
+
+    if (result.max_connections == "0" || result.max_connections == "0-0")
+        delete result.max_connections;
+    if (result.max_connections != null && (result.max_concurrency == "0" || result.max_concurrency == "0-0"))
+        delete result.max_concurrency;
+
+    return length(keys(result)) > 0 ? result : null;
+}
+
+function xhttp_normalize_headers(value) {
+    let source = xhttp_object_arg(value);
+    if (type(source) != "object")
+        return null;
+
+    let result = {};
+    for (let k, v in source) {
+        let key = trim(as_string(k));
+        if (key == "")
+            continue;
+        if (type(v) == "array") {
+            for (let item in v) {
+                let s = trim(as_string(item));
+                if (s != "") {
+                    result[key] = s;
+                    break;
+                }
+            }
+        } else if (v != null) {
+            let s = trim(as_string(v));
+            if (s != "")
+                result[key] = s;
+        }
+    }
 
     return length(keys(result)) > 0 ? result : null;
 }
@@ -364,20 +427,28 @@ function xhttp_apply_v2_settings(result, primary, extra) {
     // XHTTP v2 keys (session/seq placement, uplink-data placement, X-Padding
     // obfuscation). Every field is opt-in per the sing-box-lx contract; the
     // v1 wire shape stays byte-identical when none are present.
-    xhttp_optional_enum(result, "session_placement", xhttp_setting_value(primary, extra, [ "sessionPlacement", "SessionIDPlacement", "sessionIDPlacement" ], "session_placement"), [ "path", "query", "header", "cookie" ]);
-    xhttp_optional_string(result, "session_key", xhttp_setting_value(primary, extra, [ "sessionKey", "SessionIDKey", "sessionIDKey" ], "session_key"));
+    xhttp_optional_enum(result, "session_placement", xhttp_setting_value(primary, extra, [ "sessionPlacement", "SessionIDPlacement", "sessionIDPlacement", "sessionIdPlacement" ], [ "session_placement", "session_id_placement" ]), [ "path", "query", "header", "cookie" ]);
+    xhttp_optional_string(result, "session_key", xhttp_setting_value(primary, extra, [ "sessionKey", "SessionIDKey", "sessionIDKey", "sessionIdKey" ], [ "session_key", "session_id_key" ]));
+    xhttp_optional_string(result, "session_table", xhttp_setting_value(primary, extra, [ "sessionTable", "SessionIDTable", "sessionIDTable", "sessionIdTable" ], [ "session_table", "session_id_table" ]));
+    xhttp_optional_positive_range(result, "session_length", xhttp_setting_value(primary, extra, [ "sessionLength", "SessionIDLength", "sessionIDLength", "sessionIdLength" ], [ "session_length", "session_id_length" ]));
     xhttp_optional_enum(result, "seq_placement", xhttp_setting_value(primary, extra, "seqPlacement", "seq_placement"), [ "path", "query", "header", "cookie" ]);
     xhttp_optional_string(result, "seq_key", xhttp_setting_value(primary, extra, "seqKey", "seq_key"));
     xhttp_optional_enum(result, "uplink_data_placement", xhttp_setting_value(primary, extra, "uplinkDataPlacement", "uplink_data_placement"), [ "body", "auto", "header", "cookie" ]);
     xhttp_optional_string(result, "uplink_data_key", xhttp_setting_value(primary, extra, "uplinkDataKey", "uplink_data_key"));
     xhttp_optional_positive_range(result, "uplink_chunk_size", xhttp_setting_value(primary, extra, "uplinkChunkSize", "uplink_chunk_size"));
     xhttp_optional_enum(result, "uplink_http_method", xhttp_setting_value(primary, extra, [ "uplinkHttpMethod", "uplinkHTTPMethod" ], "uplink_http_method"), [ "POST", "GET" ]);
+    xhttp_optional_bool(result, "no_sse_header", xhttp_setting_value(primary, extra, [ "noSSEHeader", "noSseHeader" ], "no_sse_header"));
     xhttp_optional_positive_integer(result, "sc_max_buffered_posts", xhttp_setting_value(primary, extra, "scMaxBufferedPosts", "sc_max_buffered_posts"));
+    xhttp_optional_positive_integer(result, "sc_max_concurrent_posts", xhttp_setting_value(primary, extra, "scMaxConcurrentPosts", "sc_max_concurrent_posts"));
+    xhttp_optional_positive_integer(result, "server_max_header_bytes", xhttp_setting_value(primary, extra, "serverMaxHeaderBytes", "server_max_header_bytes"));
     xhttp_optional_bool(result, "x_padding_obfs_mode", xhttp_setting_value(primary, extra, "xPaddingObfsMode", "x_padding_obfs_mode"));
     xhttp_optional_enum(result, "x_padding_placement", xhttp_setting_value(primary, extra, "xPaddingPlacement", "x_padding_placement"), [ "cookie", "header", "query", "queryInHeader" ]);
     xhttp_optional_string(result, "x_padding_key", xhttp_setting_value(primary, extra, "xPaddingKey", "x_padding_key"));
     xhttp_optional_string(result, "x_padding_header", xhttp_setting_value(primary, extra, "xPaddingHeader", "x_padding_header"));
     xhttp_optional_enum(result, "x_padding_method", xhttp_setting_value(primary, extra, "xPaddingMethod", "x_padding_method"), [ "repeat-x", "tokenish" ]);
+    let headers = xhttp_normalize_headers(xhttp_setting_value(primary, extra, "headers", "headers"));
+    if (headers)
+        result.headers = headers;
 }
 
 function json_decode_text(text) {
@@ -3452,6 +3523,8 @@ function xray_transport_from_stream(stream) {
 
     if (network == "xhttp") {
         let settings = object_or_empty(stream.xhttpSettings);
+        let extra_settings = {};
+        xhttp_merge_extra_settings(extra_settings, settings);
         let result = {
             type: "xhttp",
             mode: as_string(settings.mode || "auto"),
@@ -3465,15 +3538,15 @@ function xray_transport_from_stream(stream) {
             result.mode = "auto";
         if (as_string(settings.host || "") != "")
             result.host = as_string(settings.host);
-        xhttp_optional_positive_range(result, "x_padding_bytes", xhttp_setting_value(settings, settings, "xPaddingBytes", "x_padding_bytes"));
-        xhttp_optional_bool(result, "no_grpc_header", xhttp_setting_value(settings, settings, "noGRPCHeader", "no_grpc_header"));
-        xhttp_optional_positive_range(result, "sc_max_each_post_bytes", xhttp_setting_value(settings, settings, "scMaxEachPostBytes", "sc_max_each_post_bytes"));
-        xhttp_optional_range(result, "sc_min_posts_interval_ms", xhttp_setting_value(settings, settings, "scMinPostsIntervalMs", "sc_min_posts_interval_ms"));
-        xhttp_optional_range(result, "sc_stream_up_server_secs", xhttp_setting_value(settings, settings, "scStreamUpServerSecs", "sc_stream_up_server_secs"));
-        let xmux = xhttp_normalize_xmux(settings.xmux);
+        xhttp_optional_positive_range(result, "x_padding_bytes", xhttp_setting_value(settings, extra_settings, "xPaddingBytes", "x_padding_bytes"));
+        xhttp_optional_bool(result, "no_grpc_header", xhttp_setting_value(settings, extra_settings, [ "noGRPCHeader", "noGrpcHeader" ], "no_grpc_header"));
+        xhttp_optional_positive_range(result, "sc_max_each_post_bytes", xhttp_setting_value(settings, extra_settings, "scMaxEachPostBytes", "sc_max_each_post_bytes"));
+        xhttp_optional_range(result, "sc_min_posts_interval_ms", xhttp_setting_value(settings, extra_settings, "scMinPostsIntervalMs", "sc_min_posts_interval_ms"));
+        xhttp_optional_range(result, "sc_stream_up_server_secs", xhttp_setting_value(settings, extra_settings, "scStreamUpServerSecs", "sc_stream_up_server_secs"));
+        let xmux = xhttp_normalize_xmux(xhttp_setting_value(settings, extra_settings, "xmux", "xmux"));
         if (xmux)
             result.xmux = xmux;
-        xhttp_apply_v2_settings(result, settings, settings);
+        xhttp_apply_v2_settings(result, settings, extra_settings);
         return result;
     }
 

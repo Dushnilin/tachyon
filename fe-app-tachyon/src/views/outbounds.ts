@@ -3328,6 +3328,22 @@ function createOutboundsContent(section) {
     return uci.get(UCI_PACKAGE, sectionId, 'download_via_proxy_section');
   };
 
+  o = section.taboption(
+    'general',
+    form.ListValue,
+    'subscription_engine',
+    _('Subscription Fetch & Parse Engine'),
+    _(
+      'Select the engine used to download and parse this subscription. Tachyon Core uses the native Rust binary (tachyon-core subscription) with adaptive User-Agent cascade and full Xray multi-hop config support.',
+    ),
+  );
+  o.modalonly = true;
+  o.default = 'auto';
+  o.value('auto', _('Default (From Global Settings)'));
+  o.value('core', _('Tachyon Core Binary (tachyon-core subscription)'));
+  o.value('ucode', _('Built-in Script (curl + ucode)'));
+  o.depends('source_type', 'subscription');
+
   // ── 2. Proxy Share Links ──────────────────────────────────────────────────
   o = section.taboption(
     'general',
@@ -5623,22 +5639,6 @@ function createOutboundsContent(section) {
   o.depends('source_type', 'desync');
 
   // ── 11. Advanced & Subscription Options Tab ───────────────────────────────
-  o = section.taboption(
-    'advanced',
-    form.ListValue,
-    'subscription_engine',
-    _('Subscription Fetch & Parse Engine'),
-    _(
-      'Select the engine used to download and parse this subscription. Tachyon Core uses the native Rust binary (tachyon-core subscription) with adaptive User-Agent cascade and full Xray multi-hop config support.',
-    ),
-  );
-  o.modalonly = true;
-  o.default = 'auto';
-  o.value('auto', _('Default (From Global Settings)'));
-  o.value('core', _('Tachyon Core Binary (tachyon-core subscription)'));
-  o.value('ucode', _('Built-in Script (curl + ucode)'));
-  o.depends('source_type', 'subscription');
-
   o = section.taboption(
     'advanced',
     form.Flag,

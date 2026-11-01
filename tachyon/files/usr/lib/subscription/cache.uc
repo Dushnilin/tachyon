@@ -36,10 +36,10 @@ const TACHYON_SUBSCRIPTION_METADATA_DIR = getenv("TACHYON_SUBSCRIPTION_METADATA_
 const TACHYON_OUTBOUND_METADATA_DIR = getenv("TACHYON_OUTBOUND_METADATA_DIR") || TACHYON_RUNTIME_STATE_DIR + "/outbound-metadata";
 const TACHYON_SECTION_CACHE_DIR = getenv("TACHYON_SECTION_CACHE_DIR") || TACHYON_RUNTIME_STATE_DIR + "/section-cache";
 const TACHYON_RUNTIME_CACHE_FORMAT_FILE = getenv("TACHYON_RUNTIME_CACHE_FORMAT_FILE") || TACHYON_RUNTIME_STATE_DIR + "/cache-format";
-const TACHYON_RUNTIME_CACHE_FORMAT = getenv("TACHYON_RUNTIME_CACHE_FORMAT") || "8";
+const TACHYON_RUNTIME_CACHE_FORMAT = getenv("TACHYON_RUNTIME_CACHE_FORMAT") || "9";
 const TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR = getenv("TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR") || "/etc/tachyon/subscription-cache";
 const TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE = getenv("TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT_FILE") || TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR + "/cache-format";
-const TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT = getenv("TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT") || "7";
+const TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT = getenv("TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_FORMAT") || "8";
 const TACHYON_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE = getenv("TACHYON_SUBSCRIPTION_BOOTSTRAP_RETRY_PID_FILE") || TACHYON_RUNTIME_STATE_DIR + "/subscription-bootstrap-retry.pid";
 const TACHYON_SUBSCRIPTION_UPDATE_LOCK_DIR = getenv("TACHYON_SUBSCRIPTION_UPDATE_LOCK_DIR") || TACHYON_RUNTIME_STATE_DIR + "/subscription-update.lock";
 const TACHYON_PENDING_RELOAD_FILE = getenv("TACHYON_PENDING_RELOAD_FILE") || TACHYON_RUNTIME_STATE_DIR + "/reload.pending";
@@ -2170,9 +2170,9 @@ function download_subscription_into_cache(section_name_value, subscription_url, 
     let metadata_tmpfile = temp_path(TMP_SUBSCRIPTION_FOLDER, cache_section, "metadata");
     let cached_user_agent = read_text(subscription_user_agent_cache_path);
     let default_user_agent = get_subscription_user_agent("");
-    let subscription_device_headers_signature = connections.device_headers_signature(subscription_device_headers);
     let parser = subscription_parser();
     let effective_engine = lc(trim(as_string(subscription_engine_mode || connections.subscription_engine(find_section(sections, section_name_value), subscription_url))));
+    let subscription_device_headers_signature = connections.device_headers_signature(subscription_device_headers, effective_engine);
 
     if (effective_engine == "core" &&
         as_string(service_proxy_address_value) == "" &&
@@ -2767,7 +2767,8 @@ function ensure_subscription_source_for_prepare(state, section, source_index, en
         metadata_output_path,
         state.sections,
         parsed.device_headers,
-        parsed.insecure
+        parsed.insecure,
+        parsed.subscription_engine
     );
 
     if (update_result == 0 || update_result == 2) {

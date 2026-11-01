@@ -3757,12 +3757,13 @@ function subscription_device_headers(section, value) {
     };
 }
 
-function device_headers_signature(headers) {
+function device_headers_signature(headers, engine) {
     headers = object_or_empty(headers);
+    let eng = lc(trim(as_string(engine || "")));
     if (!headers.enabled)
-        return "";
+        return eng == "ucode" ? "engine=ucode" : "";
 
-    return sprintf("%J", {
+    let sig = {
         enabled: "1",
         device_os: as_string(headers.device_os),
         ver_os: as_string(headers.ver_os),
@@ -3770,11 +3771,36 @@ function device_headers_signature(headers) {
         device_locale: as_string(headers.device_locale),
         app_version: as_string(headers.app_version),
         accept_language: as_string(headers.accept_language)
-    });
+    };
+    if (eng == "ucode")
+        sig.engine = "ucode";
+    return sprintf("%J", sig);
+}
+
+function subscription_engine(section, value) {
+    let child = subscription_source_item(section, value);
+    if (child != null) {
+        let eng = lc(trim(child_option_alias(child, [ "subscription_engine", "engine" ], "")));
+        if (eng == "core" || eng == "ucode")
+            return eng;
+    }
+    let item_eng = lc(trim(item_option(section, "subscription_url_settings", value, "subscription_engine", "")));
+    if (item_eng == "core" || item_eng == "ucode")
+        return item_eng;
+    if (section != null) {
+        let sec_eng = lc(trim(option(section, "subscription_engine", "")));
+        if (sec_eng == "core" || sec_eng == "ucode")
+            return sec_eng;
+    }
+    let settings = object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
+    let global_eng = lc(trim(option(settings, "subscription_engine", "core")));
+    if (global_eng == "ucode")
+        return "ucode";
+    return "core";
 }
 
 function subscription_device_headers_signature(section, value) {
-    return device_headers_signature(subscription_device_headers(section, value));
+    return device_headers_signature(subscription_device_headers(section, value), subscription_engine(section, value));
 }
 
 function subscription_download_section(section, value) {
@@ -3813,25 +3839,6 @@ function subscription_tls_fingerprint(section, value) {
     if (sec_fp != "" && sec_fp != "default")
         return sec_fp;
     return "";
-}
-
-function subscription_engine(section, value) {
-    let child = subscription_source_item(section, value);
-    if (child != null) {
-        let eng = lc(trim(child_option_alias(child, [ "subscription_engine", "engine" ], "")));
-        if (eng == "core" || eng == "ucode")
-            return eng;
-    }
-    if (section != null) {
-        let sec_eng = lc(trim(option(section, "subscription_engine", "")));
-        if (sec_eng == "core" || sec_eng == "ucode")
-            return sec_eng;
-    }
-    let settings = object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
-    let global_eng = lc(trim(option(settings, "subscription_engine", "core")));
-    if (global_eng == "ucode")
-        return "ucode";
-    return "core";
 }
 
 function urltest_check_interval(section, value) {

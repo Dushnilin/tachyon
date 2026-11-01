@@ -92,11 +92,17 @@ function add_xhttp_extra_query(params, transport) {
     for (let item in [
         ["xPaddingBytes", "x_padding_bytes"],
         ["noGRPCHeader", "no_grpc_header"],
+        ["noSSEHeader", "no_sse_header"],
         ["scMaxEachPostBytes", "sc_max_each_post_bytes"],
         ["scMinPostsIntervalMs", "sc_min_posts_interval_ms"],
+        ["scMaxBufferedPosts", "sc_max_buffered_posts"],
+        ["scMaxConcurrentPosts", "sc_max_concurrent_posts"],
+        ["serverMaxHeaderBytes", "server_max_header_bytes"],
         ["scStreamUpServerSecs", "sc_stream_up_server_secs"],
         ["sessionPlacement", "session_placement"],
         ["sessionKey", "session_key"],
+        ["sessionTable", "session_table"],
+        ["sessionLength", "session_length"],
         ["seqPlacement", "seq_placement"],
         ["seqKey", "seq_key"],
         ["uplinkDataPlacement", "uplink_data_placement"],
@@ -112,6 +118,9 @@ function add_xhttp_extra_query(params, transport) {
         if (transport[item[1]] != null)
             extra[item[0]] = transport[item[1]];
     }
+
+    if (type(transport.headers) == "object" && length(keys(transport.headers)) > 0)
+        extra.headers = transport.headers;
 
     if (type(transport.xmux) == "object") {
         let xmux = {};
