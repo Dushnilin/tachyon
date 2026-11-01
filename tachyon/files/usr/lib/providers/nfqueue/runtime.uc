@@ -15,6 +15,7 @@ let command_from_args = common.command_from_args;
 let command_output = common.command_output;
 let command_output_from_args = common.command_output_from_args;
 let command_status = common.command_status;
+let command_status_from_args = common.command_status_from_args;
 let command_success = common.command_success;
 let command_success_from_args = common.command_success_from_args;
 let object_or_empty = common.object_or_empty;

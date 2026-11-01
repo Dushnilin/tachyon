@@ -956,6 +956,8 @@ function install_zapret_like(component, action, runtime_module, resolve_fn, labe
     if (!run_logged_pkg_install_files("Installing " + label + " package " + pkg.name, [ pkg.file ], PKG_INSTALL_TIMEOUT))
         action_fail(component, action, "Failed to install " + label + " package", current_version, pkg.version, "", release.release_url || "");
 
+    if (file_exists("/opt"))
+        command_status_from_args([ "chmod", "0755", "/opt" ]);
     disable_standalone_service(component);
     restart_tachyon_after_successful_change();
     clear_version_caches();
