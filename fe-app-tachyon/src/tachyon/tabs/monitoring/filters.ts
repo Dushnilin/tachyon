@@ -652,8 +652,11 @@ export function getSearchValues(
 }
 
 export interface FilterConnectionsOptions {
-  deviceFilter: string;
-  routeFilter: string;
+  deviceFilter?: string;
+  routeFilter?: string;
+  deviceFilters?: Iterable<string>;
+  routeFilters?: Iterable<string>;
+  networkFilters?: Iterable<string>;
   searchQuery: string;
   tab: MonitoringTabId;
   activeConnections: MonitoredConnection[];
@@ -663,12 +666,34 @@ export interface FilterConnectionsOptions {
   pausedAt?: number | null;
 }
 
+function normalizeMultiFilterSet(
+  multiValues: Iterable<string> | undefined,
+  singleValue: string | undefined,
+  allFilterValue: string,
+): Set<string> {
+  const result = new Set<string>();
+  if (multiValues) {
+    for (const item of multiValues) {
+      const normalized = normalizeString(item);
+      if (normalized && normalized !== allFilterValue) {
+        result.add(normalized);
+      }
+    }
+  } else if (singleValue && singleValue !== allFilterValue) {
+    result.add(singleValue);
+  }
+  return result;
+}
+
 export function filterVisibleConnections(
   options: FilterConnectionsOptions,
 ): MonitoredConnection[] {
   const {
     deviceFilter,
     routeFilter,
+    deviceFilters,
+    routeFilters,
+    networkFilters,
     searchQuery,
     tab,
     activeConnections,
@@ -678,6 +703,26 @@ export function filterVisibleConnections(
     pausedAt,
   } = options;
 
+  const activeDeviceSet = normalizeMultiFilterSet(
+    deviceFilters,
+    deviceFilter,
+    allFilterValue,
+  );
+  const activeRouteSet = normalizeMultiFilterSet(
+    routeFilters,
+    routeFilter,
+    allFilterValue,
+  );
+  const activeNetworkSet = new Set<string>();
+  if (networkFilters) {
+    for (const net of networkFilters) {
+      const normalized = normalizeString(net).toLowerCase();
+      if (normalized && normalized !== allFilterValue) {
+        activeNetworkSet.add(normalized);
+      }
+    }
+  }
+
   const allConnections = [...activeConnections, ...closedConnections];
   const sourceList = tab === 'active' ? activeConnections : closedConnections;
   const sorted = sortConnections(sourceList, tab);
@@ -686,14 +731,17 @@ export function filterVisibleConnections(
   return sorted.filter((connection) => {
     const sourceIp = getConnectionSourceIp(connection);
     const isMatchingDevice =
-      deviceFilter === allFilterValue || sourceIp === deviceFilter;
+      activeDeviceSet.size === 0 || activeDeviceSet.has(sourceIp);
 
-    let isMatchingRoute = routeFilter === allFilterValue;
-    if (!isMatchingRoute && getRoute(connection) === routeFilter) {
-      isMatchingRoute = true;
-    }
+    const connRoute = getRoute(connection);
+    const isMatchingRoute =
+      activeRouteSet.size === 0 || activeRouteSet.has(connRoute);
 
-    if (!isMatchingDevice || !isMatchingRoute) {
+    const connNet = (getNetwork(connection) || '').toLowerCase();
+    const isMatchingNetwork =
+      activeNetworkSet.size === 0 || activeNetworkSet.has(connNet);
+
+    if (!isMatchingDevice || !isMatchingRoute || !isMatchingNetwork) {
       return false;
     }
 

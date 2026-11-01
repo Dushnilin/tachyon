@@ -118,12 +118,15 @@ let pendingConnectionsPayload: ClashConnectionsPayload | null = null;
 let pollingConnections = false;
 
 let activeTab: MonitoringTabId = 'active';
-let selectedDeviceFilter = ALL_FILTER_VALUE;
-let selectedRouteFilter = ALL_FILTER_VALUE;
+const selectedDeviceFilters = new Set<string>();
+const selectedRouteFilters = new Set<string>();
+const selectedNetworkFilters = new Set<string>();
+let openDropdownId: 'device' | 'route' | null = null;
 let searchQuery = '';
 let localDeviceChoices: LocalDeviceChoices = {};
 let lastDeviceFilterSignature = '';
 let lastRouteFilterSignature = '';
+let lastQuickFilterSignature = '';
 let loading = true;
 let failed = false;
 let closingAll = false;
@@ -134,6 +137,48 @@ let serviceAvailability: ServiceAvailability = 'loading';
 const activeConnections = new Map<string, MonitoredConnection>();
 const closedConnections = new Map<string, MonitoredConnection>();
 const closingConnectionIds = new Set<string>();
+
+function getRouteBadgeModifier(route: string): string {
+  const routeLower = (route || '').toLowerCase();
+  if (
+    routeLower.includes('block') ||
+    routeLower.includes('drop') ||
+    routeLower.includes('reject')
+  ) {
+    return 'tachyon_monitoring-page__route--block';
+  }
+  if (
+    routeLower.includes('dpi') ||
+    routeLower.includes('zapret') ||
+    routeLower.includes('byedpi') ||
+    routeLower.includes('desync') ||
+    routeLower.includes('wdtt') ||
+    routeLower.includes('olcrtc')
+  ) {
+    return 'tachyon_monitoring-page__route--dpi';
+  }
+  if (
+    routeLower.includes('direct') ||
+    routeLower.includes('wan') ||
+    routeLower.includes('bypass')
+  ) {
+    return 'tachyon_monitoring-page__route--direct';
+  }
+  if (
+    routeLower.includes('proxy') ||
+    routeLower.includes('vpn') ||
+    routeLower.includes('vless') ||
+    routeLower.includes('hysteria') ||
+    routeLower.includes('tuic') ||
+    routeLower.includes('shadowsocks') ||
+    routeLower.includes('trojan') ||
+    routeLower.includes('wireguard') ||
+    routeLower.includes('warp')
+  ) {
+    return 'tachyon_monitoring-page__route--proxy';
+  }
+  return '';
+}
 
 function getLocalDeviceFilterLabel(ip: string): string {
   const allConnections = [
@@ -147,10 +192,17 @@ function getLocalSourceCellParts(connection: MonitoredConnection) {
   return getSourceCellParts(connection, [], localDeviceChoices);
 }
 
+function getCurrentTabConnections(): MonitoredConnection[] {
+  return Array.from(
+    (activeTab === 'active' ? activeConnections : closedConnections).values(),
+  );
+}
+
 function getVisibleConnections(): MonitoredConnection[] {
   return filterVisibleConnections({
-    deviceFilter: selectedDeviceFilter,
-    routeFilter: selectedRouteFilter,
+    deviceFilters: selectedDeviceFilters,
+    routeFilters: selectedRouteFilters,
+    networkFilters: selectedNetworkFilters,
     searchQuery,
     tab: activeTab,
     activeConnections: Array.from(activeConnections.values()),
@@ -271,88 +323,655 @@ function getKnownSourceIps(): string[] {
   });
 }
 
-function renderRouteFilterOptions() {
-  const select = document.getElementById(
-    'monitoring-route-filter',
-  ) as HTMLSelectElement | null;
-  if (!select) return;
-
+function getAvailableRoutes(): string[] {
   const uniqueRoutes = new Set<string>();
 
-  // Оставляем только наши секции маршрутизации
   getRouteSections().forEach(({ displayName }) => {
     if (displayName) uniqueRoutes.add(displayName);
   });
 
-  const routes = Array.from(uniqueRoutes)
+  activeConnections.forEach((connection) => {
+    const route = getRoute(connection);
+    if (route && route !== '-') uniqueRoutes.add(route);
+  });
+
+  closedConnections.forEach((connection) => {
+    const route = getRoute(connection);
+    if (route && route !== '-') uniqueRoutes.add(route);
+  });
+
+  return Array.from(uniqueRoutes)
     .filter((name) => {
       const lower = name.toLowerCase().trim();
-      return lower !== '-' && !lower.includes('failover');
+      return lower !== '' && lower !== '-' && !lower.includes('failover');
     })
-    .sort();
+    .sort((a, b) => a.localeCompare(b));
+}
 
-  if (
-    selectedRouteFilter !== ALL_FILTER_VALUE &&
-    !routes.includes(selectedRouteFilter)
-  ) {
-    selectedRouteFilter = ALL_FILTER_VALUE;
+function getRouteConnectionCounts(): Map<string, number> {
+  const counts = new Map<string, number>();
+  getCurrentTabConnections().forEach((connection) => {
+    const route = getRoute(connection);
+    if (route && route !== '-') {
+      counts.set(route, (counts.get(route) || 0) + 1);
+    }
+  });
+  return counts;
+}
+
+function getDeviceConnectionCounts(): Map<string, number> {
+  const counts = new Map<string, number>();
+  getCurrentTabConnections().forEach((connection) => {
+    const ip = getConnectionSourceIp(connection);
+    if (ip) {
+      counts.set(ip, (counts.get(ip) || 0) + 1);
+    }
+  });
+  return counts;
+}
+
+function getNetworkConnectionCounts(): Map<string, number> {
+  const counts = new Map<string, number>();
+  getCurrentTabConnections().forEach((connection) => {
+    const net = (getNetwork(connection) || '').toLowerCase();
+    if (net) {
+      counts.set(net, (counts.get(net) || 0) + 1);
+    }
+  });
+  return counts;
+}
+
+function setDropdownOpen(target: 'device' | 'route' | null) {
+  openDropdownId = target;
+
+  const deviceWrap = document.getElementById('monitoring-device-filter-wrap');
+  const deviceTrigger = document.getElementById(
+    'monitoring-device-filter-trigger',
+  );
+  const deviceMenu = document.getElementById('monitoring-device-filter-menu');
+
+  const routeWrap = document.getElementById('monitoring-route-filter-wrap');
+  const routeTrigger = document.getElementById(
+    'monitoring-route-filter-trigger',
+  );
+  const routeMenu = document.getElementById('monitoring-route-filter-menu');
+
+  const isDeviceOpen = target === 'device';
+  const isRouteOpen = target === 'route';
+
+  if (deviceWrap) {
+    deviceWrap.classList.toggle(
+      'tachyon_monitoring-page__multiselect--open',
+      isDeviceOpen,
+    );
+  }
+  if (deviceTrigger) {
+    deviceTrigger.setAttribute('aria-expanded', String(isDeviceOpen));
+  }
+  if (deviceMenu) {
+    deviceMenu.hidden = !isDeviceOpen;
   }
 
-  const signature = [selectedRouteFilter, ...routes].join('|');
+  if (routeWrap) {
+    routeWrap.classList.toggle(
+      'tachyon_monitoring-page__multiselect--open',
+      isRouteOpen,
+    );
+  }
+  if (routeTrigger) {
+    routeTrigger.setAttribute('aria-expanded', String(isRouteOpen));
+  }
+  if (routeMenu) {
+    routeMenu.hidden = !isRouteOpen;
+  }
+}
+
+function updateFilterCountsInContainer(
+  container: HTMLElement,
+  counts: Map<string, number>,
+) {
+  container
+    .querySelectorAll<HTMLElement>('[data-filter-count]')
+    .forEach((badge) => {
+      const key = badge.getAttribute('data-filter-count') || '';
+      const count = counts.get(key) || 0;
+      const nextText = String(count);
+      if (badge.textContent !== nextText) {
+        badge.textContent = nextText;
+      }
+    });
+}
+
+function renderRouteFilterOptions() {
+  const menu = document.getElementById('monitoring-route-filter-menu');
+  const labelEl = document.getElementById('monitoring-route-filter-label');
+  const trigger = document.getElementById(
+    'monitoring-route-filter-trigger',
+  ) as HTMLButtonElement | null;
+  if (!menu || !labelEl) return;
+
+  const routes = getAvailableRoutes();
+  const routeCounts = getRouteConnectionCounts();
+
+  Array.from(selectedRouteFilters).forEach((selected) => {
+    if (!routes.includes(selected)) {
+      selectedRouteFilters.delete(selected);
+    }
+  });
+
+  if (selectedRouteFilters.size === 0) {
+    labelEl.textContent = _('All Routes');
+  } else if (selectedRouteFilters.size === 1) {
+    labelEl.textContent = Array.from(selectedRouteFilters)[0];
+  } else {
+    labelEl.textContent = `${_('Routes')}: ${selectedRouteFilters.size}`;
+  }
+
+  if (trigger) {
+    trigger.classList.toggle(
+      'tachyon_monitoring-page__multiselect-trigger--active',
+      selectedRouteFilters.size > 0,
+    );
+    trigger.disabled = serviceAvailability === 'stopped';
+  }
+
+  const signature = [
+    Array.from(selectedRouteFilters).sort().join(','),
+    ...routes,
+  ].join('|');
 
   if (signature === lastRouteFilterSignature) {
-    select.value = selectedRouteFilter;
+    updateFilterCountsInContainer(menu, routeCounts);
     return;
   }
 
   lastRouteFilterSignature = signature;
 
-  const options = [
-    E('option', { value: ALL_FILTER_VALUE }, _('All Routes')),
-    ...routes.map((name) => E('option', { value: name }, name)),
-  ];
+  const allChecked = selectedRouteFilters.size === 0;
+  const header = E('div', { class: 'tachyon_monitoring-page__menu-header' }, [
+    E('label', { class: 'tachyon_monitoring-page__check-all' }, [
+      E('input', {
+        type: 'checkbox',
+        class: 'tachyon_monitoring-page__checkbox',
+        ...(allChecked ? { checked: true } : {}),
+        onchange: () => {
+          selectedRouteFilters.clear();
+          lastRouteFilterSignature = '';
+          lastQuickFilterSignature = '';
+          renderControls();
+          renderConnections();
+        },
+      }),
+      E('span', {}, _('All Routes')),
+    ]),
+    ...(selectedRouteFilters.size > 0
+      ? [
+          E(
+            'button',
+            {
+              type: 'button',
+              class: 'tachyon_monitoring-page__menu-reset',
+              onclick: (e: MouseEvent) => {
+                e.stopPropagation();
+                selectedRouteFilters.clear();
+                lastRouteFilterSignature = '';
+                lastQuickFilterSignature = '';
+                renderControls();
+                renderConnections();
+              },
+            },
+            _('Reset'),
+          ),
+        ]
+      : []),
+  ]);
 
-  select.replaceChildren(...options);
-  select.value = selectedRouteFilter;
+  const items =
+    routes.length > 0
+      ? routes.map((routeName) => {
+          const isChecked = selectedRouteFilters.has(routeName);
+          const count = routeCounts.get(routeName) || 0;
+          const badgeModifier = getRouteBadgeModifier(routeName);
+          const badgeClass = ['tachyon_monitoring-page__route', badgeModifier]
+            .filter(Boolean)
+            .join(' ');
+          const countBadge = E(
+            'span',
+            { class: 'tachyon_monitoring-page__check-count' },
+            String(count),
+          );
+          countBadge.setAttribute('data-filter-count', routeName);
+
+          return E(
+            'label',
+            {
+              class: `tachyon_monitoring-page__check-item${
+                isChecked ? ' tachyon_monitoring-page__check-item--checked' : ''
+              }`,
+            },
+            [
+              E('input', {
+                type: 'checkbox',
+                class: 'tachyon_monitoring-page__checkbox',
+                value: routeName,
+                ...(isChecked ? { checked: true } : {}),
+                onchange: (e: Event) => {
+                  const target = e.target as HTMLInputElement;
+                  if (target.checked) {
+                    selectedRouteFilters.add(routeName);
+                  } else {
+                    selectedRouteFilters.delete(routeName);
+                  }
+                  lastRouteFilterSignature = '';
+                  lastQuickFilterSignature = '';
+                  renderControls();
+                  renderConnections();
+                },
+              }),
+              E(
+                'span',
+                { class: 'tachyon_monitoring-page__check-label' },
+                E('span', { class: badgeClass }, routeName),
+              ),
+              countBadge,
+            ],
+          );
+        })
+      : [
+          E(
+            'div',
+            { class: 'tachyon_monitoring-page__menu-empty' },
+            _('No routes'),
+          ),
+        ];
+
+  menu.replaceChildren(
+    header,
+    E('div', { class: 'tachyon_monitoring-page__menu-list' }, items),
+  );
 }
 
 function renderDeviceFilterOptions() {
-  const select = document.getElementById(
-    'monitoring-device-filter',
-  ) as HTMLSelectElement | null;
+  const menu = document.getElementById('monitoring-device-filter-menu');
+  const labelEl = document.getElementById('monitoring-device-filter-label');
+  const trigger = document.getElementById(
+    'monitoring-device-filter-trigger',
+  ) as HTMLButtonElement | null;
 
-  if (!select) {
+  if (!menu || !labelEl) {
     return;
   }
 
   const sourceIps = getKnownSourceIps();
-  if (
-    selectedDeviceFilter !== ALL_FILTER_VALUE &&
-    !sourceIps.includes(selectedDeviceFilter)
-  ) {
-    selectedDeviceFilter = ALL_FILTER_VALUE;
+  const deviceCounts = getDeviceConnectionCounts();
+
+  Array.from(selectedDeviceFilters).forEach((selected) => {
+    if (!sourceIps.includes(selected)) {
+      selectedDeviceFilters.delete(selected);
+    }
+  });
+
+  if (selectedDeviceFilters.size === 0) {
+    labelEl.textContent = _('All sources');
+  } else if (selectedDeviceFilters.size === 1) {
+    const onlyIp = Array.from(selectedDeviceFilters)[0];
+    labelEl.textContent = getLocalDeviceFilterLabel(onlyIp);
+  } else {
+    labelEl.textContent = `${_('Source')}: ${selectedDeviceFilters.size}`;
+  }
+
+  if (trigger) {
+    trigger.classList.toggle(
+      'tachyon_monitoring-page__multiselect-trigger--active',
+      selectedDeviceFilters.size > 0,
+    );
+    trigger.disabled = serviceAvailability === 'stopped';
   }
 
   const signature = [
-    selectedDeviceFilter,
+    Array.from(selectedDeviceFilters).sort().join(','),
     ...sourceIps.map((ip) => `${ip}:${getLocalDeviceFilterLabel(ip)}`),
   ].join('|');
+
   if (signature === lastDeviceFilterSignature) {
-    select.value = selectedDeviceFilter;
+    updateFilterCountsInContainer(menu, deviceCounts);
     return;
   }
 
   lastDeviceFilterSignature = signature;
 
-  const options = [
-    E('option', { value: ALL_FILTER_VALUE }, _('All')),
-    ...sourceIps.map((ip) =>
-      E('option', { value: ip }, getLocalDeviceFilterLabel(ip)),
-    ),
-  ];
+  const allChecked = selectedDeviceFilters.size === 0;
+  const header = E('div', { class: 'tachyon_monitoring-page__menu-header' }, [
+    E('label', { class: 'tachyon_monitoring-page__check-all' }, [
+      E('input', {
+        type: 'checkbox',
+        class: 'tachyon_monitoring-page__checkbox',
+        ...(allChecked ? { checked: true } : {}),
+        onchange: () => {
+          selectedDeviceFilters.clear();
+          lastDeviceFilterSignature = '';
+          lastQuickFilterSignature = '';
+          renderControls();
+          renderConnections();
+        },
+      }),
+      E('span', {}, _('All sources')),
+    ]),
+    ...(selectedDeviceFilters.size > 0
+      ? [
+          E(
+            'button',
+            {
+              type: 'button',
+              class: 'tachyon_monitoring-page__menu-reset',
+              onclick: (e: MouseEvent) => {
+                e.stopPropagation();
+                selectedDeviceFilters.clear();
+                lastDeviceFilterSignature = '';
+                lastQuickFilterSignature = '';
+                renderControls();
+                renderConnections();
+              },
+            },
+            _('Reset'),
+          ),
+        ]
+      : []),
+  ]);
 
-  select.replaceChildren(...options);
-  select.value = selectedDeviceFilter;
+  const items =
+    sourceIps.length > 0
+      ? sourceIps.map((ip) => {
+          const isChecked = selectedDeviceFilters.has(ip);
+          const count = deviceCounts.get(ip) || 0;
+          const label = getLocalDeviceFilterLabel(ip);
+          const countBadge = E(
+            'span',
+            { class: 'tachyon_monitoring-page__check-count' },
+            String(count),
+          );
+          countBadge.setAttribute('data-filter-count', ip);
+
+          return E(
+            'label',
+            {
+              class: `tachyon_monitoring-page__check-item${
+                isChecked ? ' tachyon_monitoring-page__check-item--checked' : ''
+              }`,
+            },
+            [
+              E('input', {
+                type: 'checkbox',
+                class: 'tachyon_monitoring-page__checkbox',
+                value: ip,
+                ...(isChecked ? { checked: true } : {}),
+                onchange: (e: Event) => {
+                  const target = e.target as HTMLInputElement;
+                  if (target.checked) {
+                    selectedDeviceFilters.add(ip);
+                  } else {
+                    selectedDeviceFilters.delete(ip);
+                  }
+                  lastDeviceFilterSignature = '';
+                  lastQuickFilterSignature = '';
+                  renderControls();
+                  renderConnections();
+                },
+              }),
+              E(
+                'span',
+                {
+                  class: 'tachyon_monitoring-page__check-label',
+                  title: label,
+                },
+                label,
+              ),
+              countBadge,
+            ],
+          );
+        })
+      : [
+          E(
+            'div',
+            { class: 'tachyon_monitoring-page__menu-empty' },
+            _('No active connections'),
+          ),
+        ];
+
+  menu.replaceChildren(
+    header,
+    E('div', { class: 'tachyon_monitoring-page__menu-list' }, items),
+  );
+}
+
+function renderNetworkFilterControls() {
+  const group = document.getElementById('monitoring-network-filters');
+  if (!group) return;
+
+  const netCounts = getNetworkConnectionCounts();
+  const isStopped = serviceAvailability === 'stopped';
+
+  group
+    .querySelectorAll<HTMLLabelElement>('.tachyon_monitoring-page__proto-chip')
+    .forEach((chip) => {
+      const input = chip.querySelector<HTMLInputElement>(
+        'input[type="checkbox"]',
+      );
+      const proto = (input?.value || '').toLowerCase();
+      const isChecked = selectedNetworkFilters.has(proto);
+      chip.classList.toggle(
+        'tachyon_monitoring-page__proto-chip--checked',
+        isChecked,
+      );
+      if (input) {
+        input.checked = isChecked;
+        input.disabled = isStopped;
+      }
+      const count = netCounts.get(proto) || 0;
+      let countEl = chip.querySelector<HTMLElement>(
+        '.tachyon_monitoring-page__proto-count',
+      );
+      if (!countEl) {
+        countEl = E(
+          'span',
+          { class: 'tachyon_monitoring-page__proto-count' },
+          String(count),
+        );
+        chip.appendChild(countEl);
+      } else if (countEl.textContent !== String(count)) {
+        countEl.textContent = String(count);
+      }
+    });
+}
+
+function hasAnyActiveFilter(): boolean {
+  return (
+    selectedDeviceFilters.size > 0 ||
+    selectedRouteFilters.size > 0 ||
+    selectedNetworkFilters.size > 0 ||
+    searchQuery.trim().length > 0
+  );
+}
+
+function clearAllFilters() {
+  selectedDeviceFilters.clear();
+  selectedRouteFilters.clear();
+  selectedNetworkFilters.clear();
+  searchQuery = '';
+  lastDeviceFilterSignature = '';
+  lastRouteFilterSignature = '';
+  lastQuickFilterSignature = '';
+
+  const searchInput = document.getElementById(
+    'monitoring-search',
+  ) as HTMLInputElement | null;
+  if (searchInput) {
+    searchInput.value = '';
+  }
+
+  renderControls();
+  renderConnections();
+}
+
+function renderQuickFiltersBar() {
+  const bar = document.getElementById('monitoring-quick-filters');
+  if (!bar) return;
+
+  if (serviceAvailability === 'stopped') {
+    bar.hidden = true;
+    return;
+  }
+
+  const routes = getAvailableRoutes();
+  const routeCounts = getRouteConnectionCounts();
+  const anyActive = hasAnyActiveFilter();
+
+  if (routes.length === 0 && !anyActive) {
+    bar.hidden = true;
+    return;
+  }
+
+  bar.hidden = false;
+
+  const signature = [
+    Array.from(selectedRouteFilters).sort().join(','),
+    Array.from(selectedDeviceFilters).sort().join(','),
+    Array.from(selectedNetworkFilters).sort().join(','),
+    searchQuery.trim() ? 'search:1' : 'search:0',
+    ...routes,
+  ].join('|');
+
+  if (signature === lastQuickFilterSignature) {
+    updateFilterCountsInContainer(bar, routeCounts);
+    return;
+  }
+
+  lastQuickFilterSignature = signature;
+
+  const routeChips = routes.map((routeName) => {
+    const isChecked = selectedRouteFilters.has(routeName);
+    const count = routeCounts.get(routeName) || 0;
+    const badgeModifier = getRouteBadgeModifier(routeName);
+    const chipClasses = [
+      'tachyon_monitoring-page__quick-chip',
+      badgeModifier,
+      isChecked ? 'tachyon_monitoring-page__quick-chip--checked' : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+
+    const countBadge = E(
+      'span',
+      { class: 'tachyon_monitoring-page__quick-chip-count' },
+      String(count),
+    );
+    countBadge.setAttribute('data-filter-count', routeName);
+
+    return E('label', { class: chipClasses, title: routeName }, [
+      E('input', {
+        type: 'checkbox',
+        class: 'tachyon_monitoring-page__quick-chip-input',
+        value: routeName,
+        ...(isChecked ? { checked: true } : {}),
+        onchange: (e: Event) => {
+          const target = e.target as HTMLInputElement;
+          if (target.checked) {
+            selectedRouteFilters.add(routeName);
+          } else {
+            selectedRouteFilters.delete(routeName);
+          }
+          lastRouteFilterSignature = '';
+          lastQuickFilterSignature = '';
+          renderControls();
+          renderConnections();
+        },
+      }),
+      E(
+        'span',
+        { class: 'tachyon_monitoring-page__quick-chip-box' },
+        isChecked ? '✓' : '',
+      ),
+      E(
+        'span',
+        { class: 'tachyon_monitoring-page__quick-chip-label' },
+        routeName,
+      ),
+      countBadge,
+    ]);
+  });
+
+  const devicePills = Array.from(selectedDeviceFilters).map((ip) => {
+    const label = getLocalDeviceFilterLabel(ip);
+    return E(
+      'button',
+      {
+        type: 'button',
+        class:
+          'tachyon_monitoring-page__active-tag tachyon_monitoring-page__active-tag--device',
+        title: label,
+        onclick: () => {
+          selectedDeviceFilters.delete(ip);
+          lastDeviceFilterSignature = '';
+          lastQuickFilterSignature = '';
+          renderControls();
+          renderConnections();
+        },
+      },
+      [
+        E('span', {}, label),
+        E(
+          'span',
+          { class: 'tachyon_monitoring-page__active-tag-close' },
+          '\u00d7',
+        ),
+      ],
+    );
+  });
+
+  const children: HTMLElement[] = [];
+
+  if (routeChips.length > 0) {
+    children.push(
+      E('div', { class: 'tachyon_monitoring-page__quick-group' }, [
+        E(
+          'span',
+          { class: 'tachyon_monitoring-page__quick-title' },
+          `${_('Route')}:`,
+        ),
+        ...routeChips,
+      ]),
+    );
+  }
+
+  if (devicePills.length > 0) {
+    children.push(
+      E('div', { class: 'tachyon_monitoring-page__quick-group' }, [
+        E(
+          'span',
+          { class: 'tachyon_monitoring-page__quick-title' },
+          `${_('Source')}:`,
+        ),
+        ...devicePills,
+      ]),
+    );
+  }
+
+  if (anyActive) {
+    children.push(
+      E(
+        'button',
+        {
+          id: 'monitoring-reset-filters',
+          type: 'button',
+          class: 'btn cbi-button tachyon_monitoring-page__reset-btn',
+          onclick: () => clearAllFilters(),
+        },
+        `✕ ${_('Reset filters')}`,
+      ),
+    );
+  }
+
+  bar.replaceChildren(...children);
 }
 
 function setButtonActive(button: HTMLElement | null, active: boolean) {
@@ -432,17 +1051,12 @@ function renderControls() {
 
   renderDeviceFilterOptions();
   renderRouteFilterOptions();
+  renderNetworkFilterControls();
+  renderQuickFiltersBar();
 
-  const select = document.getElementById(
-    'monitoring-device-filter',
-  ) as HTMLSelectElement | null;
   const searchInput = document.getElementById(
     'monitoring-search',
   ) as HTMLInputElement | null;
-
-  if (select) {
-    select.disabled = serviceAvailability === 'stopped';
-  }
 
   if (searchInput) {
     searchInput.disabled = serviceAvailability === 'stopped';
@@ -550,46 +1164,20 @@ function renderConnectionRow(connection: MonitoredConnection) {
           : 'tachyon_monitoring-page__network';
 
   const route = getRoute(connection);
-  const routeLower = (route || '').toLowerCase();
-  let routeModifier = '';
-  if (
-    routeLower.includes('block') ||
-    routeLower.includes('drop') ||
-    routeLower.includes('reject')
-  ) {
-    routeModifier = 'tachyon_monitoring-page__route--block';
-  } else if (
-    routeLower.includes('dpi') ||
-    routeLower.includes('zapret') ||
-    routeLower.includes('byedpi') ||
-    routeLower.includes('desync') ||
-    routeLower.includes('wdtt') ||
-    routeLower.includes('olcrtc')
-  ) {
-    routeModifier = 'tachyon_monitoring-page__route--dpi';
-  } else if (
-    routeLower.includes('direct') ||
-    routeLower.includes('wan') ||
-    routeLower.includes('bypass')
-  ) {
-    routeModifier = 'tachyon_monitoring-page__route--direct';
-  } else if (
-    routeLower.includes('proxy') ||
-    routeLower.includes('vpn') ||
-    routeLower.includes('vless') ||
-    routeLower.includes('hysteria') ||
-    routeLower.includes('tuic') ||
-    routeLower.includes('shadowsocks') ||
-    routeLower.includes('trojan') ||
-    routeLower.includes('wireguard') ||
-    routeLower.includes('warp')
-  ) {
-    routeModifier = 'tachyon_monitoring-page__route--proxy';
-  }
+  const routeModifier = getRouteBadgeModifier(route);
   const routeClass = ['tachyon_monitoring-page__route', routeModifier]
     .filter(Boolean)
     .join(' ');
   const routeTooltip = getRouteTooltip(connection, route);
+
+  const networkBadge = renderValue(network, networkClass);
+  if (networkLower) {
+    networkBadge.setAttribute('data-filter-network', networkLower);
+  }
+  const routeBadge = renderValue(route, routeClass, routeTooltip);
+  if (route && route !== '-') {
+    routeBadge.setAttribute('data-filter-route', route);
+  }
 
   const row = E(
     'tr',
@@ -598,10 +1186,8 @@ function renderConnectionRow(connection: MonitoredConnection) {
     },
     [
       renderTableCell(_('Host'), [renderValue(target.primary)]),
-      renderTableCell(_('Type'), [renderValue(network, networkClass)]),
-      renderTableCell(_('Route'), [
-        renderValue(route, routeClass, routeTooltip),
-      ]),
+      renderTableCell(_('Type'), [networkBadge]),
+      renderTableCell(_('Route'), [routeBadge]),
       renderTableCell(_('Time'), [
         renderValue(formatConnectionDuration(connection)),
       ]),
@@ -982,15 +1568,48 @@ async function closeAllConnections() {
   }
 }
 
+function handleDocumentPointerDown(event: MouseEvent) {
+  if (!openDropdownId) return;
+  const target = event.target as Node | null;
+  const deviceWrap = document.getElementById('monitoring-device-filter-wrap');
+  const routeWrap = document.getElementById('monitoring-route-filter-wrap');
+
+  if (
+    openDropdownId === 'device' &&
+    deviceWrap &&
+    target &&
+    deviceWrap.contains(target)
+  ) {
+    return;
+  }
+  if (
+    openDropdownId === 'route' &&
+    routeWrap &&
+    target &&
+    routeWrap.contains(target)
+  ) {
+    return;
+  }
+
+  setDropdownOpen(null);
+}
+
+function handleDocumentKeyDown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && openDropdownId) {
+    setDropdownOpen(null);
+  }
+}
+
 function bindControls() {
   const activeButton = document.getElementById('monitoring-tab-active');
   const closedButton = document.getElementById('monitoring-tab-closed');
-  const select = document.getElementById(
-    'monitoring-device-filter',
-  ) as HTMLSelectElement | null;
-  const routeSelect = document.getElementById(
-    'monitoring-route-filter',
-  ) as HTMLSelectElement | null;
+  const deviceTrigger = document.getElementById(
+    'monitoring-device-filter-trigger',
+  );
+  const routeTrigger = document.getElementById(
+    'monitoring-route-filter-trigger',
+  );
+  const networkGroup = document.getElementById('monitoring-network-filters');
   const searchInput = document.getElementById(
     'monitoring-search',
   ) as HTMLInputElement | null;
@@ -1021,16 +1640,33 @@ function bindControls() {
     };
   }
 
-  if (select) {
-    select.onchange = () => {
-      selectedDeviceFilter = select.value || ALL_FILTER_VALUE;
-      renderConnections();
+  if (deviceTrigger) {
+    deviceTrigger.onclick = (event) => {
+      event.stopPropagation();
+      setDropdownOpen(openDropdownId === 'device' ? null : 'device');
     };
   }
 
-  if (routeSelect) {
-    routeSelect.onchange = () => {
-      selectedRouteFilter = routeSelect.value || ALL_FILTER_VALUE;
+  if (routeTrigger) {
+    routeTrigger.onclick = (event) => {
+      event.stopPropagation();
+      setDropdownOpen(openDropdownId === 'route' ? null : 'route');
+    };
+  }
+
+  if (networkGroup) {
+    networkGroup.onchange = (event) => {
+      const target = event.target as HTMLInputElement | null;
+      if (!target || target.type !== 'checkbox') return;
+      const proto = (target.value || '').toLowerCase();
+      if (!proto) return;
+      if (target.checked) {
+        selectedNetworkFilters.add(proto);
+      } else {
+        selectedNetworkFilters.delete(proto);
+      }
+      lastQuickFilterSignature = '';
+      renderControls();
       renderConnections();
     };
   }
@@ -1038,6 +1674,8 @@ function bindControls() {
   if (searchInput) {
     searchInput.oninput = () => {
       searchQuery = searchInput.value;
+      lastQuickFilterSignature = '';
+      renderControls();
       renderConnections();
     };
   }
@@ -1051,6 +1689,45 @@ function bindControls() {
 
       if (button?.value) {
         void closeConnection(button.value);
+        return;
+      }
+
+      if (isTextSelectionInsideMonitoring()) {
+        return;
+      }
+
+      const routeBadge = target?.closest<HTMLElement>('[data-filter-route]');
+      if (routeBadge) {
+        const routeValue = routeBadge.getAttribute('data-filter-route') || '';
+        if (routeValue) {
+          if (selectedRouteFilters.has(routeValue)) {
+            selectedRouteFilters.delete(routeValue);
+          } else {
+            selectedRouteFilters.add(routeValue);
+          }
+          lastRouteFilterSignature = '';
+          lastQuickFilterSignature = '';
+          renderControls();
+          renderConnections();
+          return;
+        }
+      }
+
+      const netBadge = target?.closest<HTMLElement>('[data-filter-network]');
+      if (netBadge) {
+        const netValue = (
+          netBadge.getAttribute('data-filter-network') || ''
+        ).toLowerCase();
+        if (netValue) {
+          if (selectedNetworkFilters.has(netValue)) {
+            selectedNetworkFilters.delete(netValue);
+          } else {
+            selectedNetworkFilters.add(netValue);
+          }
+          lastQuickFilterSignature = '';
+          renderControls();
+          renderConnections();
+        }
       }
     };
   }
@@ -1282,11 +1959,14 @@ function watchServiceState() {
 
 function resetMonitoringState() {
   activeTab = 'active';
-  selectedDeviceFilter = ALL_FILTER_VALUE;
-  selectedRouteFilter = ALL_FILTER_VALUE;
+  selectedDeviceFilters.clear();
+  selectedRouteFilters.clear();
+  selectedNetworkFilters.clear();
+  setDropdownOpen(null);
   searchQuery = '';
   lastDeviceFilterSignature = '';
   lastRouteFilterSignature = '';
+  lastQuickFilterSignature = '';
   loading = true;
   failed = false;
   closingAll = false;
@@ -1343,6 +2023,8 @@ async function onPageMount() {
 
   document.addEventListener('selectionchange', flushRenderAfterSelection);
   document.addEventListener('copy', handleMonitoringValueCopy);
+  document.addEventListener('mousedown', handleDocumentPointerDown);
+  document.addEventListener('keydown', handleDocumentKeyDown);
 
   renderTimer = setInterval(() => {
     if (monitoringPaused) {
@@ -1398,6 +2080,7 @@ function onPageUnmount() {
   monitoringMounted = false;
   monitoringMountId += 1;
   monitoringVisibilityPaused = false;
+  setDropdownOpen(null);
 
   if (renderTimer) {
     clearInterval(renderTimer);
@@ -1412,6 +2095,8 @@ function onPageUnmount() {
 
   document.removeEventListener('selectionchange', flushRenderAfterSelection);
   document.removeEventListener('copy', handleMonitoringValueCopy);
+  document.removeEventListener('mousedown', handleDocumentPointerDown);
+  document.removeEventListener('keydown', handleDocumentKeyDown);
 }
 
 function registerLifecycleListeners() {

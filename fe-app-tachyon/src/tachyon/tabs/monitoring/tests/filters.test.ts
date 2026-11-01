@@ -353,4 +353,95 @@ describe('monitoring filters and resolution', () => {
     );
     expect(tooltip).toContain('Node: NL VLESS #1');
   });
+
+  it('filters connections by multiple selected routes, sources, and network protocols', () => {
+    buildRouteDisplayNames([
+      {
+        '.name': 'main',
+        '.type': 'section',
+        label: 'Main',
+        enabled: '1',
+      } as any,
+      {
+        '.name': 'zapret3_youtube_section',
+        '.type': 'section',
+        label: 'zapret3_youtube_section',
+        action: 'zapret2',
+        enabled: '1',
+      } as any,
+    ]);
+
+    const connections: MonitoredConnection[] = [
+      {
+        id: 'c1',
+        lastSeenAt: 1000,
+        chains: ['main-out'],
+        metadata: {
+          network: 'tcp',
+          sourceIP: '192.168.1.8',
+          host: 'api.telegram.org',
+        },
+      },
+      {
+        id: 'c2',
+        lastSeenAt: 1000,
+        chains: ['zapret3_youtube_section-out'],
+        metadata: {
+          network: 'udp',
+          sourceIP: '192.168.1.44',
+          host: 'www.youtube.com',
+          destinationPort: 443,
+        },
+      },
+      {
+        id: 'c3',
+        lastSeenAt: 1000,
+        chains: ['bypass-out'],
+        metadata: {
+          network: 'tcp',
+          sourceIP: 'vless_h',
+          host: 'mtalk.google.com',
+          destinationPort: 5228,
+        },
+      },
+      {
+        id: 'c4',
+        lastSeenAt: 1000,
+        chains: ['direct-out'],
+        metadata: {
+          network: 'udp',
+          sourceIP: 'vless_h',
+          destinationIP: '8.8.8.8',
+          destinationPort: 53,
+        },
+      },
+    ];
+
+    const byTwoRoutes = filterVisibleConnections({
+      routeFilters: new Set(['Main', 'Bypass']),
+      searchQuery: '',
+      tab: 'active',
+      activeConnections: connections,
+      closedConnections: [],
+    });
+    expect(byTwoRoutes.map((c) => c.id)).toEqual(['c1', 'c3']);
+
+    const byTwoDevices = filterVisibleConnections({
+      deviceFilters: ['192.168.1.44', 'vless_h'],
+      searchQuery: '',
+      tab: 'active',
+      activeConnections: connections,
+      closedConnections: [],
+    });
+    expect(byTwoDevices.map((c) => c.id)).toEqual(['c2', 'c3', 'c4']);
+
+    const byQuicAndTcp = filterVisibleConnections({
+      networkFilters: new Set(['quic', 'tcp']),
+      searchQuery: '',
+      tab: 'active',
+      activeConnections: connections,
+      closedConnections: [],
+    });
+    expect(byQuicAndTcp.map((c) => c.id)).toEqual(['c1', 'c2', 'c3']);
+  });
 });

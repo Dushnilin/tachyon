@@ -343,6 +343,404 @@ body.dark .tachyon_monitoring-page {
     line-height: calc(var(--tachyon-monitoring-control-height) - 2px) !important;
 }
 
+.tachyon_monitoring-page__multiselect {
+    position: relative;
+    flex: 0 1 190px;
+    min-width: 145px;
+    max-width: 240px;
+}
+
+.tachyon_monitoring-page .btn.tachyon_monitoring-page__multiselect-trigger {
+    width: 100% !important;
+    height: var(--tachyon-monitoring-control-height) !important;
+    min-height: var(--tachyon-monitoring-control-height) !important;
+    padding: 0 10px !important;
+    margin: 0 !important;
+    border-radius: 9px !important;
+    box-sizing: border-box !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 8px !important;
+    background: var(--tachyon-bg-surface-alt, rgba(148, 163, 184, 0.08)) !important;
+    border: 1px solid var(--tachyon-border-subtle, rgba(148, 163, 184, 0.22)) !important;
+    color: var(--tachyon-monitoring-text-primary) !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    box-shadow: none !important;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.tachyon_monitoring-page .btn.tachyon_monitoring-page__multiselect-trigger:hover:not(:disabled),
+.tachyon_monitoring-page__multiselect--open .btn.tachyon_monitoring-page__multiselect-trigger {
+    border-color: rgba(139, 92, 246, 0.5) !important;
+    background: rgba(139, 92, 246, 0.08) !important;
+}
+
+.tachyon_monitoring-page .btn.tachyon_monitoring-page__multiselect-trigger--active {
+    border-color: rgba(139, 92, 246, 0.65) !important;
+    background: rgba(139, 92, 246, 0.14) !important;
+    font-weight: 600 !important;
+}
+
+.tachyon_monitoring-page__multiselect-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+    flex: 1 1 auto;
+}
+
+.tachyon_monitoring-page__multiselect-caret {
+    flex: 0 0 auto;
+    font-size: 11px;
+    color: var(--tachyon-monitoring-text-secondary);
+    transition: transform 0.15s ease;
+}
+
+.tachyon_monitoring-page__multiselect--open .tachyon_monitoring-page__multiselect-caret {
+    transform: rotate(180deg);
+}
+
+.tachyon_monitoring-page__multiselect-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    min-width: 240px;
+    max-width: 320px;
+    z-index: 60;
+    border-radius: 11px;
+    background: var(--tachyon-bg-surface, var(--background-color-high, #ffffff));
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.22);
+    padding: 6px;
+    box-sizing: border-box;
+}
+
+.tachyon_monitoring-page__menu-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 5px 8px 7px;
+    border-bottom: 1px solid var(--tachyon-monitoring-divider-color);
+    margin-bottom: 4px;
+}
+
+.tachyon_monitoring-page__check-all {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 7px;
+    margin: 0 !important;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--tachyon-monitoring-text-primary);
+    cursor: pointer;
+    user-select: none;
+}
+
+.tachyon_monitoring-page__menu-reset {
+    border: 0 !important;
+    background: transparent !important;
+    color: #8b5cf6 !important;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 6px !important;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+.tachyon_monitoring-page__menu-reset:hover {
+    background: rgba(139, 92, 246, 0.12) !important;
+}
+
+.tachyon_monitoring-page__menu-list {
+    max-height: 240px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.tachyon_monitoring-page__check-item {
+    display: flex !important;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 8px;
+    margin: 0 !important;
+    border-radius: 7px;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.12s ease;
+}
+
+.tachyon_monitoring-page__check-item:hover {
+    background: rgba(148, 163, 184, 0.12);
+}
+
+.tachyon_monitoring-page__check-item--checked {
+    background: rgba(139, 92, 246, 0.1);
+}
+
+.tachyon_monitoring-page__checkbox {
+    width: 15px !important;
+    height: 15px !important;
+    margin: 0 !important;
+    flex: 0 0 15px;
+    accent-color: #8b5cf6;
+    cursor: pointer;
+}
+
+.tachyon_monitoring-page__check-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12.5px;
+    color: var(--tachyon-monitoring-text-primary);
+}
+
+.tachyon_monitoring-page__check-count {
+    flex: 0 0 auto;
+    min-width: 20px;
+    height: 18px;
+    padding: 0 6px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(148, 163, 184, 0.16);
+    color: var(--tachyon-monitoring-text-secondary);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.tachyon_monitoring-page__menu-empty {
+    padding: 12px 8px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--tachyon-monitoring-text-secondary);
+}
+
+.tachyon_monitoring-page__proto-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px;
+    height: var(--tachyon-monitoring-control-height);
+    box-sizing: border-box;
+    border-radius: 9px;
+    background: var(--tachyon-bg-surface-alt, rgba(148, 163, 184, 0.08));
+    border: 1px solid var(--tachyon-border-subtle, rgba(148, 163, 184, 0.2));
+}
+
+.tachyon_monitoring-page__proto-chip {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 4px;
+    height: calc(var(--tachyon-monitoring-control-height) - 8px);
+    padding: 0 8px;
+    margin: 0 !important;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    font-family: var(--tachyon-font-mono, monospace);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--tachyon-monitoring-text-secondary);
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.14s ease;
+}
+
+.tachyon_monitoring-page__proto-chip:hover {
+    background: rgba(148, 163, 184, 0.14);
+    color: var(--tachyon-monitoring-text-primary);
+}
+
+.tachyon_monitoring-page__proto-checkbox {
+    width: 12px !important;
+    height: 12px !important;
+    margin: 0 !important;
+    accent-color: #8b5cf6;
+    cursor: pointer;
+}
+
+.tachyon_monitoring-page__proto-count {
+    font-size: 10px;
+    font-weight: 600;
+    opacity: 0.75;
+}
+
+.tachyon_monitoring-page__proto-chip--tcp.tachyon_monitoring-page__proto-chip--checked {
+    background: rgba(56, 189, 248, 0.16);
+    border-color: rgba(56, 189, 248, 0.38);
+    color: var(--tachyon-monitoring-net-tcp-fg);
+}
+
+.tachyon_monitoring-page__proto-chip--udp.tachyon_monitoring-page__proto-chip--checked {
+    background: rgba(52, 211, 153, 0.16);
+    border-color: rgba(52, 211, 153, 0.38);
+    color: var(--tachyon-monitoring-net-udp-fg);
+}
+
+.tachyon_monitoring-page__proto-chip--quic.tachyon_monitoring-page__proto-chip--checked {
+    background: rgba(99, 102, 241, 0.18);
+    border-color: rgba(129, 140, 248, 0.42);
+    color: var(--tachyon-monitoring-net-quic-fg);
+}
+
+.tachyon_monitoring-page__quick-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    margin-bottom: 12px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: var(--tachyon-bg-surface-alt, rgba(148, 163, 184, 0.06));
+    border: 1px solid var(--tachyon-monitoring-divider-color);
+}
+
+.tachyon_monitoring-page__quick-bar[hidden] {
+    display: none !important;
+}
+
+.tachyon_monitoring-page__quick-group {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.tachyon_monitoring-page__quick-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--tachyon-monitoring-text-secondary);
+    margin-right: 2px;
+}
+
+.tachyon_monitoring-page__quick-chip {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    margin: 0 !important;
+    border-radius: 7px;
+    background: rgba(148, 163, 184, 0.1);
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    color: var(--tachyon-monitoring-route-default-fg);
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.14s ease;
+}
+
+.tachyon_monitoring-page__quick-chip:hover {
+    border-color: rgba(139, 92, 246, 0.45);
+}
+
+.tachyon_monitoring-page__quick-chip-input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+}
+
+.tachyon_monitoring-page__quick-chip-box {
+    width: 13px;
+    height: 13px;
+    border-radius: 3.5px;
+    border: 1px solid rgba(148, 163, 184, 0.48);
+    background: rgba(15, 23, 42, 0.06);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    line-height: 1;
+    font-weight: 800;
+    color: #ffffff;
+}
+
+.tachyon_monitoring-page__quick-chip--checked {
+    box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.35);
+}
+
+.tachyon_monitoring-page__quick-chip--checked .tachyon_monitoring-page__quick-chip-box {
+    background: #8b5cf6;
+    border-color: #8b5cf6;
+}
+
+.tachyon_monitoring-page__quick-chip-label {
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tachyon_monitoring-page__quick-chip-count {
+    padding: 0 5px;
+    min-width: 16px;
+    height: 15px;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.12);
+    font-size: 10px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.tachyon_monitoring-page__active-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    border-radius: 7px;
+    border: 1px solid rgba(139, 92, 246, 0.38);
+    background: rgba(139, 92, 246, 0.14);
+    color: var(--tachyon-monitoring-text-primary);
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.tachyon_monitoring-page__active-tag-close {
+    font-size: 13px;
+    line-height: 1;
+    opacity: 0.75;
+}
+
+.tachyon_monitoring-page .btn.tachyon_monitoring-page__reset-btn {
+    margin-left: auto !important;
+    height: 26px !important;
+    min-height: 26px !important;
+    padding: 0 9px !important;
+    border-radius: 7px !important;
+    font-size: 11.5px !important;
+    font-weight: 600 !important;
+    background: rgba(244, 63, 94, 0.1) !important;
+    border: 1px solid rgba(244, 63, 94, 0.28) !important;
+    color: var(--tachyon-monitoring-danger-color) !important;
+    cursor: pointer;
+}
+
+.tachyon_monitoring-page .btn.tachyon_monitoring-page__reset-btn:hover {
+    background: rgba(244, 63, 94, 0.18) !important;
+}
+
+.tachyon_monitoring-page__route[data-filter-route],
+.tachyon_monitoring-page__network[data-filter-network] {
+    cursor: pointer;
+}
+
 .tachyon_monitoring-page__search {
     position: relative;
     display: flex;
@@ -712,6 +1110,7 @@ body.dark .tachyon_monitoring-page {
     }
 
     .tachyon_monitoring-page__device-filter,
+    .tachyon_monitoring-page__multiselect,
     .tachyon_monitoring-page__search {
         max-width: none;
     }
@@ -790,6 +1189,7 @@ body.dark .tachyon_monitoring-page {
     .tachyon_monitoring-page__tabs,
     .tachyon_monitoring-page__filters,
     .tachyon_monitoring-page__device-filter,
+    .tachyon_monitoring-page__multiselect,
     .tachyon_monitoring-page__search {
         width: 100%;
     }

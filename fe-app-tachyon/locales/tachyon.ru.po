@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-01 22:26+0300\n"
-"PO-Revision-Date: 2026-11-01 22:26+0300\n"
+"POT-Creation-Date: 2026-11-01 22:50+0300\n"
+"PO-Revision-Date: 2026-11-01 22:50+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -592,6 +592,9 @@ msgstr "Все серверы"
 
 msgid "All services"
 msgstr "Все сервисы"
+
+msgid "All sources"
+msgstr "Все источники"
 
 msgid "All subscriptions updated."
 msgstr "Все подписки обновлены."
@@ -5951,6 +5954,9 @@ msgstr "Описание релиза отсутствует."
 msgid "No response from rule tracer."
 msgstr "Нет ответа от трассировщика правил."
 
+msgid "No routes"
+msgstr "Нет маршрутов"
+
 msgid "No rules use ByeDPI"
 msgstr "Нет правил, использующих ByeDPI"
 
@@ -7306,6 +7312,9 @@ msgstr "Сбросить настройки"
 
 msgid "Reset Stats"
 msgstr "Сбросить статистику"
+
+msgid "Reset filters"
+msgstr "Сбросить фильтры"
 
 msgid "Reset to Default"
 msgstr "По умолчанию"
@@ -11947,9 +11956,6 @@ msgstr "Правило:"
 
 msgid "🌐 Custom Target URL..."
 msgstr "🌐 Пользовательский URL цели..."
-
-msgid "All sources"
-msgstr "Все источники"
 
 msgid "Built-in"
 msgstr "Встроенные"
