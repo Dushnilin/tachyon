@@ -444,6 +444,27 @@ function stop_runtime(cfg) {
     command_success_from_args(remove_args);
 }
 
+// The zapret family drops privileges to an unprivileged user before it loads the
+// Lua desync scripts, so every directory above the binary has to stay traversable
+// by "other". A fresh install can leave /opt with 0700 root:root and then nfqws2
+// dies with "LUA file ... is not accessible" and respawns forever.
+function ensure_provider_path_traversable(cfg) {
+    let base = as_string(cfg.provider_base_dir);
+    if (base == "" || fs.stat(base) == null)
+        return;
+    let dirs = [];
+    let cur = base;
+    for (let i = 0; i < 8; i++) {
+        push(dirs, cur);
+        let parent = replace(cur, /\/[^\/]+$/, "");
+        if (parent == "" || parent == cur || parent == "/")
+            break;
+        cur = parent;
+    }
+    for (let dir in dirs)
+        command_status_from_args([ "chmod", "0755", dir ]);
+}
+
 function start_rule(cfg, section, index_value) {
     let name = section_name(section);
     let queue = queue_number(cfg, index_value);
@@ -486,6 +507,8 @@ function start_runtime(cfg) {
     let sections = enabled_sections(cfg);
     if (length(sections) == 0 || !provider_available(cfg))
         return;
+
+    ensure_provider_path_traversable(cfg);
 
     if (standalone_service_running(cfg)) {
         log_message("Stopping standalone " + cfg.status_label + " service before starting Tachyon-managed runtime", "info");
