@@ -3749,6 +3749,25 @@ function subscription_tls_fingerprint(section, value) {
     return "";
 }
 
+function subscription_engine(section, value) {
+    let child = subscription_source_item(section, value);
+    if (child != null) {
+        let eng = lc(trim(child_option_alias(child, [ "subscription_engine", "engine" ], "")));
+        if (eng == "core" || eng == "ucode")
+            return eng;
+    }
+    if (section != null) {
+        let sec_eng = lc(trim(option(section, "subscription_engine", "")));
+        if (sec_eng == "core" || sec_eng == "ucode")
+            return sec_eng;
+    }
+    let settings = object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
+    let global_eng = lc(trim(option(settings, "subscription_engine", "core")));
+    if (global_eng == "ucode")
+        return "ucode";
+    return "core";
+}
+
 function urltest_check_interval(section, value) {
     let child = urltest_child(section, value);
     if (child != null)
@@ -5839,6 +5858,7 @@ return {
     subscription_download_targets,
     subscription_download_target_port,
     subscription_tls_fingerprint,
+    subscription_engine,
     has_dns_matchers,
     routed_dns_enabled,
     routed_dns_type,

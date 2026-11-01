@@ -289,4 +289,84 @@ kill "$worker_pid" 2>/dev/null || true
 ui_ucode action-ack service "$job_id" >/dev/null ||
   fail "action-ack should acknowledge finished service action"
 
+# Queued UI reload when another service action (e.g. procd on_config_change) is active
+active_job_id="$(ui_ucode service-action-begin-if-idle reload initd)"
+[ -n "$active_job_id" ] || fail "active initd reload job should be created"
+queued_pending_file="$WORK_DIR/ui-reload.pending"
+rm -f "$queued_pending_file"
+queued_resp="$(
+  TACHYON_PENDING_RELOAD_FILE="$queued_pending_file" \
+  TACHYON_LIB="$TACHYON_FILES/usr/lib" \
+  TACHYON_STATE_UC="$TACHYON_FILES/usr/lib/service/state.uc" \
+    ui_ucode service-action-async reload
+)" || fail "UI reload while another service action is running should succeed by queueing pending force reload"
+grep -Fq "\"job_id\": \"$active_job_id\"" <<<"$queued_resp" ||
+  fail "queued UI reload should return the active service action job_id ($queued_resp)"
+[ -f "$queued_pending_file" ] ||
+  fail "queued UI reload should write pending reload marker"
+grep -Fq 'reason=force' "$queued_pending_file" ||
+  fail "queued UI reload should record reason=force in pending reload marker"
+ui_ucode service-action-finish "$active_job_id" true done 0 >/dev/null || true
+ui_ucode action-ack service "$active_job_id" >/dev/null || true
+
+# Test tachyon-core subscription CLI integration (parse & fetch) + subscription_engine setting
+mock_core_bin="$WORK_DIR/mock-tachyon-core"
+cat >"$mock_core_bin" <<'EOF'
+#!/usr/bin/env bash
+if [ "$1" = "subscription" ] && [ "$2" = "hwid" ]; then
+  printf '{"x-hwid":"0123456789abcdef"}\n'
+  exit 0
+fi
+if [ "$1" = "subscription" ] && [ "$2" = "parse" ]; then
+  out=""
+  while [ $# -gt 0 ]; do
+    if [ "$1" = "-o" ]; then
+      out="$2"
+      shift 2
+    else
+      shift
+    fi
+  done
+  cat >"$out" <<'JSON'
+[
+  {
+    "type": "vless",
+    "tag": "CoreParsedNode",
+    "server": "198.51.100.10",
+    "server_port": 443,
+    "uuid": "11111111-1111-1111-1111-111111111111",
+    "tls": {
+      "enabled": true,
+      "server_name": "example.com",
+      "utls": { "enabled": true, "fingerprint": "hellochrome_120" }
+    }
+  }
+]
+JSON
+  exit 0
+fi
+exit 1
+EOF
+chmod +x "$mock_core_bin"
+
+core_in="$WORK_DIR/core-sub-in.txt"
+core_out="$WORK_DIR/core-sub-out.json"
+printf 'vless://11111111-1111-1111-1111-111111111111@198.51.100.10:443?security=tls&sni=example.com#FallbackNode\n' >"$core_in"
+
+TACHYON_CORE_BIN="$mock_core_bin" \
+  ucode -L "$TACHYON_FILES/usr/lib" "$TACHYON_FILES/usr/lib/subscription/parser.uc" \
+  normalize-content-validated "$core_in" "$core_out" "" "core" ||
+  fail "normalize-content-validated with engine=core should succeed via mock tachyon-core"
+
+grep -Fq '"CoreParsedNode"' "$core_out" ||
+  fail "engine=core should use outbounds returned by tachyon-core subscription parse"
+
+TACHYON_CORE_BIN="$mock_core_bin" \
+  ucode -L "$TACHYON_FILES/usr/lib" "$TACHYON_FILES/usr/lib/subscription/parser.uc" \
+  normalize-content-validated "$core_in" "$core_out" "" "ucode" ||
+  fail "normalize-content-validated with engine=ucode should succeed via built-in ucode parser"
+
+grep -Fq '"FallbackNode"' "$core_out" ||
+  fail "engine=ucode should bypass tachyon-core binary and parse via built-in ucode parser"
+
 printf 'UI runtime job checks passed\n'

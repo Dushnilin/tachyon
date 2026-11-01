@@ -248,6 +248,12 @@ function xhttp_range_value(value, positive) {
         return from != null && to != null && from <= to ? (from == to ? as_string(from) : from + "-" + to) : null;
     }
 
+    if (type(value) == "array" && length(value) == 2) {
+        let from = positive ? xhttp_positive_integer_value(value[0]) : xhttp_non_negative_integer_value(value[0]);
+        let to = positive ? xhttp_positive_integer_value(value[1]) : xhttp_non_negative_integer_value(value[1]);
+        return from != null && to != null && from <= to ? (from == to ? as_string(from) : from + "-" + to) : null;
+    }
+
     let number = positive ? xhttp_positive_integer_value(value) : xhttp_non_negative_integer_value(value);
     if (number != null)
         return as_string(number);
@@ -743,8 +749,26 @@ function normalize_utls_fingerprint(value) {
         randomizednoalpn: true
     };
 
-    value = as_string(value);
-    return allowed[value] ? value : "chrome";
+    value = lc(trim(as_string(value)));
+    if (allowed[value])
+        return value;
+    if (value == "random" || starts_with(value, "hellorandomized") || starts_with(value, "randomized"))
+        return "randomized";
+    if (starts_with(value, "hellochrome") || starts_with(value, "chrome"))
+        return "chrome";
+    if (starts_with(value, "hellofirefox") || starts_with(value, "firefox"))
+        return "firefox";
+    if (starts_with(value, "hellosafari") || starts_with(value, "safari"))
+        return "safari";
+    if (starts_with(value, "helloios") || starts_with(value, "ios"))
+        return "ios";
+    if (starts_with(value, "helloandroid") || starts_with(value, "android"))
+        return "android";
+    if (starts_with(value, "helloedge") || starts_with(value, "edge"))
+        return "edge";
+    if (starts_with(value, "hello360") || starts_with(value, "360"))
+        return "360";
+    return "chrome";
 }
 
 function add_tls(url, security, default_tls) {
@@ -4722,8 +4746,95 @@ function normalize_content_data(data, output_file, depth, headers_file) {
     return false;
 }
 
-function normalize_content_file(input_file, output_file, headers_file) {
+let _core_subscription_cli_supported = null;
+let _core_subscription_cli_bin = "";
+
+function core_subscription_bin_path() {
+    return as_string(getenv("TACHYON_CORE_BIN") || "/usr/bin/tachyon-core");
+}
+
+function core_subscription_cli_supported() {
+    let bin = core_subscription_bin_path();
+    if (_core_subscription_cli_supported != null && _core_subscription_cli_bin == bin)
+        return _core_subscription_cli_supported;
+
+    _core_subscription_cli_bin = bin;
+    let st = fs.stat(bin);
+    if (st == null || st.type != "file" || (int(st.mode || 0) & 73) == 0) {
+        _core_subscription_cli_supported = false;
+        return false;
+    }
+
+    _core_subscription_cli_supported = common.command_status_from_args([ bin, "subscription", "hwid" ]) == 0;
+    return _core_subscription_cli_supported;
+}
+
+function content_requires_ucode_normalizer(input_file, headers_file) {
+    let peer = extract_peer_params_from_headers_file(headers_file);
+    if (peer.public_key != "" || peer.endpoint != "")
+        return true;
+
+    let data = read_file(input_file);
+    if (data == null || data == "")
+        return true;
+
+    if (crypt4.is_crypt4(data))
+        return true;
+    if (index(data, "vpn://") >= 0 || index(data, "amneziawg://") >= 0 || index(data, "awg://") >= 0 ||
+        index(data, "fptn:") >= 0 || index(data, "fptnb:") >= 0 || index(lc(data), "[interface]") >= 0 ||
+        index(data, "awg_config") >= 0 || index(data, "wg_config") >= 0)
+        return true;
+    if (index(data, "\"balancers\"") >= 0 || index(data, "\"observatory\"") >= 0 || index(data, "\"burstObservatory\"") >= 0)
+        return true;
+
+    return false;
+}
+
+function try_normalize_with_core_cli(input_file, output_file, headers_file) {
+    if (!core_subscription_cli_supported())
+        return false;
+    if (content_requires_ucode_normalizer(input_file, headers_file))
+        return false;
+
+    let core_tmp = temp_path("tachyon-subscription-core-parse");
+    let status = common.command_status_from_args([
+        core_subscription_bin_path(),
+        "subscription",
+        "parse",
+        input_file,
+        "--format",
+        "outbounds",
+        "-o",
+        core_tmp
+    ]);
+    if (status != 0) {
+        fs.unlink(core_tmp);
+        return false;
+    }
+
+    let parsed = read_json_file(core_tmp);
+    fs.unlink(core_tmp);
+    if (type(parsed) != "array" || length(parsed) == 0)
+        return false;
+
+    let fallback_peer = extract_peer_params_from_headers_file(headers_file);
+    let outbounds = normalize_sing_box_json_outbounds(parsed, fallback_peer);
+    if (length(outbounds) == 0)
+        return false;
+
+    return write_json_file(output_file, {
+        version: 1,
+        format: "sing-box-json",
+        outbounds: outbounds
+    });
+}
+
+function normalize_content_file(input_file, output_file, headers_file, engine_mode) {
     last_normalize_error_reason = "";
+    let eff_engine = lc(trim(as_string(engine_mode || getenv("TACHYON_SUBSCRIPTION_ENGINE") || "")));
+    if (eff_engine == "core" && try_normalize_with_core_cli(input_file, output_file, headers_file))
+        return true;
+
     if (file_looks_like_uri_list(input_file))
         return normalize_uri_list_file(input_file, output_file, true);
 
@@ -4731,7 +4842,7 @@ function normalize_content_file(input_file, output_file, headers_file) {
     return data == null ? false : normalize_content_data(data, output_file, 0, headers_file);
 }
 
-function normalize_content_validated(input_file, output_file, headers_file) {
+function normalize_content_validated(input_file, output_file, headers_file, engine_mode) {
     last_normalize_error_reason = "";
     let normalize_input = input_file;
     let decoded_tmp = temp_path("tachyon-subscription-gzip");
@@ -4741,7 +4852,7 @@ function normalize_content_validated(input_file, output_file, headers_file) {
     else
         fs.unlink(decoded_tmp);
 
-    let ok = normalize_content_file(normalize_input, output_file, headers_file);
+    let ok = normalize_content_file(normalize_input, output_file, headers_file, engine_mode);
     if (decoded)
         fs.unlink(decoded_tmp);
     if (!ok)
@@ -4805,6 +4916,8 @@ function module_exports() {
         parse_subscription_source_entry,
         validate_subscription,
         normalize_content_validated,
+        core_subscription_cli_supported,
+        try_normalize_with_core_cli,
         get_last_normalize_error,
         normalized_skipped_message,
         try_decode_gzip_content_file,
@@ -4831,9 +4944,9 @@ else if (mode == "normalize-uri-list")
 else if (mode == "normalize-clash-yaml")
     ok = normalize_clash_yaml(ARGV[1], ARGV[2]);
 else if (mode == "normalize-content")
-    ok = normalize_content_file(ARGV[1], ARGV[2], ARGV[3]);
+    ok = normalize_content_file(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
 else if (mode == "normalize-content-validated")
-    ok = normalize_content_validated(ARGV[1], ARGV[2], ARGV[3]);
+    ok = normalize_content_validated(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
 else if (mode == "try-decode-gzip-content")
     ok = try_decode_gzip_content_file(ARGV[1]);
 else if (mode == "runtime-outbounds-equal")

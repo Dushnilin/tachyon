@@ -1030,14 +1030,14 @@ function openStudioCreateModal(
       }
 
       onCreated();
-
-      if (typeof sectionRef.renderMoreOptionsModal === 'function') {
-        window.setTimeout(() => {
-          sectionRef.renderMoreOptionsModal(uciId);
-        }, 40);
-      } else {
-        notifyUciChanged().finally(() => onCreated());
-      }
+      notifyUciChanged().finally(() => {
+        onCreated();
+        if (typeof sectionRef.renderMoreOptionsModal === 'function') {
+          window.setTimeout(() => {
+            sectionRef.renderMoreOptionsModal(uciId);
+          }, 40);
+        }
+      });
     });
   };
 

@@ -474,6 +474,16 @@ function active_service_action_value() {
     return "";
 }
 
+function active_service_action_job_id_value() {
+    for (let path in fs.glob(SERVICE_ACTION_DIR + "/*.json")) {
+        let value = read_json_file(path);
+        if (type(value) == "object" && value.running === true && as_string(value.action) != "")
+            return job_id_from_path(path);
+    }
+
+    return "";
+}
+
 function file_executable(path) {
     let stat = fs.stat(as_string(path));
     return stat != null && stat.mode != null && (int(stat.mode) & 73) != 0;
@@ -1726,6 +1736,14 @@ function service_action_allows_pending_reload(action) {
     return action == "start" || action == "restart" || action == "reload";
 }
 
+function pending_reload_reason_value() {
+    let data = fs.readfile(PENDING_RELOAD_FILE);
+    if (data == null)
+        return "";
+    let first = split(trim(as_string(data)), "\n")[0];
+    return replace(as_string(first), /^reason=/, "");
+}
+
 function consume_pending_reload() {
     return command_success_from_args([
         "ucode",
@@ -1751,12 +1769,16 @@ function run_pending_reload_after_service_action(action, success) {
     if (!success || !service_action_allows_pending_reload(action) || fs.stat(STATE_UC) == null)
         return;
 
+    let pending_reason = pending_reload_reason_value();
     if (!consume_pending_reload())
         return;
 
-    let started = start_service_action("reload", "initd", "pending");
+    let reload_reason = pending_reason == "force" ? "force" : "pending";
+    let started = pending_reason == "force"
+        ? start_service_action("reload", "initd", "force")
+        : start_service_action("reload", "initd", "pending");
     if (!started.success)
-        mark_pending_reload("pending");
+        mark_pending_reload(reload_reason);
 }
 
 function write_finished_service_action_state(path, action, success, message, exit_code) {
@@ -1811,6 +1833,8 @@ function update_service_action_pid_mode(job_id_value, pid) {
 function service_action_worker(path, action, job_id_value, reason) {
     let args = [ SERVICE_INIT, action ];
     reason = as_string(reason || "");
+    if (action == "reload" && reason == "")
+        reason = "force";
     if (reason != "")
         push(args, reason);
     let command = "TACHYON_UI_ACTION_TRACKED=1 " + command_from_args(args) + " >/dev/null 2>&1";
@@ -1832,8 +1856,16 @@ function service_action_async(action) {
         exit(1);
     }
 
-    let started = start_service_action(action, "ui", "");
+    let started = start_service_action(action, "ui", action == "reload" ? "force" : "");
     if (!started.success && active_service_action_value() != "") {
+        if (action == "reload") {
+            mark_pending_reload("force");
+            let active_job_id = active_service_action_job_id_value();
+            if (active_job_id != "") {
+                action_start_response(true, active_job_id, "Service reload queued");
+                return;
+            }
+        }
         action_start_response(false, "", "Another service action is already running");
         exit(1);
     }

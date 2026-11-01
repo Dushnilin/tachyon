@@ -896,6 +896,7 @@ function subscription_source_profile(section, entry) {
     parsed.update_enabled = connections.subscription_update_enabled(section, entry);
     parsed.update_interval = connections.subscription_update_interval(section, entry);
     parsed.show_dashboard_metadata = connections.subscription_dashboard_metadata_enabled(section, entry);
+    parsed.subscription_engine = connections.subscription_engine(section, entry);
     return parsed;
 }
 
@@ -1893,7 +1894,272 @@ function get_subscription_download_proxy_address(section_name_value, sections, p
     return address;
 }
 
-function download_subscription_into_cache(section_name_value, subscription_url, subscription_json_path, subscription_url_cache_path, service_proxy_address_value, subscription_user_agent, subscription_hwid, source_index, cache_section, metadata_output_path, sections, subscription_device_headers, allow_insecure) {
+function finalize_downloaded_subscription_cache(
+    section_name_value,
+    subscription_url,
+    subscription_json_path,
+    subscription_url_cache_path,
+    subscription_user_agent_cache_path,
+    subscription_hwid_cache_path,
+    subscription_device_headers_cache_path,
+    raw_tmpfile,
+    headers_tmpfile,
+    normalized_tmpfile,
+    metadata_tmpfile,
+    metadata_output_path,
+    subscription_user_agent,
+    subscription_hwid,
+    effective_user_agent,
+    effective_hwid,
+    subscription_device_headers_signature,
+    source_index,
+    cache_section,
+    sections,
+    parser
+) {
+    if (!subscription_share_link.populate_subscription_file(normalized_tmpfile))
+        log_message("Failed to cache direct proxy links for subscription rule '" + section_name_value + "'", "warn");
+
+    if (!subscription_config_is_current(section_name_value, subscription_url, subscription_user_agent, subscription_hwid, sections, subscription_device_headers_signature)) {
+        log_message("Subscription source settings changed while updating rule '" + section_name_value + "'; discarding superseded download", "warn");
+        if (metadata_output_path != "")
+            unlink_path(metadata_output_path);
+        unlink_path(raw_tmpfile);
+        unlink_path(headers_tmpfile);
+        unlink_path(normalized_tmpfile);
+        unlink_path(metadata_tmpfile);
+        return 4;
+    }
+
+    if (files_equal(normalized_tmpfile, subscription_json_path)) {
+        write_text_if_changed(subscription_url_cache_path, subscription_url);
+        write_text_if_changed(subscription_user_agent_cache_path, effective_user_agent);
+        write_text_if_changed(subscription_hwid_cache_path, effective_hwid);
+        write_text_if_changed(subscription_device_headers_cache_path, subscription_device_headers_signature);
+        persist_subscription_cache(cache_section, subscription_json_path, subscription_url, effective_user_agent, effective_hwid, metadata_tmpfile, subscription_device_headers_signature) ||
+            log_message("Failed to persist last working subscription cache for source '" + cache_section + "'", "warn");
+        if (!file_nonempty(metadata_output_path))
+            copy_persistent_metadata_output(cache_section, metadata_output_path);
+        unlink_path(raw_tmpfile);
+        unlink_path(headers_tmpfile);
+        unlink_path(normalized_tmpfile);
+        unlink_path(metadata_tmpfile);
+        log_subscription_source_summary(section_name_value, source_index, subscription_json_path, "unchanged");
+        return 2;
+    }
+
+    if (file_nonempty(subscription_json_path) && parser.runtime_outbounds_equal(normalized_tmpfile, subscription_json_path)) {
+        // Keep the current file and running outbound ordering. The newly downloaded file
+        // differs only in provider node ordering or metadata ignored by runtime comparison,
+        // neither of which should churn the on-disk file or trigger a sing-box reload.
+        unlink_path(normalized_tmpfile);
+
+        write_text_if_changed(subscription_url_cache_path, subscription_url);
+        write_text_if_changed(subscription_user_agent_cache_path, effective_user_agent);
+        write_text_if_changed(subscription_hwid_cache_path, effective_hwid);
+        write_text_if_changed(subscription_device_headers_cache_path, subscription_device_headers_signature);
+        persist_subscription_cache(cache_section, subscription_json_path, subscription_url, effective_user_agent, effective_hwid, metadata_tmpfile, subscription_device_headers_signature) ||
+            log_message("Failed to persist last working subscription cache for source '" + cache_section + "'", "warn");
+        if (!file_nonempty(metadata_output_path))
+            copy_persistent_metadata_output(cache_section, metadata_output_path);
+        unlink_path(raw_tmpfile);
+        unlink_path(headers_tmpfile);
+        unlink_path(metadata_tmpfile);
+        log_subscription_source_summary(section_name_value, source_index, subscription_json_path, "runtime-unchanged");
+        return 2;
+    }
+
+    if (file_nonempty(subscription_json_path) && subscription_shrink_guard_triggers(subscription_json_path, normalized_tmpfile)) {
+        let old_usable = usable_subscription_outbound_count(subscription_json_path);
+        let new_usable = usable_subscription_outbound_count(normalized_tmpfile);
+        log_message(
+            "Subscription source " + source_index + " for rule '" + section_name_value +
+                "' shrank from " + old_usable + " to " + new_usable +
+                " usable proxy entries; keeping the previous cache",
+            "warn"
+        );
+        write_text_if_changed(subscription_url_cache_path, subscription_url);
+        write_text_if_changed(subscription_user_agent_cache_path, effective_user_agent);
+        write_text_if_changed(subscription_hwid_cache_path, effective_hwid);
+        write_text_if_changed(subscription_device_headers_cache_path, subscription_device_headers_signature);
+        persist_subscription_cache(cache_section, subscription_json_path, subscription_url, effective_user_agent, effective_hwid, metadata_tmpfile, subscription_device_headers_signature) ||
+            log_message("Failed to persist last working subscription cache for source '" + cache_section + "'", "warn");
+        if (metadata_output_path != "")
+            unlink_path(metadata_output_path);
+        copy_persistent_metadata_output(cache_section, metadata_output_path);
+        unlink_path(raw_tmpfile);
+        unlink_path(headers_tmpfile);
+        unlink_path(normalized_tmpfile);
+        unlink_path(metadata_tmpfile);
+        log_subscription_source_summary(section_name_value, source_index, subscription_json_path, "unchanged");
+        return 2;
+    }
+
+    if (!move_file(normalized_tmpfile, subscription_json_path)) {
+        if (metadata_output_path != "")
+            unlink_path(metadata_output_path);
+        unlink_path(raw_tmpfile);
+        unlink_path(headers_tmpfile);
+        unlink_path(metadata_tmpfile);
+        return 1;
+    }
+
+    write_text_if_changed(subscription_url_cache_path, subscription_url);
+    write_text_if_changed(subscription_user_agent_cache_path, effective_user_agent);
+    write_text_if_changed(subscription_hwid_cache_path, effective_hwid);
+    write_text_if_changed(subscription_device_headers_cache_path, subscription_device_headers_signature);
+    persist_subscription_cache(cache_section, subscription_json_path, subscription_url, effective_user_agent, effective_hwid, metadata_tmpfile, subscription_device_headers_signature) ||
+        log_message("Failed to persist last working subscription cache for source '" + cache_section + "'", "warn");
+    if (!file_nonempty(metadata_output_path))
+        copy_persistent_metadata_output(cache_section, metadata_output_path);
+    unlink_path(raw_tmpfile);
+    unlink_path(headers_tmpfile);
+    unlink_path(metadata_tmpfile);
+    log_subscription_source_summary(section_name_value, source_index, subscription_json_path, "imported");
+    return 0;
+}
+
+function try_fetch_subscription_with_core(
+    section_name_value,
+    subscription_url,
+    subscription_json_path,
+    subscription_url_cache_path,
+    subscription_user_agent_cache_path,
+    subscription_hwid_cache_path,
+    subscription_device_headers_cache_path,
+    raw_tmpfile,
+    headers_tmpfile,
+    normalized_tmpfile,
+    metadata_tmpfile,
+    metadata_output_path,
+    subscription_user_agent,
+    subscription_hwid,
+    subscription_device_headers_signature,
+    source_index,
+    cache_section,
+    sections,
+    allow_insecure,
+    parser
+) {
+    if (type(parser.core_subscription_cli_supported) != "function" || !parser.core_subscription_cli_supported())
+        return -1;
+
+    let core_bin = as_string(getenv("TACHYON_CORE_BIN") || "/usr/bin/tachyon-core");
+    let full_tmpfile = temp_path(TMP_SUBSCRIPTION_FOLDER, cache_section, "core-full");
+    let effective_hwid = get_subscription_hwid(subscription_hwid);
+    let args = [ core_bin, "subscription", "fetch", subscription_url, "--format", "full", "-o", full_tmpfile ];
+    if (subscription_user_agent != "") {
+        push(args, "--ua");
+        push(args, get_subscription_user_agent(subscription_user_agent));
+    }
+    if (effective_hwid != "") {
+        push(args, "--hwid");
+        push(args, effective_hwid);
+    }
+    if (bool_value(allow_insecure, false))
+        push(args, "-k");
+
+    let status = command_status_from_args(args);
+    if (status != 0) {
+        unlink_path(full_tmpfile);
+        return -1;
+    }
+
+    let full_obj = read_json(full_tmpfile);
+    unlink_path(full_tmpfile);
+    if (type(full_obj) != "object" || type(full_obj.outbounds) != "array" || length(full_obj.outbounds) == 0)
+        return -1;
+
+    unlink_path(raw_tmpfile);
+    unlink_path(headers_tmpfile);
+    unlink_path(normalized_tmpfile);
+    unlink_path(metadata_tmpfile);
+
+    let effective_user_agent = as_string(full_obj.user_agent || get_subscription_user_agent(subscription_user_agent));
+    if (type(full_obj.user_info) == "object") {
+        let ui = full_obj.user_info;
+        let parts = [];
+        let up = ui.Upload != null ? ui.Upload : ui.upload;
+        let dl = ui.Download != null ? ui.Download : ui.download;
+        let tot = ui.Total != null ? ui.Total : ui.total;
+        let exp = ui.Expire != null ? ui.Expire : ui.expire;
+        if (up != null) push(parts, "upload=" + as_string(up));
+        if (dl != null) push(parts, "download=" + as_string(dl));
+        if (tot != null) push(parts, "total=" + as_string(tot));
+        if (exp != null) push(parts, "expire=" + as_string(exp));
+        if (length(parts) > 0) {
+            write_file(headers_tmpfile, "Subscription-Userinfo: " + join("; ", parts) + "\r\n");
+            write_file(raw_tmpfile, "");
+            parser.extract_ui_metadata_file(headers_tmpfile, raw_tmpfile, metadata_tmpfile) || unlink_path(metadata_tmpfile);
+            copy_valid_metadata_output(metadata_tmpfile, metadata_output_path);
+        }
+    }
+
+    let primary_set = {};
+    let has_primary = type(full_obj.primary_tags) == "array" && length(full_obj.primary_tags) > 0;
+    if (has_primary) {
+        for (let t in full_obj.primary_tags)
+            primary_set[as_string(t)] = true;
+    }
+    let detour_targets = {};
+    for (let ob in full_obj.outbounds) {
+        if (type(ob) == "object" && as_string(ob.detour || "") != "")
+            detour_targets[as_string(ob.detour)] = true;
+    }
+    for (let ob in full_obj.outbounds) {
+        if (type(ob) != "object")
+            continue;
+        let ob_type = lc(as_string(ob.type || ""));
+        if (ob_type == "urltest" || ob_type == "selector") {
+            ob.__tachyon_allow_group = true;
+            continue;
+        }
+        let ob_tag = as_string(ob.tag || "");
+        if ((has_primary && ob_tag != "" && !primary_set[ob_tag]) || (ob_tag != "" && detour_targets[ob_tag]))
+            ob.__tachyon_hidden = true;
+        else if (as_string(ob.remark || "") == "" && ob_tag != "")
+            ob.remark = ob_tag;
+    }
+
+    write_json(normalized_tmpfile, {
+        version: 1,
+        format: "sing-box-json",
+        outbounds: full_obj.outbounds
+    });
+    if (!parser.validate_subscription(normalized_tmpfile)) {
+        unlink_path(raw_tmpfile);
+        unlink_path(headers_tmpfile);
+        unlink_path(normalized_tmpfile);
+        unlink_path(metadata_tmpfile);
+        return -1;
+    }
+
+    return finalize_downloaded_subscription_cache(
+        section_name_value,
+        subscription_url,
+        subscription_json_path,
+        subscription_url_cache_path,
+        subscription_user_agent_cache_path,
+        subscription_hwid_cache_path,
+        subscription_device_headers_cache_path,
+        raw_tmpfile,
+        headers_tmpfile,
+        normalized_tmpfile,
+        metadata_tmpfile,
+        metadata_output_path,
+        subscription_user_agent,
+        subscription_hwid,
+        effective_user_agent,
+        effective_hwid,
+        subscription_device_headers_signature,
+        source_index,
+        cache_section,
+        sections,
+        parser
+    );
+}
+
+function download_subscription_into_cache(section_name_value, subscription_url, subscription_json_path, subscription_url_cache_path, service_proxy_address_value, subscription_user_agent, subscription_hwid, source_index, cache_section, metadata_output_path, sections, subscription_device_headers, allow_insecure, subscription_engine_mode) {
     ensure_dir(TMP_SUBSCRIPTION_FOLDER);
     let subscription_user_agent_cache_path = source_user_agent_path(TMP_SUBSCRIPTION_FOLDER, cache_section);
     let subscription_hwid_cache_path = source_hwid_path(TMP_SUBSCRIPTION_FOLDER, cache_section);
@@ -1906,6 +2172,37 @@ function download_subscription_into_cache(section_name_value, subscription_url, 
     let default_user_agent = get_subscription_user_agent("");
     let subscription_device_headers_signature = connections.device_headers_signature(subscription_device_headers);
     let parser = subscription_parser();
+    let effective_engine = lc(trim(as_string(subscription_engine_mode || connections.subscription_engine(find_section(sections, section_name_value), subscription_url))));
+
+    if (effective_engine == "core" &&
+        as_string(service_proxy_address_value) == "" &&
+        !crypt4.is_crypt4(subscription_url) &&
+        !object_or_empty(subscription_device_headers).enabled) {
+        let core_res = try_fetch_subscription_with_core(
+            section_name_value,
+            subscription_url,
+            subscription_json_path,
+            subscription_url_cache_path,
+            subscription_user_agent_cache_path,
+            subscription_hwid_cache_path,
+            subscription_device_headers_cache_path,
+            raw_tmpfile,
+            headers_tmpfile,
+            normalized_tmpfile,
+            metadata_tmpfile,
+            metadata_output_path,
+            subscription_user_agent,
+            subscription_hwid,
+            subscription_device_headers_signature,
+            source_index,
+            cache_section,
+            sections,
+            allow_insecure,
+            parser
+        );
+        if (core_res >= 0)
+            return core_res;
+    }
 
     let attempt_index = 0;
     for (let effective_user_agent in user_agent_candidates(subscription_user_agent, cached_user_agent, default_user_agent)) {
@@ -1947,7 +2244,7 @@ function download_subscription_into_cache(section_name_value, subscription_url, 
         parser.extract_ui_metadata_file(headers_tmpfile, raw_tmpfile, metadata_tmpfile) || unlink_path(metadata_tmpfile);
         copy_valid_metadata_output(metadata_tmpfile, metadata_output_path);
 
-        if (!parser.normalize_content_validated(raw_tmpfile, normalized_tmpfile, headers_tmpfile)) {
+        if (!parser.normalize_content_validated(raw_tmpfile, normalized_tmpfile, headers_tmpfile, effective_engine)) {
             if (metadata_output_path != "")
                 unlink_path(metadata_output_path);
             let norm_err = type(parser.get_last_normalize_error) == "function" ? parser.get_last_normalize_error() : "";
@@ -1962,106 +2259,29 @@ function download_subscription_into_cache(section_name_value, subscription_url, 
             continue;
         }
 
-        if (!subscription_share_link.populate_subscription_file(normalized_tmpfile))
-            log_message("Failed to cache direct proxy links for subscription rule '" + section_name_value + "'", "warn");
-
-        if (!subscription_config_is_current(section_name_value, subscription_url, subscription_user_agent, subscription_hwid, sections, subscription_device_headers_signature)) {
-            log_message("Subscription source settings changed while updating rule '" + section_name_value + "'; discarding superseded download", "warn");
-            if (metadata_output_path != "")
-                unlink_path(metadata_output_path);
-            unlink_path(raw_tmpfile);
-            unlink_path(headers_tmpfile);
-            unlink_path(normalized_tmpfile);
-            unlink_path(metadata_tmpfile);
-            return 4;
-        }
-
-        if (files_equal(normalized_tmpfile, subscription_json_path)) {
-            write_text_if_changed(subscription_url_cache_path, subscription_url);
-            write_text_if_changed(subscription_user_agent_cache_path, effective_user_agent);
-            write_text_if_changed(subscription_hwid_cache_path, effective_hwid);
-            write_text_if_changed(subscription_device_headers_cache_path, subscription_device_headers_signature);
-            persist_subscription_cache(cache_section, subscription_json_path, subscription_url, effective_user_agent, effective_hwid, metadata_tmpfile, subscription_device_headers_signature) ||
-                log_message("Failed to persist last working subscription cache for source '" + cache_section + "'", "warn");
-            if (!file_nonempty(metadata_output_path))
-                copy_persistent_metadata_output(cache_section, metadata_output_path);
-            unlink_path(raw_tmpfile);
-            unlink_path(headers_tmpfile);
-            unlink_path(normalized_tmpfile);
-            unlink_path(metadata_tmpfile);
-            log_subscription_source_summary(section_name_value, source_index, subscription_json_path, "unchanged");
-            return 2;
-        }
-
-        if (file_nonempty(subscription_json_path) && parser.runtime_outbounds_equal(normalized_tmpfile, subscription_json_path)) {
-            // Keep the current file and running outbound ordering. The newly downloaded file
-            // differs only in provider node ordering or metadata ignored by runtime comparison,
-            // neither of which should churn the on-disk file or trigger a sing-box reload.
-            unlink_path(normalized_tmpfile);
-
-            write_text_if_changed(subscription_url_cache_path, subscription_url);
-            write_text_if_changed(subscription_user_agent_cache_path, effective_user_agent);
-            write_text_if_changed(subscription_hwid_cache_path, effective_hwid);
-            write_text_if_changed(subscription_device_headers_cache_path, subscription_device_headers_signature);
-            persist_subscription_cache(cache_section, subscription_json_path, subscription_url, effective_user_agent, effective_hwid, metadata_tmpfile, subscription_device_headers_signature) ||
-                log_message("Failed to persist last working subscription cache for source '" + cache_section + "'", "warn");
-            if (!file_nonempty(metadata_output_path))
-                copy_persistent_metadata_output(cache_section, metadata_output_path);
-            unlink_path(raw_tmpfile);
-            unlink_path(headers_tmpfile);
-            unlink_path(metadata_tmpfile);
-            log_subscription_source_summary(section_name_value, source_index, subscription_json_path, "runtime-unchanged");
-            return 2;
-        }
-
-        if (file_nonempty(subscription_json_path) && subscription_shrink_guard_triggers(subscription_json_path, normalized_tmpfile)) {
-            let old_usable = usable_subscription_outbound_count(subscription_json_path);
-            let new_usable = usable_subscription_outbound_count(normalized_tmpfile);
-            log_message(
-                "Subscription source " + source_index + " for rule '" + section_name_value +
-                    "' shrank from " + old_usable + " to " + new_usable +
-                    " usable proxy entries; keeping the previous cache",
-                "warn"
-            );
-            write_text_if_changed(subscription_url_cache_path, subscription_url);
-            write_text_if_changed(subscription_user_agent_cache_path, effective_user_agent);
-            write_text_if_changed(subscription_hwid_cache_path, effective_hwid);
-            write_text_if_changed(subscription_device_headers_cache_path, subscription_device_headers_signature);
-            persist_subscription_cache(cache_section, subscription_json_path, subscription_url, effective_user_agent, effective_hwid, metadata_tmpfile, subscription_device_headers_signature) ||
-                log_message("Failed to persist last working subscription cache for source '" + cache_section + "'", "warn");
-            if (metadata_output_path != "")
-                unlink_path(metadata_output_path);
-            copy_persistent_metadata_output(cache_section, metadata_output_path);
-            unlink_path(raw_tmpfile);
-            unlink_path(headers_tmpfile);
-            unlink_path(normalized_tmpfile);
-            unlink_path(metadata_tmpfile);
-            log_subscription_source_summary(section_name_value, source_index, subscription_json_path, "unchanged");
-            return 2;
-        }
-
-        if (!move_file(normalized_tmpfile, subscription_json_path)) {
-            if (metadata_output_path != "")
-                unlink_path(metadata_output_path);
-            unlink_path(raw_tmpfile);
-            unlink_path(headers_tmpfile);
-            unlink_path(metadata_tmpfile);
-            return 1;
-        }
-
-            write_text_if_changed(subscription_url_cache_path, subscription_url);
-            write_text_if_changed(subscription_user_agent_cache_path, effective_user_agent);
-            write_text_if_changed(subscription_hwid_cache_path, effective_hwid);
-            write_text_if_changed(subscription_device_headers_cache_path, subscription_device_headers_signature);
-        persist_subscription_cache(cache_section, subscription_json_path, subscription_url, effective_user_agent, effective_hwid, metadata_tmpfile, subscription_device_headers_signature) ||
-            log_message("Failed to persist last working subscription cache for source '" + cache_section + "'", "warn");
-        if (!file_nonempty(metadata_output_path))
-            copy_persistent_metadata_output(cache_section, metadata_output_path);
-        unlink_path(raw_tmpfile);
-        unlink_path(headers_tmpfile);
-        unlink_path(metadata_tmpfile);
-        log_subscription_source_summary(section_name_value, source_index, subscription_json_path, "imported");
-        return 0;
+        return finalize_downloaded_subscription_cache(
+            section_name_value,
+            subscription_url,
+            subscription_json_path,
+            subscription_url_cache_path,
+            subscription_user_agent_cache_path,
+            subscription_hwid_cache_path,
+            subscription_device_headers_cache_path,
+            raw_tmpfile,
+            headers_tmpfile,
+            normalized_tmpfile,
+            metadata_tmpfile,
+            metadata_output_path,
+            subscription_user_agent,
+            subscription_hwid,
+            effective_user_agent,
+            effective_hwid,
+            subscription_device_headers_signature,
+            source_index,
+            cache_section,
+            sections,
+            parser
+        );
     }
 
     if (metadata_output_path != "")
@@ -2161,7 +2381,8 @@ function update_subscription_source(section_name_value, index_value, entry, phas
         as_string(metadata_output_path),
         sections,
         parsed.device_headers,
-        parsed.insecure
+        parsed.insecure,
+        parsed.subscription_engine
     );
 }
 

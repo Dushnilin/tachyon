@@ -3388,10 +3388,15 @@ function nft_rule_signature_body(body, section) {
     body = signature_add_value(body, "rule." + section_name + ".protocol", section_leaf_option_text(section, "protocol"));
     let comm_subnets = bool_option(section, "community_subnets", true) ? filter_community_subnet_lists_value(connections.community_lists_value(section)) : "";
     body = signature_add_value(body, "rule." + section_name + ".community_subnet_lists", comm_subnets);
-    body = signature_add_value(body, "rule." + section_name + ".remote_subnet_lists", option(section, "remote_subnet_lists", ""));
+    body = signature_add_value(body, "rule." + section_name + ".remote_subnet_lists", section_leaf_option_text(section, "remote_subnet_lists"));
     body = signature_add_value(body, "rule." + section_name + ".rule_set_with_subnets", connections.rule_sets_with_subnets_value(section));
     body = signature_add_value(body, "rule." + section_name + ".domain_ip_lists", section_leaf_option_text(section, "domain_ip_lists"));
     body = signature_add_value(body, "rule." + section_name + ".dscp", connections.dscp_value(section));
+    let geo_val = connections.geoip_country_value(section);
+    if (geo_val != "")
+        body = signature_add_value(body, "rule." + section_name + ".geoip_country", connections.geoip_country_mode(section) + ":" + geo_val);
+    if (length(connections.section_condition_refs(section)) > 0 || option(section, "condition_expression", "") != "")
+        body = signature_add_value(body, "rule." + section_name + ".condition_clauses", sprintf("%J", connections.section_effective_clauses(section)));
     let fail_policy = lc(trim(option(section, "fail_policy", "")));
     if (fail_policy == "block" || fail_policy == "direct") {
         body = signature_add_value(body, "rule." + section_name + ".fail_policy", fail_policy);

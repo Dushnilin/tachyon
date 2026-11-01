@@ -251,12 +251,13 @@ function run_pending_reload_if_requested(path, init_script) {
     // One launch site for both outcomes, so this file does not grow a second
     // background invocation.
     let apply_in_place = reason == PENDING_RELOAD_SOFT_APPLY_REASON;
+    let reload_arg = reason == "force" ? "force" : "pending";
     let command = apply_in_place
         ? command_from_args([
             "ucode", "-L", LIB_DIR, LIB_DIR + "/components/updates.uc",
             "subscription-deferred-recovery-apply"
         ])
-        : shell_quote(init_script) + " reload pending";
+        : shell_quote(init_script) + " reload " + reload_arg;
 
     if (apply_in_place)
         command_success_from_args([ "logger", "-t", "tachyon", "[info] Applying pending subscription recovery in place" ]);
@@ -1229,7 +1230,7 @@ function rule_has_list_update_source(enabled, action, community_lists, remote_do
     if (!arg_bool(enabled))
         return false;
     if (as_string(action) == "dns")
-        return list_has_remote_references(domain_ip_lists) || has_remote_plain_ruleset(rule_set);
+        return list_has_remote_references(domain_ip_lists) || has_remote_plain_ruleset(rule_set) || list_has_remote_references(rule_set);
     if (as_string(action) == "hosts")
         return false;
 
@@ -1239,7 +1240,8 @@ function rule_has_list_update_source(enabled, action, community_lists, remote_do
         as_string(remote_subnet_lists) != "" ||
         as_string(rule_set_with_subnets) != "" ||
         list_has_remote_references(domain_ip_lists) ||
-        has_remote_plain_ruleset(rule_set)
+        has_remote_plain_ruleset(rule_set) ||
+        list_has_remote_references(rule_set)
     );
 }
 
@@ -1588,10 +1590,15 @@ function nft_runtime_signature_body(settings, sections, schedules, profiles, gue
         let comm_subnets = bool_option(section, "community_subnets", true) ? rule_config.filter_community_subnet_lists_value(connections.community_lists_value(section)) : "";
         body = signature_add_value(body, "rule." + name + ".community_subnet_lists", comm_subnets);
 
-        body = signature_add_value(body, "rule." + name + ".remote_subnet_lists", option(section, "remote_subnet_lists", ""));
+        body = signature_add_value(body, "rule." + name + ".remote_subnet_lists", section_leaf_option_text(section, "remote_subnet_lists"));
         body = signature_add_value(body, "rule." + name + ".rule_set_with_subnets", connections.rule_sets_with_subnets_value(section));
         body = signature_add_value(body, "rule." + name + ".domain_ip_lists", section_leaf_option_text(section, "domain_ip_lists"));
         body = signature_add_value(body, "rule." + name + ".dscp", connections.dscp_value(section));
+        let geo_val = connections.geoip_country_value(section);
+        if (geo_val != "")
+            body = signature_add_value(body, "rule." + name + ".geoip_country", connections.geoip_country_mode(section) + ":" + geo_val);
+        if (length(connections.section_condition_refs(section)) > 0 || option(section, "condition_expression", "") != "")
+            body = signature_add_value(body, "rule." + name + ".condition_clauses", sprintf("%J", connections.section_effective_clauses(section)));
         let fail_policy = lc(trim(option(section, "fail_policy", "keep")));
         if (fail_policy == "block" || fail_policy == "direct") {
             body = signature_add_value(body, "rule." + name + ".fail_policy", fail_policy);
@@ -1642,7 +1649,7 @@ function connection_urls_signature(section) {
 function subscription_urls_signature(section) {
     let result = [];
     for (let entry in connections.subscription_urls(section)) {
-        push(result, {
+        let item = {
             url: entry,
             // Part of the signature, not decoration: without it a toggle would
             // leave the signature identical and nothing would rebuild the config.
@@ -1667,7 +1674,11 @@ function subscription_urls_signature(section) {
             include_urltest_groups: connections.subscription_include_urltest_groups(section, entry) ? "1" : "0",
             hide_urltest_group_outbounds: connections.subscription_hide_urltest_group_outbounds(section, entry) ? "1" : "0",
             hide_detour_outbounds: connections.subscription_hide_detour_outbounds(section, entry) ? "1" : "0"
-        });
+        };
+        let eng = connections.subscription_engine(section, entry);
+        if (eng != "core")
+            item.subscription_engine = eng;
+        push(result, item);
     }
     return sprintf("%J", result);
 }
@@ -1809,7 +1820,10 @@ function append_list_update_signature_body(body, section) {
     let action = option(section, "action", "");
     body = signature_add_value(body, "lists." + name + ".action", action);
     if (action == "dns") {
-        body = signature_add_value(body, "lists." + name + ".domain_ip_lists", option(section, "domain_ip_lists", ""));
+        body = signature_add_value(body, "lists." + name + ".domain_ip_lists", connections.domain_ip_lists_value(section));
+        let dns_rs = connections.rule_sets_value(section);
+        if (dns_rs != "")
+            body = signature_add_value(body, "lists." + name + ".rule_set", dns_rs);
         return body;
     }
     if (action == "hosts") {
@@ -1823,10 +1837,15 @@ function append_list_update_signature_body(body, section) {
 
     body = signature_add_value(body, "lists." + name + ".ports", section_rule_ports_csv(section));
     body = signature_add_value(body, "lists." + name + ".community_subnet_lists", rule_config.filter_community_subnet_lists_value(connections.community_lists_value(section)));
-    body = signature_add_value(body, "lists." + name + ".remote_domain_lists", option(section, "remote_domain_lists", ""));
-    body = signature_add_value(body, "lists." + name + ".remote_subnet_lists", option(section, "remote_subnet_lists", ""));
+    body = signature_add_value(body, "lists." + name + ".remote_domain_lists", section_leaf_option_text(section, "remote_domain_lists"));
+    body = signature_add_value(body, "lists." + name + ".remote_subnet_lists", section_leaf_option_text(section, "remote_subnet_lists"));
     body = signature_add_value(body, "lists." + name + ".rule_set_with_subnets", connections.rule_sets_with_subnets_value(section));
-    body = signature_add_value(body, "lists." + name + ".domain_ip_lists", option(section, "domain_ip_lists", ""));
+    body = signature_add_value(body, "lists." + name + ".domain_ip_lists", connections.domain_ip_lists_value(section));
+    let rs_val = connections.rule_sets_value(section);
+    if (rs_val != "")
+        body = signature_add_value(body, "lists." + name + ".rule_set", rs_val);
+    if (length(connections.section_condition_refs(section)) > 0)
+        body = signature_add_value(body, "lists." + name + ".community_lists", connections.community_lists_value(section));
 
     return body;
 }
@@ -2104,9 +2123,9 @@ function append_sing_box_rule_signature_body(body, section, sections) {
         body = signature_add_value(body, prefix + ".ports", section_rule_ports_csv(section));
     body = signature_add_value(body, prefix + ".fully_routed_ips", section_leaf_option_text(section, "fully_routed_ips"));
     if (action != "dns") {
-        body = signature_add_value(body, prefix + ".excluded_ips", option(section, "excluded_ips", ""));
-        body = signature_add_value(body, prefix + ".excluded_protocol", option(section, "excluded_protocol", ""));
-        body = signature_add_value(body, prefix + ".protocol", option(section, "protocol", ""));
+        body = signature_add_value(body, prefix + ".excluded_ips", section_leaf_option_text(section, "excluded_ips"));
+        body = signature_add_value(body, prefix + ".excluded_protocol", section_leaf_option_text(section, "excluded_protocol"));
+        body = signature_add_value(body, prefix + ".protocol", section_leaf_option_text(section, "protocol"));
     }
 
     body = signature_add_value(body, prefix + ".community_lists", connections.community_lists_value(section));
@@ -2114,19 +2133,31 @@ function append_sing_box_rule_signature_body(body, section, sections) {
     if (action != "dns")
         body = signature_add_value(body, prefix + ".rule_set_with_subnets", connections.rule_sets_with_subnets_value(section));
     body = signature_add_value(body, prefix + ".domain_ip_lists", section_leaf_option_text(section, "domain_ip_lists"));
+    let rem_doms = section_leaf_option_text(section, "remote_domain_lists");
+    if (rem_doms != "")
+        body = signature_add_value(body, prefix + ".remote_domain_lists", rem_doms);
+    let loc_doms = section_leaf_option_text(section, "local_domain_lists");
+    if (loc_doms != "")
+        body = signature_add_value(body, prefix + ".local_domain_lists", loc_doms);
+    let rem_subs = section_leaf_option_text(section, "remote_subnet_lists");
+    if (rem_subs != "")
+        body = signature_add_value(body, prefix + ".remote_subnet_lists", rem_subs);
+    let geo_val = connections.geoip_country_value(section);
+    if (geo_val != "")
+        body = signature_add_value(body, prefix + ".geoip_country", connections.geoip_country_mode(section) + ":" + geo_val);
     let user_doms = section_leaf_option_text(section, "user_domains");
     let user_doms_txt = section_leaf_option_text(section, "user_domains_text");
     if (user_doms != "" || user_doms_txt != "")
         body = signature_add_value(body, prefix + ".user_domains", user_doms + "|" + user_doms_txt);
-    if (length(list_option(section, "condition_refs")) > 0 || option(section, "condition_expression", "") != "")
+    if (length(connections.section_condition_refs(section)) > 0 || option(section, "condition_expression", "") != "")
         body = signature_add_value(body, prefix + ".condition_clauses", sprintf("%J", connections.section_effective_clauses(section)));
-    if (length(list_option(section, "outbound_source_refs")) > 0 ||
-        length(list_option(section, "outbound_group_refs")) > 0 ||
-        length(list_option(section, "balancer_refs")) > 0) {
+    if (length(connections.section_outbound_source_refs(section)) > 0 ||
+        length(connections.section_outbound_group_refs(section)) > 0 ||
+        length(connections.section_balancer_refs(section)) > 0) {
         body = signature_add_value(body, prefix + ".modular_outbounds", sprintf("%J", {
             sources: connections.section_effective_outbound_sources(section),
-            groups: list_option(section, "outbound_group_refs"),
-            balancers: list_option(section, "balancer_refs")
+            groups: connections.section_outbound_group_refs(section),
+            balancers: connections.section_balancer_refs(section)
         }));
     }
     let fail_policy = lc(trim(option(section, "fail_policy", "keep")));
@@ -2657,6 +2688,8 @@ function fixture_section_list(data, type_name) {
 }
 
 function uci_sections(type_name) {
+    if (type_name == "section")
+        connections.set_item_sections(null);
     return uci_core.section_objects(CONFIG_NAME, type_name);
 }
 
@@ -2704,8 +2737,8 @@ function has_list_update_sources_from_sections(sections) {
             bool_option(section, "enabled", true),
             option(section, "action", ""),
             connections.community_lists_value(section),
-            option(section, "remote_domain_lists", ""),
-            option(section, "remote_subnet_lists", ""),
+            section_leaf_option_text(section, "remote_domain_lists"),
+            section_leaf_option_text(section, "remote_subnet_lists"),
             connections.rule_sets_with_subnets_value(section),
             connections.domain_ip_lists_value(section),
             connections.rule_sets_value(section)
@@ -2721,7 +2754,7 @@ function has_nft_list_update_sources_from_sections(sections) {
             bool_option(section, "enabled", true),
             option(section, "action", ""),
             connections.community_lists_value(section),
-            option(section, "remote_subnet_lists", ""),
+            section_leaf_option_text(section, "remote_subnet_lists"),
             connections.rule_sets_with_subnets_value(section),
             connections.domain_ip_lists_value(section)
         ))

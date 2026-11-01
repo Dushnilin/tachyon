@@ -3316,6 +3316,23 @@ function createSettingsContent(section, capabilities) {
 
   o = section.taboption(
     "updates",
+    form.ListValue,
+    "subscription_engine",
+    _("Subscription Fetch & Parse Engine"),
+    _(
+      "Choose how subscriptions are downloaded and parsed. Tachyon Core uses the native Rust binary (tachyon-core subscription) with adaptive User-Agent retry cascade, full Xray config array parsing, and multi-hop detour chains, automatically falling back to the built-in ucode script if unavailable.",
+    ),
+  );
+  o.value(
+    "core",
+    _("Tachyon Core Binary (Adaptive User-Agent & Xray Chains) (Recommended)"),
+  );
+  o.value("ucode", _("Built-in Script (curl + ucode)"));
+  o.default = "core";
+  o.rmempty = false;
+
+  o = section.taboption(
+    "updates",
     form.Flag,
     "list_update_enabled",
     _("Enable list updates"),

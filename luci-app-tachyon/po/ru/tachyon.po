@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-01 15:28+0300\n"
-"PO-Revision-Date: 2026-11-01 15:28+0300\n"
+"POT-Creation-Date: 2026-11-01 16:26+0300\n"
+"PO-Revision-Date: 2026-11-01 16:26+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -1268,6 +1268,9 @@ msgstr "Отчёт об ошибке загружен"
 msgid "Built-in Cloudflare WARP tunnel with Amnezia obfuscation"
 msgstr "Встроенный туннель Cloudflare WARP с обфускацией заголовков Amnezia"
 
+msgid "Built-in Script (curl + ucode)"
+msgstr "Встроенный скрипт (curl + ucode)"
+
 msgid "Built-in output"
 msgstr "Встроенный выход"
 
@@ -1549,6 +1552,9 @@ msgstr "Укажите от 1 до 32 доменов для проверки."
 
 msgid "Choose from server list"
 msgstr "Выбрать из списка серверов"
+
+msgid "Choose how subscriptions are downloaded and parsed. Tachyon Core uses the native Rust binary (tachyon-core subscription) with adaptive User-Agent retry cascade, full Xray config array parsing, and multi-hop detour chains, automatically falling back to the built-in ucode script if unavailable."
+msgstr "Выберите способ загрузки и разбора подписок. Ядро Tachyon Core использует бинарник на Rust (tachyon-core subscription) с адаптивным каскадом повторов по User-Agent, разбором массивов полных конфигураций Xray и многозвенными цепочками прокси (detour), автоматически переключаясь на встроенный скрипт ucode при недоступности."
 
 msgid "Choose whether this schedule rule is permanently active (24/7) or restricted to specific hours."
 msgstr "Выберите, действует ли расписание круглосуточно (24/7) или только в заданные часы."
@@ -2488,6 +2494,9 @@ msgstr "По умолчанию (BBR)"
 
 msgid "Default (Direct WAN / Default mixed proxy)"
 msgstr "По умолчанию (WAN / стандартный смешанный прокси)"
+
+msgid "Default (From Global Settings)"
+msgstr "По умолчанию (из общих настроек)"
 
 msgid "Default (TCP MD5 / Auto)"
 msgstr "По умолчанию (TCP MD5 / Авто)"
@@ -8030,6 +8039,9 @@ msgstr "Выберите локальный (LAN) или внешний (WAN / D
 msgid "Select the WAN interfaces to be monitored"
 msgstr "Выберите WAN-интерфейсы для отслеживания"
 
+msgid "Select the engine used to download and parse this subscription. Tachyon Core uses the native Rust binary (tachyon-core subscription) with adaptive User-Agent cascade and full Xray multi-hop config support."
+msgstr "Выберите движок для загрузки и разбора этой подписки. Ядро Tachyon Core использует бинарник на Rust (tachyon-core subscription) с адаптивным каскадом User-Agent и поддержкой многозвенных конфигураций Xray."
+
 msgid "Select the fastest node"
 msgstr "Выбирать самый быстрый узел"
 
@@ -8795,6 +8807,9 @@ msgstr "Подсети из списка будут извлечены и доб
 msgid "Subscription"
 msgstr "Подписка"
 
+msgid "Subscription Fetch & Parse Engine"
+msgstr "Движок загрузки и разбора подписок"
+
 msgid "Subscription Info:"
 msgstr "Подписка:"
 
@@ -9076,6 +9091,12 @@ msgstr "Мастер подключения Tachyon"
 
 msgid "Tachyon Core"
 msgstr "Ядро Tachyon"
+
+msgid "Tachyon Core Binary (Adaptive User-Agent & Xray Chains) (Recommended)"
+msgstr "Бинарник Tachyon Core (адаптивный User-Agent и цепочки Xray) (рекомендуется)"
+
+msgid "Tachyon Core Binary (tachyon-core subscription)"
+msgstr "Бинарник Tachyon Core (tachyon-core subscription)"
 
 msgid "Tachyon Core Desync (Built-in Native Engine)"
 msgstr "Tachyon Core Desync (встроенный нативный движок)"

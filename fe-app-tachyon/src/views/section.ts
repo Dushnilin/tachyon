@@ -3590,6 +3590,7 @@ function subscriptionUrlSettingsKeys() {
     'urltest_idle_timeout',
     'hide_detour_outbounds',
     'subscription_insecure',
+    'subscription_engine',
   ];
 }
 
@@ -3621,6 +3622,7 @@ function defaultSubscriptionUrlSettings() {
     urltest_idle_timeout: '',
     hide_detour_outbounds: '1',
     subscription_insecure: '0',
+    subscription_engine: 'auto',
   };
 }
 
@@ -3882,6 +3884,20 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
     }
     return true;
   };
+
+  o = itemSection.option(
+    form.ListValue,
+    'subscription_engine',
+    _('Subscription Fetch & Parse Engine'),
+    _(
+      'Select the engine used to download and parse this subscription. Tachyon Core uses the native Rust binary (tachyon-core subscription) with adaptive User-Agent cascade and full Xray multi-hop config support.',
+    ),
+  );
+  o.default = 'auto';
+  o.rmempty = false;
+  o.value('auto', _('Default (From Global Settings)'));
+  o.value('core', _('Tachyon Core Binary (tachyon-core subscription)'));
+  o.value('ucode', _('Built-in Script (curl + ucode)'));
 
   o = itemSection.option(
     form.Flag,
