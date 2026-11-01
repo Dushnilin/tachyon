@@ -22,8 +22,8 @@ default_candidates="$(printf '%s\n%s\n%s\n%s\n%s\n%s' \
   Mihomo \
   Clash.Meta)"
 preferred_candidates="$(printf '%s\n%s\n%s\n%s\n%s\n%s' \
-  "$default_ua" \
   Mihomo \
+  "$default_ua" \
   Happ \
   v2rayN \
   v2rayNG \

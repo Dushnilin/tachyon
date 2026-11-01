@@ -53,6 +53,22 @@ for (let c in twitch_candidates) {
     assert(index(c, "forkop") < 0, "no forkop mirrors allowed");
 }
 
+for (let original in [
+    "https://provider.example/sub/private-token",
+    "https://ghfast.top/https://github.com/owner/repo/raw/main/file",
+    "https://provider.example/github.com/owner/repo/blob/main/file",
+    "https://provider.example/sub?url=https://github.com/owner/repo/blob/main/file",
+    "https://github.com.provider.example/sub",
+    "https://raw.githubusercontent.com@provider.example/sub",
+    "https://provider.example/sub#github.com",
+    "file:///tmp/github.com/owner/repo/blob/main/file"
+]) {
+    let direct = url.download_candidates(original);
+    assert(length(direct) == 1 && direct[0] == original, "non-GitHub URL must stay unchanged: " + original);
+}
+assert(length(url.download_candidates("https://api.github.com/repos/owner/repo/releases/latest")) > 1, "GitHub API keeps mirrors");
+assert(length(url.download_candidates("https://release-assets.githubusercontent.com/asset")) > 1, "GitHub release assets keep mirrors");
+
 // authority, host, port, userinfo with @ in query parameters
 let complex = "vless://user-uuid@example.com:8443?authority=name@channel&mode=gun#my-fragment";
 assert(url.authority(complex) == "example.com:8443", "authority strips userinfo and query with @");
