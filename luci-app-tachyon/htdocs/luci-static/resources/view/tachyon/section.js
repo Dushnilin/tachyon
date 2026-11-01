@@ -10622,6 +10622,62 @@ function createSectionContent(section) {
 
   o = section.taboption(
     "settings",
+    form.Value,
+    "icon_domain",
+    _("Website Icon Domain (favicon.ico)"),
+    _(
+      "Specify a website domain (e.g. youtube.com, discord.com, chatgpt.com) to automatically load its favicon.ico on the Dashboard, or leave empty for automatic detection.",
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = "youtube.com, discord.com, chatgpt.com...";
+  o.value("youtube.com", "YouTube (youtube.com)");
+  o.value("discord.com", "Discord (discord.com)");
+  o.value("telegram.org", "Telegram (telegram.org)");
+  o.value("chatgpt.com", "ChatGPT / OpenAI (chatgpt.com)");
+  o.value("claude.ai", "Claude (claude.ai)");
+  o.value("instagram.com", "Instagram / Meta (instagram.com)");
+  o.value("x.com", "X / Twitter (x.com)");
+  o.value("tiktok.com", "TikTok (tiktok.com)");
+  o.value("twitch.tv", "Twitch (twitch.tv)");
+  o.value("store.steampowered.com", "Steam (store.steampowered.com)");
+  o.value("roblox.com", "Roblox (roblox.com)");
+  o.value("spotify.com", "Spotify (spotify.com)");
+  o.value("netflix.com", "Netflix (netflix.com)");
+  o.value("github.com", "GitHub (github.com)");
+  o.value("rutracker.org", "RuTracker (rutracker.org)");
+  o.value("cloudflare.com", "Cloudflare (cloudflare.com)");
+  o.value("google.com", "Google (google.com)");
+  o.value("svg", _("Default vector icon (SVG)"));
+  o.write = function (section_id, value) {
+    const trimmed = String(value || "").trim();
+    try {
+      if (typeof localStorage !== "undefined" && section_id) {
+        if (trimmed) {
+          localStorage.setItem(`tachyon_sec_icon_${section_id}`, trimmed);
+        } else {
+          localStorage.removeItem(`tachyon_sec_icon_${section_id}`);
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return form.Value.prototype.write.apply(this, arguments);
+  };
+  o.remove = function (section_id) {
+    try {
+      if (typeof localStorage !== "undefined" && section_id) {
+        localStorage.removeItem(`tachyon_sec_icon_${section_id}`);
+      }
+    } catch {
+      // ignore
+    }
+    return form.Value.prototype.remove.apply(this, arguments);
+  };
+
+  o = section.taboption(
+    "settings",
     form.ListValue,
     "action",
     _("Action"),
@@ -10883,6 +10939,18 @@ function createSectionContent(section) {
     return value ? true : _("Select a section");
   };
 
+  function findLinkedProviderSourceId(section_id, targetSourceType) {
+    const refs = uci.get(UCI_PACKAGE, section_id, "outbound_source_refs");
+    const refList = Array.isArray(refs) ? refs : refs ? [String(refs)] : [];
+    for (const ref of refList) {
+      const stype = String(
+        uci.get(UCI_PACKAGE, ref, "source_type") || "",
+      ).trim();
+      if (stype === targetSourceType) return ref;
+    }
+    return null;
+  }
+
   o = section.taboption(
     "settings",
     form.TextValue,
@@ -10895,7 +10963,21 @@ function createSectionContent(section) {
   o.textarea = true;
   o.modalonly = true;
   o.load = function (section_id) {
-    const value = uci.get(UCI_PACKAGE, section_id, "nfqws_opt");
+    const linkedSrcId = findLinkedProviderSourceId(section_id, "zapret");
+    const srcVal = linkedSrcId
+      ? uci.get(UCI_PACKAGE, linkedSrcId, "nfqws_opt")
+      : null;
+    const secVal = uci.get(UCI_PACKAGE, section_id, "nfqws_opt");
+    const value =
+      secVal &&
+      secVal !== ZAPRET_DEFAULT_NFQWS_OPT &&
+      secVal !== ZAPRET_LEGACY_DEFAULT_NFQWS_OPT
+        ? secVal
+        : srcVal &&
+            srcVal !== ZAPRET_DEFAULT_NFQWS_OPT &&
+            srcVal !== ZAPRET_LEGACY_DEFAULT_NFQWS_OPT
+          ? srcVal
+          : secVal || srcVal;
     if (!value || value === ZAPRET_LEGACY_DEFAULT_NFQWS_OPT) {
       return ZAPRET_DEFAULT_NFQWS_OPT;
     }
@@ -10910,6 +10992,10 @@ function createSectionContent(section) {
         : normalized;
 
     uci.set(UCI_PACKAGE, section_id, "nfqws_opt", nextValue);
+    const linkedSrcId = findLinkedProviderSourceId(section_id, "zapret");
+    if (linkedSrcId) {
+      uci.set(UCI_PACKAGE, linkedSrcId, "nfqws_opt", nextValue);
+    }
   };
   o.validate = function (_section_id, value) {
     const analysis = analyzeNfqwsStrategy(value);
@@ -10928,14 +11014,26 @@ function createSectionContent(section) {
   o.textarea = true;
   o.modalonly = true;
   o.load = function (section_id) {
-    return (
-      uci.get(UCI_PACKAGE, section_id, "nfqws2_opt") ||
-      ZAPRET2_DEFAULT_NFQWS2_OPT
-    );
+    const linkedSrcId = findLinkedProviderSourceId(section_id, "zapret2");
+    const srcVal = linkedSrcId
+      ? uci.get(UCI_PACKAGE, linkedSrcId, "nfqws2_opt")
+      : null;
+    const secVal = uci.get(UCI_PACKAGE, section_id, "nfqws2_opt");
+    if (secVal && secVal !== ZAPRET2_DEFAULT_NFQWS2_OPT) {
+      return secVal;
+    }
+    if (srcVal && srcVal !== ZAPRET2_DEFAULT_NFQWS2_OPT) {
+      return srcVal;
+    }
+    return secVal || srcVal || ZAPRET2_DEFAULT_NFQWS2_OPT;
   };
   o.write = function (section_id, value) {
     const normalized = normalizeNfqws2StrategyValue(value);
     uci.set(UCI_PACKAGE, section_id, "nfqws2_opt", normalized);
+    const linkedSrcId = findLinkedProviderSourceId(section_id, "zapret2");
+    if (linkedSrcId) {
+      uci.set(UCI_PACKAGE, linkedSrcId, "nfqws2_opt", normalized);
+    }
   };
   o.validate = function (_section_id, value) {
     const analysis = analyzeNfqws2Strategy(value);
@@ -10954,10 +11052,18 @@ function createSectionContent(section) {
   o.textarea = true;
   o.modalonly = true;
   o.load = function (section_id) {
-    return (
-      uci.get(UCI_PACKAGE, section_id, "byedpi_cmd_opts") ||
-      BYEDPI_DEFAULT_CMD_OPTS
-    );
+    const linkedSrcId = findLinkedProviderSourceId(section_id, "byedpi");
+    const srcVal = linkedSrcId
+      ? uci.get(UCI_PACKAGE, linkedSrcId, "byedpi_cmd_opts")
+      : null;
+    const secVal = uci.get(UCI_PACKAGE, section_id, "byedpi_cmd_opts");
+    if (secVal && secVal !== BYEDPI_DEFAULT_CMD_OPTS) {
+      return secVal;
+    }
+    if (srcVal && srcVal !== BYEDPI_DEFAULT_CMD_OPTS) {
+      return srcVal;
+    }
+    return secVal || srcVal || BYEDPI_DEFAULT_CMD_OPTS;
   };
   o.write = function (section_id, value) {
     const normalized = normalizeByedpiStrategyValue(value);
@@ -10972,6 +11078,10 @@ function createSectionContent(section) {
       }
 
       uci.set(UCI_PACKAGE, section_id, "byedpi_cmd_opts", normalized);
+      const linkedSrcId = findLinkedProviderSourceId(section_id, "byedpi");
+      if (linkedSrcId) {
+        uci.set(UCI_PACKAGE, linkedSrcId, "byedpi_cmd_opts", normalized);
+      }
     });
   };
   o.validate = function (_section_id, value) {
@@ -14593,37 +14703,6 @@ function createSectionContent(section) {
     refreshDashboardFilterChoiceWidgets(section_id);
   };
   outboundNameSourceOptions.set("selector_proxy_links", o);
-
-  o = section.taboption(
-    "settings",
-    form.Value,
-    "icon_domain",
-    _("Website Icon Domain (favicon.ico)"),
-    _(
-      "Specify a website domain (e.g. youtube.com, discord.com, chatgpt.com) to automatically load its favicon.ico on the Dashboard, or leave empty for automatic detection.",
-    ),
-  );
-  o.modalonly = true;
-  o.rmempty = true;
-  o.placeholder = "youtube.com, discord.com, chatgpt.com...";
-  o.value("youtube.com", "YouTube (youtube.com)");
-  o.value("discord.com", "Discord (discord.com)");
-  o.value("telegram.org", "Telegram (telegram.org)");
-  o.value("chatgpt.com", "ChatGPT / OpenAI (chatgpt.com)");
-  o.value("claude.ai", "Claude (claude.ai)");
-  o.value("instagram.com", "Instagram / Meta (instagram.com)");
-  o.value("x.com", "X / Twitter (x.com)");
-  o.value("tiktok.com", "TikTok (tiktok.com)");
-  o.value("twitch.tv", "Twitch (twitch.tv)");
-  o.value("store.steampowered.com", "Steam (store.steampowered.com)");
-  o.value("roblox.com", "Roblox (roblox.com)");
-  o.value("spotify.com", "Spotify (spotify.com)");
-  o.value("netflix.com", "Netflix (netflix.com)");
-  o.value("github.com", "GitHub (github.com)");
-  o.value("rutracker.org", "RuTracker (rutracker.org)");
-  o.value("cloudflare.com", "Cloudflare (cloudflare.com)");
-  o.value("google.com", "Google (google.com)");
-  o.value("svg", _("Default vector icon (SVG)"));
 
   // Modular Outbounds, Groups, Section-level Narrowing, and Balancers (#242, #291)
   o = section.taboption(

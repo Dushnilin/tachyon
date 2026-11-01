@@ -2172,7 +2172,7 @@ function cleanup_modular_entities_v1(ctx) {
         let next = [];
         let changed = false;
         for (let item in cur) {
-            if ((keep_special != null && lc(item) == keep_special) || valid_map[item]) {
+            if ((keep_special != null && (lc(item) == keep_special || (keep_special == "direct" && substr(item, 0, 4) == "srv:"))) || valid_map[item]) {
                 if (index(next, item) < 0)
                     push(next, item);
                 else

@@ -852,6 +852,14 @@ function apply_strategy(engine, args_val, target_rule) {
     if (sec_type == "outbound_source") {
         uci.set(CONFIG_NAME, target_rule, "source_type", engine);
         write_strategy_fields(target_rule);
+        uci.foreach(CONFIG_NAME, "section", function(s) {
+            let s_id = as_string(s[".name"] || "");
+            if (s_id == "") return;
+            let refs_raw = s.outbound_source_refs;
+            let refs = type(refs_raw) == "array" ? refs_raw : (refs_raw ? split(trim(as_string(refs_raw)), /[ \t]+/) : []);
+            if (index(refs, target_rule) >= 0)
+                write_strategy_fields(s_id);
+        });
     } else if (sec_action == "connection") {
         let refs_raw = sec_obj.outbound_source_refs;
         let refs = type(refs_raw) == "array" ? refs_raw : (refs_raw ? split(trim(as_string(refs_raw)), /[ \t]+/) : []);
@@ -906,6 +914,19 @@ function apply_strategy(engine, args_val, target_rule) {
             }
         }
         write_strategy_fields(target_rule);
+        let refs_raw = sec_obj.outbound_source_refs;
+        let refs = type(refs_raw) == "array" ? refs_raw : (refs_raw ? split(trim(as_string(refs_raw)), /[ \t]+/) : []);
+        for (let r in refs) {
+            let r_str = trim(as_string(r));
+            if (r_str == "") continue;
+            let src_obj = uci.get_all(CONFIG_NAME, r_str);
+            if (!src_obj) continue;
+            let st = lc(trim(as_string(src_obj.source_type || "")));
+            if (st == engine || st == "zapret2" || st == "zapret" || st == "byedpi" || st == "desync") {
+                uci.set(CONFIG_NAME, r_str, "source_type", engine);
+                write_strategy_fields(r_str);
+            }
+        }
     }
     
     uci.commit(CONFIG_NAME);

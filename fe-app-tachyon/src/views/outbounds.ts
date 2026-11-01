@@ -218,16 +218,21 @@ function loadGlobalPoolChoices() {
           const chosen = Array.from(chosenByKey.values());
           return Promise.all(
             chosen.map((info) =>
-              readJsonSafe(`${SUB_CACHE_DIR}/${info.base}.json`).then(
-                (data) => ({
-                  base: info.base,
-                  url: info.url,
-                  mtime: info.mtime,
-                  outbounds: Array.isArray(data && data.outbounds)
-                    ? data.outbounds
-                    : [],
-                }),
-              ),
+              Promise.all([
+                readJsonSafe(`${SUB_CACHE_DIR}/${info.base}.json`),
+                readTextSafe(`${SUB_CACHE_DIR}/${info.base}.links`),
+              ]).then(([data, linksText]) => ({
+                base: info.base,
+                url: info.url,
+                mtime: info.mtime,
+                outbounds: Array.isArray(data && data.outbounds)
+                  ? data.outbounds
+                  : [],
+                links: String(linksText || '')
+                  .split(/\r?\n/)
+                  .map((l) => l.trim())
+                  .filter(Boolean),
+              })),
             ),
           );
         });
@@ -262,6 +267,9 @@ function loadGlobalPoolChoices() {
       const prefix = String(
         details.prefix || (existing && existing.prefix) || '',
       ).trim();
+      const link = String(
+        details.link || (existing && existing.link) || '',
+      ).trim();
       const country = String(
         details.country ||
           (existing && existing.country) ||
@@ -289,6 +297,7 @@ function loadGlobalPoolChoices() {
         sec,
         port,
         prefix,
+        link,
         country,
         sourceIds,
       });
@@ -322,6 +331,7 @@ function loadGlobalPoolChoices() {
           upsertServer(poolServerName(lname, pfx), {
             proto: lproto,
             prefix: pfx,
+            link,
             sourceId: sid,
           });
         }
@@ -340,7 +350,20 @@ function loadGlobalPoolChoices() {
       const matchedSources = (sc.url && urlToSources.get(sc.url)) || [
         { sid: '', prefix: '' },
       ];
-      (sc.outbounds || []).forEach((ob) => {
+      const linkByTag = new Map();
+      (sc.links || []).forEach((lnk) => {
+        const hashIdx = lnk.indexOf('#');
+        if (hashIdx >= 0) {
+          try {
+            const dec = decodeURIComponent(lnk.slice(hashIdx + 1)).trim();
+            if (dec) linkByTag.set(dec, lnk);
+          } catch (_e) {
+            const rawFrag = lnk.slice(hashIdx + 1).trim();
+            if (rawFrag) linkByTag.set(rawFrag, lnk);
+          }
+        }
+      });
+      (sc.outbounds || []).forEach((ob, idx) => {
         if (!ob || typeof ob !== 'object') return;
         const rawTag = String(ob.tag || ob.name || '').trim();
         if (!rawTag) return;
@@ -357,6 +380,9 @@ function loadGlobalPoolChoices() {
               : 'tls'
             : 'none';
         const port = String(ob.server_port || ob.port || '');
+        const resolvedLink =
+          linkByTag.get(rawTag) ||
+          (Array.isArray(sc.links) && sc.links[idx] ? sc.links[idx] : '');
 
         matchedSources.forEach((ms) => {
           const cleanName = poolServerName(rawTag, ms.prefix);
@@ -366,6 +392,7 @@ function loadGlobalPoolChoices() {
             sec,
             port,
             prefix: ms.prefix,
+            link: resolvedLink,
             sourceId: ms.sid,
           });
         });
@@ -388,6 +415,7 @@ function loadGlobalPoolChoices() {
       const securities = meta.securities || {};
       const ports = meta.ports || {};
       const prefixes = meta.prefixes || {};
+      const links = meta.links || (c && c.outboundLinks) || {};
 
       Object.entries(names).forEach(([tag, rawName]) => {
         if (groups[tag] || pgroups[tag] || hiddenSet.has(tag)) return;
@@ -399,6 +427,7 @@ function loadGlobalPoolChoices() {
         const trans = String(transports[tag] || '').toLowerCase();
         const sec = String(securities[tag] || '').toLowerCase();
         const port = String(ports[tag] || '');
+        const link = String(links[tag] || '').trim();
         const country = String(countries[tag] || '')
           .trim()
           .toUpperCase();
@@ -408,6 +437,7 @@ function loadGlobalPoolChoices() {
           sec,
           port,
           prefix: pfx,
+          link,
           country,
         });
       });
@@ -1855,10 +1885,42 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
           E(
             'span',
             { class: 'tachyon-studio-chip tachyon-studio-chip--muted' },
-            _('In pool'),
+            _('Not used'),
           ),
         );
       }
+
+      const copyServerLinkToClipboard = (rawLink, btnEl) => {
+        const text = String(rawLink || '').trim();
+        if (!text) return;
+        const markDone = () => {
+          const orig = btnEl.innerHTML;
+          btnEl.textContent = `✓ ${_('Copied')}`;
+          setTimeout(() => {
+            btnEl.innerHTML = orig;
+          }, 1400);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard
+            .writeText(text)
+            .then(markDone)
+            .catch(() => {});
+          return;
+        }
+        try {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          markDone();
+        } catch (_e) {
+          // ignore
+        }
+      };
 
       const chevronBtn = E(
         'button',
@@ -1908,23 +1970,92 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
             ],
           ),
           matchedServers.length > 0
-            ? E(
-                'div',
-                {
-                  style:
-                    'display: flex; flex-wrap: wrap; gap: 5px; max-height: 180px; overflow-y: auto; padding: 4px 0;',
-                },
-                matchedServers.map((srv) =>
+            ? E('div', { class: 'tachyon-studio-server-table-wrap' }, [
+                E('table', { class: 'tachyon-studio-server-table' }, [
+                  E('thead', {}, [
+                    E('tr', {}, [
+                      E('th', {}, '#'),
+                      E('th', {}, _('Server')),
+                      E('th', {}, _('Protocol')),
+                      E('th', { style: 'text-align:right;' }, _('Proxy Link')),
+                    ]),
+                  ]),
                   E(
-                    'span',
-                    {
-                      class: 'tachyon-studio-chip tachyon-studio-chip--source',
-                      style: 'font-size: 11px; padding: 3px 8px;',
-                    },
-                    srv.label || srv.value,
+                    'tbody',
+                    {},
+                    matchedServers.map((srv, sIdx) => {
+                      const pUp = String(srv.proto || '').toUpperCase();
+                      const tUp = String(srv.trans || '').toUpperCase();
+                      const badge =
+                        pUp && tUp && pUp !== tUp
+                          ? `${pUp} • ${tUp}`
+                          : pUp || tUp || 'PROXY';
+                      const resolvedLink = String(srv.link || '').trim();
+                      return E('tr', {}, [
+                        E(
+                          'td',
+                          { class: 'tachyon-studio-server-table__idx' },
+                          String(sIdx + 1),
+                        ),
+                        E(
+                          'td',
+                          { class: 'tachyon-studio-server-table__name' },
+                          srv.value || srv.label,
+                        ),
+                        E(
+                          'td',
+                          { class: 'tachyon-studio-server-table__proto' },
+                          [
+                            E(
+                              'span',
+                              {
+                                class:
+                                  'tachyon-studio-badge tachyon-studio-badge--proto',
+                              },
+                              badge,
+                            ),
+                          ],
+                        ),
+                        E(
+                          'td',
+                          {
+                            class: 'tachyon-studio-server-table__actions',
+                            style: 'text-align:right;',
+                          },
+                          resolvedLink
+                            ? [
+                                E(
+                                  'button',
+                                  {
+                                    type: 'button',
+                                    class:
+                                      'tachyon-studio-action-btn tachyon-studio-copy-link-btn',
+                                    title: _('Copy proxy link'),
+                                    click: (ev) => {
+                                      ev.preventDefault();
+                                      ev.stopPropagation();
+                                      copyServerLinkToClipboard(
+                                        resolvedLink,
+                                        ev.currentTarget,
+                                      );
+                                    },
+                                  },
+                                  [
+                                    typeof main !== 'undefined' &&
+                                    typeof main.renderCopyIcon === 'function'
+                                      ? main.renderCopyIcon(12)
+                                      : null,
+                                    E('span', {}, _('Copy link')),
+                                  ].filter(Boolean),
+                                ),
+                              ]
+                            : [E('span', { style: 'opacity:0.45;' }, '—')],
+                        ),
+                      ]);
+                    }),
                   ),
-                ),
-              )
+                ]),
+              ])
             : E(
                 'div',
                 { style: 'font-size: 12px; opacity: 0.68;' },
@@ -2158,40 +2289,44 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
     });
   }
 
-  const groupsSection = E('div', { class: 'tachyon-studio-panel' }, [
-    E('div', { class: 'tachyon-studio-panel__header' }, [
-      E('div', { class: 'tachyon-studio-panel__titles' }, [
-        E(
-          'span',
-          { class: 'tachyon-studio-toolbar__kicker' },
-          'SERVER FILTERING • LAYER 2',
-        ),
-        E(
-          'h3',
-          { class: 'tachyon-studio-panel__title' },
-          _('Layer 2: Reusable Outbound Server Groups'),
-        ),
-        E(
-          'p',
-          { class: 'tachyon-studio-panel__subtitle' },
-          _(
-            'Filter servers from the global pool by subscription prefix, country flag, regular expression, or protocol. Multiple include filters in a group act as an intersection (AND).',
+  const groupsSection = E('div', { class: 'tachyon-studio-deck' }, [
+    E('div', { class: 'tachyon-studio-toolbar' }, [
+      E('div', { class: 'tachyon-studio-toolbar__top' }, [
+        E('div', { class: 'tachyon-studio-toolbar__titles' }, [
+          E(
+            'span',
+            { class: 'tachyon-studio-toolbar__kicker' },
+            'SERVER FILTERING • LAYER 2',
           ),
-        ),
+          E(
+            'h3',
+            { class: 'tachyon-studio-toolbar__title' },
+            _('Layer 2: Reusable Outbound Server Groups'),
+          ),
+          E(
+            'p',
+            { class: 'tachyon-studio-toolbar__subtitle' },
+            _(
+              'Filter servers from the global pool by subscription prefix, country flag, regular expression, or protocol. Multiple include filters in a group act as an intersection (AND).',
+            ),
+          ),
+        ]),
+        E('div', { class: 'tachyon-studio-toolbar__actions' }, [
+          E(
+            'button',
+            {
+              type: 'button',
+              class: 'tachyon-studio-btn tachyon-studio-btn--primary',
+              click: () =>
+                showOutboundGroupModal(null, () => {
+                  refreshPoolAndRender();
+                  refreshProberGroupOptions();
+                }),
+            },
+            `+ ${_('Add Outbound Group')}`,
+          ),
+        ]),
       ]),
-      E(
-        'button',
-        {
-          type: 'button',
-          class: 'tachyon-studio-btn tachyon-studio-btn--primary',
-          click: () =>
-            showOutboundGroupModal(null, () => {
-              refreshPoolAndRender();
-              refreshProberGroupOptions();
-            }),
-        },
-        `+ ${_('Add Outbound Group')}`,
-      ),
     ]),
     groupsListWrap,
   ]);
@@ -4999,6 +5134,23 @@ function createOutboundsContent(section) {
   o.depends('source_type', 'zapret2');
   o.depends('source_type', 'wdtt');
   o.depends('source_type', 'olcrtc');
+  function syncStrategyToReferencingSections(
+    sourceId: string,
+    optionKey: string,
+    val: string,
+  ) {
+    const sections = uci.sections(UCI_PACKAGE, 'section') || [];
+    for (const sec of sections) {
+      const secId = sec['.name'];
+      if (!secId) continue;
+      const refs = sec.outbound_source_refs;
+      const refList = Array.isArray(refs) ? refs : refs ? [String(refs)] : [];
+      if (refList.includes(sourceId) && sec[optionKey] !== undefined) {
+        uci.set(UCI_PACKAGE, secId, optionKey, val);
+      }
+    }
+  }
+
   o.load = function (sectionId) {
     const existing = uci.get(UCI_PACKAGE, sectionId, 'nfqws2_opt');
     if (existing) return existing;
@@ -5006,6 +5158,11 @@ function createOutboundsContent(section) {
     if (stype === 'wdtt') return WDTT_DEFAULT_NFQWS2_OPT;
     if (stype === 'olcrtc') return OLCRTC_DEFAULT_NFQWS2_OPT;
     return ZAPRET2_DEFAULT_NFQWS2_OPT;
+  };
+  o.write = function (sectionId, value) {
+    const nextVal = String(value || '').trim() || ZAPRET2_DEFAULT_NFQWS2_OPT;
+    uci.set(UCI_PACKAGE, sectionId, 'nfqws2_opt', nextVal);
+    syncStrategyToReferencingSections(sectionId, 'nfqws2_opt', nextVal);
   };
 
   o = section.taboption(
@@ -5024,6 +5181,11 @@ function createOutboundsContent(section) {
     return (
       uci.get(UCI_PACKAGE, sectionId, 'nfqws_opt') || ZAPRET_DEFAULT_NFQWS_OPT
     );
+  };
+  o.write = function (sectionId, value) {
+    const nextVal = String(value || '').trim() || ZAPRET_DEFAULT_NFQWS_OPT;
+    uci.set(UCI_PACKAGE, sectionId, 'nfqws_opt', nextVal);
+    syncStrategyToReferencingSections(sectionId, 'nfqws_opt', nextVal);
   };
 
   o = section.taboption(
@@ -5059,6 +5221,11 @@ function createOutboundsContent(section) {
       uci.get(UCI_PACKAGE, sectionId, 'byedpi_cmd_opts') ||
       BYEDPI_DEFAULT_CMD_OPTS
     );
+  };
+  o.write = function (sectionId, value) {
+    const nextVal = String(value || '').trim() || BYEDPI_DEFAULT_CMD_OPTS;
+    uci.set(UCI_PACKAGE, sectionId, 'byedpi_cmd_opts', nextVal);
+    syncStrategyToReferencingSections(sectionId, 'byedpi_cmd_opts', nextVal);
   };
 
   o = section.taboption(

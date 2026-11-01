@@ -1864,11 +1864,28 @@ function add_interface_connection_outbound(config, state, section, interface_ind
     push(config.outbounds, outbound);
     push(selector_tags, tag_name);
     push(urltest_candidate_tags, tag_name);
-    runtime_subscription.remember_outbound_metadata(state, tag_name, interface_name, outbound);
     let src_id = (connections && connections.source_id_for_manual_item)
         ? connections.source_id_for_manual_item(section, interface_name)
         : "";
+    let display_name = interface_name;
+    let node_prefix = "";
+    if (src_id != "" && connections && type(connections.outbound_source_section) == "function") {
+        let src_sec = connections.outbound_source_section(src_id);
+        if (src_sec != null) {
+            let src_label = trim(option(src_sec, "name", option(src_sec, "label", "")));
+            if (src_label != "" && src_label != src_id)
+                display_name = src_label;
+            if (bool_option(src_sec, "prefix_nodes", true))
+                node_prefix = trim(option(src_sec, "node_prefix", ""));
+        }
+    }
+    runtime_subscription.remember_outbound_metadata(state, tag_name, display_name, outbound, node_prefix);
     state.outboundMetadata.sources[tag_name] = src_id != "" ? src_id : "manual";
+    if (src_id != "") {
+        if (!state.outboundMetadata.source_ids)
+            state.outboundMetadata.source_ids = {};
+        state.outboundMetadata.source_ids[tag_name] = src_id;
+    }
 }
 
 function add_connection_interfaces(config, state, section, taken, selector_tags, urltest_candidate_tags) {

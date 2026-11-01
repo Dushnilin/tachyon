@@ -1639,13 +1639,21 @@ export function resolveSectionEngineMeta(
   }
 
   // Determine primary engine
+  const isInterfaceSelected =
+    selectedTypeUpper === 'INTERFACE' ||
+    selectedTypeUpper === 'TAILSCALE' ||
+    /-interface-\d+-out$/i.test(selectedOutbound?.code || '') ||
+    sourceTypes.includes('interface') ||
+    sourceTypes.includes('tailscale');
+
   let primaryEngine = rawAction;
   if (!dpiTypes.has(primaryEngine)) {
-    if (dpiTypes.has(selectedTypeUpper.toLowerCase())) {
+    if (dpiTypes.has(selectedTypeUpper.toLowerCase()) && !isInterfaceSelected) {
       primaryEngine = selectedTypeUpper.toLowerCase();
     } else if (
       sourceTypes.length > 0 &&
-      sourceTypes.every((st) => dpiTypes.has(st))
+      sourceTypes.every((st) => dpiTypes.has(st)) &&
+      !isInterfaceSelected
     ) {
       primaryEngine = sourceTypes[0];
     } else if (
@@ -1797,6 +1805,23 @@ export function resolveSectionEngineMeta(
     ) {
       pushBadge('AWG / WG', 'proxy', 'AmneziaWG / WireGuard', () =>
         renderLockIcon(11),
+      );
+    } else if (
+      sourceTypes.includes('tailscale') ||
+      selectedTypeUpper.includes('TAILSCALE')
+    ) {
+      pushBadge('Tailscale', 'proxy', 'Tailscale Mesh VPN', () =>
+        renderShieldIcon(11),
+      );
+    } else if (
+      sourceTypes.includes('interface') ||
+      selectedTypeUpper === 'INTERFACE'
+    ) {
+      pushBadge(
+        tr('Интерфейс', 'Interface'),
+        'proxy',
+        tr('Сетевой интерфейс роутера', 'Router network interface'),
+        () => renderShieldIcon(11),
       );
     } else if (selectedOutbound || (section.outbounds || []).length > 0) {
       const info =
@@ -2652,18 +2677,8 @@ export function renderDashboardSectionsAndNodes(
     const iconBoxNode = E(
       'div',
       {
-        class: 'tachyon-routing-row__icon is-clickable',
-        'data-section-icon-box': section.sectionName || section.code,
+        class: 'tachyon-routing-row__icon',
         style: `background: ${visual.bg}; color: ${visual.color};`,
-        title: tr(
-          'Нажмите, чтобы выбрать сайт для иконки (favicon.ico)',
-          'Click to choose website for section icon (favicon.ico)',
-        ),
-        click: (ev: MouseEvent) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          openSectionIconPickerModal(section);
-        },
       } as any,
       [createSectionIconContent(section, visual)],
     );

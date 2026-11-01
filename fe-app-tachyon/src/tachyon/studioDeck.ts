@@ -8,6 +8,7 @@ import {
   openServerInfoModalForSection,
   openServerSubscriptionModal,
 } from './tabs/dashboard/inboundServers';
+import { openSectionIconPickerModal } from './tabs/dashboard/partials/renderOverviewRow';
 import {
   renderZapIcon,
   renderShieldIcon,
@@ -1284,6 +1285,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
     name: string;
     proto: string;
     trans: string;
+    link?: string;
   }
   interface SubCacheEntryInfo {
     mtime: number;
@@ -1406,7 +1408,9 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                   : [];
                 const servers: SubCacheServerItem[] = [];
                 outbounds.forEach((ob: any) => {
-                  const name = String(ob?.tag || ob?.name || '').trim();
+                  const name = String(
+                    ob?.remark || ob?.tag || ob?.name || '',
+                  ).trim();
                   const proto = String(ob?.type || '').toUpperCase();
                   if (
                     !name ||
@@ -1418,7 +1422,10 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                   const trans = String(
                     ob?.transport?.type || 'tcp',
                   ).toUpperCase();
-                  servers.push({ name, proto, trans });
+                  const link = String(
+                    ob?.share_link || ob?.__tachyon_link || ob?.link || '',
+                  ).trim();
+                  servers.push({ name, proto, trans, link });
                 });
 
                 subCacheByUrl.set(inf.url, {
@@ -2216,7 +2223,6 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
         {
           class: `tachyon-studio-card tachyon-studio-card--section ${enabled ? 'is-enabled' : 'is-disabled'}`,
           'data-sid': sid,
-          click: openEditModal,
         },
         [
           E('div', { class: 'tachyon-studio-card__head' }, [
@@ -2225,8 +2231,29 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
               E(
                 'div',
                 {
-                  class: 'tachyon-studio-card__icon',
-                  style: `background:${tel.iconBg};color:${tel.iconColor};`,
+                  class: 'tachyon-studio-card__icon is-clickable',
+                  style: `background:${tel.iconBg};color:${tel.iconColor};cursor:pointer;`,
+                  title: tr(
+                    'Нажмите, чтобы выбрать иконку секции',
+                    'Click to choose section icon',
+                  ),
+                  click: (ev: MouseEvent) => {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    openSectionIconPickerModal(
+                      {
+                        code: sid,
+                        sectionName: sid,
+                        displayName: tel.name,
+                        action: tel.action,
+                        outbounds: [],
+                      } as any,
+                      () => {
+                        notifyUciChanged();
+                        renderDeck();
+                      },
+                    );
+                  },
                 },
                 [iconContent],
               ),
@@ -2587,63 +2614,157 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
         ),
       );
 
-      const inspectorRows: HTMLElement[] = [];
-      if (stype === 'subscription' && raw.url) {
-        inspectorRows.push(
-          E('div', { class: 'tachyon-studio-source-inspector__row' }, [
-            E(
-              'span',
-              { class: 'tachyon-studio-source-inspector__label' },
-              'URL:',
-            ),
-            E(
-              'code',
-              { class: 'tachyon-studio-source-inspector__code' },
-              String(raw.url),
-            ),
-          ]),
-        );
-      }
-      if (stype === 'subscription') {
-        const schedParts: string[] = [];
-        const autoUpd = raw.subscription_update_enabled !== '0';
-        schedParts.push(
-          autoUpd
-            ? `${tr('Автообновление', 'Auto-update')}: ${raw.subscription_update_interval || '1h'}`
-            : `${tr('Автообновление', 'Auto-update')}: ${tr('Выключено', 'Disabled')}`,
-        );
-        if (
-          raw.download_via_proxy_enabled === '1' &&
-          raw.download_via_proxy_section
-        ) {
-          const dlSec = uci.get(
-            UCI_PACKAGE,
-            String(raw.download_via_proxy_section),
-          );
-          schedParts.push(
-            `${tr('Обновлять через секцию', 'Update via section')}: ${dlSec?.label || dlSec?.name || raw.download_via_proxy_section}`,
-          );
+      const copyProxyLinkToClipboard = (linkStr: string, btn: HTMLElement) => {
+        if (!linkStr) return;
+        const origTitle = btn.getAttribute('title') || '';
+        const doFeedback = () => {
+          btn.classList.add('is-copied');
+          btn.setAttribute('title', tr('Скопировано!', 'Copied!'));
+          window.setTimeout(() => {
+            btn.classList.remove('is-copied');
+            btn.setAttribute('title', origTitle);
+          }, 1500);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard
+            .writeText(linkStr)
+            .then(doFeedback)
+            .catch(() => {
+              const ta = document.createElement('textarea');
+              ta.value = linkStr;
+              document.body.appendChild(ta);
+              ta.select();
+              document.execCommand('copy');
+              ta.remove();
+              doFeedback();
+            });
+        } else {
+          const ta = document.createElement('textarea');
+          ta.value = linkStr;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          ta.remove();
+          doFeedback();
         }
-        if (subCache?.mtime) {
-          schedParts.push(
-            `${tr('Последнее обновление', 'Last updated')}: ${formatUpdatedTime(subCache.mtime)}`,
-          );
-        }
-        inspectorRows.push(
-          E('div', { class: 'tachyon-studio-source-inspector__row' }, [
-            E(
-              'span',
-              { class: 'tachyon-studio-source-inspector__label' },
-              tr('Обновление:', 'Update:'),
-            ),
-            E(
-              'span',
-              { class: 'tachyon-studio-source-inspector__val' },
-              schedParts.join(' • '),
-            ),
-          ]),
-        );
+      };
 
+      const lookupLiveLinkByName = (srvName: string): string => {
+        try {
+          const storeMod = (globalThis as any).tachyonStore || null;
+          const sectionsObj =
+            storeMod && typeof storeMod.get === 'function'
+              ? storeMod.get()?.connectionsWidget?.data?.sections || {}
+              : {};
+          for (const sec of Object.values(sectionsObj) as any[]) {
+            const obs = Array.isArray(sec?.outbounds) ? sec.outbounds : [];
+            for (const ob of obs) {
+              const n = String(ob?.displayName || ob?.name || '').trim();
+              if (
+                (n === srvName || n.endsWith(` ${srvName}`)) &&
+                ob?.link &&
+                String(ob.link).includes('://')
+              ) {
+                return String(ob.link);
+              }
+            }
+          }
+        } catch {
+          // ignore
+        }
+        return '';
+      };
+
+      const renderCompactServersTable = (
+        items: { name: string; proto: string; trans?: string; link?: string }[],
+      ) =>
+        E('div', { class: 'tachyon-studio-server-table-wrap' }, [
+          E('table', { class: 'tachyon-studio-server-table' }, [
+            E('thead', {}, [
+              E('tr', {}, [
+                E('th', {}, '#'),
+                E('th', {}, tr('Сервер', 'Server')),
+                E('th', {}, tr('Протокол', 'Protocol')),
+                E(
+                  'th',
+                  { style: 'text-align:right;' },
+                  tr('Ссылка', 'Proxy Link'),
+                ),
+              ]),
+            ]),
+            E(
+              'tbody',
+              {},
+              items.map((srv, idx) => {
+                const badge =
+                  srv.trans && srv.trans !== srv.proto
+                    ? `${srv.proto} • ${srv.trans}`
+                    : srv.proto;
+                const resolvedLink = srv.link || lookupLiveLinkByName(srv.name);
+                return E('tr', {}, [
+                  E(
+                    'td',
+                    { class: 'tachyon-studio-server-table__idx' },
+                    String(idx + 1),
+                  ),
+                  E(
+                    'td',
+                    { class: 'tachyon-studio-server-table__name' },
+                    srv.name,
+                  ),
+                  E('td', { class: 'tachyon-studio-server-table__proto' }, [
+                    E(
+                      'span',
+                      {
+                        class:
+                          'tachyon-studio-badge tachyon-studio-badge--proto',
+                      },
+                      badge,
+                    ),
+                  ]),
+                  E(
+                    'td',
+                    {
+                      class: 'tachyon-studio-server-table__actions',
+                      style: 'text-align:right;',
+                    },
+                    resolvedLink
+                      ? [
+                          E(
+                            'button',
+                            {
+                              type: 'button',
+                              class:
+                                'tachyon-studio-action-btn tachyon-studio-copy-link-btn',
+                              title: tr(
+                                'Скопировать ссылку на прокси (Copy proxy link)',
+                                'Copy proxy link',
+                              ),
+                              click: (ev: MouseEvent) => {
+                                ev.preventDefault();
+                                ev.stopPropagation();
+                                copyProxyLinkToClipboard(
+                                  resolvedLink,
+                                  ev.currentTarget as HTMLElement,
+                                );
+                              },
+                            },
+                            [
+                              renderCopyIcon(12),
+                              E('span', {}, tr('Копировать', 'Copy link')),
+                            ],
+                          ),
+                        ]
+                      : [E('span', { style: 'opacity:0.45;' }, '—')],
+                  ),
+                ]);
+              }),
+            ),
+          ]),
+        ]);
+
+      const inspectorRows: HTMLElement[] = [];
+      if (stype === 'subscription') {
         if (subCache?.metadata) {
           const md = subCache.metadata;
           const infoParts: string[] = [];
@@ -2687,103 +2808,57 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
 
         if (subCache && subCache.servers.length > 0) {
           inspectorRows.push(
-            E('div', { class: 'tachyon-studio-source-inspector__row' }, [
-              E(
-                'span',
-                { class: 'tachyon-studio-source-inspector__label' },
-                `${tr('Серверы в подписке', 'Servers in subscription')} (${subCache.servers.length}):`,
-              ),
-              E(
-                'div',
-                {
-                  class: 'tachyon-studio-source-inspector__links',
-                  style: 'max-height: 160px; overflow-y: auto;',
-                },
-                subCache.servers.map((srv) =>
-                  E(
-                    'span',
-                    {
-                      class: 'tachyon-studio-chip tachyon-studio-chip--source',
-                    },
-                    `${srv.name} [${srv.proto}${srv.trans && srv.trans !== srv.proto ? '+' + srv.trans : ''}]`,
-                  ),
+            E(
+              'div',
+              {
+                class:
+                  'tachyon-studio-source-inspector__row tachyon-studio-source-inspector__row--block',
+              },
+              [
+                E(
+                  'span',
+                  { class: 'tachyon-studio-source-inspector__label' },
+                  `${tr('Серверы в подписке', 'Servers in subscription')} (${subCache.servers.length}):`,
                 ),
-              ),
-            ]),
+                renderCompactServersTable(subCache.servers),
+              ],
+            ),
           );
         }
       }
       if (stype === 'proxy_links' && links.length > 0) {
+        const linkServerItems = links.map((lnk, idx) => {
+          const hashIdx = lnk.indexOf('#');
+          const tagPart =
+            hashIdx >= 0 ? decodeURIComponent(lnk.slice(hashIdx + 1)) : '';
+          const protoMatch = lnk.match(/^([a-z0-9+-]+):\/\//i);
+          const proto = protoMatch ? protoMatch[1].toUpperCase() : 'LINK';
+          const trans = (getProxyUrlTransport(lnk) || 'TCP').toUpperCase();
+          return {
+            name: tagPart || `${proto} #${idx + 1}`,
+            proto,
+            trans,
+            link: lnk,
+          };
+        });
         inspectorRows.push(
-          E('div', { class: 'tachyon-studio-source-inspector__row' }, [
-            E(
-              'span',
-              { class: 'tachyon-studio-source-inspector__label' },
-              `${tr('Ссылки', 'Links')} (${links.length}):`,
-            ),
-            E(
-              'div',
-              { class: 'tachyon-studio-source-inspector__links' },
-              links.slice(0, 24).map((lnk) => {
-                const hashIdx = lnk.indexOf('#');
-                const tagPart =
-                  hashIdx >= 0
-                    ? decodeURIComponent(lnk.slice(hashIdx + 1))
-                    : '';
-                const protoMatch = lnk.match(/^([a-z0-9+-]+):\/\//i);
-                const proto = protoMatch ? protoMatch[1].toUpperCase() : 'LINK';
-                return E(
-                  'span',
-                  { class: 'tachyon-studio-chip tachyon-studio-chip--source' },
-                  tagPart
-                    ? `${proto}: ${tagPart}`
-                    : `${proto} (${lnk.slice(0, 28)}…)`,
-                );
-              }),
-            ),
-          ]),
-        );
-      }
-      if (raw.node_prefix || raw.subscription_tls_fingerprint) {
-        const metaParts: string[] = [];
-        if (raw.node_prefix) {
-          metaParts.push(`${tr('Префикс', 'Prefix')}: ${raw.node_prefix}`);
-        }
-        if (raw.subscription_tls_fingerprint) {
-          metaParts.push(`uTLS: ${raw.subscription_tls_fingerprint}`);
-        }
-        inspectorRows.push(
-          E('div', { class: 'tachyon-studio-source-inspector__row' }, [
-            E(
-              'span',
-              { class: 'tachyon-studio-source-inspector__label' },
-              tr('Параметры:', 'Options:'),
-            ),
-            E(
-              'span',
-              { class: 'tachyon-studio-source-inspector__val' },
-              metaParts.join(' • '),
-            ),
-          ]),
-        );
-      }
-      inspectorRows.push(
-        E('div', { class: 'tachyon-studio-source-inspector__row' }, [
           E(
-            'span',
-            { class: 'tachyon-studio-source-inspector__label' },
-            tr('В секциях и группах:', 'In sections & groups:'),
+            'div',
+            {
+              class:
+                'tachyon-studio-source-inspector__row tachyon-studio-source-inspector__row--block',
+            },
+            [
+              E(
+                'span',
+                { class: 'tachyon-studio-source-inspector__label' },
+                `${tr('Серверы в источнике', 'Servers in source')} (${links.length}):`,
+              ),
+              renderCompactServersTable(linkServerItems),
+            ],
           ),
-          E('div', { class: 'tachyon-studio-card__chips' }, [
-            ...sectionChips.map(
-              (ch: HTMLElement) => ch.cloneNode(true) as HTMLElement,
-            ),
-            ...groupChips.map(
-              (ch: HTMLElement) => ch.cloneNode(true) as HTMLElement,
-            ),
-          ]),
-        ]),
-      );
+        );
+      }
 
       const inspectorEl = E(
         'div',
@@ -3262,6 +3337,32 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
             ],
           ),
         );
+      } else if (btype === 'priority') {
+        const rawLvls = raw.outbound_group_levels;
+        const lvlList: string[] = Array.isArray(rawLvls)
+          ? rawLvls.map((v: any) => String(v).trim()).filter(Boolean)
+          : String(rawLvls || '')
+                .trim()
+                .startsWith('srv:')
+            ? [String(rawLvls).trim()]
+            : asArray(rawLvls);
+        lvlList.forEach((lvlRef, idx) => {
+          const label =
+            lvlRef === 'direct'
+              ? 'Direct (WAN)'
+              : lvlRef.startsWith('srv:')
+                ? `🎯 ${lvlRef.slice(4)}`
+                : uci.get(UCI_PACKAGE, lvlRef, 'name') ||
+                  uci.get(UCI_PACKAGE, lvlRef, 'label') ||
+                  lvlRef;
+          policyChips.push(
+            E(
+              'span',
+              { class: 'tachyon-studio-chip tachyon-studio-chip--cond' },
+              `#${idx + 1}: ${label}`,
+            ),
+          );
+        });
       }
       if (incCountries.length) {
         policyChips.push(
@@ -3296,7 +3397,6 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
         {
           class: `tachyon-studio-card tachyon-studio-card--balancer ${enabled ? 'is-enabled' : 'is-disabled'}`,
           'data-sid': sid,
-          click: openEditModal,
         },
         [
           E('div', { class: 'tachyon-studio-card__head' }, [

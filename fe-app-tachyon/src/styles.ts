@@ -6288,6 +6288,25 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
     max-width: 380px;
 }
 
+.tachyon-studio-body--pipeline .tachyon-studio-card--balancer .tachyon-studio-card__head {
+    max-width: none;
+}
+
+.tachyon-studio-card--section,
+.tachyon-studio-card--balancer {
+    cursor: default;
+}
+
+.tachyon-studio-card__icon.is-clickable {
+    cursor: pointer;
+    transition: border-color 0.14s ease, transform 0.12s ease;
+}
+
+.tachyon-studio-card__icon.is-clickable:hover {
+    border-color: rgba(148, 130, 224, 0.55);
+    transform: scale(1.05);
+}
+
 .tachyon-studio-body--pipeline .tachyon-studio-card--source-compact {
     flex-direction: column;
     align-items: stretch;
@@ -6463,6 +6482,13 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.tachyon-studio-card--balancer .tachyon-studio-card__title {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    word-break: break-word;
 }
 
 .tachyon-studio-card__sid {
@@ -6924,6 +6950,60 @@ button.tachyon-studio-chip:hover {
     display: flex;
     flex-wrap: wrap;
     gap: 5px;
+}
+
+.tachyon-studio-server-table-wrap {
+    width: 100%;
+    max-height: 260px;
+    overflow-y: auto;
+    border-radius: 8px;
+    border: 1px solid var(--border-color-low, rgba(148, 163, 184, 0.18));
+    background: var(--background-color-low, rgba(15, 23, 42, 0.22));
+}
+
+.tachyon-studio-server-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.tachyon-studio-server-table th,
+.tachyon-studio-server-table td {
+    padding: 6px 10px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color-low, rgba(148, 163, 184, 0.12));
+    vertical-align: middle;
+}
+
+.tachyon-studio-server-table th {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-color-medium, #94a3b8);
+    background: var(--background-color-high, rgba(15, 23, 42, 0.35));
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.tachyon-studio-server-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.tachyon-studio-server-table tbody tr:hover td {
+    background: rgba(148, 130, 224, 0.06);
+}
+
+.tachyon-studio-server-table__name {
+    font-weight: 600;
+    word-break: break-word;
+}
+
+.tachyon-studio-copy-link-btn {
+    padding: 3px 8px !important;
+    font-size: 11px !important;
+    gap: 4px !important;
 }
 
 /* ==========================================================================

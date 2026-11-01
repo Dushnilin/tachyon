@@ -2,6 +2,7 @@
 
 let fs = require("fs");
 let common = require("core.common");
+let uci_core = require("core.uci");
 let subscription_share_link = require("subscription.share_link");
 let subscription_wireguard = require("subscription.wireguard");
 
@@ -189,6 +190,46 @@ function merge_source_metadata(state, section_name, source_section, source_index
         push(state.subscriptionMetadata, item);
 }
 
+function resolve_interface_protocol(iface_name) {
+    iface_name = trim(as_string(iface_name || ""));
+    if (iface_name == "" || iface_name == "lo")
+        return "";
+    let lc_name = lc(iface_name);
+    if (lc_name == "tailscale0" || index(lc_name, "tailscale") == 0)
+        return "tailscale";
+    if (index(lc_name, "awg") == 0)
+        return "amneziawg";
+    if (index(lc_name, "wg") == 0)
+        return "wireguard";
+    if (index(lc_name, "ovpn") == 0 || index(lc_name, "tun") == 0) {
+        let p_direct = lc(trim(as_string(uci_core.get("network", iface_name, "proto") || "")));
+        if (p_direct == "amneziawg") return "amneziawg";
+        if (p_direct == "wireguard") return "wireguard";
+        if (p_direct == "openconnect") return "openconnect";
+        if (index(lc_name, "ovpn") == 0) return "openvpn";
+    }
+    try {
+        let p = lc(trim(as_string(uci_core.get("network", iface_name, "proto") || "")));
+        if (p == "amneziawg") return "amneziawg";
+        if (p == "wireguard") return "wireguard";
+        if (p == "openconnect") return "openconnect";
+        if (p == "openvpn") return "openvpn";
+        if (p == "" && type(uci_core.section_objects) == "function") {
+            for (let net_sec in uci_core.section_objects("network", "interface")) {
+                let dev = trim(as_string(net_sec.device || net_sec.ifname || ""));
+                if (dev == iface_name) {
+                    let sp = lc(trim(as_string(net_sec.proto || "")));
+                    if (sp == "amneziawg") return "amneziawg";
+                    if (sp == "wireguard") return "wireguard";
+                    if (sp == "openconnect") return "openconnect";
+                    if (sp == "openvpn") return "openvpn";
+                }
+            }
+        }
+    } catch (e) {}
+    return "interface";
+}
+
 function remember_outbound_metadata(state, tag_name, display_name, outbound, prefix) {
     if (type(state) != "object")
         return;
@@ -197,8 +238,14 @@ function remember_outbound_metadata(state, tag_name, display_name, outbound, pre
     if (prefix != "")
         state.outboundMetadata.prefixes[tag_name] = prefix;
     let protocol = lc(as_string(outbound.type || ""));
+    let bind_iface = trim(as_string(outbound.bind_interface || ""));
     if (protocol == "wireguard" && subscription_wireguard.has_awg(outbound))
         protocol = "amneziawg";
+    else if ((protocol == "direct" || protocol == "") && bind_iface != "" && bind_iface != "lo") {
+        let iface_proto = resolve_interface_protocol(bind_iface);
+        if (iface_proto != "")
+            protocol = iface_proto;
+    }
     if (protocol != "")
         state.outboundMetadata.protocols[tag_name] = protocol;
 
@@ -256,6 +303,8 @@ function remember_outbound_metadata(state, tag_name, display_name, outbound, pre
     let badges = [];
     if (protocol == "urltest")
         push(badges, "авто-группы");
+    if (bind_iface != "" && bind_iface != "lo")
+        push(badges, "iface:" + bind_iface);
     if (security == "reality" || security == "tls")
         push(badges, security);
     let flow = as_string(outbound.flow || "");
@@ -421,7 +470,8 @@ function new_section_state(section_name) {
             prefixes: {},
             ports: {},
             details: {},
-            sources: {}
+            sources: {},
+            source_ids: {}
         },
         servers: {},
         urltestCandidateTags: [],

@@ -360,6 +360,7 @@ function format_outbound_type_label(protocol, transport) {
     else if (p == "desync") norm_proto = "Desync";
     else if (p == "chain") norm_proto = "Chain";
     else if (p == "tailscale") norm_proto = "Tailscale";
+    else if (p == "interface") norm_proto = "Interface";
     else if (p == "socks" || p == "socks5") norm_proto = "SOCKS5";
     else if (p == "http") norm_proto = "HTTP";
     else if (p == "direct") norm_proto = "Direct";

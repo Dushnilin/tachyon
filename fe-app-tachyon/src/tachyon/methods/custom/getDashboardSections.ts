@@ -987,6 +987,34 @@ function buildJsonOutboundByCode(section: Tachyon.ConfigSection) {
   return result;
 }
 
+function buildInterfaceOutboundByCode(section: Tachyon.ConfigSection) {
+  const sectionName = section['.name'];
+  const result = new Map<string, { name: string; type: string }>();
+  getConnectionInterfaces(section).forEach((ifaceName, index) => {
+    const trimmed = String(ifaceName || '').trim();
+    if (!trimmed) return;
+    const rawTag = getOutboundTagBySection(
+      `${sectionName}-interface-${index + 1}`,
+    );
+    const lcName = trimmed.toLowerCase();
+    let typeLabel = 'Interface';
+    if (lcName === 'tailscale0' || lcName.startsWith('tailscale')) {
+      typeLabel = 'Tailscale';
+    } else if (lcName.startsWith('awg')) {
+      typeLabel = 'AmneziaWG';
+    } else if (lcName.startsWith('wg')) {
+      typeLabel = 'WireGuard';
+    } else if (lcName.startsWith('ovpn')) {
+      typeLabel = 'OpenVPN';
+    }
+    result.set(rawTag, {
+      name: trimmed,
+      type: typeLabel,
+    });
+  });
+  return result;
+}
+
 function buildManualLinkByCode(section: Tachyon.ConfigSection) {
   const sectionName = section['.name'];
 
@@ -1582,6 +1610,18 @@ function dashboardOutboundType(
   if (proto === 'tewfai') return 'TewFai';
   if (proto === 'warp') return 'WARP';
   if (proto === 'openvpn' || proto === 'openvpn-client') return 'OpenVPN';
+  if (proto === 'tailscale') return 'Tailscale';
+  if (proto === 'interface') return 'Interface';
+  if ((proto === 'direct' || !proto) && /-interface-\d+-out$/i.test(code)) {
+    const rawName = (outboundMetadata?.names?.[code] || '').toLowerCase();
+    if (rawName === 'tailscale0' || rawName.startsWith('tailscale')) {
+      return 'Tailscale';
+    }
+    if (rawName.startsWith('awg')) return 'AmneziaWG';
+    if (rawName.startsWith('wg')) return 'WireGuard';
+    if (rawName.startsWith('ovpn')) return 'OpenVPN';
+    return 'Interface';
+  }
   return runtimeType || '';
 }
 
@@ -2022,6 +2062,7 @@ function buildProxyGroupOutbounds(
   }));
   const manualLinkByCode = buildManualLinkByCode(section);
   const jsonOutboundByCode = buildJsonOutboundByCode(section);
+  const interfaceOutboundByCode = buildInterfaceOutboundByCode(section);
   for (const m of memberSections) {
     for (const [k, v] of buildManualLinkByCode(m)) {
       if (!manualLinkByCode.has(k)) {
@@ -2031,6 +2072,11 @@ function buildProxyGroupOutbounds(
     for (const [k, v] of buildJsonOutboundByCode(m)) {
       if (!jsonOutboundByCode.has(k)) {
         jsonOutboundByCode.set(k, v);
+      }
+    }
+    for (const [k, v] of buildInterfaceOutboundByCode(m)) {
+      if (!interfaceOutboundByCode.has(k)) {
+        interfaceOutboundByCode.set(k, v);
       }
     }
   }
@@ -2064,6 +2110,7 @@ function buildProxyGroupOutbounds(
                 ...Array.from(cachedProxyLinks.keys()),
                 ...Array.from(manualLinkByCode.keys()),
                 ...Array.from(jsonOutboundByCode.keys()),
+                ...Array.from(interfaceOutboundByCode.keys()),
               ]),
         ]).filter((code) => !hiddenOutboundTags[code])
       : uniqueCodes([
@@ -2072,6 +2119,7 @@ function buildProxyGroupOutbounds(
           ...Array.from(cachedProxyLinks.keys()),
           ...Array.from(manualLinkByCode.keys()),
           ...Array.from(jsonOutboundByCode.keys()),
+          ...Array.from(interfaceOutboundByCode.keys()),
           ...urlTestEntries.flatMap(({ entry }) => entry?.value.all || []),
           ...priorityEntries.flatMap(({ entry }) => entry?.value.all || []),
         ]).filter((code) => !hiddenOutboundTags[code]);
@@ -2094,7 +2142,8 @@ function buildProxyGroupOutbounds(
     const item = proxyByCode.get(code);
     const urlTestConfig = urlTestConfigByCode.get(code);
     const priorityConfig = priorityConfigByCode.get(code);
-    const jsonOutbound = jsonOutboundByCode.get(code);
+    const jsonOutbound =
+      jsonOutboundByCode.get(code) || interfaceOutboundByCode.get(code);
     const link =
       findManualLink(manualLinkByCode, code) ||
       cachedProxyLinks.get(code) ||

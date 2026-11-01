@@ -7,6 +7,7 @@
 
 const UCI_PACKAGE = main.TACHYON_UCI_PACKAGE || "tachyon";
 const SECTION_CACHE_DIR = "/var/run/tachyon/section-cache";
+const SUB_CACHE_DIR = "/etc/tachyon/subscription-cache";
 
 const COMMON_COUNTRIES = [
   ["NL", "🇳🇱 Netherlands (NL)"],
@@ -117,9 +118,8 @@ function loadGlobalPoolChoices() {
     .filter((n) => n && /^[A-Za-z0-9_-]+$/.test(n));
   if (!secNames.includes("Main")) secNames.unshift("Main");
 
-  const readCache = (secName) => {
-    const path = `${SECTION_CACHE_DIR}/${secName}.json`;
-    return fs
+  const readJsonFile = (path) =>
+    fs
       .read(path)
       .catch(() =>
         typeof fs.read_direct === "function"
@@ -128,9 +128,34 @@ function loadGlobalPoolChoices() {
       )
       .then((raw) => JSON.parse(raw || "{}"))
       .catch(() => ({}));
-  };
 
-  return Promise.all(secNames.map(readCache)).then((caches) => {
+  const readCache = (secName) =>
+    readJsonFile(`${SECTION_CACHE_DIR}/${secName}.json`);
+
+  const readSubCaches = () =>
+    fs
+      .list(SUB_CACHE_DIR)
+      .catch(() => [])
+      .then((entries) => {
+        const list = Array.isArray(entries) ? entries : [];
+        const jsonFiles = list
+          .map((e) => String((e && e.name) || ""))
+          .filter(
+            (n) =>
+              n.endsWith(".json") &&
+              !n.endsWith(".metadata.json") &&
+              n.includes("-subscription-"),
+          );
+        return Promise.all(
+          jsonFiles.map((fname) => readJsonFile(`${SUB_CACHE_DIR}/${fname}`)),
+        );
+      })
+      .catch(() => []);
+
+  return Promise.all([
+    Promise.all(secNames.map(readCache)),
+    readSubCaches(),
+  ]).then(([caches, subCaches]) => {
     const serverMap = new Map();
     const countrySet = new Set();
     const prefixSet = new Set();
@@ -155,6 +180,29 @@ function loadGlobalPoolChoices() {
           serverMap.set(sname, `${sname} [${badge}]`);
         }
       }
+    });
+
+    (subCaches || []).forEach((sc) => {
+      const outbounds = Array.isArray(sc && sc.outbounds) ? sc.outbounds : [];
+      outbounds.forEach((ob) => {
+        if (!ob || typeof ob !== "object") return;
+        const name = String(ob.tag || ob.name || "").trim();
+        if (!name) return;
+        const proto = String(ob.type || "").toUpperCase();
+        if (proto === "URLTEST" || proto === "SELECTOR" || proto === "DIRECT")
+          return;
+        const trans = String(
+          (ob.transport && ob.transport.type) || "",
+        ).toUpperCase();
+        const badge =
+          proto && trans && proto !== trans
+            ? `${proto}+${trans}`
+            : proto || trans;
+        const label = badge ? `${name} [${badge}]` : name;
+        if (!serverMap.has(name)) {
+          serverMap.set(name, label);
+        }
+      });
     });
 
     caches.forEach((c) => {
@@ -268,16 +316,25 @@ function summarizeBalancer(sectionId) {
   const btype = (
     uci.get(UCI_PACKAGE, sectionId, "balancer_type") || "urltest"
   ).toLowerCase();
-  const resolveEntityName = (id) =>
-    id === "direct"
-      ? _("Direct Connection (Fallback)")
-      : uci.get(UCI_PACKAGE, id, "name") ||
-        uci.get(UCI_PACKAGE, id, "label") ||
-        id;
+  const resolveEntityName = (id) => {
+    if (id === "direct") return _("Direct Connection (Fallback)");
+    if (String(id).startsWith("srv:")) return `🎯 ${String(id).slice(4)}`;
+    return (
+      uci.get(UCI_PACKAGE, id, "name") ||
+      uci.get(UCI_PACKAGE, id, "label") ||
+      id
+    );
+  };
   if (btype === "priority") {
-    const levels = asArray(
-      uci.get(UCI_PACKAGE, sectionId, "outbound_group_levels"),
-    ).map(resolveEntityName);
+    const rawLevels = uci.get(UCI_PACKAGE, sectionId, "outbound_group_levels");
+    const levelList = Array.isArray(rawLevels)
+      ? rawLevels.map((v) => String(v).trim()).filter(Boolean)
+      : String(rawLevels || "")
+            .trim()
+            .startsWith("srv:")
+        ? [String(rawLevels).trim()]
+        : asArray(rawLevels);
+    const levels = levelList.map(resolveEntityName);
     const interval =
       uci.get(UCI_PACKAGE, sectionId, "active_check_interval") || "5s";
     const extraUrls = asArray(uci.get(UCI_PACKAGE, sectionId, "health_urls"));
@@ -492,7 +549,50 @@ function createBalancersContent(section) {
     return this.cfgvalue(sectionId);
   };
 
-  // URLTest fields
+  // Priority fields
+  o = section.taboption(
+    "general",
+    form.DynamicList,
+    "outbound_group_levels",
+    _("Priority Tiers (Groups / Sources / Servers)"),
+    _(
+      "Ordered list of Outbound Groups, Sources, individual Servers from subscriptions/pool, or 'direct' for direct fallback. Tier 1 is tried first, then Tier 2, etc.",
+    ),
+  );
+  o.modalonly = true;
+  o.depends("balancer_type", "priority");
+  o.load = function () {
+    return loadGlobalPoolChoices().then((pool) => {
+      this.keylist = [];
+      this.vallist = [];
+      (uci.sections(UCI_PACKAGE, "outbound_group") || []).forEach((g) => {
+        const gid = g[".name"];
+        if (gid)
+          this.value(gid, `📦 ${_("Group")}: ${g.name || g.label || gid}`);
+      });
+      (uci.sections(UCI_PACKAGE, "outbound_source") || []).forEach((src) => {
+        const sid = src[".name"];
+        if (!sid) return;
+        const stypeLower = String(
+          src.source_type || "subscription",
+        ).toLowerCase();
+        if (DPI_SOURCE_TYPES.has(stypeLower)) return;
+        const stype = stypeLower.toUpperCase();
+        const pfx = src.node_prefix ? ` [${src.node_prefix}]` : ` [${stype}]`;
+        this.value(
+          sid,
+          `📡 ${_("Source")}: ${src.name || src.label || sid}${pfx}`,
+        );
+      });
+      (pool.servers || []).forEach((s) => {
+        this.value(`srv:${s.value}`, `🎯 ${_("Server")}: ${s.label}`);
+      });
+      this.value("direct", _("Direct Connection (Fallback)"));
+      return form.DynamicList.prototype.load.apply(this, arguments);
+    });
+  };
+
+  // URLTest & Priority URL fields
   o = section.taboption("general", form.Value, "testing_url", _("Testing URL"));
   o.modalonly = true;
   o.default = "https://www.gstatic.com/generate_204";
@@ -513,6 +613,58 @@ function createBalancersContent(section) {
   o.placeholder = "https://cp.cloudflare.com/generate_204";
   o.depends("balancer_type", "urltest");
   URLTEST_URL_CHOICES.forEach((u) => o.value(u));
+
+  o = section.taboption(
+    "general",
+    form.Value,
+    "health_url",
+    _("Health Check URL"),
+  );
+  o.modalonly = true;
+  o.default = "https://www.gstatic.com/generate_204";
+  o.placeholder = "https://www.gstatic.com/generate_204";
+  o.depends("balancer_type", "priority");
+  URLTEST_URL_CHOICES.forEach((u) => o.value(u));
+
+  o = section.taboption(
+    "general",
+    form.DynamicList,
+    "health_urls",
+    _("Additional Health Check URLs (Multi-URL)"),
+    _(
+      "Optional additional URLs to probe simultaneously with Health Check URL. If no server passes 100% of URLs, Fallback mode selects the server with the highest number of reachable URLs (> 0).",
+    ),
+  );
+  o.modalonly = true;
+  o.placeholder = "https://cp.cloudflare.com/generate_204";
+  o.depends("balancer_type", "priority");
+  URLTEST_URL_CHOICES.forEach((u) => o.value(u));
+
+  o = section.taboption(
+    "general",
+    form.ListValue,
+    "multi_url_strategy",
+    _("Multi-URL Evaluation Strategy"),
+    _(
+      "How combined latency is calculated across multiple URLs when selecting the best server. Note: background probe count scales with URL count (N servers × M URLs); if no server passes 100% of URLs, automatic partial-match Fallback is activated.",
+    ),
+  );
+  o.modalonly = true;
+  o.default = "worst_case";
+  o.value(
+    "worst_case",
+    _("Worst-case (Max latency across URLs — penalizes slow routes)"),
+  );
+  o.value("best_case", _("Best-case (Min latency across URLs)"));
+  o.value(
+    "best_case_target",
+    _(
+      "Best-case + Target check (100% URLs must pass, latency measured by primary URL #1)",
+    ),
+  );
+  o.value("average", _("Average (Mean latency across all URLs)"));
+  o.depends("balancer_type", "urltest");
+  o.depends("balancer_type", "priority");
 
   o = section.taboption(
     "general",
@@ -587,92 +739,6 @@ function createBalancersContent(section) {
   o.default = "30m";
   o.placeholder = "30m";
   o.depends("balancer_type", "urltest");
-
-  // Priority fields
-  o = section.taboption(
-    "general",
-    form.DynamicList,
-    "outbound_group_levels",
-    _("Priority Tiers (Outbound Groups)"),
-    _(
-      "Ordered list of Outbound Group IDs (or 'direct' for direct fallback). Tier 1 is tried first, then Tier 2, etc.",
-    ),
-  );
-  o.modalonly = true;
-  o.depends("balancer_type", "priority");
-  o.load = function () {
-    this.keylist = [];
-    this.vallist = [];
-    (uci.sections(UCI_PACKAGE, "outbound_group") || []).forEach((g) => {
-      const gid = g[".name"];
-      if (gid) this.value(gid, g.name || g.label || gid);
-    });
-    (uci.sections(UCI_PACKAGE, "outbound_source") || []).forEach((src) => {
-      const sid = src[".name"];
-      if (!sid) return;
-      const stypeLower = String(
-        src.source_type || "subscription",
-      ).toLowerCase();
-      if (DPI_SOURCE_TYPES.has(stypeLower)) return;
-      const stype = stypeLower.toUpperCase();
-      const pfx = src.node_prefix ? ` [${src.node_prefix}]` : ` [${stype}]`;
-      this.value(sid, `${src.name || src.label || sid}${pfx}`);
-    });
-    this.value("direct", _("Direct Connection (Fallback)"));
-    return form.DynamicList.prototype.load.apply(this, arguments);
-  };
-
-  o = section.taboption(
-    "general",
-    form.Value,
-    "health_url",
-    _("Health Check URL"),
-  );
-  o.modalonly = true;
-  o.default = "https://www.gstatic.com/generate_204";
-  o.placeholder = "https://www.gstatic.com/generate_204";
-  o.depends("balancer_type", "priority");
-  URLTEST_URL_CHOICES.forEach((u) => o.value(u));
-
-  o = section.taboption(
-    "general",
-    form.DynamicList,
-    "health_urls",
-    _("Additional Health Check URLs (Multi-URL)"),
-    _(
-      "Optional additional URLs to probe simultaneously with Health Check URL. If no server passes 100% of URLs, Fallback mode selects the server with the highest number of reachable URLs (> 0).",
-    ),
-  );
-  o.modalonly = true;
-  o.placeholder = "https://cp.cloudflare.com/generate_204";
-  o.depends("balancer_type", "priority");
-  URLTEST_URL_CHOICES.forEach((u) => o.value(u));
-
-  o = section.taboption(
-    "general",
-    form.ListValue,
-    "multi_url_strategy",
-    _("Multi-URL Evaluation Strategy"),
-    _(
-      "How combined latency is calculated across multiple URLs when selecting the best server. Note: background probe count scales with URL count (N servers × M URLs); if no server passes 100% of URLs, automatic partial-match Fallback is activated.",
-    ),
-  );
-  o.modalonly = true;
-  o.default = "worst_case";
-  o.value(
-    "worst_case",
-    _("Worst-case (Max latency across URLs — penalizes slow routes)"),
-  );
-  o.value("best_case", _("Best-case (Min latency across URLs)"));
-  o.value(
-    "best_case_target",
-    _(
-      "Best-case + Target check (100% URLs must pass, latency measured by primary URL #1)",
-    ),
-  );
-  o.value("average", _("Average (Mean latency across all URLs)"));
-  o.depends("balancer_type", "urltest");
-  o.depends("balancer_type", "priority");
 
   o = section.taboption(
     "general",

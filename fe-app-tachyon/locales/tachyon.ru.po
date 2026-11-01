@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-01 16:36+0300\n"
-"PO-Revision-Date: 2026-11-01 16:36+0300\n"
+"POT-Creation-Date: 2026-11-01 18:23+0300\n"
+"PO-Revision-Date: 2026-11-01 18:23+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -962,9 +962,6 @@ msgstr "Автовыбор самого быстрого узла из токе�
 msgid "Auto-select fastest server (URLTest)"
 msgstr "Автовыбор самого быстрого сервера (URLTest)"
 
-msgid "Auto-update"
-msgstr "Автообновление"
-
 msgid "Auto-update Hosts Lists"
 msgstr "Автообновление списков Hosts"
 
@@ -1616,8 +1613,8 @@ msgstr "Нажмите на серверы из пула ниже, чтобы в
 msgid "Click sources below or leave empty to include all Global Outbound Sources."
 msgstr "Нажмите на источники ниже или оставьте пустым для использования всех источников пула."
 
-msgid "Click to choose website for section icon (favicon.ico)"
-msgstr "Нажмите, чтобы выбрать сайт для иконки (favicon.ico)"
+msgid "Click to choose section icon"
+msgstr "Нажмите, чтобы выбрать иконку секции"
 
 msgid "Click to customize prefix colors"
 msgstr "Нажмите для настройки цвета префикса"
@@ -2008,6 +2005,9 @@ msgstr "Скопировать токен"
 
 msgid "Copy address"
 msgstr "Копировать адрес"
+
+msgid "Copy link"
+msgstr "Копировать"
 
 msgid "Copy log"
 msgstr "Копировать лог"
@@ -4451,9 +4451,6 @@ msgstr "В группах:"
 msgid "In pool"
 msgstr "В пуле"
 
-msgid "In sections & groups:"
-msgstr "В секциях и группах:"
-
 msgid "Inbound"
 msgstr "Входящий (Inbound)"
 
@@ -5176,9 +5173,6 @@ msgstr "Язык обновлён. Перезагрузка страницы..."
 
 msgid "Laptop / PC"
 msgstr "Ноутбук / ПК"
-
-msgid "Last updated"
-msgstr "Последнее обновление"
 
 msgid "Latency"
 msgstr "Задержка"
@@ -6065,6 +6059,9 @@ msgstr "Не запущено"
 msgid "Not set"
 msgstr "Не задано"
 
+msgid "Not used"
+msgstr "Не используется"
+
 msgid "Notice: Cloudflare WARP edge servers only support AmneziaWG 2.0 (WireGuard). The profile has been automatically set to 2.0 so the connection works properly. Versions 3.0 and 3.1 require an AmneziaWG server via 'Import .conf'."
 msgstr "Примечание: серверы Cloudflare WARP поддерживают только AmneziaWG 2.0 (WireGuard). Профиль автоматически переключен на версию 2.0 для корректной работы. Для версий 3.0 и 3.1 используйте свой сервер AmneziaWG через кнопку «Импорт .conf»."
 
@@ -6389,9 +6386,6 @@ msgstr "Вставьте несколько ссылок (по одной на �
 msgid "Optionally specify individual devices not in a profile. MAC addresses (e.g. AA:BB:CC:DD:EE:FF) work even if the IP changes."
 msgstr "При необходимости укажите отдельные устройства вне профилей. MAC-адреса (напр. AA:BB:CC:DD:EE:FF) работают даже при смене IP."
 
-msgid "Options:"
-msgstr "Параметры:"
-
 msgid "Or choose manual step-by-step configuration"
 msgstr "Или выберите ручную пошаговую настройку"
 
@@ -6401,8 +6395,8 @@ msgstr "Или вставьте содержимое файла hosts:"
 msgid "Orange"
 msgstr "Оранжевый"
 
-msgid "Ordered list of Outbound Group IDs (or 'direct' for direct fallback). Tier 1 is tried first, then Tier 2, etc."
-msgstr "Упорядоченный список ID групп серверов (или «direct» для резервного прямого выхода). Сначала проверяется ступень 1, затем ступень 2 и т.д."
+msgid "Ordered list of Outbound Groups, Sources, individual Servers from subscriptions/pool, or 'direct' for direct fallback. Tier 1 is tried first, then Tier 2, etc."
+msgstr "Упорядоченный список групп серверов, источников, отдельных серверов из подписок/пула или «direct» для резервного прямого выхода. Сначала проверяется ступень 1, затем ступень 2 и т.д."
 
 msgid "Other"
 msgstr "Другое"
@@ -6869,8 +6863,8 @@ msgstr "Приоритетный фейловер"
 msgid "Priority Failover (2nd activates only after 1st fails)"
 msgstr "По приоритету с отказоустойчивостью (2-е только после отказа 1-го)"
 
-msgid "Priority Tiers (Outbound Groups)"
-msgstr "Ступени приоритета (группы серверов)"
+msgid "Priority Tiers (Groups / Sources / Servers)"
+msgstr "Ступени приоритета (группы / источники / серверы)"
 
 msgid "Priority details"
 msgstr "Детали Priority"
@@ -6982,6 +6976,9 @@ msgstr "Интервал проверки здоровья прокси (с)"
 
 msgid "Proxy Health Check URL"
 msgstr "URL проверки здоровья прокси"
+
+msgid "Proxy Link"
+msgstr "Ссылка"
 
 msgid "Proxy Links"
 msgstr "Прокси-ссылки"
@@ -7576,6 +7573,9 @@ msgstr "Адрес роутера"
 
 msgid "Router automatically measures latency and switches to the fastest alive server seamlessly"
 msgstr "Роутер сам измеряет задержку и автоматически переключает маршрут на самый быстрый живой узел без разрыва связи"
+
+msgid "Router network interface"
+msgstr "Сетевой интерфейс роутера"
 
 msgid "Routes"
 msgstr "Маршруты"
@@ -8269,6 +8269,9 @@ msgstr "Сервер недоступен"
 
 msgid "Servers"
 msgstr "Серверы"
+
+msgid "Servers in source"
+msgstr "Серверы в источнике"
 
 msgid "Servers in subscription"
 msgstr "Серверы в подписке"
@@ -9497,6 +9500,9 @@ msgstr "Четверг"
 msgid "Tiers"
 msgstr "Ступени"
 
+msgid "Tiles"
+msgstr "Плитки"
+
 msgid "Time"
 msgstr "Время"
 
@@ -9962,12 +9968,6 @@ msgstr "Обновлять эту подписку автоматически"
 msgid "Update this subscription now"
 msgstr "Обновить эту подписку сейчас"
 
-msgid "Update via section"
-msgstr "Обновлять через секцию"
-
-msgid "Update:"
-msgstr "Обновление:"
-
 msgid "Updated"
 msgstr "Обновлено"
 
@@ -9985,6 +9985,9 @@ msgstr "Обновление режима маршрутизации устро�
 
 msgid "Updating lists..."
 msgstr "Обновление списков..."
+
+msgid "Updating..."
+msgstr "Обновление..."
 
 msgid "Updating…"
 msgstr "Обновление…"
@@ -10363,9 +10366,6 @@ msgstr "Восстановлений watchdog:"
 
 msgid "WebRTC Leak Protection"
 msgstr "Защита от утечек WebRTC"
-
-msgid "Website Icon (favicon)"
-msgstr "Иконка сайта (favicon)"
 
 msgid "Website Icon Domain (favicon.ico)"
 msgstr "Домен иконки сайта (favicon.ico)"
@@ -10975,6 +10975,36 @@ msgstr "● Высокий пинг"
 
 msgid "✓ No subscription needed for this preset — uses built-in Tachyon Core Desync"
 msgstr "✓ Для этого пресета подписка не требуется — используется встроенный Tachyon Core Desync"
+
+msgid "Auto-update"
+msgstr "Автообновление"
+
+msgid "Click to choose website for section icon (favicon.ico)"
+msgstr "Нажмите, чтобы выбрать сайт для иконки (favicon.ico)"
+
+msgid "In sections & groups:"
+msgstr "В секциях и группах:"
+
+msgid "Last updated"
+msgstr "Последнее обновление"
+
+msgid "Options:"
+msgstr "Параметры:"
+
+msgid "Ordered list of Outbound Group IDs (or 'direct' for direct fallback). Tier 1 is tried first, then Tier 2, etc."
+msgstr "Упорядоченный список ID групп серверов (или «direct» для резервного прямого выхода). Сначала проверяется ступень 1, затем ступень 2 и т.д."
+
+msgid "Priority Tiers (Outbound Groups)"
+msgstr "Ступени приоритета (группы серверов)"
+
+msgid "Update via section"
+msgstr "Обновлять через секцию"
+
+msgid "Update:"
+msgstr "Обновление:"
+
+msgid "Website Icon (favicon)"
+msgstr "Иконка сайта (favicon)"
 
 msgid "Child (🧒)"
 msgstr "Ребёнок (🧒)"

@@ -2439,25 +2439,9 @@ function section_provider_for_action(section, action) {
     if (section_name(section) == "" || !bool_option(section, "enabled", true))
         return null;
     action = as_string(action);
-    if (option(section, "action", "") == action)
-        return section;
-    if (connections.is_connections_action(option(section, "action", ""))) {
-        let target_type = lc(trim(action));
-        for (let src in connections.section_effective_outbound_sources(section)) {
-            if (lc(trim(option(src, "source_type", ""))) == target_type) {
-                let merged = {};
-                for (let k, v in object_or_empty(section))
-                    merged[k] = v;
-                for (let k, v in object_or_empty(src)) {
-                    if (substr(k, 0, 1) == "." || k == "name" || k == "enabled" || k == "source_type")
-                        continue;
-                    if (merged[k] == null || merged[k] == "")
-                        merged[k] = v;
-                }
-                return merged;
-            }
-        }
-    }
+    let src = connections.section_matching_provider_source(section, action);
+    if (option(section, "action", "") == action || src != null)
+        return connections.merge_section_with_provider_source(section, src);
     return null;
 }
 

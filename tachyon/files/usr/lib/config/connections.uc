@@ -3,6 +3,7 @@
 let fs = require("fs");
 let common = require("core.common");
 let uci_core = require("core.uci");
+let constants = require("core.constants");
 
 let as_string = common.as_string;
 let object_or_empty = common.object_or_empty;
@@ -617,13 +618,26 @@ function section_effective_outbound_sources(section) {
                 continue;
             let bal_srcs = whitespace_list_value(bal, "source_refs");
             let bal_grps = whitespace_list_value(bal, "group_refs");
-            let bal_lvls = whitespace_list_value(bal, "outbound_group_levels");
+            let raw_lvls = raw_option(bal, "outbound_group_levels");
+            let bal_lvls = type(raw_lvls) == "array"
+                ? raw_lvls
+                : (substr(trim(as_string(raw_lvls)), 0, 4) == "srv:"
+                    ? [ trim(as_string(raw_lvls)) ]
+                    : whitespace_list_value(bal, "outbound_group_levels"));
             for (let src_id in bal_srcs)
                 add_src(outbound_source_section(src_id));
             for (let grp_id in bal_grps)
                 add_grp(grp_id);
             for (let lvl_ref in bal_lvls) {
-                if (lc(lvl_ref) != "direct") {
+                lvl_ref = trim(as_string(lvl_ref));
+                if (lvl_ref == "" || lc(lvl_ref) == "direct")
+                    continue;
+                if (substr(lvl_ref, 0, 4) == "srv:" || (outbound_group_section(lvl_ref) == null && outbound_source_section(lvl_ref) == null)) {
+                    for (let src in outbound_source_sections()) {
+                        if (!is_dpi_or_desync_source_type(option(src, "source_type", "")))
+                            add_src(src);
+                    }
+                } else {
                     add_grp(lvl_ref);
                     add_src(outbound_source_section(lvl_ref));
                 }
@@ -2047,7 +2061,12 @@ function synthesized_priority_levels_for_balancer(group_id) {
     if (bal == null || lc(option(bal, "balancer_type", "urltest")) != "priority")
         return [];
     let owner_sec = resolve_balancer_owner_section(group_id);
-    let group_refs = whitespace_list_value(bal, "outbound_group_levels");
+    let raw_lvls = raw_option(bal, "outbound_group_levels");
+    let group_refs = type(raw_lvls) == "array"
+        ? raw_lvls
+        : (substr(trim(as_string(raw_lvls)), 0, 4) == "srv:"
+            ? [ trim(as_string(raw_lvls)) ]
+            : whitespace_list_value(bal, "outbound_group_levels"));
     if (length(group_refs) == 0) {
         let has_legacy = false;
         let owner_sec_name = type(owner_sec) == "object" ? section_name(owner_sec) : "";
@@ -2091,9 +2110,9 @@ function synthesized_priority_levels_for_balancer(group_id) {
             });
             continue;
         }
-        let grp = outbound_group_section(ref);
+        let grp = substr(ref, 0, 4) == "srv:" ? null : outbound_group_section(ref);
         if (grp == null) {
-            let src = outbound_source_section(ref);
+            let src = substr(ref, 0, 4) == "srv:" ? null : outbound_source_section(ref);
             if (src != null) {
                 let synth_grp = {
                     ".name": ref,
@@ -2130,6 +2149,37 @@ function synthesized_priority_levels_for_balancer(group_id) {
                     exclude_securities: [],
                     exclude_ports: []
                 });
+            } else {
+                let srv_name = substr(ref, 0, 4) == "srv:" ? trim(substr(ref, 4)) : ref;
+                if (srv_name != "") {
+                    push(result, {
+                        ".name": synth_id,
+                        group: as_string(group_id),
+                        name: srv_name,
+                        order: as_string(i + 1),
+                        direct: "0",
+                        filter_mode: "include",
+                        detect_server_country: "flag_emoji",
+                        include_countries: [],
+                        include_outbounds: [ srv_name ],
+                        include_regex: [],
+                        include_prefixes: [],
+                        include_proxy_parameters: "0",
+                        include_protocols: [],
+                        include_transports: [],
+                        include_securities: [],
+                        include_ports: [],
+                        exclude_countries: [],
+                        exclude_outbounds: [],
+                        exclude_regex: [],
+                        exclude_prefixes: [],
+                        exclude_proxy_parameters: "0",
+                        exclude_protocols: [],
+                        exclude_transports: [],
+                        exclude_securities: [],
+                        exclude_ports: []
+                    });
+                }
             }
             continue;
         }
@@ -3290,11 +3340,53 @@ function section_has_routing_matchers(section) {
     return false;
 }
 
+function is_default_provider_strategy(key, val) {
+    val = trim(as_string(val));
+    if (val == "")
+        return true;
+    if (key == "nfqws2_opt")
+        return val == trim(as_string(constants.ZAPRET2_DEFAULT_NFQWS2_OPT));
+    if (key == "nfqws_opt")
+        return val == trim(as_string(constants.ZAPRET_DEFAULT_NFQWS_OPT)) ||
+               val == trim(as_string(constants.ZAPRET_LEGACY_DEFAULT_NFQWS_OPT));
+    if (key == "byedpi_cmd_opts")
+        return val == trim(as_string(constants.BYEDPI_DEFAULT_CMD_OPTS));
+    return false;
+}
+
+function merge_section_with_provider_source(section, src) {
+    if (src == null)
+        return section;
+    let merged = {};
+    for (let k, v in object_or_empty(section))
+        merged[k] = v;
+    let is_conn_act = is_connections_action(option(section, "action", ""));
+    for (let k, v in object_or_empty(src)) {
+        if (substr(k, 0, 1) == "." || k == "name" || k == "enabled" || k == "source_type")
+            continue;
+        let sv = type(v) == "array" ? v : trim(as_string(v));
+        if ((type(sv) == "array" && length(sv) == 0) || (type(sv) != "array" && sv == ""))
+            continue;
+        let cur = merged[k];
+        let cur_empty = cur == null || (type(cur) == "array" ? length(cur) == 0 : trim(as_string(cur)) == "");
+        if (cur_empty) {
+            merged[k] = v;
+        } else if (k == "nfqws2_opt" || k == "nfqws_opt" || k == "byedpi_cmd_opts") {
+            if (!is_default_provider_strategy(k, v) && (is_conn_act || is_default_provider_strategy(k, cur)))
+                merged[k] = v;
+        } else if (is_conn_act) {
+            merged[k] = v;
+        }
+    }
+    return merged;
+}
+
 function section_matching_provider_source(section, action) {
     if (section == null || type(section) != "object" || action == null || action == "")
         return null;
     let target_type = lc(trim(as_string(action)));
-    if (!is_connections_action(option(section, "action", "")))
+    let sec_act = lc(trim(option(section, "action", "")));
+    if (!is_connections_action(sec_act) && sec_act != target_type)
         return null;
     for (let src in section_effective_outbound_sources(section)) {
         if (lc(trim(option(src, "source_type", ""))) == target_type)
@@ -3332,20 +3424,7 @@ function active_provider_sections(action, sections) {
         if (!section_is_active_provider(section, action))
             continue;
         let src = section_matching_provider_source(section, action);
-        if (src != null) {
-            let merged = {};
-            for (let k, v in object_or_empty(section))
-                merged[k] = v;
-            for (let k, v in object_or_empty(src)) {
-                if (substr(k, 0, 1) == "." || k == "name" || k == "enabled" || k == "source_type")
-                    continue;
-                if (merged[k] == null || merged[k] == "")
-                    merged[k] = v;
-            }
-            push(result, merged);
-        } else {
-            push(result, section);
-        }
+        push(result, merge_section_with_provider_source(section, src));
     }
     return result;
 }
@@ -3369,22 +3448,9 @@ function component_provider_sections(action) {
     for (let section in sections) {
         if (!bool_option(section, "enabled", true))
             continue;
-        if (option(section, "action", "") == action) {
-            push(result, section);
-            continue;
-        }
         let src = section_matching_provider_source(section, action);
-        if (src != null) {
-            let merged = {};
-            for (let k, v in object_or_empty(section))
-                merged[k] = v;
-            for (let k, v in object_or_empty(src)) {
-                if (substr(k, 0, 1) == "." || k == "name" || k == "enabled" || k == "source_type")
-                    continue;
-                if (merged[k] == null || merged[k] == "")
-                    merged[k] = v;
-            }
-            push(result, merged);
+        if (option(section, "action", "") == action || src != null) {
+            push(result, merge_section_with_provider_source(section, src));
         }
     }
     return result;
@@ -5878,6 +5944,8 @@ return {
     server_domain_rules,
     section_referenced_by_active_inbound_server,
     section_has_routing_matchers,
+    section_matching_provider_source,
+    merge_section_with_provider_source,
     section_is_active_provider,
     active_provider_sections,
     active_provider_section_index,

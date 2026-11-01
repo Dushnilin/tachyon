@@ -46,7 +46,6 @@ import {
   renderTrafficChartCard,
   renderDashboardSectionsAndNodes,
   renderSectionConditionsAndBalancersView,
-  openSectionIconPickerModal,
 } from './partials';
 import { fetchServicesInfo } from '../../fetchers/fetchServicesInfo';
 import { fetchHostnames } from '../../fetchers/fetchHostnames';
@@ -85,6 +84,31 @@ import {
 let expandedSections = getExpandedSections();
 const expandedRoutingSections = new Set<string>();
 const sectionAccordionTabs = new Map<string, 'nodes' | 'conditions'>();
+const DASHBOARD_NODES_VIEW_MODE_KEY = 'tachyon_dashboard_nodes_view_mode';
+
+function getDashboardNodesViewMode(): 'table' | 'tiles' {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const saved = localStorage.getItem(DASHBOARD_NODES_VIEW_MODE_KEY);
+      if (saved === 'tiles' || saved === 'table') {
+        return saved;
+      }
+    }
+  } catch {
+    // ignore storage errors
+  }
+  return 'table';
+}
+
+function setDashboardNodesViewMode(mode: 'table' | 'tiles') {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(DASHBOARD_NODES_VIEW_MODE_KEY, mode);
+    }
+  } catch {
+    // ignore storage errors
+  }
+}
 
 function toggleSectionExpanded(sectionCode: string) {
   const result = toggleSectionExpansion(expandedSections, sectionCode);
@@ -96,13 +120,50 @@ function toggleSectionExpanded(sectionCode: string) {
   void renderConnectionsWidget();
 }
 
+function findDashboardSectionRowEl(codeOrName: string): HTMLElement | null {
+  if (typeof document === 'undefined' || !codeOrName) return null;
+  const allSections = getSectionsWithCustomLatencies();
+  const sec = allSections.find(
+    (s) => s.code === codeOrName || s.sectionName === codeOrName,
+  );
+  const metricKey = sec?.sectionName || codeOrName;
+  return document.querySelector<HTMLElement>(
+    `[data-section-row-metrics="${metricKey}"]`,
+  );
+}
+
 function toggleRoutingSectionExpanded(sectionCode: string) {
+  const prevRow = findDashboardSectionRowEl(sectionCode);
+  const prevTop = prevRow ? prevRow.getBoundingClientRect().top : null;
+
   if (expandedRoutingSections.has(sectionCode)) {
     expandedRoutingSections.delete(sectionCode);
   } else {
     expandedRoutingSections.add(sectionCode);
   }
-  void renderSectionsWidget();
+
+  const restoreRowAnchor = () => {
+    const nextRow = findDashboardSectionRowEl(sectionCode);
+    if (!nextRow || typeof window === 'undefined') return;
+    const nextTop = nextRow.getBoundingClientRect().top;
+    const targetTop = prevTop !== null && prevTop >= 12 ? prevTop : 16;
+    const delta = nextTop - targetTop;
+    if (Math.abs(delta) > 4) {
+      const mainContent = document.getElementById('maincontent');
+      if (mainContent && mainContent.scrollTop > 0) {
+        mainContent.scrollTop += delta;
+      } else {
+        window.scrollBy(0, delta);
+      }
+    }
+  };
+
+  void renderSectionsWidget(true).then(() => {
+    restoreRowAnchor();
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(restoreRowAnchor);
+    }
+  });
 }
 import { getClashApiSecret } from '../../methods/custom/getClashApiSecret';
 import { measurePriorityLatencies } from './priorityLatency';
@@ -1693,18 +1754,38 @@ function renderCommonDetailsModal(
                               ]
                             : []
                         : []),
-                      member.canCopyLink
-                        ? renderUrlTestCopyButton(
-                            _('Copy proxy link'),
-                            (event) => {
-                              event.preventDefault();
-                              void handleCopyOutbound(member);
-                            },
-                          )
-                        : E('span', {
-                            class:
-                              'tachyon_dashboard-page__urltest-details__copy-placeholder',
-                          }),
+                      (() => {
+                        const matchedOutbound = section?.outbounds?.find(
+                          (o) =>
+                            o.code === member.code ||
+                            (member.displayName &&
+                              o.displayName === member.displayName),
+                        );
+                        const effectiveLink =
+                          member.link || matchedOutbound?.link;
+                        const canCopyMemberLink = Boolean(
+                          member.canCopyLink ||
+                            matchedOutbound?.canCopyLink ||
+                            isCopyableProxyLink(effectiveLink),
+                        );
+                        return canCopyMemberLink
+                          ? renderUrlTestCopyButton(
+                              _('Copy proxy link'),
+                              (event) => {
+                                event.preventDefault();
+                                void handleCopyOutbound({
+                                  ...matchedOutbound,
+                                  ...member,
+                                  link: effectiveLink,
+                                  canCopyLink: true,
+                                });
+                              },
+                            )
+                          : E('span', {
+                              class:
+                                'tachyon_dashboard-page__urltest-details__copy-placeholder',
+                            });
+                      })(),
                     ],
                   ),
                 ],
@@ -2424,13 +2505,172 @@ function renderSectionInspectorModalContent(
     ),
   ]);
 
+  const currentNodesViewMode = getDashboardNodesViewMode();
+  const hasServerNodes =
+    !isServiceGroup(section) &&
+    Boolean(
+      (section.outbounds || []).some((o) => !o.urlTestInfo && !o.priorityInfo),
+    );
+  const isSubUpdating = Boolean(
+    sectionsWidget.subscriptionUpdatingSections[section.sectionName],
+  );
+  const isLatFetching = Boolean(
+    sectionsWidget.latencyFetchingSections[section.sectionName],
+  );
+  const latProgress =
+    sectionsWidget.latencyProgressSections[section.sectionName];
+
+  const renderNodesHeaderControls = (inModal: boolean): HTMLElement[] => {
+    const controls: HTMLElement[] = [];
+    if (hasServerNodes) {
+      controls.push(
+        E('div', { class: 'tachyon-nodes-view-switch' }, [
+          E(
+            'button',
+            {
+              type: 'button',
+              class: `btn cbi-button tachyon-nodes-view-switch__btn ${
+                currentNodesViewMode === 'table' ? 'is-active' : ''
+              }`,
+              click: (e: MouseEvent) => {
+                e.preventDefault();
+                setDashboardNodesViewMode('table');
+                if (inModal) {
+                  openSectionInspectorModal(section.code);
+                } else {
+                  void renderSectionsWidget(true);
+                }
+              },
+            },
+            tr('Таблица', 'Table'),
+          ),
+          E(
+            'button',
+            {
+              type: 'button',
+              class: `btn cbi-button tachyon-nodes-view-switch__btn ${
+                currentNodesViewMode === 'tiles' ? 'is-active' : ''
+              }`,
+              click: (e: MouseEvent) => {
+                e.preventDefault();
+                setDashboardNodesViewMode('tiles');
+                if (inModal) {
+                  openSectionInspectorModal(section.code);
+                } else {
+                  void renderSectionsWidget(true);
+                }
+              },
+            },
+            tr('Плитки', 'Tiles'),
+          ),
+        ]),
+      );
+    }
+    if ((section.subscriptionSourceCount || 0) > 0) {
+      controls.push(
+        E(
+          'button',
+          {
+            type: 'button',
+            class: 'btn cbi-button tachyon-sec-accordion__action-btn',
+            disabled: isSubUpdating ? true : undefined,
+            click: (e: MouseEvent) => {
+              e.preventDefault();
+              if (!isSubUpdating) {
+                void handleUpdateSubscription(section);
+              }
+            },
+          },
+          isSubUpdating ? _('Updating...') : _('Update subscriptions'),
+        ),
+      );
+    }
+    if (
+      !isServiceGroup(section) &&
+      (section.withTagSelect ||
+        (section.outbounds && section.outbounds.length > 0))
+    ) {
+      controls.push(
+        E(
+          'button',
+          {
+            type: 'button',
+            class: 'btn cbi-button tachyon-sec-accordion__action-btn',
+            disabled: isLatFetching ? true : undefined,
+            click: (e: MouseEvent) => {
+              e.preventDefault();
+              if (isLatFetching) return;
+              if (section.withTagSelect) {
+                const tag = section.latencyTestCodes?.length
+                  ? section.latencyTestCodes
+                  : section.latencyTestCode || section.code;
+                if (Array.isArray(tag)) {
+                  const serializedTag =
+                    tag.length > 40
+                      ? `@section:${section.sectionName}`
+                      : JSON.stringify(tag);
+                  void handleTestLatency(
+                    'proxy_list',
+                    section.sectionName,
+                    serializedTag,
+                    section.latencyTestTimeout,
+                  );
+                } else {
+                  void handleTestLatency(
+                    'group',
+                    section.sectionName,
+                    tag,
+                    section.latencyTestTimeout,
+                  );
+                }
+              } else {
+                const testable = (section.outbounds || []).filter(
+                  (o) => !isNonTestableOutboundType(o.type),
+                );
+                if (testable.length) {
+                  void handleTestLatency(
+                    'proxy',
+                    section.sectionName,
+                    testable[0].code,
+                    section.latencyTestTimeout,
+                  );
+                }
+              }
+            },
+          },
+          isLatFetching ? getLatencyTestLabel(latProgress) : _('Test latency'),
+        ),
+      );
+    }
+    return controls;
+  };
+
   const tabBody =
     activeSectionModalTab === 'nodes'
       ? E('div', { class: 'tachyon-sec-modal__nodes-pane' }, [
+          ...(hasServerNodes || (section.subscriptionSourceCount || 0) > 0
+            ? [
+                E(
+                  'div',
+                  {
+                    class: 'tachyon-sec-accordion__actions',
+                    style:
+                      'display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-bottom: 10px;',
+                  },
+                  renderNodesHeaderControls(true),
+                ),
+              ]
+            : []),
           renderSections({
             loading: false,
             failed: false,
             section,
+            hideSectionHeader: true,
+            nodesViewMode: currentNodesViewMode,
+            onChangeNodesViewMode: (mode) => {
+              setDashboardNodesViewMode(mode);
+              openSectionInspectorModal(section.code);
+            },
             isCollapsed: false,
             onToggleCollapse: () => {
               toggleRoutingSectionExpanded(section.code);
@@ -2442,7 +2682,7 @@ function renderSectionInspectorModalContent(
               } else {
                 collapsedSourceGroups.add(groupKey);
               }
-              void renderSectionsWidget();
+              void renderSectionsWidget(true);
             },
             activeCountryFilter: activeCountryFilters.get(section.sectionName),
             onFilterCountry: (sectionName: string, countryCode?: string) => {
@@ -2451,7 +2691,7 @@ function renderSectionInspectorModalContent(
               } else {
                 activeCountryFilters.delete(sectionName);
               }
-              void renderSectionsWidget();
+              void renderSectionsWidget(true);
             },
             activeRegionFilter: activeRegionFilters.get(section.sectionName),
             onFilterRegion: (sectionName: string, regionCode?: string) => {
@@ -2460,7 +2700,7 @@ function renderSectionInspectorModalContent(
               } else {
                 activeRegionFilters.delete(sectionName);
               }
-              void renderSectionsWidget();
+              void renderSectionsWidget(true);
             },
             onTestLatency: (tag: string | string[]) => {
               if (Array.isArray(tag)) {
@@ -2503,14 +2743,9 @@ function renderSectionInspectorModalContent(
             onUpdateSubscription: (sec) => {
               void handleUpdateSubscription(sec);
             },
-            latencyFetching: Boolean(
-              sectionsWidget.latencyFetchingSections[section.sectionName],
-            ),
-            latencyProgress:
-              sectionsWidget.latencyProgressSections[section.sectionName],
-            subscriptionUpdating: Boolean(
-              sectionsWidget.subscriptionUpdatingSections[section.sectionName],
-            ),
+            latencyFetching: isLatFetching,
+            latencyProgress: latProgress,
+            subscriptionUpdating: isSubUpdating,
             selectorSwitchingTag:
               sectionsWidget.selectorSwitchingSections[section.sectionName],
             onTestSingleOutbound: (sectionName, outboundCode) => {
@@ -2563,20 +2798,6 @@ function renderSectionInspectorModalContent(
             class: 'btn cbi-button',
             click: (e: MouseEvent) => {
               e.preventDefault();
-              openSectionIconPickerModal(section, () => {
-                openSectionInspectorModal(section.code);
-              });
-            },
-          },
-          tr('Иконка сайта (favicon)', 'Website Icon (favicon)'),
-        ),
-        E(
-          'button',
-          {
-            type: 'button',
-            class: 'btn cbi-button',
-            click: (e: MouseEvent) => {
-              e.preventDefault();
               const targetSecId = section.sectionName || section.code;
               selectedDashboardSectionCode = '';
               ui.hideModal();
@@ -2609,7 +2830,7 @@ function renderSectionInspectorModalContent(
               e.preventDefault();
               selectedDashboardSectionCode = '';
               ui.hideModal();
-              void renderSectionsWidget();
+              void renderSectionsWidget(true);
             },
           },
           _('Close'),
@@ -2629,6 +2850,20 @@ function renderSectionAccordionBody(
   const secKey = section.sectionName || section.code;
   const defaultTab = isServiceGroup(section) ? 'conditions' : 'nodes';
   const currentTab = sectionAccordionTabs.get(secKey) || defaultTab;
+  const currentNodesViewMode = getDashboardNodesViewMode();
+  const hasServerNodes =
+    !isServiceGroup(section) &&
+    Boolean(
+      (section.outbounds || []).some((o) => !o.urlTestInfo && !o.priorityInfo),
+    );
+  const isSubUpdating = Boolean(
+    sectionsWidget.subscriptionUpdatingSections[section.sectionName],
+  );
+  const isLatFetching = Boolean(
+    sectionsWidget.latencyFetchingSections[section.sectionName],
+  );
+  const latProgress =
+    sectionsWidget.latencyProgressSections[section.sectionName];
 
   const tabsBar = E('div', { class: 'tachyon-sec-accordion__header' }, [
     E('ul', { class: 'cbi-tabmenu tachyon-sec-modal-tabs' }, [
@@ -2645,7 +2880,7 @@ function renderSectionAccordionBody(
               click: (e: MouseEvent) => {
                 e.preventDefault();
                 sectionAccordionTabs.set(secKey, 'nodes');
-                void renderSectionsWidget();
+                void renderSectionsWidget(true);
               },
             },
             tr('Узлы и балансировщики', 'Nodes & Balancers'),
@@ -2665,7 +2900,7 @@ function renderSectionAccordionBody(
               click: (e: MouseEvent) => {
                 e.preventDefault();
                 sectionAccordionTabs.set(secKey, 'conditions');
-                void renderSectionsWidget();
+                void renderSectionsWidget(true);
               },
             },
             tr('Условия и правила', 'Conditions & Rules'),
@@ -2674,6 +2909,119 @@ function renderSectionAccordionBody(
       ),
     ]),
     E('div', { class: 'tachyon-sec-accordion__actions' }, [
+      ...(currentTab === 'nodes' && hasServerNodes
+        ? [
+            E('div', { class: 'tachyon-nodes-view-switch' }, [
+              E(
+                'button',
+                {
+                  type: 'button',
+                  class: `btn cbi-button tachyon-nodes-view-switch__btn ${
+                    currentNodesViewMode === 'table' ? 'is-active' : ''
+                  }`,
+                  click: (e: MouseEvent) => {
+                    e.preventDefault();
+                    setDashboardNodesViewMode('table');
+                    void renderSectionsWidget(true);
+                  },
+                },
+                tr('Таблица', 'Table'),
+              ),
+              E(
+                'button',
+                {
+                  type: 'button',
+                  class: `btn cbi-button tachyon-nodes-view-switch__btn ${
+                    currentNodesViewMode === 'tiles' ? 'is-active' : ''
+                  }`,
+                  click: (e: MouseEvent) => {
+                    e.preventDefault();
+                    setDashboardNodesViewMode('tiles');
+                    void renderSectionsWidget(true);
+                  },
+                },
+                tr('Плитки', 'Tiles'),
+              ),
+            ]),
+          ]
+        : []),
+      ...(currentTab === 'nodes' && (section.subscriptionSourceCount || 0) > 0
+        ? [
+            E(
+              'button',
+              {
+                type: 'button',
+                class: 'btn cbi-button tachyon-sec-accordion__action-btn',
+                disabled: isSubUpdating ? true : undefined,
+                click: (e: MouseEvent) => {
+                  e.preventDefault();
+                  if (!isSubUpdating) {
+                    void handleUpdateSubscription(section);
+                  }
+                },
+              },
+              isSubUpdating ? _('Updating...') : _('Update subscriptions'),
+            ),
+          ]
+        : []),
+      ...(currentTab === 'nodes' &&
+      !isServiceGroup(section) &&
+      (section.withTagSelect ||
+        (section.outbounds && section.outbounds.length > 0))
+        ? [
+            E(
+              'button',
+              {
+                type: 'button',
+                class: 'btn cbi-button tachyon-sec-accordion__action-btn',
+                disabled: isLatFetching ? true : undefined,
+                click: (e: MouseEvent) => {
+                  e.preventDefault();
+                  if (isLatFetching) return;
+                  if (section.withTagSelect) {
+                    const tag = section.latencyTestCodes?.length
+                      ? section.latencyTestCodes
+                      : section.latencyTestCode || section.code;
+                    if (Array.isArray(tag)) {
+                      const serializedTag =
+                        tag.length > 40
+                          ? `@section:${section.sectionName}`
+                          : JSON.stringify(tag);
+                      void handleTestLatency(
+                        'proxy_list',
+                        section.sectionName,
+                        serializedTag,
+                        section.latencyTestTimeout,
+                      );
+                    } else {
+                      void handleTestLatency(
+                        'group',
+                        section.sectionName,
+                        tag,
+                        section.latencyTestTimeout,
+                      );
+                    }
+                  } else {
+                    const testable = (section.outbounds || []).filter(
+                      (o) => !isNonTestableOutboundType(o.type),
+                    );
+                    if (testable.length) {
+                      void handleTestLatency(
+                        'proxy',
+                        section.sectionName,
+                        testable[0].code,
+                        section.latencyTestTimeout,
+                      );
+                    }
+                  }
+                },
+              },
+              isLatFetching
+                ? getLatencyTestLabel(latProgress)
+                : _('Test latency'),
+            ),
+          ]
+        : []),
       E(
         'button',
         {
@@ -2725,6 +3073,12 @@ function renderSectionAccordionBody(
             loading: false,
             failed: false,
             section,
+            hideSectionHeader: true,
+            nodesViewMode: currentNodesViewMode,
+            onChangeNodesViewMode: (mode) => {
+              setDashboardNodesViewMode(mode);
+              void renderSectionsWidget(true);
+            },
             isCollapsed: false,
             onToggleCollapse: () => {
               toggleRoutingSectionExpanded(section.code);
@@ -2736,7 +3090,7 @@ function renderSectionAccordionBody(
               } else {
                 collapsedSourceGroups.add(groupKey);
               }
-              void renderSectionsWidget();
+              void renderSectionsWidget(true);
             },
             activeCountryFilter: activeCountryFilters.get(section.sectionName),
             onFilterCountry: (sectionName: string, countryCode?: string) => {
@@ -2745,7 +3099,7 @@ function renderSectionAccordionBody(
               } else {
                 activeCountryFilters.delete(sectionName);
               }
-              void renderSectionsWidget();
+              void renderSectionsWidget(true);
             },
             activeRegionFilter: activeRegionFilters.get(section.sectionName),
             onFilterRegion: (sectionName: string, regionCode?: string) => {
@@ -2754,7 +3108,7 @@ function renderSectionAccordionBody(
               } else {
                 activeRegionFilters.delete(sectionName);
               }
-              void renderSectionsWidget();
+              void renderSectionsWidget(true);
             },
             onTestLatency: (tag: string | string[]) => {
               if (Array.isArray(tag)) {
@@ -2797,14 +3151,9 @@ function renderSectionAccordionBody(
             onUpdateSubscription: (sec) => {
               void handleUpdateSubscription(sec);
             },
-            latencyFetching: Boolean(
-              sectionsWidget.latencyFetchingSections[section.sectionName],
-            ),
-            latencyProgress:
-              sectionsWidget.latencyProgressSections[section.sectionName],
-            subscriptionUpdating: Boolean(
-              sectionsWidget.subscriptionUpdatingSections[section.sectionName],
-            ),
+            latencyFetching: isLatFetching,
+            latencyProgress: latProgress,
+            subscriptionUpdating: isSubUpdating,
             selectorSwitchingTag:
               sectionsWidget.selectorSwitchingSections[section.sectionName],
             onTestSingleOutbound: (sectionName, outboundCode) => {
@@ -2864,7 +3213,7 @@ function openSectionInspectorModal(sectionCode: string) {
   ui.showModal(titleText, [content]);
 }
 
-async function renderSectionsWidget() {
+async function renderSectionsWidget(forceImmediate = false) {
   logger.debug('[DASHBOARD]', 'renderSectionsWidget');
   const sectionsWidget = store.get().sectionsWidget;
   const container = document.getElementById('dashboard-sections-grid');
@@ -2873,7 +3222,7 @@ async function renderSectionsWidget() {
     return;
   }
 
-  if (isUserActivelyScrolling()) {
+  if (!forceImmediate && isUserActivelyScrolling()) {
     scheduleSectionsWidgetRender();
     return;
   }
