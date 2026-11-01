@@ -1833,8 +1833,9 @@ function heal_dns_continuous(ev) {
     // precisely when the resolver could least afford it.
     //
     // Reading first makes agreement a no-op and leaves divergence repaired.
-    let dns_complete = command_status_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/dns/apply.uc", "default-config-complete" ]) == 0;
-    if (dns_complete) {
+    let current = trim(as_string(uci_core.get("dhcp.@dnsmasq[0].noresolv") || ""));
+    let current_srv = trim(as_string(uci_core.get("dhcp.@dnsmasq[0].server") || ""));
+    if (current == "1" && (current_srv == "" || index(current_srv, "127.0.0.42") >= 0)) {
         // The counter still resets: the fact was handled, by establishing that
         // dnsmasq already holds the configuration this healer wants. The DNS
         // failure therefore has another cause, and re-running this repair on
@@ -1843,21 +1844,23 @@ function heal_dns_continuous(ev) {
         ai_heal_report(
             "dns_continuous",
             "DNS resolution failed 3 times consecutively",
-            "dnsmasq уже настроен (127.0.0.42 + noresolv=1), перезагрузка не требуется",
+            "dnsmasq уже настроен (noresolv=1), перезагрузка не требуется",
             "skipped"
         );
         return;
     }
 
-    // Synchronous repair via dns/apply.uc so that server=127.0.0.42, noresolv=1,
-    // rebind_protection=0 and cachesize are all restored atomically.
-    let rc = command_status_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/dns/apply.uc", "configure" ]);
+    // Synchronous repair: uci and the dnsmasq reload both return before this
+    // function does, so the outcome is known here and needs no recovery watch.
+    system("/sbin/uci set dhcp.@dnsmasq[0].noresolv='1' >/dev/null 2>&1; /sbin/uci del_list dhcp.@dnsmasq[0].server='127.0.0.42' >/dev/null 2>&1; /sbin/uci add_list dhcp.@dnsmasq[0].server='127.0.0.42' >/dev/null 2>&1");
+    system("/sbin/uci commit dhcp >/dev/null 2>&1");
+    let rc = system("/etc/init.d/dnsmasq reload >/dev/null 2>&1");
     controller.reset_dns_consecutive();
 
     ai_heal_report(
         "dns_continuous",
         "DNS resolution failed 3 times consecutively",
-        "Restoring dnsmasq forward (127.0.0.42) and reloading",
+        "Restoring dnsmasq config and reloading",
         rc == 0 ? "fixed" : "failed"
     );
 }
