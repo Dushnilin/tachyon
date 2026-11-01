@@ -2383,6 +2383,11 @@ export function resolveSectionCategory(
   const name = (s.sectionName || s.code || '').toLowerCase().trim();
   const displayName = (s.displayName || '').toLowerCase().trim();
 
+  // A configured proxy connection takes precedence over name-based hints.
+  if (action === 'connection' && !meta.isDpiOnly) {
+    return 'proxy';
+  }
+
   // 1. Блокировка (Block / Reject)
   if (
     action === 'block' ||
