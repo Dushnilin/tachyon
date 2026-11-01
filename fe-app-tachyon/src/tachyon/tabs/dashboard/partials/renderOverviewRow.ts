@@ -2353,26 +2353,10 @@ export function renderDashboardSectionsAndNodes(
     const action = (s.action || '').toLowerCase().trim();
     const engineMeta = resolveSectionEngineMeta(s);
     const primaryEngine = (engineMeta.primaryEngine || '').toLowerCase().trim();
+    const name = (s.sectionName || s.code || '').toLowerCase().trim();
+    const displayName = (s.displayName || '').toLowerCase().trim();
 
-    // Секции обхода DPI (Zapret2, Zapret, ByeDPI, Core Desync и т.д.) всегда отображаются
-    if (
-      DPI_ENGINES.has(action) ||
-      DPI_ENGINES.has(primaryEngine) ||
-      Boolean(s.serviceStatus) ||
-      Boolean(
-        engineMeta.isDpiOnly &&
-          DPI_ENGINES.has(engineMeta.primaryEngine?.toLowerCase() || ''),
-      )
-    ) {
-      return true;
-    }
-
-    // Прокси-секции с активными серверами/аутбаундами всегда отображаются
-    if (s.outbounds && s.outbounds.length > 0) {
-      return true;
-    }
-
-    // Исключаем системные не-прокси действия
+    // 1. Исключаем системные не-прокси действия (block, reject, bypass, direct, dns) ВСЕГДА
     if (
       SYSTEM_NON_PROXY_ENGINES.has(action) ||
       SYSTEM_NON_PROXY_ENGINES.has(primaryEngine)
@@ -2380,28 +2364,55 @@ export function renderDashboardSectionsAndNodes(
       return false;
     }
 
-    const name = (s.sectionName || s.code || '').toLowerCase().trim();
-    const displayName = (s.displayName || '').toLowerCase().trim();
+    // 2. Секции обхода DPI (Zapret2, Zapret, ByeDPI, Core Desync и т.д.)
+    const isDpi =
+      DPI_ENGINES.has(action) ||
+      DPI_ENGINES.has(primaryEngine) ||
+      Boolean(
+        engineMeta.isDpiOnly &&
+          DPI_ENGINES.has(engineMeta.primaryEngine?.toLowerCase() || ''),
+      ) ||
+      name.includes('zapret') ||
+      displayName.includes('zapret') ||
+      name.includes('byedpi') ||
+      displayName.includes('byedpi') ||
+      name.includes('desync') ||
+      displayName.includes('desync') ||
+      name.includes('wdtt') ||
+      displayName.includes('wdtt') ||
+      name.includes('olcrtc') ||
+      displayName.includes('olcrtc');
 
-    if (
-      name === 'block' ||
-      displayName === 'block' ||
-      name === 'bypass' ||
-      displayName === 'bypass' ||
-      name === 'direct' ||
-      displayName === 'direct' ||
-      name === 'reject' ||
-      displayName === 'reject' ||
-      name === 'dns' ||
-      displayName === 'dns' ||
-      name.startsWith('dns-') ||
-      name.endsWith('-dns-server') ||
-      displayName.startsWith('dns-') ||
-      displayName.endsWith('-dns-server') ||
-      name.includes('block') ||
-      displayName.includes('block')
-    ) {
-      return false;
+    // 3. Если это не DPI-секция, исключаем системные имена (block, reject, bypass, direct, wan, dns, failover)
+    if (!isDpi) {
+      if (
+        name.includes('block') ||
+        displayName.includes('block') ||
+        name.includes('reject') ||
+        displayName.includes('reject') ||
+        name.includes('bypass') ||
+        displayName.includes('bypass') ||
+        name.includes('direct') ||
+        displayName.includes('direct') ||
+        name.includes('wan') ||
+        displayName.includes('wan') ||
+        name.includes('dns') ||
+        displayName.includes('dns') ||
+        name.includes('failover') ||
+        displayName.includes('failover')
+      ) {
+        return false;
+      }
+    }
+
+    // 4. Секции обхода DPI всегда отображаются
+    if (isDpi) {
+      return true;
+    }
+
+    // 5. Прокси-секции с активными серверами/аутбаундами всегда отображаются
+    if (s.outbounds && s.outbounds.length > 0) {
+      return true;
     }
 
     return true;

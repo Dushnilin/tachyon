@@ -221,6 +221,20 @@ describe('monitoring initController', () => {
         action: 'bypass',
         enabled: '1',
       } as any,
+      {
+        '.name': 'YandexDns',
+        '.type': 'section',
+        label: 'YandexDns',
+        action: 'dns',
+        enabled: '1',
+      } as any,
+      {
+        '.name': 'dns-ai',
+        '.type': 'section',
+        label: 'dns-ai',
+        action: 'dns',
+        enabled: '1',
+      } as any,
     ]);
 
     const uniqueRoutes = new Set<string>();
@@ -240,25 +254,21 @@ describe('monitoring initController', () => {
         return true;
       }
       return (
-        lower !== 'block' &&
-        lower !== 'bypass' &&
-        lower !== 'direct' &&
-        lower !== 'dns' &&
-        lower !== 'failover' &&
-        lower !== 'reject' &&
-        lower !== '-' &&
-        !lower.startsWith('dns-') &&
-        !lower.endsWith('-dns-server') &&
-        !lower.includes('block-out') &&
-        !lower.includes('bypass-out') &&
-        !lower.includes('direct-out') &&
-        !lower.includes('dns-out') &&
-        !lower.includes('block')
+        !lower.includes('block') &&
+        !lower.includes('reject') &&
+        !lower.includes('bypass') &&
+        !lower.includes('direct') &&
+        !lower.includes('wan') &&
+        !lower.includes('dns') &&
+        !lower.includes('failover') &&
+        lower !== '-'
       );
     });
 
     expect(routes).toContain('Zapret2 (Direct DPI Bypass)');
     expect(routes).not.toContain('block');
     expect(routes).not.toContain('ByPass');
+    expect(routes).not.toContain('YandexDns');
+    expect(routes).not.toContain('dns-ai');
   });
 });

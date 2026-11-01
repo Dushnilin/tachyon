@@ -293,20 +293,14 @@ function renderRouteFilterOptions() {
         return true;
       }
       return (
-        lower !== 'block' &&
-        lower !== 'bypass' &&
-        lower !== 'direct' &&
-        lower !== 'dns' &&
-        lower !== 'failover' &&
-        lower !== 'reject' &&
-        lower !== '-' &&
-        !lower.startsWith('dns-') &&
-        !lower.endsWith('-dns-server') &&
-        !lower.includes('block-out') &&
-        !lower.includes('bypass-out') &&
-        !lower.includes('direct-out') &&
-        !lower.includes('dns-out') &&
-        !lower.includes('block')
+        !lower.includes('block') &&
+        !lower.includes('reject') &&
+        !lower.includes('bypass') &&
+        !lower.includes('direct') &&
+        !lower.includes('wan') &&
+        !lower.includes('dns') &&
+        !lower.includes('failover') &&
+        lower !== '-'
       );
     })
     .sort();
