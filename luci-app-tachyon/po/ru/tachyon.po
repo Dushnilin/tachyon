@@ -1,15 +1,15 @@
 # RU translations for TACHYON package.
 # Copyright (C) 2026 THE TACHYON COPYRIGHT HOLDER
 # This file is distributed under the same license as the TACHYON package.
-# lQwestl, 2026.
+# Dushnilin, 2026.
 #
 msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-31 14:31+0300\n"
-"PO-Revision-Date: 2026-10-31 14:31+0300\n"
-"Last-Translator: lQwestl\n"
+"POT-Creation-Date: 2026-11-01 06:51+0300\n"
+"PO-Revision-Date: 2026-11-01 06:51+0300\n"
+"Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
 "MIME-Version: 1.0\n"
@@ -133,6 +133,9 @@ msgstr "3 целых числа через запятую или client_id в ф
 
 msgid "30 min — Standard"
 msgstr "30 мин — стандартный"
+
+msgid "32KB Streamed"
+msgstr ""
 
 msgid "45 min — Deep (Recommended)"
 msgstr "45 мин — глубокий (рекомендуется)"
@@ -746,6 +749,9 @@ msgstr "Произошла непредвиденная ошибка."
 msgid "Analysis inconclusive."
 msgstr "Анализ не дал однозначного результата."
 
+msgid "Analyzing DPI blocking patterns..."
+msgstr ""
+
 msgid "Anonymized support report copied to clipboard"
 msgstr "Анонимизированный отчет скопирован в буфер обмена"
 
@@ -889,6 +895,9 @@ msgstr "Авто-TTL (вычисляется по хопам и RTT ядра)"
 
 msgid "Auto-Tune & Benchmark DNS"
 msgstr "Подобрать и протестировать DNS"
+
+msgid "Auto-applied best strategy"
+msgstr "Лучшая стратегия автоматически применена"
 
 msgid "Auto-apply best strategy"
 msgstr "Авто-применение лучшей стратегии"
@@ -1087,6 +1096,12 @@ msgstr "Таймаут теста"
 
 msgid "Benchmark completed successfully"
 msgstr "Бенчмарк успешно завершён"
+
+msgid "Benchmark completed! Optimal strategy identified."
+msgstr ""
+
+msgid "Benchmark completed. No working bypass found for this target."
+msgstr ""
 
 msgid "Benchmark measures actual latency and resolution reliability of major DNS servers (UDP 53 and encrypted DoH) directly from your router to find the fastest, unblocked upstream for your ISP."
 msgstr "Бенчмарк замеряет реальную задержку и надёжность резолва основных DNS серверов (UDP 53 и шифрованный DoH) напрямую с роутера, чтобы найти самый быстрый и незаблокированный апстрим у вашего провайдера."
@@ -1346,8 +1361,14 @@ msgstr "Отмена"
 msgid "Cannot apply"
 msgstr "Невозможно применить"
 
+msgid "Cannot match the loaded rule-set: %s"
+msgstr ""
+
 msgid "Cannot read the Amnezia .conf file"
 msgstr "Не удалось прочитать файл Amnezia .conf"
+
+msgid "Cannot read the loaded rule-set: %s"
+msgstr ""
 
 msgid "Cannot receive checks result"
 msgstr "Не удалось получить результаты проверки"
@@ -2651,6 +2672,9 @@ msgstr "Отключено (обычный сырой UDP)"
 msgid "Disabling interception is incompatible with action=zapret2 because Tachyon sends matched traffic through NFQUEUE."
 msgstr "Отключение перехвата несовместимо с action=zapret2, потому что Tachyon направляет совпавший трафик через NFQUEUE."
 
+msgid "Discord Suite (Gateway + Voice + CDN)"
+msgstr ""
+
 msgid "Disorder (Out-of-order TCP Split)"
 msgstr "Disorder (Отправка сегментов в обратном порядке)"
 
@@ -3668,6 +3692,9 @@ msgstr "Семейный профиль"
 msgid "Family Profiles"
 msgstr "Семейные профили"
 
+msgid "Fast (>1MB/s)"
+msgstr ""
+
 msgid "Faster DNS health monitoring than the default cycle. Switches bootstrap DNS on failure."
 msgstr "Более быстрый мониторинг состояния DNS, чем стандартный цикл. Переключает bootstrap DNS при сбое."
 
@@ -4247,8 +4274,14 @@ msgstr "Таймаут простоя"
 msgid "Idle timeout"
 msgstr "Таймаут простоя"
 
-msgid "If Tachyon powers your daily networking and keeps your connection fast and secure, consider supporting ongoing development! ☕ 🧀 🌭"
-msgstr "Если Tachyon помогает вам и делает работу в сети комфортной, вы можете поддержать проект и автора! ☕ 🧀 🌭"
+msgid "If Tachyon powers your daily networking and keeps your connection fast and secure, consider supporting ongoing development!"
+msgstr ""
+
+msgid "If all Bootstrap DNS fail 3 times, queries will be sent to your ISP's DNS in plaintext. Only use as a last resort to prevent complete internet loss."
+msgstr ""
+
+msgid "If all Main DNS fail 3 times, queries will be sent to your ISP's DNS in plaintext. Only use as a last resort to prevent complete internet loss."
+msgstr ""
 
 msgid "If one health check fails with an error, continue running other checks instead of stopping."
 msgstr "Если одна проверка завершается ошибкой, продолжать другие проверки, а не останавливаться."
@@ -4397,6 +4430,9 @@ msgstr "Включить отправляет в секцию только вы�
 msgid "Include servers"
 msgstr "Включить серверы"
 
+msgid "Includes TLS Certificate Pinning (pcs / certificate_sha256), XHTTP, and AWG 3.x"
+msgstr ""
+
 msgid "Independent DoH/TLS probe"
 msgstr "Независимая проверка DoH/TLS"
 
@@ -4447,6 +4483,9 @@ msgstr "Полезный груз init (I1)"
 
 msgid "Init timeout (Itime)"
 msgstr "Таймаут init (Itime)"
+
+msgid "Initializing benchmark in sandbox..."
+msgstr ""
 
 msgid "Initializing router-level IP & DNS leak test..."
 msgstr "Инициализация проверки утечек IP и DNS с роутера..."
@@ -5848,6 +5887,9 @@ msgstr "Примечание: серверы Cloudflare WARP поддержив�
 
 msgid "Notify in Telegram"
 msgstr "Уведомлять в Telegram"
+
+msgid "Notify on Automatic Updates"
+msgstr ""
 
 msgid "Notify on Certificate Warnings"
 msgstr "Уведомлять о предупреждениях сертификатов"
@@ -7847,6 +7889,9 @@ msgstr "Отправлять уведомление администратора
 msgid "Send a Telegram notification when a URLTest group switches to a new server."
 msgstr "Отправлять уведомление в Telegram при переключении группы URLTest на новый сервер."
 
+msgid "Send a Telegram notification when components are automatically updated."
+msgstr ""
+
 msgid "Send a Telegram notification when proxy subscriptions are successfully updated."
 msgstr "Отправлять уведомление в Telegram при успешном обновлении подписок прокси."
 
@@ -7966,6 +8011,9 @@ msgstr "Серверный outbound должен содержать числов
 
 msgid "Server probe failed"
 msgstr "Проверка сервера не удалась"
+
+msgid "Server received fakes"
+msgstr ""
 
 msgid "Server share links (one per line)"
 msgstr "Ссылки на серверы (по одной на строке)"
@@ -8306,6 +8354,9 @@ msgstr "Этап"
 msgid "Stage 1: Exploration Scan"
 msgstr "Этап 1: Разведочное сканирование"
 
+msgid "Stage 2: Stability Verification"
+msgstr ""
+
 msgid "Standalone ByeDPI autostart is enabled"
 msgstr "Автозапуск отдельной службы ByeDPI включен"
 
@@ -8429,6 +8480,9 @@ msgstr "Служба Steer существует"
 msgid "Stop"
 msgstr "Стоп"
 
+msgid "Stop Benchmark"
+msgstr ""
+
 msgid "Stop Tachyon"
 msgstr "Остановить Tachyon"
 
@@ -8443,6 +8497,9 @@ msgstr "Остановить проверку, когда группа URLTest �
 
 msgid "Stopped"
 msgstr "Остановлен"
+
+msgid "Stopping..."
+msgstr "Остановка..."
 
 msgid "Stopping…"
 msgstr "Остановка…"
@@ -8599,6 +8656,9 @@ msgstr "Синхронизировать время (NTP)"
 
 msgid "Synthesize with AI"
 msgstr "Синтезировать с помощью ИИ"
+
+msgid "Synthesizing..."
+msgstr ""
 
 msgid "System & Backup"
 msgstr "Система и бэкап"
@@ -9143,6 +9203,9 @@ msgstr "Все настройки Tachyon будут удалены и восс�
 msgid "This will replace the current Tachyon settings with the snapshot"
 msgstr "Это заменит текущие настройки Tachyon на снапшот"
 
+msgid "Throttled at 16KB"
+msgstr ""
+
 msgid "Throttling / Deep Inspection"
 msgstr "Замедление / Глубокий анализ пакетов"
 
@@ -9349,6 +9412,9 @@ msgstr "Туннели (WARP / FPTN / AWG)"
 
 msgid "Turkey (tr)"
 msgstr "Турция (tr)"
+
+msgid "Twitch Suite (Live Stream + HLS CDN)"
+msgstr ""
 
 msgid "Two-letter ISO country code (e.g. RU, NL, DE) advertised as a flag emoji in client links and subscriptions."
 msgstr "Двухбуквенный ISO-код страны (например: RU, NL, DE), отображаемый в виде флага в клиентских ссылках и подписках."
@@ -10043,6 +10109,9 @@ msgstr "Приватный ключ WireGuard из вашего аккаунта
 msgid "Working"
 msgstr "Рабочих"
 
+msgid "Working only"
+msgstr ""
+
 msgid "X / Twitter Suite (API + Media CDN)"
 msgstr ""
 
@@ -10063,6 +10132,9 @@ msgstr "Да (для всего трафика)"
 
 msgid "You can select Output Network Interface, by default autodetect"
 msgstr "Вы можете выбрать выходной сетевой интерфейс, по умолчанию автоопределение"
+
+msgid "YouTube Full Suite (Web + 4K Stream + CDN)"
+msgstr ""
 
 msgid "Zapret"
 msgstr "Zapret"
@@ -10556,9 +10628,6 @@ msgstr "— стабильно (TProxy)"
 msgid "← Back"
 msgstr "← Назад"
 
-msgid "⏳ Stopping..."
-msgstr "⏳ Остановка…"
-
 msgid "▲ Hide full catalog"
 msgstr "▲ Скрыть полный каталог списков"
 
@@ -10570,6 +10639,12 @@ msgstr "● Нормальный отклик"
 
 msgid "● High latency"
 msgstr "● Высокий пинг"
+
+msgid "If Tachyon powers your daily networking and keeps your connection fast and secure, consider supporting ongoing development! ☕ 🧀 🌭"
+msgstr "Если Tachyon помогает вам и делает работу в сети комфортной, вы можете поддержать проект и автора! ☕ 🧀 🌭"
+
+msgid "⏳ Stopping..."
+msgstr "⏳ Остановка…"
 
 msgid "⚠️ Benchmark completed. No working bypass found for this target."
 msgstr "⚠️ Бенчмарк завершен. Не найдено рабочих стратегий для данной цели."
@@ -12032,9 +12107,6 @@ msgstr "Генерация..."
 msgid "Starting..."
 msgstr "Запуск..."
 
-msgid "Stopping..."
-msgstr "Остановка..."
-
 msgid "Only the specified servers"
 msgstr "Только указанные серверы"
 
@@ -12067,9 +12139,6 @@ msgstr "Восстановление прямого интернета..."
 
 msgid "Find optimal DPI bypass strategies with isolated live probing"
 msgstr "Автоматический подбор оптимальных параметров обхода DPI в изолированном сэндбоксе"
-
-msgid "Auto-applied best strategy"
-msgstr "Лучшая стратегия автоматически применена"
 
 msgid "Show 'Dashboard' tab"
 msgstr "Отображать вкладку «Главная»"
