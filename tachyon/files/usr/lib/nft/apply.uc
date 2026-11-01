@@ -127,11 +127,26 @@ function nft_csv_values(csv) {
     return result;
 }
 
+const NFT_BATCH_FILE = getenv("TACHYON_NFT_BATCH_FILE") || "";
+
+function nft_batch_append(text) {
+    let file = fs.open(NFT_BATCH_FILE, "a");
+    if (!file)
+        return false;
+    let written = file.write(text);
+    let closed = file.close();
+    return written == length(text) && closed != false;
+}
+
 function run_args(args) {
+    if (NFT_BATCH_FILE != "" && args[0] == "nft" && args[1] in [ "add", "insert", "delete", "flush", "replace" ])
+        return nft_batch_append(join(" ", slice(args, 1)) + "\n");
     return system(command_from_args(args)) == 0;
 }
 
 function run_args_quiet(args) {
+    if (NFT_BATCH_FILE != "" && args[0] == "nft" && args[1] in [ "add", "insert", "delete", "flush", "replace" ])
+        return nft_batch_append(join(" ", slice(args, 1)) + "\n");
     return system(command_from_args(args) + " >/dev/null 2>&1") == 0;
 }
 
@@ -462,7 +477,29 @@ function nft_create_table(name) {
     return run_args([ "nft", "add", "table", "inet", name ]);
 }
 
+let NON_INTERVAL_PORT_SETS = {};
+let NFT_BATCH_SET_METADATA = {};
+
 function nft_create_set(table, name, definition) {
+    if (NFT_BATCH_FILE != "") {
+        if (NFT_BATCH_SET_METADATA[table] == null) {
+            let metadata = null;
+            try { metadata = json(command_output_quiet_from_args([ "nft", "-j", "-t", "list", "table", "inet", table ])); } catch (e) {}
+            NFT_BATCH_SET_METADATA[table] = {};
+            for (let item in array_or_empty(object_or_empty(metadata).nftables)) {
+                let set = object_or_empty(item.set);
+                if (set.name) NFT_BATCH_SET_METADATA[table][set.name] = set;
+            }
+        }
+        let existing = NFT_BATCH_SET_METADATA[table][name];
+        if (existing != null) {
+            // Keep the actual kernel schema, including the established fallback
+            // for systems without interval-concatenation support.
+            if (index(as_string(definition), ". inet_service") >= 0 && !("interval" in array_or_empty(existing.flags)))
+                NON_INTERVAL_PORT_SETS[as_string(table) + ":" + as_string(name)] = true;
+            return true;
+        }
+    }
     return run_args([ "nft", "add", "set", "inet", table, name, definition ]);
 }
 
@@ -477,8 +514,6 @@ function nft_create_ipv6_set(table, name) {
 function nft_create_inet_service_set(table, name) {
     return nft_create_set(table, name, "{ type inet_service; flags interval; auto-merge; }");
 }
-
-let NON_INTERVAL_PORT_SETS = {};
 
 function nft_create_ipv4_port_set(table, name) {
     if (nft_create_set(table, name, "{ type ipv4_addr . inet_service; flags interval; }"))
@@ -529,6 +564,8 @@ function nft_add_set_elements(table, set_name, elements) {
         if (elements == "")
             return true;
     }
+    if (NFT_BATCH_FILE != "")
+        return nft_batch_append(sprintf("add element inet %s %s { %s }\n", table, set_name, as_string(elements)));
     let stamp = clock();
     let tmp_path = sprintf("/tmp/nft_elements.%d.%d.tmp", stamp[0], stamp[1]);
     let rules_content = sprintf("add element inet %s %s { %s }\n", table, set_name, as_string(elements));
@@ -2557,6 +2594,8 @@ function nft_log_invalid_elements(invalid) {
 
 function nft_add_chunks_to_set(table, set_name, chunks, invalid) {
     nft_log_invalid_elements(invalid);
+    if (NFT_BATCH_FILE != "" && length(invalid) > 0)
+        return false;
 
     for (let item in chunks) {
         let separator = index(item, "\t");
@@ -4009,7 +4048,57 @@ function nft_add_extracted_ruleset_subnets(unscoped_path, scoped_path, label, ta
     return true;
 }
 
+function nft_valid_extracted_port(value, allow_open) {
+    let text = as_string(value);
+    let separator = index(text, ":") >= 0 ? ":" : "-";
+    if (index(text, separator) < 0)
+        return normalize_port_number_value(text) != null;
+    let parts = split(text, separator);
+    if (length(parts) != 2) return false;
+    let first = parts[0] == "" && allow_open ? 1 : normalize_port_number_value(parts[0]);
+    let last = parts[1] == "" && allow_open ? 65535 : normalize_port_number_value(parts[1]);
+    return first != null && last != null && int(first) <= int(last);
+}
+
+function nft_valid_extracted_rule(rule) {
+    if (type(rule) != "object") return false;
+    for (let key in [ "ip_cidr", "source_ip_cidr", "port", "port_range", "network" ]) {
+        if (rule[key] == null) continue;
+        let values = type(rule[key]) == "array" ? rule[key] : [ rule[key] ];
+        for (let value in values) {
+            if (key == "ip_cidr" || key == "source_ip_cidr") {
+                if (type(value) != "string" || !core_ip.valid_ip_or_cidr(value)) return false;
+            } else if (key == "port" || key == "port_range") {
+                if (!nft_valid_extracted_port(value, key == "port_range")) return false;
+            } else if (value != "tcp" && value != "udp") {
+                return false;
+            }
+        }
+    }
+    if (rule.invert != null && type(rule.invert) != "boolean") return false;
+    if (rule.type != null && rule.type != "default" && rule.type != "logical") return false;
+    if (rule.type == "logical") {
+        if ((rule.mode != "and" && rule.mode != "or") || type(rule.rules) != "array") return false;
+        for (let child in rule.rules)
+            if (!nft_valid_extracted_rule(child)) return false;
+    }
+    return true;
+}
+
 function nft_add_json_ruleset_subnets_for_section(section, json_path, label, table, common_set, ip_port_set, unscoped_path, scoped_path, chunk_size_text, common6_set, ip_port6_set) {
+    if (NFT_BATCH_FILE != "") {
+        let source = common_read_json_file(json_path);
+        if (type(source) != "object" || type(source.rules) != "array") {
+            log_warn("Invalid JSON rule set for list replacement: " + as_string(json_path));
+            return false;
+        }
+        for (let rule in source.rules) {
+            if (!nft_valid_extracted_rule(rule)) {
+                log_warn("Invalid IP/port rule for list replacement: " + as_string(json_path));
+                return false;
+            }
+        }
+    }
     let ports = section_rule_ports_csv(section);
     let sets = section_priority_sets(section);
 
@@ -4190,6 +4279,90 @@ function nft_add_source_aware_dns_sources(sections, deferred_sections, table) {
     );
 }
 
+// Prepare only destination sets owned by list updates. Sources, manual ports,
+// dynamic DNS sets, quotas and chains are deliberately left intact. All source
+// importers append to the same transaction after these resets and inline rules.
+function nft_prepare_list_refresh(sections, table, common_set, common6_set, ip_port_set, ip_port6_set) {
+    if (NFT_BATCH_FILE == "" || !nft_table_present(table))
+        return false;
+    let names = [ common_set, common6_set, ip_port_set, ip_port6_set ];
+    let metadata = null;
+    try { metadata = json(command_output_quiet_from_args([ "nft", "-j", "-t", "list", "table", "inet", table ])); } catch (e) {}
+    if (type(metadata) != "object" || type(metadata.nftables) != "array")
+        return false;
+    // Include existing destination sets even if their last source/section was
+    // removed. Such sets may still be referenced by the current runtime rules.
+    for (let item in metadata.nftables) {
+        let name = as_string(object_or_empty(item.set).name);
+        if (match(name, /^tachyon_rule_.*_(subnets|subnets6|ip_ports|ip6_ports|udp_ip_ports|udp_ip6_ports)$/))
+            push(names, name);
+    }
+    for (let section in sections) {
+        if (!bool_option(section, "enabled", true) || !section_needs_priority_sets(section))
+            continue;
+        let sets = section_priority_sets(section);
+        if (!nft_create_priority_sets(table, sets))
+            return false;
+        for (let key in [ "subnets", "subnets6", "ip_ports", "ip6_ports", "udp_ip_ports", "udp_ip6_ports" ])
+            push(names, sets[key]);
+    }
+    let seen = {};
+    for (let name in names) {
+        if (seen[name]) continue;
+        seen[name] = true;
+        if (!run_args([ "nft", "flush", "set", "inet", table, name ]))
+            return false;
+    }
+    for (let section in sections) {
+        if (!bool_option(section, "enabled", true) || !section_needs_priority_sets(section))
+            continue;
+        let sets = section_priority_sets(section);
+        if (!nft_add_inline_ip_cidr_matchers(section_rule_condition_csv(section, "ip_cidr", "subnets"),
+                section_rule_ports_csv(section), table, sets.subnets, sets.ip_ports, 5000,
+                sets.subnets6, sets.ip6_ports, sets.udp_ip_ports, sets.udp_ip6_ports))
+            return false;
+    }
+    return true;
+}
+
+function nft_commit_list_refresh(prefix, additions) {
+    if (NFT_BATCH_FILE != "")
+        return false;
+    let reset = fs.readfile(prefix);
+    let data = fs.readfile(additions);
+    if (reset == null || data == null)
+        return false;
+    // nft 1.0.x can re-use stale IPv6 interval state when several add-element
+    // statements follow a flush in one batch. Build one union per destination
+    // set, including inline entries and all sources, before invoking nft.
+    let commands = [];
+    let groups = {};
+    let order = [];
+    for (let line in split(reset + "\n" + data, "\n")) {
+        let found = match(line, /^add element inet ([^ ]+) ([^ ]+) \{ (.*) \}$/);
+        if (!found) {
+            if (line != "") push(commands, line);
+            continue;
+        }
+        let key = found[1] + " " + found[2];
+        if (groups[key] == null) {
+            groups[key] = {};
+            push(order, key);
+        }
+        for (let entry in split(found[3], ",")) {
+            entry = trim(entry);
+            if (entry != "") groups[key][entry] = true;
+        }
+    }
+    for (let key in order)
+        push(commands, "add element inet " + key + " { " + join(", ", keys(groups[key])) + " }");
+    if (!write_text_file(prefix, join("\n", commands) + "\n"))
+        return false;
+    // nft -f applies the entire batch atomically, including flushes. A parse or
+    // kernel error leaves the previous sets in place, without an empty interval.
+    return run_args([ "nft", "-f", prefix ]);
+}
+
 function nft_populate_runtime_sets_from_sections(sections, populate_enabled, deferred_section_names, table, common_set, port_set, ip_port_set, interface_set, localv4_set, mark, common6_set, ip_port6_set, localv6_set) {
     if (!arg_bool(populate_enabled))
         return true;
@@ -4326,6 +4499,12 @@ else if (mode == "nft-add-json-ruleset-subnets-for-section-fixture")
     exit(nft_add_json_ruleset_subnets_for_fixture_section(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7], ARGV[8], ARGV[9], ARGV[10], ARGV[11], ARGV[12]) ? 0 : 1);
 else if (mode == "nft-add-community-subnet-file-for-section-fixture")
     exit(nft_add_community_subnet_file_for_fixture_section(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7], ARGV[8], ARGV[9], ARGV[10], ARGV[11], ARGV[12], ARGV[13], ARGV[14]) ? 0 : 1);
+else if (mode == "nft-prepare-list-refresh")
+    exit(nft_prepare_list_refresh(uci_sections("section"), ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5]) ? 0 : 1);
+else if (mode == "nft-prepare-list-refresh-fixture")
+    exit(nft_prepare_list_refresh(fixture_section_list(object_or_empty(common_read_json_file(ARGV[1])), "section"), ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6]) ? 0 : 1);
+else if (mode == "nft-commit-list-refresh")
+    exit(nft_commit_list_refresh(ARGV[1], ARGV[2]) ? 0 : 1);
 else if (mode == "nft-populate-runtime-sets-from-uci")
     exit(nft_populate_runtime_sets_from_uci(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7], ARGV[8], ARGV[9], ARGV[10], ARGV[11], ARGV[12]) ? 0 : 1);
 else if (mode == "nft-populate-runtime-sets-fixture")
