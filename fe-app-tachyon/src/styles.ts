@@ -814,21 +814,51 @@ header .dropdown-menu {
 #view > .cbi-page-actions,
 #cbi-tachyon ~ .cbi-page-actions {
     margin: 12px 0 8px 228px;
-    transition: margin 0.18s ease;
+    width: auto !important;
+    max-width: calc(100% - 228px) !important;
+    box-sizing: border-box !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    gap: 8px !important;
+    transition: margin 0.18s ease, max-width 0.18s ease;
+}
+
+#view > .cbi-page-actions .cbi-dropdown.btn > ul,
+#cbi-tachyon ~ .cbi-page-actions .cbi-dropdown.btn > ul {
+    width: auto !important;
+    min-width: max-content !important;
+    padding: 0 14px !important;
 }
 
 #cbi-tachyon[data-sidebar-collapsed="true"] ~ .cbi-page-actions {
     margin-left: 82px;
+    max-width: calc(100% - 82px) !important;
 }
 
 #cbi-tachyon[data-sidebar-pos="right"] ~ .cbi-page-actions {
     margin-left: 0;
     margin-right: 228px;
+    max-width: calc(100% - 228px) !important;
 }
 
 #cbi-tachyon[data-sidebar-pos="right"][data-sidebar-collapsed="true"] ~ .cbi-page-actions {
     margin-left: 0;
     margin-right: 82px;
+    max-width: calc(100% - 82px) !important;
+}
+
+@media (max-width: 900px) {
+    #view > .cbi-page-actions,
+    #cbi-tachyon ~ .cbi-page-actions,
+    #cbi-tachyon[data-sidebar-collapsed="true"] ~ .cbi-page-actions,
+    #cbi-tachyon[data-sidebar-pos="right"] ~ .cbi-page-actions,
+    #cbi-tachyon[data-sidebar-pos="right"][data-sidebar-collapsed="true"] ~ .cbi-page-actions {
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+        max-width: 100% !important;
+    }
 }
 
 .tachyon-shell-layout[data-sidebar-pos="right"],
@@ -1510,6 +1540,12 @@ header .dropdown-menu {
 }
 
 /* Sticky top-right Close (✕) button and sticky footer for all Tachyon modals */
+#modal_overlay > .modal:has(> .tachyon-modal__sticky-header),
+.cbi-modal:has(> .tachyon-modal__sticky-header),
+.modal:has(> .tachyon-modal__sticky-header) {
+    padding-top: 0 !important;
+}
+
 #modal_overlay > .modal > h4.tachyon-modal__sticky-header,
 #modal_overlay > .modal > h3.tachyon-modal__sticky-header,
 .cbi-modal > h4.tachyon-modal__sticky-header,
@@ -1523,10 +1559,10 @@ header .dropdown-menu {
     align-items: center !important;
     justify-content: space-between !important;
     gap: 10px !important;
-    background: var(--background-color-high, #1e293b) !important;
-    padding-top: 6px !important;
-    padding-bottom: 8px !important;
-    margin-bottom: 10px !important;
+    background: var(--tachyon-bg-card, var(--background-color-high, #1e293b)) !important;
+    margin: 0 -16px 12px -16px !important;
+    padding: 12px 16px 10px 16px !important;
+    border-radius: 13px 13px 0 0 !important;
     border-bottom: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.18)) !important;
 }
 
@@ -3925,13 +3961,14 @@ body[data-tachyon-ui-mode="simple"] .cbi-modal .cbi-tabmenu > li[data-tab="advan
     background: rgba(8, 13, 24, 0.62) !important;
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
-    padding: 36px 14px 24px 14px !important;
+    padding: 0 14px 24px 14px !important;
+    scroll-padding-top: 0 !important;
     box-sizing: border-box;
 }
 
 @media (max-width: 680px) {
     #modal_overlay {
-        padding: 20px 8px 16px 8px !important;
+        padding: 0 8px 16px 8px !important;
     }
 }
 
@@ -3944,15 +3981,15 @@ body[data-tachyon-ui-mode="simple"] .cbi-modal .cbi-tabmenu > li[data-tab="advan
     border-radius: 14px !important;
     box-shadow: 0 20px 48px rgba(0, 0, 0, 0.34), 0 4px 14px rgba(139, 92, 246, 0.12) !important;
     padding: 14px 16px !important;
-    margin-top: 8px !important;
+    margin: 28px auto 24px auto !important;
     max-width: min(680px, 94vw) !important;
     width: 100% !important;
     box-sizing: border-box !important;
 }
 
-#modal_overlay > .modal > h4,
-.modal.cbi-modal > h4,
-.cbi-modal > h4 {
+#modal_overlay > .modal > h4:not(.tachyon-modal__sticky-header),
+.modal.cbi-modal > h4:not(.tachyon-modal__sticky-header),
+.cbi-modal > h4:not(.tachyon-modal__sticky-header) {
     margin: 0 0 10px 0 !important;
     padding: 0 0 8px 0 !important;
     font-size: 15px !important;
@@ -6379,7 +6416,8 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
+    flex-wrap: wrap;
+    gap: 10px 12px;
     min-width: 0;
 }
 
@@ -6387,8 +6425,8 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
     display: flex;
     align-items: center;
     gap: 10px;
-    min-width: 0;
-    flex: 1 1 auto;
+    min-width: min(220px, 100%);
+    flex: 1 1 220px;
     overflow: hidden;
 }
 
@@ -6397,7 +6435,7 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
     align-items: center;
     flex: 0 0 auto;
     flex-shrink: 0;
-    margin-left: 8px;
+    margin-left: auto;
 }
 
 .tachyon-studio-card__order {
@@ -6513,34 +6551,47 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
 /* Modern iOS/macOS Toggle Switch */
 .tachyon-studio-switch {
     position: relative;
-    width: 40px;
-    height: 22px;
-    border-radius: 999px;
-    border: 1px solid rgba(128, 128, 128, 0.3);
-    background: rgba(128, 128, 128, 0.25);
-    padding: 2px;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    width: 40px !important;
+    min-width: 40px !important;
+    max-width: 40px !important;
+    height: 22px !important;
+    min-height: 22px !important;
+    border-radius: 999px !important;
+    border: 1px solid rgba(128, 128, 128, 0.3) !important;
+    background: rgba(128, 128, 128, 0.25) !important;
+    padding: 2px !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
     cursor: pointer;
-    flex-shrink: 0;
+    flex: 0 0 40px !important;
+    flex-shrink: 0 !important;
     transition: background-color 0.16s ease, border-color 0.16s ease;
 }
 
 .tachyon-studio-switch.is-on {
-    background: #9482e0;
-    border-color: #816ed4;
+    background: #9482e0 !important;
+    border-color: #816ed4 !important;
 }
 
 .tachyon-studio-switch__thumb {
-    display: block;
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    background: #fff;
+    display: block !important;
+    width: 16px !important;
+    height: 16px !important;
+    min-width: 16px !important;
+    min-height: 16px !important;
+    flex: 0 0 16px !important;
+    margin: 0 !important;
+    border-radius: 50% !important;
+    background: #fff !important;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
     transition: transform 0.16s ease;
 }
 
 .tachyon-studio-switch.is-on .tachyon-studio-switch__thumb {
-    transform: translateX(18px);
+    transform: translateX(18px) !important;
 }
 
 /* Studio Badges */
@@ -6910,6 +6961,16 @@ button.tachyon-studio-chip:hover {
 .tachyon-studio-card--source-compact {
     padding: 10px 14px !important;
     gap: 8px !important;
+}
+
+.tachyon-studio-source-compact__right {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 6px;
+    flex: 0 1 auto;
+    margin-left: auto;
 }
 
 .tachyon-studio-source-compact__sections {

@@ -363,13 +363,20 @@ function loadGlobalPoolChoices() {
           }
         }
       });
-      (sc.outbounds || []).forEach((ob, idx) => {
-        if (!ob || typeof ob !== 'object') return;
+      const leafOutbounds = (sc.outbounds || []).filter((ob) => {
+        if (!ob || typeof ob !== 'object') return false;
         const rawTag = String(ob.remark || ob.tag || ob.name || '').trim();
-        if (!rawTag) return;
         const proto = String(ob.type || '').toLowerCase();
-        if (proto === 'urltest' || proto === 'selector' || proto === 'direct')
-          return;
+        return (
+          Boolean(rawTag) &&
+          proto !== 'urltest' &&
+          proto !== 'selector' &&
+          proto !== 'direct'
+        );
+      });
+      leafOutbounds.forEach((ob, idx) => {
+        const rawTag = String(ob.remark || ob.tag || ob.name || '').trim();
+        const proto = String(ob.type || '').toLowerCase();
         const trans = String(
           (ob.transport && ob.transport.type) || 'tcp',
         ).toLowerCase();
@@ -390,7 +397,7 @@ function loadGlobalPoolChoices() {
               linkByTag.get(cleanName) ||
               linkByTag.get(rawTag) ||
               (Array.isArray(sc.links) &&
-              sc.links.length === (sc.outbounds || []).length &&
+              sc.links.length >= leafOutbounds.length &&
               sc.links[idx]
                 ? sc.links[idx]
                 : '') ||

@@ -5845,7 +5845,9 @@ export function openConnectionWizardModal(
           ? dpiEngineType
           : outboundMethod;
 
-    uciObj.add(TACHYON_UCI_PACKAGE, 'outbound_source', srcId);
+    if (!uciObj.get(TACHYON_UCI_PACKAGE, srcId)) {
+      uciObj.add(TACHYON_UCI_PACKAGE, 'outbound_source', srcId);
+    }
     uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'enabled', '1');
     uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'name', finalName);
     uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'source_type', actualSourceType);
@@ -6753,7 +6755,9 @@ export function openConnectionWizardModal(
       if (domainLists.length > 0 || customDoms.length > 0) {
         const condId = sanitizeId(rawSecTitle, 'cond');
         const uniqueLists = Array.from(new Set(domainLists));
-        uciObj.add(TACHYON_UCI_PACKAGE, 'condition', condId);
+        if (!uciObj.get(TACHYON_UCI_PACKAGE, condId)) {
+          uciObj.add(TACHYON_UCI_PACKAGE, 'condition', condId);
+        }
         uciObj.set(TACHYON_UCI_PACKAGE, condId, 'enabled', '1');
         uciObj.set(TACHYON_UCI_PACKAGE, condId, 'name', `${rawSecTitle} Rules`);
         uciObj.set(TACHYON_UCI_PACKAGE, condId, 'condition_type', 'atomic');
@@ -6766,6 +6770,12 @@ export function openConnectionWizardModal(
             uniqueLists,
           );
           uciObj.set(TACHYON_UCI_PACKAGE, condId, 'domain_lists', uniqueLists);
+          uciObj.set(
+            TACHYON_UCI_PACKAGE,
+            secId,
+            'community_lists',
+            uniqueLists,
+          );
         }
         if (customDoms.length > 0) {
           uciObj.set(TACHYON_UCI_PACKAGE, condId, 'domain_suffix', customDoms);
@@ -6776,6 +6786,13 @@ export function openConnectionWizardModal(
             customDoms.join('\n'),
           );
           uciObj.set(TACHYON_UCI_PACKAGE, condId, 'domains', customDoms);
+          uciObj.set(TACHYON_UCI_PACKAGE, secId, 'domain_suffix', customDoms);
+          uciObj.set(
+            TACHYON_UCI_PACKAGE,
+            secId,
+            'domain_suffix_text',
+            customDoms.join('\n'),
+          );
         }
         const curCondsRaw = uciObj.get(
           TACHYON_UCI_PACKAGE,
@@ -6939,7 +6956,9 @@ export function openConnectionWizardModal(
           : [];
       if (curBals.length === 0) {
         const balId = sanitizeId(secId, 'bal_auto');
-        uciObj.add(TACHYON_UCI_PACKAGE, 'balancer', balId);
+        if (!uciObj.get(TACHYON_UCI_PACKAGE, balId)) {
+          uciObj.add(TACHYON_UCI_PACKAGE, 'balancer', balId);
+        }
         uciObj.set(TACHYON_UCI_PACKAGE, balId, 'enabled', '1');
         uciObj.set(TACHYON_UCI_PACKAGE, balId, 'balancer_type', 'urltest');
         uciObj.set(

@@ -746,7 +746,7 @@ function materialize_section_lists(section, catalog) {
 
     let subnets_enabled = option(section, "community_subnets", null);
     if (subnets_enabled == "1" || subnets_enabled == 1 || subnets_enabled == true) {
-        for (let value in list_option(section, "community_lists")) {
+        for (let value in connections.community_lists(section)) {
             let subnets_file = RULESETS_DIR + "/community-subnets-" + as_string(value) + ".lst";
             if (file_exists(subnets_file)) {
                 let s_content = fs.readfile(subnets_file);

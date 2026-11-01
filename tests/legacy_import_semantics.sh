@@ -32,7 +32,7 @@ for (const shape of ['scalar', 'list']) {
     urltest: [{ '.name': 'ut', '.type': 'urltest', section: 'demo', name: 'Fastest', ...filters }]
   };
   fs.writeFileSync(`${dir}/regex-${shape}.json`, JSON.stringify(fixture));
-  const alias = structuredClone(fixture);
+  const alias = JSON.parse(JSON.stringify(fixture));
   alias.priority_level[0].regex = alias.priority_level[0].include_regex;
   delete alias.priority_level[0].include_regex;
   fs.writeFileSync(`${dir}/alias-${shape}.json`, JSON.stringify(alias));
@@ -62,7 +62,7 @@ done
 
 node - "$WORK_DIR" <<'NODE'
 const fs = require('fs');
-const assert = require('assert/strict');
+const assert = require('assert').strict;
 const dir = process.argv[2];
 for (const prefix of ['regex', 'alias']) {
   for (const shape of ['scalar', 'list']) {

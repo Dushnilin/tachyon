@@ -648,7 +648,7 @@ export const styles = `
 .tachyon_dashboard-page__outbound-grid {
     margin-top: 5px;
     display: grid;
-    grid-template-columns: repeat(var(--dashboard-grid-columns, 2), minmax(var(--dashboard-grid-min-width, 220px), 1fr));
+    grid-template-columns: repeat(var(--dashboard-grid-columns, 2), minmax(0, 1fr));
     grid-gap: 10px;
 }
 
@@ -1727,6 +1727,7 @@ body.dark-theme .tachyon_proto-popover__desc {
     align-items: center;
     gap: 6px;
     padding: 3px 8px;
+    margin: 0 !important;
     font-size: 11px;
     font-weight: 600;
     line-height: 1.2;
@@ -1795,6 +1796,7 @@ body.dark-theme .tachyon_proto-popover__desc {
     align-items: center;
     gap: 6px;
     padding: 4px 10px;
+    margin: 0 !important;
     font-size: 12px;
     font-weight: 500;
     line-height: 1.2;
@@ -1955,7 +1957,7 @@ body.dark-theme .tachyon_proto-popover__desc {
 
 .tachyon_dashboard-page__auto-groups-grid {
     display: grid;
-    grid-template-columns: repeat(var(--dashboard-grid-columns, 2), minmax(var(--dashboard-grid-min-width, 220px), 1fr));
+    grid-template-columns: repeat(var(--dashboard-grid-columns, 2), minmax(0, 1fr));
     grid-gap: 10px;
 }
 

@@ -1352,6 +1352,9 @@ function add_fptn_manual_members(config, state, section_name, tag_name, link, ta
     let src_obj = (connections && connections.outbound_source_section && src_tag != "manual")
         ? connections.outbound_source_section(src_tag)
         : null;
+    let node_prefix = (src_obj != null && bool_option(src_obj, "prefix_nodes", true))
+        ? trim(option(src_obj, "node_prefix", ""))
+        : "";
     let fptn_sni = src_obj != null ? trim(option(src_obj, "sni", "")) : "";
     let fptn_bypass = src_obj != null ? trim(option(src_obj, "bypass_method", "")) : "";
     let fptn_pref = src_obj != null ? lc(trim(option(src_obj, "preferred_server", ""))) : "";
@@ -1389,8 +1392,13 @@ function add_fptn_manual_members(config, state, section_name, tag_name, link, ta
         push(selector_tags, member_tag);
         push(urltest_candidate_tags, member_tag);
         state.links[member_tag] = as_string(link);
-        runtime_subscription.remember_outbound_metadata(state, member_tag, server.name, member);
+        runtime_subscription.remember_outbound_metadata(state, member_tag, server.name, member, node_prefix);
         state.outboundMetadata.sources[member_tag] = src_tag;
+        if (src_tag != "manual") {
+            if (!state.outboundMetadata.source_ids)
+                state.outboundMetadata.source_ids = {};
+            state.outboundMetadata.source_ids[member_tag] = src_tag;
+        }
     }
     return true;
 }
@@ -1404,6 +1412,13 @@ function add_manual_proxy_link(config, state, section_name, manual_index, link, 
     let src_tag = as_string(source_id || "") != "" ? as_string(source_id) : "manual";
     if (add_fptn_manual_members(config, state, section_name, tag_name, link, taken, selector_tags, urltest_candidate_tags, src_tag))
         return tag_name;
+
+    let src_obj = (connections && connections.outbound_source_section && src_tag != "manual")
+        ? connections.outbound_source_section(src_tag)
+        : null;
+    let node_prefix = (src_obj != null && bool_option(src_obj, "prefix_nodes", true))
+        ? trim(option(src_obj, "node_prefix", ""))
+        : "";
 
     let display_info = {};
     let outbound = manual_link_outbound(link, tag_name, display_info);
@@ -1437,8 +1452,13 @@ function add_manual_proxy_link(config, state, section_name, manual_index, link, 
     push(urltest_candidate_tags, tag_name);
 
     state.links[tag_name] = as_string(link);
-    runtime_subscription.remember_outbound_metadata(state, tag_name, display_name, outbound);
+    runtime_subscription.remember_outbound_metadata(state, tag_name, display_name, outbound, node_prefix);
     state.outboundMetadata.sources[tag_name] = src_tag;
+    if (src_tag != "manual") {
+        if (!state.outboundMetadata.source_ids)
+            state.outboundMetadata.source_ids = {};
+        state.outboundMetadata.source_ids[tag_name] = src_tag;
+    }
     return tag_name;
 }
 
@@ -2075,9 +2095,21 @@ function add_connection_json_outbounds(config, state, section, taken, selector_t
             push(selector_tags, tag_name);
         if (urltest_leaf_candidate_outbound(outbound) && index(urltest_candidate_tags, tag_name) < 0)
             push(urltest_candidate_tags, tag_name);
-        runtime_subscription.remember_outbound_metadata(state, tag_name, item.displayName, outbound);
+        let src_id = as_string(item.sourceId || "");
+        let src_obj = (connections && connections.outbound_source_section && src_id != "" && src_id != "manual")
+            ? connections.outbound_source_section(src_id)
+            : null;
+        let node_prefix = (src_obj != null && bool_option(src_obj, "prefix_nodes", true))
+            ? trim(option(src_obj, "node_prefix", ""))
+            : "";
+        runtime_subscription.remember_outbound_metadata(state, tag_name, item.displayName, outbound, node_prefix);
         runtime_subscription.remember_urltest_group(state, tag_name, item.displayName, outbound);
-        state.outboundMetadata.sources[tag_name] = item.sourceId || "manual";
+        state.outboundMetadata.sources[tag_name] = src_id != "" ? src_id : "manual";
+        if (src_id != "" && src_id != "manual") {
+            if (!state.outboundMetadata.source_ids)
+                state.outboundMetadata.source_ids = {};
+            state.outboundMetadata.source_ids[tag_name] = src_id;
+        }
     }
 }
 

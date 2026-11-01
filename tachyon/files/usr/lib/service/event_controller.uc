@@ -1305,7 +1305,31 @@ function controller(bus, opts) {
             let s = all_sections[sec_name];
             if (s[".type"] != "section" || s.enabled != "1") continue;
             if (s.community_subnets == "0") continue;
-            if (!s.community_lists || !get_rule_config().has_community_subnet_list(s.community_lists)) continue;
+            let eff_lists = [];
+            if (type(s.community_lists) == "array") {
+                for (let cl in s.community_lists) push(eff_lists, cl);
+            } else if (type(s.community_lists) == "string" && s.community_lists != "") {
+                for (let cl in split(s.community_lists, /\s+/)) {
+                    if (cl != "") push(eff_lists, cl);
+                }
+            }
+            let cond_refs = s.condition_refs;
+            if (type(cond_refs) == "string" && cond_refs != "") cond_refs = split(cond_refs, /\s+/);
+            if (type(cond_refs) == "array") {
+                for (let cref in cond_refs) {
+                    let csec = all_sections[cref];
+                    if (type(csec) != "object" || csec.enabled == "0") continue;
+                    let clists = csec.community_lists || csec.domain_lists;
+                    if (type(clists) == "array") {
+                        for (let cl in clists) push(eff_lists, cl);
+                    } else if (type(clists) == "string" && clists != "") {
+                        for (let cl in split(clists, /\s+/)) {
+                            if (cl != "") push(eff_lists, cl);
+                        }
+                    }
+                }
+            }
+            if (length(eff_lists) == 0 || !get_rule_config().has_community_subnet_list(eff_lists)) continue;
 
             // A non-zero exit means the set does not exist for this section
             // (no subnet community configured) — not an emptiness problem.

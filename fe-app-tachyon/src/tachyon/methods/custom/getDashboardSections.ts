@@ -258,7 +258,13 @@ function compactSettingsMap(settings: Record<string, ItemSettings>) {
   return Object.keys(settings).length ? JSON.stringify(settings) : undefined;
 }
 
+const manualLinkPrefixMap = new Map<string, string>();
+let latestSourcePrefixStyles: Record<string, { bg?: string; color?: string }> =
+  {};
+
 function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
+  manualLinkPrefixMap.clear();
+  latestSourcePrefixStyles = {};
   const subscriptionUrls = childSections(configSections, 'subscription_url');
   const interfaces = childSections(configSections, 'section_interface');
   const urltests = childSections(configSections, 'urltest');
@@ -375,9 +381,43 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
     const extraAmneziaConfigs: string[] = [];
     const extraInterfaces: string[] = [];
     const extraOutboundJsons: string[] = [];
+    const sourcePrefixStyles: Record<string, { bg?: string; color?: string }> =
+      {};
+
+    const pushSourceLink = (src: Tachyon.ConfigSection, rawLink: string) => {
+      extraProxyLinks.push(rawLink);
+      const pfx =
+        src.prefix_nodes !== '0' && typeof src.node_prefix === 'string'
+          ? src.node_prefix.trim()
+          : '';
+      if (pfx && rawLink) {
+        manualLinkPrefixMap.set(rawLink, pfx);
+      }
+    };
 
     effectiveSources.forEach((src) => {
       const stype = (src.source_type || 'subscription').toLowerCase();
+      const srcPfx =
+        src.prefix_nodes !== '0' && typeof src.node_prefix === 'string'
+          ? src.node_prefix.trim()
+          : '';
+      if (srcPfx) {
+        const bg =
+          typeof src.node_prefix_bg === 'string'
+            ? src.node_prefix_bg.trim()
+            : '';
+        const color =
+          typeof src.node_prefix_color === 'string'
+            ? src.node_prefix_color.trim()
+            : '';
+        if (bg || color) {
+          sourcePrefixStyles[srcPfx] = {
+            bg: bg || undefined,
+            color: color || undefined,
+          };
+          latestSourcePrefixStyles[srcPfx] = sourcePrefixStyles[srcPfx];
+        }
+      }
       if (stype === 'subscription' || src.url) {
         const u = (src.url || '').trim();
         if (u) {
@@ -387,21 +427,22 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
               subscriptionUrlItems.push(src);
             }
           } else {
-            extraProxyLinks.push(
+            pushSourceLink(
+              src,
               u.includes('#') || !src.name ? u : `${u}#${src.name}`,
             );
           }
         }
       } else if (stype === 'proxy_links' || stype === 'links') {
         getListValues(src.proxy_links || src.selector_proxy_links).forEach(
-          (l) => extraProxyLinks.push(l),
+          (l) => pushSourceLink(src, l),
         );
         if (src.proxy_links_text) {
           src.proxy_links_text
             .split(/[\r\n]+/)
             .map((l) => l.trim())
             .filter((l) => l && !l.startsWith('#'))
-            .forEach((l) => extraProxyLinks.push(l));
+            .forEach((l) => pushSourceLink(src, l));
         }
       } else if (stype === 'amnezia_config' || stype === 'awg') {
         const awgCfgs = [
@@ -431,7 +472,7 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
               // Raw .conf text uses aname
             }
             if (next.action !== 'awg') {
-              extraProxyLinks.push(`wireguard://${src['.name']}#${cname}`);
+              pushSourceLink(src, `wireguard://${src['.name']}#${cname}`);
             }
           });
         }
@@ -439,7 +480,7 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
           next.action !== 'awg' &&
           (src.awg_private_key || src.awg_server_address || src.awg_endpoint)
         ) {
-          extraProxyLinks.push(`wireguard://${src['.name']}#${aname}`);
+          pushSourceLink(src, `wireguard://${src['.name']}#${aname}`);
         }
       } else if (stype === 'fptn' && next.action !== 'fptn') {
         let ftoken = (src.access_token || '').trim();
@@ -448,12 +489,12 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
             const fname = (src.name || 'FPTN').trim();
             if (fname) ftoken = `${ftoken}#${fname}`;
           }
-          extraProxyLinks.push(ftoken);
+          pushSourceLink(src, ftoken);
         }
       } else if (stype === 'tor') {
         const port = (src.tor_socks_port || '9050').trim() || '9050';
         const tname = (src.name || 'Tor').trim() || 'Tor';
-        extraProxyLinks.push(`socks5://127.0.0.1:${port}#${tname}`);
+        pushSourceLink(src, `socks5://127.0.0.1:${port}#${tname}`);
       } else if (stype === 'interface' || stype === 'tailscale') {
         const iname = (
           src.interface_name ||
@@ -1543,12 +1584,19 @@ function getConfiguredSubscriptionPrefixes(
       }
     }
   }
+  for (const p of manualLinkPrefixMap.values()) {
+    if (p && !prefixes.includes(p)) {
+      prefixes.push(p);
+    }
+  }
   return prefixes;
 }
 
 function getConfiguredSubscriptionPrefixStyles(section: Tachyon.ConfigSection) {
   const settings = itemSettingsMap(section.subscription_url_settings);
-  const styles: Record<string, { bg?: string; color?: string }> = {};
+  const styles: Record<string, { bg?: string; color?: string }> = {
+    ...latestSourcePrefixStyles,
+  };
   for (const url of Object.keys(settings)) {
     const item = settings[url];
     if (item && item.prefix_nodes === '1') {
@@ -1676,7 +1724,9 @@ function resolveOutboundNameAndPrefix({
     fallbackServerName ||
     code;
 
-  let prefix = outboundMetadata?.prefixes?.[code]?.trim() || '';
+  let prefix =
+    outboundMetadata?.prefixes?.[code]?.trim() ||
+    (link ? manualLinkPrefixMap.get(link) || '' : '');
 
   if (!prefix && configuredPrefixes.length > 0) {
     for (const p of configuredPrefixes) {

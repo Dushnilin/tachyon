@@ -1581,22 +1581,27 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                   }
                 });
 
-                const outbounds = Array.isArray(parsedJson?.outbounds)
+                const rawOutbounds = Array.isArray(parsedJson?.outbounds)
                   ? parsedJson.outbounds
                   : [];
+                const outbounds = rawOutbounds.filter((ob: any) => {
+                  const name = String(
+                    ob?.remark || ob?.tag || ob?.name || '',
+                  ).trim();
+                  const proto = String(ob?.type || '').toUpperCase();
+                  return (
+                    Boolean(name) &&
+                    proto !== 'URLTEST' &&
+                    proto !== 'SELECTOR' &&
+                    proto !== 'DIRECT'
+                  );
+                });
                 const servers: SubCacheServerItem[] = [];
                 outbounds.forEach((ob: any, idx: number) => {
                   const name = String(
                     ob?.remark || ob?.tag || ob?.name || '',
                   ).trim();
                   const proto = String(ob?.type || '').toUpperCase();
-                  if (
-                    !name ||
-                    proto === 'URLTEST' ||
-                    proto === 'SELECTOR' ||
-                    proto === 'DIRECT'
-                  )
-                    return;
                   const trans = String(
                     ob?.transport?.type || 'tcp',
                   ).toUpperCase();
@@ -1605,7 +1610,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                       ob?.__tachyon_link ||
                       ob?.link ||
                       linkByTag.get(name) ||
-                      (linkLines.length === outbounds.length
+                      (linkLines.length >= outbounds.length
                         ? linkLines[idx]
                         : '') ||
                       '',
@@ -3227,6 +3232,15 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
         isExpanded ? '▴' : '▾',
       );
       const toggleInspector = (ev: MouseEvent) => {
+        const target = ev.target as HTMLElement | null;
+        if (
+          target &&
+          target !== chevronEl &&
+          !chevronEl.contains(target) &&
+          target.closest('.tachyon-studio-source-inspector')
+        ) {
+          return;
+        }
         ev.preventDefault();
         ev.stopPropagation();
         const prevTop =
