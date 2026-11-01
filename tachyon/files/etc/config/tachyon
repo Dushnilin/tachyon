@@ -289,6 +289,7 @@ config telegram 'telegram'
         option notify_subscription '1'
         option notify_cert '1'
         option notify_dns_leak '1'
+        option notify_auto_update '1'
         #option language 'ru'
         # language: auto-detected from LuCI if not set.
         # Values: ru (default), en

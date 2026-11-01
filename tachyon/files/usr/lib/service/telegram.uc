@@ -156,6 +156,10 @@ function notify_updates_cli() {
     return runtime.notify_updates_cli();
 }
 
+function notify_auto_update_cli(component, old_ver, new_ver) {
+    return runtime.notify_auto_update_cli(component, old_ver, new_ver);
+}
+
 function process_updates(token, admin_ids) {
     // Idle poll guard invariant:
     // if (!res || !res.ok || !res.result) return false;
@@ -191,6 +195,13 @@ if (length(ARGV) > 0) {
         exit(diagnose());
     else if (mode == "notify-updates")
         exit(notify_updates_cli());
+    else if (mode == "notify-auto-update") {
+        let start_arg = (ARGV[0] == "" || ARGV[0] == null) ? 2 : 1;
+        let comp = ARGV[start_arg];
+        let old_v = ARGV[start_arg + 1];
+        let new_v = ARGV[start_arg + 2];
+        exit(notify_auto_update_cli(comp, old_v, new_v));
+    }
     else if (mode == "send-smart") {
         let start_arg = (ARGV[0] == "" || ARGV[0] == null) ? 2 : 1;
         let entries = null;
@@ -240,6 +251,7 @@ return {
     diagnose,
     send_api,
     notify_updates_cli,
+    notify_auto_update_cli,
     process_updates,
     dispatch_command,
     rendering,
