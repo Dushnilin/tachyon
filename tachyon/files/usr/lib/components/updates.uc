@@ -3734,6 +3734,7 @@ function refresh_remote_rulesets(config_path) {
                 "--output", "/dev/null", "--url", url
             ])) {
                 log_message("Could not refresh remote rule set '" + tag + "' via Clash API; core will retry on schedule", "warn");
+                ok = false;
             }
         }
     }

@@ -881,7 +881,8 @@ function prepare_community_rulesets() {
     let exclusion_lists = exclusions.selected_lists(uci_core.get_all(CONFIG_NAME, "settings"));
     for (let name in exclusion_lists)
         if (exclusions.supported(name)) needed[name] = true;
-    connections.set_item_sections_from_cursor(uci_core.cursor(), CONFIG_NAME);
+    if (type(connections.set_item_sections_from_cursor) == "function" && type(uci_core.cursor) == "function")
+        connections.set_item_sections_from_cursor(uci_core.cursor(), CONFIG_NAME);
     let add_needed_list_items = function(raw_items) {
         let arr = raw_items;
         if (type(arr) == "string")

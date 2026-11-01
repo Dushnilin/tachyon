@@ -415,9 +415,17 @@ function clash_probe(tag_name, group) {
     let check_timeout = type(live) == "object" && (live[".type"] == "priority_group" || live[".type"] == "balancer")
         ? common.option(live, "check_timeout", group.check_timeout) : group.check_timeout;
     let timeout = as_string(duration_to_milliseconds(check_timeout, 2000));
-    let urls = array_or_empty(group.health_urls);
-    if (length(urls) == 0)
-        urls = [ as_string(group.health_url || "https://www.gstatic.com/generate_204") ];
+    let urls = type(group.health_urls) == "array" ? group.health_urls : [];
+    if (length(urls) <= 1) {
+        let url = length(urls) == 1 ? as_string(urls[0]) : as_string(group.health_url || "https://www.gstatic.com/generate_204");
+        let result = module_capture([ "get_proxy_latency", tag_name, timeout, url ]);
+        if (result.status != 0)
+            return { alive: false, delay: 0, passed: 0, total: 1, full_pass: false };
+        let delay = parse_delay_output(result.output);
+        if (delay == null)
+            return { alive: false, delay: 0, passed: 0, total: 1, full_pass: false };
+        return { alive: true, delay, passed: 1, total: 1, full_pass: true };
+    }
 
     let delays_by_url = {};
     for (let u in urls) {

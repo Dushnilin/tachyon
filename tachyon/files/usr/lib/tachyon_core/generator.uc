@@ -1376,7 +1376,7 @@ function add_service_mixed_proxy(config, settings, sections) {
         if (ctx.deferred_sections && ctx.deferred_sections[s[".name"]])
             continue;
         let action = s.action || "";
-        if (s.enabled != "0" && (action == "connection" || action == "subscription" || action == "provider" || action == "fptn" || action == "awg")) {
+        if (s.enabled != "0" && (action == "proxy" || action == "connection" || action == "subscription" || action == "provider" || action == "fptn" || action == "awg")) {
             let tag = s[".name"] + "-out";
             if (connections.is_dpi_or_desync_only_section && connections.is_dpi_or_desync_only_section(s)) {
                 if (fallback_dpi_tag == "")

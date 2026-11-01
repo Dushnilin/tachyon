@@ -3153,8 +3153,7 @@ function geoip_country_mode(section) {
 }
 
 function geoip_country_mode_is_closed(section) {
-    return length(geoip_country_list(section)) > 0 &&
-        contains(GEOIP_COUNTRY_CLOSED_MODES, geoip_country_mode(section));
+    return contains(GEOIP_COUNTRY_CLOSED_MODES, geoip_country_mode(section));
 }
 
 function packet_encoding(section) {

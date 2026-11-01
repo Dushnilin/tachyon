@@ -3775,7 +3775,11 @@ function xray_outbound_detour(outbound) {
         return as_string(sockopt.dialerProxy);
 
     sockopt = object_or_empty(outbound.sockopt);
-    return as_string(sockopt.dialerProxy || "");
+    if (as_string(sockopt.dialerProxy || "") != "")
+        return as_string(sockopt.dialerProxy);
+
+    let proxy_settings = object_or_empty(outbound.proxySettings);
+    return as_string(proxy_settings.tag || proxy_settings.Tag || "");
 }
 
 function xray_supported_source_tags(source_outbounds) {
