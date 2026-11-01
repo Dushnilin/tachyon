@@ -37,6 +37,7 @@ const SB_TPROXY_INBOUND6_ADDRESS = getenv("SB_TPROXY_INBOUND6_ADDRESS") || const
 const SB_TPROXY_INBOUND_PORT = getenv("SB_TPROXY_INBOUND_PORT") || constants.SB_TPROXY_INBOUND_PORT || "1602";
 const ZAPRET_LEGACY_DEFAULT_NFQWS_OPT = getenv("ZAPRET_LEGACY_DEFAULT_NFQWS_OPT") || constants.ZAPRET_LEGACY_DEFAULT_NFQWS_OPT || "";
 const CLOUDFLARE_OCTETS = getenv("CLOUDFLARE_OCTETS") || constants.CLOUDFLARE_OCTETS || "8.47 162.159 188.114";
+const SUBSCRIPTION_CACHE_DIR = getenv("TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR") || "/etc/tachyon/subscription-cache";
 
 const HELPERS_UC = LIB_DIR + "/core/helpers.uc";
 const SERVICE_STATE_UC = LIB_DIR + "/service/state.uc";
@@ -906,6 +907,56 @@ function has_certificate_pins_configured() {
             return true;
     }
     return false;
+}
+
+// Providers commonly gate the subscription endpoint on the client profile: the
+// same URL answers 403 to a bare curl and 200 to the User-Agent/HWID the
+// downloader actually used (Happ, v2rayNG, Mihomo, ...). The probe used neither,
+// so a healthy subscription was reported as "unreachable" on every doctor run and
+// the user was told to update it by hand. Reuse the cached profile of the exact
+// URL instead of sending a request the provider never sees in real use.
+function subscription_cached_text(path) {
+    let data = fs.readfile(path);
+    return data == null ? "" : trim(as_string(data));
+}
+
+function subscription_probe_profile(sub_url) {
+    let profile = { user_agent: "", hwid: "", device_headers: [] };
+    let dirs = [ constants.TMP_SUBSCRIPTION_FOLDER, SUBSCRIPTION_CACHE_DIR ];
+    for (let dir in dirs) {
+        let url_files = fs.glob(dir + "/*.url") || [];
+        for (let url_file in url_files) {
+            if (subscription_cached_text(url_file) != sub_url)
+                continue;
+            let base = replace(url_file, /\.url$/, "");
+            profile.user_agent = subscription_cached_text(base + ".user_agent");
+            profile.hwid = subscription_cached_text(base + ".hwid");
+            for (let line in split(subscription_cached_text(base + ".device_headers"), "\n")) {
+                let header = trim(as_string(line));
+                if (header != "")
+                    push(profile.device_headers, header);
+            }
+            return profile;
+        }
+    }
+    return profile;
+}
+
+// Build the same request the downloader sends: UA, both HWID headers and any
+// device headers the provider handed out earlier.
+function subscription_probe_command(sub_url) {
+    let profile = subscription_probe_profile(sub_url);
+    let args = [ "-s", "-m", "15", "-o", "/dev/null", "-w", "%{http_code}", "--connect-timeout", "5" ];
+    if (profile.user_agent != "")
+        push(args, "-H", "User-Agent: " + profile.user_agent);
+    if (profile.hwid != "") {
+        push(args, "-H", "X-HWID: " + profile.hwid);
+        push(args, "-H", "HWID: " + profile.hwid);
+    }
+    for (let header in profile.device_headers)
+        push(args, "-H", header);
+    push(args, sub_url);
+    return "curl " + common.command_from_args(args) + " 2>&1";
 }
 
 function run_doctor_checks_impl(repair) {
@@ -2143,13 +2194,21 @@ function run_doctor_checks_impl(repair) {
     if (has_sections && length(active_sub_urls) > 0) {
         let sub_url = active_sub_urls[0];
         if (sub_url != "") {
-            let sub_check = command_capture("curl -s -m 15 -o /dev/null -w %{http_code} --connect-timeout 5 " + shell_quote(sub_url) + " 2>&1");
+            let sub_check = command_capture(subscription_probe_command(sub_url));
             let sub_code = int(sub_check.output);
             if (sub_check.status == 0 && sub_code >= 200 && sub_code < 400) {
                 doc_check("✅", "Subscription", "active (HTTP " + sub_code + ")", "");
+            } else if (sub_code >= 400 && sub_code < 500) {
+                // The host answered, so it is neither down nor unreachable — the
+                // provider refused this request. That is a subscription problem
+                // (expired key, HWID mismatch), not a network problem.
+                issues++;
+                doc_check("⚠️", "Subscription", "rejected (HTTP " + sub_code + ")",
+                    "→ хост отвечает, но запрос отклонён: проверьте срок действия и HWID");
             } else {
                 issues++;
-                doc_check("⚠️", "Subscription", "unreachable (HTTP " + sub_code + ")", "→ обновите подписку вручную");
+                doc_check("⚠️", "Subscription", "unreachable (HTTP " + sub_code + ")",
+                    "→ проверьте URL подписки и доступность сети");
             }
         }
     }
