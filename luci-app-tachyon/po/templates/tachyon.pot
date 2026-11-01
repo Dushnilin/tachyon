@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-01 12:14+0300\n"
-"PO-Revision-Date: 2026-11-01 12:14+0300\n"
+"POT-Creation-Date: 2026-11-01 12:28+0300\n"
+"PO-Revision-Date: 2026-11-01 12:28+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -218,11 +218,11 @@ msgstr ""
 msgid "60 min — Exhaustive"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:502
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:512
 msgid "A real DNS answer was received over HTTPS with certificate validation."
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:325
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:330
 msgid "A resolver matches a configured WAN DNS address. This is a warning for the proxy probe, not proof that all client DNS leaks."
 msgstr ""
 
@@ -1090,7 +1090,7 @@ msgstr ""
 msgid "An unexpected error occurred during test"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:496
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:498
 msgid "An unexpected error occurred."
 msgstr ""
 
@@ -2386,7 +2386,7 @@ msgstr ""
 msgid "Client DNS"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:575
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:577
 msgid "Client IP / MAC"
 msgstr ""
 
@@ -2480,8 +2480,8 @@ msgstr ""
 #: src/tachyon/tabs/diagnostic/partials/renderAiChatModal.ts:233
 #: src/tachyon/tabs/diagnostic/partials/renderAiDoctorModal.ts:761
 #: src/tachyon/tabs/diagnostic/partials/renderDnsBenchmarkModal.ts:294
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:615
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:645
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:625
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:653
 #: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:182
 #: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:928
 #: src/tachyon/tabs/diagnostic/partials/renderStabilityModal.ts:308
@@ -2738,7 +2738,7 @@ msgstr ""
 msgid "Configured"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:577
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:587
 msgid "Configured detour"
 msgstr ""
 
@@ -2942,7 +2942,7 @@ msgstr ""
 msgid "Could not contact leak test endpoints. Please ensure router has internet access."
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:485
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:487
 msgid "Could not execute route explain command. Ensure Tachyon backend is installed properly."
 msgstr ""
 
@@ -2950,7 +2950,7 @@ msgstr ""
 msgid "Could not probe servers. Make sure Tachyon service is running."
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:398
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:403
 #: src/views/outbounds.ts:2368
 msgid "Country"
 msgstr ""
@@ -3299,7 +3299,7 @@ msgstr ""
 msgid "DNS Unavailability Timeout"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:444
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:449
 msgid "DNS Upstream Resolver Analysis"
 msgstr ""
 
@@ -3354,7 +3354,7 @@ msgstr ""
 msgid "DNS resolution failed — likely DNS-level blocking or hijacking."
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:321
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:326
 msgid "DNS resolvers through proxy are not captured (proxy is offline or test domain is not intercepted)."
 msgstr ""
 
@@ -4519,11 +4519,11 @@ msgstr ""
 msgid "Encapsulates UDP inside a TCP/TLS stream (UoT / xudp). Essential for mobile/LTE operators (MegaFon, MTS, etc.) that throttle, block, or drop incoming raw UDP in games (GTA RP, CS, etc.)."
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:570
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:580
 msgid "Encrypted protocol configured"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:571
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:581
 msgid "Encryption not confirmed"
 msgstr ""
 
@@ -5328,7 +5328,7 @@ msgstr ""
 msgid "Failed to toggle Tachyon Lite"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:476
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:478
 msgid "Failed to trace route."
 msgstr ""
 
@@ -5938,7 +5938,7 @@ msgstr ""
 msgid "HTTP hosts"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:539
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:549
 msgid "HTTP probe paths do not prove DNS packet routing. Transport below is taken from the generated configuration. Engine encryption on the wire is not verified by the independent DoH probe."
 msgstr ""
 
@@ -6296,7 +6296,7 @@ msgstr ""
 msgid "ISP / Organization"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:352
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:357
 msgid "ISP DNS"
 msgstr ""
 
@@ -6600,7 +6600,7 @@ msgstr ""
 msgid "Includes TLS Certificate Pinning (pcs / certificate_sha256), XHTTP, and AWG 3.x"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:497
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:507
 msgid "Independent DoH/TLS probe"
 msgstr ""
 
@@ -6748,7 +6748,7 @@ msgstr ""
 msgid "Installing packages"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:482
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:492
 #: src/views/section.ts:6460
 #: src/views/settings.ts:4130
 #: src/views/settings.ts:4152
@@ -8420,7 +8420,7 @@ msgstr ""
 msgid "No DHCP clients detected"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:422
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:427
 msgid "No DNS resolvers recorded"
 msgstr ""
 
@@ -8489,7 +8489,7 @@ msgstr ""
 msgid "No closed connections"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:332
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:337
 msgid "No configured WAN DNS address was observed in the proxy probe. Resolver ownership does not verify DNS encryption."
 msgstr ""
 
@@ -8530,7 +8530,7 @@ msgstr ""
 msgid "No errors or duplicates found"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:578
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:588
 msgid "No explicit DNS detour; default routing applies"
 msgstr ""
 
@@ -8624,7 +8624,7 @@ msgstr ""
 msgid "No subscription URL"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:472
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:482
 msgid "No test DNS names were observed on WAN port 53. This alone does not prove encryption or absence of other leaks."
 msgstr ""
 
@@ -8892,7 +8892,7 @@ msgstr ""
 msgid "Observed Public IP"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:482
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:492
 msgid "Observed test queries"
 msgstr ""
 
@@ -9327,7 +9327,7 @@ msgstr ""
 msgid "PSK"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:363
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:368
 msgid "PUBLIC DNS"
 msgstr ""
 
@@ -9339,7 +9339,7 @@ msgstr ""
 msgid "Package is not installed"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:475
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:485
 msgid "Packet capture is unavailable or incomplete; unencrypted DNS could not be checked."
 msgstr ""
 
@@ -9445,7 +9445,7 @@ msgstr ""
 msgid "Paste vpn:// share links or upload .conf files using the button above."
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:405
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:410
 msgid "Path"
 msgstr ""
 
@@ -9610,7 +9610,7 @@ msgstr ""
 msgid "Please enter a name."
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:450
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:452
 msgid "Please enter a target domain, URL, or IP address."
 msgstr ""
 
@@ -9645,11 +9645,11 @@ msgstr ""
 msgid "Plus"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:636
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:652
 msgid "Plus mode"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:641
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:657
 msgid "Plus tests router DNS, looks for unencrypted test queries on WAN and checks an independent DoH/TLS connection. Select the mode and re-run the test."
 msgstr ""
 
@@ -9657,7 +9657,7 @@ msgstr ""
 msgid "Plus: also watches stalled LAN HTTP/HTTPS connections and checks full GET responses. Two failed Direct GET probes and a successful shared proxy GET are required. Saves the main domain with its subdomains using the Public Suffix List. DNS resolution and local certificate errors defer detection."
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:452
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:462
 msgid "Plus: router DNS and configured transport"
 msgstr ""
 
@@ -9699,7 +9699,7 @@ msgstr ""
 #: src/tachyon/connectionWizard.ts:3958
 #: src/tachyon/connectionWizard.ts:4171
 #: src/tachyon/studioDeck.ts:3559
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:586
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:588
 #: src/views/section.ts:3097
 #: src/views/server.ts:7076
 msgid "Port"
@@ -10030,7 +10030,7 @@ msgstr ""
 #: src/tachyon/tabs/dashboard/initController.ts:3812
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:1988
 #: src/tachyon/tabs/diagnostic/partials/renderDnsBenchmarkModal.ts:51
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:597
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:599
 #: src/views/section.ts:14382
 #: src/views/section.ts:3076
 #: src/views/server.ts:5198
@@ -10228,7 +10228,7 @@ msgstr ""
 msgid "Quick pick popular websites:"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:617
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:619
 msgid "Quick presets:"
 msgstr ""
 
@@ -10294,11 +10294,11 @@ msgstr ""
 msgid "Raw sing-box outbound JSON objects."
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:607
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:617
 msgid "Re-run Leak Test"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:640
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:648
 msgid "Re-run Trace"
 msgstr ""
 
@@ -10602,7 +10602,7 @@ msgstr ""
 msgid "Resolver DNS Server"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:397
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:402
 msgid "Resolver IP"
 msgstr ""
 
@@ -10610,7 +10610,7 @@ msgstr ""
 msgid "Resolver Protocol"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:329
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:334
 msgid "Resolver ownership is not confirmed. No reliable leak verdict can be made."
 msgstr ""
 
@@ -10776,7 +10776,7 @@ msgid "Route DNS queries through this tunnel (DNS Detour)"
 msgstr ""
 
 #: src/tachyon/tabs/diagnostic/partials/renderAvailableActions.ts:187
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:652
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:661
 msgid "Route Decision Explainer"
 msgstr ""
 
@@ -10816,7 +10816,7 @@ msgstr ""
 msgid "Route community list subnets (IP/CIDR)"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:492
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:494
 msgid "Route decision trace completed."
 msgstr ""
 
@@ -10889,15 +10889,15 @@ msgstr ""
 msgid "Router (WAN)"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:384
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:389
 msgid "Router DNS (127.0.0.1)"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:532
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:542
 msgid "Router DNS observations are unavailable. This does not mean the connection is safe."
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:531
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:541
 msgid "Router DNS queries were observed by the test service."
 msgstr ""
 
@@ -11135,7 +11135,7 @@ msgstr ""
 msgid "Russia (ru)"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:364
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:369
 msgid "SAFE"
 msgstr ""
 
@@ -12189,7 +12189,7 @@ msgstr ""
 msgid "Simple mode: basic settings and quick connection wizard"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:625
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:641
 msgid "Simultaneous check of your public IP address and upstream DNS resolvers to verify network visibility through direct connection and proxy."
 msgstr ""
 
@@ -13081,11 +13081,11 @@ msgstr ""
 msgid "TLS certificate pinning (sing-box 1.15+)"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:506
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:516
 msgid "TLS probe supports the active DoH server; other DNS protocols are not verified."
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:519
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:529
 msgid "TLS verification is disabled in the router DNS configuration. The independent probe does not change this setting."
 msgstr ""
 
@@ -13189,7 +13189,7 @@ msgstr ""
 msgid "Tachyon Error"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:659
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:676
 msgid "Tachyon IP & DNS Leak Detection"
 msgstr ""
 
@@ -13352,7 +13352,7 @@ msgstr ""
 msgid "Target"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:564
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:566
 msgid "Target (Domain / IP / URL)"
 msgstr ""
 
@@ -13425,8 +13425,8 @@ msgstr ""
 msgid "Test Connection"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:317
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:468
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:322
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:478
 msgid "Test DNS queries were observed unencrypted on the selected WAN interface."
 msgstr ""
 
@@ -13563,7 +13563,7 @@ msgstr ""
 msgid "The NFQUEUE number is assigned by Tachyon for each rule and must not be overridden here."
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:509
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:519
 msgid "The TLS certificate or DNS answer could not be verified."
 msgstr ""
 
@@ -13833,7 +13833,7 @@ msgstr ""
 msgid "Trace"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:525
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:527
 msgid "Trace Route"
 msgstr ""
 
@@ -13841,7 +13841,7 @@ msgstr ""
 msgid "Tracer error"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:458
+#: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:460
 msgid "Tracing routing decision pipeline..."
 msgstr ""
 
@@ -14070,7 +14070,7 @@ msgstr ""
 msgid "UDP over TCP (UoT)"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:361
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:366
 msgid "UNCONFIRMED"
 msgstr ""
 
@@ -14229,11 +14229,11 @@ msgstr ""
 msgid "Underload packet header (H3)"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:463
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:473
 msgid "Unencrypted DNS on WAN"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:589
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:599
 msgid "Unencrypted bootstrap DNS alone is not proof of a DNS leak. Browser Secure DNS may use a different resolver."
 msgstr ""
 
@@ -14491,7 +14491,7 @@ msgstr ""
 msgid "Upstream Mode"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:399
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:404
 msgid "Upstream Provider / ASN"
 msgstr ""
 
@@ -14790,7 +14790,7 @@ msgstr ""
 msgid "Values listed here belong to this section alone: every other section stops offering them and loses them on save, and this section gets a \"Global rule enabled\" mark. Only values already used by this section can be claimed."
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:403
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:408
 msgid "Verdict"
 msgstr ""
 
@@ -14863,7 +14863,7 @@ msgstr ""
 msgid "WAN"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:352
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:357
 msgid "WAN DNS"
 msgstr ""
 
@@ -15673,11 +15673,11 @@ msgstr ""
 msgid "vHTTP Mode"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:378
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:383
 msgid "via Proxy (HTTP probe)"
 msgstr ""
 
-#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:381
+#: src/tachyon/tabs/diagnostic/partials/renderLeakCheckModal.ts:386
 msgid "via WAN (HTTP probe)"
 msgstr ""
 

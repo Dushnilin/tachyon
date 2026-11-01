@@ -278,7 +278,7 @@ export function renderLeakCheckModal() {
       {
         class: 'cbi-section',
         style:
-          'margin-bottom: 20px; border: 1px solid var(--border-color, rgba(128,128,128,0.2)); border-radius: 6px; padding: 12px;',
+          'margin-bottom: 20px; border: 1px solid var(--border-color, rgba(128,128,128,0.2)); border-radius: 6px; padding: 12px; width: 100%; box-sizing: border-box;',
       },
       [
         E(
@@ -289,10 +289,15 @@ export function renderLeakCheckModal() {
           },
           [renderGlobeIcon(14), _('Public IP Address Isolation')],
         ),
-        E('div', { class: ipAlertClass, style: 'margin-bottom: 12px;' }, [
-          ipAlertText,
-        ]),
-        ipTable,
+        E(
+          'div',
+          {
+            class: ipAlertClass,
+            style: 'margin-bottom: 12px; width: 100%; box-sizing: border-box;',
+          },
+          [ipAlertText],
+        ),
+        E('div', { style: 'width: 100%; overflow-x: auto;' }, [ipTable]),
       ],
     );
 
@@ -432,7 +437,7 @@ export function renderLeakCheckModal() {
       {
         class: 'cbi-section',
         style:
-          'border: 1px solid var(--border-color, rgba(128,128,128,0.2)); border-radius: 6px; padding: 12px;',
+          'border: 1px solid var(--border-color, rgba(128,128,128,0.2)); border-radius: 6px; padding: 12px; width: 100%; box-sizing: border-box;',
       },
       [
         E(
@@ -443,10 +448,15 @@ export function renderLeakCheckModal() {
           },
           [renderSearchIcon24(), _('DNS Upstream Resolver Analysis')],
         ),
-        E('div', { class: dnsAlertClass, style: 'margin-bottom: 12px;' }, [
-          dnsAlertText,
-        ]),
-        dnsTable,
+        E(
+          'div',
+          {
+            class: dnsAlertClass,
+            style: 'margin-bottom: 12px; width: 100%; box-sizing: border-box;',
+          },
+          [dnsAlertText],
+        ),
+        E('div', { style: 'width: 100%; overflow-x: auto;' }, [dnsTable]),
         ...(data.mode === 'plus'
           ? [
               E('h4', {}, _('Plus: router DNS and configured transport')),
@@ -615,46 +625,53 @@ export function renderLeakCheckModal() {
     text: _('Close'),
   });
 
-  const modalContent = E('div', { style: 'padding: 8px;' }, [
-    E(
-      'p',
-      {
-        style:
-          'font-size: 13px; color: var(--text-color-medium, #6c757d); margin-bottom: 14px;',
-      },
-      _(
-        'Simultaneous check of your public IP address and upstream DNS resolvers to verify network visibility through direct connection and proxy.',
-      ),
-    ),
-    E('div', { style: 'margin-bottom: 14px;' }, [
+  const modalContent = E(
+    'div',
+    {
+      class: 'tachyon-leak-check-modal',
+      style: 'padding: 8px; width: 100%; box-sizing: border-box;',
+    },
+    [
       E(
-        'label',
+        'p',
         {
           style:
-            'display: inline-flex; align-items: center; gap: 8px; cursor: pointer;',
+            'font-size: 13px; color: var(--text-color-medium, #6c757d); margin-bottom: 14px;',
         },
-        [plusCheckbox, _('Plus mode')],
-      ),
-      E(
-        'div',
-        { style: 'font-size: 12px; margin-top: 6px;' },
         _(
-          'Plus tests router DNS, looks for unencrypted test queries on WAN and checks an independent DoH/TLS connection. Select the mode and re-run the test.',
+          'Simultaneous check of your public IP address and upstream DNS resolvers to verify network visibility through direct connection and proxy.',
         ),
       ),
-    ]),
-    statusLabel,
-    progressContainer,
-    resultsContainer,
-    E(
-      'div',
-      {
-        style:
-          'display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; border-top: 1px solid var(--border-color, rgba(128,128,128,0.2)); padding-top: 12px;',
-      },
-      [retryBtn, closeBtn],
-    ),
-  ]);
+      E('div', { style: 'margin-bottom: 14px;' }, [
+        E(
+          'label',
+          {
+            style:
+              'display: inline-flex; align-items: center; gap: 8px; cursor: pointer;',
+          },
+          [plusCheckbox, _('Plus mode')],
+        ),
+        E(
+          'div',
+          { style: 'font-size: 12px; margin-top: 6px;' },
+          _(
+            'Plus tests router DNS, looks for unencrypted test queries on WAN and checks an independent DoH/TLS connection. Select the mode and re-run the test.',
+          ),
+        ),
+      ]),
+      statusLabel,
+      progressContainer,
+      resultsContainer,
+      E(
+        'div',
+        {
+          style:
+            'display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; border-top: 1px solid var(--border-color, rgba(128,128,128,0.2)); padding-top: 12px;',
+        },
+        [retryBtn, closeBtn],
+      ),
+    ],
+  );
 
   ui.showModal(_('Tachyon IP & DNS Leak Detection'), modalContent);
 

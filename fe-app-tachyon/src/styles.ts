@@ -24,6 +24,8 @@ ${PartialStyles}
     --tachyon-violet-strong: #816ed4;
     --tachyon-violet-soft: rgba(148, 130, 224, 0.12);
     --tachyon-violet-border: rgba(148, 130, 224, 0.32);
+    --tachyon-accent-text: #5b21b6;
+    --tachyon-accent-text-hover: #4c1d95;
     --primary-color-high: #9482e0;
     --primary-color-medium: #816ed4;
     --focus-color-rgb: 148, 130, 224;
@@ -37,6 +39,8 @@ ${PartialStyles}
     #modal_overlay,
     .cbi-modal,
     .tachyon-wizard {
+        --tachyon-accent-text: #b4a5f0;
+        --tachyon-accent-text-hover: #d8cff8;
         --tachyon-bg-card: var(--background-color-high, rgba(22, 27, 38, 0.94));
         --tachyon-bg-card-elevated: var(--background-color-low, rgba(30, 38, 52, 0.92));
     }
@@ -52,6 +56,8 @@ body.dark .tachyon-view,
 body.dark #modal_overlay,
 body.dark .cbi-modal,
 body.dark .tachyon-wizard {
+    --tachyon-accent-text: #b4a5f0;
+    --tachyon-accent-text-hover: #d8cff8;
     --tachyon-bg-card: var(--background-color-high, rgba(22, 27, 38, 0.94));
     --tachyon-bg-card-elevated: var(--background-color-low, rgba(30, 38, 52, 0.92));
 }
@@ -61,6 +67,8 @@ body.dark .tachyon-wizard {
 [data-darkmode="false"] #modal_overlay,
 [data-darkmode="false"] .cbi-modal,
 [data-darkmode="false"] .tachyon-wizard {
+    --tachyon-accent-text: #5b21b6;
+    --tachyon-accent-text-hover: #4c1d95;
     --tachyon-bg-card: var(--background-color-high, rgba(255, 255, 255, 0.94));
     --tachyon-bg-card-elevated: var(--background-color-low, rgba(248, 250, 252, 0.92));
 }
@@ -143,7 +151,7 @@ body.dark .tachyon-wizard {
 .cbi-modal .cbi-button-action.important {
     background: rgba(148, 130, 224, 0.14) !important;
     border-color: rgba(148, 130, 224, 0.38) !important;
-    color: #b4a5f0 !important;
+    color: var(--tachyon-accent-text, #6d28d9) !important;
 }
 
 [id^="cbi-${TACHYON_CBI_PREFIX}"] .cbi-button-apply:hover:not(:disabled),
@@ -160,7 +168,7 @@ body.dark .tachyon-wizard {
 .cbi-modal .cbi-button-action.important:hover:not(:disabled) {
     background: rgba(148, 130, 224, 0.22) !important;
     border-color: rgba(148, 130, 224, 0.52) !important;
-    color: #d8cff8 !important;
+    color: var(--tachyon-accent-text-hover, #4c1d95) !important;
 }
 
 /* Negative / Remove buttons stay calm neutral until hovered */
@@ -415,6 +423,15 @@ body.dark .tachyon-wizard {
 
 /* Tachyon modal sizing by content type */
 
+/* General Tachyon modals: crisp compact width on desktop, full-width on mobile */
+.modal:has([class*="tachyon"]),
+.cbi-modal:has([class*="tachyon"]) {
+    width: min(94vw, 680px) !important;
+    max-width: min(94vw, 680px) !important;
+    box-sizing: border-box;
+    margin: 10px auto;
+}
+
 /* Compact modals: UrlTest details, priority info, icon picker */
 .modal:has(.tachyon_dashboard-page__urltest-details),
 .cbi-modal:has(.tachyon_dashboard-page__urltest-details) {
@@ -429,6 +446,8 @@ body.dark .tachyon-wizard {
 .cbi-modal:has(.tachyon-support-modal),
 .modal:has(.tachyon-service-check-modal),
 .cbi-modal:has(.tachyon-service-check-modal),
+.modal:has(.tachyon-service-check-modal-wrapper),
+.cbi-modal:has(.tachyon-service-check-modal-wrapper),
 .modal:has(.tachyon-dns-benchmark-modal),
 .cbi-modal:has(.tachyon-dns-benchmark-modal),
 .modal:has(.tachyon-update-progress-modal),
@@ -439,8 +458,8 @@ body.dark .tachyon-wizard {
 .cbi-modal.fkp-server-info-dialog,
 .modal:has(.fkp-server-info-modal),
 .cbi-modal:has(.fkp-server-info-modal) {
-    width: min(94vw, 720px) !important;
-    max-width: min(94vw, 720px) !important;
+    width: min(94vw, 760px) !important;
+    max-width: min(94vw, 760px) !important;
     box-sizing: border-box;
     margin: 10px auto;
 }
@@ -453,24 +472,29 @@ body.dark .tachyon-wizard {
     margin: 0 !important;
 }
 
-/* Wide modals: Strategy Fuzzer, Leak detection */
+/* Wide modals: Strategy Fuzzer, Leak detection, Route Explainer, Stability */
 .modal:has(.tachyon-strategy-fuzzer-modal),
 .cbi-modal:has(.tachyon-strategy-fuzzer-modal),
 .modal:has(.tachyon-leak-check-modal),
-.cbi-modal:has(.tachyon-leak-check-modal) {
-    width: min(96vw, 960px) !important;
-    max-width: min(96vw, 960px) !important;
+.cbi-modal:has(.tachyon-leak-check-modal),
+.modal:has(.tachyon-route-explain-modal),
+.cbi-modal:has(.tachyon-route-explain-modal),
+.modal:has(.tachyon-stability-modal),
+.cbi-modal:has(.tachyon-stability-modal),
+.modal:has(.tachyon_stability-modal),
+.cbi-modal:has(.tachyon_stability-modal) {
+    width: min(96vw, 920px) !important;
+    max-width: min(96vw, 920px) !important;
     box-sizing: border-box;
     margin: 10px auto;
 }
 
-/* General Tachyon modals: crisp compact width on desktop, full-width on mobile */
-.modal:has([class*="tachyon"]),
-.cbi-modal:has([class*="tachyon"]) {
-    width: min(94vw, 680px) !important;
-    max-width: min(94vw, 680px) !important;
-    box-sizing: border-box;
-    margin: 10px auto;
+.tachyon-leak-check-modal .cbi-section-table th,
+.tachyon-leak-check-modal .cbi-section-table .th,
+.tachyon-route-explain-modal .cbi-section-table th,
+.tachyon-route-explain-modal .cbi-section-table .th {
+    white-space: normal !important;
+    line-height: 1.25;
 }
 
 /* Tablet / mobile: let the overlay use nearly the whole viewport */
@@ -635,12 +659,12 @@ body.dark .tachyon-wizard {
 }
 
 .tachyon-lang-option__badge--active {
-    color: #b4a5f0;
+    color: var(--tachyon-accent-text, #5b21b6);
 }
 
 .tachyon-lang-option__badge--install {
     background: rgba(148, 130, 224, 0.14);
-    color: #b4a5f0;
+    color: var(--tachyon-accent-text, #5b21b6);
 }
 
 /* ==========================================================================
@@ -1380,7 +1404,7 @@ header .dropdown-menu {
 
 .tachyon-mode-switcher__btn.is-active {
     background: rgba(148, 130, 224, 0.16);
-    color: #b4a5f0;
+    color: var(--tachyon-accent-text, #5b21b6);
     opacity: 1;
     font-weight: 700;
     box-shadow: none;

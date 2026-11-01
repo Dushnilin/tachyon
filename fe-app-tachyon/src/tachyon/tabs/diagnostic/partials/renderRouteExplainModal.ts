@@ -118,7 +118,7 @@ export function renderRouteExplainModal(initialTarget = 'instagram.com') {
     class: 'cbi-input-text',
     value: initialTarget,
     placeholder: _('Domain, URL, or IP (e.g. instagram.com or 1.1.1.1)'),
-    style: 'width: 100%; min-width: 200px;',
+    style: 'width: 100%; min-width: 0; box-sizing: border-box;',
   }) as HTMLInputElement;
 
   const clientInput = E('input', {
@@ -126,7 +126,7 @@ export function renderRouteExplainModal(initialTarget = 'instagram.com') {
     class: 'cbi-input-text',
     value: '192.168.1.100',
     placeholder: _('Client IP or MAC (e.g. 192.168.1.100)'),
-    style: 'width: 100%; min-width: 140px;',
+    style: 'width: 100%; min-width: 0; box-sizing: border-box;',
   }) as HTMLInputElement;
 
   const portInput = E('input', {
@@ -135,14 +135,14 @@ export function renderRouteExplainModal(initialTarget = 'instagram.com') {
     value: '443',
     min: '1',
     max: '65535',
-    style: 'width: 90px;',
+    style: 'width: 100%; min-width: 0; box-sizing: border-box;',
   }) as HTMLInputElement;
 
   const protoSelect = E(
     'select',
     {
       class: 'cbi-input-select',
-      style: 'width: 90px;',
+      style: 'width: 100%; min-width: 0; box-sizing: border-box;',
     },
     [
       E('option', { value: 'tcp', selected: true }, 'TCP'),
@@ -435,7 +435,9 @@ export function renderRouteExplainModal(initialTarget = 'instagram.com') {
         ],
       );
 
-      resultsContainer.appendChild(stageTable);
+      resultsContainer.appendChild(
+        E('div', { style: 'width: 100%; overflow-x: auto;' }, [stageTable]),
+      );
     }
 
     resultsContainer.style.display = 'block';
@@ -544,17 +546,17 @@ export function renderRouteExplainModal(initialTarget = 'instagram.com') {
     {
       class: 'cbi-section-node',
       style:
-        'padding: 12px; margin-bottom: 12px; border-radius: 6px; background: var(--background-color-high, rgba(128,128,128,0.05)); border: 1px solid var(--border-color, rgba(128,128,128,0.15));',
+        'padding: 12px; margin-bottom: 12px; border-radius: 6px; box-sizing: border-box; width: 100%; background: var(--background-color-high, rgba(128,128,128,0.05)); border: 1px solid var(--border-color, rgba(128,128,128,0.15));',
     },
     [
       E(
         'div',
         {
           style:
-            'display: grid; grid-template-columns: 1fr 180px 90px 90px auto; gap: 8px; align-items: end;',
+            'display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; width: 100%; box-sizing: border-box;',
         },
         [
-          E('div', {}, [
+          E('div', { style: 'flex: 2 1 180px; min-width: 140px;' }, [
             E(
               'label',
               {
@@ -565,7 +567,7 @@ export function renderRouteExplainModal(initialTarget = 'instagram.com') {
             ),
             targetInput,
           ]),
-          E('div', {}, [
+          E('div', { style: 'flex: 1 1 140px; min-width: 120px;' }, [
             E(
               'label',
               {
@@ -576,7 +578,7 @@ export function renderRouteExplainModal(initialTarget = 'instagram.com') {
             ),
             clientInput,
           ]),
-          E('div', {}, [
+          E('div', { style: 'flex: 0 0 80px;' }, [
             E(
               'label',
               {
@@ -587,7 +589,7 @@ export function renderRouteExplainModal(initialTarget = 'instagram.com') {
             ),
             portInput,
           ]),
-          E('div', {}, [
+          E('div', { style: 'flex: 0 0 84px;' }, [
             E(
               'label',
               {
@@ -598,7 +600,7 @@ export function renderRouteExplainModal(initialTarget = 'instagram.com') {
             ),
             protoSelect,
           ]),
-          E('div', {}, [traceBtn]),
+          E('div', { style: 'flex: 0 0 auto;' }, [traceBtn]),
         ],
       ),
       E(
@@ -622,32 +624,39 @@ export function renderRouteExplainModal(initialTarget = 'instagram.com') {
     ],
   );
 
-  const modalContent = E('div', { style: 'max-width: 820px; width: 100%;' }, [
-    formNode,
-    statusLabel,
-    resultsContainer,
-    E(
-      'div',
-      {
-        class: 'right',
-        style:
-          'display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px;',
-      },
-      [
-        renderButton({
-          classNames: ['cbi-button'],
-          icon: renderRotateCcwIcon24,
-          text: _('Re-run Trace'),
-          onClick: runExplain,
-        }),
-        renderButton({
-          classNames: ['cbi-button-neutral'],
-          text: _('Close'),
-          onClick: () => ui.hideModal(),
-        }),
-      ],
-    ),
-  ]);
+  const modalContent = E(
+    'div',
+    {
+      class: 'tachyon-route-explain-modal',
+      style: 'width: 100%; box-sizing: border-box;',
+    },
+    [
+      formNode,
+      statusLabel,
+      resultsContainer,
+      E(
+        'div',
+        {
+          class: 'right',
+          style:
+            'display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px;',
+        },
+        [
+          renderButton({
+            classNames: ['cbi-button'],
+            icon: renderRotateCcwIcon24,
+            text: _('Re-run Trace'),
+            onClick: runExplain,
+          }),
+          renderButton({
+            classNames: ['cbi-button-neutral'],
+            text: _('Close'),
+            onClick: () => ui.hideModal(),
+          }),
+        ],
+      ),
+    ],
+  );
 
   ui.showModal(_('Route Decision Explainer'), modalContent);
 
