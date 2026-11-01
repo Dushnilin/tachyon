@@ -1096,8 +1096,14 @@ function install_zapret2(action, target_tag) {
         if (file_exists(p))
             command_status_from_args([ "chmod", "0755", p ]);
     }
-    if (file_exists("/opt/zapret2"))
+    if (file_exists("/opt/zapret2")) {
         command_status_from_args([ "chmod", "-R", "a+rX", "/opt/zapret2" ]);
+        // nfqws2 drops its privileges before reading the Lua desync scripts, so
+        // /opt itself must be traversable as well: a fresh install may create it
+        // with 0700 root:root and every start then fails with
+        // "LUA file ... is not accessible" in a respawn loop.
+        command_status_from_args([ "chmod", "0755", "/opt" ]);
+    }
 
     command_success_from_args([ "killall", "-9", "nfqws2" ]);
     disable_standalone_service(component);
