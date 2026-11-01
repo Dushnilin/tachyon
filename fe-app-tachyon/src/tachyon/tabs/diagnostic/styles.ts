@@ -131,6 +131,9 @@ export const styles = `
 }
 
 .tachyon_diagnostic-summary-banner__title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     font-size: 13.5px;
     font-weight: 700;
     color: var(--tachyon-text-main, inherit);

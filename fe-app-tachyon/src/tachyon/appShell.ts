@@ -3,7 +3,12 @@ import { svgEl } from '../helpers';
 import { showToast } from '../helpers/showToast';
 import { tr } from './helpers/i18n';
 import { renderTachyonDuckMascotSvg } from '../icons/duckMascot';
-import { renderZapIcon, renderPlusIcon, renderWandIcon } from '../icons';
+import {
+  renderZapIcon,
+  renderPlusIcon,
+  renderWandIcon,
+  renderXIcon,
+} from '../icons';
 import { TachyonShellMethods } from './methods/shell';
 import { store } from './services/store.service';
 import { openConnectionWizardModal } from './connectionWizard';
@@ -762,7 +767,7 @@ export function installModalHeaderCloseEnhancements(): void {
           hideActiveModal();
         },
       } as any,
-      '✕',
+      [renderXIcon(14)],
     );
     headingEl.appendChild(closeBtn);
   };

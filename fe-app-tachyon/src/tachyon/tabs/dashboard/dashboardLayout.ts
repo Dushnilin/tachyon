@@ -3,9 +3,11 @@ import { svgEl } from '../../../helpers';
 import { tr } from '../../helpers/i18n';
 import {
   renderBarChart2Icon,
+  renderCheckIcon,
   renderCompassIcon,
   renderLayersIcon,
   renderLayoutGridIcon,
+  renderPlusIcon,
   renderScaleIcon,
   renderServerIcon,
   renderShieldIcon,
@@ -1340,7 +1342,7 @@ export function buildDashboardLayoutEditorDom(options?: {
             });
           },
         },
-        placement.enabled ? '✓' : '+',
+        [placement.enabled ? renderCheckIcon(12) : renderPlusIcon(12)],
       );
 
       const viewPills = E(

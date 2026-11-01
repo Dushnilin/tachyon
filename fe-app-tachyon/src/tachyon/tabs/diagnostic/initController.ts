@@ -52,7 +52,13 @@ import { getConfigSections } from '../../methods/custom/getConfigSections';
 import { fetchServicesInfo } from '../../fetchers/fetchServicesInfo';
 import { normalizeCompiledVersion } from '../../../helpers/normalizeCompiledVersion';
 import { renderModal, renderButton } from '../../../partials';
-import { renderRotateCcwIcon24 } from '../../../icons';
+import {
+  renderRotateCcwIcon24,
+  renderHourglassIcon,
+  renderCircleCheckBigIcon24,
+  renderAlertTriangleIcon,
+  renderCircleXIcon24,
+} from '../../../icons';
 import { TACHYON_LUCI_APP_VERSION } from '../../../constants';
 import { renderWikiDisclaimer } from './partials/renderWikiDisclaimer';
 import { runSectionsCheck } from './checks/runSectionsCheck';
@@ -601,11 +607,17 @@ function renderDiagnosticsChecks() {
     bannerState = 'warning';
   }
 
+  const summaryTitleIcon = isRunning
+    ? renderHourglassIcon(16)
+    : bannerState === 'success'
+      ? renderCircleCheckBigIcon24()
+      : bannerState === 'warning'
+        ? renderAlertTriangleIcon(16)
+        : renderCircleXIcon24();
+
   const summaryTitleText = isRunning
-    ? `⏳ ${tr('Выполняется диагностика', 'Diagnostics in progress')}: ${completedCount} / ${totalCount}`
-    : `${
-        bannerState === 'success' ? '✓' : bannerState === 'warning' ? '⚠' : '✗'
-      } ${tr('Проверки пройдены', 'Checks passed')}: ${passedCount} ${tr('из', 'of')} ${totalCount}`;
+    ? `${tr('Выполняется диагностика', 'Diagnostics in progress')}: ${completedCount} / ${totalCount}`
+    : `${tr('Проверки пройдены', 'Checks passed')}: ${passedCount} ${tr('из', 'of')} ${totalCount}`;
 
   const summarySubParts: string[] = [];
   if (!isRunning) {
@@ -645,11 +657,10 @@ function renderDiagnosticsChecks() {
     },
     [
       E('div', { class: 'tachyon_diagnostic-summary-banner__main' }, [
-        E(
-          'b',
-          { class: 'tachyon_diagnostic-summary-banner__title' },
-          summaryTitleText,
-        ),
+        E('b', { class: 'tachyon_diagnostic-summary-banner__title' }, [
+          summaryTitleIcon,
+          E('span', {}, summaryTitleText),
+        ]),
         E(
           'span',
           { class: 'tachyon_diagnostic-summary-banner__subtitle' },

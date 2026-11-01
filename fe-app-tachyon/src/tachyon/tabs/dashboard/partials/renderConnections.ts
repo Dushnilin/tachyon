@@ -1,4 +1,5 @@
 import { svgEl } from '../../../../helpers';
+import { renderGlobeIcon } from '../../../../icons';
 import { prettyBytes } from '../../../../helpers/prettyBytes';
 import { tr } from '../../../helpers/i18n';
 import { ITopDomain } from '../connections';
@@ -46,7 +47,7 @@ export function renderConnections(
                   E(
                     'span',
                     { class: 'tachyon_dashboard-page__top-domain-chip__icon' },
-                    '🌐',
+                    [renderGlobeIcon(12)],
                   ),
                   E('b', {}, item.domain),
                   E(

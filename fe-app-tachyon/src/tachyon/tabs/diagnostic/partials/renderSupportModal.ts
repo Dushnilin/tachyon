@@ -3,13 +3,18 @@ import {
   renderCheckIcon24,
   renderCopyIcon24,
   renderLinkIcon24,
+  renderHeartIcon24,
+  renderSparklesIcon,
+  renderCreditCardIcon,
+  renderCoinsIcon,
+  renderGemIcon,
 } from '../../../../icons';
 import { showToast } from '../../../../helpers/showToast';
 
 interface CryptoItem {
   name: string;
   badge: string;
-  icon: string;
+  icon: string | (() => SVGElement);
   accent: string;
   address: string;
 }
@@ -32,7 +37,7 @@ const CRYPTO_LIST: CryptoItem[] = [
   {
     name: 'TON',
     badge: 'TON',
-    icon: '💎',
+    icon: () => renderGemIcon(14),
     accent: '#0ea5e9',
     address: 'UQDPhLRjMz5KltDLACAT3YXXHDVEtIDOHky2i33ZIOtsMEoR',
   },
@@ -89,7 +94,7 @@ export function renderSupportModal(): void {
           style:
             'width: 42px; height: 42px; border-radius: 11px; background: rgba(244, 63, 94, 0.18); border: 1px solid rgba(244, 63, 94, 0.34); display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0;',
         },
-        '💖',
+        [renderHeartIcon24()],
       ),
       E(
         'p',
@@ -98,7 +103,7 @@ export function renderSupportModal(): void {
             'margin: 0; font-size: 13px; line-height: 1.5; color: var(--tachyon-text-main, var(--text-color-high, inherit));',
         },
         _(
-          'If Tachyon powers your daily networking and keeps your connection fast and secure, consider supporting ongoing development! ☕ 🧀 🌭',
+          'If Tachyon powers your daily networking and keeps your connection fast and secure, consider supporting ongoing development!',
         ),
       ),
     ],
@@ -120,9 +125,9 @@ export function renderSupportModal(): void {
             'div',
             {
               style:
-                'width: 38px; height: 38px; border-radius: 10px; background: rgba(241, 95, 44, 0.2); border: 1px solid rgba(241, 95, 44, 0.38); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;',
+                'width: 38px; height: 38px; border-radius: 10px; background: rgba(241, 95, 44, 0.2); border: 1px solid rgba(241, 95, 44, 0.38); display: flex; align-items: center; justify-content: center; color: #f15f2c; flex-shrink: 0;',
             },
-            '⭐',
+            [renderSparklesIcon(18)],
           ),
           E(
             'div',
@@ -178,9 +183,9 @@ export function renderSupportModal(): void {
             'div',
             {
               style:
-                'width: 38px; height: 38px; border-radius: 10px; background: rgba(14, 165, 233, 0.2); border: 1px solid rgba(14, 165, 233, 0.38); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;',
+                'width: 38px; height: 38px; border-radius: 10px; background: rgba(14, 165, 233, 0.2); border: 1px solid rgba(14, 165, 233, 0.38); display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #0ea5e9;',
             },
-            '💳',
+            [renderCreditCardIcon(18)],
           ),
           E(
             'div',
@@ -298,7 +303,7 @@ export function renderSupportModal(): void {
                   {
                     style: `width: 26px; height: 26px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; background: ${item.accent}22; color: ${item.accent}; border: 1px solid ${item.accent}44; flex-shrink: 0;`,
                   },
-                  item.icon,
+                  typeof item.icon === 'function' ? [item.icon()] : item.icon,
                 ),
                 E(
                   'span',
@@ -339,7 +344,7 @@ export function renderSupportModal(): void {
           style:
             'font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--tachyon-text-muted, #94a3b8); display: flex; align-items: center; gap: 6px;',
         },
-        ['🪙 ', _('Cryptocurrency')],
+        [renderCoinsIcon(14), _('Cryptocurrency')],
       ),
       cryptoItemsContainer,
     ],

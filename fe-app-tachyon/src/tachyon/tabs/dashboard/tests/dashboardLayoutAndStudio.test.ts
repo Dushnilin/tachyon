@@ -406,6 +406,14 @@ describe('Dashboard Widgets, Presets, Transport Badges & Studio Deck', () => {
           outbounds: [],
           configError: false,
         },
+        {
+          code: 'media_dpi',
+          sectionName: 'media_dpi',
+          displayName: 'Zapret2 (Direct DPI Bypass)',
+          action: 'zapret2',
+          outbounds: [],
+          configError: false,
+        },
       ],
       selectedSectionCode: 'Youtube',
       onSelectSection: vi.fn(),
@@ -430,7 +438,12 @@ describe('Dashboard Widgets, Presets, Transport Badges & Studio Deck', () => {
       .querySelectorAll('.tachyon-routing-row__name')
       .map((el: any) => el.textContent);
 
-    expect(sectionNames).toEqual(['Youtube', 'Discord']);
+    expect(sectionNames).toEqual([
+      'Youtube',
+      'Discord',
+      'Zapret2 (Direct DPI Bypass)',
+    ]);
+    expect(sectionNames).toContain('Zapret2 (Direct DPI Bypass)');
     expect(sectionNames).not.toContain('block');
     expect(sectionNames).not.toContain('ByPass');
     expect(sectionNames).not.toContain('YandexDns');

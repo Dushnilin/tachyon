@@ -1,6 +1,7 @@
 import { TachyonShellMethods } from './methods/shell';
 import { showToast } from '../helpers/showToast';
 import { isTransientRpcError } from './helpers/isTransientRpcError';
+import { renderCheckIcon } from '../icons';
 
 export interface TachyonLanguageOption {
   code: string;
@@ -121,7 +122,11 @@ export function mountLanguageSelector(
         const isCurrent = lang.code === activeOption.code;
         const needsInstall =
           lang.code === 'ru' && lang.requiresPackage && !ruInstalled;
-        const badgeText = isCurrent ? '✓' : needsInstall ? _('Install') : '';
+        const badgeText = isCurrent
+          ? renderCheckIcon(12).outerHTML
+          : needsInstall
+            ? _('Install')
+            : '';
         const badgeClass = isCurrent
           ? 'tachyon-lang-option__badge--active'
           : needsInstall

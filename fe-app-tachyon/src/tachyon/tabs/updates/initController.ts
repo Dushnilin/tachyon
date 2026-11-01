@@ -11,6 +11,7 @@ import {
   renderRotateCcwIcon24,
   renderSearchIcon24,
   renderXIcon24,
+  renderSparklesIcon,
 } from '../../../icons';
 import { renderButton } from '../../../partials';
 import { getComponentActionKey } from '../../helpers/getComponentActionKey';
@@ -2810,7 +2811,7 @@ function renderEngineCard(): Node {
 
   selectableVariants.forEach((entry) => {
     const suffix = entry.active
-      ? ` ✓ (${_('active')})`
+      ? ` (${_('active')})`
       : entry.installed
         ? ` (${_('installed')})`
         : ` (${_('not installed')})`;
@@ -2946,7 +2947,8 @@ function renderEngineCard(): Node {
   const actionElements: Node[] = [];
 
   const featureHint = E('div', {
-    style: 'font-size:12px;color:var(--text-color-medium,#666);margin-top:4px;',
+    style:
+      'font-size:12px;color:var(--text-color-medium,#666);margin-top:4px;display:inline-flex;align-items:center;gap:4px;',
   });
   if (
     selectedVariant.id === 'tachyon-core' ||
@@ -2954,8 +2956,14 @@ function renderEngineCard(): Node {
     selectedVariant.id === 'sing-box-extended-compressed' ||
     selectedVariant.id === 'sing-box-lx'
   ) {
-    featureHint.textContent = _(
-      '✨ Includes TLS Certificate Pinning (pcs / certificate_sha256), XHTTP, and AWG 3.x',
+    featureHint.replaceChildren(
+      renderSparklesIcon(12),
+      document.createTextNode(
+        ' ' +
+          _(
+            'Includes TLS Certificate Pinning (pcs / certificate_sha256), XHTTP, and AWG 3.x',
+          ),
+      ),
     );
   }
 

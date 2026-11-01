@@ -3,12 +3,15 @@ import { DOMAIN_LIST_HINTS, DOMAIN_LIST_OPTIONS } from '../constants';
 import {
   renderArrowUpRightIcon,
   renderBotIcon,
+  renderCheckIcon,
   renderCloudIcon,
   renderGamepad2Icon,
   renderListIcon,
   renderLockIcon,
+  renderPlusIcon,
   renderShieldIcon,
   renderTvIcon,
+  renderXIcon,
   renderZapIcon,
 } from '../icons';
 
@@ -586,7 +589,7 @@ export function attachCommunityListPicker(
               title: ru ? 'Очистить выбранные списки' : 'Clear selected lists',
               click: () => setValues([]),
             } as any,
-            ru ? '✕ Сброс' : '✕ Clear',
+            [renderXIcon(12), ru ? 'Сброс' : 'Clear'],
           ),
         ],
       );
@@ -620,7 +623,13 @@ export function attachCommunityListPicker(
             '.tachyon-ruleset-picker__chip-check',
           );
           if (checkEl) {
-            checkEl.textContent = isSubsumed ? '⊂' : isSel ? '✓' : '+';
+            if (isSubsumed) {
+              checkEl.textContent = '⊂';
+            } else if (isSel) {
+              checkEl.replaceChildren(renderCheckIcon(10));
+            } else {
+              checkEl.replaceChildren(renderPlusIcon(10));
+            }
           }
         });
       }
@@ -774,7 +783,11 @@ export function attachCommunityListPicker(
               E(
                 'span',
                 { class: 'tachyon-ruleset-picker__chip-check' },
-                isSubsumed ? '⊂' : isSel ? '✓' : '+',
+                isSubsumed
+                  ? '⊂'
+                  : isSel
+                    ? [renderCheckIcon(10)]
+                    : [renderPlusIcon(10)],
               ),
               E('span', { class: 'tachyon-ruleset-picker__chip-label' }, label),
               isSubsumed

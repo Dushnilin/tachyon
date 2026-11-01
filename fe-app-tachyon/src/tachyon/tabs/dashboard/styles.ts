@@ -332,6 +332,8 @@ export const styles = `
 }
 
 .tachyon_dashboard-page__top-domain-chip__icon {
+    display: inline-flex;
+    align-items: center;
     font-size: 11px;
     opacity: 0.85;
     flex-shrink: 0;

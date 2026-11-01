@@ -19,7 +19,7 @@ import {
   createInitialTrafficRatesState,
   TrafficRatesState,
 } from './metrics';
-import { renderUsersIcon } from '../../../icons';
+import { renderUsersIcon, renderAlertTriangleIcon } from '../../../icons';
 
 const UCI_PACKAGE = 'tachyon';
 const RECENT_CLIENT_TTL_MS = 45_000;
@@ -1273,7 +1273,7 @@ export function renderCollapsibleInboundsBlock(params: {
         id: `tachyon-inbound-card-${s.sectionId}`,
         class: `tachyon-inbound-card tachyon-inbound-chip${isSelected ? ' tachyon-inbound-card--selected tachyon-inbound-chip--selected' : ''}${!s.enabled ? ' tachyon-inbound-card--disabled' : ''}${serverError ? ' tachyon-inbound-chip--error' : ''}`,
         title: serverError
-          ? `⚠️ ${s.label}: ${serverError}`
+          ? `${s.label}: ${serverError}`
           : tr(
               `Клиенты и статистика «${s.label}» (${s.protocolFull}${s.security ? ' • ' + s.security : ''}, порт ${s.port})`,
               `Clients and statistics for "${s.label}" (${s.protocolFull}${s.security ? ' • ' + s.security : ''}, port ${s.port})`,
@@ -1321,9 +1321,11 @@ export function renderCollapsibleInboundsBlock(params: {
                     'span',
                     {
                       class: 'tachyon-inbound-chip__error-pill',
+                      style:
+                        'display: inline-flex; align-items: center; gap: 3px;',
                       title: serverError,
                     },
-                    `⚠️ ${tr('Ошибка', 'Error')}`,
+                    [renderAlertTriangleIcon(10), tr('Ошибка', 'Error')],
                   ),
                 ]
               : []),
@@ -1565,8 +1567,14 @@ export function renderCollapsibleInboundsBlock(params: {
                 E('div', { class: 'tachyon-inbound-error-banner__item' }, [
                   E(
                     'strong',
-                    {},
-                    `⚠️ ${s.label} (${s.protocolShort} :${s.port}): `,
+                    {
+                      style:
+                        'display: inline-flex; align-items: center; gap: 4px;',
+                    },
+                    [
+                      renderAlertTriangleIcon(12),
+                      `${s.label} (${s.protocolShort} :${s.port}): `,
+                    ],
                   ),
                   E('span', {}, sectionErrors[s.sectionId] || ''),
                 ]),

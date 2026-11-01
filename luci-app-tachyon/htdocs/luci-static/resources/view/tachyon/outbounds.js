@@ -1452,14 +1452,27 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
                       "span",
                       {
                         style:
-                          "color: var(--success-color, #27ae60); font-weight: bold;",
+                          "color: var(--success-color, #27ae60); font-weight: bold; display: inline-flex; align-items: center; gap: 4px;",
                       },
-                      `✓ ${r.delay_ms} ms`,
+                      [
+                        typeof main.renderCheckIcon === "function"
+                          ? main.renderCheckIcon(12)
+                          : null,
+                        `${r.delay_ms} ms`,
+                      ].filter(Boolean),
                     )
                   : E(
                       "span",
-                      { style: "color: var(--error-color, #e74c3c);" },
-                      _("Unreachable"),
+                      {
+                        style:
+                          "color: var(--error-color, #e74c3c); display: inline-flex; align-items: center; gap: 4px;",
+                      },
+                      [
+                        typeof main.renderXIcon === "function"
+                          ? main.renderXIcon(12)
+                          : null,
+                        _("Unreachable"),
+                      ].filter(Boolean),
                     ),
               ),
             ]);

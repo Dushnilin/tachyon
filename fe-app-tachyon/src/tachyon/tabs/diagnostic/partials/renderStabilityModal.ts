@@ -4,6 +4,7 @@ import {
   renderCircleCheckBigIcon24,
   renderRotateCcwIcon24,
   renderCheckIcon,
+  renderHourglassIcon,
 } from '../../../../icons';
 import { prettyBytes } from '../../../../helpers/prettyBytes';
 import { showToast } from '../../../../helpers/showToast';
@@ -59,9 +60,10 @@ export async function renderStabilityModal(): Promise<void> {
         E(
           'div',
           {
-            style: 'font-size: 18px; margin-bottom: 8px; font-weight: bold;',
+            style:
+              'margin-bottom: 8px; display: flex; justify-content: center;',
           },
-          '⏳',
+          [renderHourglassIcon(24)],
         ),
         E('div', {}, message),
       ],

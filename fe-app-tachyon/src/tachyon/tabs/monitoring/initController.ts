@@ -283,14 +283,30 @@ function renderRouteFilterOptions() {
   const routes = Array.from(uniqueRoutes)
     .filter((name) => {
       const lower = name.toLowerCase().trim();
+      if (
+        lower.includes('zapret') ||
+        lower.includes('byedpi') ||
+        lower.includes('desync') ||
+        lower.includes('wdtt') ||
+        lower.includes('olcrtc')
+      ) {
+        return true;
+      }
       return (
-        !lower.includes('block') &&
-        !lower.includes('bypass') &&
-        !lower.includes('direct') &&
-        !lower.includes('dns') &&
-        !lower.includes('failover') &&
+        lower !== 'block' &&
+        lower !== 'bypass' &&
+        lower !== 'direct' &&
+        lower !== 'dns' &&
+        lower !== 'failover' &&
         lower !== 'reject' &&
-        lower !== '-'
+        lower !== '-' &&
+        !lower.startsWith('dns-') &&
+        !lower.endsWith('-dns-server') &&
+        !lower.includes('block-out') &&
+        !lower.includes('bypass-out') &&
+        !lower.includes('direct-out') &&
+        !lower.includes('dns-out') &&
+        !lower.includes('block')
       );
     })
     .sort();
@@ -557,18 +573,20 @@ function renderConnectionRow(connection: MonitoredConnection) {
   ) {
     routeModifier = 'tachyon_monitoring-page__route--block';
   } else if (
+    routeLower.includes('dpi') ||
+    routeLower.includes('zapret') ||
+    routeLower.includes('byedpi') ||
+    routeLower.includes('desync') ||
+    routeLower.includes('wdtt') ||
+    routeLower.includes('olcrtc')
+  ) {
+    routeModifier = 'tachyon_monitoring-page__route--dpi';
+  } else if (
     routeLower.includes('direct') ||
     routeLower.includes('wan') ||
     routeLower.includes('bypass')
   ) {
     routeModifier = 'tachyon_monitoring-page__route--direct';
-  } else if (
-    routeLower.includes('dpi') ||
-    routeLower.includes('zapret') ||
-    routeLower.includes('byedpi') ||
-    routeLower.includes('desync')
-  ) {
-    routeModifier = 'tachyon_monitoring-page__route--dpi';
   } else if (
     routeLower.includes('proxy') ||
     routeLower.includes('vpn') ||

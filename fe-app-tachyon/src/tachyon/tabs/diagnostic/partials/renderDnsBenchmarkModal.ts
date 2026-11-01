@@ -1,6 +1,12 @@
 import { TachyonShellMethods } from '../../../methods/shell';
 import { renderButton } from '../../../../partials';
-import { renderZapIcon } from '../../../../icons';
+import {
+  renderZapIcon,
+  renderLightbulbIcon,
+  renderHourglassIcon,
+  renderCheckIcon,
+  renderXIcon,
+} from '../../../../icons';
 import { Tachyon } from '../../../types';
 
 export function renderDnsBenchmarkModal() {
@@ -25,7 +31,7 @@ export function renderDnsBenchmarkModal() {
     'div',
     {
       style:
-        'font-size: 13px; font-weight: 500; margin-bottom: 10px; color: var(--text-color-medium, #6c757d);',
+        'font-size: 13px; font-weight: 500; margin-bottom: 10px; color: var(--text-color-medium, #6c757d); display: flex; align-items: center; gap: 6px;',
     },
     _('Ready to benchmark DNS providers'),
   );
@@ -257,9 +263,9 @@ export function renderDnsBenchmarkModal() {
             'div',
             {
               style:
-                'font-size: 11px; opacity: 0.8; font-style: italic; margin-top: 4px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 4px;',
+                'font-size: 11px; opacity: 0.8; font-style: italic; margin-top: 4px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 4px; display: inline-flex; align-items: center; gap: 4px;',
             },
-            `💡 ${rec.reason}`,
+            [renderLightbulbIcon(12), E('span', {}, rec.reason)],
           )
         : '',
     ]);
@@ -328,18 +334,31 @@ export function renderDnsBenchmarkModal() {
       if (data.running) {
         progressContainer.style.display = 'block';
         progressBar.style.width = `${data.progress}%`;
-        statusLabel.textContent = `⏳ ${data.current_server || _('Testing')} (${data.progress}%)`;
+        statusLabel.replaceChildren(
+          renderHourglassIcon(14),
+          document.createTextNode(
+            ` ${data.current_server || _('Testing')} (${data.progress}%)`,
+          ),
+        );
         if (startBtn) (startBtn as HTMLButtonElement).disabled = true;
         if (applyBtn) (applyBtn as HTMLButtonElement).disabled = true;
       } else {
         progressContainer.style.display = 'none';
         if (data.error) {
-          statusLabel.textContent = `❌ ${data.error}`;
+          statusLabel.replaceChildren(
+            renderXIcon(14),
+            document.createTextNode(` ${data.error}`),
+          );
           if (startBtn) (startBtn as HTMLButtonElement).disabled = false;
           if (applyBtn)
             (applyBtn as HTMLButtonElement).disabled = !data.recommendation;
         } else if (data.finished_at) {
-          statusLabel.textContent = `✓ ${_('Benchmark completed successfully')}`;
+          statusLabel.replaceChildren(
+            renderCheckIcon(14),
+            document.createTextNode(
+              ` ${_('Benchmark completed successfully')}`,
+            ),
+          );
           if (startBtn) (startBtn as HTMLButtonElement).disabled = false;
           if (applyBtn)
             (applyBtn as HTMLButtonElement).disabled = !data.recommendation;
@@ -362,7 +381,10 @@ export function renderDnsBenchmarkModal() {
   };
 
   const startBenchmark = async () => {
-    statusLabel.textContent = `🚀 ${_('Starting DNS benchmark...')}`;
+    statusLabel.replaceChildren(
+      renderZapIcon(14),
+      document.createTextNode(` ${_('Starting DNS benchmark...')}`),
+    );
     progressContainer.style.display = 'block';
     progressBar.style.width = '0%';
     if (startBtn) (startBtn as HTMLButtonElement).disabled = true;
@@ -370,7 +392,12 @@ export function renderDnsBenchmarkModal() {
 
     const res = await TachyonShellMethods.startDnsBenchmark();
     if (!res.success) {
-      statusLabel.textContent = `✗ ${res.error || _('Failed to start benchmark')}`;
+      statusLabel.replaceChildren(
+        renderXIcon(14),
+        document.createTextNode(
+          ` ${res.error || _('Failed to start benchmark')}`,
+        ),
+      );
       if (startBtn) (startBtn as HTMLButtonElement).disabled = false;
       progressContainer.style.display = 'none';
       return;
