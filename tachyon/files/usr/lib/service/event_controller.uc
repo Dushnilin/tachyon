@@ -282,12 +282,15 @@ function inbound_routes_to_direct(sb_cfg, inb_tag) {
 }
 
 // Reads the http/mixed inbound port from the generated sing-box config.
-// Cached because the config only changes across a reload.
+// Cached because the config only changes across a reload or regeneration.
 let cached_proxy_port = null;
 let cached_proxy_host = null;
 let cached_tproxy_port = null;
+let cached_proxy_cfg_mtime = 0;
 function proxy_port() {
-    if (cached_proxy_port != null)
+    let st = fs.stat("/etc/tachyon-core/config.json");
+    let current_mtime = st ? st.mtime : 0;
+    if (cached_proxy_port != null && cached_proxy_cfg_mtime == current_mtime)
         return as_string(cached_proxy_port);
 
     // Empty when the generated config has no http/mixed inbound: probing the
@@ -335,6 +338,7 @@ function proxy_port() {
     }
     cached_proxy_port = port;
     cached_proxy_host = host;
+    cached_proxy_cfg_mtime = current_mtime;
     return port;
 }
 
@@ -349,11 +353,14 @@ function forget_proxy_port() {
     cached_proxy_port = null;
     cached_proxy_host = null;
     cached_tproxy_port = null;
+    cached_proxy_cfg_mtime = 0;
     sb_config_parse_reported = false;
 }
 
 function tproxy_port() {
-    if (cached_tproxy_port != null)
+    let st = fs.stat("/etc/tachyon-core/config.json");
+    let current_mtime = st ? st.mtime : 0;
+    if (cached_tproxy_port != null && cached_proxy_cfg_mtime == current_mtime)
         return cached_tproxy_port;
     let port = 4530;
     let sb_cfg = parse_singbox_config();
@@ -366,6 +373,7 @@ function tproxy_port() {
         }
     }
     cached_tproxy_port = port;
+    cached_proxy_cfg_mtime = current_mtime;
     return port;
 }
 

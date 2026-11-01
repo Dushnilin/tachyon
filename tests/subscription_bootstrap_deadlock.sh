@@ -143,6 +143,15 @@ if (!inbounds.includes('service-subscription-vpn1-in')) {
   console.error("Generated config must include service-subscription-vpn1-in inbound for subscription download");
   process.exit(1);
 }
+if (!inbounds.includes('service-mixed-in')) {
+  console.error("Generated config must retain service-mixed-in inbound for healthchecks and mixed proxy");
+  process.exit(1);
+}
+const mixedInb = (cfg.inbounds || []).find(i => i.tag === 'service-mixed-in');
+if (!mixedInb || mixedInb.listen_port !== 4534) {
+  console.error("service-mixed-in must listen on port 4534");
+  process.exit(1);
+}
 console.log("CONFIG_VERIFIED_OK");
 NODE
 

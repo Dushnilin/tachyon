@@ -6741,6 +6741,38 @@ function getLinkedSectionConditionId(section_id) {
 }
 
 function getSectionOrLinkedConditionOption(section_id, key) {
+  if (key === 'user_domains' || key === 'user_domains_text') {
+    const condId = getLinkedSectionConditionId(section_id);
+    const condVal = condId ? uci.get(UCI_PACKAGE, condId, key) : null;
+    const direct = uci.get(UCI_PACKAGE, section_id, key);
+
+    if (condVal != null && direct != null) {
+      const items = [];
+      const seen = new Set();
+      const add = (val) => {
+        if (val == null || val === '') return;
+        const list = Array.isArray(val)
+          ? val
+          : `${val}`
+              .split(/[\n,]/)
+              .map((s) => s.trim())
+              .filter(Boolean);
+        list.forEach((item) => {
+          const trimmed = `${item}`.trim();
+          if (trimmed && !seen.has(trimmed)) {
+            seen.add(trimmed);
+            items.push(trimmed);
+          }
+        });
+      };
+      add(condVal);
+      add(direct);
+      return Array.isArray(condVal) || Array.isArray(direct)
+        ? items
+        : items.join('\n');
+    }
+  }
+
   if (LINKED_CONDITION_OPTION_KEYS.has(key)) {
     const condId = getLinkedSectionConditionId(section_id);
     if (condId) {
@@ -9575,6 +9607,38 @@ function addTextConditionField(section, config) {
   o.load = function (section_id) {
     if (typeof config.loadText === 'function') {
       return config.loadText(section_id);
+    }
+
+    if (config.key === 'user_domains') {
+      const condId = getLinkedSectionConditionId(section_id);
+      const targets = [section_id];
+      if (condId) targets.push(condId);
+      const items = [];
+      const seen = new Set();
+      targets.forEach((tid) => {
+        [config.optionName, config.legacyTextOptionName].forEach((k) => {
+          if (!k) return;
+          const val = uci.get(UCI_PACKAGE, tid, k);
+          if (!val) return;
+          const list = Array.isArray(val)
+            ? val
+            : `${val}`
+                .split(/[\n,]/)
+                .map((s) => s.trim())
+                .filter(Boolean);
+          list.forEach((item) => {
+            const trimmed = `${item}`.trim();
+            if (trimmed && !seen.has(trimmed)) {
+              seen.add(trimmed);
+              items.push(trimmed);
+            }
+          });
+        });
+      });
+      if (items.length > 0) {
+        return items.join('\n');
+      }
+      return '';
     }
 
     const textValue =
@@ -14409,7 +14473,7 @@ function createSectionContent(section) {
   o.value('google.com', 'Google (google.com)');
   o.value('svg', _('Default vector icon (SVG)'));
 
-  // Modular Outbounds, Groups, Section-level Narrowing, and Balancers (#242)
+  // Modular Outbounds, Groups, Section-level Narrowing, and Balancers (#242, #291)
   o = section.taboption(
     'settings',
     form.DynamicList,
@@ -14428,29 +14492,11 @@ function createSectionContent(section) {
       const stype = String(src.source_type || 'subscription').toUpperCase();
       return {
         value: src['.name'],
-        label: `${src.name || src.label || src['.name']} [${stype}]`,
+        label: `[${stype}] ${src.name || src.label || src['.name']}`,
       };
     }),
   );
   outboundNameSourceOptions.set('outbound_source_refs', o);
-
-  o = section.taboption(
-    'settings',
-    form.DynamicList,
-    'balancer_refs',
-    _('Balancers (URLTest / Priority)'),
-    _('Select reusable URLTest or Priority balancers from the Balancers tab.'),
-  );
-  o.modalonly = true;
-  ['connection', 'proxy', 'outbound', 'vpn', 'awg', 'fptn', 'group'].forEach(
-    (act) => o.depends('action', act),
-  );
-  configureLiveDynamicListChoices(o, () =>
-    (uci.sections(UCI_PACKAGE, 'balancer') || []).map((bal) => ({
-      value: bal['.name'],
-      label: `${bal.name || bal.label || bal['.name']} [${(bal.balancer_type || 'urltest').toUpperCase()}]`,
-    })),
-  );
 
   o = section.taboption(
     'settings',
@@ -14468,7 +14514,25 @@ function createSectionContent(section) {
   configureLiveDynamicListChoices(o, () =>
     (uci.sections(UCI_PACKAGE, 'outbound_group') || []).map((grp) => ({
       value: grp['.name'],
-      label: `${grp.name || grp.label || grp['.name']}`,
+      label: `[GROUP] ${grp.name || grp.label || grp['.name']}`,
+    })),
+  );
+
+  o = section.taboption(
+    'settings',
+    form.DynamicList,
+    'balancer_refs',
+    _('Balancers (URLTest / Priority)'),
+    _('Select reusable URLTest or Priority balancers from the Balancers tab.'),
+  );
+  o.modalonly = true;
+  ['connection', 'proxy', 'outbound', 'vpn', 'awg', 'fptn', 'group'].forEach(
+    (act) => o.depends('action', act),
+  );
+  configureLiveDynamicListChoices(o, () =>
+    (uci.sections(UCI_PACKAGE, 'balancer') || []).map((bal) => ({
+      value: bal['.name'],
+      label: `[${(bal.balancer_type || 'urltest').toUpperCase()}] ${bal.name || bal.label || bal['.name']}`,
     })),
   );
 
