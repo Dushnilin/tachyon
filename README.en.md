@@ -340,7 +340,7 @@ If Tachyon powers your daily networking and keeps your connection fast and secur
 👉 [**Support on Boosty**](https://boosty.to/tachyon)
 
 💳 **Credit Cards / SBP / Tinkoff Pay:**  
-👉 [**Support the project via CloudTips**](https://pay.cloudtips.ru/p/48c57581)
+👉 [**Support the project via CloudTips**](https://pay.cloudtips.ru/p/449c5ef9)
 
 🪙 **Cryptocurrency:**
 * **Bitcoin (BTC):** `bc1q9ehdv7y9g948jejyflkq7xmau3tytgunxgh35h`

@@ -367,7 +367,7 @@ Tachyon опирается на фундаментальные разработ�
 👉 [**Поддержать на Boosty**](https://boosty.to/tachyon)
 
 💳 **Карты РФ / СБП / Tinkoff Pay:**  
-👉 [**Поддержать проект на CloudTips**](https://pay.cloudtips.ru/p/48c57581)
+👉 [**Поддержать проект на CloudTips**](https://pay.cloudtips.ru/p/449c5ef9)
 
 🪙 **Криптовалюта:**
 * **Bitcoin (BTC):** `bc1q9ehdv7y9g948jejyflkq7xmau3tytgunxgh35h`

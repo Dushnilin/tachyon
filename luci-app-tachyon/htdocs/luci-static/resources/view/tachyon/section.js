@@ -1071,6 +1071,12 @@ function extractCountryFromFlagEmojiName(name) {
       }
     }
   }
+  if (typeof main.detectOutboundCountry === "function") {
+    const detected = main.detectOutboundCountry({ displayName: str });
+    if (detected && detected.code && detected.code !== "OTHER") {
+      return detected.code;
+    }
+  }
   return "";
 }
 
@@ -9811,6 +9817,8 @@ var DOMAIN_LIST_HINTS = {
     "[Маршрут: В Прокси / VPN или Обход DPI] Сводный реестр заблокированных и ограниченных в РФ ресурсов (соцсети, СМИ, зарубежные платформы и геоблок)",
   ukraine_inside:
     "[Маршрут: В Прокси / VPN или Обход DPI] Сводный список заблокированных и ограниченных в Украине ресурсов и сервисов",
+  belarus_inside:
+    "[Маршрут: В Прокси / VPN или Обход DPI] Сводный список заблокированных и ограниченных в Беларуси ресурсов, независимых СМИ и сервисов с геоблоком для РБ",
   geoblock:
     "[Маршрут: Только в Прокси / VPN — геоблок по IP] 150+ зарубежных сервисов, закрывших доступ с российских IP: PayPal, Notion, Canva, Trello, Jira, Zoom, Intel, Dell, Coursera, JetBrains, Adobe, GitLab",
   block:
@@ -9832,6 +9840,10 @@ var DOMAIN_LIST_HINTS = {
   ru_only_inside:
     "[Маршрут: Строго Напрямую (Direct)] Госпорталы, банки, суды, ЕМИАС и сервисы ЖКХ РФ, жёстко блокирующие вход с зарубежных и VPN IP-адресов",
   push: "[Маршрут: Напрямую (Direct)] Серверы мобильных и системных push-уведомлений: Apple APNs, Google FCM, Huawei, Xiaomi, Samsung, Windows WNS",
+  steam_cdn:
+    "[Маршрут: Напрямую (Direct)] Только серверы скачивания игр и обновлений Steam Content CDN (steamcontent.com, akamaihd.net) для максимальной скорости загрузки в обход VPN",
+  captive_ntp_stun:
+    "[Маршрут: Напрямую (Direct)] Системные проверки интернета (Captive Portal Apple/Android/Windows/Firefox), синхронизация времени NTP и STUN-серверы NAT",
   ai_all:
     "[Маршрут: Только в Прокси / VPN — геоблок по IP] Все зарубежные ИИ: OpenAI (ChatGPT, Sora), Claude, Gemini, Grok, Perplexity, Copilot, Cursor, Midjourney, ElevenLabs, Suno, DeepSeek, Hugging Face",
   openai:
@@ -9855,10 +9867,16 @@ var DOMAIN_LIST_HINTS = {
     "[Маршрут: Только в Прокси / VPN — геоблок по IP] Платформы генерации графики, дизайна и 3D: Midjourney (midjourney.com), Civitai (civitai.com), Black Forest Labs / Flux (bfl.ai), Leonardo.ai, Ideogram, Krea, Recraft, Magnific, Stability AI, ComfyUI Registry, OpenArt, Tripo3D и Meshy",
   elevenlabs:
     "[Маршрут: Только в Прокси / VPN — геоблок по IP] Сервисы генерации звука, клонирования голоса, музыки и видео: ElevenLabs (elevenlabs.io), Suno (suno.com), Udio (udio.com), Runway (runwayml.com), Kling AI (klingai.com), Luma Dream Machine, Pika, Hailuo Video, HeyGen, Synthesia, Vidu и PixVerse",
+  ai_video:
+    "[Маршрут: Только в Прокси / VPN — геоблок по IP] Нейросети генерации видео, анимации и цифровых аватаров: Runway, Kling AI, Sora, Luma Dream Machine, Pika, Hailuo (MiniMax), HeyGen, Synthesia, Vidu, PixVerse, CapCut AI и Topaz",
+  ai_cloud_gpu:
+    "[Маршрут: Только в Прокси / VPN — геоблок по IP] Облачная аренда GPU, бессерверный инференс и ML-платформы: RunPod, Vast.ai, Lambda Labs, Modal, Paperspace, Banana, Baseten, Beam, Weights & Biases и Roboflow",
   huggingface:
     "[Маршрут: В Прокси / VPN] Репозитории моделей и датасетов Hugging Face (huggingface.co, hf.co), каталоги локальных LLM (ollama.com, lmstudio.ai, openwebui.com), платформы ролевых ИИ-персонажей (Character.AI, JanitorAI, Chub, NovelAI) и ML-инфраструктура (Weights & Biases, Kaggle, LangChain)",
   youtube:
     "[Маршрут: В Обход DPI (Desync / Zapret) или Прокси / VPN] Видеосервис YouTube, YouTube Music, Studio и кэш-серверы видеопотоков (youtube.com, youtu.be, googlevideo.com, ytimg.com, ggpht.com)",
+  youtube_images:
+    "[Маршрут: В Прокси / VPN или Обход DPI] Только серверы обложек, превью роликов и аватарок каналов YouTube (i.ytimg.com, yt3.ggpht.com, yt3.googleusercontent.com) без проксирования самого видеопотока",
   twitch:
     "[Маршрут: В Прокси / VPN или Обход DPI] Стриминговая платформа, видеопотоки и чат (twitch.tv, ttvnw.net, jtvnw.net, live-video.net)",
   twitch_ads:
@@ -9869,8 +9887,16 @@ var DOMAIN_LIST_HINTS = {
     "[Маршрут: В Прокси / VPN] Музыкальные сервисы и энциклопедии, заблокированные РКН или закрытые геоблоком: SoundCloud (soundcloud.com, sndcdn.com), Deezer (deezer.com, dzcdn.net), Tidal (tidal.com), Qobuz, Bandcamp, Genius (genius.com), Last.fm, Mixcloud, TuneIn и Discogs",
   netflix:
     "[Маршрут: Только в Прокси / VPN — геоблок по IP] Онлайн-кинотеатр, видеопотоки и статика (netflix.com, nflxvideo.net, nflximg.net, nflxext.com, fast.com)",
+  streaming_west:
+    "[Маршрут: Только в Прокси / VPN — геоблок по IP] Зарубежные онлайн-кинотеатры и ТВ-платформы: Disney+, Max (HBO), Amazon Prime Video, Apple TV+, Hulu, Paramount+, Peacock, BBC iPlayer, Plex и Roku",
+  tmdb_metadata:
+    "[Маршрут: В Прокси / VPN или Обход DPI] Базы постеров, описаний фильмов и метаданных для Lampa, Kodi, Plex и Jellyfin: TMDB (themoviedb.org, image.tmdb.org), TheTVDB, Trakt.tv, IMDb, Fanart.tv и OMDb",
   rutracker_lampa:
     "[Маршрут: В Прокси / VPN или Обход DPI] Народный набор для дома и Android TV: зеркала RuTracker, Rutor, NNM-Club, Kinozal, LostFilm, KinoPub, балансеры и плагины Lampa (Filmix, Cub, BWA, Zetflix), а также книжные и научные библиотеки (Flibusta, Coollib, Z-Library, Anna's Archive, LibGen, Sci-Hub)",
+  books_archives:
+    "[Маршрут: В Прокси / VPN или Обход DPI] Крупнейшие электронные библиотеки, архивы книг, аудиокниг и научных статей: Флибуста (flibusta.is), Z-Library, Anna's Archive, LibGen, Sci-Hub, RoyalRoad, AO3, Ficbook, Goodreads и Audible",
+  podcasts_radio:
+    "[Маршрут: В Прокси / VPN] Платформы подкастов, хостинги аудиовыпусков и интернет-радио: Pocket Casts, Overcast, Castro, Podbean, Buzzsprout, Anchor, Libsyn, Megaphone, TuneIn и iHeartRadio",
   patreon_creators:
     "[Маршрут: В Прокси / VPN] Платформы поддержки авторов, блогов и цифрового арта, заблокированные в РФ или закрытые геоблоком: Patreon (patreon.com), Medium (medium.com), Substack, DeviantArt, ArtStation, Pixiv (pixiv.net, pximg.net), Gumroad, Ko-fi, AO3, Ficbook, Goodreads и Letterboxd",
   tiktok:
@@ -9883,6 +9909,8 @@ var DOMAIN_LIST_HINTS = {
     "[Маршрут: В Прокси / VPN или Обход DPI] Визуальная соцсеть и серверы картинок (pinterest.com, pin.it, i.pinimg.com — лечит незагрузку фото на ТСПУ)",
   discord:
     "[Маршрут: В Прокси / VPN или Обход DPI] Мессенджер, текстовые чаты, CDN вложений и голосовые шлюзы (discord.com, discord.gg, discordapp.net, discord.media + подсети)",
+  discord_voice:
+    "[Маршрут: В Обход DPI (Desync) или быстрый UDP-Прокси] Голосовые и WebRTC-шлюзы Discord (discord.media + UDP IP-подсети голосовых серверов) для точечной починки звонков и стримов экрана",
   telegram:
     "[Маршрут: В Прокси / VPN] Мессенджер, веб-клиенты, Telegraph и IPv4/IPv6-подсети всех датацентров DC1–DC5 (telegram.org, t.me, telesco.pe)",
   meta: "[Маршрут: В Прокси / VPN] Instagram, Facebook, Threads, Messenger и медиа-серверы (instagram.com, facebook.com, fbcdn.net, cdninstagram.com + подсети)",
@@ -9904,6 +9932,8 @@ var DOMAIN_LIST_HINTS = {
     "[Маршрут: В Прокси / VPN или Direct] Единый сводный список всех популярных игровых лаунчеров, магазинов, античитов (BattlEye, EasyAntiCheat) и серверов: Steam, Epic Games, Ubisoft Connect, War Thunder / Gaijin, Battle.net / Blizzard, EA App / Origin, Riot Games, Xbox Live, PlayStation Network, Nintendo, GOG, Wargaming, HoYoverse, Minecraft, Rockstar, Roblox, Supercell, Escape from Tarkov, FACEIT и PUBG",
   steam:
     "[Маршрут: Напрямую (Direct) или в Прокси для смены региона магазина] Магазин, сообщество, инвентарь, чат и CDN загрузок Valve (steampowered.com, steamcommunity.com, steamstatic.com, steamcontent.com)",
+  cs2_dota2:
+    "[Маршрут: Напрямую (Direct) для низкого пинга или в Прокси] Игровые серверы, матчмейкинг, Steam Datagram Relay (SDR) и реплеи Counter-Strike 2, Dota 2, Deadlock и Team Fortress 2 (+ IP-подсети Valve)",
   epicgames:
     "[Маршрут: В Прокси / VPN (для раздач/покупок) или Direct] Epic Games Store, Fortnite, Rocket League, Unreal Engine и античит EasyAntiCheat (epicgames.com, unrealengine.com, fortnite.com, easy.ac)",
   ubisoft:
@@ -9912,6 +9942,8 @@ var DOMAIN_LIST_HINTS = {
     "[Маршрут: В Прокси / VPN или Direct] Домены игр и лаунчера Gaijin Entertainment: War Thunder (warthunder.com), Enlisted (enlisted.net), Crossout (crossout.net), CRSED, Star Conflict, магазин Gaijin.Net и серверы обновлений",
   blizzard:
     "[Маршрут: В Прокси / VPN] Домены лаунчера Battle.net, магазина и серверов Activision Blizzard: battle.net, blizzard.com, activision.com, callofduty.com, worldofwarcraft.com, playoverwatch.com, diablo4.com, playhearthstone.com",
+  callofduty:
+    "[Маршрут: В Прокси / VPN или Direct] Серверы авторизации Demonware, матчмейкинга и античита Ricochet для серии Call of Duty и Warzone (callofduty.com, demonware.net + игровые IP-подсети Activision)",
   riot: "[Маршрут: В Прокси / VPN или Direct] Valorant, League of Legends, TFT, Riot Client и Vanguard (riotgames.com, playvalorant.com, leagueoflegends.com, pvp.net)",
   origin:
     "[Маршрут: В Прокси / VPN] EA App, Origin, Apex Legends, Battlefield, EA Sports FC и Sims (ea.com, origin.com, tnt-ea.com, apexlegends.com)",
@@ -9920,16 +9952,36 @@ var DOMAIN_LIST_HINTS = {
     "[Маршрут: В Прокси / VPN] Сетевые сервисы Sony PlayStation: playstation.com, playstation.net, playstationnetwork.com, sonyentertainmentnetwork.com, CDN загрузок dl.playstation.net, а также Bungie / Helldivers 2",
   nintendo:
     "[Маршрут: В Прокси / VPN] Все домены консолей Nintendo Switch, магазина eShop, подписки Nintendo Switch Online и игр Pokémon / Zelda / Mario / Splatoon (nintendo.com, nintendo.net, nintendowifi.net, pokemon.com)",
+  meta_quest:
+    "[Маршрут: В Прокси / VPN] Серверы активации, обновлений прошивки, магазина приложений и мультиплеера VR-шлемов Meta Quest 2 / 3 / 3S / Pro (oculus.com, oculuscdn.com, meta.com)",
   gog: "[Маршрут: В Прокси / VPN] Домены магазина без DRM GOG.com, клиента GOG Galaxy и студий CD Projekt RED (gog.com, gogalaxy.com, gog-statics.com, cdprojektred.com, cyberpunk.net, thewitcher.com)",
   wargaming:
     "[Маршрут: В Прокси / VPN] Европейские и глобальные серверы Wargaming.net, лаунчер Wargaming Game Center, World of Tanks, World of Warships и WoT Blitz (wargaming.net, worldoftanks.eu, worldofwarships.eu, wotblitz.com)",
   hoyoverse:
     "[Маршрут: В Прокси / VPN или Direct] Домены лаунчера HoYoPlay, HoYoLAB и популярных гача-игр: Genshin Impact, Honkai: Star Rail, Zenless Zone Zero, Honkai Impact 3rd, Wuthering Waves (Kuro Games), Arknights, Azur Lane и NIKKE",
+  netease_tencent_games:
+    "[Маршрут: В Прокси / VPN или Direct] Глобальные хиты NetEase и Tencent (Level Infinite): Marvel Rivals, Once Human, Naraka: Bladepoint, Delta Force, Arena Breakout: Infinite, PUBG Mobile, Honor of Kings и Tower of Fantasy",
+  japanese_publishers:
+    "[Маршрут: В Прокси / VPN] Серверы и онлайн-сервисы японских игровых издателей: Capcom (Monster Hunter, Resident Evil, Street Fighter), Bandai Namco (Elden Ring, Tekken 8), Square Enix, SEGA / Atlus, Konami и Koei Tecmo",
   minecraft:
     "[Маршрут: В Прокси / VPN] Официальные серверы авторизации и скинов Minecraft / Mojang (minecraft.net, mojang.com, minecraftservices.com), а также платформы модов и лаунчеров: CurseForge, Modrinth, NexusMods, PrismLauncher, Lunar/Badlion, Fabric, Forge, PaperMC",
   rockstar:
     "[Маршрут: В Прокси / VPN] Домены Rockstar Games Launcher, Social Club, GTA Online, Red Dead Online, серверов ролевых проектов FiveM / RedM (cfx.re), а также 2K Games (Civilization, NBA 2K, Borderlands, Mafia)",
   pubg: "[Маршрут: В Прокси / VPN] Популярные сетевые игры и античит-системы: PUBG / Krafton, THE FINALS и ARC Raiders, DayZ и Arma, VRChat, Dead by Daylight, Path of Exile, Warframe, Guild Wars 2, Albion Online, Rust, Squad, Mortal Kombat, osu! и BattlEye / EasyAntiCheat",
+  survival_coop:
+    "[Маршрут: В Прокси / VPN] Популярные кооперативные и survival-игры, часто страдающие от блокировки облачных бэкендов (AWS/Cloudflare): Dead by Daylight, Rust, DayZ, Arma Reforger, Squad, Palworld, Valheim, Hunt: Showdown, Phasmophobia, VRChat, Deep Rock Galactic и Sea of Thieves",
+  mmorpg:
+    "[Маршрут: В Прокси / VPN] Глобальные серверы и лаунчеры популярных MMORPG и ARPG: Path of Exile 1/2, Warframe, Black Desert Online, Guild Wars 2, Final Fantasy XIV, Elder Scrolls Online, Albion Online, Lost Ark, EVE Online, Throne and Liberty и RuneScape",
+  fighting_racing:
+    "[Маршрут: В Прокси / VPN] Сетевой матчмейкинг и телеметрия файтингов и гоночных симуляторов: Mortal Kombat 1 / 11 (WB Games), Street Fighter 6, Tekken 8, Guilty Gear Strive, Forza Horizon / Motorsport, iRacing, Assetto Corsa, F1 и Gran Turismo",
+  strategy_sim:
+    "[Маршрут: В Прокси / VPN] Лаунчеры, аккаунты и мультиплеер глобальных стратегий и симуляторов: Paradox Interactive (Hearts of Iron IV, Stellaris, Europa Universalis, Cities: Skylines), Total War (Creative Assembly), Civilization (2K), Age of Empires, Factorio и RimWorld",
+  chess_boardgames:
+    "[Маршрут: В Прокси / VPN] Шахматные порталы (включая заблокированный в РФ Chess.com), Lichess, World Chess и платформы онлайн-настолок Board Game Arena, Tabletopia, Roll20, D&D Beyond и Foundry VTT",
+  gaming_mods_stats:
+    "[Маршрут: В Прокси / VPN] Крупнейшие каталоги модов, сборок, вики и киберспортивной статистики: NexusMods, ModDB, CurseForge, Modrinth, Thunderstore, Wago.io, Overwolf, HLTV, Liquipedia, Dotabuff, OP.GG, Tracker.gg и SteamDB",
+  game_backends:
+    "[Маршрут: В Прокси / VPN] Облачные бэкенды мультиплеера, лобби, голосового чата и античитов, из-за блокировки которых на ТСПУ игры не пускают в матч: Epic Online Services (EOS), Azure PlayFab, Photon Engine, Vivox Voice, BattlEye, EasyAntiCheat, Denuvo и Faceit AC (+ подсети)",
   roblox:
     "[Маршрут: В Прокси / VPN или Обход DPI] Игровая платформа, лаунчер, Roblox Studio и игровые IP-подсети (roblox.com, rbxcdn.com, robloxlabs.com)",
   supercell:
@@ -9942,6 +9994,8 @@ var DOMAIN_LIST_HINTS = {
     "[Маршрут: Напрямую (Direct) или в Прокси для Apple Intelligence] App Store, iCloud, обновления iOS/macOS, Apple Music, TV+ и Apple Intelligence (apple.com, icloud.com, mzstatic.com, cdn-apple.com)",
   microsoft:
     "[Маршрут: В Прокси / VPN (для Copilot, Xbox и ISO Windows) или Direct] Windows Update, Office 365, OneDrive, Xbox Live, Teams, Visual Studio и Azure (microsoft.com, live.com, office.com, xbox.com)",
+  google_services:
+    "[Маршрут: В Прокси / VPN или Direct] Поиск Google, Gmail, Google Диск, Документы, Карты, Переводчик, Календарь, Фото, Шрифты и системные API (google.com, gmail.com, gstatic.com, googleapis.com, googleusercontent.com) без видеопотоков YouTube",
   google_play:
     "[Маршрут: В Прокси / VPN (для платных приложений и смены региона) или Direct] Магазин приложений Android и серверы скачивания APK (play.google.com, gvt1.com, gvt2.com)",
   github:
@@ -9954,8 +10008,28 @@ var DOMAIN_LIST_HINTS = {
     "[Маршрут: Только в Прокси / VPN — геоблок по IP] Рабочие пространства, репозитории и сервисы мониторинга, закрывшие доступ из РФ: GitLab (gitlab.com), Atlassian (Jira, Confluence, Bitbucket, Trello), Notion (notion.so), Miro, Linear, Asana, ClickUp, Airtable, Postman, Sentry, Datadog и Grafana Cloud",
   figma_adobe:
     "[Маршрут: Только в Прокси / VPN — геоблок по IP] Платформы UI/UX-дизайна, графики и стоков: Figma (figma.com), Canva (canva.com), Adobe Creative Cloud & Firefly AI (adobe.com, adobe.io, behance.net), Framer, Webflow, Dribbble, Freepik, Flaticon, Envato, Shutterstock, Unsplash и Autodesk",
+  gamedev_3d:
+    "[Маршрут: Только в Прокси / VPN — геоблок по IP] Игровые движки, маркетплейсы ассетов и 3D-платформы: Unity (unity.com, assetstore.unity.com), Unreal Engine / Fab / Quixel, Blender, Godot, Maxon (Cinema 4D), Chaos (V-Ray), SideFX (Houdini), Sketchfab, PolyHaven и Itch.io",
   pkg_registries:
     "[Маршрут: В Прокси / VPN] Репозитории пакетов, библиотек и дистрибутивов: HashiCorp (Terraform, Vagrant, Vault — геоблок РФ), npm, Yarn, pnpm, Bun, Deno, jsDelivr, PyPI, Anaconda, PyTorch, Rust Crates.io, Go Proxy, NuGet, Packagist, Homebrew, GHCR, Quay.io, k8s.io, Arch, Alpine, Debian/Ubuntu и OpenWrt",
+  linux_repos:
+    "[Маршрут: В Прокси / VPN или Direct] Официальные зеркала дистрибутивов Linux, роутерных ОС и репозиториев пакетов: OpenWrt, ImmortalWrt, Entware, Debian, Ubuntu, Arch, Fedora, Alpine, Proxmox, Flathub и Snapcraft",
+  captcha_auth:
+    "[Маршрут: В Прокси / VPN] Виджеты защиты от ботов и единого входа (SSO), без загрузки которых не открываются формы логина на сайтах: Cloudflare Turnstile, Google reCAPTCHA, hCaptcha, Arkose Labs (Funcaptcha), Auth0, Okta и OneLogin",
+  security_passwords:
+    "[Маршрут: В Прокси / VPN] Облачные менеджеры паролей, ключей доступа и сервисы приватной почты: Bitwarden / Vaultwarden, 1Password, KeePassXC, Proton (Mail, Pass, Drive), Tuta, SimpleLogin, NordPass, Dashlane и VirusTotal",
+  cloud_storage:
+    "[Маршрут: В Прокси / VPN] Зарубежные облачные диски и файлообменники:MEGA (mega.nz, mega.io), Dropbox, Box, pCloud, MediaFire, WeTransfer, Pixeldrain, GoFile, Catbox и Sendspace",
+  cloud_gaming_remote:
+    "[Маршрут: В Прокси / VPN (для авторизации) или Direct (для видеопотока)] Облачный гейминг и программы удалённого рабочего стола: NVIDIA GeForce NOW, Boosteroid, Xbox Cloud Gaming, Parsec, Moonlight, TeamViewer, AnyDesk, RustDesk и Chrome Remote Desktop",
+  smarthome_iot:
+    "[Маршрут: В Прокси / VPN или Direct] Облачные серверы экосистем умного дома, камер, пылесосов и 3D-принтеров: Aqara, Tuya / Smart Life, eWeLink (Sonoff), Yeelight, Roborock, Dreame, Ecovacs, Tapo / TP-Link, Home Assistant (Nabu Casa), Philips Hue и Bambu Lab",
+  smarttv_apps:
+    "[Маршрут: В Прокси / VPN или Direct] Системные сервисы, магазины приложений и проверка обновлений телевизоров Samsung Smart TV (Tizen), LG webOS, Android TV / Google TV, Sony Bravia, Philips, Hisense (VIDAA) и TCL",
+  smart_cars:
+    "[Маршрут: В Прокси / VPN или Direct] Телематика, мобильные приложения автозапуска, карты и OTA-обновления современных автомобилей: LiXiang (Li Auto), Zeekr, Geely, BYD, Changan, Chery / Omoda / Exeed, Haval / Tank, Voyah, Xiaomi SU7, Tesla и BMW ConnectedDrive",
+  doh_dot_dns:
+    "[Маршрут: В Прокси / VPN (для защиты DNS от перехвата) или Block] Публичные зашифрованные DNS-резолверы (DoH / DoT / DoQ): Cloudflare (1.1.1.1), Google (8.8.8.8), Quad9 (9.9.9.9), AdGuard DNS, NextDNS, ControlD, Mullvad и OpenDNS (+ IP-подсети)",
   hodca:
     "[Маршрут: В Прокси / VPN] Серверы проверки SSL-сертификатов (OCSP / CRL): DigiCert, Sectigo, Comodo, GlobalSign, Let’s Encrypt (устраняет долгую загрузку HTTPS из-за геоблока)",
   cloudflare:
@@ -9969,12 +10043,24 @@ var DOMAIN_LIST_HINTS = {
   ovh: "[Маршрут: В Прокси / VPN] IP-подсети европейских датацентров OVHcloud, на которых размещены игровые серверы и веб-проекты",
   digitalocean:
     "[Маршрут: В Прокси / VPN] IP-подсети облачного хостинга DigitalOcean, большая часть которых заблокирована или ограничена в РФ",
+  vps_clouds:
+    "[Маршрут: В Прокси / VPN] IP-подсети популярных зарубежных VPS/облачных хостингов, часто блокируемые на ТСПУ: Vultr (Choopa), Linode (Akamai Connected Cloud), Scaleway (Online.net), Contabo и Leaseweb",
   speedtest:
     "[Маршрут: В Прокси / VPN (для теста скорости туннеля) или Direct] Сервисы замера скорости интернета, проверки внешнего IP-адреса и DNS-утечек: Speedtest (speedtest.net, ookla.com), Fast.com, Cloudflare Speed, 2ip.ru / 2ip.io, Whoer.net, BrowserLeaks, IPLeak, IPinfo, Check-Host и Ping.pe",
   crypto:
     "[Маршрут: В Прокси / VPN (на статичный зарубежный IP) или Direct] Ведущие криптобиржи, DEX, графики, аналитика и кошельки: Binance, Bybit, OKX, Bitget, BingX, KuCoin, Gate.io, HTX, MEXC, Kraken, Coinbase, Uniswap, Jupiter, Polymarket, TradingView, CoinMarketCap, CoinGecko, DeFiLlama, MetaMask, Phantom, Tonkeeper",
   paypal_fintech:
     "[Маршрут: Только в Прокси / VPN — геоблок по IP] Зарубежные финансовые сервисы, платёжные шлюзы и брокеры, блокирующие вход с российских IP: PayPal (paypal.com), Wise (wise.com), Revolut (revolut.com), Stripe (stripe.com), Payoneer, Skrill, Neteller, N26, Monzo, Interactive Brokers, Investing.com и Bloomberg",
+  travel_booking:
+    "[Маршрут: Только в Прокси / VPN — геоблок по IP] Зарубежные сервисы бронирования отелей, жилья, авиабилетов и карт для путешествий, закрывшие доступ из РФ: Booking.com, Airbnb, Agoda, Trip.com, Skyscanner, Kayak, TripAdvisor, GetYourGuide, Klook, FlixBus и Uber",
+  shopping_global:
+    "[Маршрут: Только в Прокси / VPN — геоблок по IP] Глобальные интернет-магазины, маркетплейсы одежды, электроники и площадки доставки товаров: Amazon, eBay, IKEA, Zara, H&M, Uniqlo, ASOS, Farfetch, StockX, Poizon (Dewu), iHerb, Thomann, B&H и CDEK Forward / Бандеролька",
+  edtech_learning:
+    "[Маршрут: Только в Прокси / VPN — геоблок по IP] Образовательные платформы, изучение языков и ИТ-практикумы: Coursera, Udemy, edX, Duolingo, Kahoot, Quizlet, LeetCode, HackerRank, Codewars, FreeCodeCamp, DataCamp и Khan Academy",
+  freelance_remote:
+    "[Маршрут: Только в Прокси / VPN — геоблок по IP] Международные биржи фриланса и удалённой работы: Upwork, Fiverr, Freelancer.com, Toptal, Guru, 99designs, Behance Jobs, Dribbble и Deel",
+  sports_fitness:
+    "[Маршрут: В Прокси / VPN] Спортивные трекеры, велосимуляторы, результаты матчей и трансляции: Strava (заблокирована в РФ), Garmin Connect, Zwift, Komoot, Nike Run Club, Flashscore, SofaScore, Transfermarkt, UFC Fight Pass, NBA, F1 TV и NHL",
   news: "[Маршрут: В Прокси / VPN или Обход DPI] Заблокированные независимые российские и мировые информационные агентства и медиа (Meduza, BBC, DW, Euronews, Радио Свобода)",
   torrent:
     "[Маршрут: В Обход DPI (Desync / Zapret) или Прокси] Торрент-трекеры, индексаторы и анонсеры: RuTracker, Rutor, NNM-Club, Kinozal, Rustorka, LostFilm, The Pirate Bay, 1337x, Nyaa",
@@ -9982,6 +10068,14 @@ var DOMAIN_LIST_HINTS = {
   porn: "[Маршрут: В Прокси / VPN или Обход DPI] Крупнейшие сайты и видео-CDN 18+: Pornhub, XVideos, xHamster, OnlyFans, Fansly, Chaturbate",
   ads_hagezi_pro:
     "[Маршрут: Блокировать (Block)] Комплексная фильтрация рекламных сетей, аналитики, трекеров и фишинга Hagezi Multi PRO",
+  android_ads_block:
+    "[Маршрут: Блокировать (Block)] Рекламные SDK в мобильных играх и приложениях Android / iOS: Unity Ads, AppLovin, IronSource, Vungle, Chartboost, Mintegral, AdColony, InMobi, Tapjoy и Pangle",
+  telemetry_mobile_block:
+    "[Маршрут: Блокировать (Block)] Сборщики аналитики, трекеры поведения и отчёты телеметрии на смартфонах: AppsFlyer, Adjust, Branch.io, Amplitude, Mixpanel, OneSignal, Flurry, Kochava, Huawei/Honor/Oppo/Realme/Vivo Analytics и Samsung Rubin",
+  gambling_block:
+    "[Маршрут: Блокировать (Block)] Онлайн-казино, букмекерские конторы, слоты, рулетки, ставки на спорт и агрессивные гемблинг-зеркала (1xBet, Melbet, Fonbet, Stake, 1win, Pin-Up, Vavada, Vulkan и др.)",
+  phishing_malware_block:
+    "[Маршрут: Блокировать (Block)] Фишинговые сайты, поддельные страницы банков/Госуслуг, крипто-скам, вредоносные загрузчики, ботнеты и C2-серверы малвари",
   win_spy:
     "[Маршрут: Блокировать (Block)] Серверы слежки, телеметрии, отчётов об ошибках и рекламы Windows 10/11",
   xiaomi_smarttv_ads:

@@ -1453,6 +1453,8 @@ function nft_add_dns_block_rules_from_schedules(schedules, table, profiles) {
         schedule = object_or_empty(schedule);
         if (!bool_option(schedule, "enabled", true))
             continue;
+        if (option(schedule, "dns_level", "1") == "0")
+            continue;
         if (length(list_option(schedule, "blocked_domains")) == 0) {
             let single_domain = option(schedule, "blocked_domains", "");
             if (single_domain == "") continue;
@@ -2146,6 +2148,7 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
 
     if (!nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip", "daddr", "@" + as_string(localv4_set), "return" ]) ||
         !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip6", "daddr", "@" + as_string(localv6_set), "return" ]) ||
+        !nft_add_rule(table, "mangle", [ "jump", "guest_forward" ]) ||
         !nft_add_rule(table, "mangle", [ "jump", "parental_control" ]))
         return false;
 
@@ -3476,6 +3479,7 @@ function nft_schedule_signature_body(body, schedule) {
     body = signature_add_value(body, "schedule." + name + ".days", join(",", list_option(schedule, "days")));
     body = signature_add_value(body, "schedule." + name + ".blocked_domains", join(",", list_option(schedule, "blocked_domains")));
     body = signature_add_value(body, "schedule." + name + ".mode", option(schedule, "mode", "block"));
+    body = signature_add_value(body, "schedule." + name + ".dns_level", option(schedule, "dns_level", "1"));
     return body;
 }
 

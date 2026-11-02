@@ -109,7 +109,8 @@ function quota_schedules() {
         push(result, {
             label: as_string(object_or_empty(p).label || p_name),
             minutes: p_minutes,
-            devices: p_devices
+            devices: p_devices,
+            notify: bool_option(p, "notify", true)
         });
     }
 
@@ -135,9 +136,12 @@ function quota_schedules() {
                 push(devices, { ident, is_mac });
             }
         }
+        let notify = bool_option(section, "notify", true);
         for (let prof_ref in list_option(section, "profile")) {
             let p = profiles_by_name[prof_ref];
             if (p && bool_option(p, "enabled", true)) {
+                if (!bool_option(p, "notify", true))
+                    notify = false;
                 for (let dev in list_option(p, "device_ip")) {
                     let is_mac = match(dev, MAC_RE) != null;
                     if (!is_mac && match(dev, /:/) != null)
@@ -155,7 +159,8 @@ function quota_schedules() {
         push(result, {
             label: as_string(object_or_empty(section).label || object_or_empty(section)[".name"]),
             minutes,
-            devices
+            devices,
+            notify
         });
     }
     return result;
@@ -208,14 +213,22 @@ function all_active_neighbors() {
 }
 
 function read_guest_traffic_bytes() {
-    let output = command_output_from_args([ "nft", "list", "chain", "inet", NFT_TABLE_NAME, "guest_forward" ]) || "";
     let result = {};
-    for (let line in split(output, "\n")) {
-        let m = match(line, /bytes\s+([0-9]+)\s+comment\s+"tachyon-guest-byte:([^"]+)"/);
-        if (m) {
-            let bytes = int(m[1]);
-            let ident = lc(m[2]);
-            result[ident] = bytes;
+    for (let chain in [ "guest_forward", "parental_control" ]) {
+        let output = command_output_from_args([ "nft", "list", "chain", "inet", NFT_TABLE_NAME, chain ]) || "";
+        for (let line in split(output, "\n")) {
+            let m = match(line, /bytes\s+([0-9]+)\s+comment\s+"tachyon-guest-byte:([^"]+)"/);
+            if (m) {
+                let bytes = int(m[1]);
+                let ident = lc(m[2]);
+                result[ident] = int(result[ident] || 0) + bytes;
+                continue;
+            }
+            let m_inv = match(line, /bytes\s+([0-9]+)\s+comment\s+"tachyon-guest-traffic"/);
+            if (m_inv) {
+                let bytes = int(m_inv[1]);
+                result["__inverted__"] = int(result["__inverted__"] || 0) + bytes;
+            }
         }
     }
     return result;
@@ -278,7 +291,8 @@ function nft_set_exists(set_name) {
 }
 
 function nft_create_set(set_name, set_type) {
-    let cmd = "nft add set inet " + NFT_TABLE_NAME + " " + set_name + " { type " + set_type + "; flags interval; }";
+    let flags_clause = set_type == "ether_addr" ? "" : " flags interval;";
+    let cmd = "nft add set inet " + NFT_TABLE_NAME + " " + set_name + " { type " + set_type + ";" + flags_clause + " }";
     let rc = command_status(cmd + " 2>/dev/null");
     if (rc != 0)
         log_message("failed to create nft set " + set_name + ": " + as_string(rc), "warn");
@@ -507,7 +521,8 @@ function tick() {
                     devices[ident] = { minutes, blocked: is_blocked };
                     if (!is_blocked) {
                         log_message("device " + ident + " unblocked after quota increase (used " + as_string(minutes) + "/" + as_string(schedule.minutes) + " min)", "info");
-                        send_notification("✅ *Parental control*: квота устройства `" + ident + "` (" + schedule.label + ") увеличена до " + as_string(schedule.minutes) + " мин, доступ разблокирован.");
+                        if (schedule.notify !== false)
+                            send_notification("✅ *Parental control*: квота устройства `" + ident + "` (" + schedule.label + ") увеличена до " + as_string(schedule.minutes) + " мин, доступ разблокирован.");
                     }
                 } else {
                     devices[ident] = { minutes, blocked: true };
@@ -518,7 +533,8 @@ function tick() {
                 devices[ident] = { minutes, blocked: is_blocked };
                 if (is_blocked) {
                     log_message("device " + ident + " hit daily quota (" + as_string(schedule.minutes) + " min); blocking until midnight", "info");
-                    send_notification("⏳ *Parental control*: устройство `" + ident + "` (" + schedule.label + ") исчерпало дневную квоту (" + as_string(schedule.minutes) + " мин), доступ заблокирован до полуночи.");
+                    if (schedule.notify !== false)
+                        send_notification("⏳ *Parental control*: устройство `" + ident + "` (" + schedule.label + ") исчерпало дневную квоту (" + as_string(schedule.minutes) + " мин), доступ заблокирован до полуночи.");
                 }
             } else {
                 devices[ident] = { minutes, blocked: false };
@@ -575,7 +591,10 @@ function tick() {
             let ident = guest.ident;
             let entry = object_or_empty(guest_devices[ident]);
             let minutes = int(entry.minutes || 0);
-            let bytes = int(traffic_bytes_map[ident] || entry.bytes || 0);
+            let measured_bytes = traffic_bytes_map[ident];
+            if (measured_bytes == null && gm_cfg.mode == "inverted")
+                measured_bytes = traffic_bytes_map["__inverted__"];
+            let bytes = int(measured_bytes || entry.bytes || 0);
             let was_blocked = entry.blocked == true;
 
             if (was_blocked) {

@@ -296,7 +296,15 @@ let community_subnet_lists = {
     digitalocean: true,
     cloudfront: true,
     discord: true,
-    roblox: true
+    roblox: true,
+    google_meet: true,
+    zoom_teams: true,
+    discord_voice: true,
+    callofduty: true,
+    game_backends: true,
+    cs2_dota2: true,
+    doh_dot_dns: true,
+    vps_clouds: true
 };
 
 function community_service_has_subnet_list(value) {

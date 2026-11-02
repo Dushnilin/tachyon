@@ -57,47 +57,266 @@ function regional_indicator_letter(value, index) {
     return chr(65 + letter);
 }
 
+function fold_text_case(value) {
+    value = as_string(value);
+    let bytes = [];
+    let i = 0;
+    while (i < length(value)) {
+        let b = byte_at(value, i);
+        if (b >= 65 && b <= 90) {
+            push(bytes, b + 32);
+            i += 1;
+        }
+        else if (b == 0xD0 && i + 1 < length(value)) {
+            let b2 = byte_at(value, i + 1);
+            if (b2 >= 0x90 && b2 <= 0x9F)
+                push(bytes, 0xD0, b2 + 0x20);
+            else if (b2 >= 0xA0 && b2 <= 0xAF)
+                push(bytes, 0xD1, b2 - 0x20);
+            else if (b2 == 0x81)
+                push(bytes, 0xD1, 0x91);
+            else
+                push(bytes, b, b2);
+            i += 2;
+        }
+        else {
+            push(bytes, b);
+            i += 1;
+        }
+    }
+    let result = "";
+    for (let byte in bytes)
+        result += chr(byte);
+    return result;
+}
+
 const COUNTRY_NAME_PATTERNS = [
-    [ "United Kingdom", "GB" ],
-    [ "United States", "US" ],
-    [ "Netherlands", "NL" ],
-    [ "Switzerland", "CH" ],
-    [ "Kazakhstan", "KZ" ],
-    [ "Lithuania", "LT" ],
-    [ "Singapore", "SG" ],
-    [ "Hong Kong", "HK" ],
-    [ "Germany", "DE" ],
-    [ "Finland", "FI" ],
-    [ "Estonia", "EE" ],
-    [ "Austria", "AT" ],
-    [ "Czechia", "CZ" ],
-    [ "Ireland", "IE" ],
-    [ "Denmark", "DK" ],
-    [ "Albania", "AL" ],
-    [ "Vietnam", "VN" ],
-    [ "Ukraine", "UA" ],
-    [ "Belarus", "BY" ],
-    [ "France", "FR" ],
-    [ "Sweden", "SE" ],
-    [ "Poland", "PL" ],
-    [ "Latvia", "LV" ],
-    [ "Turkey", "TR" ],
-    [ "Norway", "NO" ],
-    [ "Greece", "GR" ],
-    [ "Russia", "RU" ],
-    [ "Japan", "JP" ],
-    [ "USA", "US" ]
+    [ "united kingdom", "GB" ],
+    [ "great britain", "GB" ],
+    [ "великобритания", "GB" ],
+    [ "англия", "GB" ],
+    [ "london", "GB" ],
+    [ "лондон", "GB" ],
+    [ "united states", "US" ],
+    [ "america", "US" ],
+    [ "америка", "US" ],
+    [ "сша", "US" ],
+    [ "netherlands", "NL" ],
+    [ "holland", "NL" ],
+    [ "нидерланды", "NL" ],
+    [ "голландия", "NL" ],
+    [ "amsterdam", "NL" ],
+    [ "амстердам", "NL" ],
+    [ "switzerland", "CH" ],
+    [ "швейцария", "CH" ],
+    [ "zurich", "CH" ],
+    [ "цюрих", "CH" ],
+    [ "geneva", "CH" ],
+    [ "женева", "CH" ],
+    [ "kazakhstan", "KZ" ],
+    [ "казахстан", "KZ" ],
+    [ "almaty", "KZ" ],
+    [ "алматы", "KZ" ],
+    [ "astana", "KZ" ],
+    [ "астана", "KZ" ],
+    [ "lithuania", "LT" ],
+    [ "литва", "LT" ],
+    [ "vilnius", "LT" ],
+    [ "вильнюс", "LT" ],
+    [ "singapore", "SG" ],
+    [ "сингапур", "SG" ],
+    [ "hong kong", "HK" ],
+    [ "гонконг", "HK" ],
+    [ "germany", "DE" ],
+    [ "германия", "DE" ],
+    [ "frankfurt", "DE" ],
+    [ "франкфурт", "DE" ],
+    [ "berlin", "DE" ],
+    [ "берлин", "DE" ],
+    [ "finland", "FI" ],
+    [ "финляндия", "FI" ],
+    [ "helsinki", "FI" ],
+    [ "хельсинки", "FI" ],
+    [ "estonia", "EE" ],
+    [ "эстония", "EE" ],
+    [ "tallinn", "EE" ],
+    [ "таллин", "EE" ],
+    [ "austria", "AT" ],
+    [ "австрия", "AT" ],
+    [ "vienna", "AT" ],
+    [ "вена", "AT" ],
+    [ "czechia", "CZ" ],
+    [ "czech", "CZ" ],
+    [ "чехия", "CZ" ],
+    [ "prague", "CZ" ],
+    [ "прага", "CZ" ],
+    [ "ireland", "IE" ],
+    [ "ирландия", "IE" ],
+    [ "dublin", "IE" ],
+    [ "дублин", "IE" ],
+    [ "denmark", "DK" ],
+    [ "дания", "DK" ],
+    [ "copenhagen", "DK" ],
+    [ "копенгаген", "DK" ],
+    [ "albania", "AL" ],
+    [ "албания", "AL" ],
+    [ "tirana", "AL" ],
+    [ "тирана", "AL" ],
+    [ "vietnam", "VN" ],
+    [ "вьетнам", "VN" ],
+    [ "hanoi", "VN" ],
+    [ "ханой", "VN" ],
+    [ "ukraine", "UA" ],
+    [ "украина", "UA" ],
+    [ "kyiv", "UA" ],
+    [ "kiev", "UA" ],
+    [ "киев", "UA" ],
+    [ "belarus", "BY" ],
+    [ "беларусь", "BY" ],
+    [ "белоруссия", "BY" ],
+    [ "minsk", "BY" ],
+    [ "минск", "BY" ],
+    [ "france", "FR" ],
+    [ "франция", "FR" ],
+    [ "paris", "FR" ],
+    [ "париж", "FR" ],
+    [ "sweden", "SE" ],
+    [ "швеция", "SE" ],
+    [ "stockholm", "SE" ],
+    [ "стокгольм", "SE" ],
+    [ "poland", "PL" ],
+    [ "польша", "PL" ],
+    [ "warsaw", "PL" ],
+    [ "варшава", "PL" ],
+    [ "latvia", "LV" ],
+    [ "латвия", "LV" ],
+    [ "riga", "LV" ],
+    [ "рига", "LV" ],
+    [ "turkey", "TR" ],
+    [ "турция", "TR" ],
+    [ "istanbul", "TR" ],
+    [ "стамбул", "TR" ],
+    [ "norway", "NO" ],
+    [ "норвегия", "NO" ],
+    [ "oslo", "NO" ],
+    [ "осло", "NO" ],
+    [ "greece", "GR" ],
+    [ "греция", "GR" ],
+    [ "athens", "GR" ],
+    [ "афины", "GR" ],
+    [ "russia", "RU" ],
+    [ "россия", "RU" ],
+    [ "moscow", "RU" ],
+    [ "москва", "RU" ],
+    [ "питер", "RU" ],
+    [ "japan", "JP" ],
+    [ "япония", "JP" ],
+    [ "tokyo", "JP" ],
+    [ "токио", "JP" ],
+    [ "spain", "ES" ],
+    [ "испания", "ES" ],
+    [ "madrid", "ES" ],
+    [ "мадрид", "ES" ],
+    [ "italy", "IT" ],
+    [ "италия", "IT" ],
+    [ "milan", "IT" ],
+    [ "милан", "IT" ],
+    [ "canada", "CA" ],
+    [ "канада", "CA" ],
+    [ "toronto", "CA" ],
+    [ "торонто", "CA" ],
+    [ "emirates", "AE" ],
+    [ "оаэ", "AE" ],
+    [ "эмираты", "AE" ],
+    [ "dubai", "AE" ],
+    [ "дубай", "AE" ],
+    [ "georgia", "GE" ],
+    [ "грузия", "GE" ],
+    [ "tbilisi", "GE" ],
+    [ "тбилиси", "GE" ],
+    [ "armenia", "AM" ],
+    [ "армения", "AM" ],
+    [ "yerevan", "AM" ],
+    [ "ереван", "AM" ],
+    [ "moldova", "MD" ],
+    [ "молдова", "MD" ],
+    [ "serbia", "RS" ],
+    [ "сербия", "RS" ],
+    [ "belgrade", "RS" ],
+    [ "белград", "RS" ],
+    [ "bulgaria", "BG" ],
+    [ "болгария", "BG" ],
+    [ "sofia", "BG" ],
+    [ "софия", "BG" ],
+    [ "romania", "RO" ],
+    [ "румыния", "RO" ],
+    [ "hungary", "HU" ],
+    [ "венгрия", "HU" ],
+    [ "budapest", "HU" ],
+    [ "будапешт", "HU" ],
+    [ "slovakia", "SK" ],
+    [ "словакия", "SK" ],
+    [ "cyprus", "CY" ],
+    [ "кипр", "CY" ],
+    [ "israel", "IL" ],
+    [ "израиль", "IL" ],
+    [ "india", "IN" ],
+    [ "индия", "IN" ],
+    [ "korea", "KR" ],
+    [ "корея", "KR" ],
+    [ "seoul", "KR" ],
+    [ "сеул", "KR" ],
+    [ "usa", "US" ]
 ];
 
+const COMMON_ISO_CODES = {
+    RU: true, DE: true, NL: true, US: true, GB: true, FR: true, FI: true, SE: true,
+    PL: true, TR: true, KZ: true, SG: true, JP: true, HK: true, CA: true, CH: true,
+    AT: true, ES: true, IT: true, UA: true, AE: true, NO: true, CZ: true, EE: true,
+    LV: true, LT: true, MD: true, BY: true, GE: true, AM: true, UZ: true, KG: true,
+    RS: true, BG: true, RO: true, HU: true, GR: true, CY: true, IL: true, IN: true,
+    KR: true, AU: true, BR: true, AR: true, MX: true, IS: true, IE: true, PT: true,
+    BE: true, DK: true, SK: true, AL: true, VN: true
+};
+
+function is_iso_boundary_byte(b) {
+    if (b == null)
+        return true;
+    return b == 32 || b == 9 || b == 45 || b == 95 || b == 46 ||
+           b == 91 || b == 93 || b == 40 || b == 41 || b == 124 || b == 47;
+}
+
+function country_from_iso_token(value) {
+    value = as_string(value);
+    let len = length(value);
+    for (let i = 0; i + 1 < len; i++) {
+        let b1 = byte_at(value, i);
+        let b2 = byte_at(value, i + 1);
+        if (b1 < 65 || b1 > 90 || b2 < 65 || b2 > 90)
+            continue;
+        let prev = i > 0 ? byte_at(value, i - 1) : null;
+        let next = (i + 2 < len) ? byte_at(value, i + 2) : null;
+        if (!is_iso_boundary_byte(prev) || !is_iso_boundary_byte(next))
+            continue;
+        let code = chr(b1) + chr(b2);
+        if (code == "UK")
+            return "GB";
+        if (COMMON_ISO_CODES[code])
+            return code;
+    }
+    return "";
+}
+
 function country_from_text_name(value) {
-    let text = lc(as_string(value));
+    let raw = as_string(value);
+    let text = fold_text_case(raw);
     if (text == "")
         return "";
     for (let entry in COUNTRY_NAME_PATTERNS) {
-        if (index(text, lc(entry[0])) >= 0)
+        if (index(text, entry[0]) >= 0)
             return entry[1];
     }
-    return "";
+    return country_from_iso_token(raw);
 }
 
 function country_from_flag_emoji(value) {

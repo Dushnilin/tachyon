@@ -946,9 +946,10 @@ export function renderCommunityListServiceIcon(
     .toLowerCase()
     .replace(/^@\s*/, '')
     .trim();
-  if (k === 'youtube' || k === 'google_play') return renderPlayIcon(size);
+  if (k === 'youtube' || k === 'youtube_images' || k === 'google_play')
+    return renderPlayIcon(size);
   if (k === 'telegram') return renderPlaneIcon(size);
-  if (k === 'discord') return renderGamepad2Icon(size);
+  if (k === 'discord' || k === 'discord_voice') return renderGamepad2Icon(size);
   if (
     k.startsWith('ai') ||
     k.includes('openai') ||
@@ -963,6 +964,8 @@ export function renderCommunityListServiceIcon(
       'deepseek',
       'midjourney',
       'elevenlabs',
+      'ai_video',
+      'ai_cloud_gpu',
       'huggingface',
     ].includes(k)
   ) {
@@ -989,8 +992,12 @@ export function renderCommunityListServiceIcon(
     [
       'spotify',
       'soundcloud_music',
+      'podcasts_radio',
       'netflix',
+      'streaming_west',
+      'tmdb_metadata',
       'rutracker_lampa',
+      'books_archives',
       'patreon_creators',
       'twitch',
       'twitch_ads',
@@ -1006,21 +1013,34 @@ export function renderCommunityListServiceIcon(
     [
       'games_all',
       'steam',
+      'steam_cdn',
+      'cs2_dota2',
       'epicgames',
       'ubisoft',
       'warthunder',
       'blizzard',
+      'callofduty',
       'riot',
       'origin',
       'xbox',
       'playstation',
       'nintendo',
+      'meta_quest',
       'gog',
       'wargaming',
       'hoyoverse',
+      'netease_tencent_games',
+      'japanese_publishers',
       'minecraft',
       'rockstar',
       'pubg',
+      'survival_coop',
+      'mmorpg',
+      'fighting_racing',
+      'strategy_sim',
+      'chess_boardgames',
+      'gaming_mods_stats',
+      'game_backends',
       'roblox',
       'supercell',
       'escapefromtarkov',
@@ -1038,16 +1058,32 @@ export function renderCommunityListServiceIcon(
       'jetbrains',
       'gitlab_notion',
       'figma_adobe',
+      'gamedev_3d',
       'pkg_registries',
+      'linux_repos',
       'cloudflare',
       'cloudfront',
       'fastly',
       'hetzner',
       'ovh',
       'digitalocean',
+      'vps_clouds',
+      'captcha_auth',
+      'security_passwords',
+      'cloud_storage',
+      'cloud_gaming_remote',
+      'smarthome_iot',
+      'smarttv_apps',
+      'smart_cars',
+      'doh_dot_dns',
       'speedtest',
       'crypto',
       'paypal_fintech',
+      'travel_booking',
+      'shopping_global',
+      'edtech_learning',
+      'freelance_remote',
+      'sports_fitness',
       'cloud',
       'dev_cloud',
     ].includes(k)
@@ -1058,6 +1094,7 @@ export function renderCommunityListServiceIcon(
     [
       'russia_inside',
       'ukraine_inside',
+      'belarus_inside',
       'geoblock',
       'block',
       'ru_blocked',
@@ -1072,10 +1109,20 @@ export function renderCommunityListServiceIcon(
   ) {
     return renderShieldIcon(size);
   }
-  if (['ads_hagezi_pro', 'win_spy', 'xiaomi_smarttv_ads'].includes(k)) {
+  if (
+    [
+      'ads_hagezi_pro',
+      'android_ads_block',
+      'telemetry_mobile_block',
+      'gambling_block',
+      'phishing_malware_block',
+      'win_spy',
+      'xiaomi_smarttv_ads',
+    ].includes(k)
+  ) {
     return renderBanIcon(size);
   }
-  if (['apple', 'microsoft', 'ecosystems'].includes(k)) {
+  if (['apple', 'microsoft', 'google_services', 'ecosystems'].includes(k)) {
     return renderSparklesIcon(size);
   }
   if (['news', 'torrent', 'tor', 'media_extra', 'extra', 'porn'].includes(k)) {
@@ -1088,6 +1135,7 @@ export function renderCommunityListServiceIcon(
       'ru_domains',
       'ru_only_inside',
       'push',
+      'captive_ntp_stun',
     ].includes(k)
   ) {
     return renderGlobeIcon(size);

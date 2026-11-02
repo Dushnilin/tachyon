@@ -84,6 +84,7 @@ export {
   setTopbarCollapsed,
 } from './tachyon/appShell';
 export { openConnectionWizardModal } from './tachyon/connectionWizard';
+export { detectOutboundCountry } from './tachyon/helpers/country';
 export { mountTachyonStudioDeck } from './tachyon/studioDeck';
 export {
   renderTachyonLogoSvg,

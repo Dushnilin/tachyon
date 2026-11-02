@@ -1615,7 +1615,10 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
         section_state_map[section_name] = state;
 
     let group_refs = connections.section_outbound_group_refs(section);
+    let initial_candidate_tags = unique_string_array(urltest_candidate_tags);
+    let has_section_filter = false;
     if (length(group_refs) > 0) {
+        has_section_filter = true;
         let union_selector = [];
         let union_cand = [];
         for (let grp_id in group_refs) {
@@ -1641,6 +1644,7 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
 
     let sec_pool_spec = connections.section_pool_filter_spec(section);
     if (sec_pool_spec != null) {
+        has_section_filter = true;
         let narrowed_sel = filter_tags_by_group_spec(selector_tags, sec_pool_spec, state);
         let narrowed_cand = filter_tags_by_group_spec(urltest_candidate_tags, sec_pool_spec, state);
         if (length(narrowed_cand) > 0 || sec_pool_spec.mode == "exclude") {
@@ -1665,10 +1669,18 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
     let priority_tags = [];
     let group_outbounds = {};
 
+    let mode = connections.dashboard_filter_mode(section);
     let section_excluded = section_excluded_candidate_tags(section, urltest_candidate_tags, state);
     let group_candidate_tags = length(section_excluded) > 0
         ? urltest_exclude_outbounds(urltest_candidate_tags, section_excluded)
         : urltest_candidate_tags;
+    if ((mode == "include" || mode == "mixed") &&
+        length(connections.dashboard_include_groups(section)) == 0 &&
+        length(connections.dashboard_exclude_groups(section)) == 0) {
+        let narrowed_group_candidates = dashboard_filtered_outbounds(section, group_candidate_tags, state, {});
+        if (length(narrowed_group_candidates) > 0)
+            group_candidate_tags = narrowed_group_candidates;
+    }
 
     for (let urltest_id in connections.urltests(section)) {
         let urltest = add_urltest_outbound(config, section, urltest_id, group_candidate_tags, state);
@@ -1700,7 +1712,6 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
     }
 
     let dashboard_candidates = selector_tags;
-    let mode = connections.dashboard_filter_mode(section);
     if (mode == "include" || mode == "mixed") {
         let combined = [];
         for (let t in selector_tags) push(combined, t);
@@ -1797,16 +1808,17 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
 
     selector_outbounds = filtered_outbounds;
     selector_default = selector_outbounds[0];
+    let has_multiple_source_levels = length(source_level_entries) > 1 || has_dpi_source;
     if (length(urltest_tags) > 0 || length(priority_tags) > 0) {
         for (let tag in urltest_tags)
             push(selector_outbounds, tag);
         for (let tag in priority_tags)
             push(selector_outbounds, tag);
-        if (!first_is_dpi && sel_mode != "priority_failover")
+        if (!first_is_dpi && (sel_mode != "priority_failover" || !has_multiple_source_levels))
             selector_default = length(urltest_tags) > 0 ? urltest_tags[0] : priority_tags[0];
     }
 
-    if (sel_mode == "priority_failover" || (sel_mode != "default" && has_dpi_source)) {
+    if ((sel_mode == "priority_failover" && has_multiple_source_levels) || (sel_mode != "default" && has_dpi_source)) {
         let auto_levels = [];
         let lvl_order = 1;
         let prefer_balancer_for_non_dpi = sel_mode != "priority_failover" && (length(urltest_tags) > 0 || length(priority_tags) > 0);
@@ -1847,7 +1859,8 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
                 outbounds: entry.outbounds
             });
         }
-        append_balancer_levels();
+        if (prefer_balancer_for_non_dpi || length(source_level_entries) == 0)
+            append_balancer_levels();
         if (length(auto_levels) >= 2) {
             let h_url = trim(option(section, "section_health_url", "https://www.gstatic.com/generate_204"));
             if (h_url == "")
@@ -1886,6 +1899,15 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
     }
 
     if (state && state.hiddenOutboundTags) {
+        if (has_section_filter || mode == "include" || mode == "exclude" || mode == "mixed") {
+            let visible_set = object_keys_set(selector_outbounds);
+            for (let t in effective_leaf_tags)
+                visible_set[t] = true;
+            for (let tag in initial_candidate_tags) {
+                if (!visible_set[tag])
+                    state.hiddenOutboundTags[tag] = true;
+            }
+        }
         for (let tag in selector_outbounds)
             delete state.hiddenOutboundTags[tag];
     }
@@ -1894,7 +1916,7 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
     let saved_selector_state = read_json_file(persistent_selector_file);
     if (type(saved_selector_state) == "object" && as_string(saved_selector_state[selector_tag]) != "") {
         let saved_target = as_string(saved_selector_state[selector_tag]);
-        let auto_balancer_preferred = sel_mode != "default" && sel_mode != "priority_failover" && !first_is_dpi && (length(urltest_tags) > 0 || length(priority_tags) > 0);
+        let auto_balancer_preferred = sel_mode != "default" && (sel_mode != "priority_failover" || !has_multiple_source_levels) && !first_is_dpi && (length(urltest_tags) > 0 || length(priority_tags) > 0);
         let saved_is_balancer = index(urltest_tags, saved_target) >= 0 || index(priority_tags, saved_target) >= 0;
         if (index(selector_outbounds, saved_target) >= 0 && (!auto_balancer_preferred || saved_is_balancer))
             selector_default = saved_target;
@@ -4614,6 +4636,7 @@ return {
     section_excluded_candidate_tags,
     urltest_exclude_outbounds,
     urltest_filtered_outbounds,
+    filter_tags_by_group_spec,
     urltest_idle_timeout,
     finalize_remote_custom_rulesets_state
 };

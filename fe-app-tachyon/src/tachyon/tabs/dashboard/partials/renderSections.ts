@@ -2588,6 +2588,20 @@ function renderDefaultState({
         ];
 
         for (const group of countryGroups) {
+          if (
+            activeCountryFilter &&
+            group.countryCode !== activeCountryFilter
+          ) {
+            continue;
+          }
+          if (
+            !activeCountryFilter &&
+            activeRegionFilter &&
+            activeRegionFilter !== 'all' &&
+            group.region !== activeRegionFilter
+          ) {
+            continue;
+          }
           const collapseKey = `countrygrp:${section.code}:${group.countryCode}`;
           const isCountryCollapsed = Boolean(
             collapsedSourceGroups?.has(collapseKey),
@@ -2611,11 +2625,16 @@ function renderDefaultState({
         return [
           ...metadataNodes,
           autoBlock,
-          ...renderOutboundsList(serverOutbounds),
+          ...renderOutboundsList(
+            serverOutbounds.filter(isOutboundMatchingFilters),
+          ),
         ];
       }
 
-      return [...metadataNodes, ...renderOutboundsList(outbounds)];
+      return [
+        ...metadataNodes,
+        ...renderOutboundsList(outbounds.filter(isOutboundMatchingFilters)),
+      ];
     }
 
     // Multiple subscription sources in one section: preserve source headers on each group
@@ -2664,14 +2683,25 @@ function renderDefaultState({
       return na - nb;
     });
 
+    const hasActiveCountryOrRegionFilter = Boolean(
+      activeCountryFilter ||
+        (chipsGrouping === 'regions' &&
+          activeRegionFilter &&
+          activeRegionFilter !== 'all'),
+    );
+
     for (const subKey of allSubKeys) {
       const members = subMap.get(subKey) || [];
+      const visibleMembers = members.filter(isOutboundMatchingFilters);
       const meta = metadataBySubKey.get(subKey);
       if (members.length === 0 && !meta) continue;
+      if (hasActiveCountryOrRegionFilter && visibleMembers.length === 0) {
+        continue;
+      }
 
       const collapseKey = `subgrp:${section.code}:${subKey}`;
       const isGroupCollapsed = Boolean(collapsedSourceGroups?.has(collapseKey));
-      const selectedMember = members.find((m) => m.selected);
+      const selectedMember = visibleMembers.find((m) => m.selected);
       const subNumber = Number(subKey.slice(4)) || 1;
       const fallbackSubTitle =
         allSubKeys.length > 1
@@ -2687,11 +2717,11 @@ function renderDefaultState({
             } as Tachyon.SubscriptionMetadata);
 
       const metaHeader = renderSubscriptionMetadata(headerMeta, {
-        groupCount: members.length,
+        groupCount: visibleMembers.length,
         selectedOutbound: selectedMember,
         isGroupCollapsed,
         onToggleGroup:
-          members.length > 0
+          visibleMembers.length > 0
             ? () => onToggleSourceGroupCollapse?.(collapseKey)
             : undefined,
       });
@@ -2701,100 +2731,91 @@ function renderDefaultState({
       }
 
       if (!isGroupCollapsed) {
-        const visibleMembers =
-          countryGrouping === 'chips'
-            ? members.filter(isOutboundMatchingFilters)
-            : members;
         nodes.push(...renderOutboundsList(visibleMembers));
       }
     }
 
     if (manualOutbounds.length > 0) {
-      if (allSubKeys.length > 0) {
-        const collapseKey = `subgrp:${section.code}:manual`;
-        const isGroupCollapsed = Boolean(
-          collapsedSourceGroups?.has(collapseKey),
-        );
-        const selectedManual = manualOutbounds.find((m) => m.selected);
+      const visibleManual = manualOutbounds.filter(isOutboundMatchingFilters);
+      if (!hasActiveCountryOrRegionFilter || visibleManual.length > 0) {
+        if (allSubKeys.length > 0) {
+          const collapseKey = `subgrp:${section.code}:manual`;
+          const isGroupCollapsed = Boolean(
+            collapsedSourceGroups?.has(collapseKey),
+          );
+          const selectedManual = visibleManual.find((m) => m.selected);
 
-        nodes.push(
-          E(
-            'div',
-            {
-              class: [
-                'tachyon_dashboard-page__subscription-meta',
-                'tachyon_dashboard-page__subscription-meta--collapsible',
-                'tachyon_dashboard-page__source-group--manual',
-                isGroupCollapsed
-                  ? 'tachyon_dashboard-page__subscription-meta--collapsed'
-                  : '',
-              ]
-                .filter(Boolean)
-                .join(' '),
-              click: () => onToggleSourceGroupCollapse?.(collapseKey),
-            },
-            [
-              E(
-                'div',
-                { class: 'tachyon_dashboard-page__subscription-meta__main' },
-                [
-                  svgEl(
-                    'svg',
-                    {
-                      width: '15',
-                      height: '15',
-                      viewBox: '0 0 24 24',
-                      fill: 'none',
-                      stroke: 'currentColor',
-                      'stroke-width': '2',
-                      'stroke-linecap': 'round',
-                      'stroke-linejoin': 'round',
-                      style: `flex-shrink: 0; transition: transform 0.2s; transform: rotate(${isGroupCollapsed ? '-90deg' : '0deg'})`,
-                    },
-                    [svgEl('polyline', { points: '6 9 12 15 18 9' })],
-                  ),
-                  E(
-                    'div',
-                    {
-                      class:
-                        'tachyon_dashboard-page__subscription-meta__heading',
-                    },
-                    _('Standalone servers'),
-                  ),
-                  E(
-                    'span',
-                    { class: 'tachyon_dashboard-page__source-group__count' },
-                    `${manualOutbounds.length}`,
-                  ),
-                  isGroupCollapsed && selectedManual
-                    ? E(
-                        'span',
-                        {
-                          class:
-                            'tachyon_dashboard-page__source-group__active-badge',
-                        },
-                        `● ${selectedManual.displayName}`,
-                      )
+          nodes.push(
+            E(
+              'div',
+              {
+                class: [
+                  'tachyon_dashboard-page__subscription-meta',
+                  'tachyon_dashboard-page__subscription-meta--collapsible',
+                  'tachyon_dashboard-page__source-group--manual',
+                  isGroupCollapsed
+                    ? 'tachyon_dashboard-page__subscription-meta--collapsed'
                     : '',
-                ],
-              ),
-            ],
-          ),
-        );
+                ]
+                  .filter(Boolean)
+                  .join(' '),
+                click: () => onToggleSourceGroupCollapse?.(collapseKey),
+              },
+              [
+                E(
+                  'div',
+                  { class: 'tachyon_dashboard-page__subscription-meta__main' },
+                  [
+                    svgEl(
+                      'svg',
+                      {
+                        width: '15',
+                        height: '15',
+                        viewBox: '0 0 24 24',
+                        fill: 'none',
+                        stroke: 'currentColor',
+                        'stroke-width': '2',
+                        'stroke-linecap': 'round',
+                        'stroke-linejoin': 'round',
+                        style: `flex-shrink: 0; transition: transform 0.2s; transform: rotate(${isGroupCollapsed ? '-90deg' : '0deg'})`,
+                      },
+                      [svgEl('polyline', { points: '6 9 12 15 18 9' })],
+                    ),
+                    E(
+                      'div',
+                      {
+                        class:
+                          'tachyon_dashboard-page__subscription-meta__heading',
+                      },
+                      _('Standalone servers'),
+                    ),
+                    E(
+                      'span',
+                      { class: 'tachyon_dashboard-page__source-group__count' },
+                      `${visibleManual.length}`,
+                    ),
+                    isGroupCollapsed && selectedManual
+                      ? E(
+                          'span',
+                          {
+                            class:
+                              'tachyon_dashboard-page__source-group__active-badge',
+                          },
+                          `● ${selectedManual.displayName}`,
+                        )
+                      : '',
+                  ],
+                ),
+              ],
+            ),
+          );
 
-        if (!isGroupCollapsed) {
-          const visibleManual =
-            countryGrouping === 'chips'
-              ? manualOutbounds.filter(isOutboundMatchingFilters)
-              : manualOutbounds;
+          if (!isGroupCollapsed) {
+            nodes.push(...renderOutboundsList(visibleManual));
+          }
+        } else {
           nodes.push(...renderOutboundsList(visibleManual));
         }
-      } else {
-        const visibleManual =
-          countryGrouping === 'chips'
-            ? manualOutbounds.filter(isOutboundMatchingFilters)
-            : manualOutbounds;
-        nodes.push(...renderOutboundsList(visibleManual));
       }
     }
 
