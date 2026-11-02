@@ -100,8 +100,8 @@ ok
 # Clearing the flag without rebuilding nft would report healthy while the router
 # still bypasses the proxy, so the rebuild has to happen inside the handler.
 handler="$(sed -n '/^function release_emergency_failsafe_if_recovered/,/^}/p' "$WATCHDOG")"
-printf '%s' "$handler" | grep -q 'reload-firewall' ||
-  fail "the handler must rebuild the nft runtime (lifecycle reload-firewall) before clearing, or the router stays in bypass while reporting healthy"
+printf '%s' "$handler" | grep -Eq 'reload[-_]firewall' ||
+  fail "the handler must rebuild the nft runtime before clearing, or the router stays in bypass while reporting healthy"
 ok
 
 printf '%s' "$handler" | grep -q 'healthy_streak' ||

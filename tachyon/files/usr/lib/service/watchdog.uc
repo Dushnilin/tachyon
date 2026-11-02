@@ -13,6 +13,7 @@ let events = require("core.events");
 let event_controller = require("service.event_controller");
 let smart_detect = require("service.smart_detect");
 let smart_plus = require("service.smart_detect_plus");
+let firewall_health = require("service.firewall_health");
 let smart_probe = null;
 function get_smart_probe() {
     if (smart_probe == null) smart_probe = require("service.smart_detect_probe");
@@ -932,6 +933,9 @@ function set_ladder_level(reason, level) {
 // ai_heal_report(), turns the arrival of that fact into a `fixed` report and a
 // watch left open past its deadline into a `failed` one.
 let recovery_watches = {};
+let firewall_recoveries = {};
+// Large list-backed firewalls can take several minutes to rebuild.
+const FIREWALL_RECOVERY_DEADLINE = 600;
 
 // Two probe intervals plus restart margin: long enough for a restarted proxy to
 // complete startup and answer at least one regular 30s health probe, short
@@ -957,7 +961,7 @@ const EMERGENCY_STATE_TMP = "/tmp/tachyon_emergency_state.json";
 let emergency_failsafe_active = false;
 
 function is_emergency_failsafe_active() {
-    return emergency_failsafe_active || fs.stat(EMERGENCY_STATE_FILE) != null || fs.stat(EMERGENCY_STATE_TMP) != null;
+    return emergency_failsafe_active || firewall_health.emergency_active();
 }
 
 let ai_incidents_count = 0;
@@ -1054,6 +1058,26 @@ function clear_emergency_failsafe() {
     log_message("Watchdog: Emergency failsafe cleared", "info");
 }
 
+function restore_emergency_runtime() {
+    // 1. Restore standard direct DNS resolution via dns/apply.uc or direct uci
+    let dns_cmd = "ucode -L " + shell_quote(LIB_DIR) + " " + shell_quote(LIB_DIR + "/dns/apply.uc") + " failsafe-restore >/dev/null 2>&1";
+    let dns_restored = system(dns_cmd);
+    if (dns_restored != 0) {
+        system("/sbin/uci -q set dhcp.@dnsmasq[0].noresolv='0' >/dev/null 2>&1; /sbin/uci commit dhcp >/dev/null 2>&1; /etc/init.d/dnsmasq restart >/dev/null 2>&1");
+    }
+
+    // 2. Bypass broken proxy interception: flush and delete TachyonTable so traffic is not redirected to a dead proxy
+    system("nft delete table inet TachyonTable >/dev/null 2>&1; ip -4 rule del fwmark 0x04000000/0x04000000 table tachyon >/dev/null 2>&1; ip -6 rule del fwmark 0x04000000/0x04000000 table tachyon >/dev/null 2>&1; ip route flush table tachyon >/dev/null 2>&1; ip route flush cache >/dev/null 2>&1");
+
+}
+
+function restore_interception_bypass() {
+    restore_emergency_runtime();
+    let engine = active_engine_name();
+    if (engine == "steer" || engine == "steer-extended")
+        command_success_from_args([ "nft", "delete", "table", "inet", "steer" ]);
+}
+
 function trigger_emergency_failsafe(reason, details) {
     if (emergency_failsafe_active) return;
     emergency_failsafe_active = true;
@@ -1073,15 +1097,7 @@ function trigger_emergency_failsafe(reason, details) {
 
     log_message(sprintf("🚨 [Watchdog Emergency] Level 5 failsafe triggered (%s): %s. Restoring direct WAN and DNS.", reason, as_string(details)), "err");
 
-    // 1. Restore standard direct DNS resolution via dns/apply.uc or direct uci
-    let dns_cmd = "ucode -L " + shell_quote(LIB_DIR) + " " + shell_quote(LIB_DIR + "/dns/apply.uc") + " failsafe-restore >/dev/null 2>&1";
-    let dns_restored = system(dns_cmd);
-    if (dns_restored != 0) {
-        system("/sbin/uci -q set dhcp.@dnsmasq[0].noresolv='0' >/dev/null 2>&1; /sbin/uci commit dhcp >/dev/null 2>&1; /etc/init.d/dnsmasq restart >/dev/null 2>&1");
-    }
-
-    // 2. Bypass broken proxy interception: flush and delete TachyonTable so traffic is not redirected to a dead proxy
-    system("nft delete table inet TachyonTable >/dev/null 2>&1; ip -4 rule del fwmark 0x04000000/0x04000000 table tachyon >/dev/null 2>&1; ip -6 rule del fwmark 0x04000000/0x04000000 table tachyon >/dev/null 2>&1; ip route flush table tachyon >/dev/null 2>&1; ip route flush cache >/dev/null 2>&1");
+    restore_emergency_runtime();
 
     // 3. Dispatch telegram alert
     let tg_msg = sprintf("🚨 *[Tachyon Аварийный Failsafe]*\n⚠️ Все уровни восстановления исчерпаны (%s)!\nВключен аварийный прямой доступ в сеть (Failsafe Direct) для предотвращения отключения интернета.", reason);
@@ -1147,6 +1163,46 @@ function settle_expired_recoveries() {
     }
 }
 
+function firewall_invariant_healthy(kind, port) {
+    if (kind == "tproxy_port")
+        return firewall_health.tproxy_listening(port);
+    let health = firewall_health.inspect(settings());
+    return kind == "qos_priority" ? health.qos_ok : health.nft_ok;
+}
+
+function settle_firewall_recoveries() {
+    if (firewall_health.interception_suppressed(settings())) {
+        firewall_recoveries = {};
+        return;
+    }
+    for (let kind in keys(firewall_recoveries)) {
+        let pending = firewall_recoveries[kind];
+        let ok = firewall_invariant_healthy(kind, pending.port);
+        if (!ok && time() < pending.deadline) continue;
+        delete firewall_recoveries[kind];
+        ai_heal_report(kind, pending.description,
+            ok ? "Восстановление подтверждено проверкой runtime" : "Правила или порт не восстановились после reload_firewall",
+            ok ? "fixed" : "failed");
+    }
+}
+
+function confirm_proxy_recovered(cfg) {
+    let ctx = controller.create_tick_context();
+    if (!ctx.singbox_running || ctx.proxy_port == "" || firewall_health.manual_bypass_active(ctx.settings))
+        return false;
+    let url = cfg.ai_proxy_health_url || "https://cp.cloudflare.com/generate_204";
+    let fallback = index(url, "gstatic.com") >= 0
+        ? "https://detectportal.firefox.com/success.txt" : "https://connectivitycheck.gstatic.com/generate_204";
+    for (let target in [url, fallback]) {
+        if (command_success_from_args([
+            "curl", "--fail", "-s", "-o", "/dev/null", "--noproxy", "",
+            "--connect-timeout", "5", "--max-time", "8",
+            "--proxy", "http://" + ctx.proxy_host + ":" + ctx.proxy_port, target
+        ])) return true;
+    }
+    return false;
+}
+
 // Recovery facts are already published by the probes; these subscribers are the
 // only thing that was missing.
 function note_proxy_recovered(ev) {
@@ -1182,15 +1238,56 @@ function release_emergency_failsafe_if_recovered() {
         return false;
     if (int(controller.healthy_streak()) < 3)
         return false;
+    if (fs.stat("/var/run/tachyon/starting") != null || fs.stat("/var/run/tachyon/reloading") != null ||
+        fs.stat("/var/run/tachyon.reload.lock") != null || controller.check_tachyon_cli_running())
+        return false;
+    let ctx = controller.create_tick_context(); // also refreshes the UCI cursor
+    let cfg = ctx.settings;
+    if (firewall_health.manual_bypass_active(cfg)) return false;
+    // Zero initial failure counters are not positive evidence after a restart
+    // of the watchdog. DNS_UP/WAN_UP alone must never re-enable interception.
+    let history = controller.state.proxy_latency_history || [];
+    let sample = length(history) > 0 ? history[length(history) - 1] : null;
+    let interval = int(cfg.ai_proxy_health_interval || "30");
+    if (interval < 15) interval = 15;
+    if (sample == null || !sample.ok || time() - sample.ts < 0 || time() - sample.ts > interval * 2 + 15)
+        return false;
+    let engine = active_engine_name();
+    // Emergency dataplane restoration below implements the tachyon-core
+    // contract; steer has a different policy-routing/DNS lifecycle.
+    if (engine != "tachyon-core" || !ctx.singbox_running) return false;
 
-    let rebuilt = command_success_from_args([
-        "ucode", "-L", LIB_DIR, LIB_DIR + "/service/lifecycle.uc", "reload-firewall"
-    ]);
-    if (!rebuilt) {
+    // The CLI is also the controller's operation marker: probes see this
+    // process while a long rebuild is in progress and avoid sampling teardown.
+    let rebuilt = command_success_from_args([ "/usr/bin/tachyon", "reload_firewall" ]);
+    let health = rebuilt ? firewall_health.inspect(cfg) : null;
+    let runtime_ok = rebuilt && health.nft_ok;
+    if (runtime_ok)
+        runtime_ok = command_success_from_args([
+            "ucode", "-L", LIB_DIR, LIB_DIR + "/service/state.uc", "tachyon-running",
+            getenv("RT_TABLE_NAME") || "tachyon", getenv("NFT_TABLE_NAME") || "TachyonTable",
+            getenv("NFT_FAKEIP_MARK") || "0x04000000"
+        ]);
+    let mode = lc(trim(as_string(cfg.proxy_mode || "tproxy")));
+    if (runtime_ok && mode != "tun" && mode != "socks")
+        runtime_ok = firewall_health.tproxy_listening(controller.tproxy_port());
+    if (!runtime_ok) {
         log_message("Watchdog: proxy is healthy again but the nft runtime could not be rebuilt, keeping the failsafe engaged", "warn");
+        restore_emergency_runtime();
         return false;
     }
 
+    // A user may have paused/restored native Internet while the rebuild ran.
+    // DNS is returned to the proxy only after the dataplane passed verification.
+    ctx = controller.create_tick_context();
+    if (firewall_health.manual_bypass_active(ctx.settings) ||
+        !command_success_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/dns/apply.uc", "configure" ]) ||
+        !command_success_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/dns/apply.uc", "recovery-ready" ]) ||
+        !confirm_proxy_recovered(ctx.settings) ||
+        firewall_health.manual_bypass_active(controller.create_tick_context().settings)) {
+        restore_emergency_runtime();
+        return false;
+    }
     clear_emergency_failsafe();
     ai_heal_report("emergency_failsafe", "Proxy recovered, nft runtime rebuilt and the emergency failsafe was released", "released", "fixed");
     return true;
@@ -1206,6 +1303,10 @@ function is_reload_in_progress() {
 // heal_core_stopped uses it: a process that is not running is started, not
 // escalated over.
 function safe_proxy_restart(reason, force_level) {
+    // A full lifecycle restart would undo the intentional direct-WAN bypass.
+    // A stopped core may still be started by the light recovery path.
+    if (is_emergency_failsafe_active() && force_level != ESCALATION_LIGHT)
+        return false;
     let now = time();
     if (now - proxy_restart_window_start > 600) {
         proxy_restart_count = 0;
@@ -1251,6 +1352,10 @@ function safe_proxy_restart(reason, force_level) {
         } else {
             let init_script = core_init_script();
             let dns_apply_cmd = "ucode -L " + shell_quote(LIB_DIR) + " " + shell_quote(LIB_DIR + "/dns/apply.uc") + " configure";
+            // Re-check in the background job: failsafe can engage while the
+            // service is restarting. Keep direct DNS until verified release.
+            dns_apply_cmd = "if [ ! -e " + shell_quote(EMERGENCY_STATE_FILE) + " ] && [ ! -e " +
+                shell_quote(EMERGENCY_STATE_TMP) + " ]; then " + dns_apply_cmd + "; fi";
             bg_system(init_script + " stop >/dev/null 2>&1; " +
                 init_script + " start >/dev/null 2>&1; " +
                 dns_apply_cmd + " >/dev/null 2>&1; rm -f " + lock_path);
@@ -1269,13 +1374,32 @@ function safe_proxy_restart(reason, force_level) {
 
 // ─── Reload dedup: prevent multiple reload_firewall per cycle ─────────────────
 function safe_reload_firewall() {
+    if (firewall_health.interception_suppressed(settings()) || is_reload_in_progress())
+        return false;
     if (fs.stat("/var/run/tachyon/starting") != null || fs.stat("/var/run/tachyon/reloading") != null)
-        return;
+        return false;
     let now = time();
     let min_interval = 120;
-    if (now - last_reload_time < min_interval) return;
+    if (now - last_reload_time < min_interval) return false;
     last_reload_time = now;
-    bg_system("/usr/bin/tachyon reload_firewall");
+    bg_system(command_from_args([ "ucode", "-L", LIB_DIR, WATCHDOG_UC, "firewall-repair-worker" ]));
+    return true;
+}
+
+function firewall_repair_worker() {
+    let ctx = controller.create_tick_context();
+    if (firewall_health.interception_suppressed(ctx.settings)) return 1;
+    let engine = active_engine_name();
+    let ok = engine == "steer" || engine == "steer-extended"
+        ? command_success_from_args([ "/usr/sbin/steer", "apply" ])
+        : command_success_from_args([ "/usr/bin/tachyon", "reload_firewall" ]);
+    // A previously queued writer must not re-enable interception after L5 or
+    // a user bypass engaged while a large list-backed rebuild was running.
+    if (firewall_health.interception_suppressed(controller.create_tick_context().settings)) {
+        restore_interception_bypass();
+        return 1;
+    }
+    return ok ? 0 : 1;
 }
 
 // ─── Escalation Executor (L0–L5) ──────────────────────────────────────────────
@@ -1346,52 +1470,40 @@ function execute_escalation_level(key, subsystem, reason, incident) {
 // fact. The repair bodies themselves are unchanged, so thresholds, messages and
 // side effects stay identical.
 
+function heal_firewall_invariant(kind, port, description) {
+    // Re-check guards here as well: an event can predate the failsafe marker.
+    if (firewall_health.interception_suppressed(settings())) return;
+    if (firewall_recoveries[kind] != null) return;
+    if (firewall_invariant_healthy(kind, port)) return;
+
+    execute_reconciler_subsystem("nftables", false);
+    if (firewall_health.interception_suppressed(controller.create_tick_context().settings)) {
+        restore_interception_bypass();
+        return;
+    }
+    if (firewall_invariant_healthy(kind, port)) {
+        ai_heal_report(kind, description, "Восстановление подтверждено проверкой runtime", "fixed");
+        return;
+    }
+
+    let launched = safe_reload_firewall();
+    if (launched) {
+        firewall_recoveries[kind] = {
+            port: port, description: description,
+            deadline: time() + FIREWALL_RECOVERY_DEADLINE
+        };
+    }
+    ai_heal_report(kind, description,
+        launched ? "Запущено восстановление firewall; ожидается проверка runtime" : "Восстановление пропущено: reload занят или ограничен по частоте",
+        launched ? "pending" : "skipped");
+}
+
 function heal_nftables(ev) {
-    let active_engine = "tachyon-core";
-    try { active_engine = require("core.engine").get_active(); } catch (e) {}
-    if (active_engine == "steer" || active_engine == "steer-extended") {
-        ai_heal_report("nftables", "Таблица правил nftables inet steer восстановлена", "Выполнен вызов steer apply", "fixed");
-        bg_system("/usr/sbin/steer apply >/dev/null 2>&1");
-        return;
-    }
-    // L2 granular repair via Reconciler
-    let rec_res = execute_reconciler_subsystem("nftables", false);
-    if (rec_res != null && rec_res.ok) {
-        ai_heal_report(
-            "nftables",
-            "Таблица правил nftables очищена или повреждена",
-            "Выполнена быстрая регенерация правил TachyonTable и цепочки TPROXY через Reconciler",
-            "fixed"
-        );
-        return;
-    }
-    ai_heal_report(
-        "nftables",
-        "Таблица правил nftables очищена или повреждена",
-        "Выполнена быстрая регенерация правил TachyonTable и цепочки TPROXY",
-        "fixed"
-    );
-    safe_reload_firewall();
+    heal_firewall_invariant("nftables", 0, "Таблица или правила nftables отсутствуют либо повреждены");
 }
 
 function heal_qos(ev) {
-    let rec_res = execute_reconciler_subsystem("nftables", false);
-    if (rec_res != null && rec_res.ok) {
-        ai_heal_report(
-            "qos_priority",
-            "Правила Игрового & Голосового QoS Ускорителя не найдены в nftables",
-            "Применены высокоприоритетные метки DSCP EF (0x2e) для Voice/RTC и DSCP AF41 (0x22) для Gaming через Reconciler",
-            "fixed"
-        );
-        return;
-    }
-    ai_heal_report(
-        "qos_priority",
-        "Правила Игрового & Голосового QoS Ускорителя не найдены в nftables",
-        "Применены высокоприоритетные метки DSCP EF (0x2e) для Voice/RTC и DSCP AF41 (0x22) для Gaming",
-        "fixed"
-    );
-    safe_reload_firewall();
+    heal_firewall_invariant("qos_priority", 0, "Высокоприоритетные правила DSCP для Voice/RTC и Gaming не найдены");
 }
 
 function heal_uncached_rulesets_detour() {
@@ -1497,6 +1609,7 @@ function heal_dns_stall(ev) {
 // over: when direct access is down too, the fault is upstream and a restart
 // would drop live connections for nothing.
 function heal_proxy_connectivity(ev) {
+    if (firewall_health.interception_suppressed(settings())) return;
     if (settings().recovery_bypass == "1") return;
     // When dedicated proxy health monitoring is enabled, heal_proxy_health owns
     // the threshold, config validation, and reporting. heal_proxy_connectivity
@@ -1570,16 +1683,14 @@ function community_subnet_sets_still_empty(set_names) {
     for (let set_name in common.array_or_empty(set_names)) {
         let res = command_capture(
             command_from_args([ "nft", "list", "set", "inet", table, set_name ]) + " 2>/dev/null");
-        if (res.status != 0 || res.output == "")
-            continue;
-        if (index(res.output, "elements") < 0)
+        if (res.status != 0 || res.output == "" || index(res.output, "elements") < 0)
             push(still_empty, as_string(set_name));
     }
     return still_empty;
 }
 
 function heal_community_subnet_sets(ev) {
-    if (settings().recovery_bypass == "1") return;
+    if (firewall_health.interception_suppressed(settings())) return;
 
     let reported = common.array_or_empty(ev.payload.sets);
     for (let set_name in reported)
@@ -1624,26 +1735,8 @@ function heal_community_subnet_sets(ev) {
 
 // ─── TPROXY port liveness ─────────────────────────────────────────────────────
 function heal_tproxy_port(ev) {
-    if (settings().recovery_bypass == "1") return;
-
-    let rec_res = execute_reconciler_subsystem("nftables", false);
-    if (rec_res != null && rec_res.ok) {
-        ai_heal_report(
-            "tproxy_port",
-            sprintf("TPROXY порт %d не слушает — правила перехвата трафика не работают", int(ev.payload.port)),
-            "Восстановлены TPROXY правила через Reconciler",
-            "fixed"
-        );
-        return;
-    }
-
-    ai_heal_report(
-        "tproxy_port",
-        sprintf("TPROXY порт %d не слушает — правила перехвата трафика не работают", int(ev.payload.port)),
-        "Выполнен reload_firewall для восстановления TPROXY правил",
-        "fixed"
-    );
-    safe_reload_firewall();
+    heal_firewall_invariant("tproxy_port", int(ev.payload.port),
+        sprintf("TPROXY порт %d не слушает", int(ev.payload.port)));
 }
 
 function heal_wan_and_gateway(ev) {
@@ -3104,6 +3197,7 @@ function ai_full_health_audit() {
     controller.probe_normal();
     controller.probe_slow();
     safe_call(ai_heal_dns_loop, "ai_heal_dns_loop");
+    safe_call(settle_firewall_recoveries, "settle_firewall_recoveries");
     safe_call(settle_expired_recoveries, "settle_expired_recoveries");
     ai_export_status();
 }
@@ -3176,6 +3270,7 @@ function worker() {
         controller.probe_fast(current_ctx);
         // After the probes, so a recovery observed on this very tick closes its
         // watch before the deadline is tested against it.
+        safe_call(settle_firewall_recoveries, "settle_firewall_recoveries");
         safe_call(settle_expired_recoveries, "settle_expired_recoveries");
     }
 
@@ -3292,6 +3387,7 @@ function mixed_proxy_port_listening() {
 }
 
 function check_mixed_proxy_port() {
+    if (firewall_health.interception_suppressed(settings())) return;
     let eng = active_engine_name();
     if (!core_binary_running()) {
         // Core down entirely is the proxy-health loop's domain.
@@ -3797,6 +3893,8 @@ else if (mode == "supervise")
     exit(supervise());
 else if (mode == "worker")
     exit(worker());
+else if (mode == "firewall-repair-worker")
+    exit(firewall_repair_worker());
 else if (mode == "status")
     exit(get_status());
 else if (mode == "ai-heal") {

@@ -603,7 +603,18 @@ function tachyon_status_running_with_timeout() {
 }
 
 function capture_tachyon_running_state() {
-    tachyon_was_running = file_exists(BIN_PATH) && tachyon_status_running_with_timeout();
+    if (!file_exists(BIN_PATH)) {
+        tachyon_was_running = false;
+        return;
+    }
+    // get_status includes nft/policy-routing readiness, which is intentionally
+    // false in failsafe. Preserve runtime intent before update stops the core.
+    // A manual stop writes shutdown_correctly=1 even if core.enabled stays 1.
+    let cfg = common.object_or_empty(uci_core.get_all(TACHYON_CONFIG_NAME, "settings"));
+    let intended = engine.get_active() == "tachyon-core" &&
+        cfg.shutdown_correctly == "0" && uci_core.get("tachyon-core", "main", "enabled") == "1" &&
+        !require("service.firewall_health").manual_bypass_active(cfg);
+    tachyon_was_running = tachyon_status_running_with_timeout() || intended;
 }
 
 function restart_tachyon_after_successful_change() {
