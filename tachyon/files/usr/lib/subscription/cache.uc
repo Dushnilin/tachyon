@@ -476,13 +476,14 @@ let auto_user_agent_profiles = [
     "v2rayN",
     "v2rayNG",
     "Mihomo",
-    "Clash.Meta",
-    "ClashMeta",
-    "HiddifyNext",
-    "Mozilla"
+    "Clash.Meta"
 ];
 
-let auto_user_agents = {};
+let auto_user_agents = {
+    "ClashMeta": true,
+    "HiddifyNext": true,
+    "Mozilla": true
+};
 for (let profile in auto_user_agent_profiles)
     auto_user_agents[profile] = true;
 
