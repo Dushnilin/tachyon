@@ -2272,7 +2272,7 @@ function apply_section_packet_encoding_to_connection_outbounds(config, start_ind
                 outbound.packet_encoding = encoding;
             }
         } else if (outbound_type == "shadowsocks" || outbound_type == "naive") {
-            if (encoding == "xudp" || encoding == "packetaddr" || encoding == "1" || encoding == "true") {
+            if (encoding == "xudp" || encoding == "packetaddr" || encoding == "uot" || encoding == "udp_over_tcp" || encoding == "1" || encoding == "true") {
                 outbound.udp_over_tcp = true;
             } else if (encoding == "disabled" || encoding == "none" || encoding == "off" || encoding == "0") {
                 delete outbound.udp_over_tcp;
