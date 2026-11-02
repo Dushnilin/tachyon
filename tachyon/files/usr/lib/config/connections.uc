@@ -487,14 +487,27 @@ function section_balancer_refs(section) {
     return whitespace_list_value(section, "balancer_refs");
 }
 
+function outbound_source_subscription_url(src) {
+    if (type(src) != "object")
+        return "";
+    let u = trim(option(src, "url", ""));
+    if (u != "")
+        return u;
+    let stype = lc(option(src, "source_type", "subscription"));
+    let nm = trim(option(src, "name", ""));
+    if (stype == "subscription" && match(lc(nm), /^https?:\/\//))
+        return nm;
+    return "";
+}
+
 function outbound_source_by_url(value) {
-    value = as_string(value);
+    value = trim(as_string(value));
     if (value == "")
         return null;
     for (let src in outbound_source_sections()) {
         if (!bool_option(src, "enabled", true))
             continue;
-        if (option(src, "url", "") == value)
+        if (outbound_source_subscription_url(src) == value)
             return src;
     }
     return null;
@@ -994,11 +1007,9 @@ function subscription_urls(section) {
     let seen = {};
     for (let src in section_effective_outbound_sources(section)) {
         let stype = lc(option(src, "source_type", "subscription"));
-        if (stype == "subscription" || option(src, "url", "") != "") {
-            let u = trim(option(src, "url", ""));
-            if (u != "" && match(lc(u), /^https?:\/\//))
-                push_unique_str(result, seen, u);
-        }
+        let u = outbound_source_subscription_url(src);
+        if ((stype == "subscription" || u != "") && u != "" && match(lc(u), /^https?:\/\//))
+            push_unique_str(result, seen, u);
     }
     for (let u in child_values(section, "subscription_url", "url", "subscription_urls")) {
         let su = trim(as_string(u || ""));
@@ -1119,7 +1130,7 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
         if (cc != "") obj.quic_congestion_control = cc;
         let conc = int(option(src, "naive_insecure_concurrency", "0") || 0);
         if (conc > 0) obj.insecure_concurrency = conc;
-        if (bool_option(src, "naive_uot", false))
+        if (bool_option(src, "naive_udp_over_tcp", bool_option(src, "naive_uot", false)))
             obj.udp_over_tcp = true;
         let raw_hdrs = trim(option(src, "naive_extra_headers", ""));
         if (raw_hdrs != "") {
@@ -1664,7 +1675,7 @@ function source_id_for_manual_item(section, value) {
         if (src_id == "")
             continue;
         let stype = lc(option(src, "source_type", "subscription"));
-        let su = trim(option(src, "url", ""));
+        let su = outbound_source_subscription_url(src);
         if (su != "") {
             if (su == value)
                 return src_id;
@@ -5956,5 +5967,6 @@ return {
     section_is_active_provider,
     active_provider_sections,
     active_provider_section_index,
+    outbound_source_subscription_url,
     packet_encoding
 };

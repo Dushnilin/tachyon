@@ -4914,6 +4914,8 @@ function content_requires_ucode_normalizer(input_file, headers_file) {
         return true;
     if (index(data, "\"balancers\"") >= 0 || index(data, "\"observatory\"") >= 0 || index(data, "\"burstObservatory\"") >= 0)
         return true;
+    if (first_non_ws_char(data) == "[" && index(data, "\"outbounds\"") >= 0)
+        return true;
     if (index(data, "support_x25519mlkem768") >= 0 || index(data, "supportX25519MLKEM768") >= 0 ||
         index(data, "support-x25519mlkem768") >= 0 || index(data, "mldsa65Verify") >= 0 || index(data, "pqv=") >= 0)
         return true;

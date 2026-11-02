@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-01 23:22+0300\n"
-"PO-Revision-Date: 2026-11-01 23:22+0300\n"
+"POT-Creation-Date: 2026-11-02 07:08+0300\n"
+"PO-Revision-Date: 2026-11-02 07:08+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -7313,9 +7313,6 @@ msgstr "Сбросить настройки"
 msgid "Reset Stats"
 msgstr "Сбросить статистику"
 
-msgid "Reset filters"
-msgstr "Сбросить фильтры"
-
 msgid "Reset to Default"
 msgstr "По умолчанию"
 
@@ -10964,17 +10961,11 @@ msgstr "— стабильно (TProxy)"
 msgid "← Back"
 msgstr "← Назад"
 
-msgid "↻ Update"
-msgstr "↻ Обновить"
-
 msgid "↻ Update All Subscriptions"
 msgstr "↻ Обновить все подписки"
 
 msgid "↻ Updating subscriptions..."
 msgstr "↻ Обновление подписок..."
-
-msgid "↻ Updating..."
-msgstr "↻ Обновление..."
 
 msgid "▲ Hide full catalog"
 msgstr "▲ Скрыть полный каталог списков"
@@ -10990,6 +10981,15 @@ msgstr "● Высокий пинг"
 
 msgid "✓ No subscription needed for this preset — uses built-in Tachyon Core Desync"
 msgstr "✓ Для этого пресета подписка не требуется — используется встроенный Tachyon Core Desync"
+
+msgid "Reset filters"
+msgstr "Сбросить фильтры"
+
+msgid "↻ Update"
+msgstr "↻ Обновить"
+
+msgid "↻ Updating..."
+msgstr "↻ Обновление..."
 
 msgid "Auto-update"
 msgstr "Автообновление"

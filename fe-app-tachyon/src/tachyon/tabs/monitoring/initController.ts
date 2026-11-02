@@ -25,6 +25,7 @@ import {
   type ClashConnectionsPayload,
   type MonitoredConnection,
   normalizeConnectionsPayload,
+  isExcludedRoutingName,
   buildRouteDisplayNames,
   getRouteDisplayNameByTag,
   getRouteSections,
@@ -126,7 +127,6 @@ let searchQuery = '';
 let localDeviceChoices: LocalDeviceChoices = {};
 let lastDeviceFilterSignature = '';
 let lastRouteFilterSignature = '';
-let lastQuickFilterSignature = '';
 let loading = true;
 let failed = false;
 let closingAll = false;
@@ -341,10 +341,7 @@ function getAvailableRoutes(): string[] {
   });
 
   return Array.from(uniqueRoutes)
-    .filter((name) => {
-      const lower = name.toLowerCase().trim();
-      return lower !== '' && lower !== '-' && !lower.includes('failover');
-    })
+    .filter((name) => !isExcludedRoutingName(name))
     .sort((a, b) => a.localeCompare(b));
 }
 
@@ -410,6 +407,11 @@ function setDropdownOpen(target: 'device' | 'route' | null) {
   }
   if (deviceMenu) {
     deviceMenu.hidden = !isDeviceOpen;
+    if (isDeviceOpen) {
+      deviceMenu.removeAttribute('hidden');
+    } else {
+      deviceMenu.setAttribute('hidden', '');
+    }
   }
 
   if (routeWrap) {
@@ -423,6 +425,11 @@ function setDropdownOpen(target: 'device' | 'route' | null) {
   }
   if (routeMenu) {
     routeMenu.hidden = !isRouteOpen;
+    if (isRouteOpen) {
+      routeMenu.removeAttribute('hidden');
+    } else {
+      routeMenu.setAttribute('hidden', '');
+    }
   }
 }
 
@@ -494,10 +501,9 @@ function renderRouteFilterOptions() {
         type: 'checkbox',
         class: 'tachyon_monitoring-page__checkbox',
         ...(allChecked ? { checked: true } : {}),
-        onchange: () => {
+        change: () => {
           selectedRouteFilters.clear();
           lastRouteFilterSignature = '';
-          lastQuickFilterSignature = '';
           renderControls();
           renderConnections();
         },
@@ -511,11 +517,10 @@ function renderRouteFilterOptions() {
             {
               type: 'button',
               class: 'tachyon_monitoring-page__menu-reset',
-              onclick: (e: MouseEvent) => {
+              click: (e: MouseEvent) => {
                 e.stopPropagation();
                 selectedRouteFilters.clear();
                 lastRouteFilterSignature = '';
-                lastQuickFilterSignature = '';
                 renderControls();
                 renderConnections();
               },
@@ -555,7 +560,7 @@ function renderRouteFilterOptions() {
                 class: 'tachyon_monitoring-page__checkbox',
                 value: routeName,
                 ...(isChecked ? { checked: true } : {}),
-                onchange: (e: Event) => {
+                change: (e: Event) => {
                   const target = e.target as HTMLInputElement;
                   if (target.checked) {
                     selectedRouteFilters.add(routeName);
@@ -563,7 +568,6 @@ function renderRouteFilterOptions() {
                     selectedRouteFilters.delete(routeName);
                   }
                   lastRouteFilterSignature = '';
-                  lastQuickFilterSignature = '';
                   renderControls();
                   renderConnections();
                 },
@@ -647,10 +651,9 @@ function renderDeviceFilterOptions() {
         type: 'checkbox',
         class: 'tachyon_monitoring-page__checkbox',
         ...(allChecked ? { checked: true } : {}),
-        onchange: () => {
+        change: () => {
           selectedDeviceFilters.clear();
           lastDeviceFilterSignature = '';
-          lastQuickFilterSignature = '';
           renderControls();
           renderConnections();
         },
@@ -664,11 +667,10 @@ function renderDeviceFilterOptions() {
             {
               type: 'button',
               class: 'tachyon_monitoring-page__menu-reset',
-              onclick: (e: MouseEvent) => {
+              click: (e: MouseEvent) => {
                 e.stopPropagation();
                 selectedDeviceFilters.clear();
                 lastDeviceFilterSignature = '';
-                lastQuickFilterSignature = '';
                 renderControls();
                 renderConnections();
               },
@@ -705,7 +707,7 @@ function renderDeviceFilterOptions() {
                 class: 'tachyon_monitoring-page__checkbox',
                 value: ip,
                 ...(isChecked ? { checked: true } : {}),
-                onchange: (e: Event) => {
+                change: (e: Event) => {
                   const target = e.target as HTMLInputElement;
                   if (target.checked) {
                     selectedDeviceFilters.add(ip);
@@ -713,7 +715,6 @@ function renderDeviceFilterOptions() {
                     selectedDeviceFilters.delete(ip);
                   }
                   lastDeviceFilterSignature = '';
-                  lastQuickFilterSignature = '';
                   renderControls();
                   renderConnections();
                 },
@@ -782,196 +783,6 @@ function renderNetworkFilterControls() {
         countEl.textContent = String(count);
       }
     });
-}
-
-function hasAnyActiveFilter(): boolean {
-  return (
-    selectedDeviceFilters.size > 0 ||
-    selectedRouteFilters.size > 0 ||
-    selectedNetworkFilters.size > 0 ||
-    searchQuery.trim().length > 0
-  );
-}
-
-function clearAllFilters() {
-  selectedDeviceFilters.clear();
-  selectedRouteFilters.clear();
-  selectedNetworkFilters.clear();
-  searchQuery = '';
-  lastDeviceFilterSignature = '';
-  lastRouteFilterSignature = '';
-  lastQuickFilterSignature = '';
-
-  const searchInput = document.getElementById(
-    'monitoring-search',
-  ) as HTMLInputElement | null;
-  if (searchInput) {
-    searchInput.value = '';
-  }
-
-  renderControls();
-  renderConnections();
-}
-
-function renderQuickFiltersBar() {
-  const bar = document.getElementById('monitoring-quick-filters');
-  if (!bar) return;
-
-  if (serviceAvailability === 'stopped') {
-    bar.hidden = true;
-    return;
-  }
-
-  const routes = getAvailableRoutes();
-  const routeCounts = getRouteConnectionCounts();
-  const anyActive = hasAnyActiveFilter();
-
-  if (routes.length === 0 && !anyActive) {
-    bar.hidden = true;
-    return;
-  }
-
-  bar.hidden = false;
-
-  const signature = [
-    Array.from(selectedRouteFilters).sort().join(','),
-    Array.from(selectedDeviceFilters).sort().join(','),
-    Array.from(selectedNetworkFilters).sort().join(','),
-    searchQuery.trim() ? 'search:1' : 'search:0',
-    ...routes,
-  ].join('|');
-
-  if (signature === lastQuickFilterSignature) {
-    updateFilterCountsInContainer(bar, routeCounts);
-    return;
-  }
-
-  lastQuickFilterSignature = signature;
-
-  const routeChips = routes.map((routeName) => {
-    const isChecked = selectedRouteFilters.has(routeName);
-    const count = routeCounts.get(routeName) || 0;
-    const badgeModifier = getRouteBadgeModifier(routeName);
-    const chipClasses = [
-      'tachyon_monitoring-page__quick-chip',
-      badgeModifier,
-      isChecked ? 'tachyon_monitoring-page__quick-chip--checked' : '',
-    ]
-      .filter(Boolean)
-      .join(' ');
-
-    const countBadge = E(
-      'span',
-      { class: 'tachyon_monitoring-page__quick-chip-count' },
-      String(count),
-    );
-    countBadge.setAttribute('data-filter-count', routeName);
-
-    return E('label', { class: chipClasses, title: routeName }, [
-      E('input', {
-        type: 'checkbox',
-        class: 'tachyon_monitoring-page__quick-chip-input',
-        value: routeName,
-        ...(isChecked ? { checked: true } : {}),
-        onchange: (e: Event) => {
-          const target = e.target as HTMLInputElement;
-          if (target.checked) {
-            selectedRouteFilters.add(routeName);
-          } else {
-            selectedRouteFilters.delete(routeName);
-          }
-          lastRouteFilterSignature = '';
-          lastQuickFilterSignature = '';
-          renderControls();
-          renderConnections();
-        },
-      }),
-      E(
-        'span',
-        { class: 'tachyon_monitoring-page__quick-chip-box' },
-        isChecked ? '✓' : '',
-      ),
-      E(
-        'span',
-        { class: 'tachyon_monitoring-page__quick-chip-label' },
-        routeName,
-      ),
-      countBadge,
-    ]);
-  });
-
-  const devicePills = Array.from(selectedDeviceFilters).map((ip) => {
-    const label = getLocalDeviceFilterLabel(ip);
-    return E(
-      'button',
-      {
-        type: 'button',
-        class:
-          'tachyon_monitoring-page__active-tag tachyon_monitoring-page__active-tag--device',
-        title: label,
-        onclick: () => {
-          selectedDeviceFilters.delete(ip);
-          lastDeviceFilterSignature = '';
-          lastQuickFilterSignature = '';
-          renderControls();
-          renderConnections();
-        },
-      },
-      [
-        E('span', {}, label),
-        E(
-          'span',
-          { class: 'tachyon_monitoring-page__active-tag-close' },
-          '\u00d7',
-        ),
-      ],
-    );
-  });
-
-  const children: HTMLElement[] = [];
-
-  if (routeChips.length > 0) {
-    children.push(
-      E('div', { class: 'tachyon_monitoring-page__quick-group' }, [
-        E(
-          'span',
-          { class: 'tachyon_monitoring-page__quick-title' },
-          `${_('Route')}:`,
-        ),
-        ...routeChips,
-      ]),
-    );
-  }
-
-  if (devicePills.length > 0) {
-    children.push(
-      E('div', { class: 'tachyon_monitoring-page__quick-group' }, [
-        E(
-          'span',
-          { class: 'tachyon_monitoring-page__quick-title' },
-          `${_('Source')}:`,
-        ),
-        ...devicePills,
-      ]),
-    );
-  }
-
-  if (anyActive) {
-    children.push(
-      E(
-        'button',
-        {
-          id: 'monitoring-reset-filters',
-          type: 'button',
-          class: 'btn cbi-button tachyon_monitoring-page__reset-btn',
-          onclick: () => clearAllFilters(),
-        },
-        `✕ ${_('Reset filters')}`,
-      ),
-    );
-  }
-
-  bar.replaceChildren(...children);
 }
 
 function setButtonActive(button: HTMLElement | null, active: boolean) {
@@ -1052,7 +863,6 @@ function renderControls() {
   renderDeviceFilterOptions();
   renderRouteFilterOptions();
   renderNetworkFilterControls();
-  renderQuickFiltersBar();
 
   const searchInput = document.getElementById(
     'monitoring-search',
@@ -1175,7 +985,7 @@ function renderConnectionRow(connection: MonitoredConnection) {
     networkBadge.setAttribute('data-filter-network', networkLower);
   }
   const routeBadge = renderValue(route, routeClass, routeTooltip);
-  if (route && route !== '-') {
+  if (route && route !== '-' && !isExcludedRoutingName(route)) {
     routeBadge.setAttribute('data-filter-route', route);
   }
 
@@ -1665,7 +1475,6 @@ function bindControls() {
       } else {
         selectedNetworkFilters.delete(proto);
       }
-      lastQuickFilterSignature = '';
       renderControls();
       renderConnections();
     };
@@ -1674,7 +1483,6 @@ function bindControls() {
   if (searchInput) {
     searchInput.oninput = () => {
       searchQuery = searchInput.value;
-      lastQuickFilterSignature = '';
       renderControls();
       renderConnections();
     };
@@ -1699,14 +1507,13 @@ function bindControls() {
       const routeBadge = target?.closest<HTMLElement>('[data-filter-route]');
       if (routeBadge) {
         const routeValue = routeBadge.getAttribute('data-filter-route') || '';
-        if (routeValue) {
+        if (routeValue && !isExcludedRoutingName(routeValue)) {
           if (selectedRouteFilters.has(routeValue)) {
             selectedRouteFilters.delete(routeValue);
           } else {
             selectedRouteFilters.add(routeValue);
           }
           lastRouteFilterSignature = '';
-          lastQuickFilterSignature = '';
           renderControls();
           renderConnections();
           return;
@@ -1724,7 +1531,6 @@ function bindControls() {
           } else {
             selectedNetworkFilters.add(netValue);
           }
-          lastQuickFilterSignature = '';
           renderControls();
           renderConnections();
         }
@@ -1966,7 +1772,6 @@ function resetMonitoringState() {
   searchQuery = '';
   lastDeviceFilterSignature = '';
   lastRouteFilterSignature = '';
-  lastQuickFilterSignature = '';
   loading = true;
   failed = false;
   closingAll = false;

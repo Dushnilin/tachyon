@@ -2186,7 +2186,7 @@ function run_doctor_checks_impl(repair) {
         if (src.enabled == "0")
             continue;
         if (lc(trim(as_string(src.source_type || "subscription"))) == "subscription") {
-            let src_u = trim(as_string(src.url || ""));
+            let src_u = connections.outbound_source_subscription_url(src);
             if (src_u != "" && index(active_sub_urls, src_u) < 0)
                 push(active_sub_urls, src_u);
         }

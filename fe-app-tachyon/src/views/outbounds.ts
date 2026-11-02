@@ -311,8 +311,11 @@ function loadGlobalPoolChoices() {
       const stype = String(src.source_type || 'subscription').toLowerCase();
       if (DPI_SOURCE_TYPES.has(stype)) return;
 
-      if (stype === 'subscription' && src.url) {
-        const u = String(src.url).trim();
+      if (stype === 'subscription') {
+        const rawUrl = String(src.url || '').trim();
+        const fallbackName = String(src.name || '').trim();
+        const u =
+          rawUrl || (/^https?:\/\//i.test(fallbackName) ? fallbackName : '');
         if (u) {
           if (!urlToSources.has(u)) urlToSources.set(u, []);
           urlToSources.get(u).push({ sid, prefix: pfx });
@@ -2726,6 +2729,17 @@ function configureOutboundsSection(sectionRef) {
       if (!last.name) {
         uci.set(UCI_PACKAGE, sid, 'name', sid);
       }
+      const nm = String(
+        last.name || uci.get(UCI_PACKAGE, sid, 'name') || '',
+      ).trim();
+      const st = String(
+        last.source_type ||
+          uci.get(UCI_PACKAGE, sid, 'source_type') ||
+          'subscription',
+      ).toLowerCase();
+      if (st === 'subscription' && !last.url && /^https?:\/\//i.test(nm)) {
+        uci.set(UCI_PACKAGE, sid, 'url', nm);
+      }
     }
     return res;
   };
@@ -3174,6 +3188,17 @@ function createOutboundsContent(section) {
   o.modalonly = true;
   o.placeholder = 'https://example.com/sub';
   o.depends('source_type', 'subscription');
+  o.cfgvalue = function (section_id: string) {
+    const val = uci.get('tachyon', section_id, 'url');
+    if (val) return val;
+    const st = uci.get('tachyon', section_id, 'source_type') || 'subscription';
+    const nm = String(uci.get('tachyon', section_id, 'name') || '').trim();
+    if (st === 'subscription' && /^https?:\/\//i.test(nm)) {
+      uci.set('tachyon', section_id, 'url', nm);
+      return nm;
+    }
+    return '';
+  };
 
   o = section.taboption(
     'general',

@@ -128,6 +128,60 @@ export function setRouteDisplayNames(
   routeSections = sections;
 }
 
+export function isExcludedRoutingName(name: string, action = ''): boolean {
+  const lower = normalizeString(name).toLowerCase();
+  const act = normalizeString(action).toLowerCase();
+  if (!lower || lower === '-') return true;
+  if (act === 'connection') {
+    return false;
+  }
+  if (
+    !act &&
+    routeSections.some(
+      (s) =>
+        s.displayName.toLowerCase() === lower ||
+        s.sectionName.toLowerCase() === lower,
+    )
+  ) {
+    return false;
+  }
+  if (
+    act === 'zapret' ||
+    act === 'zapret2' ||
+    act === 'byedpi' ||
+    act === 'desync' ||
+    act === 'wdtt' ||
+    act === 'olcrtc' ||
+    lower.includes('zapret') ||
+    lower.includes('byedpi') ||
+    lower.includes('desync') ||
+    lower.includes('wdtt') ||
+    lower.includes('olcrtc')
+  ) {
+    return false;
+  }
+  return (
+    act === 'block' ||
+    act === 'reject' ||
+    act === 'bypass' ||
+    act === 'direct' ||
+    act === 'dns' ||
+    lower === 'block' ||
+    lower === 'reject' ||
+    lower === 'bypass' ||
+    lower === 'direct' ||
+    lower === 'dns' ||
+    lower === 'wan' ||
+    lower.includes('failover') ||
+    lower.includes('block') ||
+    lower.includes('reject') ||
+    lower.includes('bypass') ||
+    lower.includes('direct') ||
+    lower.includes('dns') ||
+    lower.includes('wan')
+  );
+}
+
 export function buildRouteDisplayNames(sections: Tachyon.ConfigSection[]): {
   routeDisplayNames: Record<string, string>;
   serverDisplayNames: Record<string, string>;
@@ -211,40 +265,14 @@ export function buildRouteDisplayNames(sections: Tachyon.ConfigSection[]): {
       const typeFilter = getDashboardSectionTypeFilter();
       let isCategoryAllowed = true;
       if (isDpiSection) {
-        isCategoryAllowed = Boolean(typeFilter.dpi);
+        isCategoryAllowed = typeFilter.dpi !== false;
       } else if (
-        action === 'block' ||
-        action === 'reject' ||
-        lowerName.includes('block') ||
-        lowerDisplayName.includes('block') ||
-        lowerName.includes('reject') ||
-        lowerDisplayName.includes('reject')
-      ) {
-        isCategoryAllowed = Boolean(typeFilter.block);
-      } else if (
-        action === 'bypass' ||
-        action === 'direct' ||
-        lowerName.includes('bypass') ||
-        lowerDisplayName.includes('bypass') ||
-        lowerName.includes('direct') ||
-        lowerDisplayName.includes('direct') ||
-        lowerName.includes('wan') ||
-        lowerDisplayName.includes('wan')
-      ) {
-        isCategoryAllowed = Boolean(typeFilter.direct);
-      } else if (
-        action === 'dns' ||
-        lowerName.includes('dns') ||
-        lowerDisplayName.includes('dns')
-      ) {
-        isCategoryAllowed = Boolean(typeFilter.dns);
-      } else if (
-        lowerName.includes('failover') ||
-        lowerDisplayName.includes('failover')
+        isExcludedRoutingName(sectionName, action) ||
+        isExcludedRoutingName(displayName, action)
       ) {
         isCategoryAllowed = false;
       } else {
-        isCategoryAllowed = Boolean(typeFilter.proxy);
+        isCategoryAllowed = typeFilter.proxy !== false;
       }
 
       if (isCategoryAllowed) {

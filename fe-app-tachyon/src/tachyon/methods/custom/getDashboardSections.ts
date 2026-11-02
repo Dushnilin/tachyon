@@ -419,12 +419,19 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
         }
       }
       if (stype === 'subscription' || src.url) {
-        const u = (src.url || '').trim();
+        const rawSubName = (src.name || '').trim();
+        const u = (
+          src.url ||
+          (stype === 'subscription' && /^https?:\/\//i.test(rawSubName)
+            ? rawSubName
+            : '') ||
+          ''
+        ).trim();
         if (u) {
           if (/^https?:\/\//i.test(u)) {
             if (!seenSubUrls.has(u)) {
               seenSubUrls.add(u);
-              subscriptionUrlItems.push(src);
+              subscriptionUrlItems.push({ ...src, url: u });
             }
           } else {
             pushSourceLink(

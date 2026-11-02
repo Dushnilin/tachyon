@@ -1,3 +1,5 @@
+import { renderChevronDownIcon } from '../../../icons';
+
 export function render() {
   return E(
     'div',
@@ -59,7 +61,7 @@ export function render() {
                       {
                         class: 'tachyon_monitoring-page__multiselect-caret',
                       },
-                      '▾',
+                      [renderChevronDownIcon(12)],
                     ),
                   ],
                 ),
@@ -103,7 +105,7 @@ export function render() {
                       {
                         class: 'tachyon_monitoring-page__multiselect-caret',
                       },
-                      '▾',
+                      [renderChevronDownIcon(12)],
                     ),
                   ],
                 ),
@@ -183,15 +185,6 @@ export function render() {
             ),
           ]),
         ]),
-        E(
-          'div',
-          {
-            id: 'monitoring-quick-filters',
-            class: 'tachyon_monitoring-page__quick-bar',
-            hidden: true,
-          },
-          [],
-        ),
         E(
           'div',
           {

@@ -1528,52 +1528,79 @@ body.dark-theme .tachyon_proto-popover__desc {
     display: block !important;
 }
 
-.tachyon-nodes-view-switch {
+.tachyon-nodes-view-switch,
+.tachyon-sec-accordion__tabs {
     display: inline-flex;
     align-items: center;
-    gap: 2px;
-    height: 28px;
-    padding: 2px;
-    border-radius: 7px;
-    background: var(--background-color-low, rgba(128, 128, 128, 0.1));
-    border: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.22));
+    gap: 3px;
+    height: 30px;
+    padding: 3px;
+    border-radius: 8px;
+    background: var(--background-color-low, rgba(148, 163, 184, 0.08));
+    border: 1px solid var(--border-color-low, rgba(148, 163, 184, 0.22));
     box-sizing: border-box;
+    flex-shrink: 0;
 }
 
 .tachyon_dashboard-page .btn.tachyon-nodes-view-switch__btn,
 .tachyon-section-inspector-modal .btn.tachyon-nodes-view-switch__btn,
-.tachyon-nodes-view-switch__btn {
+.tachyon-nodes-view-switch__btn,
+.tachyon_dashboard-page .btn.tachyon-sec-accordion__tab-btn,
+.tachyon-section-inspector-modal .btn.tachyon-sec-accordion__tab-btn,
+.tachyon-sec-accordion__tab-btn {
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
     gap: 5px !important;
     height: 22px !important;
     min-height: 22px !important;
-    padding: 0 9px !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    padding: 0 10px !important;
     margin: 0 !important;
-    border: none !important;
-    border-radius: 5px !important;
+    border: 1px solid transparent !important;
+    border-radius: 6px !important;
     background: transparent !important;
-    color: inherit !important;
-    font-size: 11.5px !important;
+    color: var(--text-color-medium, inherit) !important;
+    font-size: 12px !important;
     font-weight: 600 !important;
     cursor: pointer;
-    opacity: 0.72;
+    opacity: 0.82;
     line-height: 1 !important;
     box-shadow: none !important;
     white-space: nowrap !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+}
+
+.tachyon_dashboard-page .btn.tachyon-nodes-view-switch__btn:hover:not(.is-active),
+.tachyon-section-inspector-modal .btn.tachyon-nodes-view-switch__btn:hover:not(.is-active),
+.tachyon-nodes-view-switch__btn:hover:not(.is-active),
+.tachyon_dashboard-page .btn.tachyon-sec-accordion__tab-btn:hover:not(.is-active),
+.tachyon-section-inspector-modal .btn.tachyon-sec-accordion__tab-btn:hover:not(.is-active),
+.tachyon-sec-accordion__tab-btn:hover:not(.is-active) {
+    background: rgba(148, 163, 184, 0.12) !important;
+    color: var(--text-color-high, inherit) !important;
+    opacity: 1;
 }
 
 .tachyon_dashboard-page .btn.tachyon-nodes-view-switch__btn.is-active,
 .tachyon-section-inspector-modal .btn.tachyon-nodes-view-switch__btn.is-active,
-.tachyon-nodes-view-switch__btn.is-active {
-    background: rgba(148, 130, 224, 0.2) !important;
-    color: #b4a5f0 !important;
+.tachyon-nodes-view-switch__btn.is-active,
+.tachyon_dashboard-page .btn.tachyon-sec-accordion__tab-btn.is-active,
+.tachyon-section-inspector-modal .btn.tachyon-sec-accordion__tab-btn.is-active,
+.tachyon-sec-accordion__tab-btn.is-active {
+    background: rgba(148, 130, 224, 0.22) !important;
+    border-color: rgba(148, 130, 224, 0.38) !important;
+    color: #c4b5fd !important;
     opacity: 1;
     font-weight: 700 !important;
 }
 
-.tachyon-nodes-view-switch__btn svg {
+.tachyon-nodes-view-switch__btn svg,
+.tachyon-sec-accordion__tab-btn svg {
     width: 12px;
     height: 12px;
     flex-shrink: 0;
@@ -3052,13 +3079,13 @@ body.dark-theme .tachyon_proto-popover__desc {
     align-items: center !important;
     justify-content: center !important;
     gap: 6px !important;
-    height: 28px !important;
-    min-height: 28px !important;
+    height: 30px !important;
+    min-height: 30px !important;
     width: auto !important;
     min-width: 0 !important;
     padding: 0 11px !important;
     margin: 0 !important;
-    border-radius: 7px !important;
+    border-radius: 8px !important;
     font-size: 12px !important;
     font-weight: 600 !important;
     line-height: 1 !important;

@@ -317,6 +317,33 @@ function cache_keep_sets(sections) {
         }
     }
 
+    for (let src in array_or_empty(uci_core.sections(CONFIG_NAME, "outbound_source"))) {
+        src = object_or_empty(src);
+        let src_id = as_string(src[".name"] || "");
+        let src_url = connections.outbound_source_subscription_url(src);
+        if (src_id == "" || src_url == "" || !match(lc(src_url), /^https?:\/\//))
+            continue;
+        let pool_name = "Pool_" + src_id;
+        if (cache_section_is_safe(pool_name)) {
+            keep.sections = append_word_once(keep.sections, pool_name);
+            keep.all = append_word_once(keep.all, pool_name);
+            let pool_source = source_id(pool_name, 1);
+            if (cache_section_is_safe(pool_source)) {
+                keep.sources = append_word_once(keep.sources, pool_source);
+                keep.all = append_word_once(keep.all, pool_source);
+            }
+        }
+        if (cache_section_is_safe(src_id)) {
+            keep.sections = append_word_once(keep.sections, src_id);
+            keep.all = append_word_once(keep.all, src_id);
+            let direct_source = source_id(src_id, 1);
+            if (cache_section_is_safe(direct_source)) {
+                keep.sources = append_word_once(keep.sources, direct_source);
+                keep.all = append_word_once(keep.all, direct_source);
+            }
+        }
+    }
+
     return keep;
 }
 
@@ -466,8 +493,14 @@ function user_agent_supported(user_agent, default_user_agent) {
         return true;
     if (index(user_agent, "sing-box") == 0 || index(user_agent, "tachyon") == 0)
         return true;
+    if (auto_user_agents[user_agent] == true)
+        return true;
+    for (let profile in auto_user_agent_profiles) {
+        if (index(user_agent, profile + "/") == 0)
+            return true;
+    }
 
-    return auto_user_agents[user_agent] == true;
+    return false;
 }
 
 function user_agent_matches_config(configured_user_agent, cached_user_agent, default_user_agent) {
@@ -961,6 +994,19 @@ function find_section(sections, name) {
         section = object_or_empty(section);
         if (section_name(section) == name)
             return section;
+    }
+    if (substr(name, 0, 5) == "Pool_") {
+        let src_id = substr(name, 5);
+        let src_obj = uci_section(src_id);
+        if (as_string(src_obj[".type"]) == "outbound_source") {
+            return {
+                ".name": name,
+                "enabled": as_string(src_obj.enabled || "1"),
+                "action": "connection",
+                "proxy_config_type": "subscription",
+                "outbound_source_refs": [ src_id ]
+            };
+        }
     }
     return {};
 }
@@ -2056,6 +2102,8 @@ function try_fetch_subscription_with_core(
 ) {
     if (type(parser.core_subscription_cli_supported) != "function" || !parser.core_subscription_cli_supported())
         return -1;
+    if (subscription_device_headers_signature != "")
+        return -1;
 
     let core_bin = as_string(getenv("TACHYON_CORE_BIN") || "/usr/bin/tachyon-core");
     let full_tmpfile = temp_path(TMP_SUBSCRIPTION_FOLDER, cache_section, "core-full");
@@ -2695,7 +2743,7 @@ function subscription_update_request(force_value, target_section_name, target_so
 
         let src_obj = uci_section(target_section_name);
         if (as_string(src_obj[".type"]) == "outbound_source") {
-            let src_url = trim(as_string(src_obj.url || ""));
+            let src_url = connections.outbound_source_subscription_url(src_obj);
             let matched_any_section = false;
             if (src_url != "") {
                 for (let sec in sections) {
@@ -2714,7 +2762,7 @@ function subscription_update_request(force_value, target_section_name, target_so
                 let pool_sec = {
                     ".name": "Pool_" + target_section_name,
                     "enabled": "1",
-                    "action": "connections",
+                    "action": "connection",
                     "proxy_config_type": "subscription",
                     "outbound_source_refs": [ target_section_name ]
                 };
@@ -2740,7 +2788,7 @@ function subscription_update_request(force_value, target_section_name, target_so
         src = object_or_empty(src);
         let src_id = as_string(src[".name"] || "");
         let stype = lc(trim(as_string(src.source_type || "subscription")));
-        let src_url = trim(as_string(src.url || ""));
+        let src_url = connections.outbound_source_subscription_url(src);
         if (src_id == "" || as_string(src.enabled || "1") == "0")
             continue;
         if ((stype == "subscription" || src_url != "") && match(lc(src_url), /^https?:\/\//) && covered_urls[src_url] !== true) {
@@ -2748,7 +2796,7 @@ function subscription_update_request(force_value, target_section_name, target_so
             let pool_sec = {
                 ".name": "Pool_" + src_id,
                 "enabled": "1",
-                "action": "connections",
+                "action": "connection",
                 "proxy_config_type": "subscription",
                 "outbound_source_refs": [ src_id ]
             };

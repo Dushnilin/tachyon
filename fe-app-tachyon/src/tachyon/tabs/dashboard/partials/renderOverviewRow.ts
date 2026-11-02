@@ -2501,15 +2501,13 @@ export function renderDashboardSectionsAndNodes(
 
     switch (category) {
       case 'proxy':
-        return Boolean(typeFilter.proxy);
+        return typeFilter.proxy !== false;
       case 'dpi':
-        return Boolean(typeFilter.dpi);
+        return typeFilter.dpi !== false;
       case 'dns':
-        return Boolean(typeFilter.dns);
       case 'direct':
-        return Boolean(typeFilter.direct);
       case 'block':
-        return Boolean(typeFilter.block);
+        return false;
       default:
         return true;
     }

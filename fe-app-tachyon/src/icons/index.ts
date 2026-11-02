@@ -1264,3 +1264,36 @@ export function renderGemIcon(size = 14, className = '') {
     { width: size, height: size },
   );
 }
+
+export function renderRefreshCwIcon(size = 14, className = '') {
+  return createIcon(
+    `lucide lucide-refresh-cw-icon lucide-refresh-cw ${className}`.trim(),
+    [
+      svgEl('path', {
+        d: 'M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8',
+      }),
+      svgEl('path', { d: 'M21 3v5h-5' }),
+      svgEl('path', {
+        d: 'M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16',
+      }),
+      svgEl('path', { d: 'M8 16H3v5' }),
+    ],
+    { width: size, height: size },
+  );
+}
+
+export function renderChevronDownIcon(size = 14, className = '') {
+  return createIcon(
+    `lucide lucide-chevron-down-icon lucide-chevron-down ${className}`.trim(),
+    [svgEl('path', { d: 'm6 9 6 6 6-6' })],
+    { width: size, height: size },
+  );
+}
+
+export function renderChevronUpIcon(size = 14, className = '') {
+  return createIcon(
+    `lucide lucide-chevron-up-icon lucide-chevron-up ${className}`.trim(),
+    [svgEl('path', { d: 'm18 15-6-6-6 6' })],
+    { width: size, height: size },
+  );
+}

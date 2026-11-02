@@ -440,7 +440,7 @@ body.dark .tachyon-wizard {
     width: min(94vw, 680px) !important;
     max-width: min(94vw, 680px) !important;
     box-sizing: border-box;
-    margin: 10px auto;
+    margin: 12px auto 24px auto !important;
 }
 
 /* Compact modals: UrlTest details, priority info, icon picker */
@@ -449,7 +449,7 @@ body.dark .tachyon-wizard {
     width: min(94vw, 600px) !important;
     max-width: min(94vw, 600px) !important;
     box-sizing: border-box;
-    margin: 10px auto;
+    margin: 12px auto 24px auto !important;
 }
 
 /* Medium modals: Support, Service check, DNS benchmark, Updates, AI Chat, Server info */
@@ -472,7 +472,7 @@ body.dark .tachyon-wizard {
     width: min(94vw, 760px) !important;
     max-width: min(94vw, 760px) !important;
     box-sizing: border-box;
-    margin: 10px auto;
+    margin: 12px auto 24px auto !important;
 }
 
 .modal .fkp-server-info-modal,
@@ -497,7 +497,7 @@ body.dark .tachyon-wizard {
     width: min(96vw, 920px) !important;
     max-width: min(96vw, 920px) !important;
     box-sizing: border-box;
-    margin: 10px auto;
+    margin: 12px auto 24px auto !important;
 }
 
 .tachyon-leak-check-modal .cbi-section-table th,
@@ -3965,17 +3965,19 @@ body[data-tachyon-ui-mode="simple"] .cbi-modal .cbi-tabmenu > li[data-tab="advan
    ========================================================================== */
 
 #modal_overlay {
+    z-index: 10000 !important;
     background: rgba(8, 13, 24, 0.62) !important;
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
-    padding: 0 14px 24px 14px !important;
-    scroll-padding-top: 0 !important;
+    padding: 64px 14px 24px 14px !important;
+    scroll-padding-top: 64px !important;
     box-sizing: border-box;
 }
 
 @media (max-width: 680px) {
     #modal_overlay {
-        padding: 0 8px 16px 8px !important;
+        padding: 48px 8px 16px 8px !important;
+        scroll-padding-top: 48px !important;
     }
 }
 
@@ -3988,7 +3990,7 @@ body[data-tachyon-ui-mode="simple"] .cbi-modal .cbi-tabmenu > li[data-tab="advan
     border-radius: 14px !important;
     box-shadow: 0 20px 48px rgba(0, 0, 0, 0.34), 0 4px 14px rgba(139, 92, 246, 0.12) !important;
     padding: 14px 16px !important;
-    margin: 28px auto 24px auto !important;
+    margin: 12px auto 24px auto !important;
     max-width: min(680px, 94vw) !important;
     width: 100% !important;
     box-sizing: border-box !important;

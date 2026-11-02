@@ -1649,9 +1649,9 @@ function add_subscription_source_with_state(config, section, source_index, sourc
         let resolved_source_section = "";
         for (let src in connections.outbound_source_sections()) {
             let sname = as_string(src[".name"] || "");
-            if (sname == "" || as_string(src.url || "") != source_entry)
+            if (sname == "" || connections.outbound_source_subscription_url(src) != source_entry)
                 continue;
-            for (let cand in [ runtime_subscription.source_id(sname, 1), sname ]) {
+            for (let cand in [ runtime_subscription.source_id("Pool_" + sname, 1), "Pool_" + sname, runtime_subscription.source_id(sname, 1), sname ]) {
                 if (runtime_subscription.source_cache_is_current(cand, source_entry, ua, hwid, hdr_sig)) {
                     resolved_source_section = cand;
                     break;
@@ -2271,7 +2271,7 @@ function apply_section_packet_encoding_to_connection_outbounds(config, start_ind
             } else if (encoding == "xudp" || encoding == "packetaddr") {
                 outbound.packet_encoding = encoding;
             }
-        } else if (outbound_type == "shadowsocks") {
+        } else if (outbound_type == "shadowsocks" || outbound_type == "naive") {
             if (encoding == "xudp" || encoding == "packetaddr" || encoding == "1" || encoding == "true") {
                 outbound.udp_over_tcp = true;
             } else if (encoding == "disabled" || encoding == "none" || encoding == "off" || encoding == "0") {
@@ -3064,7 +3064,7 @@ function add_naive_outbound(config, section) {
     let conc = int_option(section, "naive_insecure_concurrency", "0");
     if (conc > 0)
         outbound.insecure_concurrency = conc;
-    if (bool_option(section, "naive_uot", false))
+    if (bool_option(section, "naive_udp_over_tcp", bool_option(section, "naive_uot", false)))
         outbound.udp_over_tcp = true;
     let raw_headers = trim(option(section, "naive_extra_headers", ""));
     if (raw_headers != "") {

@@ -44,6 +44,9 @@ import {
   renderActivityIcon,
   renderAlertTriangleIcon,
   renderCommunityListServiceIcon,
+  renderRefreshCwIcon,
+  renderChevronDownIcon,
+  renderChevronUpIcon,
 } from '../icons';
 
 const UCI_PACKAGE = 'tachyon';
@@ -997,6 +1000,13 @@ function openStudioCreateModal(
         uci.set(UCI_PACKAGE, uciId, 'label', rawName);
       } else {
         uci.set(UCI_PACKAGE, uciId, 'name', rawName);
+        if (
+          type === 'outbound_source' &&
+          selectedTemplate.id === 'subscription' &&
+          /^https?:\/\//i.test(rawName)
+        ) {
+          uci.set(UCI_PACKAGE, uciId, 'url', rawName);
+        }
       }
 
       Object.entries(selectedTemplate.defaults || {}).forEach(([k, v]) => {
@@ -1325,7 +1335,10 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
   const populateSubCacheFromSectionCaches = (): Promise<void> => {
     const subSources = (
       uci.sections(UCI_PACKAGE, 'outbound_source') || []
-    ).filter((s: any) => s && (s.type || 'subscription') === 'subscription');
+    ).filter(
+      (s: any) =>
+        s && (s.source_type || s.type || 'subscription') === 'subscription',
+    );
     if (subSources.length === 0) return Promise.resolve();
 
     const secObjs = uci.sections(UCI_PACKAGE, 'section') || [];
@@ -1357,7 +1370,10 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
       const singleSub = subSources.length === 1 ? subSources[0] : null;
       subSources.forEach((src: any) => {
         const sid = String(src['.name'] || '');
-        const subUrl = String(src.url || '').trim();
+        const rawSubName = String(src.name || '').trim();
+        const subUrl = String(
+          src.url || (/^https?:\/\//i.test(rawSubName) ? rawSubName : ''),
+        ).trim();
         if (subUrl && (subCacheByUrl.get(subUrl)?.servers.length || 0) > 0) {
           return;
         }
@@ -1370,16 +1386,51 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
         let foundMeta: SubCacheEntryInfo['metadata'] = undefined;
 
         validCaches.forEach((c: any) => {
+          const meta =
+            c.outboundMetadata && typeof c.outboundMetadata === 'object'
+              ? c.outboundMetadata
+              : {};
           const namesObj =
-            c.names && typeof c.names === 'object' ? c.names : {};
+            (meta.names && typeof meta.names === 'object'
+              ? meta.names
+              : c.names && typeof c.names === 'object'
+                ? c.names
+                : {}) || {};
+          const protocolsObj =
+            (meta.protocols && typeof meta.protocols === 'object'
+              ? meta.protocols
+              : c.types && typeof c.types === 'object'
+                ? c.types
+                : {}) || {};
+          const transportsObj =
+            meta.transports && typeof meta.transports === 'object'
+              ? meta.transports
+              : {};
+          const prefixesObj =
+            meta.prefixes && typeof meta.prefixes === 'object'
+              ? meta.prefixes
+              : {};
+          const sourceIdsObj =
+            meta.source_ids && typeof meta.source_ids === 'object'
+              ? meta.source_ids
+              : {};
           const linksObj =
             c.links && typeof c.links === 'object' ? c.links : {};
-          const typesObj =
-            c.types && typeof c.types === 'object' ? c.types : {};
-          const outboundsArr = Array.isArray(c.outbounds) ? c.outbounds : [];
-          const subInfos = Array.isArray(c.subscriptionInfos)
-            ? c.subscriptionInfos
-            : [];
+          const outboundsArr = Array.from(
+            new Set([
+              ...Object.keys(namesObj),
+              ...(Array.isArray(c.urltestCandidateTags)
+                ? c.urltestCandidateTags
+                : []),
+              ...(Array.isArray(c.outbounds) ? c.outbounds : []),
+            ]),
+          );
+          const subInfos = [
+            ...(Array.isArray(c.subscriptionMetadata)
+              ? c.subscriptionMetadata
+              : []),
+            ...(Array.isArray(c.subscriptionInfos) ? c.subscriptionInfos : []),
+          ];
 
           subInfos.forEach((si: any) => {
             if (!si || typeof si !== 'object') return;
@@ -1415,7 +1466,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
             }
             const rawName = String(namesObj[cStr] || cStr).trim();
             const link = String(linksObj[cStr] || '').trim();
-            const rawType = String(typesObj[cStr] || '').toUpperCase();
+            const rawType = String(protocolsObj[cStr] || '').toUpperCase();
             if (
               rawType === 'URLTEST' ||
               rawType === 'SELECTOR' ||
@@ -1425,9 +1476,19 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
               return;
             }
 
+            const codeSourceId = String(sourceIdsObj[cStr] || '').trim();
+            const codePrefix = String(prefixesObj[cStr] || '').trim();
             let matches = false;
             let cleanName = rawName;
-            if (prefix) {
+            if (codeSourceId && codeSourceId === sid) {
+              matches = true;
+            } else if (
+              prefix &&
+              codePrefix &&
+              codePrefix.toLowerCase() === prefix.toLowerCase()
+            ) {
+              matches = true;
+            } else if (prefix) {
               if (rawName.startsWith(`${prefix}: `)) {
                 matches = true;
                 cleanName = rawName.slice(prefix.length + 2).trim();
@@ -1435,7 +1496,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                 matches = true;
                 cleanName = rawName.slice(prefix.length + 1).trim();
               }
-            } else if (singleSub) {
+            } else if (singleSub && !codeSourceId) {
               matches = true;
             }
 
@@ -1445,9 +1506,11 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                 (link.includes('://')
                   ? link.split('://')[0].toUpperCase()
                   : 'PROXY');
-              const trans = link.includes('://')
-                ? (getProxyUrlTransport(link) || 'TCP').toUpperCase()
-                : '';
+              const trans =
+                String(transportsObj[cStr] || '').toUpperCase() ||
+                (link.includes('://')
+                  ? (getProxyUrlTransport(link) || 'TCP').toUpperCase()
+                  : '');
               serverMap.set(cleanName, {
                 name: cleanName,
                 proto,
@@ -2579,7 +2642,13 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
             }))
         : [];
 
-      const subUrl = String(raw.url || '').trim();
+      const rawSubName = String(raw.name || '').trim();
+      const subUrl = String(
+        raw.url ||
+          (stype === 'subscription' && /^https?:\/\//i.test(rawSubName)
+            ? rawSubName
+            : ''),
+      ).trim();
       const resolveSubscriptionCache = (): SubCacheEntryInfo | undefined => {
         if (stype !== 'subscription') return undefined;
         const fromUrl = subUrl ? subCacheByUrl.get(subUrl) : undefined;
@@ -2604,7 +2673,9 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
           const allSubCount = (
             uci.sections(UCI_PACKAGE, 'outbound_source') || []
           ).filter(
-            (s: any) => s && (s.type || 'subscription') === 'subscription',
+            (s: any) =>
+              s &&
+              (s.source_type || s.type || 'subscription') === 'subscription',
           ).length;
           const singleSub = allSubCount === 1;
           const srvMap = new Map<string, SubCacheServerItem>();
@@ -2861,7 +2932,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
 
       let paramSummary = '';
       if (stype === 'subscription') {
-        const u = String(raw.url || '');
+        const u = subUrl;
         const shortU =
           u.length > 52
             ? `${u.slice(0, 34)}…${u.slice(-12)}`
@@ -3227,9 +3298,10 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
           type: 'button',
           class: 'tachyon-studio-action-btn',
           title: tr('Развернуть детали и серверы', 'Toggle details & servers'),
-          style: 'padding: 4px 8px; font-size: 12px;',
+          style:
+            'padding: 4px 8px; font-size: 12px; display: inline-flex; align-items: center; justify-content: center;',
         },
-        isExpanded ? '▴' : '▾',
+        [isExpanded ? renderChevronUpIcon(12) : renderChevronDownIcon(12)],
       );
       const toggleInspector = (ev: MouseEvent) => {
         const target = ev.target as HTMLElement | null;
@@ -3251,7 +3323,10 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
         if (isExpanded) expandedSourceIds.add(sid);
         else expandedSourceIds.delete(sid);
         card.classList.toggle('is-expanded', isExpanded);
-        chevronEl.textContent = isExpanded ? '▴' : '▾';
+        chevronEl.innerHTML = '';
+        chevronEl.appendChild(
+          isExpanded ? renderChevronUpIcon(12) : renderChevronDownIcon(12),
+        );
         if (
           prevTop !== null &&
           card &&
@@ -3305,12 +3380,13 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                 },
               },
               [
+                renderRefreshCwIcon(12),
                 E(
                   'span',
                   {},
                   isSubUpdating
-                    ? tr('↻ Обновление...', '↻ Updating...')
-                    : tr('↻ Обновить', '↻ Update'),
+                    ? tr('Обновление...', 'Updating...')
+                    : tr('Обновить', 'Update'),
                 ),
               ],
             )

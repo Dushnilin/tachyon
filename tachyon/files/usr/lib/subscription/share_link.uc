@@ -445,6 +445,8 @@ function serialize_naive(outbound) {
         add_query(params, "quic_congestion_control", outbound.quic_congestion_control);
     if (outbound.insecure_concurrency != null)
         add_query(params, "insecure_concurrency", outbound.insecure_concurrency);
+    if (outbound.udp_over_tcp === true || (type(outbound.udp_over_tcp) == "object" && outbound.udp_over_tcp.enabled === true))
+        add_query(params, "uot", "1");
     return scheme + "://" + auth + host_port(outbound.server, outbound.server_port) + query_string(params) + fragment(outbound);
 }
 

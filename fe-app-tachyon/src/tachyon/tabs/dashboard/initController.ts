@@ -22,6 +22,7 @@ import {
   renderLayoutGridIcon,
   renderListIcon,
   renderLoaderCircleIcon24,
+  renderRefreshCwIcon,
   renderSettingsIcon,
   renderXIcon,
   renderZapIcon,
@@ -2464,50 +2465,36 @@ function renderSectionInspectorModalContent(
         )
       : null;
 
-  const tabsBar = E('ul', { class: 'cbi-tabmenu tachyon-sec-modal-tabs' }, [
+  const tabsBar = E('div', { class: 'tachyon-sec-accordion__tabs' }, [
     E(
-      'li',
+      'button',
       {
-        class:
-          activeSectionModalTab === 'nodes' ? 'cbi-tab' : 'cbi-tab-disabled',
+        type: 'button',
+        class: `btn cbi-button tachyon-sec-accordion__tab-btn ${
+          activeSectionModalTab === 'nodes' ? 'is-active' : ''
+        }`,
+        click: (e: MouseEvent) => {
+          e.preventDefault();
+          activeSectionModalTab = 'nodes';
+          openSectionInspectorModal(section.code);
+        },
       },
-      [
-        E(
-          'a',
-          {
-            href: '#',
-            click: (e: MouseEvent) => {
-              e.preventDefault();
-              activeSectionModalTab = 'nodes';
-              openSectionInspectorModal(section.code);
-            },
-          },
-          tr('Узлы и балансировщики', 'Nodes & Balancers'),
-        ),
-      ],
+      [E('span', {}, tr('Узлы и балансировщики', 'Nodes & Balancers'))],
     ),
     E(
-      'li',
+      'button',
       {
-        class:
-          activeSectionModalTab === 'conditions'
-            ? 'cbi-tab'
-            : 'cbi-tab-disabled',
+        type: 'button',
+        class: `btn cbi-button tachyon-sec-accordion__tab-btn ${
+          activeSectionModalTab === 'conditions' ? 'is-active' : ''
+        }`,
+        click: (e: MouseEvent) => {
+          e.preventDefault();
+          activeSectionModalTab = 'conditions';
+          openSectionInspectorModal(section.code);
+        },
       },
-      [
-        E(
-          'a',
-          {
-            href: '#',
-            click: (e: MouseEvent) => {
-              e.preventDefault();
-              activeSectionModalTab = 'conditions';
-              openSectionInspectorModal(section.code);
-            },
-          },
-          tr('Условия и правила', 'Conditions & Rules'),
-        ),
-      ],
+      [E('span', {}, tr('Условия и правила', 'Conditions & Rules'))],
     ),
   ]);
 
@@ -2589,7 +2576,10 @@ function renderSectionInspectorModalContent(
           },
           isSubUpdating
             ? [renderLoaderCircleIcon24(), E('span', {}, _('Updating...'))]
-            : [E('span', {}, '↻'), E('span', {}, _('Update subscriptions'))],
+            : [
+                renderRefreshCwIcon(13),
+                E('span', {}, _('Update subscriptions')),
+              ],
         ),
       );
     }
@@ -2943,7 +2933,10 @@ function renderSectionAccordionBody(
             },
             isSubUpdating
               ? [renderLoaderCircleIcon24(), E('span', {}, _('Updating...'))]
-              : [E('span', {}, '↻'), E('span', {}, _('Update subscriptions'))],
+              : [
+                  renderRefreshCwIcon(13),
+                  E('span', {}, _('Update subscriptions')),
+                ],
           ),
         ]
       : []),
@@ -3011,46 +3004,36 @@ function renderSectionAccordionBody(
   ];
 
   const tabsBar = E('div', { class: 'tachyon-sec-accordion__header' }, [
-    E('ul', { class: 'cbi-tabmenu tachyon-sec-modal-tabs' }, [
+    E('div', { class: 'tachyon-sec-accordion__tabs' }, [
       E(
-        'li',
+        'button',
         {
-          class: currentTab === 'nodes' ? 'cbi-tab' : 'cbi-tab-disabled',
+          type: 'button',
+          class: `btn cbi-button tachyon-sec-accordion__tab-btn ${
+            currentTab === 'nodes' ? 'is-active' : ''
+          }`,
+          click: (e: MouseEvent) => {
+            e.preventDefault();
+            sectionAccordionTabs.set(secKey, 'nodes');
+            void renderSectionsWidget(true);
+          },
         },
-        [
-          E(
-            'a',
-            {
-              href: '#',
-              click: (e: MouseEvent) => {
-                e.preventDefault();
-                sectionAccordionTabs.set(secKey, 'nodes');
-                void renderSectionsWidget(true);
-              },
-            },
-            tr('Узлы и балансировщики', 'Nodes & Balancers'),
-          ),
-        ],
+        [E('span', {}, tr('Узлы и балансировщики', 'Nodes & Balancers'))],
       ),
       E(
-        'li',
+        'button',
         {
-          class: currentTab === 'conditions' ? 'cbi-tab' : 'cbi-tab-disabled',
+          type: 'button',
+          class: `btn cbi-button tachyon-sec-accordion__tab-btn ${
+            currentTab === 'conditions' ? 'is-active' : ''
+          }`,
+          click: (e: MouseEvent) => {
+            e.preventDefault();
+            sectionAccordionTabs.set(secKey, 'conditions');
+            void renderSectionsWidget(true);
+          },
         },
-        [
-          E(
-            'a',
-            {
-              href: '#',
-              click: (e: MouseEvent) => {
-                e.preventDefault();
-                sectionAccordionTabs.set(secKey, 'conditions');
-                void renderSectionsWidget(true);
-              },
-            },
-            tr('Условия и правила', 'Conditions & Rules'),
-          ),
-        ],
+        [E('span', {}, tr('Условия и правила', 'Conditions & Rules'))],
       ),
     ]),
     ...(headerActions.length > 0

@@ -2,11 +2,9 @@
 import { svgEl } from '../../../helpers';
 import { tr } from '../../helpers/i18n';
 import {
-  renderBanIcon,
   renderBarChart2Icon,
   renderCheckIcon,
   renderCompassIcon,
-  renderGlobeIcon,
   renderLayersIcon,
   renderLayoutGridIcon,
   renderPlusIcon,
@@ -102,12 +100,13 @@ export interface DashboardPresetDefinition {
   widgets: DashboardWidgetPlacement[];
 }
 
-const STORAGE_KEY = 'tachyon_dashboard_layout_v4';
-const LAYOUT_SCHEMA_VERSION = 4;
+const STORAGE_KEY = 'tachyon_dashboard_layout_v5';
+const LAYOUT_SCHEMA_VERSION = 5;
 const LEGACY_STORAGE_KEYS = [
   'tachyon_dashboard_layout_v1',
   'tachyon_dashboard_layout_v2',
   'tachyon_dashboard_layout_v3',
+  'tachyon_dashboard_layout_v4',
 ];
 const LAYOUT_CHANGE_EVENT = 'tachyon:dashboard-layout-changed';
 
@@ -1822,41 +1821,13 @@ export const SECTION_TYPE_DEFINITIONS: SectionTypeDefinition[] = [
   },
   {
     id: 'dpi',
-    titleRu: 'Обход DPI (Байпас)',
-    titleEn: 'DPI Bypass',
+    titleRu: 'Обход DPI (Desync)',
+    titleEn: 'DPI Bypass (Desync)',
     descRu:
       'Секции обхода блокировок: Tachyon Core Desync, Zapret2 (nfqws2), ByeDPI, WDTT, OLCRTC.',
     descEn:
       'DPI bypass engines: Tachyon Core Desync, Zapret2 (nfqws2), ByeDPI, WDTT, OLCRTC.',
     icon: () => renderZapIcon(15),
-  },
-  {
-    id: 'dns',
-    titleRu: 'Маршрутизация DNS',
-    titleEn: 'DNS Routing',
-    descRu:
-      'Направленные DNS-серверы и DoH/DoT резолверы (например, YandexDns, dns-ai).',
-    descEn:
-      'Targeted upstream DNS servers and DoH/DoT resolvers (e.g. YandexDns, dns-ai).',
-    icon: () => renderCompassIcon(15),
-  },
-  {
-    id: 'direct',
-    titleRu: 'Прямой выход мимо прокси (WAN / Bypass)',
-    titleEn: 'Direct WAN Bypass',
-    descRu:
-      'Секции прямого выхода в интернет без проксирования (ByPass, direct, WAN).',
-    descEn:
-      'Sections routed directly via WAN without proxy (ByPass, direct, WAN).',
-    icon: () => renderGlobeIcon(15),
-  },
-  {
-    id: 'block',
-    titleRu: 'Блокировка трафика (Reject)',
-    titleEn: 'Traffic Block (Reject)',
-    descRu: 'Секции отклонения нежелательного трафика и правил блокировки.',
-    descEn: 'Sections that reject matching traffic and ad-blocking rules.',
-    icon: () => renderBanIcon(15),
   },
 ];
 
