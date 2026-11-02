@@ -762,7 +762,7 @@ release_ip_tiny_conflict() {
 ensure_runtime_dependencies() {
     release_ip_tiny_conflict
     _missing=""
-    for _pkg in ca-bundle curl coreutils-base64 coreutils-timeout bind-dig nftables ip-full; do
+    for _pkg in ca-bundle curl openssl-util coreutils-base64 coreutils-timeout bind-dig nftables ip-full; do
         pkg_is_installed "$_pkg" || _missing="$_missing $_pkg"
     done
     for _kmod in kmod-nft-tproxy kmod-tun kmod-inet-diag; do

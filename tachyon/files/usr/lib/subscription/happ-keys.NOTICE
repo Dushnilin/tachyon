@@ -1,0 +1,28 @@
+Happ compatibility key data
+===========================
+
+The legacy RSA keys and the first 34 crypt5 compatibility keys were imported
+from happwn:
+https://github.com/useruserdev/happwn
+Revision: 8ae0171535a1622f100a1535a216afbe7675d58d
+Files: rust/data/pkcs1_keys.json, rust/data/expanded_rsa_keys.json
+License: Apache-2.0 (included in happ-keys.LICENSE).
+
+The additional crypt5 protocol key values for markers asajzqxt and vdfzfoff
+were obtained from the published compatibility table in Happ Link Decryptor:
+https://github.com/LeeeeT/happ-decryptor
+Revision: 5a05cfe59f45db8684be26077ce28979a3ee3208
+File: public/data/crypt5-keys.json
+That project does not specify a source-code license. Only the two RSA key
+values (protocol compatibility data) are included; no code was copied.
+
+These are publicly distributed application compatibility keys, not user
+credentials. User subscription URLs and tokens must never be added here.
+The table covers crypt through crypt4 and 36 crypt5 markers. New markers
+require a table update; unknown markers fail closed.
+
+Wire-format references:
+https://github.com/useruserdev/happwn/blob/8ae0171535a1622f100a1535a216afbe7675d58d/docs/crypto.md
+https://leeeet.dev/happ-decryptor/
+
+Tachyon's framing and OpenSSL adapter in happ.uc are a separate implementation.

@@ -4,6 +4,7 @@ let fs = require("fs");
 let common = require("core.common");
 let uci_core = require("core.uci");
 let constants = require("core.constants");
+let happ = require("subscription.happ");
 
 let as_string = common.as_string;
 let object_or_empty = common.object_or_empty;
@@ -940,14 +941,14 @@ function connection_urls(section) {
     }
     for (let u in child_values(section, "subscription_url", "url", "subscription_urls")) {
         let su = trim(as_string(u || ""));
-        if (su != "" && !match(lc(su), /^https?:\/\//))
+        if (su != "" && !happ.is_subscription_url(su))
             push_unique_str(links, seen, su);
     }
     let sec_action = action(section);
     for (let src in section_effective_outbound_sources(section)) {
         let stype = lc(option(src, "source_type", "subscription"));
         let su = trim(option(src, "url", ""));
-        if (su != "" && !match(lc(su), /^https?:\/\//)) {
+        if (su != "" && !happ.is_subscription_url(su)) {
             if (index(su, "#") < 0) {
                 let sname = trim(option(src, "name", ""));
                 if (sname != "")
@@ -1008,12 +1009,12 @@ function subscription_urls(section) {
     for (let src in section_effective_outbound_sources(section)) {
         let stype = lc(option(src, "source_type", "subscription"));
         let u = outbound_source_subscription_url(src);
-        if ((stype == "subscription" || u != "") && u != "" && match(lc(u), /^https?:\/\//))
+        if ((stype == "subscription" || u != "") && u != "" && happ.is_subscription_url(u))
             push_unique_str(result, seen, u);
     }
     for (let u in child_values(section, "subscription_url", "url", "subscription_urls")) {
         let su = trim(as_string(u || ""));
-        if (su != "" && match(lc(su), /^https?:\/\//))
+        if (su != "" && happ.is_subscription_url(su))
             push_unique_str(result, seen, su);
     }
     return result;
@@ -1679,7 +1680,7 @@ function source_id_for_manual_item(section, value) {
         if (su != "") {
             if (su == value)
                 return src_id;
-            if (!match(lc(su), /^https?:\/\//)) {
+            if (!happ.is_subscription_url(su)) {
                 let sname = trim(option(src, "name", ""));
                 if (sname != "" && (su + "#" + sname) == value)
                     return src_id;

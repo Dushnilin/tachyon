@@ -70,8 +70,8 @@ Tachyon intercepts network flows via kernel **nftables** and dispatches requests
   * **Native OpenVPN Endpoint & `.ovpn` File Upload**: Complete built-in OpenVPN client in sing-box (>= 1.14.0) with direct `.ovpn` configuration file upload and validation via LuCI.
 * **High-Speed FPTN Engine (`fptn-client-cli`)**:
   * L3 packet tunneling over WebSocket/TLS with effective HTTPS camouflage to bypass restrictive protocol blocks (`tun-fptn`, routing table `4249`).
-* **Advanced Subscription Engine & Happ Crypt4**:
-  * **Happ Crypt4 Decryption**: Decrypt proprietary and encrypted provider subscriptions.
+* **Advanced Subscription Engine & Happ Crypt1–5**:
+  * **Happ Decryption**: Locally decrypt `crypt`–`crypt4` (RSA) and `crypt5` (RSA-4096 + ChaCha20-Poly1305, legacy and salted/XOR layouts). Uses the `openssl-util` package dependency. The compatibility table covers 36 known `crypt5` markers; new markers require an update. A broken or uncached Happ subscription no longer disables the other servers in its section.
   * **Dual HWID Header Emulation**: Clean client profile fingerprinting for upstream subscription servers.
   * **TLS Certificate SHA-256 Pinning**: Node certificate SHA-256 hash validation (`pcs`).
   * **Anti-Collapse Shrink Guard**: Prevents working node cache loss when upstream providers return temporary empty or invalid responses.

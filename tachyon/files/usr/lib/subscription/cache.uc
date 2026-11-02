@@ -14,7 +14,7 @@ let command_output_from_args = common.command_output_from_args;
 let command_success_from_args = common.command_success_from_args;
 let connections = require("config.connections");
 let subscription_share_link = require("subscription.share_link");
-let crypt4 = require("subscription.crypt4");
+let happ = require("subscription.happ");
 
 function core_url_module_or_null() {
     try {
@@ -1724,9 +1724,23 @@ function get_subscription_hwid(custom_hwid) {
 }
 
 function download_subscription(url, filepath, http_proxy_address, headers_filepath, effective_user_agent, effective_hwid, device_headers, allow_insecure) {
-    if (crypt4.is_crypt4(url)) {
-        let dec = crypt4.decrypt(url, effective_hwid, generate_hwid());
-        if (dec != null && dec != "") {
+    _last_download_transport_failed = false;
+    // An encrypted link usually wraps an HTTP URL, not the subscription body.
+    // Bound nesting and retain the configured device headers/TLS/proxy policy
+    // when downloading that URL. Do not change the cache's original source ID.
+    for (let depth = 0; happ.is_encrypted(url); depth++) {
+        if (depth >= 2)
+            return 1;
+        let dec = happ.decrypt(url, effective_hwid, generate_hwid());
+        if (dec == null || dec == "")
+            return 1;
+        dec = trim(dec);
+        if (match(dec, /^https?:\/\//i) || happ.is_encrypted(dec)) {
+            url = dec;
+            continue;
+        }
+        // Keep support for encrypted inline proxy lists/configuration bodies.
+        if (dec != "") {
             let stamp = clock();
             let suffix = sprintf(".part.%d.%d", stamp[0], stamp[1]);
             let tmpfile = filepath + suffix;
@@ -1739,6 +1753,11 @@ function download_subscription(url, filepath, http_proxy_address, headers_filepa
         }
         return 1;
     }
+
+    // Never pass an unsupported Happ scheme to curl or a non-HTTP protocol
+    // recovered from an encrypted link to the transport layer.
+    if (!match(url, /^https?:\/\//i))
+        return 1;
 
     let retries = 3;
     let wait_seconds = 2;
@@ -1809,8 +1828,8 @@ function download_subscription(url, filepath, http_proxy_address, headers_filepa
             let http_status = response == null ? 0 : int(response.output);
             if (status == 0 && file_nonempty(tmpfile)) {
                 let downloaded_body = fs.readfile(tmpfile);
-                if (downloaded_body != null && crypt4.is_crypt4(downloaded_body)) {
-                    let dec = crypt4.decrypt(downloaded_body, effective_hwid, generate_hwid());
+                if (downloaded_body != null && happ.is_encrypted(downloaded_body)) {
+                    let dec = happ.decrypt(downloaded_body, effective_hwid, generate_hwid());
                     if (dec != null && dec != "")
                         fs.writefile(tmpfile, dec);
                 }
@@ -2255,7 +2274,7 @@ function download_subscription_into_cache(section_name_value, subscription_url, 
     let effective_engine = lc(trim(as_string(subscription_engine_mode || connections.subscription_engine(find_section(sections, section_name_value), subscription_url))));
     let subscription_device_headers_signature = connections.device_headers_signature(subscription_device_headers, effective_engine);
 
-    if (effective_engine == "core" &&
+    if (effective_engine == "core" && !happ.is_encrypted(subscription_url) &&
         as_string(service_proxy_address_value) == "" &&
         !object_or_empty(subscription_device_headers).enabled) {
         let core_res = try_fetch_subscription_with_core(

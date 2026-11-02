@@ -2,7 +2,7 @@
 
 let fs = require("fs");
 let common = require("core.common");
-let crypt4 = require("subscription.crypt4");
+let happ = require("subscription.happ");
 let wireguard = require("subscription.wireguard");
 let as_string = common.as_string;
 let object_or_empty = common.object_or_empty;
@@ -56,7 +56,7 @@ function is_supported_share_link(line) {
         starts_with(line, "trusttunnel://") ||
         starts_with(line, "masque://") ||
         starts_with(line, "shadowtls://") ||
-        crypt4.is_crypt4(line);
+        happ.is_encrypted(line);
 }
 
 function split_csv(value) {
@@ -2827,8 +2827,8 @@ function normalize_uri_list_data(data, output_file) {
             line = replace(line, /\r/g, "");
         line = trim(line);
         if (line != "" && !starts_with(line, "#")) {
-            if (crypt4.is_crypt4(line)) {
-                let decrypted = crypt4.decrypt(line);
+            if (happ.is_encrypted(line)) {
+                let decrypted = happ.decrypt(line);
                 if (decrypted != null && decrypted != "") {
                     for (let dec_line in split(decrypted, "\n")) {
                         dec_line = trim(dec_line);
@@ -3267,8 +3267,8 @@ function normalize_uri_list_stream(input, output_file, strip_metadata) {
         if (strip_metadata && line_no <= 20 && is_metadata_preamble_line(line))
             continue;
         if (line != "" && !starts_with(line, "#")) {
-            if (crypt4.is_crypt4(line)) {
-                let decrypted = crypt4.decrypt(line);
+            if (happ.is_encrypted(line)) {
+                let decrypted = happ.decrypt(line);
                 if (decrypted != null && decrypted != "") {
                     for (let dec_line in split(decrypted, "\n")) {
                         dec_line = trim(dec_line);
@@ -3332,7 +3332,7 @@ function file_looks_like_uri_list(input_file) {
         line = trim(line);
         if (line == "" || starts_with(line, "#") || is_metadata_preamble_line(line))
             continue;
-        if (crypt4.is_crypt4(line)) {
+        if (happ.is_encrypted(line)) {
             input.close();
             return false;
         }
@@ -4837,8 +4837,8 @@ function normalize_content_data(data, output_file, depth, headers_file) {
         data = replace(data, /\r/g, "");
     data = strip_metadata_preamble_data(data);
 
-    if (depth < 2 && crypt4.is_crypt4(data)) {
-        let decrypted = crypt4.decrypt(data);
+    if (depth < 2 && happ.is_encrypted(data)) {
+        let decrypted = happ.decrypt(data);
         if (decrypted != null && decrypted != "")
             return normalize_content_data(decrypted, output_file, depth + 1, headers_file);
     }
@@ -4906,7 +4906,7 @@ function content_requires_ucode_normalizer(input_file, headers_file) {
     if (data == null || data == "")
         return true;
 
-    if (crypt4.is_crypt4(data))
+    if (happ.is_encrypted(data))
         return true;
     if (index(data, "vpn://") >= 0 || index(data, "amneziawg://") >= 0 || index(data, "awg://") >= 0 ||
         index(data, "fptn:") >= 0 || index(data, "fptnb:") >= 0 || index(lc(data), "[interface]") >= 0 ||
@@ -5031,8 +5031,8 @@ function parse_subscription_source_entry(entry) {
     if (index(entry, "|") >= 0)
         return subscription_source_entry_result(false, "", "", "Configure User-Agent in the subscription item settings");
 
-    if (!(substr(entry, 0, 7) == "http://" || substr(entry, 0, 8) == "https://" || crypt4.is_crypt4(entry)))
-        return subscription_source_entry_result(false, "", "", "Subscription URL must start with http:// or https://");
+    if (!(substr(entry, 0, 7) == "http://" || substr(entry, 0, 8) == "https://" || happ.is_encrypted(entry)))
+        return subscription_source_entry_result(false, "", "", "Subscription URL must start with http://, https:// or a supported Happ crypt link");
 
     return subscription_source_entry_result(true, entry, "", "");
 }

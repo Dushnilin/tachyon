@@ -39,6 +39,19 @@ describe('connectionWizard Quick Start Presets', () => {
     expect(sub.method).toBe('subscription');
     expect(sub.count).toBe(1);
 
+    for (const input of [
+      'happ://crypt5/synthetic',
+      'happ://crypt4/synthetic',
+      'crypt5/synthetic',
+    ]) {
+      const encrypted = detectQuickConnectionInput(input);
+      expect(encrypted.valid).toBe(true);
+      expect(encrypted.method).toBe('subscription');
+    }
+    expect(detectQuickConnectionInput('happ://crypt6/synthetic').valid).toBe(
+      false,
+    );
+
     const links = detectQuickConnectionInput(
       'vless://uuid@example.com:443?security=reality#DE\nhysteria2://pass@example.com:8443#FI',
     );

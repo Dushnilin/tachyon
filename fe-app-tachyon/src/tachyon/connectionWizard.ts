@@ -1146,7 +1146,7 @@ export function detectQuickConnectionInput(
     };
   }
 
-  if (/^https?:\/\/\S+/i.test(firstLine)) {
+  if (/^(https?:\/\/|(happ:\/\/)?crypt([2-5])?\/)\S+/i.test(firstLine)) {
     return {
       valid: true,
       method: 'subscription',

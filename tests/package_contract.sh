@@ -87,6 +87,7 @@ if grep -Rqs 'require("fs")' "$TACHYON_LIB"; then
   require_package_dependency "ucode-mod-fs"
 fi
 
+require_package_dependency "openssl-util"
 require_package_dependency "kmod-nft-tproxy"
 require_package_dependency "kmod-tun"
 require_package_dependency "kmod-inet-diag"
