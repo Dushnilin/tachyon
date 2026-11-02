@@ -11433,6 +11433,7 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
     background: var(--background-color-low, rgba(128, 128, 128, 0.06));
     border: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.16));
     font-size: 12px;
+    overflow: hidden;
 }
 
 .tachyon-router-service-card__top {
@@ -11440,12 +11441,15 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
     align-items: center;
     gap: 6px;
     font-weight: 700;
+    min-width: 0;
+    overflow: hidden;
 }
 
 .tachyon-router-service-card__bottom {
     display: inline-flex;
     align-items: center;
     gap: 4px;
+    flex-shrink: 0;
 }
 
 .tachyon-router-service-res-card {
@@ -11457,6 +11461,7 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
     background: var(--background-color-low, rgba(128, 128, 128, 0.06));
     border: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.16));
     font-size: 12px;
+    overflow: hidden;
 }
 
 .tachyon-router-service-res-card__top {
