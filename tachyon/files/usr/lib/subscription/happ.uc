@@ -16,11 +16,6 @@ function is_encrypted(value) {
     return match(trim(value), /^(happ:\/\/)?crypt([2-5])?\//i) != null;
 }
 
-// Also keep unsupported Happ generations out of the manual proxy parser.
-function is_subscription_url(value) {
-    return match(trim(value), /^(https?:\/\/|happ:\/\/|crypt([2-5])?\/)/i) != null;
-}
-
 function decode64(value) {
     value = replace(common.as_string(value), /\s/g, "");
     value = replace(replace(value, /-/g, "+"), /_/g, "/");
@@ -215,4 +210,4 @@ function decrypt(value, ...legacy_keys) {
     return plain;
 }
 
-return { is_encrypted, is_subscription_url, decrypt };
+return { is_encrypted, decrypt };
