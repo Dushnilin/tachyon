@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-02 06:19+0300\n"
-"PO-Revision-Date: 2026-11-02 06:19+0300\n"
+"POT-Creation-Date: 2026-11-02 06:47+0300\n"
+"PO-Revision-Date: 2026-11-02 06:47+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -538,7 +538,7 @@ msgstr ""
 msgid "Adaptive Smart Fuzzing (Genetic / Prior Seeds)"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1697
+#: src/tachyon/appShell.ts:1926
 msgid "Add Connection (Setup Wizard)"
 msgstr ""
 
@@ -705,7 +705,7 @@ msgstr ""
 msgid "Adult content"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1610
+#: src/tachyon/appShell.ts:1838
 msgid "Advanced"
 msgstr ""
 
@@ -717,16 +717,16 @@ msgstr ""
 msgid "Advanced Boolean Expression"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1489
+#: src/tachyon/appShell.ts:1717
 msgid "Advanced Mode"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1784
+#: src/tachyon/appShell.ts:2013
 #: src/views/settings.ts:2289
 msgid "Advanced System"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1600
+#: src/tachyon/appShell.ts:1828
 msgid "Advanced mode: all tabs, conditions, balancers and expert settings"
 msgstr ""
 
@@ -2491,8 +2491,8 @@ msgid "Clone Section"
 msgstr ""
 
 #: src/partials/modal/renderModal.ts:277
-#: src/tachyon/appShell.ts:762
 #: src/tachyon/appShell.ts:763
+#: src/tachyon/appShell.ts:764
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1165
 #: src/tachyon/tabs/dashboard/initController.ts:1865
 #: src/tachyon/tabs/dashboard/initController.ts:2850
@@ -2564,11 +2564,11 @@ msgstr ""
 msgid "Cloudflare account / device ID"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1523
+#: src/tachyon/appShell.ts:1751
 msgid "Collapse menu to icons"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1751
+#: src/tachyon/appShell.ts:1980
 msgid "Collapse top toolbar"
 msgstr ""
 
@@ -2586,6 +2586,12 @@ msgstr ""
 
 #: src/views/settings.ts:4981
 msgid "Comma-separated list of Telegram user IDs authorized to control the bot."
+msgstr ""
+
+#: src/tachyon/appShell.ts:944
+#: src/tachyon/appShell.ts:951
+#: src/tachyon/appShell.ts:957
+msgid "Command failed"
 msgstr ""
 
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:1108
@@ -2797,7 +2803,7 @@ msgstr ""
 msgid "Connected clients and active connections"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1718
+#: src/tachyon/appShell.ts:1947
 #: src/tachyon/connectionWizard.ts:1568
 #: src/tachyon/studioDeck.ts:475
 #: src/tachyon/tabs/diagnostic/initController.ts:1141
@@ -4324,13 +4330,13 @@ msgstr ""
 msgid "Each entry must be \"proto\", \"proto:port\" or \"proto:port-port\" (tcp/udp), e.g. tcp:6881,udp:6881-6889"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1686
-#: src/tachyon/appShell.ts:1989
+#: src/tachyon/appShell.ts:1914
+#: src/tachyon/appShell.ts:2218
 msgid "Eco Mode"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1685
-#: src/tachyon/appShell.ts:1988
+#: src/tachyon/appShell.ts:1913
+#: src/tachyon/appShell.ts:2217
 msgid "Eco Mode: On"
 msgstr ""
 
@@ -4598,29 +4604,29 @@ msgstr ""
 msgid "Engine crashes:"
 msgstr ""
 
-#: src/tachyon/appShell.ts:874
+#: src/tachyon/appShell.ts:875
 msgid "Engine: Steer"
 msgstr ""
 
-#: src/tachyon/appShell.ts:894
-#: src/tachyon/appShell.ts:904
+#: src/tachyon/appShell.ts:895
+#: src/tachyon/appShell.ts:905
 msgid "Engine: Tachyon Core"
 msgstr ""
 
-#: src/tachyon/appShell.ts:891
-#: src/tachyon/appShell.ts:902
+#: src/tachyon/appShell.ts:892
+#: src/tachyon/appShell.ts:903
 msgid "Engine: sing-box"
 msgstr ""
 
-#: src/tachyon/appShell.ts:885
+#: src/tachyon/appShell.ts:886
 msgid "Engine: sing-box-extended"
 msgstr ""
 
-#: src/tachyon/appShell.ts:877
+#: src/tachyon/appShell.ts:878
 msgid "Engine: sing-box-lx"
 msgstr ""
 
-#: src/tachyon/appShell.ts:888
+#: src/tachyon/appShell.ts:889
 msgid "Engine: sing-box-tiny"
 msgstr ""
 
@@ -4906,15 +4912,15 @@ msgstr ""
 msgid "Expand detected subdomains to root domain"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1522
+#: src/tachyon/appShell.ts:1750
 msgid "Expand menu"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1467
+#: src/tachyon/appShell.ts:1695
 msgid "Expand sidebar"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1750
+#: src/tachyon/appShell.ts:1979
 msgid "Expand top toolbar"
 msgstr ""
 
@@ -5352,8 +5358,8 @@ msgstr ""
 msgid "Failed to synthesize AI strategies"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1658
-#: src/tachyon/appShell.ts:1668
+#: src/tachyon/appShell.ts:1886
+#: src/tachyon/appShell.ts:1896
 msgid "Failed to toggle Eco Mode"
 msgstr ""
 
@@ -6790,7 +6796,7 @@ msgstr ""
 msgid "Interface IPv4/IPv6 addresses (e.g. 10.8.1.2/32)."
 msgstr ""
 
-#: src/tachyon/appShell.ts:1575
+#: src/tachyon/appShell.ts:1803
 msgid "Interface Mode"
 msgstr ""
 
@@ -8193,11 +8199,11 @@ msgstr ""
 msgid "Move right / down in grid"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1731
+#: src/tachyon/appShell.ts:1960
 msgid "Move sidebar to the left"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1727
+#: src/tachyon/appShell.ts:1956
 msgid "Move sidebar to the right"
 msgstr ""
 
@@ -8340,7 +8346,7 @@ msgstr ""
 msgid "Native tailscaled (tailnet reachable from LAN without client)"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1839
+#: src/tachyon/appShell.ts:2068
 msgid "Need expert knobs? Advanced Mode →"
 msgstr ""
 
@@ -9086,7 +9092,7 @@ msgstr ""
 msgid "Open inbound settings"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1497
+#: src/tachyon/appShell.ts:1725
 msgid "Open navigation menu"
 msgstr ""
 
@@ -10262,7 +10268,7 @@ msgstr ""
 msgid "Quick Routing Presets (tachyon-lists)"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1878
+#: src/tachyon/appShell.ts:2107
 msgid "Quick Setup Wizard"
 msgstr ""
 
@@ -10524,8 +10530,8 @@ msgstr ""
 msgid "Reload now"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1426
-#: src/tachyon/appShell.ts:1972
+#: src/tachyon/appShell.ts:1654
+#: src/tachyon/appShell.ts:2201
 #: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:452
 msgid "Reloading..."
 msgstr ""
@@ -10698,12 +10704,20 @@ msgstr ""
 msgid "Response payload (I2)"
 msgstr ""
 
+#: src/tachyon/appShell.ts:1108
+msgid "Restart"
+msgstr ""
+
 #: src/tachyon/tabs/diagnostic/partials/renderAvailableActions.ts:103
 msgid "Restart Tachyon"
 msgstr ""
 
 #: src/tachyon/tabs/diagnostic/partials/renderAiDoctorModal.ts:89
 msgid "Restart Tachyon Core DNS"
+msgstr ""
+
+#: src/tachyon/appShell.ts:1079
+msgid "Restart Tachyon service"
 msgstr ""
 
 #: src/tachyon/tabs/diagnostic/partials/renderAiDoctorModal.ts:74
@@ -10724,6 +10738,10 @@ msgstr ""
 
 #: src/tachyon/tabs/diagnostic/partials/renderAiDoctorModal.ts:66
 msgid "Restart sing-box DNS"
+msgstr ""
+
+#: src/tachyon/appShell.ts:1015
+msgid "Restarting..."
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1492
@@ -12058,6 +12076,7 @@ msgstr ""
 msgid "Service Presets"
 msgstr ""
 
+#: src/tachyon/appShell.ts:974
 #: src/tachyon/methods/shell/index.ts:550
 #: src/tachyon/methods/shell/index.ts:571
 #: src/tachyon/tabs/diagnostic/initController.ts:770
@@ -12073,8 +12092,8 @@ msgstr ""
 msgid "Service list"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1429
-#: src/tachyon/appShell.ts:1975
+#: src/tachyon/appShell.ts:1657
+#: src/tachyon/appShell.ts:2204
 msgid "Service stopped"
 msgstr ""
 
@@ -12249,15 +12268,15 @@ msgstr ""
 msgid "Show widget on dashboard"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1593
+#: src/tachyon/appShell.ts:1821
 msgid "Simple"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1488
+#: src/tachyon/appShell.ts:1716
 msgid "Simple Mode"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1583
+#: src/tachyon/appShell.ts:1811
 msgid "Simple mode: basic settings and quick connection wizard"
 msgstr ""
 
@@ -12588,6 +12607,7 @@ msgstr ""
 msgid "Standby / Direct"
 msgstr ""
 
+#: src/tachyon/appShell.ts:1139
 #: src/views/settings.ts:574
 msgid "Start"
 msgstr ""
@@ -12605,6 +12625,10 @@ msgstr ""
 
 #: src/tachyon/tabs/diagnostic/partials/renderAiDoctorModal.ts:88
 msgid "Start Tachyon Core"
+msgstr ""
+
+#: src/tachyon/appShell.ts:1121
+msgid "Start Tachyon service"
 msgstr ""
 
 #: src/views/parental.ts:1274
@@ -12633,6 +12657,10 @@ msgstr ""
 
 #: src/views/settings.ts:3536
 msgid "Starting lists update..."
+msgstr ""
+
+#: src/tachyon/appShell.ts:1012
+msgid "Starting..."
 msgstr ""
 
 #: src/views/settings.ts:4869
@@ -12689,6 +12717,7 @@ msgstr ""
 msgid "Step-by-Step Outbound Connection (Client / DPI)"
 msgstr ""
 
+#: src/tachyon/appShell.ts:1070
 #: src/views/settings.ts:581
 msgid "Stop"
 msgstr ""
@@ -12701,6 +12730,10 @@ msgstr ""
 
 #: src/tachyon/tabs/diagnostic/partials/renderAvailableActions.ts:113
 msgid "Stop Tachyon"
+msgstr ""
+
+#: src/tachyon/appShell.ts:1044
+msgid "Stop Tachyon service"
 msgstr ""
 
 #: src/views/settings.ts:4813
@@ -12737,6 +12770,7 @@ msgstr ""
 msgid "Stopped"
 msgstr ""
 
+#: src/tachyon/appShell.ts:1014
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:2277
 msgid "Stopping..."
 msgstr ""
@@ -12994,7 +13028,7 @@ msgstr ""
 msgid "Synthesizing..."
 msgstr ""
 
-#: src/tachyon/appShell.ts:1782
+#: src/tachyon/appShell.ts:2011
 msgid "System & Backup"
 msgstr ""
 
@@ -13026,8 +13060,8 @@ msgstr ""
 msgid "System information"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1428
-#: src/tachyon/appShell.ts:1974
+#: src/tachyon/appShell.ts:1656
+#: src/tachyon/appShell.ts:2203
 msgid "System running"
 msgstr ""
 
@@ -13289,12 +13323,12 @@ msgstr ""
 msgid "Tachyon Lite"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1649
+#: src/tachyon/appShell.ts:1877
 #: src/tachyon/tabs/dashboard/initController.ts:4380
 msgid "Tachyon Lite eco mode disabled"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1645
+#: src/tachyon/appShell.ts:1873
 msgid "Tachyon Lite eco mode enabled"
 msgstr ""
 
@@ -13302,7 +13336,7 @@ msgstr ""
 msgid "Tachyon Lite eco mode enabled (nice 15 + ct mark Short-Circuit)"
 msgstr ""
 
-#: src/tachyon/appShell.ts:1562
+#: src/tachyon/appShell.ts:1790
 msgid "Tachyon Lite eco mode for low-power routers: lower proxy priority (nice 15), ct mark Short-Circuit + connlimit and background check hibernation under load"
 msgstr ""
 
@@ -13339,12 +13373,24 @@ msgstr ""
 msgid "Tachyon proxy routing"
 msgstr ""
 
+#: src/tachyon/appShell.ts:967
+msgid "Tachyon restarted"
+msgstr ""
+
 #: src/tachyon/tabs/monitoring/initController.ts:1109
 msgid "Tachyon service is stopped. Start the service to display connections."
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/render.ts:64
 msgid "Tachyon service is stopped. Start the service to display the dashboard."
+msgstr ""
+
+#: src/tachyon/appShell.ts:964
+msgid "Tachyon started"
+msgstr ""
+
+#: src/tachyon/appShell.ts:966
+msgid "Tachyon stopped"
 msgstr ""
 
 #: src/tachyon/methods/shell/index.ts:1024

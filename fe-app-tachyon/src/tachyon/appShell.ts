@@ -10,6 +10,7 @@ import {
   renderXIcon,
 } from '../icons';
 import { TachyonShellMethods } from './methods/shell';
+import { fetchServicesInfo } from './fetchers/fetchServicesInfo';
 import { store } from './services/store.service';
 import { openConnectionWizardModal } from './connectionWizard';
 import {
@@ -919,7 +920,234 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
   let sidebarPos = getSidebarPos();
   let sidebarCollapsed = getSidebarCollapsed();
   let topbarCollapsed = getTopbarCollapsed();
+  let topbarServiceActionInFlight: 'start' | 'stop' | 'restart' | null = null;
   const expandedMenus = getExpandedMenus();
+
+  const runTopbarServiceAction = async (
+    action: 'start' | 'stop' | 'restart',
+  ) => {
+    if (topbarServiceActionInFlight) return;
+    topbarServiceActionInFlight = action;
+    const currentActions = store.get().diagnosticsActions;
+    store.set({
+      diagnosticsActions: {
+        ...currentActions,
+        [action]: { loading: true },
+      },
+    });
+    renderSidebarAndTopbar();
+
+    try {
+      const startRes = await TachyonShellMethods.serviceActionStart(action);
+      if (!startRes.success) {
+        throw new Error(
+          startRes.error || tr('Ошибка выполнения команды', 'Command failed'),
+        );
+      }
+      const jobId = startRes.data.job_id;
+      const waitRes = await TachyonShellMethods.waitServiceActionJob(jobId);
+      if (!waitRes.success) {
+        throw new Error(
+          waitRes.error || tr('Ошибка выполнения команды', 'Command failed'),
+        );
+      }
+      if (!waitRes.data.success) {
+        throw new Error(
+          waitRes.data.message ||
+            tr('Ошибка выполнения команды', 'Command failed'),
+        );
+      }
+      void TachyonShellMethods.uiActionAck('service', jobId);
+      await fetchServicesInfo().catch(() => {});
+      showToast(
+        action === 'start'
+          ? tr('Tachyon запущен', 'Tachyon started')
+          : action === 'stop'
+            ? tr('Tachyon остановлен', 'Tachyon stopped')
+            : tr('Tachyon перезапущен', 'Tachyon restarted'),
+        'success',
+      );
+    } catch (err: any) {
+      await fetchServicesInfo().catch(() => {});
+      showToast(
+        err?.message ||
+          tr(
+            'Не удалось выполнить действие со службой',
+            'Service action failed',
+          ),
+        'error',
+      );
+    } finally {
+      topbarServiceActionInFlight = null;
+      const latestActions = store.get().diagnosticsActions;
+      store.set({
+        diagnosticsActions: {
+          ...latestActions,
+          [action]: { loading: false },
+        },
+      });
+      renderSidebarAndTopbar();
+    }
+  };
+
+  const buildTopbarServiceControlsChildren = (): HTMLElement[] => {
+    const state = store.get();
+    const srv = state.servicesInfoWidget;
+    const diagActions = state.diagnosticsActions;
+    const running = Boolean(srv?.data?.tachyonRunning || srv?.data?.singbox);
+    const statusStr = String(srv?.data?.tachyonStatus || '');
+    const activeAction: 'start' | 'stop' | 'restart' | null =
+      topbarServiceActionInFlight ||
+      (diagActions?.start?.loading || statusStr === 'starting'
+        ? 'start'
+        : diagActions?.stop?.loading || statusStr === 'stopping'
+          ? 'stop'
+          : diagActions?.restart?.loading || statusStr === 'reloading'
+            ? 'restart'
+            : null);
+
+    if (activeAction) {
+      const busyLabel =
+        activeAction === 'start'
+          ? tr('Запуск...', 'Starting...')
+          : activeAction === 'stop'
+            ? tr('Остановка...', 'Stopping...')
+            : tr('Перезапуск...', 'Restarting...');
+      return [
+        E(
+          'button',
+          {
+            type: 'button',
+            class:
+              'tachyon-topbar__service-btn tachyon-topbar__service-btn--busy',
+            disabled: true,
+          } as any,
+          [
+            E('span', {
+              class:
+                'tachyon-sidebar__status-dot tachyon-sidebar__status-dot--warn',
+            }),
+            E('span', {}, busyLabel),
+          ],
+        ),
+      ];
+    }
+
+    if (running) {
+      return [
+        E(
+          'button',
+          {
+            type: 'button',
+            class:
+              'tachyon-topbar__service-btn tachyon-topbar__service-btn--stop',
+            title: tr('Остановить службу Tachyon', 'Stop Tachyon service'),
+            click: (ev: MouseEvent) => {
+              ev.preventDefault();
+              void runTopbarServiceAction('stop');
+            },
+          } as any,
+          [
+            svgEl(
+              'svg',
+              {
+                viewBox: '0 0 24 24',
+                width: '12',
+                height: '12',
+                fill: 'currentColor',
+                stroke: 'none',
+              },
+              [
+                svgEl('rect', {
+                  x: '5',
+                  y: '5',
+                  width: '14',
+                  height: '14',
+                  rx: '2',
+                }),
+              ],
+            ),
+            E('span', {}, tr('Остановить', 'Stop')),
+          ],
+        ),
+        E(
+          'button',
+          {
+            type: 'button',
+            class:
+              'tachyon-topbar__service-btn tachyon-topbar__service-btn--restart',
+            title: tr(
+              'Перезапустить службу Tachyon',
+              'Restart Tachyon service',
+            ),
+            click: (ev: MouseEvent) => {
+              ev.preventDefault();
+              void runTopbarServiceAction('restart');
+            },
+          } as any,
+          [
+            svgEl(
+              'svg',
+              {
+                viewBox: '0 0 24 24',
+                width: '13',
+                height: '13',
+                fill: 'none',
+                stroke: 'currentColor',
+                'stroke-width': '2.2',
+                'stroke-linecap': 'round',
+                'stroke-linejoin': 'round',
+              },
+              [
+                svgEl('path', {
+                  d: 'M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8',
+                }),
+                svgEl('path', { d: 'M3 3v5h5' }),
+              ],
+            ),
+            E('span', {}, tr('Перезапуск', 'Restart')),
+          ],
+        ),
+      ];
+    }
+
+    return [
+      E(
+        'button',
+        {
+          type: 'button',
+          class:
+            'tachyon-topbar__service-btn tachyon-topbar__service-btn--start',
+          title: tr('Запустить службу Tachyon', 'Start Tachyon service'),
+          click: (ev: MouseEvent) => {
+            ev.preventDefault();
+            void runTopbarServiceAction('start');
+          },
+        } as any,
+        [
+          svgEl(
+            'svg',
+            {
+              viewBox: '0 0 24 24',
+              width: '12',
+              height: '12',
+              fill: 'currentColor',
+              stroke: 'none',
+            },
+            [svgEl('polygon', { points: '6 4 20 12 6 20 6 4' })],
+          ),
+          E('span', {}, tr('Запустить', 'Start')),
+        ],
+      ),
+    ];
+  };
+
+  const buildTopbarServiceControls = (): HTMLElement =>
+    E(
+      'div',
+      { class: 'tachyon-topbar__service-controls' },
+      buildTopbarServiceControlsChildren(),
+    );
 
   setUiMode(uiMode);
   mapEl.classList.add('tachyon-app-shell');
@@ -1687,6 +1915,7 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
             ),
           ],
         ),
+        buildTopbarServiceControls(),
       ]),
       E('div', { class: 'tachyon-topbar__right' }, [
         E(
@@ -1989,6 +2218,14 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
                 : tr('Эко-режим', 'Eco Mode'),
             ),
           );
+        }
+      }
+      if (diff.servicesInfoWidget || diff.diagnosticsActions) {
+        const oldControls = topbarEl.querySelector<HTMLElement>(
+          '.tachyon-topbar__service-controls',
+        );
+        if (oldControls) {
+          oldControls.replaceChildren(...buildTopbarServiceControlsChildren());
         }
       }
       if (diff.diagnosticsSystemInfo || diff.servicesInfoWidget) {

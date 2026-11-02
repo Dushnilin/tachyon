@@ -1484,6 +1484,63 @@ header .dropdown-menu {
     cursor: wait;
 }
 
+.tachyon-topbar__service-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.tachyon-topbar__service-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 11px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.24));
+    background: var(--background-color-low, rgba(128, 128, 128, 0.08));
+    color: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: border-color 0.14s ease, background-color 0.14s ease, color 0.14s ease;
+}
+
+.tachyon-topbar__service-btn--start {
+    border-color: rgba(16, 185, 129, 0.4);
+    background: rgba(16, 185, 129, 0.14);
+    color: #34d399;
+}
+
+.tachyon-topbar__service-btn--start:hover {
+    border-color: rgba(16, 185, 129, 0.6);
+    background: rgba(16, 185, 129, 0.22);
+}
+
+.tachyon-topbar__service-btn--stop {
+    border-color: rgba(239, 68, 68, 0.36);
+    background: rgba(239, 68, 68, 0.12);
+    color: #f87171;
+}
+
+.tachyon-topbar__service-btn--stop:hover {
+    border-color: rgba(239, 68, 68, 0.56);
+    background: rgba(239, 68, 68, 0.2);
+}
+
+.tachyon-topbar__service-btn--restart:hover {
+    border-color: rgba(148, 130, 224, 0.42);
+    background: rgba(148, 130, 224, 0.12);
+}
+
+.tachyon-topbar__service-btn--busy {
+    border-color: rgba(245, 158, 11, 0.4);
+    background: rgba(245, 158, 11, 0.12);
+    color: #fbbf24;
+    cursor: wait;
+    opacity: 0.9;
+}
+
 .tachyon-topbar__wizard-btn {
     display: inline-flex;
     align-items: center;

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-02 09:19+0300\n"
-"PO-Revision-Date: 2026-11-02 09:19+0300\n"
+"POT-Creation-Date: 2026-11-02 09:47+0300\n"
+"PO-Revision-Date: 2026-11-02 09:47+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -1771,6 +1771,9 @@ msgstr "ID источников через запятую (оставьте пу
 
 msgid "Comma-separated list of Telegram user IDs authorized to control the bot."
 msgstr "Список Telegram user ID через запятую, авторизованных для управления ботом."
+
+msgid "Command failed"
+msgstr "Ошибка выполнения команды"
 
 msgid "Command-line arguments string..."
 msgstr "Строка аргументов командной строки..."
@@ -7385,11 +7388,17 @@ msgstr "Размер мусора пакета ответа (S2)"
 msgid "Response payload (I2)"
 msgstr "Полезный груз ответа (I2)"
 
+msgid "Restart"
+msgstr "Перезапуск"
+
 msgid "Restart Tachyon"
 msgstr "Перезапустить Tachyon"
 
 msgid "Restart Tachyon Core DNS"
 msgstr "Перезапустить DNS Tachyon Core"
+
+msgid "Restart Tachyon service"
+msgstr "Перезапустить службу Tachyon"
 
 msgid "Restart Zapret/ByeDPI"
 msgstr "Перезапустить Zapret/ByeDPI"
@@ -7405,6 +7414,9 @@ msgstr "Перезапустить сеть"
 
 msgid "Restart sing-box DNS"
 msgstr "Перезапустить DNS sing-box"
+
+msgid "Restarting..."
+msgstr "Перезапуск..."
 
 msgid "Restarts"
 msgstr "Перезапуски"
@@ -8693,6 +8705,9 @@ msgstr "Запустить Tachyon"
 msgid "Start Tachyon Core"
 msgstr "Запустить Tachyon Core"
 
+msgid "Start Tachyon service"
+msgstr "Запустить службу Tachyon"
+
 msgid "Start Time (HH:MM)"
 msgstr "Время начала (ЧЧ:ММ)"
 
@@ -8713,6 +8728,9 @@ msgstr "Запуск бенчмарка DNS..."
 
 msgid "Starting lists update..."
 msgstr "Запуск обновления списков..."
+
+msgid "Starting..."
+msgstr "Запуск..."
 
 msgid "Starting…"
 msgstr "Запуск…"
@@ -8755,6 +8773,9 @@ msgstr "Остановить подбор"
 
 msgid "Stop Tachyon"
 msgstr "Остановить Tachyon"
+
+msgid "Stop Tachyon service"
+msgstr "Остановить службу Tachyon"
 
 msgid "Stop bot"
 msgstr "Остановить бота"
@@ -9185,11 +9206,20 @@ msgstr "Tachyon управляет жизненным циклом процес�
 msgid "Tachyon proxy routing"
 msgstr "Маршрутизация через прокси Tachyon"
 
+msgid "Tachyon restarted"
+msgstr "Tachyon перезапущен"
+
 msgid "Tachyon service is stopped. Start the service to display connections."
 msgstr "Служба Tachyon остановлена. Запустите сервис для отображения подключений."
 
 msgid "Tachyon service is stopped. Start the service to display the dashboard."
 msgstr "Служба Tachyon остановлена. Запустите сервис для отображения дашборда."
+
+msgid "Tachyon started"
+msgstr "Tachyon запущен"
+
+msgid "Tachyon stopped"
+msgstr "Tachyon остановлен"
 
 msgid "Tachyon update did not complete within the timeout"
 msgstr "Обновление Tachyon не завершилось в течение таймаута"
@@ -12580,9 +12610,6 @@ msgstr "Сохранение..."
 
 msgid "Generating..."
 msgstr "Генерация..."
-
-msgid "Starting..."
-msgstr "Запуск..."
 
 msgid "Only the specified servers"
 msgstr "Только указанные серверы"
