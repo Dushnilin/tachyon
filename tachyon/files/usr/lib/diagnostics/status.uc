@@ -1558,7 +1558,11 @@ const TACHYON_OWN_MARKS = [
     getenv("ZAPRET2_DESYNC_MARK") || "0x40000000",
     getenv("ZAPRET2_DESYNC_MARK_POSTNAT") || "0x20000000",
     getenv("ZAPRET_ROUTE_MARK_BASE") || "0x01000000",
-    getenv("ZAPRET2_ROUTE_MARK_BASE") || "0x02000000"
+    getenv("ZAPRET2_ROUTE_MARK_BASE") || "0x02000000",
+    "0x00200000",
+    "0x00300000",
+    "0x00340000",
+    "0x00ff0000"
 ];
 
 function mark_line_is_ours(line) {

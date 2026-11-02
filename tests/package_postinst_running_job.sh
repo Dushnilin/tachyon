@@ -17,12 +17,18 @@ CHECK_DIR="$STATE_DIR/component-update-checks"
 mkdir -p "$ACTION_DIR" "$CHECK_DIR"
 
 RUNNING_JOB="$ACTION_DIR/1786306166-287510904.json"
+RUNNING_JOB_PID="$ACTION_DIR/1786306166-287510904.json.pid"
+RUNNING_JOB_LOG="$ACTION_DIR/1786306166-287510904.log"
 FINISHED_JOB="$ACTION_DIR/1786306100-111111111.json"
+FINISHED_JOB_PID="$ACTION_DIR/1786306100-111111111.json.pid"
 STALE_CHECK="$CHECK_DIR/tachyon.json"
 TIMESTAMP="$STATE_DIR/component-update-check.timestamp"
 
 printf '%s\n' '{ "success": true, "running": true, "kind": "component", "component": "tachyon", "action": "install", "message": "Component action is running", "started_at": 1786306166 }' >"$RUNNING_JOB"
+printf '12345\n' >"$RUNNING_JOB_PID"
+printf '[info] updating\n' >"$RUNNING_JOB_LOG"
 printf '%s\n' '{ "success": true, "running": false, "kind": "component", "component": "sing_box", "action": "check_update", "message": "Latest version is installed" }' >"$FINISHED_JOB"
+printf '11111\n' >"$FINISHED_JOB_PID"
 printf '%s\n' '{ "component": "tachyon", "status": "latest" }' >"$STALE_CHECK"
 printf '%s\n' '1786306166' >"$TIMESTAMP"
 
@@ -39,10 +45,16 @@ TACHYON_CONFIG_NAME=tachyon-package-job-test \
 # The whole point: the in-flight job survives so its worker can write the result.
 [ -f "$RUNNING_JOB" ] ||
   fail "postinst deleted the state file of a running component job; the UI then reports 'Failed to execute' over a successful update"
+[ -f "$RUNNING_JOB_PID" ] ||
+  fail "postinst deleted the sidecar .json.pid file of a running component job"
+[ -f "$RUNNING_JOB_LOG" ] ||
+  fail "postinst deleted the log file of a running component job"
 
 # Finished results are genuinely stale and must still be cleared.
 [ ! -f "$FINISHED_JOB" ] ||
   fail "postinst must still remove finished component job results"
+[ ! -f "$FINISHED_JOB_PID" ] ||
+  fail "postinst must still remove finished component job sidecar pid files"
 [ ! -f "$STALE_CHECK" ] ||
   fail "postinst must still clear the component update check cache"
 [ ! -f "$TIMESTAMP" ] ||

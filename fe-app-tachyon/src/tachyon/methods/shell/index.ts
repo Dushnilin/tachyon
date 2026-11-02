@@ -350,10 +350,19 @@ export const TachyonShellMethods = {
     callBaseMethod<unknown>(Tachyon.AvailableMethods.CLASH_API, [
       Tachyon.AvailableClashAPIMethods.GET_CONNECTIONS,
     ]),
-  getClashApiProxyLatency: async (tag: string, timeout = '5000') =>
+  getClashApiProxyLatency: async (
+    tag: string,
+    timeout = '5000',
+    url?: string,
+  ) =>
     callBaseMethod<Tachyon.GetClashApiProxyLatency>(
       Tachyon.AvailableMethods.CLASH_API,
-      [Tachyon.AvailableClashAPIMethods.GET_PROXY_LATENCY, tag, timeout],
+      [
+        Tachyon.AvailableClashAPIMethods.GET_PROXY_LATENCY,
+        tag,
+        timeout,
+        ...(url ? [url] : []),
+      ],
     ),
   getClashApiProxyLatencies: async (tags: string[]) =>
     callBaseMethod<Tachyon.GetClashApiProxyLatencies>(

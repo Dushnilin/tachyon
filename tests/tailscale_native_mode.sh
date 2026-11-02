@@ -120,4 +120,16 @@ OUTPUT=$(ucode -L "$TACHYON_LIB" "$RUNTIME_UC" package-version)
 ucode -L "$TACHYON_LIB" "$RUNTIME_UC" status >/dev/null ||
   fail "status mode must always produce JSON"
 
+# #318: Standalone tailscaled stamps 0x00080000 on regular LAN packets in its
+# ts-input/ts-forward chains before Tachyon's mangle chain runs. Tachyon's
+# mangle bypass mask must NOT include 0x00080000, and must never skip FakeIP
+# (198.18.0.0/15) traffic, or all LAN clients lose FakeIP/TPROXY access.
+NFT_APPLY_UC="$TACHYON_LIB/nft/apply.uc"
+grep -Fq 'const TAILSCALE_TUNNEL_BYPASS_MARK_MASK = "0x00340000";' "$NFT_APPLY_UC" ||
+  fail "nft/apply.uc must use 0x00340000 tunnel bypass mask (excluding standalone tailscaled 0x00080000 bit)"
+grep -Fq '"ip", "daddr", "!=", fakeip_range, "meta", "mark", "&", TAILSCALE_TUNNEL_BYPASS_MARK_MASK' "$NFT_APPLY_UC" ||
+  fail "nft/apply.uc mangle bypass must guard FakeIP range from early return (#318)"
+grep -Fq '"198.18.0.0/15"' "$RUNTIME_UC" ||
+  fail "providers/tailscale/runtime.uc must exclude FakeIP 198.18.0.0/15 from exit-node marking (#318)"
+
 printf 'config tailscale native mode checks passed\n'

@@ -164,6 +164,8 @@ ip rule list | grep -Fq "lookup 4248" || fail "exit-node ip rule missing"
   fail "exit-node default route missing"
 nft list chain inet tachyon_tailscale prerouting_mark >/dev/null 2>&1 ||
   fail "exit-node marking chain missing"
+nft list set inet tachyon_tailscale exit_exclude_v4 | grep -Fq "198.18.0.0/15" ||
+  fail "exit_exclude_v4 must exclude FakeIP 198.18.0.0/15 range (#318)"
 run stop-runtime || fail "stop-runtime after exit node failed"
 ip rule list | grep -Fq "lookup 4248" && fail "exit-node rule survived stop"
 

@@ -44,6 +44,9 @@ type UrlTestCacheGroup = {
   displayName?: string;
   outbounds?: string[];
   url?: string;
+  testing_urls?: string[];
+  multi_url_strategy?: string;
+  active_check_interval?: string;
   interval?: string;
   tolerance?: string | number;
   idle_timeout?: string;
@@ -66,6 +69,8 @@ type PriorityCacheGroup = {
   section?: string;
   displayName?: string;
   health_url?: string;
+  health_urls?: string[];
+  multi_url_strategy?: string;
   active_check_interval?: string;
   check_timeout?: string;
   recovery_check_interval?: string;
@@ -706,6 +711,9 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
           urltest_check_interval: item.check_interval,
           urltest_tolerance: item.tolerance,
           urltest_testing_url: item.testing_url,
+          testing_urls: item.testing_urls,
+          multi_url_strategy: item.multi_url_strategy,
+          active_check_interval: item.active_check_interval,
           idle_timeout: item.idle_timeout,
           interrupt_exist_connections: item.interrupt_exist_connections,
           pin_dashboard: item.pin_dashboard,
@@ -796,6 +804,8 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
         settings[groupId] = {
           name: item.name,
           health_url: item.health_url,
+          health_urls: item.health_urls,
+          multi_url_strategy: item.multi_url_strategy,
           active_check_interval: item.active_check_interval,
           check_timeout: item.check_timeout,
           recovery_check_interval: item.recovery_check_interval,
@@ -1878,6 +1888,27 @@ function buildUrlTestInfo({
     outbounds.find((outbound) => outbound.code === selectedCode)?.displayName ||
     selectedCode;
   const cfgSettings = config?.settings;
+  const primaryUrl =
+    groupCache?.url ||
+    itemSettingString(cfgSettings, 'urltest_testing_url', '') ||
+    itemSettingString(cfgSettings, 'testing_url', '') ||
+    undefined;
+  const extraUrls = [
+    ...(Array.isArray(groupCache?.testing_urls) ? groupCache.testing_urls : []),
+    ...getListValues(cfgSettings?.testing_urls as string[] | string),
+  ];
+  const allUrls = uniqueCodes([
+    ...(primaryUrl ? [primaryUrl] : []),
+    ...extraUrls,
+  ]);
+  const multiUrlStrategy =
+    groupCache?.multi_url_strategy ||
+    itemSettingString(cfgSettings, 'multi_url_strategy', '') ||
+    undefined;
+  const activeCheckInterval =
+    groupCache?.active_check_interval ||
+    itemSettingString(cfgSettings, 'active_check_interval', '') ||
+    undefined;
 
   return {
     code,
@@ -1885,13 +1916,14 @@ function buildUrlTestInfo({
     selectedCode: selectedCode || undefined,
     selectedName: selectedName || undefined,
     isManualSelection,
-    url:
-      groupCache?.url ||
-      itemSettingString(cfgSettings, 'urltest_testing_url', '') ||
-      undefined,
+    url: primaryUrl || allUrls[0],
+    urls: allUrls.length > 0 ? allUrls : undefined,
+    multiUrlStrategy,
+    activeCheckInterval,
     interval:
       groupCache?.interval ||
       itemSettingString(cfgSettings, 'urltest_check_interval', '') ||
+      itemSettingString(cfgSettings, 'check_interval', '') ||
       undefined,
     tolerance:
       groupCache?.tolerance ??
@@ -2052,6 +2084,19 @@ function buildPriorityInfo({
   const selectedName =
     outbounds.find((outbound) => outbound.code === selectedCode)?.displayName ||
     selectedCode;
+  const primaryHealthUrl = groupCache?.health_url || config.healthUrl;
+  const extraHealthUrls = [
+    ...(Array.isArray(groupCache?.health_urls) ? groupCache.health_urls : []),
+    ...getListValues(config.settings?.health_urls as string[] | string),
+  ];
+  const allHealthUrls = uniqueCodes([
+    ...(primaryHealthUrl ? [primaryHealthUrl] : []),
+    ...extraHealthUrls,
+  ]);
+  const multiUrlStrategy =
+    groupCache?.multi_url_strategy ||
+    itemSettingString(config.settings, 'multi_url_strategy', '') ||
+    undefined;
 
   return {
     code: config.code,
@@ -2059,7 +2104,9 @@ function buildPriorityInfo({
     selectedCode: selectedCode || undefined,
     selectedName: selectedName || undefined,
     isManualSelection,
-    healthUrl: groupCache?.health_url || config.healthUrl,
+    healthUrl: primaryHealthUrl,
+    healthUrls: allHealthUrls.length > 0 ? allHealthUrls : undefined,
+    multiUrlStrategy,
     activeCheckInterval:
       groupCache?.active_check_interval || config.activeCheckInterval,
     checkTimeout: groupCache?.check_timeout || config.checkTimeout,

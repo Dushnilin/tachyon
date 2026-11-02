@@ -279,8 +279,19 @@ function remove_luci_index_cache() {
 // existed, got no message and no stderr, and rendered its "Failed to execute"
 // fallback over an update that had in fact succeeded. Only finished results are
 // stale; a job still marked running must survive to write its own result.
+function component_job_state_for_entry(path) {
+    path = as_string(path);
+    if (substr(path, -9) == ".json.pid")
+        return substr(path, 0, length(path) - 4);
+    if (substr(path, -9) == ".out.json")
+        return substr(path, 0, length(path) - 9) + ".json";
+    if (substr(path, -4) == ".log" || substr(path, -4) == ".out")
+        return substr(path, 0, length(path) - 4) + ".json";
+    return path;
+}
+
 function component_job_is_running(path) {
-    let data = fs.readfile(path);
+    let data = fs.readfile(component_job_state_for_entry(path));
     if (data == null)
         return false;
     return match(as_string(data), /"running"[ \t]*:[ \t]*(true|1)/) != null;

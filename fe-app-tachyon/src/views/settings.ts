@@ -919,6 +919,20 @@ function createSnapshotsWidget() {
 
   function performExport(snap) {
     execSnapshotJson(['snapshot_export', snap.file])
+      .catch(function (err) {
+        return fs
+          .read_direct('/tmp/tachyon-snapshot-export.json')
+          .then(function (raw) {
+            const parsed = JSON.parse(String(raw || '').trim());
+            if (!parsed || parsed.format !== 'tachyon-profile-v1') {
+              throw err;
+            }
+            return { success: true, profile: parsed };
+          })
+          .catch(function () {
+            throw err;
+          });
+      })
       .then(function (data) {
         const payload = JSON.stringify(data.profile || data, null, 2);
         const blob = new Blob([payload], { type: 'application/json' });

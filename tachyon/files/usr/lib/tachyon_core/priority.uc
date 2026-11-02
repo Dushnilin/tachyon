@@ -400,7 +400,8 @@ function evaluate_multi_url_delays(delays_by_url, urls, strategy) {
         delay: combined,
         passed,
         total,
-        full_pass
+        full_pass,
+        delays_by_url
     };
 }
 
@@ -424,7 +425,10 @@ function clash_probe(tag_name, group) {
         let delay = parse_delay_output(result.output);
         if (delay == null)
             return { alive: false, delay: 0, passed: 0, total: 1, full_pass: false };
-        return { alive: true, delay, passed: 1, total: 1, full_pass: true };
+        if (type(group._url_delays) != "object")
+            group._url_delays = {};
+        group._url_delays[as_string(tag_name)] = { [url]: delay };
+        return { alive: true, delay, passed: 1, total: 1, full_pass: true, delays_by_url: { [url]: delay } };
     }
 
     let delays_by_url = {};
@@ -436,6 +440,9 @@ function clash_probe(tag_name, group) {
                 delays_by_url[u] = d;
         }
     }
+    if (type(group._url_delays) != "object")
+        group._url_delays = {};
+    group._url_delays[as_string(tag_name)] = delays_by_url;
     return evaluate_multi_url_delays(delays_by_url, urls, group.multi_url_strategy);
 }
 
@@ -747,6 +754,7 @@ function write_group_status(group, state, selected) {
     let status_dir = RUNTIME_STATE_DIR + "/priority";
     if (!ensure_dir(status_dir))
         return;
+    let url_delays = type(group._url_delays) == "object" ? group._url_delays : {};
     let payload = {
         tag: group.tag,
         kind: group.kind || "priority",
@@ -757,6 +765,9 @@ function write_group_status(group, state, selected) {
         passed_urls: selected && selected.passed_urls != null ? int(selected.passed_urls) : length(array_or_empty(group.health_urls)),
         total_urls: selected && selected.total_urls != null ? int(selected.total_urls) : length(array_or_empty(group.health_urls)),
         strategy: group.multi_url_strategy || "worst_case",
+        active_check_interval: group.active_check_interval || "",
+        urls: array_or_empty(group.health_urls),
+        url_delays: url_delays,
         updated_at: now_seconds()
     };
     common.write_json_file(status_dir + "/" + urlencode_segment(group.tag) + ".json", payload);
@@ -827,6 +838,14 @@ function tick_group(state, group) {
         let active = clash_probe(state.active, group);
         if (active.alive) {
             state.activeDelay = active.delay;
+            write_group_status(group, state, {
+                tag: state.active,
+                levelIndex: state.levelIndex,
+                delay: active.delay,
+                fallback_active: active.full_pass === false,
+                passed_urls: active.passed,
+                total_urls: active.total
+            });
             if (state.levelIndex == 0 && state.guard)
                 reachability_guard.observe(state.guard, { direct_domestic: true, direct_foreign: true, tunnel_foreign: true, now: now });
         }

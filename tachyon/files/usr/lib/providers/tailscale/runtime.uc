@@ -46,9 +46,12 @@ const TS_EXIT_RULE_PRIORITY = getenv("TAILSCALE_EXIT_RULE_PRIORITY") || "90";
 const TAILNET_V4 = "100.64.0.0/10";
 const TAILNET_V6 = "fd7a:115c:a1e0::/48";
 // Destinations that must never be pushed through an exit node tunnel.
+// 198.18.0.0/15 is Tachyon's FakeIP v4 range; excluding it here ensures
+// FakeIP-resolved traffic reaches Tachyon's mangle/tproxy chain instead of
+// being marked 0x00200000 and routed raw into tailscale0 (#318).
 const EXIT_NODE_EXCLUDES_V4 = [
     "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16",
-    "100.64.0.0/10", "127.0.0.0/8", "224.0.0.0/4", "240.0.0.0/4"
+    "100.64.0.0/10", "127.0.0.0/8", "198.18.0.0/15", "224.0.0.0/4", "240.0.0.0/4"
 ];
 const EXIT_NODE_EXCLUDES_V6 = [ "fc00::/7", "fe80::/10", "ff00::/8" ];
 

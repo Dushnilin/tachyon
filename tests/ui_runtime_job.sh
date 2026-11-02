@@ -278,13 +278,18 @@ component_job="$TACHYON_UI_COMPONENT_ACTION_DIR/component-1.json"
 mkdir -p "$TACHYON_UI_COMPONENT_ACTION_DIR"
 bash -c 'while true; do sleep 1; done' component-action-worker &
 worker_pid=$!
-printf '%s\n' '{"running":true,"component":"sing_box","pid":"'"$worker_pid"'","started_at":100}' >"$component_job"
+printf '%s\n' '{"running":true,"component":"sing_box","pid":null,"started_at":100}' >"$component_job"
+printf '%s\n' "$worker_pid" >"$component_job.pid"
 ui_ucode component-action-running-for sing_box >/dev/null ||
-  fail "component-action-running-for should detect running sing-box component action"
+  fail "component-action-running-for should detect running sing-box component action using sidecar .json.pid after grace period"
+if grep -Fq "Component action worker exited unexpectedly" "$component_job"; then
+  fail "refresh_action_dirs must not mark a live worker with sidecar .json.pid as exited unexpectedly"
+fi
 if ui_ucode component-action-running-for zapret >/dev/null 2>&1; then
   fail "component-action-running-for should ignore other components"
 fi
 kill "$worker_pid" 2>/dev/null || true
+rm -f "$component_job.pid"
 
 ui_ucode action-ack service "$job_id" >/dev/null ||
   fail "action-ack should acknowledge finished service action"

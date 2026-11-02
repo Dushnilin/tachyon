@@ -278,6 +278,11 @@ function update_job_phase(phase, message) {
         state.phase_started_at = job_phase_started_at;
         state.heartbeat_at = now_seconds();
         state.updated_at = now_seconds();
+        if (as_string(state.pid || "") == "") {
+            let sidecar_pid = trim(read_file(state_path + ".pid"));
+            if (sidecar_pid != "")
+                state.pid = sidecar_pid;
+        }
         if (as_string(message) != "")
             state.message = as_string(message);
         let tmp = state_path + ".hb." + owner_pid();
@@ -299,6 +304,11 @@ function job_heartbeat() {
             return;
         state.heartbeat_at = now_seconds();
         state.updated_at = now_seconds();
+        if (as_string(state.pid || "") == "") {
+            let sidecar_pid = trim(read_file(state_path + ".pid"));
+            if (sidecar_pid != "")
+                state.pid = sidecar_pid;
+        }
         let tmp = state_path + ".hb." + owner_pid();
         write_file(tmp, sprintf("%J\n", state));
         fs.rename(tmp, state_path);

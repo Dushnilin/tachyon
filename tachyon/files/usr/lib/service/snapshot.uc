@@ -48,6 +48,34 @@ const CONFIG_ROOT = env("TACHYON_CONFIG_ROOT", "/etc");
 const SNAPSHOTS_DIR = env("TACHYON_SNAPSHOTS_DIR", "/etc/.tachyon/snapshots");
 const SNAPSHOT_LIMIT = int(env("TACHYON_SNAPSHOT_LIMIT", "10"));
 const VALIDATE_BIN = env("TACHYON_SNAPSHOT_VALIDATE_BIN", "/sbin/uci");
+const EXPORT_TMP_FILE = env("TACHYON_SNAPSHOT_EXPORT_FILE", "/tmp/tachyon-snapshot-export.json");
+
+const SNAPSHOT_EXCLUDED_DIRS = [
+    "rulesets",
+    "installer-backups",
+    "subscription-cache"
+];
+
+function strip_excluded_dirs(data_dir) {
+    if (fs.stat(data_dir) == null)
+        return;
+    for (let dir in SNAPSHOT_EXCLUDED_DIRS) {
+        let p = data_dir + "/" + dir;
+        if (fs.stat(p) != null)
+            command_status(command_from_args([ "rm", "-rf", p ]));
+    }
+}
+
+function preserve_excluded_dirs(src_data_dir, dst_data_dir) {
+    if (fs.stat(src_data_dir) == null || fs.stat(dst_data_dir) == null)
+        return;
+    for (let dir in SNAPSHOT_EXCLUDED_DIRS) {
+        let src = src_data_dir + "/" + dir;
+        let dst = dst_data_dir + "/" + dir;
+        if (fs.stat(src) != null && fs.stat(dst) == null)
+            command_status(command_from_args([ "cp", "-a", src, dst ]));
+    }
+}
 
 function snapshot_stamp() {
     return trim(command_output_from_args([ "date", "+%Y%m%d-%H%M%S" ]));
@@ -118,8 +146,32 @@ function snapshot_save(name) {
     if (fs.stat(CONFIG_PATH) == null)
         return fail("config file not found");
 
+    let stage = trim(command_output_from_args([ "mktemp", "-d", "/tmp/tachyon-snapshot-save.XXXXXX" ]));
+    if (stage == "")
+        return fail("unable to create staging directory");
+
+    let staged_cfg_dir = stage + "/config";
+    let staged_data_dir = stage + "/" + CONFIG_NAME;
+    if (!command_success_from_args([ "mkdir", "-p", staged_cfg_dir ]) ||
+        !command_success_from_args([ "cp", "-a", CONFIG_PATH, staged_cfg_dir + "/" + CONFIG_NAME ])) {
+        command_status(command_from_args([ "rm", "-rf", stage ]));
+        return fail("unable to stage snapshot config");
+    }
+
+    if (fs.stat(PERSISTENT_DIR) != null) {
+        if (!command_success_from_args([ "cp", "-a", PERSISTENT_DIR, staged_data_dir ])) {
+            command_status(command_from_args([ "rm", "-rf", stage ]));
+            return fail("unable to stage snapshot data");
+        }
+        strip_excluded_dirs(staged_data_dir);
+    } else {
+        command_success_from_args([ "mkdir", "-p", staged_data_dir ]);
+    }
+
     let file = SNAPSHOTS_DIR + "/" + safe + "-" + snapshot_stamp() + ".tar.gz";
-    if (!command_success_from_args([ "tar", "-czf", file, "-C", CONFIG_ROOT, "config/" + CONFIG_NAME, CONFIG_NAME ])) {
+    let packed = command_success_from_args([ "tar", "-czf", file, "-C", stage, "config/" + CONFIG_NAME, CONFIG_NAME ]);
+    command_status(command_from_args([ "rm", "-rf", stage ]));
+    if (!packed) {
         command_success_from_args([ "rm", "-f", file ]);
         return fail("unable to create snapshot archive");
     }
@@ -249,6 +301,8 @@ function snapshot_restore(file) {
             command_status(command_from_args([ "rm", "-rf", stage ]));
             return fail("unable to write restored data; rolled back");
         }
+        if (fs.stat(data_backup) != null)
+            preserve_excluded_dirs(data_backup, PERSISTENT_DIR);
     }
 
     command_status(command_from_args([ "rm", "-rf", stage ]));
@@ -442,23 +496,47 @@ function snapshot_export(file) {
 
     let staged_config = stage + "/config/" + CONFIG_NAME;
     let config_text = as_string(fs.readfile(staged_config) || "");
+
+    let staged_data = stage + "/" + CONFIG_NAME;
+    strip_excluded_dirs(staged_data);
+
+    let clean_tar = stage + "/clean-export.tar.gz";
+    let tar_args = [ "tar", "-czf", clean_tar, "-C", stage ];
+    if (fs.stat(staged_config) != null)
+        push(tar_args, "config/" + CONFIG_NAME);
+    if (fs.stat(staged_data) != null)
+        push(tar_args, CONFIG_NAME);
+
+    let raw_archive = null;
+    if (length(tar_args) > 5 && command_success_from_args(tar_args))
+        raw_archive = fs.readfile(clean_tar);
+    if (raw_archive == null)
+        raw_archive = fs.readfile(archive);
+
     command_status(command_from_args([ "rm", "-rf", stage ]));
 
-    let raw_archive = fs.readfile(archive);
     let archive_b64 = raw_archive != null ? b64enc(raw_archive) : "";
     let meta = parse_snapshot_meta(file);
 
+    let profile = {
+        format: "tachyon-profile-v1",
+        name: meta.name,
+        stamp: meta.stamp,
+        file: file,
+        created_at: time(),
+        config_text: config_text,
+        archive_base64: archive_b64
+    };
+
+    if (EXPORT_TMP_FILE != "") {
+        common.write_json_file(EXPORT_TMP_FILE, profile, 2);
+        command_success_from_args([ "chmod", "600", EXPORT_TMP_FILE ]);
+    }
+
     print(sprintf("%J\n", {
         success: true,
-        profile: {
-            format: "tachyon-profile-v1",
-            name: meta.name,
-            stamp: meta.stamp,
-            file: file,
-            created_at: time(),
-            config_text: config_text,
-            archive_base64: archive_b64
-        }
+        export_file: EXPORT_TMP_FILE,
+        profile: profile
     }));
     return 0;
 }

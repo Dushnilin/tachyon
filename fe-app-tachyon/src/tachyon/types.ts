@@ -362,6 +362,7 @@ export namespace Tachyon {
     displayName: string;
     prefix?: string;
     latency: number;
+    urlDelays?: Record<string, number>;
     type: string;
     transport?: string;
     details?: string;
@@ -378,6 +379,9 @@ export namespace Tachyon {
     selectedName?: string;
     isManualSelection?: boolean;
     url?: string;
+    urls?: string[];
+    multiUrlStrategy?: string;
+    activeCheckInterval?: string;
     interval?: string;
     tolerance?: string | number;
     idleTimeout?: string;
@@ -385,6 +389,7 @@ export namespace Tachyon {
     fallbackActive?: boolean;
     passedUrls?: number;
     totalUrls?: number;
+    updatedAt?: number;
     outbounds: UrlTestMember[];
   }
 
@@ -401,6 +406,8 @@ export namespace Tachyon {
     selectedName?: string;
     isManualSelection?: boolean;
     healthUrl?: string;
+    healthUrls?: string[];
+    multiUrlStrategy?: string;
     activeCheckInterval?: string;
     checkTimeout?: string;
     recoveryCheckInterval?: string;
@@ -411,6 +418,7 @@ export namespace Tachyon {
     fallbackActive?: boolean;
     passedUrls?: number;
     totalUrls?: number;
+    updatedAt?: number;
     outbounds: PriorityMember[];
   }
 
@@ -704,6 +712,9 @@ export namespace Tachyon {
     check_interval?: string;
     tolerance?: string;
     testing_url?: string;
+    testing_urls?: string[] | string;
+    health_urls?: string[] | string;
+    multi_url_strategy?: string;
     idle_timeout?: string;
     interrupt_exist_connections?: '0' | '1';
     pin_dashboard?: '0' | '1';

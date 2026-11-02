@@ -1599,7 +1599,7 @@ function updates_job_refresh_plan(path, now, grace_seconds) {
     }
 
     let within_grace = job_started_at_within_grace(value.started_at, now, grace_seconds);
-    let pid = as_string(value.pid || "");
+    let pid = as_string(value.pid || trim(as_string(fs.readfile(as_string(path) + ".pid") || "")) || "");
     if (!job_pid_valid(pid)) {
         print(within_grace ? "skip\n" : "stale\n");
         return;

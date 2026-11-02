@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-02 10:12+0300\n"
-"PO-Revision-Date: 2026-11-02 10:12+0300\n"
+"POT-Creation-Date: 2026-11-02 11:51+0300\n"
+"PO-Revision-Date: 2026-11-02 11:51+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -563,6 +563,9 @@ msgstr "Все секции"
 msgid "All Sources"
 msgstr "Все источники"
 
+msgid "All URLs must respond (worst latency)"
+msgstr "Все URL должны отвечать (по худшему пингу)"
+
 msgid "All checks passed — Telegram bot should work correctly"
 msgstr "Все проверки пройдены — бот должен работать корректно"
 
@@ -839,6 +842,9 @@ msgstr "Назначенные устройства (MAC / IP)"
 msgid "At least one Admin Chat ID is required"
 msgstr "Требуется как минимум один Chat ID администратора"
 
+msgid "At least one URL (best latency)"
+msgstr "Хотя бы один URL (по лучшему пингу)"
+
 msgid "At least one valid IP or subnet must be specified."
 msgstr "Должен быть указан как минимум один действительный IP или подсеть."
 
@@ -1060,6 +1066,9 @@ msgstr "Среднее"
 
 msgid "Average (Mean latency across all URLs)"
 msgstr "Среднее значение (средний пинг по всем URL)"
+
+msgid "Average latency across URLs"
+msgstr "Средняя задержка по всем URL"
 
 msgid "Avg. latency"
 msgstr "Ср. задержка"
@@ -1477,6 +1486,9 @@ msgstr "URL проверки"
 
 msgid "Check URL Reachability"
 msgstr "Проверить доступность URL"
+
+msgid "Check URLs"
+msgstr "URL для проверки"
 
 msgid "Check YouTube"
 msgstr "Проверить YouTube"
@@ -3262,6 +3274,9 @@ msgstr "Ориентировочный объём RAM (макс.):"
 
 msgid "Event bus journal and syslog monitoring report clean operation."
 msgstr "Журнал шины событий и мониторинг syslog не сообщают о проблемах."
+
+msgid "Every"
+msgstr "Каждые"
 
 msgid "Every day"
 msgstr "Каждый день"
@@ -5192,6 +5207,9 @@ msgstr "Режим замера задержки (пинга)"
 msgid "Latency Tolerance (ms)"
 msgstr "Допуск задержки (мс)"
 
+msgid "Latency by URL"
+msgstr "Задержка по URL"
+
 msgid "Latency difference threshold in milliseconds to switch server"
 msgstr "Порог разницы задержки в миллисекундах для переключения сервера"
 
@@ -5290,6 +5308,9 @@ msgstr "Обновление списков всё ещё выполняется
 
 msgid "Lite Eco Mode"
 msgstr "Эко-режим Lite"
+
+msgid "Live check"
+msgstr "Live-проверка"
 
 msgid "Live filter preview"
 msgstr "Предпросмотр фильтра в реальном времени"
@@ -5683,6 +5704,9 @@ msgstr "Multi-Split (Тройная нарезка: TLS Record + SNI + MidSLD)"
 
 msgid "Multi-URL Evaluation Strategy"
 msgstr "Стратегия оценки Multi-URL"
+
+msgid "Multi-URL strategy"
+msgstr "Стратегия проверки URL"
 
 msgid "Multiplex"
 msgstr "Мультиплексирование"
@@ -9314,6 +9338,9 @@ msgstr "Область действия"
 msgid "Target Service / Suite"
 msgstr "Целевой сервис / Набор"
 
+msgid "Target URL #1 priority"
+msgstr "Приоритет первого URL (#1)"
+
 msgid "Target URL to test (e.g. https://rutracker.org or https://www.gstatic.com/generate_204)"
 msgstr "Целевой URL для проверки (например, https://rutracker.org или https://www.gstatic.com/generate_204)"
 
@@ -9403,6 +9430,9 @@ msgstr "Тестирование"
 
 msgid "Testing URL"
 msgstr "URL проверки"
+
+msgid "Testing URLs"
+msgstr "URL для проверки"
 
 msgid "Testing all sections..."
 msgstr "Проверка всех секций..."
@@ -10601,6 +10631,9 @@ msgstr "активен"
 msgid "allocated dynamically on demand, not upfront"
 msgstr "выделяется динамически по мере запросов, а не сразу"
 
+msgid "checking..."
+msgstr "проверка..."
+
 msgid "checks"
 msgstr "проверки"
 
@@ -10828,6 +10861,9 @@ msgstr "базовая"
 
 msgid "strategy to section configured for"
 msgstr "стратегия настроена для секции с действием"
+
+msgid "timeout"
+msgstr "таймаут"
 
 msgid "tiny"
 msgstr "tiny"

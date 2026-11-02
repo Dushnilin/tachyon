@@ -1315,6 +1315,95 @@ body.dark-theme .tachyon_proto-popover__desc {
     text-decoration: underline;
 }
 
+.tachyon_dashboard-page__urltest-details__url-list {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
+    min-width: 0;
+    width: 100%;
+}
+
+.tachyon_dashboard-page__urltest-details__url-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    max-width: 100%;
+    font-size: 12px;
+    line-height: 1.3;
+}
+
+.tachyon_dashboard-page__urltest-details__url-index {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    font-family: monospace;
+    color: #b4a5f0;
+    background: rgba(148, 130, 224, 0.14);
+    border: 1px solid rgba(148, 130, 224, 0.28);
+    flex-shrink: 0;
+}
+
+.tachyon_dashboard-page__urltest-details__live-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.tachyon_dashboard-page__urltest-details__live-timer {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: monospace;
+    color: #b4a5f0;
+    background: rgba(148, 130, 224, 0.14);
+    border: 1px solid rgba(148, 130, 224, 0.3);
+}
+
+.tachyon_dashboard-page__urltest-details__url-delays-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    margin-left: 4px;
+    border-radius: 50%;
+    font-size: 10px;
+    font-weight: 700;
+    font-family: monospace;
+    color: var(--text-color-medium, #94a3b8);
+    background: rgba(148, 130, 224, 0.14);
+    border: 1px solid rgba(148, 130, 224, 0.32);
+    cursor: help;
+    flex-shrink: 0;
+    line-height: 1;
+}
+
+.tachyon_dashboard-page__urltest-details__url-delays-trigger:hover {
+    color: #b4a5f0;
+    background: rgba(148, 130, 224, 0.24);
+    border-color: rgba(148, 130, 224, 0.55);
+}
+
+.tachyon_dashboard-page__urltest-details__url-delays-trigger .tachyon_proto-popover {
+    left: auto;
+    right: 0;
+    min-width: 240px;
+    max-width: 340px;
+}
+
 .tachyon_dashboard-page__urltest-details__selected-value {
     display: inline-flex;
     align-items: center;
@@ -1386,7 +1475,13 @@ body.dark-theme .tachyon_proto-popover__desc {
     gap: 8px;
     min-width: 0;
     flex: 1 1 auto;
-    overflow: hidden;
+}
+
+.tachyon_dashboard-page__urltest-details__selected-value .tachyon_proto-popover,
+.tachyon_dashboard-page__urltest-details__row:first-child .tachyon_proto-popover,
+.tachyon_dashboard-page__urltest-details__row:nth-child(2) .tachyon_proto-popover {
+    top: calc(100% + 6px);
+    bottom: auto;
 }
 
 .tachyon_dashboard-page__urltest-details__row-name b {

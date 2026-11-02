@@ -155,8 +155,11 @@ function remove_state_file(path) {
     if (length(base) >= length(suffix) && substr(base, length(base) - length(suffix)) == suffix)
         base = substr(base, 0, length(base) - length(suffix));
     remove_file(path);
+    remove_file(path + ".pid");
     remove_file(base + ".out");
+    remove_file(base + ".out.stderr");
     remove_file(base + ".out.json");
+    remove_file(base + ".log");
 }
 
 function arg_bool(value) {
@@ -428,6 +431,22 @@ function job_started_at_within_grace(value, now, grace_seconds) {
     return now - started_at < grace_seconds;
 }
 
+function first_line(path) {
+    let data = fs.readfile(as_string(path));
+    if (data == null)
+        return "";
+
+    let newline = index(data, "\n");
+    return trim(newline >= 0 ? substr(data, 0, newline) : data);
+}
+
+function job_pid_from_state(path, value) {
+    let pid = type(value) == "object" && value.pid != null ? as_string(value.pid) : "";
+    if (pid == "")
+        pid = first_line(as_string(path) + ".pid");
+    return pid;
+}
+
 function job_pid_valid(pid) {
     pid = as_string(pid);
     return pid != "" && match(pid, /^[0-9]+$/) != null;
@@ -441,7 +460,7 @@ function job_refresh_plan(path, now, grace_seconds) {
     }
 
     let within_grace = job_started_at_within_grace(value.started_at, now, grace_seconds);
-    let pid = as_string(value.pid || "");
+    let pid = job_pid_from_state(path, value);
     if (!job_pid_valid(pid)) {
         print(within_grace ? "skip\n" : "stale\n");
         return;
@@ -487,15 +506,6 @@ function active_service_action_job_id_value() {
 function file_executable(path) {
     let stat = fs.stat(as_string(path));
     return stat != null && stat.mode != null && (int(stat.mode) & 73) != 0;
-}
-
-function first_line(path) {
-    let data = fs.readfile(as_string(path));
-    if (data == null)
-        return "";
-
-    let newline = index(data, "\n");
-    return trim(newline >= 0 ? substr(data, 0, newline) : data);
 }
 
 function valid_job_id(job_id) {
@@ -693,14 +703,24 @@ function refresh_pid_job_state(path, stale_message) {
         return;
 
     let now = now_seconds();
-    let pid = as_string(value.pid || "");
+    let pid = job_pid_from_state(path, value);
 
     if (job_pid_valid(pid) && pid_running(pid))
         return;
 
     let within_grace = job_started_at_within_grace(value.started_at, now, int(ACTION_STALE_GRACE_SECONDS));
-    if (!within_grace)
-        write_stale_action_state(path, stale_message);
+    if (within_grace)
+        return;
+
+    command_success_from_args([ "sleep", "1" ]);
+    value = read_json_file(path);
+    if (type(value) != "object" || value.running !== true)
+        return;
+    pid = job_pid_from_state(path, value);
+    if (job_pid_valid(pid) && pid_running(pid))
+        return;
+
+    write_stale_action_state(path, stale_message);
 }
 
 function state_file_ack_expired(path) {
@@ -944,7 +964,7 @@ function component_action_running_for(component) {
             continue;
         // A recycled pid must not keep the job "running" forever: the process
         // still has to be our component-action worker.
-        let pid = as_string(value.pid || "");
+        let pid = job_pid_from_state(path, value);
         if (!job_pid_valid(pid))
             continue;
         if (index(as_string(fs.readfile("/proc/" + pid + "/cmdline")), "component-action-worker") < 0)
@@ -2152,7 +2172,7 @@ function action_ack(kind, job_id_value) {
     refresh_pid_job_state(path, "UI action worker exited unexpectedly");
     let value = read_json_file(path);
     if (type(value) == "object" && value.running === true) {
-        let pid = as_string(value.pid || "");
+        let pid = job_pid_from_state(path, value);
         if (!job_pid_valid(pid) || !pid_running(pid)) {
             write_stale_action_state(path, "UI action worker is no longer running");
             value = read_json_file(path);

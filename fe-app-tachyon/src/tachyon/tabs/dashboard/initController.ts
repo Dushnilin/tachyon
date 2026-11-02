@@ -1400,6 +1400,186 @@ function renderDetailsUrl(value: unknown) {
   );
 }
 
+function normalizeDetailsUrlList(primaryUrl?: string, urls?: string[]) {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const item of [...(urls || []), primaryUrl || '']) {
+    const trimmed = `${item || ''}`.trim();
+    if (trimmed && !seen.has(trimmed)) {
+      seen.add(trimmed);
+      result.push(trimmed);
+    }
+  }
+  return result;
+}
+
+function renderDetailsUrls(primaryUrl?: string, urls?: string[]) {
+  const list = normalizeDetailsUrlList(primaryUrl, urls);
+  if (list.length <= 1) {
+    return renderDetailsUrl(list[0] ?? primaryUrl);
+  }
+
+  return E(
+    'div',
+    { class: 'tachyon_dashboard-page__urltest-details__url-list' },
+    list.map((url, idx) =>
+      E('div', { class: 'tachyon_dashboard-page__urltest-details__url-item' }, [
+        E(
+          'span',
+          { class: 'tachyon_dashboard-page__urltest-details__url-index' },
+          `#${idx + 1}`,
+        ),
+        renderDetailsUrl(url),
+      ]),
+    ),
+  );
+}
+
+function formatMultiUrlStrategyLabel(strategy?: string) {
+  const key = `${strategy || 'worst_case'}`.trim().toLowerCase();
+  if (key === 'best_case') {
+    return _('At least one URL (best latency)');
+  }
+  if (key === 'best_case_target') {
+    return _('Target URL #1 priority');
+  }
+  if (key === 'average') {
+    return _('Average latency across URLs');
+  }
+  return _('All URLs must respond (worst latency)');
+}
+
+function shortenUrlForPopover(rawUrl: string, idx: number) {
+  const trimmed = `${rawUrl || ''}`.trim();
+  const stripped = trimmed.replace(/^https?:\/\//i, '').replace(/\/$/, '');
+  const shortText =
+    stripped.length > 32 ? `${stripped.slice(0, 29)}...` : stripped;
+  return `#${idx + 1} ${shortText || trimmed}`;
+}
+
+function renderMemberUrlDelaysPopover(
+  member: Tachyon.UrlTestMember,
+  urls?: string[],
+) {
+  const memberDelays = member.urlDelays || {};
+  const effectiveUrls = normalizeDetailsUrlList(undefined, [
+    ...(urls || []),
+    ...Object.keys(memberDelays),
+  ]);
+
+  if (effectiveUrls.length <= 1 && Object.keys(memberDelays).length === 0) {
+    return null;
+  }
+
+  return E(
+    'span',
+    {
+      class:
+        'tachyon_dashboard-page__urltest-details__url-delays-trigger tachyon_proto-popover-trigger',
+      tabIndex: 0,
+      title: _('Latency by URL'),
+    },
+    [
+      'i',
+      E('div', { class: 'tachyon_proto-popover' }, [
+        E('div', { class: 'tachyon_proto-popover__header' }, [
+          E(
+            'span',
+            { class: 'tachyon_proto-popover__title' },
+            _('Latency by URL'),
+          ),
+        ]),
+        E(
+          'div',
+          { class: 'tachyon_proto-popover__rows' },
+          effectiveUrls.map((url, idx) => {
+            const delayVal = memberDelays[url];
+            const hasDelay = typeof delayVal === 'number' && delayVal > 0;
+            const isFailed = typeof delayVal === 'number' && delayVal <= 0;
+            return E('div', { class: 'tachyon_proto-popover__row' }, [
+              E(
+                'span',
+                {
+                  class: 'tachyon_proto-popover__key',
+                  title: url,
+                },
+                shortenUrlForPopover(url, idx),
+              ),
+              E(
+                'span',
+                {
+                  class: `tachyon_proto-popover__val ${getUrlTestLatencyClass(
+                    hasDelay ? delayVal : -1,
+                  )}`,
+                },
+                hasDelay ? `${delayVal}ms` : isFailed ? _('timeout') : 'N/A',
+              ),
+            ]);
+          }),
+        ),
+      ]),
+    ],
+  );
+}
+
+function parseIntervalToSeconds(raw?: string, fallbackSec = 180) {
+  const s = `${raw || ''}`.trim().toLowerCase();
+  if (!s) return fallbackSec;
+  if (/^\d+$/.test(s)) {
+    const val = Number(s);
+    return val > 0 ? val : fallbackSec;
+  }
+  let total = 0;
+  let matched = false;
+  const regex = /(\d+)\s*(h|m|s)/g;
+  let m: RegExpExecArray | null;
+  while ((m = regex.exec(s)) !== null) {
+    matched = true;
+    const n = Number(m[1]);
+    const unit = m[2];
+    if (unit === 'h') total += n * 3600;
+    else if (unit === 'm') total += n * 60;
+    else total += n;
+  }
+  return matched && total > 0 ? total : fallbackSec;
+}
+
+function formatCountdownSeconds(sec: number) {
+  const clamped = Math.max(0, Math.floor(sec));
+  if (clamped >= 60) {
+    const mins = Math.floor(clamped / 60);
+    const rem = clamped % 60;
+    return `↻ ${mins}m ${rem}s`;
+  }
+  return `↻ ${clamped}s`;
+}
+
+function renderLiveCheckField(intervalRaw?: string, updatedAtSec?: number) {
+  const labelText = `${intervalRaw || '3m'}`.trim() || '3m';
+  const intervalSec = parseIntervalToSeconds(labelText, 180);
+  const nowSec = Math.floor(Date.now() / 1000);
+  const elapsed =
+    updatedAtSec && updatedAtSec > 0 && nowSec >= updatedAtSec
+      ? (nowSec - updatedAtSec) % intervalSec
+      : 0;
+  const remaining = Math.max(1, intervalSec - elapsed);
+
+  return E(
+    'div',
+    { class: 'tachyon_dashboard-page__urltest-details__live-check' },
+    [
+      E('span', {}, `${_('Every')} ${labelText}`),
+      E(
+        'span',
+        {
+          class: 'tachyon_dashboard-page__urltest-details__live-timer',
+        },
+        formatCountdownSeconds(remaining),
+      ),
+    ],
+  );
+}
+
 function getDetectedCountryFlag(country?: string) {
   const code = `${country || ''}`.trim().toUpperCase();
 
@@ -1505,6 +1685,9 @@ function renderUrlTestSelectedValue(info: Tachyon.UrlTestInfo) {
               { class: getUrlTestLatencyClass(selectedMember.latency) },
               formatUrlTestLatency(selectedMember.latency),
             ),
+            ...(renderMemberUrlDelaysPopover(selectedMember, info.urls)
+              ? [renderMemberUrlDelaysPopover(selectedMember, info.urls)!]
+              : []),
           ]
         : []),
       modeBadge,
@@ -1668,6 +1851,17 @@ function renderCommonDetailsModal(
                             { class: getUrlTestLatencyClass(member.latency) },
                             formatUrlTestLatency(member.latency),
                           ),
+                          ...(renderMemberUrlDelaysPopover(
+                            member,
+                            info.urls || info.healthUrls,
+                          )
+                            ? [
+                                renderMemberUrlDelaysPopover(
+                                  member,
+                                  info.urls || info.healthUrls,
+                                )!,
+                              ]
+                            : []),
                         ],
                       ),
                       ...(section && section.withTagSelect
@@ -1878,6 +2072,7 @@ function renderUrlTestInfoModal(
     return E('div', {}, _('URLTest details are unavailable'));
   }
 
+  const effectiveUrls = normalizeDetailsUrlList(info.url, info.urls);
   const fields: Array<{
     label: string;
     value?: unknown;
@@ -1887,7 +2082,27 @@ function renderUrlTestInfoModal(
       label: _('Selected'),
       children: [renderUrlTestSelectedValue(info)],
     },
-    { label: _('Testing URL'), children: [renderDetailsUrl(info.url)] },
+    {
+      label: effectiveUrls.length > 1 ? _('Testing URLs') : _('Testing URL'),
+      children: [renderDetailsUrls(info.url, info.urls)],
+    },
+    ...(effectiveUrls.length > 1 || info.multiUrlStrategy
+      ? [
+          {
+            label: _('Multi-URL strategy'),
+            value: formatMultiUrlStrategyLabel(info.multiUrlStrategy),
+          },
+        ]
+      : []),
+    {
+      label: _('Live check'),
+      children: [
+        renderLiveCheckField(
+          info.activeCheckInterval || info.interval,
+          info.updatedAt,
+        ),
+      ],
+    },
     { label: _('Interval'), value: info.interval },
     { label: _('Tolerance'), value: info.tolerance },
     { label: _('Idle timeout'), value: info.idleTimeout },
@@ -1907,6 +2122,144 @@ function renderUrlTestInfoModal(
   );
 }
 
+function applyPriorityDaemonStatusToInfo(
+  info: Tachyon.UrlTestInfo | Tachyon.PriorityInfo,
+  st: Record<string, any>,
+) {
+  let changed = false;
+  if (st.fallback_active !== undefined) {
+    info.fallbackActive = Boolean(st.fallback_active);
+    info.passedUrls = Number(st.passed_urls || 0);
+    info.totalUrls = Number(st.total_urls || 0);
+    changed = true;
+  }
+  if (typeof st.updated_at === 'number' && st.updated_at > 0) {
+    info.updatedAt = st.updated_at;
+    changed = true;
+  }
+  if (
+    typeof st.active_check_interval === 'string' &&
+    st.active_check_interval
+  ) {
+    info.activeCheckInterval = st.active_check_interval;
+    changed = true;
+  }
+  if (Array.isArray(st.urls) && st.urls.length > 0) {
+    if ('urls' in info || !('healthUrls' in info)) {
+      (info as Tachyon.UrlTestInfo).urls = st.urls.filter(Boolean);
+    } else {
+      (info as Tachyon.PriorityInfo).healthUrls = st.urls.filter(Boolean);
+    }
+    changed = true;
+  }
+  if (st.url_delays && typeof st.url_delays === 'object') {
+    const delaysMap = st.url_delays as Record<string, Record<string, number>>;
+    info.outbounds = (info.outbounds || []).map((member) => {
+      const mDelays = delaysMap[member.code];
+      if (mDelays && typeof mDelays === 'object') {
+        changed = true;
+        return {
+          ...member,
+          urlDelays: { ...(member.urlDelays || {}), ...mDelays },
+        };
+      }
+      return member;
+    });
+  }
+  return changed;
+}
+
+async function probeModalMultiUrlLatencies(
+  members: Tachyon.UrlTestMember[],
+  urls: string[],
+): Promise<Map<string, Record<string, number>>> {
+  const result = new Map<string, Record<string, number>>();
+  const cleanUrls = urls.map((u) => `${u || ''}`.trim()).filter(Boolean);
+  if (cleanUrls.length === 0 || !members.length) {
+    return result;
+  }
+
+  const tasks: Array<{ tag: string; url: string }> = [];
+  for (const member of members) {
+    const tag = `${member.code || ''}`.trim();
+    if (!tag) continue;
+    for (const url of cleanUrls) {
+      tasks.push({ tag, url });
+    }
+  }
+
+  let idx = 0;
+  const concurrency = Math.min(6, tasks.length);
+  const worker = async () => {
+    while (idx < tasks.length) {
+      const current = tasks[idx++];
+      try {
+        const res = await TachyonShellMethods.getClashApiProxyLatency(
+          current.tag,
+          '2000',
+          current.url,
+        );
+        const delayVal =
+          res.success &&
+          res.data &&
+          typeof (res.data as any).delay === 'number' &&
+          (res.data as any).delay > 0
+            ? Number((res.data as any).delay)
+            : -1;
+        const mapForTag = result.get(current.tag) || {};
+        mapForTag[current.url] = delayVal;
+        result.set(current.tag, mapForTag);
+      } catch {
+        const mapForTag = result.get(current.tag) || {};
+        mapForTag[current.url] = -1;
+        result.set(current.tag, mapForTag);
+      }
+    }
+  };
+
+  await Promise.all(Array.from({ length: concurrency }, worker));
+  return result;
+}
+
+function attachModalLiveCheckTimer(
+  body: HTMLElement,
+  intervalRaw: string | undefined,
+  onCycleTriggered: () => Promise<void>,
+) {
+  if (typeof window === 'undefined') return;
+  const intervalSec = parseIntervalToSeconds(intervalRaw, 180);
+  let remaining = intervalSec;
+  let probing = false;
+
+  const timerId = window.setInterval(() => {
+    if (!body.isConnected) {
+      window.clearInterval(timerId);
+      return;
+    }
+    const badge = body.querySelector<HTMLElement>(
+      '.tachyon_dashboard-page__urltest-details__live-timer',
+    );
+    if (probing) {
+      if (badge) badge.textContent = `↻ ${_('checking...')}`;
+      return;
+    }
+    remaining -= 1;
+    if (remaining <= 0) {
+      remaining = intervalSec;
+      probing = true;
+      if (badge) badge.textContent = `↻ ${_('checking...')}`;
+      void onCycleTriggered().finally(() => {
+        probing = false;
+        remaining = intervalSec;
+      });
+      return;
+    }
+    if (badge) {
+      badge.textContent = formatCountdownSeconds(remaining);
+    }
+  }, 1000);
+}
+
 function handleShowUrlTestInfo(
   section: Tachyon.OutboundGroup,
   outbound: Tachyon.Outbound,
@@ -1915,11 +2268,86 @@ function handleShowUrlTestInfo(
     return;
   }
 
+  const info = outbound.urlTestInfo;
+  const body = E('div', {}, [renderUrlTestInfoModal(outbound, section)]);
+
   ui.showModal(
     `${_('URLTest details')}: ${
       outbound.urlTestInfo.displayName || outbound.displayName
     }`,
-    renderUrlTestInfoModal(outbound, section),
+    body,
+  );
+
+  const repaintModal = () => {
+    if (!body.isConnected) return;
+    if (body.querySelector('.tachyon_proto-popover-trigger:hover')) return;
+    body.replaceChildren(
+      renderUrlTestInfoModal(
+        { ...outbound, urlTestInfo: { ...info } },
+        section,
+      ),
+    );
+  };
+
+  const runLiveMultiUrlProbe = async () => {
+    const urls = normalizeDetailsUrlList(info.url, info.urls);
+    if (urls.length === 0 || !body.isConnected) return;
+    const perUrlMap = await probeModalMultiUrlLatencies(
+      info.outbounds || [],
+      urls,
+    );
+    if (!body.isConnected || perUrlMap.size === 0) return;
+
+    info.updatedAt = Math.floor(Date.now() / 1000);
+    info.outbounds = (info.outbounds || []).map((member) => {
+      const mDelays = perUrlMap.get(member.code);
+      if (!mDelays) return member;
+      const positive = Object.values(mDelays).filter((d) => d > 0);
+      const nextLatency =
+        positive.length > 0 ? Math.max(...positive) : member.latency;
+      return {
+        ...member,
+        latency: nextLatency,
+        urlDelays: { ...(member.urlDelays || {}), ...mDelays },
+      };
+    });
+    repaintModal();
+  };
+
+  if (typeof fs !== 'undefined' && typeof fs.read === 'function' && info.code) {
+    fs.read(`/var/run/tachyon/priority/${encodeURIComponent(info.code)}.json`)
+      .then((raw) => {
+        if (!raw || !body.isConnected) return;
+        const st = JSON.parse(raw);
+        if (
+          st &&
+          typeof st === 'object' &&
+          applyPriorityDaemonStatusToInfo(info, st)
+        ) {
+          repaintModal();
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        const urls = normalizeDetailsUrlList(info.url, info.urls);
+        const hasAnyUrlDelays = (info.outbounds || []).some(
+          (m) => m.urlDelays && Object.keys(m.urlDelays).length > 0,
+        );
+        if (urls.length > 1 && !hasAnyUrlDelays) {
+          void runLiveMultiUrlProbe();
+        }
+      });
+  } else {
+    const urls = normalizeDetailsUrlList(info.url, info.urls);
+    if (urls.length > 1) {
+      void runLiveMultiUrlProbe();
+    }
+  }
+
+  attachModalLiveCheckTimer(
+    body,
+    info.activeCheckInterval || info.interval,
+    runLiveMultiUrlProbe,
   );
 }
 
@@ -1988,6 +2416,9 @@ function renderPrioritySelectedValue(info: Tachyon.PriorityInfo) {
               { class: getUrlTestLatencyClass(selectedMember.latency) },
               formatUrlTestLatency(selectedMember.latency),
             ),
+            ...(renderMemberUrlDelaysPopover(selectedMember, info.healthUrls)
+              ? [renderMemberUrlDelaysPopover(selectedMember, info.healthUrls)!]
+              : []),
           ]
         : []),
       modeBadge,
@@ -2074,6 +2505,10 @@ function renderPriorityInfoModal(
     return E('div', {}, _('Priority details are unavailable'));
   }
 
+  const effectiveUrls = normalizeDetailsUrlList(
+    info.healthUrl,
+    info.healthUrls,
+  );
   const fields: Array<{
     label: string;
     value?: unknown;
@@ -2083,7 +2518,24 @@ function renderPriorityInfoModal(
       label: _('Selected'),
       children: [renderPrioritySelectedValue(info)],
     },
-    { label: _('Check URL'), children: [renderDetailsUrl(info.healthUrl)] },
+    {
+      label: effectiveUrls.length > 1 ? _('Check URLs') : _('Check URL'),
+      children: [renderDetailsUrls(info.healthUrl, info.healthUrls)],
+    },
+    ...(effectiveUrls.length > 1 || info.multiUrlStrategy
+      ? [
+          {
+            label: _('Multi-URL strategy'),
+            value: formatMultiUrlStrategyLabel(info.multiUrlStrategy),
+          },
+        ]
+      : []),
+    {
+      label: _('Live check'),
+      children: [
+        renderLiveCheckField(info.activeCheckInterval, info.updatedAt),
+      ],
+    },
     {
       label: _('Check interval'),
       value: info.activeCheckInterval,
@@ -2143,21 +2595,28 @@ function handleShowPriorityInfo(
     body,
   );
 
+  const repaintModal = () => {
+    if (!body.isConnected) return;
+    if (body.querySelector('.tachyon_proto-popover-trigger:hover')) return;
+    body.replaceChildren(
+      renderPriorityInfoModal(
+        { ...outbound, priorityInfo: { ...info } },
+        section,
+      ),
+    );
+  };
+
   if (typeof fs !== 'undefined' && typeof fs.read === 'function' && info.code) {
     fs.read(`/var/run/tachyon/priority/${encodeURIComponent(info.code)}.json`)
       .then((raw) => {
         if (!raw || !body.isConnected) return;
         const st = JSON.parse(raw);
-        if (st && typeof st === 'object' && st.fallback_active !== undefined) {
-          info.fallbackActive = Boolean(st.fallback_active);
-          info.passedUrls = Number(st.passed_urls || 0);
-          info.totalUrls = Number(st.total_urls || 0);
-          body.replaceChildren(
-            renderPriorityInfoModal(
-              { ...outbound, priorityInfo: { ...info } },
-              section,
-            ),
-          );
+        if (
+          st &&
+          typeof st === 'object' &&
+          applyPriorityDaemonStatusToInfo(info, st)
+        ) {
+          repaintModal();
         }
       })
       .catch(() => {});
@@ -2188,20 +2647,36 @@ function handleShowPriorityInfo(
     });
     capMapSize(customProxyLatencies);
 
-    const withLatencies: Tachyon.PriorityInfo = {
-      ...info,
-      outbounds: (info.outbounds || []).map((member) => {
-        const delay = measured.get(String(member.code || ''));
-        return delay === undefined ? member : { ...member, latency: delay };
-      }),
-    };
+    info.outbounds = (info.outbounds || []).map((member) => {
+      const delay = measured.get(String(member.code || ''));
+      return delay === undefined ? member : { ...member, latency: delay };
+    });
 
-    body.replaceChildren(
-      renderPriorityInfoModal(
-        { ...outbound, priorityInfo: withLatencies },
-        section,
-      ),
+    repaintModal();
+  });
+
+  attachModalLiveCheckTimer(body, info.activeCheckInterval, async () => {
+    const urls = normalizeDetailsUrlList(info.healthUrl, info.healthUrls);
+    if (urls.length === 0 || !body.isConnected) return;
+    const perUrlMap = await probeModalMultiUrlLatencies(
+      info.outbounds || [],
+      urls,
     );
+    if (!body.isConnected || perUrlMap.size === 0) return;
+    info.updatedAt = Math.floor(Date.now() / 1000);
+    info.outbounds = (info.outbounds || []).map((member) => {
+      const mDelays = perUrlMap.get(member.code);
+      if (!mDelays) return member;
+      const positive = Object.values(mDelays).filter((d) => d > 0);
+      const nextLatency =
+        positive.length > 0 ? Math.max(...positive) : member.latency;
+      return {
+        ...member,
+        latency: nextLatency,
+        urlDelays: { ...(member.urlDelays || {}), ...mDelays },
+      };
+    });
+    repaintModal();
   });
 }
 

@@ -1863,4 +1863,41 @@ describe('getDashboardSections', () => {
       'Main',
     ]);
   });
+
+  it('populates multiple testing URLs, multi-URL strategy, and active check interval on urlTestInfo', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      proxySection({
+        urltests: ['urltest'],
+        urltest_settings: JSON.stringify({
+          urltest: {
+            display_name: 'Multi URL Group',
+            testing_url: 'https://www.gstatic.com/generate_204',
+            testing_urls: [
+              'https://www.gstatic.com/generate_204',
+              'https://cp.cloudflare.com/generate_204',
+            ],
+            multi_url_strategy: 'best_case_target',
+            active_check_interval: '30s',
+            check_interval: '3m',
+          },
+        }),
+      }),
+    ]);
+
+    const result = await getDashboardSections();
+    expect(result.success).toBe(true);
+    const urltestOutbound = result.data[0].outbounds.find(
+      (o) => o.code === 'main-urltest-out',
+    );
+    expect(urltestOutbound?.urlTestInfo).toMatchObject({
+      url: 'https://www.gstatic.com/generate_204',
+      urls: [
+        'https://www.gstatic.com/generate_204',
+        'https://cp.cloudflare.com/generate_204',
+      ],
+      multiUrlStrategy: 'best_case_target',
+      activeCheckInterval: '30s',
+      interval: '3m',
+    });
+  });
 });
