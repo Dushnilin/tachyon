@@ -356,6 +356,7 @@ describe('Dashboard Widgets, Presets, Transport Badges & Studio Deck', () => {
   });
 
   it('excludes block, bypass, and dns sections from routing sections block on dashboard', () => {
+    const onSelectSection = vi.fn();
     const blocks = renderOverviewMod.renderDashboardSectionsAndNodes({
       sections: [
         {
@@ -418,9 +419,24 @@ describe('Dashboard Widgets, Presets, Transport Badges & Studio Deck', () => {
           outbounds: [],
           configError: false,
         },
+        {
+          code: 'Geo_block',
+          sectionName: 'Geo_block',
+          displayName: 'Geo Block',
+          action: 'connection',
+          outbounds: [
+            {
+              code: 'geo-vless',
+              displayName: 'NL Rotterdam',
+              type: 'vless',
+              selected: true,
+              latency: 40,
+            },
+          ],
+        },
       ],
       selectedSectionCode: 'Youtube',
-      onSelectSection: vi.fn(),
+      onSelectSection,
       getSectionStats: () => ({
         download: 0,
         upload: 0,
@@ -446,13 +462,71 @@ describe('Dashboard Widgets, Presets, Transport Badges & Studio Deck', () => {
       'Youtube',
       'Discord',
       'Zapret2 (Direct DPI Bypass)',
+      'Geo Block',
     ]);
     expect(sectionNames).toContain('Zapret2 (Direct DPI Bypass)');
     expect(sectionNames).not.toContain('block');
     expect(sectionNames).not.toContain('ByPass');
     expect(sectionNames).not.toContain('YandexDns');
     expect(sectionNames).not.toContain('dns-ai');
+    expect(wrap.textContent).toContain('NL Rotterdam');
+    let geoRow = wrap
+      .querySelectorAll('.tachyon-routing-row__name')
+      .find((node: any) => node.textContent === 'Geo Block');
+    while (
+      geoRow &&
+      geoRow.getAttribute('data-section-row-metrics') !== 'Geo_block'
+    ) {
+      geoRow = geoRow.parentNode;
+    }
+    expect(geoRow).toBeDefined();
+    geoRow.click();
+    expect(onSelectSection).toHaveBeenCalledWith('Geo_block');
   });
+
+  it.each([
+    ['Geo_block', 'Geo Block'],
+    ['proxy', 'Geo Block'],
+    ['block', 'Proxy'],
+    ['reject', 'Proxy'],
+    ['dns_proxy', 'Proxy'],
+    ['direct', 'Proxy'],
+    ['zapret_proxy', 'Proxy'],
+  ])(
+    'classifies connection section %s (%s) by its action',
+    (sectionName, displayName) => {
+      expect(
+        renderOverviewMod.resolveSectionCategory({
+          code: sectionName,
+          sectionName,
+          displayName,
+          action: 'connection',
+          outbounds: [{ code: 'vless-node', type: 'vless', selected: true }],
+        }),
+      ).toBe('proxy');
+    },
+  );
+
+  it.each([
+    ['ZAPRET2', 'dpi'],
+    ['DESYNC', 'dpi'],
+    ['BLOCK', 'block'],
+    ['DNS', 'dns'],
+    ['DIRECT', 'direct'],
+  ])(
+    'keeps connection sections with a %s engine in the %s category',
+    (type, category) => {
+      expect(
+        renderOverviewMod.resolveSectionCategory({
+          code: 'service',
+          sectionName: 'service',
+          displayName: 'Service',
+          action: 'connection',
+          outbounds: [{ code: 'service-node', type, selected: true }],
+        }),
+      ).toBe(category);
+    },
+  );
 
   it('mounts Tachyon Studio Deck on GridSection containers and hides legacy Forkop tables', () => {
     const containerEl = createDummyElement('div');
