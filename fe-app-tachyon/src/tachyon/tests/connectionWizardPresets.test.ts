@@ -5,14 +5,13 @@ import {
 } from '../connectionWizard';
 
 describe('connectionWizard Quick Start Presets', () => {
-  it('provides ready-to-use 1-click presets including ru_all_in_one, ua_bypass, and dpi_desync_no_vpn', () => {
+  it('provides ready-to-use 1-click presets including ru_all_in_one and dpi_desync_no_vpn', () => {
     const ids = WIZARD_QUICK_PRESETS.map((p) => p.id);
     expect(ids).toEqual([
       'ru_all_in_one',
       'ru_essential',
       'ru_max_adblock',
       'gaming_stream',
-      'ua_bypass',
       'dpi_desync_no_vpn',
     ]);
 
@@ -23,9 +22,6 @@ describe('connectionWizard Quick Start Presets', () => {
     expect(ruAll?.presetIds).toContain('youtube');
     expect(ruAll?.presetIds).toContain('discord');
     expect(ruAll?.presetIds).toContain('ai');
-
-    const ua = WIZARD_QUICK_PRESETS.find((p) => p.id === 'ua_bypass');
-    expect(ua?.individualLists).toContain('ukraine_inside');
 
     const desync = WIZARD_QUICK_PRESETS.find(
       (p) => p.id === 'dpi_desync_no_vpn',

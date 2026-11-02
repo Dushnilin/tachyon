@@ -408,7 +408,6 @@ const TACHYON_LIST_CATEGORIES: Array<{
     titleEn: 'Censorship & GeoBlock Registries',
     keys: [
       'russia_inside',
-      'ukraine_inside',
       'geoblock',
       'ru_blocked',
       'refilter',
@@ -843,9 +842,9 @@ export const WIZARD_QUICK_PRESETS: WizardQuickPreset[] = [
     badgeRu: 'ХИТ • В 1 КЛИК',
     badgeEn: 'RECOMMENDED',
     descRu:
-      'YouTube, Discord, Telegram, все нейросети (ChatGPT, Claude, Gemini, Grok), Instagram/Meta, X, Spotify и базовый обход РФ — через подписку с автовыбором лучшего сервера (URLTest). Банки РФ, Госуслуги и игры (Steam, Riot, Epic) идут напрямую без потери скорости.',
+      'YouTube, Discord, Telegram, все ИИ (ChatGPT, Claude, Gemini), соцсети, Spotify и базовый обход РФ — через подписку с автовыбором узла (URLTest). Банки РФ, Госуслуги и игры (Steam, Riot, Epic) идут напрямую.',
     descEn:
-      'YouTube, Discord, Telegram, all AI services (ChatGPT, Claude, Gemini, Grok), Meta, X, Spotify & Russia bypass via subscription with URLTest. RU banks, Gov portals & games (Steam, Riot, Epic) go direct.',
+      'YouTube, Discord, Telegram, AI services (ChatGPT, Claude, Gemini), Meta, X, Spotify & Russia bypass via subscription with URLTest. RU banks, Gov portals & games (Steam, Riot, Epic) go direct.',
     requiresConnection: true,
     defaultSectionName: 'Main',
     presetIds: ['youtube', 'discord', 'telegram', 'rkn_geoblock', 'ai'],
@@ -882,7 +881,7 @@ export const WIZARD_QUICK_PRESETS: WizardQuickPreset[] = [
     badgeRu: 'БАЗОВЫЙ',
     badgeEn: 'ESSENTIAL',
     descRu:
-      'Минимальная конфигурация в 1 секцию: YouTube, Discord, Telegram, базовый список блокировок РФ + геоблок 150+ сервисов и все нейросети (ChatGPT, Claude, Gemini). Всё остальное идёт напрямую через провайдера.',
+      'Минимальная конфигурация в 1 секцию: YouTube, Discord, Telegram, базовый список блокировок РФ + геоблок 150+ сервисов и нейросети. Всё остальное идёт напрямую через провайдера.',
     descEn:
       'Single-section lightweight setup: YouTube, Discord, Telegram, base Russia bypass + GeoBlock 150+ and AI services. Everything else goes direct.',
     requiresConnection: true,
@@ -909,7 +908,7 @@ export const WIZARD_QUICK_PRESETS: WizardQuickPreset[] = [
     badgeRu: 'МАКСИМУМ + ADBLOCK',
     badgeEn: 'MAX + ADBLOCK',
     descRu:
-      'Полные реестры РКН, Антизапрет и Re:filter, YouTube, Discord, Telegram, все ИИ, соцсети, стриминги (Netflix, Spotify, Twitch), GitHub/Docker + встроенная блокировка рекламы HaGeZi Pro и прямой обход для банков РФ и игр.',
+      'Полные реестры РКН, Антизапрет и Re:filter, YouTube, Discord, Telegram, ИИ, соцсети, стриминги + блокировка рекламы HaGeZi Pro и прямой обход для банков РФ и игр.',
     descEn:
       'Full RKN/Antizapret/Re:filter registries, YouTube, Discord, Telegram, AI, social & streaming, GitHub/Docker + HaGeZi Pro AdBlock and direct bypass for RU banks & games.',
     requiresConnection: true,
@@ -957,7 +956,7 @@ export const WIZARD_QUICK_PRESETS: WizardQuickPreset[] = [
     badgeRu: 'ИГРЫ И СТРИМЫ',
     badgeEn: 'GAMING',
     descRu:
-      'Discord (голос и CDN), YouTube, Twitch (без рекламы), Roblox, Brawl Stars/Supercell, EA/Origin и FACEIT через прокси, а Steam, Riot (Valorant/LoL), Epic Games и Escape from Tarkov — строго напрямую с минимальным пингом.',
+      'Discord (голос и CDN), YouTube, Twitch (без рекламы), Roblox, Supercell, EA/Origin и FACEIT через прокси, а Steam, Riot, Epic Games и Tarkov — строго напрямую с минимальным пингом.',
     descEn:
       'Discord voice/CDN, YouTube, Twitch, Roblox, Supercell, EA & FACEIT via proxy; Steam, Riot, Epic Games & Tarkov direct for lowest ping.',
     requiresConnection: true,
@@ -989,36 +988,13 @@ export const WIZARD_QUICK_PRESETS: WizardQuickPreset[] = [
     ],
   },
   {
-    id: 'ua_bypass',
-    titleRu: 'Украина: Обход блокировок (ukraine_inside)',
-    titleEn: 'Ukraine: Censorship Bypass (ukraine_inside)',
-    badgeRu: 'УКРАИНА',
-    badgeEn: 'UKRAINE',
-    descRu:
-      'Готовый маршрут со списком ukraine_inside (заблокированные в Украине сайты, соцсети и сервисы) + нейросети и ИИ через вашу подписку или прокси-ключи с шифрованным Cloudflare DoH DNS.',
-    descEn:
-      'Pre-configured route with ukraine_inside community list + AI services via your subscription or proxy links with Cloudflare DoH DNS.',
-    requiresConnection: true,
-    defaultSectionName: 'Main',
-    presetIds: ['ai'],
-    individualLists: ['ukraine_inside'],
-    enableDirectGamesBypass: false,
-    directBypassLists: [],
-    directBypassDnsPreset: 'yandex_udp',
-    enableAdBlockSection: false,
-    globalDnsPreset: 'cloudflare_doh',
-    enableAutoUrlTest: true,
-    tagsRu: ['Список ukraine_inside', 'Нейросети и ИИ', 'Cloudflare DoH DNS'],
-    tagsEn: ['ukraine_inside list', 'AI Services', 'Cloudflare DoH DNS'],
-  },
-  {
     id: 'dpi_desync_no_vpn',
     titleRu: 'Без подписки: Встроенный обход DPI (YouTube + Discord)',
     titleEn: 'No Subscription: Built-in DPI Desync (YouTube + Discord)',
     badgeRu: 'БЕЗ ПРОКСИ',
     badgeEn: 'NO VPN NEEDED',
     descRu:
-      'Работает без покупки прокси и подписок! Запускает нативный модификатор пакетов Tachyon Core Desync (Fake + Split) для разблокировки YouTube и Discord напрямую через вашего провайдера.',
+      'Работает без покупки прокси и подписок! Запускает нативный модификатор пакетов Tachyon Core Desync (Fake + Split) для разблокировки YouTube и Discord напрямую.',
     descEn:
       'Works without any proxy subscription! Enables built-in Tachyon Core Desync (Fake + Split) to unblock YouTube and Discord directly.',
     requiresConnection: false,
@@ -1758,11 +1734,20 @@ export function openConnectionWizardModal(
         } as any,
         [
           E('div', { class: 'tachyon-wizard__quick-preset-top' }, [
-            E(
-              'span',
-              { class: 'tachyon-wizard__quick-preset-title' },
-              tr(preset.titleRu, preset.titleEn),
-            ),
+            E('div', { class: 'tachyon-wizard__quick-preset-title-wrap' }, [
+              E(
+                'span',
+                { class: 'tachyon-wizard__quick-preset-title' },
+                tr(preset.titleRu, preset.titleEn),
+              ),
+              E(
+                'div',
+                { class: 'tachyon-wizard__quick-preset-tags' },
+                tags.map((t) =>
+                  E('span', { class: 'tachyon-wizard__quick-preset-tag' }, t),
+                ),
+              ),
+            ]),
             E(
               'span',
               {
@@ -1776,13 +1761,6 @@ export function openConnectionWizardModal(
             { class: 'tachyon-wizard__quick-preset-desc' },
             tr(preset.descRu, preset.descEn),
           ),
-          E(
-            'div',
-            { class: 'tachyon-wizard__quick-preset-tags' },
-            tags.map((t) =>
-              E('span', { class: 'tachyon-wizard__quick-preset-tag' }, t),
-            ),
-          ),
         ],
       );
     });
@@ -1792,7 +1770,7 @@ export function openConnectionWizardModal(
         E('div', { class: 'tachyon-wizard__quick-hero-head' }, [
           E('div', { class: 'tachyon-wizard__quick-hero-titles' }, [
             E('div', { class: 'tachyon-wizard__quick-hero-title' }, [
-              renderZapIcon(16),
+              renderZapIcon(15),
               E(
                 'span',
                 {},
@@ -1806,8 +1784,8 @@ export function openConnectionWizardModal(
               'div',
               { class: 'tachyon-wizard__quick-hero-sub' },
               tr(
-                'Выберите готовый сценарий, вставьте ссылку на подписку или ключи прокси и нажмите «Подключить и запустить в 1 клик» — мастер сам создаст секции, правила, URLTest-балансировщик, DNS и включит Tachyon.',
-                'Select a ready-made scenario, paste your subscription URL or proxy links, and click "Connect & Launch in 1 Click" — the wizard automatically creates sections, rules, URLTest balancer, DNS, and starts Tachyon.',
+                'Выберите сценарий, вставьте ссылку на подписку или ключи прокси и нажмите «Подключить и запустить в 1 клик».',
+                'Select a scenario, paste your subscription URL or proxy links, and click "Connect & Launch in 1 Click".',
               ),
             ),
           ]),
@@ -1912,21 +1890,23 @@ export function openConnectionWizardModal(
             },
           },
           [
-            E('div', { class: 'tachyon-wizard__choice-badge' }, 'OUTBOUND'),
-            E(
-              'div',
-              { class: 'tachyon-wizard__choice-title' },
-              tr(
-                'Исходящее подключение по шагам (Аутбаунд)',
-                'Step-by-Step Outbound Connection (Client / DPI)',
+            E('div', { class: 'tachyon-wizard__choice-head' }, [
+              E(
+                'div',
+                { class: 'tachyon-wizard__choice-title' },
+                tr(
+                  'Исходящее подключение по шагам (Аутбаунд)',
+                  'Step-by-Step Outbound Connection (Client / DPI)',
+                ),
               ),
-            ),
+              E('div', { class: 'tachyon-wizard__choice-badge' }, 'OUTBOUND'),
+            ]),
             E(
               'div',
               { class: 'tachyon-wizard__choice-desc' },
               tr(
-                'Ручной выбор протокола (Подписка, VLESS / HY2 / TUIC / SS, AmneziaWG, Cloudflare WARP, Core Desync, Zapret2, OpenVPN, Tor и др.) и детальная настройка списков и DNS.',
-                'Manual protocol selection (Subscription, VLESS / HY2 / TUIC / SS, AmneziaWG, Cloudflare WARP, Core Desync, Zapret2, OpenVPN, Tor, etc.) and granular routing.',
+                'Ручной выбор протокола (Подписка, VLESS / HY2 / TUIC / SS, AmneziaWG, WARP, Core Desync, Zapret2, OpenVPN, Tor и др.) и настройка списков.',
+                'Manual protocol selection (Subscription, VLESS / HY2 / TUIC / SS, AmneziaWG, WARP, Core Desync, Zapret2, OpenVPN, Tor, etc.) and routing.',
               ),
             ),
           ],
@@ -1943,21 +1923,23 @@ export function openConnectionWizardModal(
             },
           },
           [
-            E('div', { class: 'tachyon-wizard__choice-badge' }, 'INBOUND'),
-            E(
-              'div',
-              { class: 'tachyon-wizard__choice-title' },
-              tr(
-                'Входящий сервер на роутере (Инбаунд)',
-                'Inbound Server on Router (Host)',
+            E('div', { class: 'tachyon-wizard__choice-head' }, [
+              E(
+                'div',
+                { class: 'tachyon-wizard__choice-title' },
+                tr(
+                  'Входящий сервер на роутере (Инбаунд)',
+                  'Inbound Server on Router (Host)',
+                ),
               ),
-            ),
+              E('div', { class: 'tachyon-wizard__choice-badge' }, 'INBOUND'),
+            ]),
             E(
               'div',
               { class: 'tachyon-wizard__choice-desc' },
               tr(
-                'Поднять свой собственный VPN/прокси-сервер на роутере (VLESS Reality, AmneziaWG, Hysteria2, TUIC, TewFai, AnyTLS и др.) с автогенерацией ключей и QR-кодом.',
-                'Host your own VPN/proxy server on this router (VLESS Reality, AmneziaWG, Hysteria2, TUIC, TewFai, AnyTLS, etc.) with 1-click key generation and QR codes.',
+                'Поднять свой собственный VPN/прокси-сервер на роутере (VLESS Reality, AmneziaWG, Hysteria2, TUIC, TewFai, AnyTLS) с автогенерацией ключей.',
+                'Host your own VPN/proxy server on this router (VLESS Reality, AmneziaWG, Hysteria2, TUIC, TewFai, AnyTLS) with 1-click key generation.',
               ),
             ),
           ],

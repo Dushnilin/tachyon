@@ -1667,11 +1667,20 @@ body.dark-theme .tachyon_proto-popover__desc {
     word-break: break-word;
 }
 
-.tachyon-dashboard-nodes-table__actions {
+.tachyon-dashboard-nodes-table__th--actions,
+.tachyon-dashboard-nodes-table__cell--actions {
+    white-space: nowrap;
+    width: 1%;
+}
+
+.tachyon-dashboard-nodes-table__actions,
+.tachyon-dashboard-nodes-table__actions-wrap {
     display: inline-flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
     align-items: center;
     justify-content: flex-end;
-    gap: 5px;
+    gap: 6px;
 }
 
 .tachyon_dashboard-page__urltest-details__copy-placeholder {

@@ -2,9 +2,11 @@
 import { svgEl } from '../../../helpers';
 import { tr } from '../../helpers/i18n';
 import {
+  renderBanIcon,
   renderBarChart2Icon,
   renderCheckIcon,
   renderCompassIcon,
+  renderGlobeIcon,
   renderLayersIcon,
   renderLayoutGridIcon,
   renderPlusIcon,
@@ -1828,6 +1830,34 @@ export const SECTION_TYPE_DEFINITIONS: SectionTypeDefinition[] = [
     descEn:
       'DPI bypass engines: Tachyon Core Desync, Zapret2 (nfqws2), ByeDPI, WDTT, OLCRTC.',
     icon: () => renderZapIcon(15),
+  },
+  {
+    id: 'dns',
+    titleRu: 'Маршрутизация DNS',
+    titleEn: 'DNS Routing',
+    descRu:
+      'Направленные DNS-серверы и DoH/DoT резолверы (например, YandexDns, dns-ai).',
+    descEn:
+      'Targeted upstream DNS servers and DoH/DoT resolvers (e.g. YandexDns, dns-ai).',
+    icon: () => renderCompassIcon(15),
+  },
+  {
+    id: 'direct',
+    titleRu: 'Прямой выход мимо прокси (WAN / Bypass)',
+    titleEn: 'Direct WAN Bypass',
+    descRu:
+      'Секции прямого выхода в интернет без проксирования (ByPass, direct, WAN).',
+    descEn:
+      'Sections routed directly via WAN without proxy (ByPass, direct, WAN).',
+    icon: () => renderGlobeIcon(15),
+  },
+  {
+    id: 'block',
+    titleRu: 'Блокировка трафика (Reject)',
+    titleEn: 'Traffic Block (Reject)',
+    descRu: 'Секции отклонения нежелательного трафика и правил блокировки.',
+    descEn: 'Sections that reject matching traffic and ad-blocking rules.',
+    icon: () => renderBanIcon(15),
   },
 ];
 

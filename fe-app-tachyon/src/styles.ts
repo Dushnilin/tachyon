@@ -3091,8 +3091,8 @@ header .dropdown-menu {
 
 .modal:has(.tachyon-wizard),
 .cbi-modal:has(.tachyon-wizard) {
-    width: min(94vw, 760px) !important;
-    max-width: min(94vw, 760px) !important;
+    width: min(94vw, 840px) !important;
+    max-width: min(94vw, 840px) !important;
 }
 
 #modal_overlay button,
@@ -3106,7 +3106,7 @@ header .dropdown-menu {
 .tachyon-wizard {
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 10px;
     max-width: 100%;
     width: 100%;
     box-sizing: border-box;
@@ -3117,8 +3117,8 @@ header .dropdown-menu {
     align-items: center;
     justify-content: space-between;
     flex-wrap: wrap;
-    gap: 12px;
-    padding-bottom: 12px;
+    gap: 8px;
+    padding-bottom: 8px;
     border-bottom: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.18));
 }
 
@@ -3209,9 +3209,17 @@ header .dropdown-menu {
 
 .tachyon-wizard__cards-2col,
 .tachyon-wizard__direction-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.tachyon-wizard__choice-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    gap: 8px;
 }
 
 .tachyon-wizard__choice-card,
@@ -3222,9 +3230,9 @@ header .dropdown-menu {
     flex-direction: column;
     align-items: flex-start;
     justify-content: flex-start;
-    gap: 6px;
-    padding: 13px 15px;
-    border-radius: 11px;
+    gap: 3px;
+    padding: 8px 12px;
+    border-radius: 10px;
     border: 1px solid var(--border-color-medium, rgba(128, 128, 128, 0.24));
     background: var(--background-color-high, rgba(128, 128, 128, 0.03));
     color: inherit;
@@ -3235,7 +3243,7 @@ header .dropdown-menu {
     box-sizing: border-box;
     white-space: normal !important;
     word-break: normal !important;
-    line-height: 1.35;
+    line-height: 1.3;
     transition: border-color 0.14s ease, background-color 0.14s ease, box-shadow 0.14s ease;
 }
 
@@ -7428,9 +7436,9 @@ button.tachyon-studio-chip:hover {
 .tachyon-wizard__quick-hero {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    padding: 14px 16px;
-    border-radius: 14px;
+    gap: 8px;
+    padding: 11px 14px;
+    border-radius: 12px;
     background: linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(16, 185, 129, 0.05));
     border: 1px solid rgba(139, 92, 246, 0.36);
     box-sizing: border-box;
@@ -7470,26 +7478,27 @@ button.tachyon-studio-chip:hover {
 }
 
 .tachyon-wizard__quick-presets-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(235px, 1fr));
-    gap: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
 }
 
 .tachyon-wizard__quick-preset-card {
     display: flex !important;
     flex-direction: column !important;
     align-items: flex-start !important;
-    justify-content: space-between !important;
-    gap: 6px !important;
-    padding: 11px 13px !important;
-    border-radius: 11px !important;
+    justify-content: flex-start !important;
+    gap: 4px !important;
+    padding: 8px 12px !important;
+    border-radius: 10px !important;
     border: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.25)) !important;
     background: var(--background-color-high, rgba(15, 23, 42, 0.28)) !important;
     color: inherit !important;
     text-align: left !important;
     white-space: normal !important;
+    width: 100% !important;
     height: auto !important;
-    min-height: 92px !important;
+    min-height: 0 !important;
     box-sizing: border-box !important;
     cursor: pointer !important;
     user-select: none;
@@ -7509,16 +7518,24 @@ button.tachyon-studio-chip:hover {
 
 .tachyon-wizard__quick-preset-top {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
     width: 100%;
     gap: 8px;
 }
 
+.tachyon-wizard__quick-preset-title-wrap {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-width: 0;
+}
+
 .tachyon-wizard__quick-preset-title {
     font-size: 12.5px;
     font-weight: 800;
-    line-height: 1.3;
+    line-height: 1.25;
 }
 
 .tachyon-wizard__quick-preset-badge {
@@ -7541,20 +7558,20 @@ button.tachyon-studio-chip:hover {
 .tachyon-wizard__quick-preset-desc {
     font-size: 11px;
     opacity: 0.78;
-    line-height: 1.36;
+    line-height: 1.32;
 }
 
 .tachyon-wizard__quick-preset-tags {
     display: flex;
     flex-wrap: wrap;
     gap: 4px;
-    margin-top: 2px;
+    margin-top: 1px;
 }
 
 .tachyon-wizard__quick-preset-tag {
     font-size: 10px;
     font-weight: 700;
-    padding: 2px 6px;
+    padding: 1px 6px;
     border-radius: 5px;
     background: rgba(148, 163, 184, 0.12);
     border: 1px solid rgba(148, 163, 184, 0.2);
@@ -7564,9 +7581,9 @@ button.tachyon-studio-chip:hover {
 .tachyon-wizard__quick-input-box {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    padding: 10px 12px;
-    border-radius: 10px;
+    gap: 5px;
+    padding: 8px 11px;
+    border-radius: 9px;
     background: var(--background-color-high, rgba(15, 23, 42, 0.32));
     border: 1px solid var(--border-color-low, rgba(148, 163, 184, 0.24));
 }
@@ -7587,7 +7604,7 @@ button.tachyon-studio-chip:hover {
 
 .tachyon-wizard__quick-input {
     width: 100% !important;
-    min-height: 54px !important;
+    min-height: 44px !important;
     font-family: var(--tachyon-font-mono, monospace);
     font-size: 12px !important;
     box-sizing: border-box !important;

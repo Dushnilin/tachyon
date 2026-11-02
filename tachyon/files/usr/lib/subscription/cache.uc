@@ -476,7 +476,10 @@ let auto_user_agent_profiles = [
     "v2rayN",
     "v2rayNG",
     "Mihomo",
-    "Clash.Meta"
+    "Clash.Meta",
+    "ClashMeta",
+    "HiddifyNext",
+    "Mozilla"
 ];
 
 let auto_user_agents = {};
@@ -489,7 +492,7 @@ function user_agent_supported(user_agent, default_user_agent) {
 
     if (user_agent == "")
         return false;
-    if (user_agent == default_user_agent)
+    if (user_agent == default_user_agent || user_agent == "offline")
         return true;
     if (index(user_agent, "sing-box") == 0 || index(user_agent, "tachyon") == 0)
         return true;
@@ -2137,6 +2140,7 @@ function try_fetch_subscription_with_core(
     unlink_path(metadata_tmpfile);
 
     let effective_user_agent = as_string(full_obj.user_agent || get_subscription_user_agent(subscription_user_agent));
+    let header_lines = [];
     if (type(full_obj.user_info) == "object") {
         let ui = full_obj.user_info;
         let parts = [];
@@ -2148,12 +2152,27 @@ function try_fetch_subscription_with_core(
         if (dl != null) push(parts, "download=" + as_string(dl));
         if (tot != null) push(parts, "total=" + as_string(tot));
         if (exp != null) push(parts, "expire=" + as_string(exp));
-        if (length(parts) > 0) {
-            write_file(headers_tmpfile, "Subscription-Userinfo: " + join("; ", parts) + "\r\n");
-            write_file(raw_tmpfile, "");
-            parser.extract_ui_metadata_file(headers_tmpfile, raw_tmpfile, metadata_tmpfile) || unlink_path(metadata_tmpfile);
-            copy_valid_metadata_output(metadata_tmpfile, metadata_output_path);
-        }
+        if (length(parts) > 0)
+            push(header_lines, "Subscription-Userinfo: " + join("; ", parts));
+    }
+    if (type(full_obj.metadata) == "object") {
+        let md = full_obj.metadata;
+        if (as_string(md.profile_title || "") != "")
+            push(header_lines, "Profile-Title: " + as_string(md.profile_title));
+        if (md.update_interval_hours != null && as_string(md.update_interval_hours) != "")
+            push(header_lines, "Profile-Update-Interval: " + as_string(md.update_interval_hours));
+        if (as_string(md.support_url || "") != "")
+            push(header_lines, "Support-Url: " + as_string(md.support_url));
+        if (as_string(md.web_page_url || "") != "")
+            push(header_lines, "Profile-Web-Page-Url: " + as_string(md.web_page_url));
+        if (as_string(md.announce || "") != "")
+            push(header_lines, "Announce: " + as_string(md.announce));
+    }
+    if (length(header_lines) > 0) {
+        write_file(headers_tmpfile, join("\r\n", header_lines) + "\r\n");
+        write_file(raw_tmpfile, "");
+        parser.extract_ui_metadata_file(headers_tmpfile, raw_tmpfile, metadata_tmpfile) || unlink_path(metadata_tmpfile);
+        copy_valid_metadata_output(metadata_tmpfile, metadata_output_path);
     }
 
     let primary_set = {};
@@ -2237,7 +2256,6 @@ function download_subscription_into_cache(section_name_value, subscription_url, 
 
     if (effective_engine == "core" &&
         as_string(service_proxy_address_value) == "" &&
-        !crypt4.is_crypt4(subscription_url) &&
         !object_or_empty(subscription_device_headers).enabled) {
         let core_res = try_fetch_subscription_with_core(
             section_name_value,

@@ -94,14 +94,86 @@ function extractSourceLinks(raw: any): string[] {
   return Array.from(new Set(items));
 }
 
+const fptnDecodedCache = new Map<
+  string,
+  {
+    serviceName?: string;
+    username?: string;
+    servers: { name: string; proto: string; trans: string; link?: string }[];
+  }
+>();
+
+function parseFptnPayloadObject(
+  data: any,
+  tokenForLink = '',
+): {
+  serviceName?: string;
+  username?: string;
+  servers: { name: string; proto: string; trans: string; link?: string }[];
+} {
+  if (!data || typeof data !== 'object') return { servers: [] };
+  const servers: {
+    name: string;
+    proto: string;
+    trans: string;
+    link?: string;
+  }[] = [];
+  const seen = new Set<string>();
+  const addList = (list: unknown, isCensoredZone: boolean) => {
+    if (!Array.isArray(list)) return;
+    list.forEach((srv: any, idx: number) => {
+      if (!srv || typeof srv !== 'object') return;
+      const host = String(srv.host || '').trim();
+      const port = Number(srv.port || 443);
+      const rawSrvName = String(srv.name || host || `FPTN #${idx + 1}`).trim();
+      const display = isCensoredZone ? `${rawSrvName} (DPI)` : rawSrvName;
+      const key = `${display}|${host}|${port}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      const transParts = [host ? `${host}:${port}` : `:${port}`];
+      if (
+        isCensoredZone ||
+        Number(srv.is_using_censorship_zone_antidpi) === 1
+      ) {
+        transParts.push('AntiDPI');
+      }
+      servers.push({
+        name: display,
+        proto: 'FPTN',
+        trans: transParts.join(' • '),
+        link: tokenForLink
+          ? `${tokenForLink}#${encodeURIComponent(display)}`
+          : '',
+      });
+    });
+  };
+  addList(data.servers, false);
+  addList(data.censored_zone_servers, true);
+  return {
+    serviceName: data.service_name
+      ? String(data.service_name).trim()
+      : undefined,
+    username: data.username ? String(data.username).trim() : undefined,
+    servers,
+  };
+}
+
 function parseFptnTokenInfo(tokenRaw: unknown): {
   serviceName?: string;
   username?: string;
   servers: { name: string; proto: string; trans: string; link?: string }[];
   isCompressed?: boolean;
 } {
-  let clean = String(tokenRaw || '').trim();
-  if (!clean) return { servers: [] };
+  const fullToken = String(tokenRaw || '')
+    .trim()
+    .split('#')[0]
+    .trim();
+  if (!fullToken) return { servers: [] };
+  const cached = fptnDecodedCache.get(fullToken);
+  if (cached && cached.servers.length > 0) {
+    return cached;
+  }
+  let clean = fullToken;
   if (/^fptn:\/\//i.test(clean)) {
     clean = clean.slice(7);
   } else if (/^fptn:/i.test(clean)) {
@@ -127,51 +199,11 @@ function parseFptnTokenInfo(tokenRaw: unknown): {
         ? new TextDecoder('utf-8').decode(bytes)
         : bin;
     const data = JSON.parse(jsonStr);
-    if (!data || typeof data !== 'object') return { servers: [] };
-    const servers: {
-      name: string;
-      proto: string;
-      trans: string;
-      link?: string;
-    }[] = [];
-    const seen = new Set<string>();
-    const addList = (list: unknown, isCensoredZone: boolean) => {
-      if (!Array.isArray(list)) return;
-      list.forEach((srv: any, idx: number) => {
-        if (!srv || typeof srv !== 'object') return;
-        const host = String(srv.host || '').trim();
-        const port = Number(srv.port || 443);
-        const rawSrvName = String(
-          srv.name || host || `FPTN #${idx + 1}`,
-        ).trim();
-        const display = isCensoredZone ? `${rawSrvName} (DPI)` : rawSrvName;
-        const key = `${display}|${host}|${port}`;
-        if (seen.has(key)) return;
-        seen.add(key);
-        const transParts = [host ? `${host}:${port}` : `:${port}`];
-        if (
-          isCensoredZone ||
-          Number(srv.is_using_censorship_zone_antidpi) === 1
-        ) {
-          transParts.push('AntiDPI');
-        }
-        servers.push({
-          name: display,
-          proto: 'FPTN',
-          trans: transParts.join(' • '),
-          link: '',
-        });
-      });
-    };
-    addList(data.servers, false);
-    addList(data.censored_zone_servers, true);
-    return {
-      serviceName: data.service_name
-        ? String(data.service_name).trim()
-        : undefined,
-      username: data.username ? String(data.username).trim() : undefined,
-      servers,
-    };
+    const parsed = parseFptnPayloadObject(data, fullToken);
+    if (parsed.servers.length > 0) {
+      fptnDecodedCache.set(fullToken, parsed);
+    }
+    return parsed;
   } catch {
     return { servers: [] };
   }
@@ -1839,6 +1871,62 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
         });
       })
       .then(() => populateSubCacheFromSectionCaches())
+      .then(async () => {
+        if (typeof fs === 'undefined') return;
+        const fptnSources = (
+          uci.sections(UCI_PACKAGE, 'outbound_source') || []
+        ).filter(
+          (s: any) =>
+            s &&
+            String(s.source_type || s.type || '').toLowerCase() === 'fptn' &&
+            s.access_token,
+        );
+        for (const src of fptnSources) {
+          const fullToken = String(src.access_token || '')
+            .trim()
+            .split('#')[0]
+            .trim();
+          if (
+            !fullToken ||
+            !/^fptnb(?::\/\/|:)/i.test(fullToken) ||
+            fptnDecodedCache.has(fullToken)
+          ) {
+            continue;
+          }
+          let normTok = fullToken;
+          if (/^fptnb:\/\//i.test(normTok)) {
+            normTok = `fptnb:${normTok.slice(8)}`;
+          }
+          try {
+            let rawOut = '';
+            if (typeof (fs as any).exec_direct === 'function') {
+              rawOut = String(
+                (await (fs as any).exec_direct(
+                  '/usr/bin/tachyon-core',
+                  ['fptn', 'decode', normTok],
+                  'text',
+                )) || '',
+              );
+            } else if (typeof fs.exec === 'function') {
+              const res = await fs.exec('/usr/bin/tachyon-core', [
+                'fptn',
+                'decode',
+                normTok,
+              ]);
+              rawOut = String((res && res.stdout) || '');
+            }
+            if (rawOut.trim()) {
+              const data = JSON.parse(rawOut);
+              const parsed = parseFptnPayloadObject(data, fullToken);
+              if (parsed.servers.length > 0) {
+                fptnDecodedCache.set(fullToken, parsed);
+              }
+            }
+          } catch {
+            // ignore decode failures
+          }
+        }
+      })
       .then(() => {
         renderDeck();
       })

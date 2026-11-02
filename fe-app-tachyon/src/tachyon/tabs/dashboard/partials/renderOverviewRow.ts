@@ -2510,9 +2510,11 @@ export function renderDashboardSectionsAndNodes(
       case 'dpi':
         return typeFilter.dpi !== false;
       case 'dns':
+        return Boolean(typeFilter.dns);
       case 'direct':
+        return Boolean(typeFilter.direct);
       case 'block':
-        return false;
+        return Boolean(typeFilter.block);
       default:
         return true;
     }

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-02 07:58+0300\n"
-"PO-Revision-Date: 2026-11-02 07:58+0300\n"
+"POT-Creation-Date: 2026-11-02 09:19+0300\n"
+"PO-Revision-Date: 2026-11-02 09:19+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -4259,8 +4259,8 @@ msgstr "Хост"
 msgid "Host your own VLESS Reality, Hysteria2, TUIC, AmneziaWG, or SOCKS5 server for remote access."
 msgstr "Поднимите собственный сервер VLESS Reality, Hysteria2, TUIC, AmneziaWG или SOCKS5 для доступа к роутеру извне."
 
-msgid "Host your own VPN/proxy server on this router (VLESS Reality, AmneziaWG, Hysteria2, TUIC, TewFai, AnyTLS, etc.) with 1-click key generation and QR codes."
-msgstr "Поднять свой собственный VPN/прокси-сервер на роутере (VLESS Reality, AmneziaWG, Hysteria2, TUIC, TewFai, AnyTLS и др.) с автогенерацией ключей и QR-кодом."
+msgid "Host your own VPN/proxy server on this router (VLESS Reality, AmneziaWG, Hysteria2, TUIC, TewFai, AnyTLS) with 1-click key generation."
+msgstr "Поднять свой собственный VPN/прокси-сервер на роутере (VLESS Reality, AmneziaWG, Hysteria2, TUIC, TewFai, AnyTLS) с автогенерацией ключей."
 
 msgid "Hosts"
 msgstr "Hosts"
@@ -5456,8 +5456,8 @@ msgstr "Ручная проверка доступности URL через се
 msgid "Manual list update"
 msgstr "Ручное обновление списков"
 
-msgid "Manual protocol selection (Subscription, VLESS / HY2 / TUIC / SS, AmneziaWG, Cloudflare WARP, Core Desync, Zapret2, OpenVPN, Tor, etc.) and granular routing."
-msgstr "Ручной выбор протокола (Подписка, VLESS / HY2 / TUIC / SS, AmneziaWG, Cloudflare WARP, Core Desync, Zapret2, OpenVPN, Tor и др.) и детальная настройка списков и DNS."
+msgid "Manual protocol selection (Subscription, VLESS / HY2 / TUIC / SS, AmneziaWG, WARP, Core Desync, Zapret2, OpenVPN, Tor, etc.) and routing."
+msgstr "Ручной выбор протокола (Подписка, VLESS / HY2 / TUIC / SS, AmneziaWG, WARP, Core Desync, Zapret2, OpenVPN, Tor и др.) и настройка списков."
 
 msgid "Manual selection"
 msgstr "Ручной выбор"
@@ -7952,8 +7952,8 @@ msgstr "Выберите готовый пресет цвета фона или 
 msgid "Select a preset text color or enter any HEX/CSS color (leave empty for automatic palette)"
 msgstr "Выберите готовый пресет цвета текста или введите любой HEX/CSS-цвет (оставьте пустым для автоматической палитры)"
 
-msgid "Select a ready-made scenario, paste your subscription URL or proxy links, and click \"Connect & Launch in 1 Click\" — the wizard automatically creates sections, rules, URLTest balancer, DNS, and starts Tachyon."
-msgstr "Выберите готовый сценарий, вставьте ссылку на подписку или ключи прокси и нажмите «Подключить и запустить в 1 клик» — мастер сам создаст секции, правила, URLTest-балансировщик, DNS и включит Tachyon."
+msgid "Select a scenario, paste your subscription URL or proxy links, and click \"Connect & Launch in 1 Click\"."
+msgstr "Выберите сценарий, вставьте ссылку на подписку или ключи прокси и нажмите «Подключить и запустить в 1 клик»."
 
 msgid "Select a section"
 msgstr "Выберите секцию"
@@ -10987,6 +10987,15 @@ msgstr "● Высокий пинг"
 
 msgid "✓ No subscription needed for this preset — uses built-in Tachyon Core Desync"
 msgstr "✓ Для этого пресета подписка не требуется — используется встроенный Tachyon Core Desync"
+
+msgid "Host your own VPN/proxy server on this router (VLESS Reality, AmneziaWG, Hysteria2, TUIC, TewFai, AnyTLS, etc.) with 1-click key generation and QR codes."
+msgstr "Поднять свой собственный VPN/прокси-сервер на роутере (VLESS Reality, AmneziaWG, Hysteria2, TUIC, TewFai, AnyTLS и др.) с автогенерацией ключей и QR-кодом."
+
+msgid "Manual protocol selection (Subscription, VLESS / HY2 / TUIC / SS, AmneziaWG, Cloudflare WARP, Core Desync, Zapret2, OpenVPN, Tor, etc.) and granular routing."
+msgstr "Ручной выбор протокола (Подписка, VLESS / HY2 / TUIC / SS, AmneziaWG, Cloudflare WARP, Core Desync, Zapret2, OpenVPN, Tor и др.) и детальная настройка списков и DNS."
+
+msgid "Select a ready-made scenario, paste your subscription URL or proxy links, and click \"Connect & Launch in 1 Click\" — the wizard automatically creates sections, rules, URLTest balancer, DNS, and starts Tachyon."
+msgstr "Выберите готовый сценарий, вставьте ссылку на подписку или ключи прокси и нажмите «Подключить и запустить в 1 клик» — мастер сам создаст секции, правила, URLTest-балансировщик, DNS и включит Tachyon."
 
 msgid "Reset filters"
 msgstr "Сбросить фильтры"
