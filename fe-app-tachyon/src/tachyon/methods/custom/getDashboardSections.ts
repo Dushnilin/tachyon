@@ -592,14 +592,19 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
         }
       }
     });
-    legacyUrltestItems.forEach((ut) => {
-      const utName = ut.name || ut['.name'];
-      if (!seenUtNames.has(utName) && !seenUtIds.has(ut['.name'])) {
-        seenUtNames.add(utName);
-        seenUtIds.add(ut['.name']);
-        urltestItems.push(ut);
-      }
-    });
+    if (
+      balancers.length === 0 ||
+      getListValues(next.balancer_refs).length === 0
+    ) {
+      legacyUrltestItems.forEach((ut) => {
+        const utName = ut.name || ut['.name'];
+        if (!seenUtNames.has(utName) && !seenUtIds.has(ut['.name'])) {
+          seenUtNames.add(utName);
+          seenUtIds.add(ut['.name']);
+          urltestItems.push(ut);
+        }
+      });
+    }
 
     // Hydrate priority_groups from balancer_refs + legacy priority_group child sections (mirrors connections.uc:priority_groups)
     const priorityGroupItems: Tachyon.ConfigSection[] = [];
@@ -619,14 +624,19 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
         }
       }
     });
-    legacyPriorityGroupItems.forEach((pg) => {
-      const pgName = pg.name || pg['.name'];
-      if (!seenPgNames.has(pgName) && !seenPgIds.has(pg['.name'])) {
-        seenPgNames.add(pgName);
-        seenPgIds.add(pg['.name']);
-        priorityGroupItems.push(pg);
-      }
-    });
+    if (
+      balancers.length === 0 ||
+      getListValues(next.balancer_refs).length === 0
+    ) {
+      legacyPriorityGroupItems.forEach((pg) => {
+        const pgName = pg.name || pg['.name'];
+        if (!seenPgNames.has(pgName) && !seenPgIds.has(pg['.name'])) {
+          seenPgNames.add(pgName);
+          seenPgIds.add(pg['.name']);
+          priorityGroupItems.push(pg);
+        }
+      });
+    }
 
     const hasNonServiceItems =
       subscriptionUrlItems.length > 0 ||
@@ -2235,9 +2245,9 @@ function buildProxyGroupOutbounds(
 
   const selectorNow =
     selector?.value?.now ||
-    (selectorCodes.length > 0 ? selectorCodes[0] : undefined) ||
     urlTestCodes[0] ||
-    priorityCodes[0];
+    priorityCodes[0] ||
+    (selectorCodes.length > 0 ? selectorCodes[0] : undefined);
 
   const outbounds = uniqueCodes(groupCodes).flatMap((code) => {
     if (hiddenOutboundTags[code]) {

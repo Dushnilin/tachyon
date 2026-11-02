@@ -1334,14 +1334,14 @@ const EntryPoint = {
       }
       if (id === 'profile') {
         return (
-          uci.get(UCI_PACKAGE, 'settings', 'show_tab_profiles') === '1' ||
-          uci.get(UCI_PACKAGE, 'settings', 'show_tab_profile') === '1'
+          uci.get(UCI_PACKAGE, 'settings', 'show_tab_profiles') !== '0' &&
+          uci.get(UCI_PACKAGE, 'settings', 'show_tab_profile') !== '0'
         );
       }
       if (id === 'schedule') {
         return (
-          uci.get(UCI_PACKAGE, 'settings', 'show_tab_parental') === '1' ||
-          uci.get(UCI_PACKAGE, 'settings', 'show_tab_schedule') === '1'
+          uci.get(UCI_PACKAGE, 'settings', 'show_tab_parental') !== '0' &&
+          uci.get(UCI_PACKAGE, 'settings', 'show_tab_schedule') !== '0'
         );
       }
       if (id === 'outbounds' || id === 'conditions' || id === 'balancers') {

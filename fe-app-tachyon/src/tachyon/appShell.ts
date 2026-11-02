@@ -646,14 +646,14 @@ function isLuciTabVisibleInUci(
   if (tabId === 'profile') {
     const v1 = uciGet('tachyon', 'settings', 'show_tab_profiles');
     const v2 = uciGet('tachyon', 'settings', 'show_tab_profile');
-    if (v1 === undefined && v2 === undefined) return false;
-    return v1 === '1' || v1 === true || v2 === '1' || v2 === true;
+    if (v1 === undefined && v2 === undefined) return true;
+    return v1 !== '0' && v1 !== false && v2 !== '0' && v2 !== false;
   }
   if (tabId === 'schedule') {
     const v1 = uciGet('tachyon', 'settings', 'show_tab_parental');
     const v2 = uciGet('tachyon', 'settings', 'show_tab_schedule');
-    if (v1 === undefined && v2 === undefined) return false;
-    return v1 === '1' || v1 === true || v2 === '1' || v2 === true;
+    if (v1 === undefined && v2 === undefined) return true;
+    return v1 !== '0' && v1 !== false && v2 !== '0' && v2 !== false;
   }
   if (
     tabId === 'outbounds' ||

@@ -90,7 +90,13 @@ const BUILTIN_SUBNET_URLS = {
     digitalocean: getenv("SUBNETS_DIGITALOCEAN6") ? [ getenv("SUBNETS_DIGITALOCEAN") || TACHYON_LISTS_SUBNETS_BASE + "/ipv4/digitalocean.lst", getenv("SUBNETS_DIGITALOCEAN6") ] : [ getenv("SUBNETS_DIGITALOCEAN") || TACHYON_LISTS_SUBNETS_BASE + "/digitalocean.lst" ],
     cloudfront: getenv("SUBNETS_CLOUDFRONT6") ? [ getenv("SUBNETS_CLOUDFRONT") || TACHYON_LISTS_SUBNETS_BASE + "/ipv4/cloudfront.lst", getenv("SUBNETS_CLOUDFRONT6") ] : [ getenv("SUBNETS_CLOUDFRONT") || TACHYON_LISTS_SUBNETS_BASE + "/cloudfront.lst" ],
     google_meet: [ getenv("SUBNETS_GOOGLE_MEET") || TACHYON_LISTS_SUBNETS_BASE + "/google_meet.lst" ],
-    zoom_teams: [ getenv("SUBNETS_ZOOM_TEAMS") || TACHYON_LISTS_SUBNETS_BASE + "/zoom_teams.lst" ]
+    zoom_teams: [ getenv("SUBNETS_ZOOM_TEAMS") || TACHYON_LISTS_SUBNETS_BASE + "/zoom_teams.lst" ],
+    discord_voice: [ getenv("SUBNETS_DISCORD_VOICE") || TACHYON_LISTS_SUBNETS_BASE + "/discord_voice.lst" ],
+    callofduty: [ getenv("SUBNETS_CALLOFDUTY") || TACHYON_LISTS_SUBNETS_BASE + "/callofduty.lst" ],
+    game_backends: [ getenv("SUBNETS_GAME_BACKENDS") || TACHYON_LISTS_SUBNETS_BASE + "/game_backends.lst" ],
+    cs2_dota2: [ getenv("SUBNETS_CS2_DOTA2") || TACHYON_LISTS_SUBNETS_BASE + "/cs2_dota2.lst" ],
+    doh_dot_dns: [ getenv("SUBNETS_DOH_DOT_DNS") || TACHYON_LISTS_SUBNETS_BASE + "/doh_dot_dns.lst" ],
+    vps_clouds: [ getenv("SUBNETS_VPS_CLOUDS") || TACHYON_LISTS_SUBNETS_BASE + "/vps_clouds.lst" ]
 };
 let rule_config = null;
 let routing_rulesets_module_value = null;
@@ -1094,7 +1100,15 @@ function set_subscription_running_job_pid(path, pid) {
     if (!job_pid_valid(pid))
         return false;
 
-    return write_file(as_string(path) + ".pid", pid + "\n");
+    if (!write_file(as_string(path) + ".pid", pid + "\n"))
+        return false;
+
+    let value = read_json_file(path);
+    if (type(value) == "object" && value.running === true && value.pid == null) {
+        value.pid = arg_number(pid);
+        write_state_file(path, value);
+    }
+    return true;
 }
 
 function subscription_job_refresh_plan(path, now, grace_seconds) {
@@ -1830,7 +1844,15 @@ function set_component_running_job_pid(path, pid) {
     if (!job_pid_valid(pid))
         return false;
 
-    return write_file(as_string(path) + ".pid", pid + "\n");
+    if (!write_file(as_string(path) + ".pid", pid + "\n"))
+        return false;
+
+    let value = read_json_file(path);
+    if (type(value) == "object" && value.running === true && value.pid == null) {
+        value.pid = arg_number(pid);
+        write_state_file(path, value);
+    }
+    return true;
 }
 
 function output_json_object(path) {

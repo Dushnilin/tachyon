@@ -50,7 +50,7 @@ const CRYPTO_LIST: CryptoItem[] = [
   },
 ];
 
-const CLOUDTIPS_URL = 'https://pay.cloudtips.ru/p/48c57581';
+const CLOUDTIPS_URL = 'https://pay.cloudtips.ru/p/449c5ef9';
 const BOOSTY_URL = 'https://boosty.to/tachyon';
 
 async function copyTextToClipboard(text: string): Promise<boolean> {

@@ -320,33 +320,76 @@ function build_section_cache(section) {
     }
 
     let candidate_tags = keys(state.links);
+    let initial_candidate_tags = keys(state.links);
+    let has_section_filter = false;
+    let group_refs = connections.section_outbound_group_refs(section);
+    if (length(group_refs) > 0 && generator_routes.filter_tags_by_group_spec) {
+        has_section_filter = true;
+        let union_cand = [];
+        for (let grp_id in group_refs) {
+            let gspec = connections.outbound_group_filter_spec(grp_id, section);
+            if (gspec == null)
+                continue;
+            for (let t in generator_routes.filter_tags_by_group_spec(candidate_tags, gspec, state))
+                push(union_cand, t);
+        }
+        if (length(union_cand) > 0) {
+            candidate_tags = [];
+            let seen = {};
+            for (let t in union_cand) {
+                if (!seen[t]) {
+                    seen[t] = true;
+                    push(candidate_tags, t);
+                }
+            }
+        }
+    }
+    let sec_pool_spec = connections.section_pool_filter_spec(section);
+    if (sec_pool_spec != null && generator_routes.filter_tags_by_group_spec) {
+        has_section_filter = true;
+        let narrowed_cand = generator_routes.filter_tags_by_group_spec(candidate_tags, sec_pool_spec, state);
+        if (length(narrowed_cand) > 0 || sec_pool_spec.mode == "exclude")
+            candidate_tags = narrowed_cand;
+    }
+
+    let mode = connections.dashboard_filter_mode(section);
     let section_excluded = generator_routes.section_excluded_candidate_tags ?
         generator_routes.section_excluded_candidate_tags(section, candidate_tags, state) : [];
     let group_candidate_tags = length(section_excluded) > 0
         ? generator_routes.urltest_exclude_outbounds(candidate_tags, section_excluded)
         : candidate_tags;
+    if ((mode == "include" || mode == "mixed") &&
+        length(connections.dashboard_include_groups(section)) == 0 &&
+        length(connections.dashboard_exclude_groups(section)) == 0 &&
+        generator_routes.dashboard_filtered_outbounds) {
+        let narrowed_group_candidates = generator_routes.dashboard_filtered_outbounds(section, group_candidate_tags, state, {});
+        if (length(narrowed_group_candidates) > 0)
+            group_candidate_tags = narrowed_group_candidates;
+    }
 
     let dummy_cfg = { outbounds: [] };
     for (let urltest_id in connections.urltests(section)) {
         generator_routes.add_urltest_outbound(dummy_cfg, section, urltest_id, group_candidate_tags, state);
     }
 
-    // Mirror add_proxy_selector's dashboard unhide (generator_routes.uc): nodes
-    // picked in the dashboard include/mixed filter must not stay flagged
-    // hidden in the cache, or the LuCI dashboard drops exactly the nodes the
-    // user selected (TCH-1036 / TCH-1021). Other modes hide nothing extra:
-    // selector members are never hidden-flagged in the first place.
-    if (state && state.hiddenOutboundTags && length(keys(state.hiddenOutboundTags)) > 0) {
-        let mode = connections.dashboard_filter_mode(section);
-        if (mode == "include" || mode == "mixed") {
-            // Candidates = every standalone node, hidden ones included: on the
-            // sing-box path urltest_candidate_tags collects all non-group nodes
-            // before the hidden check, which is what lets a dashboard selection
-            // unhide a subscription group member.
-            let dashboard_candidates = keys(state.links);
-            let matched = generator_routes.dashboard_filtered_outbounds
-                ? generator_routes.dashboard_filtered_outbounds(section, dashboard_candidates, state, {})
-                : dashboard_candidates;
+    // Mirror add_proxy_selector's dashboard unhide and filtering (generator_routes.uc):
+    // nodes picked in the dashboard include/mixed filter or section group filter
+    // must not stay flagged hidden in the cache, and excluded nodes must be hidden.
+    if (state && state.hiddenOutboundTags) {
+        let matched = group_candidate_tags;
+        if ((mode == "include" || mode == "exclude" || mode == "mixed") && generator_routes.dashboard_filtered_outbounds) {
+            let filtered = generator_routes.dashboard_filtered_outbounds(section, candidate_tags, state, {});
+            if (length(filtered) > 0 || mode == "exclude")
+                matched = filtered;
+        }
+        if (has_section_filter || mode == "include" || mode == "exclude" || mode == "mixed") {
+            let visible_set = {};
+            for (let t in matched)
+                visible_set[t] = true;
+            for (let t in initial_candidate_tags) {
+                if (!visible_set[t])
+                    state.hiddenOutboundTags[t] = true;
+            }
             for (let t in matched)
                 delete state.hiddenOutboundTags[t];
         }

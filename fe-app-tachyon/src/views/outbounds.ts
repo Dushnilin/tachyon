@@ -139,6 +139,12 @@ function extractFlagCountryIso(str) {
       );
     }
   }
+  if (typeof main.detectOutboundCountry === 'function') {
+    const detected = main.detectOutboundCountry({ displayName: s });
+    if (detected && detected.code && detected.code !== 'OTHER') {
+      return detected.code;
+    }
+  }
   return '';
 }
 

@@ -1478,6 +1478,7 @@ function nft_schedule_signature_body(body, schedule) {
     body = signature_add_value(body, "schedule." + name + ".days", join(",", list_option(schedule, "days")));
     body = signature_add_value(body, "schedule." + name + ".blocked_domains", join(",", list_option(schedule, "blocked_domains")));
     body = signature_add_value(body, "schedule." + name + ".mode", option(schedule, "mode", "block"));
+    body = signature_add_value(body, "schedule." + name + ".dns_level", option(schedule, "dns_level", "1"));
     return body;
 }
 
@@ -2341,6 +2342,7 @@ function append_sing_box_schedule_signature_body(body, schedule) {
     body = signature_add_value(body, prefix + ".start_time", option(schedule, "start_time", ""));
     body = signature_add_value(body, prefix + ".end_time", option(schedule, "end_time", ""));
     body = signature_add_value(body, prefix + ".days", join(",", list_option(schedule, "days")));
+    body = signature_add_value(body, prefix + ".dns_level", option(schedule, "dns_level", "1"));
     return body;
 }
 

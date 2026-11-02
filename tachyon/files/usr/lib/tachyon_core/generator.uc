@@ -1614,7 +1614,9 @@ function schedule_blocked_domains(schedule) {
 function enabled_content_block_schedules() {
     let result = [];
     ctx.uci_cursor().foreach(CONFIG_NAME, "schedule", function(schedule) {
-        if (section_enabled(schedule) && length(schedule_blocked_domains(schedule)) > 0) {
+        if (section_enabled(schedule) &&
+            option(schedule, "dns_level", "1") != "0" &&
+            length(schedule_blocked_domains(schedule)) > 0) {
             push(result, schedule);
         }
     });
@@ -1648,12 +1650,17 @@ function add_safesearch_dns_rules(target, profiles) {
         : target;
 
     let all_sources = [];
+    let has_mac = false;
     for (let profile in profiles) {
+        if (schedule_has_mac_devices(profile))
+            has_mac = true;
         for (let cidr in profile_source_ip_cidrs(profile)) {
             if (index(all_sources, cidr) < 0)
                 push(all_sources, cidr);
         }
     }
+    if (!has_mac && length(all_sources) == 0)
+        return;
 
     let search_engines = [
         {
@@ -1682,10 +1689,11 @@ function add_safesearch_dns_rules(target, profiles) {
         for (let domain in engine.domains) {
             let rule = {
                 action: "predefined",
+                inbound: [ runtime_constants.DNS_BLOCK_INBOUND_TAG ],
                 domain: [ domain ],
                 answer: [ domain + ". 60 IN A " + engine.ip ]
             };
-            if (length(all_sources) > 0)
+            if (length(all_sources) > 0 && !has_mac)
                 rule.source_ip_cidr = all_sources;
             push(rules_arr, rule);
         }

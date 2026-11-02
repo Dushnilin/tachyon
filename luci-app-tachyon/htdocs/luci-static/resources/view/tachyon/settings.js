@@ -1622,7 +1622,7 @@ function createMenuTabsOrderWidget(option, section_id) {
         "Семейные профили и группы устройств",
         "Family profiles and device grouping",
       ),
-      defaultVisible: false,
+      defaultVisible: true,
       fixed: false,
     },
     {
@@ -1634,7 +1634,7 @@ function createMenuTabsOrderWidget(option, section_id) {
         "Расписание доступа и лимиты экранного времени",
         "Access schedule and screen time limits",
       ),
-      defaultVisible: false,
+      defaultVisible: true,
       fixed: false,
     },
     {
