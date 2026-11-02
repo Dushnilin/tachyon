@@ -28,6 +28,7 @@ function get_rule_config() {
 }
 let smart_detect = require("service.smart_detect");
 let smart_plus = require("service.smart_detect_plus");
+let firewall_health = require("service.firewall_health");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 
@@ -990,50 +991,23 @@ function controller(bus, opts) {
     // ── Probe: nftables table and QoS marks ───────────────────────────────────
     function probe_nftables() {
         let ctx = current_tick_ctx || create_tick_context();
-        if (setting("recovery_bypass", "0") == "1") return;
-        if (fs.stat("/var/run/tachyon/native_internet_restored") != null) return;
+        if (firewall_health.interception_suppressed(ctx.settings)) return;
         if (ctx.list_update_running) return;
         if (ctx.reload_in_progress) return;
-
-        let active_engine = "tachyon-core";
-        try {
-            active_engine = require("core.engine").get_active();
-        } catch (e) {}
-
-        if (active_engine != "tachyon-core") {
-            let steer_nft = command_output_from_args(["sh", "-c", "nft list table inet steer 2>/dev/null; exit 0"]);
-            if (index(steer_nft, "table inet steer") < 0) {
-                bus.emit(EV.NFT_MISSING, { table: "inet steer" });
-            }
+        let health = firewall_health.inspect(ctx.settings);
+        let table = health.steer ? "inet steer" : (getenv("NFT_TABLE_NAME") || "TachyonTable");
+        if (!health.nft_ok) {
+            bus.emit(EV.NFT_MISSING, { table: table });
             return;
         }
-
-        let nft_table = getenv("NFT_TABLE_NAME") || "TachyonTable";
-        let routing_mode = ctx.settings.routing_mode || "nftables";
-        let proxy_mode = lc(trim(as_string(ctx.settings.proxy_mode || "tproxy")));
-        let out_nft = command_output_from_args(["sh", "-c",
-            "nft list table inet " + nft_table + " | grep -E 'chain|tproxy|priority_rules|dscp'; exit 0"]);
-
-        if (routing_mode == "nftables") {
-            let need_tproxy = proxy_mode != "tun" && proxy_mode != "socks";
-            if ((need_tproxy && index(out_nft, "tproxy") < 0) || index(out_nft, "priority_rules") < 0) {
-                bus.emit(EV.NFT_MISSING, { table: nft_table });
-                return;
-            }
-        }
-
-        let qos_pref = ctx.settings.qos_priority_engine || "";
-        if (qos_pref == "0") return;
-        if ((index(out_nft, "dscp set 0x2e") < 0 && index(out_nft, "dscp set ef") < 0) ||
-            (index(out_nft, "dscp set 0x22") < 0 && index(out_nft, "dscp set af41") < 0))
-            bus.emit(EV.QOS_MISSING, { table: nft_table });
+        if (!health.qos_ok)
+            bus.emit(EV.QOS_MISSING, { table: table });
     }
 
     // ── Probe: TPROXY port liveness ───────────────────────────────────────────
     function probe_tproxy() {
         let ctx = current_tick_ctx || create_tick_context();
-        if (setting("recovery_bypass", "0") == "1") return;
-        if (fs.stat("/var/run/tachyon/native_internet_restored") != null) return;
+        if (firewall_health.interception_suppressed(ctx.settings)) return;
         if (ctx.reload_in_progress) return;
 
         let active_engine = "tachyon-core";
@@ -1049,21 +1023,7 @@ function controller(bus, opts) {
         if (proxy_mode == "tun" || proxy_mode == "socks") return;
 
         let port = tproxy_port();
-        // /proc/net/tcp encodes the local port in hex; 0A is TCP_LISTEN.
-        let hex_port = sprintf("%04X", port);
-        let listening = false;
-        for (let proc_file in ["/proc/net/tcp6", "/proc/net/tcp"]) {
-            let tcp_data = fs.readfile(proc_file) || "";
-            for (let line in split(tcp_data, "\n")) {
-                if (index(line, ":" + hex_port + " ") >= 0 && index(line, " 0A ") >= 0) {
-                    listening = true;
-                    break;
-                }
-            }
-            if (listening) break;
-        }
-
-        if (!listening)
+        if (!firewall_health.tproxy_listening(port))
             bus.emit(EV.TPROXY_DOWN, { port: port });
     }
 
@@ -1289,7 +1249,7 @@ function controller(bus, opts) {
     // ── Probe: community subnet nft sets ──────────────────────────────────────
     function probe_subnet_sets() {
         let ctx = current_tick_ctx || create_tick_context();
-        if (setting("recovery_bypass", "0") == "1") return;
+        if (firewall_health.interception_suppressed(ctx.settings)) return;
         if (ctx.reload_in_progress) return;
         if (ctx.list_update_running) return;
 
@@ -1585,6 +1545,7 @@ function controller(bus, opts) {
     self.is_list_update_running = is_list_update_running;
     self.check_tachyon_cli_running = check_tachyon_cli_running;
     self.proxy_port = proxy_port;
+    self.tproxy_port = tproxy_port;
     self.setting = setting;
     self.settings = settings;
     self.enabled = enabled;

@@ -569,8 +569,19 @@ function failsafe_restore() {
         log("Rolling back Tachyon DNS changes in dnsmasq", "warn");
     }
 
-    dnsmasq_restore("force", true);
-    return true;
+    return dnsmasq_restore("force", true);
+}
+
+function recovery_ready() {
+    if (dnsmasq_management_disabled()) return true;
+    if (uci_get("dhcp.@dnsmasq[0].port") == "0" &&
+        (run("pidof AdGuardHome >/dev/null 2>&1") || run("pidof adguardhome >/dev/null 2>&1")))
+        return true;
+    return sing_box_dns_listening() && dnsmasq_default_config_is_complete() &&
+        common.command_success_from_args([
+            "sh", "-c", "nslookup -timeout=2 connectivitycheck.gstatic.com 127.0.0.1 >/dev/null 2>&1 || " +
+            "nslookup -timeout=2 openwrt.org 127.0.0.1 >/dev/null 2>&1"
+        ]);
 }
 
 let mode = ARGV[0] || "";
@@ -583,6 +594,8 @@ else if (mode == "restore")
     exit(dnsmasq_restore(ARGV[1]) ? 0 : 1);
 else if (mode == "failsafe-restore")
     exit(failsafe_restore() ? 0 : 1);
+else if (mode == "recovery-ready")
+    exit(recovery_ready() ? 0 : 1);
 else if (mode == "has-tachyon-dns")
     exit(dnsmasq_has_tachyon_dns() ? 0 : 1);
 else if (mode == "has-managed-state")
@@ -596,5 +609,5 @@ else if (mode == "cleanup-snapshot") {
     exit(0);
 }
 
-warn("Usage: dns/apply.uc <configure|configure-steer|restore|failsafe-restore|has-tachyon-dns|has-managed-state|default-config-complete|save-snapshot|cleanup-snapshot>\n");
+warn("Usage: dns/apply.uc <configure|configure-steer|restore|failsafe-restore|recovery-ready|has-tachyon-dns|has-managed-state|default-config-complete|save-snapshot|cleanup-snapshot>\n");
 exit(1);
