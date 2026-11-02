@@ -1893,6 +1893,25 @@ function condition_list_tokens(section, key) {
     return out;
 }
 
+function extract_proxy_links_from_text_and_list(list_items, text_value) {
+    let result = [];
+    let seen = {};
+    for (let item in (list_items || [])) {
+        let s = trim(as_string(item));
+        if (s == "" || substr(s, 0, 1) == "#" || substr(s, 0, 2) == "//" || seen[s])
+            continue;
+        seen[s] = true;
+        push(result, s);
+    }
+    for (let line in trim_lines(text_value || "")) {
+        if (substr(line, 0, 1) == "#" || substr(line, 0, 2) == "//" || seen[line])
+            continue;
+        seen[line] = true;
+        push(result, line);
+    }
+    return result;
+}
+
 function cleanup_modular_entities_v1(ctx) {
     let awg_scalar_keys = [
         "awg_private_key", "awg_server_address", "awg_server_port",
@@ -2066,6 +2085,35 @@ function cleanup_modular_entities_v1(ctx) {
                 if (sval != "")
                     set_option_if_missing(ctx, existing_src_obj, sk, sval);
             }
+        }
+    }
+
+    // 1b. Normalize outbound_source entries:
+    // - convert legacy proxy_links_text / selector_proxy_links_text / selector_proxy_links into list proxy_links
+    // - backfill missing url on subscription outbound_source when name holds an http(s):// URL
+    for (let src in (ctx.model.outbound_source || [])) {
+        let stype = lc(trim(option(src, "source_type", "subscription")));
+        if (stype == "subscription") {
+            let cur_url = trim(option(src, "url", ""));
+            let cur_name = trim(option(src, "name", ""));
+            if (cur_url == "" && (substr(lc(cur_name), 0, 7) == "http://" || substr(lc(cur_name), 0, 8) == "https://"))
+                set_option(ctx, src, "url", cur_name);
+        }
+        let existing_links = list_option(src, "proxy_links");
+        for (let sl in list_option(src, "selector_proxy_links"))
+            push(existing_links, sl);
+        let text_links = trim(option(src, "proxy_links_text", ""));
+        let sel_text_links = trim(option(src, "selector_proxy_links_text", ""));
+        let combined_text = text_links != "" && sel_text_links != ""
+            ? (text_links + "\n" + sel_text_links)
+            : (text_links != "" ? text_links : sel_text_links);
+        if (combined_text != "" || option_exists(src, "selector_proxy_links")) {
+            let merged_links = extract_proxy_links_from_text_and_list(existing_links, combined_text);
+            if (length(merged_links) > 0)
+                set_list_option(ctx, src, "proxy_links", merged_links);
+            delete_option(ctx, src, "proxy_links_text");
+            delete_option(ctx, src, "selector_proxy_links_text");
+            delete_option(ctx, src, "selector_proxy_links");
         }
     }
 
@@ -2502,17 +2550,30 @@ function migrate_modular_entities_v1(ctx) {
         }
 
         let sec_links = list_option(section, "selector_proxy_links");
+        for (let pl in list_option(section, "proxy_links"))
+            push(sec_links, pl);
         let sec_links_text = trim(option(section, "selector_proxy_links_text", ""));
-        if (length(sec_links) > 0 || sec_links_text != "") {
+        let sec_plain_links_text = trim(option(section, "proxy_links_text", ""));
+        if (sec_plain_links_text != "")
+            sec_links_text = sec_links_text != "" ? (sec_links_text + "\n" + sec_plain_links_text) : sec_plain_links_text;
+        let merged_sec_links = extract_proxy_links_from_text_and_list(sec_links, sec_links_text);
+        if (length(merged_sec_links) > 0) {
             let links_src_id = "src_links_" + safe_sname;
             let links_src = create_named_section(ctx, "outbound_source", links_src_id);
             set_option_if_missing(ctx, links_src, "enabled", "1");
             set_option_if_missing(ctx, links_src, "name", sec_display_name + " (Links)");
             set_option_if_missing(ctx, links_src, "source_type", "proxy_links");
-            if (length(sec_links) > 0 && !option_exists(links_src, "proxy_links"))
-                set_list_option(ctx, links_src, "proxy_links", sec_links);
-            if (sec_links_text != "")
-                set_option_if_missing(ctx, links_src, "proxy_links_text", sec_links_text);
+            let cur_src_links = extract_proxy_links_from_text_and_list(
+                list_option(links_src, "proxy_links"),
+                option(links_src, "proxy_links_text", "")
+            );
+            for (let ml in merged_sec_links) {
+                if (!(ml in cur_src_links))
+                    push(cur_src_links, ml);
+            }
+            set_list_option(ctx, links_src, "proxy_links", cur_src_links);
+            delete_option(ctx, links_src, "proxy_links_text");
+            delete_option(ctx, links_src, "selector_proxy_links_text");
             add_list_unique(ctx, section, "outbound_source_refs", links_src_id);
         }
 

@@ -1022,10 +1022,18 @@ function json_length(path) {
         print("0\n");
 }
 
+function job_pid_from_state(path, value) {
+    let pid = type(value) == "object" && value.pid != null ? as_string(value.pid) : "";
+    if (pid == "")
+        pid = file_first_line_value(as_string(path) + ".pid");
+    return pid;
+}
+
 function job_pid(path) {
     let value = read_json_file(path);
-    if (type(value) == "object" && value.pid != null)
-        print(as_string(value.pid), "\n");
+    let pid = job_pid_from_state(path, value);
+    if (pid != "")
+        print(pid, "\n");
 }
 
 function subscription_job_state_path(job_dir, job_id) {
@@ -1086,13 +1094,7 @@ function set_subscription_running_job_pid(path, pid) {
     if (!job_pid_valid(pid))
         return false;
 
-    let value = object_or_empty(read_json_file(path));
-    if (value.running === true) {
-        value.pid = pid;
-        return write_state_file(path, value);
-    }
-
-    return false;
+    return write_file(as_string(path) + ".pid", pid + "\n");
 }
 
 function subscription_job_refresh_plan(path, now, grace_seconds) {
@@ -1103,7 +1105,7 @@ function subscription_job_refresh_plan(path, now, grace_seconds) {
     }
 
     let within_grace = job_started_at_within_grace(value.started_at, now, grace_seconds);
-    let pid = as_string(value.pid || "");
+    let pid = job_pid_from_state(path, value);
     if (!job_pid_valid(pid)) {
         print(within_grace ? "skip\n" : "stale\n");
         return;
@@ -1221,6 +1223,7 @@ function subscription_job_output_path_from_state(path) {
 
 function remove_subscription_job_state(path) {
     remove_file(path);
+    remove_file(as_string(path) + ".pid");
     remove_file(subscription_job_output_path_from_state(path));
 }
 
@@ -1290,7 +1293,7 @@ function refresh_subscription_running_job_state(path) {
 
     let now = now_seconds();
     let within_grace = job_started_at_within_grace(value.started_at, now, SUBSCRIPTION_JOB_STALE_GRACE_SECONDS);
-    let pid = as_string(value.pid || "");
+    let pid = as_string(value.pid || trim(as_string(fs.readfile(as_string(path) + ".pid") || "")) || "");
 
     if (!job_pid_valid(pid)) {
         if (!within_grace)
@@ -1672,6 +1675,7 @@ function component_job_output_path_from_state(path) {
 function remove_component_job_state(path) {
     let output_path = component_job_output_path_from_state(path);
     remove_file(path);
+    remove_file(as_string(path) + ".pid");
     remove_file(output_path);
     remove_file(output_path + ".json");
 }
@@ -1706,7 +1710,7 @@ function refresh_component_running_job_state(path) {
 
     let now = now_seconds();
     let within_grace = job_started_at_within_grace(value.started_at, now, COMPONENT_JOB_STALE_GRACE_SECONDS);
-    let pid = as_string(value.pid || "");
+    let pid = as_string(value.pid || trim(as_string(fs.readfile(as_string(path) + ".pid") || "")) || "");
 
     // Heartbeat freshness: if the job has been running longer than the hard deadline
     // and no heartbeat was recorded, the worker is likely stuck.
@@ -1826,13 +1830,7 @@ function set_component_running_job_pid(path, pid) {
     if (!job_pid_valid(pid))
         return false;
 
-    let value = object_or_empty(read_json_file(path));
-    if (value.running === true) {
-        value.pid = pid;
-        return write_state_file(path, value);
-    }
-
-    return false;
+    return write_file(as_string(path) + ".pid", pid + "\n");
 }
 
 function output_json_object(path) {

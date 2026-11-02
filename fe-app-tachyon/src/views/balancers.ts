@@ -167,7 +167,19 @@ function loadGlobalPoolChoices() {
       const stype = String(src.source_type || 'subscription').toLowerCase();
       if (DPI_SOURCE_TYPES.has(stype)) return;
       const sname = String(src.name || src['.name'] || '').trim();
-      asArray(src.proxy_links || src.selector_proxy_links).forEach((link) => {
+      const rawLinks = [
+        ...asArray(src.proxy_links),
+        ...asArray(src.selector_proxy_links),
+        ...String(src.proxy_links_text || '')
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter(Boolean),
+        ...String(src.selector_proxy_links_text || '')
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter(Boolean),
+      ];
+      Array.from(new Set(rawLinks)).forEach((link) => {
         const lname =
           (typeof main.getProxyUrlName === 'function' &&
             main.getProxyUrlName(link)) ||

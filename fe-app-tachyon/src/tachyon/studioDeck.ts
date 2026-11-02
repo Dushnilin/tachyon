@@ -4,6 +4,8 @@ import { getProxyUrlTransport } from '../helpers/getProxyUrlTransport';
 import { formatOutboundType } from '../helpers/formatOutboundType';
 import { openConnectionWizardModal } from './connectionWizard';
 import { tr } from './helpers/i18n';
+import { ensureOutboundDisplayFlag } from './helpers/country';
+import { renderFlagEmojis } from './tabs/dashboard/partials/renderFlagEmojis';
 import {
   openServerInfoModalForSection,
   openServerSubscriptionModal,
@@ -73,6 +75,106 @@ export interface StudioDeckMountOptions {
 
 function asArray(val: unknown): string[] {
   return parseValueList(val);
+}
+
+function extractSourceLinks(raw: any): string[] {
+  if (!raw || typeof raw !== 'object') return [];
+  const items = [
+    ...asArray(raw.proxy_links),
+    ...asArray(raw.selector_proxy_links),
+    ...String(raw.proxy_links_text || '')
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter(Boolean),
+    ...String(raw.selector_proxy_links_text || '')
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter(Boolean),
+  ];
+  return Array.from(new Set(items));
+}
+
+function parseFptnTokenInfo(tokenRaw: unknown): {
+  serviceName?: string;
+  username?: string;
+  servers: { name: string; proto: string; trans: string; link?: string }[];
+  isCompressed?: boolean;
+} {
+  let clean = String(tokenRaw || '').trim();
+  if (!clean) return { servers: [] };
+  if (/^fptn:\/\//i.test(clean)) {
+    clean = clean.slice(7);
+  } else if (/^fptn:/i.test(clean)) {
+    clean = clean.slice(5);
+  } else if (/^fptnb:\/\//i.test(clean)) {
+    return { servers: [], isCompressed: true };
+  } else if (/^fptnb:/i.test(clean)) {
+    return { servers: [], isCompressed: true };
+  }
+  clean = clean.replace(/\s+/g, '').replace(/-/g, '+').replace(/_/g, '/');
+  while (clean.length % 4 !== 0) {
+    clean += '=';
+  }
+  try {
+    const bin = typeof atob === 'function' ? atob(clean) : '';
+    if (!bin) return { servers: [] };
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i += 1) {
+      bytes[i] = bin.charCodeAt(i);
+    }
+    const jsonStr =
+      typeof TextDecoder !== 'undefined'
+        ? new TextDecoder('utf-8').decode(bytes)
+        : bin;
+    const data = JSON.parse(jsonStr);
+    if (!data || typeof data !== 'object') return { servers: [] };
+    const servers: {
+      name: string;
+      proto: string;
+      trans: string;
+      link?: string;
+    }[] = [];
+    const seen = new Set<string>();
+    const addList = (list: unknown, isCensoredZone: boolean) => {
+      if (!Array.isArray(list)) return;
+      list.forEach((srv: any, idx: number) => {
+        if (!srv || typeof srv !== 'object') return;
+        const host = String(srv.host || '').trim();
+        const port = Number(srv.port || 443);
+        const rawSrvName = String(
+          srv.name || host || `FPTN #${idx + 1}`,
+        ).trim();
+        const display = isCensoredZone ? `${rawSrvName} (DPI)` : rawSrvName;
+        const key = `${display}|${host}|${port}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        const transParts = [host ? `${host}:${port}` : `:${port}`];
+        if (
+          isCensoredZone ||
+          Number(srv.is_using_censorship_zone_antidpi) === 1
+        ) {
+          transParts.push('AntiDPI');
+        }
+        servers.push({
+          name: display,
+          proto: 'FPTN',
+          trans: transParts.join(' • '),
+          link: '',
+        });
+      });
+    };
+    addList(data.servers, false);
+    addList(data.censored_zone_servers, true);
+    return {
+      serviceName: data.service_name
+        ? String(data.service_name).trim()
+        : undefined,
+      username: data.username ? String(data.username).trim() : undefined,
+      servers,
+    };
+  } catch {
+    return { servers: [] };
+  }
 }
 
 function stripPrefix(tok: string): string {
@@ -351,7 +453,7 @@ function resolveSectionTelemetry(sid: string): {
     if (s.type === 'subscription') {
       protoSet.add(tr('Подписка', 'Subscription'));
     } else if (s.type === 'proxy_links') {
-      const links = asArray(sObj.proxy_links);
+      const links = extractSourceLinks(sObj);
       const parsed = extractLinkProtocolsAndTransports(links);
       if (parsed.protocols.length) {
         parsed.protocols.forEach((p) => protoSet.add(p));
@@ -996,22 +1098,42 @@ function openStudioCreateModal(
         uci.add(UCI_PACKAGE, sectionRef.sectiontype || type, uciId);
       }
       sanitizeStaleUciDeletes(uciId);
+      Object.entries(selectedTemplate.defaults || {}).forEach(([k, v]) => {
+        uci.set(UCI_PACKAGE, uciId, k, v);
+      });
+
       if (type === 'section' || type === 'profile') {
         uci.set(UCI_PACKAGE, uciId, 'label', rawName);
       } else {
-        uci.set(UCI_PACKAGE, uciId, 'name', rawName);
-        if (
+        const isProxyShareUri =
+          /^(?:vless|vmess|trojan|ss|ssr|hysteria2|hy2|hysteria|tuic|anytls|naive\+(?:https|quic|h2|h3)|mieru|mierus|snell|trusttunnel|shadowtls|masque|warp|wg|awg|wireguard|socks5?h?):\/\//i.test(
+            rawName,
+          );
+        let displayName = rawName;
+        if (type === 'outbound_source' && isProxyShareUri) {
+          const hashIdx = rawName.indexOf('#');
+          if (hashIdx >= 0 && hashIdx + 1 < rawName.length) {
+            try {
+              const decoded = decodeURIComponent(
+                rawName.slice(hashIdx + 1),
+              ).trim();
+              if (decoded) displayName = decoded;
+            } catch {
+              const rawFrag = rawName.slice(hashIdx + 1).trim();
+              if (rawFrag) displayName = rawFrag;
+            }
+          }
+          uci.set(UCI_PACKAGE, uciId, 'source_type', 'proxy_links');
+          uci.set(UCI_PACKAGE, uciId, 'proxy_links', [rawName]);
+        } else if (
           type === 'outbound_source' &&
           selectedTemplate.id === 'subscription' &&
           /^https?:\/\//i.test(rawName)
         ) {
           uci.set(UCI_PACKAGE, uciId, 'url', rawName);
         }
+        uci.set(UCI_PACKAGE, uciId, 'name', displayName);
       }
-
-      Object.entries(selectedTemplate.defaults || {}).forEach(([k, v]) => {
-        uci.set(UCI_PACKAGE, uciId, k, v);
-      });
 
       ui.hideModal();
 
@@ -1335,10 +1457,11 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
   const populateSubCacheFromSectionCaches = (): Promise<void> => {
     const subSources = (
       uci.sections(UCI_PACKAGE, 'outbound_source') || []
-    ).filter(
-      (s: any) =>
-        s && (s.source_type || s.type || 'subscription') === 'subscription',
-    );
+    ).filter((s: any) => {
+      if (!s) return false;
+      const t = String(s.source_type || s.type || 'subscription').toLowerCase();
+      return t === 'subscription' || t === 'fptn';
+    });
     if (subSources.length === 0) return Promise.resolve();
 
     const secObjs = uci.sections(UCI_PACKAGE, 'section') || [];
@@ -1368,13 +1491,25 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
       if (validCaches.length === 0) return;
 
       const singleSub = subSources.length === 1 ? subSources[0] : null;
+      const fptnSources = subSources.filter(
+        (s: any) =>
+          String(s.source_type || s.type || '').toLowerCase() === 'fptn',
+      );
+      const singleFptn = fptnSources.length === 1 ? fptnSources[0] : null;
       subSources.forEach((src: any) => {
         const sid = String(src['.name'] || '');
+        const srcStype = String(
+          src.source_type || src.type || 'subscription',
+        ).toLowerCase();
         const rawSubName = String(src.name || '').trim();
         const subUrl = String(
           src.url || (/^https?:\/\//i.test(rawSubName) ? rawSubName : ''),
         ).trim();
-        if (subUrl && (subCacheByUrl.get(subUrl)?.servers.length || 0) > 0) {
+        if (
+          srcStype === 'subscription' &&
+          subUrl &&
+          (subCacheByUrl.get(subUrl)?.servers.length || 0) > 0
+        ) {
           return;
         }
         const prefix =
@@ -1496,7 +1631,19 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                 matches = true;
                 cleanName = rawName.slice(prefix.length + 1).trim();
               }
-            } else if (singleSub && !codeSourceId) {
+            } else if (
+              srcStype === 'fptn' &&
+              (rawType === 'FPTN' || cStr.toLowerCase().includes('fptn')) &&
+              (singleFptn ||
+                (srcTitle &&
+                  rawName.toLowerCase().startsWith(srcTitle.toLowerCase())))
+            ) {
+              matches = true;
+            } else if (
+              singleSub &&
+              srcStype === 'subscription' &&
+              !codeSourceId
+            ) {
               matches = true;
             }
 
@@ -2800,8 +2947,16 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
         }
       };
 
-      const links = asArray(raw.proxy_links);
+      const links = extractSourceLinks(raw);
       const parsedLinks = extractLinkProtocolsAndTransports(links);
+      const fptnParsed =
+        stype === 'fptn' ? parseFptnTokenInfo(raw.access_token) : null;
+      const fptnServers =
+        stype === 'fptn'
+          ? fptnParsed?.servers.length
+            ? fptnParsed.servers
+            : subCache?.servers || []
+          : [];
 
       const typeBadges: HTMLElement[] = [];
       let iconEl: SVGElement = renderRadioIcon(18);
@@ -2908,6 +3063,34 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
             `${stype.toUpperCase()} (${preset})`,
           ),
         );
+      } else if (stype === 'fptn') {
+        iconEl = renderRocketIcon(18);
+        tone = 'bypass';
+        typeBadges.push(
+          E(
+            'span',
+            { class: 'tachyon-studio-badge tachyon-studio-badge--proxy' },
+            'FPTN',
+          ),
+        );
+        if (fptnServers.length > 0) {
+          typeBadges.push(
+            E(
+              'span',
+              { class: 'tachyon-studio-badge tachyon-studio-badge--proto' },
+              `${tr('Узлов', 'Nodes')}: ${fptnServers.length}`,
+            ),
+          );
+        }
+        if (raw.bypass_method) {
+          typeBadges.push(
+            E(
+              'span',
+              { class: 'tachyon-studio-badge tachyon-studio-badge--transport' },
+              String(raw.bypass_method).toUpperCase(),
+            ),
+          );
+        }
       } else {
         iconEl = renderRocketIcon(18);
         tone = 'bypass';
@@ -2945,7 +3128,15 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
         paramSummary = `${tr('Узлов', 'Nodes')}: ${links.length}${parsedLinks.protocols.length ? ` (${parsedLinks.protocols.join(', ')})` : ''}`;
       } else if (stype === 'fptn') {
         const tok = String(raw.access_token || '');
-        paramSummary = tok ? `FPTN: ${tok.slice(0, 26)}…` : 'FPTN VPN';
+        const srvCountStr = fptnServers.length
+          ? `${tr('Узлов', 'Nodes')}: ${fptnServers.length}`
+          : '';
+        const svcStr = fptnParsed?.serviceName
+          ? `FPTN (${fptnParsed.serviceName})`
+          : tok
+            ? `FPTN: ${tok.slice(0, 26)}…`
+            : 'FPTN VPN';
+        paramSummary = srvCountStr ? `${svcStr} • ${srvCountStr}` : svcStr;
       } else if (stype === 'desync') {
         paramSummary = `Desync (${raw.desync_preset || 'auto'})`;
       } else {
@@ -3082,6 +3273,9 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                     ? `${srv.proto} • ${srv.trans}`
                     : srv.proto;
                 const resolvedLink = srv.link || lookupLiveLinkByName(srv.name);
+                const displaySrvName = ensureOutboundDisplayFlag({
+                  displayName: srv.name,
+                });
                 return E('tr', {}, [
                   E(
                     'td',
@@ -3091,7 +3285,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                   E(
                     'td',
                     { class: 'tachyon-studio-server-table__name' },
-                    srv.name,
+                    renderFlagEmojis(displaySrvName),
                   ),
                   E('td', { class: 'tachyon-studio-server-table__proto' }, [
                     E(
@@ -3280,6 +3474,64 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
             ],
           ),
         );
+      }
+      if (stype === 'fptn') {
+        const fptnMetaParts: string[] = [];
+        if (fptnParsed?.serviceName) {
+          fptnMetaParts.push(
+            `${tr('Сервис', 'Service')}: ${fptnParsed.serviceName}`,
+          );
+        }
+        if (fptnParsed?.username) {
+          fptnMetaParts.push(
+            `${tr('Пользователь', 'User')}: ${fptnParsed.username}`,
+          );
+        }
+        if (raw.bypass_method) {
+          fptnMetaParts.push(
+            `${tr('Метод обхода', 'Bypass')}: ${raw.bypass_method}`,
+          );
+        }
+        if (raw.preferred_server) {
+          fptnMetaParts.push(
+            `${tr('Предпочитаемый сервер', 'Preferred')}: ${raw.preferred_server}`,
+          );
+        }
+        if (fptnMetaParts.length > 0) {
+          inspectorRows.push(
+            E('div', { class: 'tachyon-studio-source-inspector__row' }, [
+              E(
+                'span',
+                { class: 'tachyon-studio-source-inspector__label' },
+                'FPTN:',
+              ),
+              E(
+                'span',
+                { class: 'tachyon-studio-source-inspector__val' },
+                fptnMetaParts.join(' • '),
+              ),
+            ]),
+          );
+        }
+        if (fptnServers.length > 0) {
+          inspectorRows.push(
+            E(
+              'div',
+              {
+                class:
+                  'tachyon-studio-source-inspector__row tachyon-studio-source-inspector__row--block',
+              },
+              [
+                E(
+                  'span',
+                  { class: 'tachyon-studio-source-inspector__label' },
+                  `${tr('Серверы в подписке', 'Servers in subscription')} (${fptnServers.length}):`,
+                ),
+                renderCompactServersTable(fptnServers),
+              ],
+            ),
+          );
+        }
       }
 
       const inspectorEl = E(

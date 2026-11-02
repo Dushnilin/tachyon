@@ -321,7 +321,19 @@ function loadGlobalPoolChoices() {
       }
 
       const sname = String(src.name || src[".name"] || "").trim();
-      asArray(src.proxy_links || src.selector_proxy_links).forEach((link) => {
+      const rawLinks = [
+        ...asArray(src.proxy_links),
+        ...asArray(src.selector_proxy_links),
+        ...String(src.proxy_links_text || "")
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter(Boolean),
+        ...String(src.selector_proxy_links_text || "")
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter(Boolean),
+      ];
+      Array.from(new Set(rawLinks)).forEach((link) => {
         const lname =
           (typeof main.getProxyUrlName === "function" &&
             main.getProxyUrlName(link)) ||
@@ -2716,26 +2728,49 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
   return wrapper;
 }
 
+function isProxyShareLinkUri(str) {
+  return /^(?:vless|vmess|trojan|ss|ssr|hysteria2|hy2|hysteria|tuic|anytls|naive\+(?:https|quic|h2|h3)|mieru|mierus|snell|trusttunnel|shadowtls|masque|warp|wg|awg|wireguard|socks5?h?):\/\//i.test(
+    String(str || "").trim(),
+  );
+}
+
 function configureOutboundsSection(sectionRef) {
   const origAdd = sectionRef.handleAdd;
   sectionRef.handleAdd = function (ev, name) {
+    const rawArg = String(name || "").trim();
     const res = origAdd.apply(this, arguments);
     const sources = uci.sections(UCI_PACKAGE, "outbound_source") || [];
     const last = sources[sources.length - 1];
     if (last && last[".name"]) {
       const sid = last[".name"];
       if (!last.name) {
-        uci.set(UCI_PACKAGE, sid, "name", sid);
+        uci.set(UCI_PACKAGE, sid, "name", rawArg || sid);
       }
       const nm = String(
-        last.name || uci.get(UCI_PACKAGE, sid, "name") || "",
+        rawArg || last.name || uci.get(UCI_PACKAGE, sid, "name") || "",
       ).trim();
       const st = String(
         last.source_type ||
           uci.get(UCI_PACKAGE, sid, "source_type") ||
           "subscription",
       ).toLowerCase();
-      if (st === "subscription" && !last.url && /^https?:\/\//i.test(nm)) {
+      if (isProxyShareLinkUri(nm)) {
+        let friendlyName = nm;
+        const hashIdx = nm.indexOf("#");
+        if (hashIdx >= 0 && hashIdx + 1 < nm.length) {
+          try {
+            const decoded = decodeURIComponent(nm.slice(hashIdx + 1)).trim();
+            if (decoded) friendlyName = decoded;
+          } catch (_e) {}
+        }
+        uci.set(UCI_PACKAGE, sid, "source_type", "proxy_links");
+        uci.set(UCI_PACKAGE, sid, "proxy_links", [nm]);
+        uci.set(UCI_PACKAGE, sid, "name", friendlyName);
+      } else if (
+        st === "subscription" &&
+        !last.url &&
+        /^https?:\/\//i.test(nm)
+      ) {
         uci.set(UCI_PACKAGE, sid, "url", nm);
       }
     }
@@ -3375,6 +3410,31 @@ function createOutboundsContent(section) {
   o.depends("source_type", "subscription");
 
   // ── 2. Proxy Share Links ──────────────────────────────────────────────────
+  const getSourceProxyLinks = (sectionId) => {
+    const items = [
+      ...asArray(uci.get(UCI_PACKAGE, sectionId, "proxy_links")),
+      ...asArray(uci.get(UCI_PACKAGE, sectionId, "selector_proxy_links")),
+      ...String(uci.get(UCI_PACKAGE, sectionId, "proxy_links_text") || "")
+        .split(/\r?\n/)
+        .map((s) => s.trim())
+        .filter(Boolean),
+      ...String(
+        uci.get(UCI_PACKAGE, sectionId, "selector_proxy_links_text") || "",
+      )
+        .split(/\r?\n/)
+        .map((s) => s.trim())
+        .filter(Boolean),
+    ];
+    if (items.length === 0) {
+      const nm = String(uci.get(UCI_PACKAGE, sectionId, "name") || "").trim();
+      if (isProxyShareLinkUri(nm)) {
+        uci.set(UCI_PACKAGE, sectionId, "proxy_links", [nm]);
+        return [nm];
+      }
+    }
+    return Array.from(new Set(items));
+  };
+
   o = section.taboption(
     "general",
     form.DynamicList,
@@ -3387,7 +3447,7 @@ function createOutboundsContent(section) {
   o.modalonly = true;
   o.depends("source_type", "proxy_links");
   o.cfgvalue = function (sectionId) {
-    const all = asArray(uci.get(UCI_PACKAGE, sectionId, "proxy_links"));
+    const all = getSourceProxyLinks(sectionId);
     return all.length > 50 ? [] : all;
   };
   o.formvalue = function (sectionId) {
@@ -3418,6 +3478,9 @@ function createOutboundsContent(section) {
     const list = asArray(value);
     if (list.length) {
       uci.set(UCI_PACKAGE, sectionId, "proxy_links", list);
+      uci.unset(UCI_PACKAGE, sectionId, "proxy_links_text");
+      uci.unset(UCI_PACKAGE, sectionId, "selector_proxy_links_text");
+      uci.unset(UCI_PACKAGE, sectionId, "selector_proxy_links");
     }
   };
   o.remove = function (sectionId) {
@@ -3434,6 +3497,9 @@ function createOutboundsContent(section) {
       }
     } catch (_e) {}
     uci.unset(UCI_PACKAGE, sectionId, "proxy_links");
+    uci.unset(UCI_PACKAGE, sectionId, "proxy_links_text");
+    uci.unset(UCI_PACKAGE, sectionId, "selector_proxy_links_text");
+    uci.unset(UCI_PACKAGE, sectionId, "selector_proxy_links");
   };
 
   o = section.taboption(
@@ -3449,7 +3515,7 @@ function createOutboundsContent(section) {
   o.rows = 8;
   o.depends("source_type", "proxy_links");
   o.cfgvalue = function (sectionId) {
-    return asArray(uci.get(UCI_PACKAGE, sectionId, "proxy_links")).join("\n");
+    return getSourceProxyLinks(sectionId).join("\n");
   };
   o.write = function (sectionId, value) {
     const lines = String(value || "")
@@ -3457,12 +3523,15 @@ function createOutboundsContent(section) {
       .map((s) => s.trim())
       .filter(Boolean);
     if (lines.length) {
-      const existing = asArray(uci.get(UCI_PACKAGE, sectionId, "proxy_links"));
+      const existing = getSourceProxyLinks(sectionId);
       const merged =
         existing.length > 50
           ? Array.from(new Set(lines))
           : Array.from(new Set([...existing, ...lines]));
       uci.set(UCI_PACKAGE, sectionId, "proxy_links", merged);
+      uci.unset(UCI_PACKAGE, sectionId, "proxy_links_text");
+      uci.unset(UCI_PACKAGE, sectionId, "selector_proxy_links_text");
+      uci.unset(UCI_PACKAGE, sectionId, "selector_proxy_links");
     }
   };
   o.remove = function () {

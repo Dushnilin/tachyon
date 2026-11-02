@@ -7063,10 +7063,12 @@ button.tachyon-studio-chip:hover {
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: var(--text-color-medium, #94a3b8);
-    background: var(--background-color-high, rgba(15, 23, 42, 0.35));
+    background: var(--tachyon-bg-card-elevated, var(--background-color-high, #1e293b));
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     position: sticky;
     top: 0;
-    z-index: 1;
+    z-index: 2;
 }
 
 .tachyon-studio-server-table tbody tr:last-child td {
@@ -7078,6 +7080,7 @@ button.tachyon-studio-chip:hover {
 }
 
 .tachyon-studio-server-table__name {
+    font-family: "Twemoji Country Flags", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     font-weight: 600;
     word-break: break-word;
 }

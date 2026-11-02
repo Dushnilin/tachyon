@@ -189,7 +189,11 @@ function send_notification(message) {
     let tcfg = object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
     if (as_string(tcfg.enabled || "0") != "1" || !tcfg.bot_token || !tcfg.admin_ids)
         return;
-    system(common.background_command(TACHYON_BIN + " telegram send " + shell_quote(message)));
+    if (TACHYON_BIN != "/usr/bin/tachyon" || getenv("TACHYON_FAILOVER_SYNC_NOTIFY") == "1") {
+        command_success_from_args([ TACHYON_BIN, "telegram", "send", as_string(message) ]);
+        return;
+    }
+    command_status(common.background_command(command_from_args([ TACHYON_BIN, "telegram", "send", as_string(message) ])));
 }
 
 function read_section_fail_state() {

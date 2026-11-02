@@ -84,32 +84,9 @@ cat >"$STUB_BIN/tachyon" <<EOF
 printf '%s\n' "\$*" >> '$FAIL_LOG'
 case "\$*" in
   *"get_proxy_latency main_sec-out"*)
-    if [ "\$MAIN_DEAD" = "1" ]; then echo '{}'; else echo '{"delay":120}'; fi ;;
-  *"get_proxy_latency backup_sec-out"*) echo '{"delay":200}' ;;
-  *"get_proxy_latency gone_sec-out"*) echo '{}' ;;
-  *) exit 0 ;;
-esac
-EOF
-chmod +x "$STUB_BIN/tachyon"
-
-export PATH="$STUB_BIN:$PATH"
-export TACHYON_CONFIG_NAME="tachyon"
-export TACHYON_BIN="$STUB_BIN/tachyon"
-export TACHYON_FAILOVER_STATE_FILE="$WORK_DIR/state"
-export TACHYON_FAILOVER_STREAK_FILE="$WORK_DIR/streak"
-
-# --- switcher logic with stubbed Clash API ---------------------------------
-STUB_BIN="$WORK_DIR/bin"
-mkdir -p "$STUB_BIN"
-FAIL_LOG="$WORK_DIR/clash.log"
-
-cat >"$STUB_BIN/tachyon" <<EOF
-#!/usr/bin/env bash
-printf '%s\n' "\$*" >> '$FAIL_LOG'
-case "\$*" in
-  *"get_proxy_latency main_sec-out"*)
     if [ "\${MAIN_DEAD:-0}" = "1" ]; then echo '{}'; else echo '{"delay":120}'; fi ;;
   *"get_proxy_latency backup_sec-out"*) echo '{"delay":200}' ;;
+  *"get_proxy_latency gone_sec-out"*) echo '{}' ;;
   *) exit 0 ;;
 esac
 EOF

@@ -14,7 +14,7 @@ raw_background|tachyon/files/usr/lib/service/watchdog.uc|1
 raw_popen|tachyon/files/usr/lib/components/helpers.uc|1
 raw_system|tachyon/files/usr/lib/components/action.uc|3
 raw_system|tachyon/files/usr/lib/components/hosts.uc|2
-raw_system|tachyon/files/usr/lib/components/updates.uc|5
+raw_system|tachyon/files/usr/lib/components/updates.uc|4
 raw_system|tachyon/files/usr/lib/components/verifier.uc|1
 raw_system|tachyon/files/usr/lib/config/migration.uc|9
 raw_system|tachyon/files/usr/lib/config/validator.uc|3
@@ -44,7 +44,6 @@ raw_system|tachyon/files/usr/lib/providers/wdtt/runtime.uc|21
 raw_system|tachyon/files/usr/lib/server/service.uc|1
 raw_system|tachyon/files/usr/lib/service/agent_api.uc|4
 raw_system|tachyon/files/usr/lib/service/agent_mcp.uc|4
-raw_system|tachyon/files/usr/lib/service/failover.uc|1
 raw_system|tachyon/files/usr/lib/service/initd.uc|2
 raw_system|tachyon/files/usr/lib/service/known_good.uc|5
 raw_system|tachyon/files/usr/lib/service/package.uc|9
@@ -62,7 +61,7 @@ raw_system|tachyon/files/usr/lib/service/uninstall.uc|4
 raw_system|tachyon/files/usr/lib/service/watchdog.uc|28
 raw_system|tachyon/files/usr/lib/steer/dns.uc|1
 raw_system|tachyon/files/usr/lib/steer/lists.uc|1
-raw_system|tachyon/files/usr/lib/subscription/cache.uc|9
+raw_system|tachyon/files/usr/lib/subscription/cache.uc|8
 raw_system|tachyon/files/usr/lib/subscription/parser.uc|1
 raw_system|tachyon/files/usr/lib/subscription/share_link.uc|1
 raw_system|tachyon/files/usr/lib/tachyon_core/country.uc|1

@@ -383,6 +383,7 @@ cp "$UPDATES_UC" "$fake_lib/components/updates.uc"
 cp "$TACHYON_LIB/components/helpers.uc" "$fake_lib/components/helpers.uc"
 cp "$TACHYON_LIB/config/connections.uc" "$fake_lib/config/connections.uc"
 cp "$TACHYON_LIB/core/"*.uc "$fake_lib/core/"
+cp -r "$TACHYON_LIB/providers" "$fake_lib/"
 cat >"$fake_lib/components/action.uc" <<'UCODE'
 #!/usr/bin/env ucode
 if ((ARGV[0] || "") == "component-action") {

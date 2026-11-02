@@ -778,24 +778,28 @@ const EntryPoint = {
             }
 
             if (!alreadyMigrated) {
-              const links = toArr(sec.selector_proxy_links || sec.proxy_links);
-              if (links.length || sec.selector_proxy_links_text) {
+              const links = Array.from(
+                new Set([
+                  ...toArr(sec.selector_proxy_links),
+                  ...toArr(sec.proxy_links),
+                  ...String(sec.selector_proxy_links_text || "")
+                    .split(/\r?\n/)
+                    .map((s) => s.trim())
+                    .filter(Boolean),
+                  ...String(sec.proxy_links_text || "")
+                    .split(/\r?\n/)
+                    .map((s) => s.trim())
+                    .filter(Boolean),
+                ]),
+              );
+              if (links.length) {
                 const lid = `src_links_${safeSname}`;
                 if (!uci.get(self.config, lid)) {
                   uci.add(self.config, "outbound_source", lid);
                   uci.set(self.config, lid, "enabled", "1");
                   uci.set(self.config, lid, "name", `${dispName} (Links)`);
                   uci.set(self.config, lid, "source_type", "proxy_links");
-                  if (links.length)
-                    uci.set(self.config, lid, "proxy_links", links);
-                  if (sec.selector_proxy_links_text) {
-                    uci.set(
-                      self.config,
-                      lid,
-                      "proxy_links_text",
-                      sec.selector_proxy_links_text,
-                    );
-                  }
+                  uci.set(self.config, lid, "proxy_links", links);
                 }
                 ensureSourceRef(sname, lid);
               }
