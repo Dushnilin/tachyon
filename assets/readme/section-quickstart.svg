@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1200" height="72" viewBox="0 0 1200 72"
+     role="img" aria-labelledby="title desc">
+  <title id="title">01 — Быстрый старт и транзакционная установка (install.sh)</title>
+  <desc id="desc">Установка пакета Tachyon на роутеры OpenWrt одной командой, резервные зеркала, выбор ядра маршрутизации и автоматическая миграция.</desc>
+  <rect width="1200" height="72" rx="12" fill="#141415"/>
+  <rect x="0.5" y="0.5" width="1199" height="71" rx="11.5" fill="none" stroke="#2e2e32" stroke-width="1"/>
+  <rect x="20" y="20" width="40" height="32" rx="6" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
+  <text x="40" y="41" text-anchor="middle" fill="#38bdf8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="500">01</text>
+  <text x="76" y="34" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="18" font-weight="500">Быстрый старт и транзакционная установка (install.sh)</text>
+  <text x="76" y="54" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="400">Установка в одну команду, выбор ядра (tachyon-core / sing-box), снимки отката и миграция из Forkop / Podkop</text>
+</svg>

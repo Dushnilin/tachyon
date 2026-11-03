@@ -1,93 +1,49 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 160" width="100%" height="100%">
-  <title>Tachyon AI Doctor Showcase</title>
-  <defs>
-    <radialGradient id="ai-bg" cx="50%" cy="50%" r="75%">
-      <stop offset="0%" stop-color="#1E1B4B" stop-opacity="0.6"/>
-      <stop offset="60%" stop-color="#0F172A" stop-opacity="0.85"/>
-      <stop offset="100%" stop-color="#050814" stop-opacity="0.95"/>
-    </radialGradient>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1200" height="176" viewBox="0 0 1200 176"
+     role="img" aria-labelledby="title desc">
+  <title id="title">Подсистема диагностики AI Doctor v3.0, REST Agent API и MCP Server</title>
+  <desc id="desc">Модульная диагностика сетевого стека OpenWrt, схлопывание каскадных симптомов в первопричины, 25 кодов быстрого ремонта и интеграция по протоколам OpenAPI 3.0 и MCP.</desc>
 
-    <linearGradient id="ai-border" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#8B5CF6" stop-opacity="0.2"/>
-      <stop offset="50%" stop-color="#C084FC" stop-opacity="0.8"/>
-      <stop offset="100%" stop-color="#00F0FF" stop-opacity="0.2"/>
-    </linearGradient>
+  <rect width="1200" height="176" rx="16" fill="#141415"/>
+  <rect x="0.5" y="0.5" width="1199" height="175" rx="15.5" fill="none" stroke="#2e2e32" stroke-width="1"/>
 
-    <filter id="ecg-glow" filterUnits="userSpaceOnUse" x="0" y="0" width="1200" height="160">
-      <feGaussianBlur stdDeviation="3" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-  </defs>
+  <!-- Header -->
+  <text x="24" y="34" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="17" font-weight="500">AI Doctor v3.0, быстрый ремонт и интерфейсы для ИИ-агентов</text>
+  <text x="1176" y="34" text-anchor="end" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">diagnostics/doctor.uc · repairs.uc</text>
 
-  <style>
-    @keyframes ecgScan {
-      0% { stroke-dashoffset: 400; }
-      100% { stroke-dashoffset: 0; }
-    }
-    @keyframes pulseAiDot {
-      0%, 100% { transform: scale(1); opacity: 0.9; }
-      50% { transform: scale(1.3); opacity: 0.3; }
-    }
-    @keyframes cardShimmer {
-      0%, 100% { stroke-opacity: 0.3; }
-      50% { stroke-opacity: 0.85; }
-    }
-
-    .ecg-line { stroke-dasharray: 40 80; animation: ecgScan 3s linear infinite; }
-    .ai-dot { animation: pulseAiDot 2s ease-in-out infinite; }
-    .ai-box { animation: cardShimmer 3s ease-in-out infinite; }
-
-    .ai-title { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 800; font-size: 15px; fill: #FFFFFF; }
-    .ai-desc { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 500; font-size: 12px; fill: #94A3B8; }
-    .ai-badge { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; font-weight: 700; fill: #C084FC; }
-    .ai-metric { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; font-weight: 700; fill: #10B981; }
-  </style>
-
-  <!-- Container Box -->
-  <rect width="1200" height="160" rx="14" fill="url(#ai-bg)" stroke="url(#ai-border)" stroke-width="1.5" class="ai-box"/>
-
-  <!-- Left Side: AI Doctor Core HUD -->
-  <g transform="translate(35, 30)">
-    <rect width="44" height="44" rx="10" fill="#6B21A8" fill-opacity="0.25" stroke="#C084FC" stroke-width="1.2"/>
-    <text x="12" y="28" font-size="20">🤖</text>
-    <text x="56" y="20" class="ai-title">Tachyon AI Doctor v2.5 &amp; Auto-Healing Engine</text>
-    <text x="56" y="38" class="ai-desc">Интеллектуальная многоуровневая диагностика, 13 Quick Fix кодов и предотвращение сбоев</text>
+  <!-- Card 1 (Highlighted): Symptom Collapsing & LLM (280px) -->
+  <g transform="translate(24, 52)">
+    <rect x="0" y="0" width="280" height="104" rx="12" fill="#19191b" stroke="#38bdf8" stroke-width="1" stroke-opacity="0.5"/>
+    <text x="16" y="26" fill="#38bdf8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">Symptom Collapsing</text>
+    <text x="16" y="50" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">Анализ первопричин</text>
+    <text x="16" y="72" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="400">Офлайн-проверки и анализ</text>
+    <text x="16" y="90" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">LLM (OpenAI, Claude, Ollama)</text>
   </g>
 
-  <!-- Animated ECG / Health Monitor Wave Across Center -->
-  <g transform="translate(35, 95)">
-    <!-- Background Grid Line -->
-    <line x1="0" y1="20" x2="1130" y2="20" stroke="#1E293B" stroke-width="1.5"/>
-    
-    <!-- ECG Pulse Path -->
-    <path d="M 0,20 L 180,20 L 200,5 L 215,35 L 230,10 L 245,28 L 260,20 L 480,20 L 500,5 L 515,35 L 530,10 L 545,28 L 560,20 L 780,20 L 800,5 L 815,35 L 830,10 L 845,28 L 860,20 L 1130,20" 
-          fill="none" stroke="#10B981" stroke-width="2" class="ecg-line" filter="url(#ecg-glow)"/>
+  <!-- Card 2: 25 Quick Fixes (280px) -->
+  <g transform="translate(316, 52)">
+    <rect x="0" y="0" width="280" height="104" rx="12" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
+    <text x="16" y="26" fill="#4cc38a" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">25 кодов ремонта</text>
+    <text x="16" y="50" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">Быстрое исправление</text>
+    <text x="16" y="72" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="400">Восстановление DNS и таблиц</text>
+    <text x="16" y="90" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">tachyon apply_quick_fix &lt;id&gt;</text>
   </g>
 
-  <!-- Quick Status Badges on Right -->
-  <g transform="translate(720, 25)">
-    <!-- Badge 1: NTP Sync -->
-    <g transform="translate(0, 0)">
-      <rect width="125" height="30" rx="6" fill="#0B132B" stroke="#818CF8" stroke-width="1"/>
-      <circle cx="12" cy="15" r="3.5" fill="#10B981" class="ai-dot"/>
-      <text x="24" y="19" class="ai-metric">NTP SYNC: OK</text>
-    </g>
+  <!-- Card 3: MCP Server (280px) -->
+  <g transform="translate(608, 52)">
+    <rect x="0" y="0" width="280" height="104" rx="12" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
+    <text x="16" y="26" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">JSON-RPC 2.0 stdio</text>
+    <text x="16" y="50" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">Встроенный MCP-сервер</text>
+    <text x="16" y="72" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="400">Прямая связь с Claude Desktop,</text>
+    <text x="16" y="90" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">Cursor и Antigravity · mcp</text>
+  </g>
 
-    <!-- Badge 2: Conntrack -->
-    <g transform="translate(135, 0)">
-      <rect width="135" height="30" rx="6" fill="#0B132B" stroke="#818CF8" stroke-width="1"/>
-      <circle cx="12" cy="15" r="3.5" fill="#10B981" class="ai-dot"/>
-      <text x="24" y="19" class="ai-metric">CONNTRACK: OK</text>
-    </g>
-
-    <!-- Badge 3: MTU Tuning -->
-    <g transform="translate(280, 0)">
-      <rect width="135" height="30" rx="6" fill="#0B132B" stroke="#818CF8" stroke-width="1"/>
-      <circle cx="12" cy="15" r="3.5" fill="#10B981" class="ai-dot"/>
-      <text x="24" y="19" class="ai-metric">MTU TUNED: OK</text>
-    </g>
+  <!-- Card 4: REST Agent API (276px) -->
+  <g transform="translate(900, 52)">
+    <rect x="0" y="0" width="276" height="104" rx="12" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
+    <text x="16" y="26" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">OpenAPI 3.0.3 · Bearer Auth</text>
+    <text x="16" y="50" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">HTTP REST Agent API</text>
+    <text x="16" y="72" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="400">Асинхронная перезагрузка</text>
+    <text x="16" y="90" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">/cgi-bin/tachyon-api</text>
   </g>
 </svg>

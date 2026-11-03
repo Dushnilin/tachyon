@@ -1,311 +1,137 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 620" width="100%" height="100%">
-  <title>Tachyon Architecture &amp; Traffic Pipeline</title>
-  <defs>
-    <!-- Dark Tech Canvas Gradient -->
-    <radialGradient id="arch-bg" cx="50%" cy="50%" r="80%">
-      <stop offset="0%" stop-color="#0F172A" stop-opacity="0.98"/>
-      <stop offset="50%" stop-color="#090D16" stop-opacity="0.99"/>
-      <stop offset="100%" stop-color="#020617" stop-opacity="1"/>
-    </radialGradient>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1200" height="480" viewBox="0 0 1200 480"
+     role="img" aria-labelledby="title desc">
+  <title id="title">Архитектура конвейера трафика Tachyon</title>
+  <desc id="desc">Трёхступенчатая схема маршрутизации трафика в Tachyon: клиенты локальной сети LAN и политики доступа, ядро классификации и перехвата nftables + ucode, и пять выходных контуров (Direct WAN, Zapret v1/v2, ByeDPI, мульти-движковые прокси и L3-туннели).</desc>
 
-    <linearGradient id="card-glass" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#1E293B" stop-opacity="0.8"/>
-      <stop offset="100%" stop-color="#0B132B" stop-opacity="0.95"/>
-    </linearGradient>
+  <rect width="1200" height="480" rx="16" fill="#141415"/>
+  <rect x="0.5" y="0.5" width="1199" height="479" rx="15.5" fill="none" stroke="#2e2e32" stroke-width="1"/>
 
-    <!-- Robust Glowing Filters with userSpaceOnUse (avoids zero-height bounding box clipping) -->
-    <filter id="neon-green" filterUnits="userSpaceOnUse" x="0" y="0" width="1200" height="620">
-      <feGaussianBlur stdDeviation="4" result="blur" />
-      <feMerge>
-        <feMergeNode in="blur" />
-        <feMergeNode in="SourceGraphic" />
-      </feMerge>
-    </filter>
+  <!-- Header -->
+  <text x="32" y="40" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="20" font-weight="500">Конвейер классификации и маршрутизации трафика · nftables fw4 + ucode</text>
+  <text x="32" y="64" fill="#85858b" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="14" font-weight="400">Прозрачный перехват соединений на уровне ядра Linux с распределением по целевым контурам без лишних переключений контекста</text>
 
-    <filter id="neon-amber" filterUnits="userSpaceOnUse" x="0" y="0" width="1200" height="620">
-      <feGaussianBlur stdDeviation="4" result="blur" />
-      <feMerge>
-        <feMergeNode in="blur" />
-        <feMergeNode in="SourceGraphic" />
-      </feMerge>
-    </filter>
+  <!-- Column 1: LAN & Clients (x=32, y=88, w=288, h=360) -->
+  <g transform="translate(32, 88)">
+    <rect x="0" y="0" width="288" height="360" rx="12" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
+    <text x="20" y="32" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">Этап 01 · Входящий контур LAN</text>
+    <text x="20" y="56" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="18" font-weight="500">Клиенты и политики</text>
 
-    <filter id="neon-purple" filterUnits="userSpaceOnUse" x="0" y="0" width="1200" height="620">
-      <feGaussianBlur stdDeviation="4" result="blur" />
-      <feMerge>
-        <feMergeNode in="blur" />
-        <feMergeNode in="SourceGraphic" />
-      </feMerge>
-    </filter>
-
-    <filter id="neon-pink" filterUnits="userSpaceOnUse" x="0" y="0" width="1200" height="620">
-      <feGaussianBlur stdDeviation="4" result="blur" />
-      <feMerge>
-        <feMergeNode in="blur" />
-        <feMergeNode in="SourceGraphic" />
-      </feMerge>
-    </filter>
-
-    <filter id="neon-cyan" filterUnits="userSpaceOnUse" x="0" y="0" width="1200" height="620">
-      <feGaussianBlur stdDeviation="4" result="blur" />
-      <feMerge>
-        <feMergeNode in="blur" />
-        <feMergeNode in="SourceGraphic" />
-      </feMerge>
-    </filter>
-  </defs>
-
-  <style>
-    /* CSS Seamless Keyframe Loops (Period = Sum of Dash + Gap = 42) */
-    @keyframes flowGreen {
-      from { stroke-dashoffset: 168; }
-      to { stroke-dashoffset: 0; }
-    }
-    @keyframes flowAmber {
-      from { stroke-dashoffset: 168; }
-      to { stroke-dashoffset: 0; }
-    }
-    @keyframes flowPurple {
-      from { stroke-dashoffset: 168; }
-      to { stroke-dashoffset: 0; }
-    }
-    @keyframes flowPink {
-      from { stroke-dashoffset: 168; }
-      to { stroke-dashoffset: 0; }
-    }
-    @keyframes flowCyan {
-      from { stroke-dashoffset: 168; }
-      to { stroke-dashoffset: 0; }
-    }
-
-    @keyframes pulseCardBorder {
-      0%, 100% { stroke-opacity: 0.35; }
-      50% { stroke-opacity: 0.95; }
-    }
-
-    @keyframes blinkLed {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.3; transform: scale(0.85); }
-    }
-
-    .stream-lan { stroke-dasharray: 14 28; animation: flowCyan 2.2s linear infinite; }
-    .stream-direct { stroke-dasharray: 14 28; animation: flowGreen 1.8s linear infinite; }
-    .stream-zapret1 { stroke-dasharray: 14 28; animation: flowAmber 2.0s linear infinite; }
-    .stream-zapret2 { stroke-dasharray: 14 28; animation: flowPurple 1.6s linear infinite; }
-    .stream-byedpi { stroke-dasharray: 14 28; animation: flowPink 2.4s linear infinite; }
-    .stream-proxy { stroke-dasharray: 14 28; animation: flowCyan 1.5s linear infinite; }
-
-    .card-pulse-green { animation: pulseCardBorder 3.2s ease-in-out infinite; }
-    .card-pulse-amber { animation: pulseCardBorder 2.8s ease-in-out infinite; }
-    .card-pulse-purple { animation: pulseCardBorder 2.4s ease-in-out infinite; }
-    .card-pulse-pink { animation: pulseCardBorder 3.5s ease-in-out infinite; }
-    .card-pulse-cyan { animation: pulseCardBorder 2.0s ease-in-out infinite; }
-
-    .led-dot { animation: blinkLed 1.8s ease-in-out infinite; }
-
-    .title-h1 { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 900; font-size: 21px; fill: #FFFFFF; letter-spacing: 0.5px; }
-    .title-sub { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 500; font-size: 13px; fill: #94A3B8; }
-    .node-title { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 700; font-size: 14px; fill: #F8FAFC; }
-    .node-sub { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 400; font-size: 11px; fill: #94A3B8; }
-    .tag-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 10px; font-weight: 700; }
-  </style>
-
-  <!-- Background Surface -->
-  <rect width="1200" height="620" rx="16" fill="url(#arch-bg)" stroke="#1E293B" stroke-width="1.5"/>
-
-  <!-- Top Title Header -->
-  <g transform="translate(45, 40)">
-    <text class="title-h1">⚡ TACHYON NETWORK ORCHESTRATION PIPELINE</text>
-    <text y="22" class="title-sub">Интеллектуальная селективная маршрутизация и многоуровневая десинхронизация пакетов DPI</text>
-  </g>
-
-  <!-- ================================================================= -->
-  <!-- CONNECTING HIGH-SPEED CONDUITS (Animated Laser Streams) -->
-  <!-- ================================================================= -->
-  <g fill="none" stroke-linecap="round">
-    <!-- LAN Inbound: Clients -> Router Core -->
-    <path d="M 225,325 L 350,325" stroke="#1E293B" stroke-width="4"/>
-    <path d="M 225,325 L 350,325" stroke="#00F0FF" stroke-width="3.5" class="stream-lan" filter="url(#neon-cyan)"/>
-
-    <!-- Path 1: Direct WAN (Green) -->
-    <path d="M 590,260 C 660,260 700,120 780,120 L 890,120" stroke="#1E293B" stroke-width="4"/>
-    <path d="M 590,260 C 660,260 700,120 780,120 L 890,120" stroke="#10B981" stroke-width="3.5" class="stream-direct" filter="url(#neon-green)"/>
-
-    <!-- Path 2: Zapret v1 / nfqws (Amber/Gold) -->
-    <path d="M 590,290 C 660,290 710,215 780,215 L 890,215" stroke="#1E293B" stroke-width="4"/>
-    <path d="M 590,290 C 660,290 710,215 780,215 L 890,215" stroke="#F59E0B" stroke-width="3.5" class="stream-zapret1" filter="url(#neon-amber)"/>
-
-    <!-- Path 3: Zapret v2 / nfqws2 (Neon Purple) -->
-    <path d="M 590,325 L 890,325" stroke="#1E293B" stroke-width="4"/>
-    <path d="M 590,325 L 890,325" stroke="#C084FC" stroke-width="3.5" class="stream-zapret2" filter="url(#neon-purple)"/>
-
-    <!-- Path 4: ByeDPI / ciadpi (Pink/Magenta) -->
-    <path d="M 590,360 C 660,360 710,435 780,435 L 890,435" stroke="#1E293B" stroke-width="4"/>
-    <path d="M 590,360 C 660,360 710,435 780,435 L 890,435" stroke="#EC4899" stroke-width="3.5" class="stream-byedpi" filter="url(#neon-pink)"/>
-
-    <!-- Path 5: sing-box Core / VLESS (Cyan) -->
-    <path d="M 590,390 C 660,390 700,530 780,530 L 890,530" stroke="#1E293B" stroke-width="4"/>
-    <path d="M 590,390 C 660,390 700,530 780,530 L 890,530" stroke="#00F0FF" stroke-width="3.5" class="stream-proxy" filter="url(#neon-cyan)"/>
-  </g>
-
-  <!-- ================================================================= -->
-  <!-- LEFT COLUMN: LAN CLIENTS -->
-  <!-- ================================================================= -->
-  <g transform="translate(45, 185)">
-    <rect width="180" height="280" rx="12" fill="url(#card-glass)" stroke="#334155" stroke-width="1.5"/>
-    <g transform="translate(15, 15)">
-      <rect width="36" height="36" rx="8" fill="#0284C7" fill-opacity="0.25"/>
-      <text x="9" y="24" font-size="18">📱</text>
-      <text x="46" y="22" class="node-title">LAN Devices</text>
-      <text x="46" y="34" class="node-sub">Домашняя сеть</text>
+    <!-- Item 1 -->
+    <g transform="translate(16, 76)">
+      <rect x="0" y="0" width="256" height="60" rx="8" fill="#141415" stroke="#2e2e32" stroke-width="1"/>
+      <text x="16" y="24" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="14" font-weight="500">Устройства домашней сети</text>
+      <text x="16" y="44" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">Правила по IP, MAC и CIDR</text>
     </g>
 
-    <!-- Client Items -->
-    <g transform="translate(15, 68)">
-      <rect width="150" height="42" rx="6" fill="#0B132B" stroke="#1E293B" stroke-width="1"/>
-      <text x="10" y="20" class="node-title" font-size="12">📺 Smart TV &amp; Box</text>
-      <text x="10" y="34" class="node-sub" font-size="10">YouTube 4K, Кинотеатры</text>
+    <!-- Item 2 -->
+    <g transform="translate(16, 144)">
+      <rect x="0" y="0" width="256" height="60" rx="8" fill="#141415" stroke="#2e2e32" stroke-width="1"/>
+      <text x="16" y="24" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="14" font-weight="500">Smart QoS и приоритеты</text>
+      <text x="16" y="44" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">DSCP для голоса, игр и RTC</text>
     </g>
-    <g transform="translate(15, 118)">
-      <rect width="150" height="42" rx="6" fill="#0B132B" stroke="#1E293B" stroke-width="1"/>
-      <text x="10" y="20" class="node-title" font-size="12">💻 PC &amp; Consoles</text>
-      <text x="10" y="34" class="node-sub" font-size="10">Discord, Steam, Игры</text>
+
+    <!-- Item 3 -->
+    <g transform="translate(16, 212)">
+      <rect x="0" y="0" width="256" height="60" rx="8" fill="#141415" stroke="#2e2e32" stroke-width="1"/>
+      <text x="16" y="24" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="14" font-weight="500">Квоты и расписания</text>
+      <text x="16" y="44" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">parental_quota.uc · лимиты</text>
     </g>
-    <g transform="translate(15, 168)">
-      <rect width="150" height="42" rx="6" fill="#0B132B" stroke="#1E293B" stroke-width="1"/>
-      <text x="10" y="20" class="node-title" font-size="12">📱 Mobile &amp; Tablets</text>
-      <text x="10" y="34" class="node-sub" font-size="10">Соцсети, Мессенджеры</text>
-    </g>
-    <g transform="translate(15, 218)">
-      <rect width="150" height="42" rx="6" fill="#0B132B" stroke="#1E293B" stroke-width="1"/>
-      <text x="10" y="20" class="node-title" font-size="12">🔒 IoT &amp; Guest LAN</text>
-      <text x="10" y="34" class="node-sub" font-size="10">Изолированный доступ</text>
+
+    <!-- Item 4 -->
+    <g transform="translate(16, 280)">
+      <rect x="0" y="0" width="256" height="64" rx="8" fill="#141415" stroke="#2e2e32" stroke-width="1"/>
+      <text x="16" y="24" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="14" font-weight="500">Multi-WAN и Tailscale</text>
+      <text x="16" y="44" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">Фильтр подсети 100.64.0.0/10</text>
     </g>
   </g>
 
-  <!-- ================================================================= -->
-  <!-- CENTER COLUMN: TACHYON ROUTER CORE ENGINE -->
-  <!-- ================================================================= -->
-  <g transform="translate(350, 140)">
-    <rect width="240" height="370" rx="14" fill="#090E1A" stroke="#00F0FF" stroke-width="2" class="card-pulse-cyan"/>
-    
-    <g transform="translate(20, 20)">
-      <circle cx="18" cy="18" r="16" fill="#00F0FF" fill-opacity="0.15"/>
-      <text x="10" y="24" font-size="18">⚡</text>
-      <text x="44" y="16" class="node-title" fill="#00F0FF">Tachyon Core</text>
-      <text x="44" y="30" class="node-sub">OpenWrt ucode + nftables</text>
+  <!-- Connector 1 -> 2 -->
+  <line x1="320" y1="268" x2="348" y2="268" stroke="#2e2e32" stroke-width="1"/>
+
+  <!-- Column 2: Core Orchestrator (Highlighted Moment, x=348, y=88, w=344, h=360) -->
+  <g transform="translate(348, 88)">
+    <rect x="0" y="0" width="344" height="360" rx="12" fill="#19191b" stroke="#38bdf8" stroke-width="1" stroke-opacity="0.5"/>
+    <text x="20" y="32" fill="#38bdf8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">Этап 02 · Ядро оркестрации Tachyon</text>
+    <text x="20" y="56" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="18" font-weight="500">Классификатор и диспетчер</text>
+
+    <!-- Core block 1 -->
+    <g transform="translate(16, 76)">
+      <rect x="0" y="0" width="312" height="60" rx="8" fill="#141415" stroke="#2e2e32" stroke-width="1"/>
+      <text x="16" y="24" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="14" font-weight="500">Smart DNS Pipeline &amp; FakeIP</text>
+      <text x="16" y="44" fill="#a1a1a6" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">198.18.0.0/15 · DoH/DoT/DoQ failover</text>
     </g>
 
-    <!-- Sub-Engines in Core -->
-    <g transform="translate(18, 70)">
-      <!-- 1. Classifier Engine -->
-      <g transform="translate(0, 0)">
-        <rect width="204" height="52" rx="8" fill="#0F172A" stroke="#1E293B" stroke-width="1"/>
-        <circle cx="14" cy="26" r="4" fill="#10B981" class="led-dot"/>
-        <text x="26" y="22" class="node-title" font-size="12">Domain &amp; IP Classifier</text>
-        <text x="26" y="38" class="node-sub" font-size="10">GeoIP + Hosts + Lists Cache</text>
-      </g>
+    <!-- Core block 2 -->
+    <g transform="translate(16, 144)">
+      <rect x="0" y="0" width="312" height="60" rx="8" fill="#141415" stroke="#2e2e32" stroke-width="1"/>
+      <text x="16" y="24" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="14" font-weight="500">Материализация наборов правил</text>
+      <text x="16" y="44" fill="#a1a1a6" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">.trs (mmap) · .srs v3 · Smart Detect</text>
+    </g>
 
-      <!-- 2. AI Doctor & Watchdog -->
-      <g transform="translate(0, 60)">
-        <rect width="204" height="52" rx="8" fill="#0F172A" stroke="#1E293B" stroke-width="1"/>
-        <circle cx="14" cy="26" r="4" fill="#A855F7" class="led-dot"/>
-        <text x="26" y="22" class="node-title" font-size="12">AI Doctor &amp; Self-Healing</text>
-        <text x="26" y="38" class="node-sub" font-size="10">13 Quick Fixes + NTP / MTU</text>
-      </g>
+    <!-- Core block 3 -->
+    <g transform="translate(16, 212)">
+      <rect x="0" y="0" width="312" height="60" rx="8" fill="#141415" stroke="#2e2e32" stroke-width="1"/>
+      <text x="16" y="24" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="14" font-weight="500">Таблицы nftables и NFQueue</text>
+      <text x="16" y="44" fill="#a1a1a6" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">TPROXY / TUN · mark 0x00200000</text>
+    </g>
 
-      <!-- 3. DPI Dispatcher -->
-      <g transform="translate(0, 120)">
-        <rect width="204" height="52" rx="8" fill="#0F172A" stroke="#1E293B" stroke-width="1"/>
-        <circle cx="14" cy="26" r="4" fill="#F59E0B" class="led-dot"/>
-        <text x="26" y="22" class="node-title" font-size="12">NFQueue &amp; Desync Router</text>
-        <text x="26" y="38" class="node-sub" font-size="10">Маршрутизация в Zapret/ByeDPI</text>
-      </g>
-
-      <!-- 4. Fast Path nftables -->
-      <g transform="translate(0, 180)">
-        <rect width="204" height="52" rx="8" fill="#0F172A" stroke="#1E293B" stroke-width="1"/>
-        <circle cx="14" cy="26" r="4" fill="#00F0FF" class="led-dot"/>
-        <text x="26" y="22" class="node-title" font-size="12">Zero-Copy Flow Offload</text>
-        <text x="26" y="38" class="node-sub" font-size="10">Аппаратное ускорение пакетов</text>
-      </g>
-
-      <!-- 5. Fallback Internet Guard -->
-      <g transform="translate(0, 240)">
-        <rect width="204" height="42" rx="8" fill="#1E1B4B" stroke="#EC4899" stroke-opacity="0.4" stroke-width="1"/>
-        <circle cx="14" cy="21" r="4" fill="#EC4899" class="led-dot"/>
-        <text x="26" y="20" class="node-title" font-size="11" fill="#F472B6">Native Internet Fallback</text>
-        <text x="26" y="34" class="node-sub" font-size="9">Аварийный возврат WAN</text>
-      </g>
+    <!-- Core block 4 -->
+    <g transform="translate(16, 280)">
+      <rect x="0" y="0" width="312" height="64" rx="8" fill="#141415" stroke="#2e2e32" stroke-width="1"/>
+      <text x="16" y="24" fill="#38bdf8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="14" font-weight="500">Watchdog и возврат чистого WAN</text>
+      <text x="16" y="44" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">PID/boot_id · restore_native_internet</text>
     </g>
   </g>
 
-  <!-- ================================================================= -->
-  <!-- RIGHT COLUMN: 5 DIVERGENT DESTINATION DESTINATIONS -->
-  <!-- ================================================================= -->
+  <!-- Connector 2 -> 3 -->
+  <line x1="692" y1="268" x2="720" y2="268" stroke="#2e2e32" stroke-width="1"/>
 
-  <!-- DESTINATION 1: DIRECT WAN (GREEN) -->
-  <g transform="translate(890, 75)">
-    <rect width="265" height="90" rx="10" fill="url(#card-glass)" stroke="#10B981" stroke-width="1.5" class="card-pulse-green"/>
-    <g transform="translate(14, 14)">
-      <circle cx="16" cy="16" r="14" fill="#10B981" fill-opacity="0.15"/>
-      <text x="8" y="22" font-size="16">🌐</text>
-      <text x="38" y="16" class="node-title" fill="#34D399">Direct WAN</text>
-      <text x="38" y="28" class="tag-mono" fill="#10B981">0 ms OVERHEAD</text>
+  <!-- Column 3: 5 Outbound Contours (x=720, y=88, w=448, h=360) -->
+  <g transform="translate(720, 88)">
+    <!-- Out 1: Direct WAN -->
+    <g transform="translate(0, 0)">
+      <rect x="0" y="0" width="448" height="64" rx="12" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
+      <circle cx="20" cy="24" r="4" fill="#4cc38a"/>
+      <text x="32" y="28" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">1. Прямой маршрут (Direct WAN)</text>
+      <text x="428" y="28" text-anchor="end" fill="#4cc38a" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">0 ms overhead</text>
+      <text x="32" y="48" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="400">Банки, Госуслуги, локальные CDN и доверенные подсети</text>
     </g>
-    <text x="16" y="60" class="node-sub" fill="#E2E8F0">Банки, Госуслуги, RuNet</text>
-    <text x="16" y="76" class="node-sub">Прямой транзит трафика без проксирования</text>
-  </g>
 
-  <!-- DESTINATION 2: ZAPRET V1 / nfqws (AMBER) -->
-  <g transform="translate(890, 175)">
-    <rect width="265" height="90" rx="10" fill="url(#card-glass)" stroke="#F59E0B" stroke-width="1.5" class="card-pulse-amber"/>
-    <g transform="translate(14, 14)">
-      <circle cx="16" cy="16" r="14" fill="#F59E0B" fill-opacity="0.15"/>
-      <text x="8" y="22" font-size="16">⚡</text>
-      <text x="38" y="16" class="node-title" fill="#FBBF24">Zapret v1 (nfqws)</text>
-      <text x="38" y="28" class="tag-mono" fill="#F59E0B">FAKE / DISORDER / SPLIT2</text>
+    <!-- Out 2: Zapret v2 (nfqws2) -->
+    <g transform="translate(0, 74)">
+      <rect x="0" y="0" width="448" height="64" rx="12" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
+      <circle cx="20" cy="24" r="4" fill="#e5484d"/>
+      <text x="32" y="28" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">2. Zapret v2 и Zapret v1</text>
+      <text x="428" y="28" text-anchor="end" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">nfqws2 / nfqws</text>
+      <text x="32" y="48" fill="#a1a1a6" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">multisplit · seqovl · syndata · tcp_ts · fake/disorder</text>
     </g>
-    <text x="16" y="60" class="node-sub" fill="#E2E8F0">Базовый обход DPI без VPS</text>
-    <text x="16" y="76" class="node-sub">Быстрая десинхронизация TCP/UDP пакетов</text>
-  </g>
 
-  <!-- DESTINATION 3: ZAPRET V2 / nfqws2 (PURPLE) -->
-  <g transform="translate(890, 275)">
-    <rect width="265" height="95" rx="10" fill="url(#card-glass)" stroke="#C084FC" stroke-width="2" class="card-pulse-purple"/>
-    <g transform="translate(14, 14)">
-      <circle cx="16" cy="16" r="14" fill="#A855F7" fill-opacity="0.2"/>
-      <text x="8" y="22" font-size="16">🚀</text>
-      <text x="38" y="16" class="node-title" fill="#C084FC">Zapret v2 (nfqws2)</text>
-      <text x="38" y="28" class="tag-mono" fill="#C084FC">MULTISPLIT / SEQOVL / WSIZE</text>
+    <!-- Out 3: ByeDPI -->
+    <g transform="translate(0, 148)">
+      <rect x="0" y="0" width="448" height="64" rx="12" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
+      <circle cx="20" cy="24" r="4" fill="#e5484d"/>
+      <text x="32" y="28" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">3. ByeDPI (ciadpi)</text>
+      <text x="428" y="28" text-anchor="end" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">Local SOCKS5</text>
+      <text x="32" y="48" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="400">Фрагментация заголовков HTTP и записей TLS SNI</text>
     </g>
-    <text x="16" y="62" class="node-sub" fill="#E2E8F0">YouTube 4K, Discord Voice/Web</text>
-    <text x="16" y="78" class="node-sub">Многовекторный адаптивный обход ТСПУ</text>
-  </g>
 
-  <!-- DESTINATION 4: BYEDPI / ciadpi (PINK) -->
-  <g transform="translate(890, 380)">
-    <rect width="265" height="90" rx="10" fill="url(#card-glass)" stroke="#EC4899" stroke-width="1.5" class="card-pulse-pink"/>
-    <g transform="translate(14, 14)">
-      <circle cx="16" cy="16" r="14" fill="#EC4899" fill-opacity="0.15"/>
-      <text x="8" y="22" font-size="16">🛡️</text>
-      <text x="38" y="16" class="node-title" fill="#F472B6">ByeDPI (ciadpi)</text>
-      <text x="38" y="28" class="tag-mono" fill="#EC4899">SOCKS5 / PAYLOAD SPLIT</text>
+    <!-- Out 4: Multi-Engine Proxy -->
+    <g transform="translate(0, 222)">
+      <rect x="0" y="0" width="448" height="64" rx="12" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
+      <circle cx="20" cy="24" r="4" fill="#38bdf8"/>
+      <text x="32" y="28" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">4. Ядра tachyon-core и sing-box</text>
+      <text x="428" y="28" text-anchor="end" fill="#38bdf8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">L4/L7 Proxy</text>
+      <text x="32" y="48" fill="#a1a1a6" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">VLESS Reality/XHTTP · Hysteria2 · Trojan · VMess · SS</text>
     </g>
-    <text x="16" y="60" class="node-sub" fill="#E2E8F0">Локальный SOCKS десинхронизатор</text>
-    <text x="16" y="76" class="node-sub">Разделение заголовков HTTP/TLS SNI</text>
-  </g>
 
-  <!-- DESTINATION 5: SING-BOX PROXY ENGINE (CYAN) -->
-  <g transform="translate(890, 480)">
-    <rect width="265" height="95" rx="10" fill="url(#card-glass)" stroke="#00F0FF" stroke-width="2" class="card-pulse-cyan"/>
-    <g transform="translate(14, 14)">
-      <circle cx="16" cy="16" r="14" fill="#00F0FF" fill-opacity="0.2"/>
-      <text x="8" y="22" font-size="16">🌌</text>
-      <text x="38" y="16" class="node-title" fill="#00F0FF">sing-box Core</text>
-      <text x="38" y="28" class="tag-mono" fill="#38BDF8">VLESS REALITY / HYSTERIA2 / WG</text>
+    <!-- Out 5: L3 Tunnels -->
+    <g transform="translate(0, 296)">
+      <rect x="0" y="0" width="448" height="64" rx="12" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
+      <circle cx="20" cy="24" r="4" fill="#38bdf8"/>
+      <text x="32" y="28" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">5. Сетевые туннели: AWG, FPTN, OpenVPN</text>
+      <text x="428" y="28" text-anchor="end" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">L3 TUN</text>
+      <text x="32" y="48" fill="#a1a1a6" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">AmneziaWG 2.0–3.1 (.conf) · tun-fptn · клиент .ovpn</text>
     </g>
-    <text x="16" y="62" class="node-sub" fill="#E2E8F0">Instagram, Twitter/X, ChatGPT, AI</text>
-    <text x="16" y="78" class="node-sub">Шифрованный туннель с авто-выбором ноды</text>
   </g>
 </svg>

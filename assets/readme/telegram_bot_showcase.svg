@@ -1,111 +1,49 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 150" width="100%" height="100%">
-  <title>Tachyon Telegram Bot Showcase</title>
-  <defs>
-    <radialGradient id="tg-bg" cx="50%" cy="50%" r="75%">
-      <stop offset="0%" stop-color="#0284C7" stop-opacity="0.25"/>
-      <stop offset="60%" stop-color="#0F172A" stop-opacity="0.9"/>
-      <stop offset="100%" stop-color="#030712" stop-opacity="0.98"/>
-    </radialGradient>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1200" height="176" viewBox="0 0 1200 176"
+     role="img" aria-labelledby="title desc">
+  <title id="title">Telegram-бот удалённого управления роутером</title>
+  <desc id="desc">Управление узлами прокси через Clash API, просмотр и сброс активных соединений, запуск диагностики AI Doctor и контроль доступа устройств локальной сети из Telegram.</desc>
 
-    <linearGradient id="tg-border" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.3"/>
-      <stop offset="50%" stop-color="#0284C7" stop-opacity="0.8"/>
-      <stop offset="100%" stop-color="#818CF8" stop-opacity="0.3"/>
-    </linearGradient>
+  <rect width="1200" height="176" rx="16" fill="#141415"/>
+  <rect x="0.5" y="0.5" width="1199" height="175" rx="15.5" fill="none" stroke="#2e2e32" stroke-width="1"/>
 
-    <filter id="tg-glow" filterUnits="userSpaceOnUse" x="0" y="0" width="1200" height="150">
-      <feGaussianBlur stdDeviation="3" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-  </defs>
+  <!-- Header -->
+  <text x="24" y="34" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="17" font-weight="500">Telegram-бот удалённого управления и телеметрии</text>
+  <text x="1176" y="34" text-anchor="end" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">tachyon telegram_start · Clash API</text>
 
-  <style>
-    @keyframes pulseTgDot {
-      0%, 100% { transform: scale(1); opacity: 0.9; }
-      50% { transform: scale(1.3); opacity: 0.3; }
-    }
-    @keyframes tgWaveDash {
-      0% { stroke-dashoffset: 120; }
-      100% { stroke-dashoffset: 0; }
-    }
-
-    .tg-dot { animation: pulseTgDot 2s ease-in-out infinite; }
-    .tg-stream { stroke-dasharray: 12 24; animation: tgWaveDash 2.5s linear infinite; }
-
-    .tg-title { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 800; font-size: 15px; fill: #FFFFFF; }
-    .tg-desc { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-weight: 500; font-size: 12px; fill: #94A3B8; }
-    .tg-cmd { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; font-weight: 700; fill: #38BDF8; }
-    .tg-btn-txt { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; font-weight: 600; fill: #F8FAFC; }
-    .tg-status { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; font-weight: 700; fill: #10B981; }
-  </style>
-
-  <!-- Container Box -->
-  <rect width="1200" height="150" rx="14" fill="url(#tg-bg)" stroke="url(#tg-border)" stroke-width="1.5"/>
-
-  <!-- Left Header with Telegram Icon -->
-  <g transform="translate(35, 25)">
-    <rect width="44" height="44" rx="10" fill="#0284C7" fill-opacity="0.25" stroke="#38BDF8" stroke-width="1.2"/>
-    <text x="11" y="29" font-size="22">📱</text>
-    <text x="56" y="20" class="tg-title">Interactive Telegram Bot Management &amp; Remote Control</text>
-    <text x="56" y="38" class="tg-desc">Мгновенный контроль роутера из мессенджера: запуск AI Doctor, переключение серверов и списков</text>
+  <!-- Card 1 (Highlighted): Clash API & Routing (280px) -->
+  <g transform="translate(24, 52)">
+    <rect x="0" y="0" width="280" height="104" rx="12" fill="#19191b" stroke="#38bdf8" stroke-width="1" stroke-opacity="0.5"/>
+    <text x="16" y="26" fill="#38bdf8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">/info · /ping · /speed</text>
+    <text x="16" y="50" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">Выбор нод и секций</text>
+    <text x="16" y="72" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="400">Авторизация по Secret Token,</text>
+    <text x="16" y="90" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">переключение прокси из чата</text>
   </g>
 
-  <!-- Animated Connecting Data Track -->
-  <g transform="translate(35, 80)">
-    <line x1="0" y1="28" x2="1130" y2="28" stroke="#1E293B" stroke-width="1.5"/>
-    <line x1="0" y1="28" x2="1130" y2="28" stroke="#38BDF8" stroke-width="2" class="tg-stream" filter="url(#tg-glow)"/>
+  <!-- Card 2: Connections Monitor (280px) -->
+  <g transform="translate(316, 52)">
+    <rect x="0" y="0" width="280" height="104" rx="12" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
+    <text x="16" y="26" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">/connections · /close_connections</text>
+    <text x="16" y="50" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">Монитор активных сессий</text>
+    <text x="16" y="72" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="400">Постраничный список сессий</text>
+    <text x="16" y="90" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">и принудительный сброс</text>
   </g>
 
-  <!-- Interactive Telegram Command Badges -->
-  <g transform="translate(35, 95)">
-    <!-- Cmd 1: /ai_doctor -->
-    <g transform="translate(0, 0)">
-      <rect width="125" height="32" rx="6" fill="#0B132B" stroke="#0284C7" stroke-width="1"/>
-      <text x="12" y="20" class="tg-cmd">/ai_doctor</text>
-    </g>
-
-    <!-- Cmd 2: /fix -->
-    <g transform="translate(135, 0)">
-      <rect width="90" height="32" rx="6" fill="#0B132B" stroke="#818CF8" stroke-width="1"/>
-      <text x="12" y="20" class="tg-cmd" fill="#C084FC">/fix &lt;code&gt;</text>
-    </g>
-
-    <!-- Cmd 3: /restart -->
-    <g transform="translate(235, 0)">
-      <rect width="95" height="32" rx="6" fill="#0B132B" stroke="#10B981" stroke-width="1"/>
-      <text x="12" y="20" class="tg-cmd" fill="#34D399">/restart</text>
-    </g>
-
-    <!-- Cmd 4: /status -->
-    <g transform="translate(340, 0)">
-      <rect width="85" height="32" rx="6" fill="#0B132B" stroke="#F59E0B" stroke-width="1"/>
-      <text x="12" y="20" class="tg-cmd" fill="#FBBF24">/status</text>
-    </g>
-
-    <!-- Cmd 5: /backup -->
-    <g transform="translate(435, 0)">
-      <rect width="90" height="32" rx="6" fill="#0B132B" stroke="#64748B" stroke-width="1"/>
-      <text x="12" y="20" class="tg-cmd" fill="#94A3B8">/backup</text>
-    </g>
+  <!-- Card 3: Diagnostics & Backups (280px) -->
+  <g transform="translate(608, 52)">
+    <rect x="0" y="0" width="280" height="104" rx="12" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
+    <text x="16" y="26" fill="#4cc38a" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">/doctor · /ai_doctor · /heal</text>
+    <text x="16" y="50" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">Диагностика и экспорт</text>
+    <text x="16" y="72" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="400">Запуск самолечения и логов</text>
+    <text x="16" y="90" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">/logs · /test · /export_config</text>
   </g>
 
-  <!-- Right Floating HUD Status Widgets -->
-  <g transform="translate(850, 25)">
-    <!-- Widget: Telegram Bot Online -->
-    <g transform="translate(0, 0)">
-      <rect width="140" height="32" rx="6" fill="#0B132B" stroke="#10B981" stroke-width="1"/>
-      <circle cx="14" cy="16" r="3.5" fill="#10B981" class="tg-dot"/>
-      <text x="26" y="20" class="tg-status">BOT ACTIVE</text>
-    </g>
-
-    <!-- Widget: Ping RTT -->
-    <g transform="translate(150, 0)">
-      <rect width="130" height="32" rx="6" fill="#0B132B" stroke="#38BDF8" stroke-width="1"/>
-      <text x="12" y="20" class="tg-btn-txt" fill="#38BDF8">RTT: 18ms</text>
-      <circle cx="115" cy="16" r="3.5" fill="#38BDF8"/>
-    </g>
+  <!-- Card 4: Worker & LAN Control (276px) -->
+  <g transform="translate(900, 52)">
+    <rect x="0" y="0" width="276" height="104" rx="12" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
+    <text x="16" y="26" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">/qh · MAC ACL · heartbeat</text>
+    <text x="16" y="50" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">Контроль LAN и тихие часы</text>
+    <text x="16" y="72" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="400">Доступ клиентов по MAC и</text>
+    <text x="16" y="90" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">защита воркера от дублей</text>
   </g>
 </svg>
