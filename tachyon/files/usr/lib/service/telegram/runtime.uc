@@ -446,6 +446,25 @@ function sync_offset_for_bot(token) {
     return offset;
 }
 
+let chat_admin_cache = {};
+
+function is_chat_admin_cached(token, chat_id, user_id) {
+    if (!token || !chat_id || !user_id) return false;
+    let chat_num = int(chat_id);
+    if (chat_num >= 0) return false;
+    let cache_key = sprintf("%s:%s", as_string(chat_id), as_string(user_id));
+    let now = time();
+    let cached = chat_admin_cache[cache_key];
+    if (cached && (now - cached.time) < 300)
+        return cached.is_admin;
+
+    let res = tg_request(token, "getChatMember", { chat_id: chat_num, user_id: int(user_id) });
+    let status = res?.ok ? res.result?.status : null;
+    let is_adm = (status == "creator" || status == "administrator");
+    chat_admin_cache[cache_key] = { is_admin: is_adm, time: now };
+    return is_adm;
+}
+
 function process_updates(token, admin_ids) {
     let offset = sync_offset_for_bot(token);
     let res = tg_request(token, "getUpdates", { offset: offset, timeout: 50 });
@@ -517,7 +536,7 @@ function process_updates(token, admin_ids) {
             }
             if (index(as_string(cb.data), "/sd ") == 0) {
                 // A permitted group chat does not authorize every group member.
-                if (!cb.message || !is_admin(cb.from?.id, admin_ids)) {
+                if (!cb.message || (!is_admin(cb.from?.id, admin_ids) && !is_chat_admin_cached(token, chat_id, cb.from?.id))) {
                     tg_request(token, "answerCallbackQuery", { callback_query_id: cb.id, text: "Access Denied" });
                     continue;
                 }
