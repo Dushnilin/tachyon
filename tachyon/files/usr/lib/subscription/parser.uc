@@ -1411,8 +1411,101 @@ function process_shadowsocks(raw) {
     return outbound;
 }
 
+function parse_hysteria2_packet_size_str(raw) {
+    let s = trim(as_string(raw));
+    if (s == "")
+        return null;
+    let dash = index(s, "-");
+    if (dash >= 0) {
+        let a = trim(substr(s, 0, dash));
+        let b = trim(substr(s, dash + 1));
+        if (!is_integer_string(a) || !is_integer_string(b))
+            return null;
+        let lo = int(a, 10);
+        let hi = int(b, 10);
+        return (hi > 0 && lo <= hi && hi <= 2048) ? [ lo, hi ] : null;
+    }
+    if (!is_integer_string(s))
+        return null;
+    let v = int(s, 10);
+    return (v > 0 && v <= 2048) ? [ v, v ] : null;
+}
+
+function parse_hysteria2_packet_size_value(val) {
+    if (val == null)
+        return null;
+    let vt = type(val);
+    if (vt == "string")
+        return parse_hysteria2_packet_size_str(val);
+    if (vt == "int" || vt == "double") {
+        let v = int(val);
+        return (v == val && v > 0 && v <= 2048) ? [ v, v ] : null;
+    }
+    if (vt == "object") {
+        let lo_raw = val.from != null ? val.from : val.min;
+        let hi_raw = val.to != null ? val.to : val.max;
+        let lo = xhttp_non_negative_integer_value(lo_raw);
+        let hi = xhttp_positive_integer_value(hi_raw);
+        return (lo != null && hi != null && lo <= hi && hi <= 2048) ? [ lo, hi ] : null;
+    }
+    return null;
+}
+
+function build_hysteria2_obfs(is_gecko, password, min_packet_size, max_packet_size) {
+    password = as_string(password);
+    let min_v = int(min_packet_size || 0);
+    let max_v = int(max_packet_size || 0);
+    if (is_gecko || min_v > 0 || max_v > 0) {
+        let obfs = {
+            type: "gecko",
+            password: password
+        };
+        if (min_v > 0)
+            obfs.min_packet_size = min_v;
+        if (max_v > 0)
+            obfs.max_packet_size = max_v;
+        return obfs;
+    }
+    return {
+        type: "salamander",
+        password: password
+    };
+}
+
+function parse_hysteria2_mbps(val) {
+    if (val == null)
+        return null;
+    if (type(val) == "int" || type(val) == "double") {
+        let n = int(val);
+        return n > 0 ? n : null;
+    }
+    let m = match(trim(as_string(val)), /^([0-9]+)/);
+    if (!m)
+        return null;
+    let n = int(m[1], 10);
+    return n > 0 ? n : null;
+}
+
+function normalize_hysteria2_hop_interval(val) {
+    if (val == null)
+        return "";
+    if (type(val) == "int" || type(val) == "double") {
+        let n = int(val);
+        return n > 0 ? ("" + n + "s") : "";
+    }
+    let s = trim(as_string(val));
+    if (s == "")
+        return "";
+    let dash = index(s, "-");
+    if (dash > 0)
+        s = trim(substr(s, 0, dash));
+    if (is_integer_string(s))
+        return s + "s";
+    return s;
+}
+
 function process_hysteria2(raw, url) {
-    let mport = trim(as_string(url.query.mport || ""));
+    let mport = trim(as_string(url.query.mport || url.query.ports || url.query.server_ports || ""));
     let port_value = mport != "" ? mport : url.port;
     let server_ports = parse_hysteria2_server_ports(port_value);
     let server_port = normalize_port_number(as_string(port_value));
@@ -1454,15 +1547,93 @@ function process_hysteria2(raw, url) {
 
     if ((url.query.network || "") != "")
         outbound.network = url.query.network;
-    if (is_integer_string(url.query.upmbps || ""))
-        outbound.up_mbps = int(url.query.upmbps);
-    if (is_integer_string(url.query.downmbps || ""))
-        outbound.down_mbps = int(url.query.downmbps);
-    if ((url.query.obfs || "") != "" && url.query.obfs != "none") {
-        outbound.obfs = { type: url.query.obfs };
-        if ((url.query["obfs-password"] || "") != "")
-            outbound.obfs.password = url.query["obfs-password"];
+    let up_mbps = parse_hysteria2_mbps(url.query.upmbps != null ? url.query.upmbps : (url.query.up_mbps != null ? url.query.up_mbps : url.query.up));
+    if (up_mbps != null)
+        outbound.up_mbps = up_mbps;
+    let down_mbps = parse_hysteria2_mbps(url.query.downmbps != null ? url.query.downmbps : (url.query.down_mbps != null ? url.query.down_mbps : url.query.down));
+    if (down_mbps != null)
+        outbound.down_mbps = down_mbps;
+
+    let obfs_pw = "";
+    let has_obfs = false;
+    let is_gecko = false;
+    let min_ps = 0;
+    let max_ps = 0;
+    let obfs_type = lc(trim(as_string(url.query.obfs || url.query.obfs_type || url.query["obfs-type"] || "")));
+    if (obfs_type != "" && obfs_type != "none") {
+        has_obfs = true;
+        if (obfs_type == "gecko")
+            is_gecko = true;
+        obfs_pw = as_string(url.query["obfs-password"] || url.query.obfs_password || url.query.obfspassword || "");
     }
+    let ps_raw = url.query.packetSize != null ? url.query.packetSize : (url.query.packetsize != null ? url.query.packetsize : (url.query["packet-size"] != null ? url.query["packet-size"] : url.query.packet_size));
+    let ps_pair = parse_hysteria2_packet_size_value(ps_raw);
+    if (ps_pair != null) {
+        min_ps = ps_pair[0];
+        max_ps = ps_pair[1];
+    }
+    let lo_q = xhttp_positive_integer_value(url.query.min_packet_size != null ? url.query.min_packet_size : (url.query["min-packet-size"] != null ? url.query["min-packet-size"] : (url.query.minPacketSize != null ? url.query.minPacketSize : url.query.minpacketsize)));
+    if (lo_q != null)
+        min_ps = lo_q;
+    let hi_q = xhttp_positive_integer_value(url.query.max_packet_size != null ? url.query.max_packet_size : (url.query["max-packet-size"] != null ? url.query["max-packet-size"] : (url.query.maxPacketSize != null ? url.query.maxPacketSize : url.query.maxpacketsize)));
+    if (hi_q != null)
+        max_ps = hi_q;
+
+    let fm_raw = as_string(url.query.fm || url.query.finalmask || "");
+    if (fm_raw != "") {
+        let fm_val = json_decode_text(fm_raw);
+        if (type(fm_val) == "object") {
+            let udp_val = fm_val.udp != null ? fm_val.udp : fm_val;
+            let udp_items = type(udp_val) == "array" ? udp_val : (type(udp_val) == "object" ? [ udp_val ] : []);
+            for (let u_obj in udp_items) {
+                if (type(u_obj) != "object")
+                    continue;
+                let utype = lc(as_string(u_obj.type || "salamander"));
+                let u_set = object_or_empty(u_obj.settings);
+                if (utype == "salamander" || utype == "gecko") {
+                    has_obfs = true;
+                    if (utype == "gecko" || lc(as_string(u_set.mode || u_obj.mode || "")) == "gecko")
+                        is_gecko = true;
+                    let pw = as_string(u_set.password || u_obj.password || "");
+                    if (pw != "")
+                        obfs_pw = pw;
+                    let fm_ps = parse_hysteria2_packet_size_value(u_set.packetSize != null ? u_set.packetSize : (u_set.packet_size != null ? u_set.packet_size : (u_obj.packetSize != null ? u_obj.packetSize : u_obj.packet_size)));
+                    if (fm_ps != null) {
+                        min_ps = fm_ps[0];
+                        max_ps = fm_ps[1];
+                    }
+                    let fm_lo = xhttp_positive_integer_value(u_set.minPacketSize != null ? u_set.minPacketSize : (u_set.min_packet_size != null ? u_set.min_packet_size : (u_obj.minPacketSize != null ? u_obj.minPacketSize : u_obj.min_packet_size)));
+                    if (fm_lo != null)
+                        min_ps = fm_lo;
+                    let fm_hi = xhttp_positive_integer_value(u_set.maxPacketSize != null ? u_set.maxPacketSize : (u_set.max_packet_size != null ? u_set.max_packet_size : (u_obj.maxPacketSize != null ? u_obj.maxPacketSize : u_obj.max_packet_size)));
+                    if (fm_hi != null)
+                        max_ps = fm_hi;
+                } else if (utype == "udphop" || utype == "udp_hop") {
+                    let hop_ports = parse_hysteria2_server_ports(as_string(u_set.ports || u_set.port || u_obj.ports || u_obj.port || ""));
+                    if (hop_ports != null)
+                        outbound.server_ports = hop_ports;
+                    let hop_iv = normalize_hysteria2_hop_interval(u_set.interval != null ? u_set.interval : u_obj.interval);
+                    if (hop_iv != "")
+                        outbound.hop_interval = hop_iv;
+                }
+            }
+        }
+    }
+
+    if (has_obfs) {
+        if (is_gecko || min_ps > 0 || max_ps > 0) {
+            outbound.obfs = build_hysteria2_obfs(true, obfs_pw, min_ps, max_ps);
+        } else {
+            outbound.obfs = { type: obfs_type != "" ? obfs_type : "salamander" };
+            if (obfs_pw != "")
+                outbound.obfs.password = obfs_pw;
+        }
+    }
+
+    let hop_q = normalize_hysteria2_hop_interval(url.query.hop_interval != null ? url.query.hop_interval : (url.query["hop-interval"] != null ? url.query["hop-interval"] : (url.query.hopinterval != null ? url.query.hopinterval : (url.query.mporthopint != null ? url.query.mporthopint : url.query.mport_hop))));
+    if (hop_q != "")
+        outbound.hop_interval = hop_q;
+
     return outbound;
 }
 
@@ -3902,20 +4073,103 @@ function convert_xray_hysteria2(outbound, tag) {
         result.tls.alpn = alpn;
 
     // Xray keeps the hysteria2 obfuscation out of hysteriaSettings and hangs it
-    // off streamSettings.finalmask instead. Dropping it means the salamander
-    // handshake is never sent, the server discards every QUIC packet and the
-    // node reports as unreachable.
-    let mask_entries = type(object_or_empty(stream.finalmask).udp) == "array"
-        ? stream.finalmask.udp
-        : [];
+    // off streamSettings.finalmask instead. Dropping it means the salamander or
+    // gecko handshake is never sent, the server discards every QUIC packet and
+    // the node reports as unreachable.
+    let finalmask = object_or_empty(stream.finalmask);
+    let quic_params = object_or_empty(finalmask.quicParams);
+    let mask_udp = finalmask.udp;
+    let mask_entries = type(mask_udp) == "array"
+        ? mask_udp
+        : (type(mask_udp) == "object" ? [ mask_udp ] : []);
+    let obfs_pw = "";
+    let is_gecko = false;
+    let min_ps = 0;
+    let max_ps = 0;
+    let fm_hop_obj = null;
+
     for (let entry in mask_entries) {
-        if (type(entry) != "object" || as_string(entry.type || "") != "salamander")
+        if (type(entry) != "object")
             continue;
-        let mask_password = as_string(object_or_empty(entry.settings).password || "");
-        if (mask_password != "") {
-            result.obfs = { type: "salamander", password: mask_password };
-            break;
+        let utype = lc(as_string(entry.type || "salamander"));
+        let u_set = object_or_empty(entry.settings);
+        if (utype == "salamander" || utype == "gecko") {
+            if (utype == "gecko" || lc(as_string(u_set.mode || entry.mode || "")) == "gecko")
+                is_gecko = true;
+            let pw = as_string(u_set.password || entry.password || "");
+            if (pw != "")
+                obfs_pw = pw;
+            let ps = parse_hysteria2_packet_size_value(u_set.packetSize != null ? u_set.packetSize : (u_set.packet_size != null ? u_set.packet_size : (entry.packetSize != null ? entry.packetSize : entry.packet_size)));
+            if (ps != null) {
+                min_ps = ps[0];
+                max_ps = ps[1];
+            }
+            let lo = xhttp_positive_integer_value(u_set.minPacketSize != null ? u_set.minPacketSize : (u_set.min_packet_size != null ? u_set.min_packet_size : (entry.minPacketSize != null ? entry.minPacketSize : entry.min_packet_size)));
+            if (lo != null)
+                min_ps = lo;
+            let hi = xhttp_positive_integer_value(u_set.maxPacketSize != null ? u_set.maxPacketSize : (u_set.max_packet_size != null ? u_set.max_packet_size : (entry.maxPacketSize != null ? entry.maxPacketSize : entry.max_packet_size)));
+            if (hi != null)
+                max_ps = hi;
+        } else if (utype == "udphop" || utype == "udp_hop") {
+            fm_hop_obj = length(keys(u_set)) > 0 ? u_set : entry;
         }
+    }
+
+    if (obfs_pw == "") {
+        for (let src in [ hysteria_settings, settings ]) {
+            if (type(src) != "object")
+                continue;
+            if (type(src.obfs) == "object") {
+                let o_obj = src.obfs;
+                if (lc(as_string(o_obj.type || o_obj.mode || "")) == "gecko")
+                    is_gecko = true;
+                let ps = parse_hysteria2_packet_size_value(o_obj.packetSize != null ? o_obj.packetSize : o_obj.packet_size);
+                if (ps != null) {
+                    min_ps = ps[0];
+                    max_ps = ps[1];
+                }
+                let lo = xhttp_positive_integer_value(o_obj.min_packet_size != null ? o_obj.min_packet_size : o_obj.minPacketSize);
+                if (lo != null)
+                    min_ps = lo;
+                let hi = xhttp_positive_integer_value(o_obj.max_packet_size != null ? o_obj.max_packet_size : o_obj.maxPacketSize);
+                if (hi != null)
+                    max_ps = hi;
+                let pw = as_string(o_obj.password || "");
+                if (pw != "") {
+                    obfs_pw = pw;
+                    break;
+                }
+            } else {
+                let pw = as_string(src.obfsPassword || src.obfs_password || src["obfs-password"] || "");
+                if (pw != "") {
+                    obfs_pw = pw;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (obfs_pw != "")
+        result.obfs = build_hysteria2_obfs(is_gecko, obfs_pw, min_ps, max_ps);
+
+    let up_mbps = parse_hysteria2_mbps(quic_params.brutalUp != null ? quic_params.brutalUp : (quic_params.up != null ? quic_params.up : (hysteria_settings.up != null ? hysteria_settings.up : hysteria_settings.upMbps)));
+    if (up_mbps != null)
+        result.up_mbps = up_mbps;
+    let down_mbps = parse_hysteria2_mbps(quic_params.brutalDown != null ? quic_params.brutalDown : (quic_params.down != null ? quic_params.down : (hysteria_settings.down != null ? hysteria_settings.down : hysteria_settings.downMbps)));
+    if (down_mbps != null)
+        result.down_mbps = down_mbps;
+
+    let hop_obj = type(quic_params.udpHop) == "object" ? quic_params.udpHop
+        : (type(quic_params.udphop) == "object" ? quic_params.udphop
+        : (type(hysteria_settings.udphop) == "object" ? hysteria_settings.udphop
+        : (type(hysteria_settings.udpHop) == "object" ? hysteria_settings.udpHop : fm_hop_obj)));
+    if (type(hop_obj) == "object") {
+        let hop_ports = parse_hysteria2_server_ports(as_string(hop_obj.ports || hop_obj.port || ""));
+        if (hop_ports != null)
+            result.server_ports = hop_ports;
+        let hop_iv = normalize_hysteria2_hop_interval(hop_obj.interval);
+        if (hop_iv != "")
+            result.hop_interval = hop_iv;
     }
 
     return result;
@@ -4931,13 +5185,6 @@ function content_requires_ucode_normalizer(input_file, headers_file) {
     if (index(data, "vpn://") >= 0 || index(data, "amneziawg://") >= 0 || index(data, "awg://") >= 0 ||
         index(data, "fptn:") >= 0 || index(data, "fptnb:") >= 0 || index(lc(data), "[interface]") >= 0 ||
         index(data, "awg_config") >= 0 || index(data, "wg_config") >= 0)
-        return true;
-    if (index(data, "\"balancers\"") >= 0 || index(data, "\"observatory\"") >= 0 || index(data, "\"burstObservatory\"") >= 0)
-        return true;
-    if (first_non_ws_char(data) == "[" && index(data, "\"outbounds\"") >= 0)
-        return true;
-    if (index(data, "support_x25519mlkem768") >= 0 || index(data, "supportX25519MLKEM768") >= 0 ||
-        index(data, "support-x25519mlkem768") >= 0 || index(data, "mldsa65Verify") >= 0 || index(data, "pqv=") >= 0)
         return true;
 
     return false;

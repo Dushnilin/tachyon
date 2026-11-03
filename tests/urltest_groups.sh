@@ -807,4 +807,157 @@ if (!members["🇩🇪 Germany-1"] || !members["🇫🇮 Finland-1"] || !members
     die("expected all Xray balancer members and standalone nodes in MAIN-out when include_urltest_groups defaults to 0 on outbound_source\n");
 ' "$xray_mixed_config" || fail "Xray mixed balancer + standalone subscription preserves all servers on outbound_source"
 
+cat >"$WORK_DIR/arblaze-sub.json" <<'JSON'
+[
+  {
+    "remarks": "🇪🇺 Автовыбор",
+    "routing": {
+      "balancers": [
+        {
+          "tag": "balancer",
+          "selector": [ "bal-1-" ]
+        }
+      ]
+    },
+    "outbounds": [
+      {
+        "protocol": "hysteria",
+        "tag": "bal-1-hysteria",
+        "settings": { "address": "nl.example", "port": 31337, "version": 2 },
+        "streamSettings": {
+          "network": "hysteria",
+          "security": "tls",
+          "tlsSettings": { "serverName": "nl.example", "alpn": [ "h3" ] },
+          "hysteriaSettings": { "auth": "secret-auth", "version": 2 },
+          "finalmask": {
+            "udp": [
+              {
+                "type": "salamander",
+                "settings": { "password": "gecko-pass", "packetSize": "512-1200" }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "protocol": "vless",
+        "tag": "bal-1-vless",
+        "settings": {
+          "address": "fi.example",
+          "port": 443,
+          "id": "00000000-0000-4000-8000-000000000021",
+          "encryption": "none"
+        },
+        "streamSettings": {
+          "network": "xhttp",
+          "security": "tls",
+          "tlsSettings": { "serverName": "fi.example" },
+          "xhttpSettings": { "path": "/xh", "mode": "auto" }
+        }
+      }
+    ]
+  },
+  {
+    "remarks": "🇳🇱 Нидерланды · Hysteria²",
+    "outbounds": [
+      {
+        "protocol": "hysteria",
+        "tag": "proxy",
+        "settings": { "address": "nl.example", "port": 31337, "version": 2 },
+        "streamSettings": {
+          "network": "hysteria",
+          "security": "tls",
+          "tlsSettings": { "serverName": "nl.example", "alpn": [ "h3" ] },
+          "hysteriaSettings": { "auth": "secret-auth", "version": 2 },
+          "finalmask": {
+            "udp": [
+              {
+                "type": "salamander",
+                "settings": { "password": "gecko-pass", "packetSize": "512-1200" }
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  {
+    "remarks": "🇫🇮 Финляндия · XHTTP",
+    "outbounds": [
+      {
+        "protocol": "vless",
+        "tag": "proxy",
+        "settings": {
+          "address": "fi.example",
+          "port": 443,
+          "id": "00000000-0000-4000-8000-000000000021",
+          "encryption": "none"
+        },
+        "streamSettings": {
+          "network": "xhttp",
+          "security": "tls",
+          "tlsSettings": { "serverName": "fi.example" },
+          "xhttpSettings": { "path": "/xh", "mode": "auto" }
+        }
+      }
+    ]
+  }
+]
+JSON
+
+arblaze_normalized="$WORK_DIR/arblaze-normalized.json"
+normalize_subscription "$WORK_DIR/arblaze-sub.json" "$arblaze_normalized"
+prepare_subscription_cache MAIN 1 "https://arblaze.example/sub" "$arblaze_normalized"
+
+cat >"$WORK_DIR/arblaze-outbound-source-fixture.json" <<'JSON'
+{
+  "settings": { ".name": "settings", ".type": "settings" },
+  "section": [
+    {
+      ".name": "MAIN",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "outbound_source_refs": [ "src_arblaze" ],
+      "domain_suffix": [ "example.com" ]
+    }
+  ],
+  "outbound_source": [
+    {
+      ".name": "src_arblaze",
+      ".type": "outbound_source",
+      "enabled": "1",
+      "source_type": "subscription",
+      "url": "https://arblaze.example/sub"
+    }
+  ]
+}
+JSON
+
+arblaze_config="$WORK_DIR/arblaze-config.json"
+generate_config "$WORK_DIR/arblaze-outbound-source-fixture.json" "$arblaze_config"
+ucode -e '
+let fs = require("fs");
+let config = json(fs.readfile(ARGV[0]));
+let selector = null;
+let hy2 = null;
+for (let ob in config.outbounds || []) {
+    if (ob && ob.type == "selector" && ob.tag == "MAIN-out")
+        selector = ob;
+    if (ob && ob.type == "hysteria2" && ob.tag == "🇳🇱 Нидерланды · Hysteria²")
+        hy2 = ob;
+    if (ob && (ob.tag == "bal-1-hysteria" || ob.tag == "bal-1-vless"))
+        die("internal bal-1-* balancer member leaked into config when include_urltest_groups is disabled\n");
+}
+if (!selector)
+    die("missing MAIN-out selector for arblaze\n");
+if (!hy2 || type(hy2.obfs) != "object" || hy2.obfs.type != "gecko" || hy2.obfs.password != "gecko-pass" || hy2.obfs.min_packet_size != 512 || hy2.obfs.max_packet_size != 1200)
+    die("expected Hysteria2 finalmask packetSize 512-1200 to produce gecko obfs\n");
+let members = {};
+for (let m in selector.outbounds || [])
+    members[m] = true;
+if (!members["🇳🇱 Нидерланды · Hysteria²"] || !members["🇫🇮 Финляндия · XHTTP"] || members["bal-1-hysteria"] || members["bal-1-vless"])
+    die("expected only standalone servers in MAIN-out without bal-1-* duplicates\n");
+' "$arblaze_config" || fail "ARBlazeAG balancer + standalone subscription drops duplicate bal-1-* members and preserves Hysteria2 gecko obfs"
+
 printf 'URLTest group checks passed\n'

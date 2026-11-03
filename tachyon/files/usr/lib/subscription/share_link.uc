@@ -317,7 +317,17 @@ function serialize_hysteria2(outbound) {
     if (type(outbound.obfs) == "object") {
         add_query(params, "obfs", outbound.obfs.type);
         add_query(params, "obfs-password", outbound.obfs.password);
+        if (outbound.obfs.min_packet_size != null && int(outbound.obfs.min_packet_size) > 0)
+            add_query(params, "min_packet_size", outbound.obfs.min_packet_size);
+        if (outbound.obfs.max_packet_size != null && int(outbound.obfs.max_packet_size) > 0)
+            add_query(params, "max_packet_size", outbound.obfs.max_packet_size);
     }
+    if (outbound.up_mbps != null && int(outbound.up_mbps) > 0)
+        add_query(params, "upmbps", outbound.up_mbps);
+    if (outbound.down_mbps != null && int(outbound.down_mbps) > 0)
+        add_query(params, "downmbps", outbound.down_mbps);
+    if (as_string(outbound.hop_interval || "") != "")
+        add_query(params, "mport_hop", outbound.hop_interval);
 
     return "hysteria2://" + uri_encode(outbound.password) + "@" +
         host_port(outbound.server, port) + query_string(params) + fragment(outbound);

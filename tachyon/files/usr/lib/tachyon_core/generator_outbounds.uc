@@ -1000,6 +1000,10 @@ function manual_trojan_outbound(link, tag_name) {
 }
 
 function manual_hysteria2_outbound(link, tag_name) {
+    let parsed = subscription_parser.parse_share_link(link);
+    if (parsed != null)
+        return copy_subscription_outbound(parsed, tag_name);
+
     let query = url_query_params(link);
     let host = url_host(link);
     let port = parse_port(as_string(query.mport || "") != "" ? query.mport : url_port(link));
@@ -1712,14 +1716,19 @@ function add_subscription_source_with_state(config, section, source_index, sourc
         ? (visibility_refs.urltest || {})
         : {};
     let survivors = 0;
+    let survivor_endpoints = {};
     for (let candidate in array_or_empty(outbounds)) {
         if (type(candidate) != "object")
             continue;
         if (subscription_urltest_group_outbound(candidate))
             continue;
         let candidate_tag = as_string(candidate.tag || "");
-        if (candidate_tag == "" || !(candidate_tag in urltest_member_tags))
+        if (candidate_tag == "" || !(candidate_tag in urltest_member_tags)) {
             survivors++;
+            let ep_key = lc(as_string(candidate.type || "")) + "|" + lc(as_string(candidate.server || "")) + "|" + as_string(candidate.server_port || "");
+            if (as_string(candidate.server || "") != "")
+                survivor_endpoints[ep_key] = true;
+        }
     }
     let drop_urltest_members = include_urltest_groups === false && survivors > 0;
     node_prefix = trim(as_string(node_prefix));
@@ -1742,16 +1751,19 @@ function add_subscription_source_with_state(config, section, source_index, sourc
         let outbound = outbounds[i];
         if (include_urltest_groups === false && subscription_urltest_group_outbound(outbound))
             continue;
-        // A node that only a disabled native sing-box urltest group pointed at is
-        // unreachable and only clutters the selector, so it is dropped. Leaf
-        // servers with a remark/share_link (such as Xray balancer members) are real
-        // selectable proxy servers and must remain visible when urltest group
-        // import is disabled.
-        if (drop_urltest_members &&
-            (as_string(outbound.tag || "") in urltest_member_tags) &&
-            as_string(outbound.remark || "") == "" &&
-            as_string(outbound.share_link || "") == "")
-            continue;
+        // A node that only a disabled native sing-box urltest group pointed at, or
+        // an internal Xray balancer member (`bal-*` / duplicate of a standalone server
+        // in the same subscription), is dropped when urltest group import is disabled.
+        // Distinct named leaf servers inside an Xray balancer remain visible.
+        if (drop_urltest_members && (as_string(outbound.tag || "") in urltest_member_tags)) {
+            let member_tag = as_string(outbound.tag || "");
+            let member_remark = as_string(outbound.remark || "");
+            let ep_key = lc(as_string(outbound.type || "")) + "|" + lc(as_string(outbound.server || "")) + "|" + as_string(outbound.server_port || "");
+            if (member_remark == "" ||
+                survivor_endpoints[ep_key] === true ||
+                match(lc(member_tag), /^bal-[0-9]+-/) != null)
+                continue;
+        }
         let display_name = as_string(outbound.remark || outbound.tag || ("server-" + (i + 1)));
         if (keyword_filter != null && subscription_group_outbound(outbound) && !subscription_keyword_name_passes({ include: [], exclude: keyword_filter.exclude }, display_name))
             continue;
