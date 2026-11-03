@@ -1900,4 +1900,59 @@ describe('getDashboardSections', () => {
       interval: '3m',
     });
   });
+
+  it('does not pull detached subscription sources into a section configured only with individual VLESS links', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      {
+        '.name': 'main',
+        '.type': 'section',
+        enabled: '1',
+        action: 'connection',
+        outbound_source_refs: ['src_links_main'],
+        outbound_group_refs: ['grp_migrated_main'],
+        balancer_refs: ['bal_fastest'],
+      },
+      {
+        '.name': 'src_links_main',
+        '.type': 'outbound_source',
+        enabled: '1',
+        source_type: 'proxy_links',
+        proxy_links: [
+          'vless://11111111-1111-1111-1111-111111111111@example.com:443?security=tls&type=xhttp#Moscow',
+        ],
+      },
+      {
+        '.name': 'src_sub_1',
+        '.type': 'outbound_source',
+        enabled: '1',
+        source_type: 'subscription',
+        url: 'https://provider.example/sub',
+      },
+      {
+        '.name': 'grp_migrated_main',
+        '.type': 'outbound_group',
+        enabled: '1',
+        source_refs: ['src_sub_1', 'src_links_main'],
+      },
+      {
+        '.name': 'bal_fastest',
+        '.type': 'balancer',
+        enabled: '1',
+        balancer_type: 'urltest',
+        name: 'Fastest',
+        source_refs: ['src_sub_1'],
+      },
+      {
+        '.name': 'sub_child_stale',
+        '.type': 'subscription_url',
+        section: 'main',
+        url: 'https://provider.example/sub',
+      },
+    ]);
+
+    const result = await getDashboardSections();
+    expect(result.success).toBe(true);
+    expect(result.data[0].subscriptionSourceCount).toBe(0);
+    expect(result.data[0].subscriptionMetadata).toBeUndefined();
+  });
 });

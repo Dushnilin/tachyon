@@ -14933,6 +14933,37 @@ function createSectionContent(section) {
       };
     }),
   );
+  o.write = function (sectionId, value) {
+    const refs = Array.isArray(value)
+      ? value.map((v) => String(v || "").trim()).filter(Boolean)
+      : String(value || "")
+          .trim()
+          .split(/\s+/)
+          .filter(Boolean);
+    if (refs.length)
+      uci.set(UCI_PACKAGE, sectionId, "outbound_source_refs", refs);
+    else uci.unset(UCI_PACKAGE, sectionId, "outbound_source_refs");
+    const attachedUrls = new Set(
+      refs
+        .map((id) => String(uci.get(UCI_PACKAGE, id, "url") || "").trim())
+        .filter(Boolean),
+    );
+    (uci.sections(UCI_PACKAGE, "subscription_url") || []).forEach((sub) => {
+      const subId = sub ? sub[".name"] : null;
+      const subUrl = String(sub?.url || "").trim();
+      if (
+        subId &&
+        String(sub.section || "").trim() === sectionId &&
+        subUrl &&
+        !attachedUrls.has(subUrl)
+      ) {
+        uci.remove(UCI_PACKAGE, subId);
+      }
+    });
+  };
+  o.remove = function (sectionId) {
+    this.write(sectionId, []);
+  };
   outboundNameSourceOptions.set("outbound_source_refs", o);
 
   o = section.taboption(

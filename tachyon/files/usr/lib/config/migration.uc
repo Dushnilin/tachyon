@@ -2283,6 +2283,22 @@ function cleanup_modular_entities_v1(ctx) {
             set_option(ctx, src, "outbound_detour_enabled", "0");
         }
     }
+    let section_by_name = {};
+    for (let sec in (ctx.model.sections || [])) {
+        let id = section_name(sec);
+        if (id != "")
+            section_by_name[id] = sec;
+    }
+    let source_by_name = {};
+    let modular_sub_urls = {};
+    for (let s in (ctx.model.outbound_source || [])) {
+        let id = section_name(s);
+        if (id != "")
+            source_by_name[id] = s;
+        let su = trim(option(s, "url", ""));
+        if (su != "")
+            modular_sub_urls[su] = true;
+    }
     for (let legacy_type in [ "subscription_url", "section_interface", "urltest", "priority_group", "priority_level" ]) {
         let kept_children = [];
         for (let child in (ctx.model[legacy_type] || [])) {
@@ -2291,6 +2307,30 @@ function cleanup_modular_entities_v1(ctx) {
             if (parent_sec != "" && !valid_sections[parent_sec] && child_id != "") {
                 record_operation(ctx, { op: "delete_section", section: child_id });
                 continue;
+            }
+            if (legacy_type == "subscription_url" && parent_sec != "" && child_id != "" && length(ctx.model.outbound_source || []) > 0) {
+                let child_url = trim(option(child, "url", ""));
+                let sec_obj = section_by_name[parent_sec];
+                if (sec_obj != null && child_url != "") {
+                    let sec_refs = list_option(sec_obj, "outbound_source_refs");
+                    let attached_urls = {};
+                    let has_non_dpi_ref = false;
+                    for (let ref_id in sec_refs) {
+                        let ref_src = source_by_name[ref_id];
+                        if (ref_src != null) {
+                            let st = lc(trim(option(ref_src, "source_type", "subscription")));
+                            if (st != "zapret" && st != "zapret2" && st != "byedpi" && st != "desync")
+                                has_non_dpi_ref = true;
+                            let ru = trim(option(ref_src, "url", ""));
+                            if (ru != "")
+                                attached_urls[ru] = true;
+                        }
+                    }
+                    if (!attached_urls[child_url] && (modular_sub_urls[child_url] || has_non_dpi_ref)) {
+                        record_operation(ctx, { op: "delete_section", section: child_id });
+                        continue;
+                    }
+                }
             }
             push(kept_children, child);
         }

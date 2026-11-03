@@ -272,9 +272,30 @@ function normalize_to_cidrs(items) {
     return result;
 }
 
+function core_needs_ipv4_mapped_cidrs() {
+    let ver = trim(as_string(getenv("SB_VERSION_OVERRIDE") || ""));
+    if (ver == "") {
+        let raw = fs.readfile("/etc/tachyon/tachyon-core-version");
+        if (raw == null || trim(as_string(raw)) == "")
+            raw = fs.readfile("/etc/tachyon/sing-box-version");
+        ver = trim(as_string(raw || ""));
+    }
+    if (ver == "")
+        return true;
+    let m = match(ver, /^v?([0-9]+)\.([0-9]+)\.([0-9]+)/);
+    if (m == null)
+        return true;
+    let major = int(m[1]);
+    let minor = int(m[2]);
+    let patch = int(m[3]);
+    if (major == 0 && (minor > 3 || (minor == 3 && patch >= 1)))
+        return false;
+    return true;
+}
+
 function expand_ipv4_mapped_cidrs(cidrs, include_ipv6_mapped) {
     let arr = type(cidrs) == "array" ? cidrs : (cidrs != null && as_string(cidrs) != "" ? [ cidrs ] : []);
-    let map_v6 = include_ipv6_mapped != null ? !!include_ipv6_mapped : ipv6_supported();
+    let map_v6 = include_ipv6_mapped != null ? !!include_ipv6_mapped : (ipv6_supported() && core_needs_ipv4_mapped_cidrs());
     let result = [];
     let seen = {};
     let push_unique = function(val) {

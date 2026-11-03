@@ -304,7 +304,11 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
     const dpiSourceTypes = new Set(['zapret', 'zapret2', 'byedpi', 'desync']);
     const hasInlineConnectionItems =
       getListValues(next.selector_proxy_links).length > 0 ||
+      getListValues(next.proxy_links).length > 0 ||
+      getListValues(next.connection_urls).length > 0 ||
       Boolean((next.selector_proxy_links_text || '').trim()) ||
+      Boolean((next.proxy_links_text || '').trim()) ||
+      Boolean((next.urltest_proxy_links_text || '').trim()) ||
       getRawListValues(next.selector_amnezia_configs || next.amnezia_configs)
         .length > 0 ||
       Boolean((next.amnezia_conf_text || '').trim()) ||
@@ -322,8 +326,18 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
       addSource(sourceById.get(sid)),
     );
 
+    const hasDirectNonDpiSourceRefs = getListValues(
+      next.outbound_source_refs,
+    ).some((sid) => {
+      const s = sourceById.get(sid);
+      return (
+        Boolean(s) && !dpiSourceTypes.has((s?.source_type || '').toLowerCase())
+      );
+    });
+
     let hasExplicitNonDpiSources =
       hasInlineConnectionItems ||
+      hasDirectNonDpiSourceRefs ||
       effectiveSources.some(
         (s) => !dpiSourceTypes.has((s.source_type || '').toLowerCase()),
       );
@@ -340,7 +354,7 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
             }
           });
         }
-      } else {
+      } else if (!hasExplicitNonDpiSources) {
         gSources.forEach((sid) => addSource(sourceById.get(sid)));
       }
     };
@@ -544,12 +558,33 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
       }
     });
 
+    const allModularSubUrls = new Set(
+      outboundSources
+        .map((src) => {
+          const st = (src.source_type || 'subscription').toLowerCase();
+          return (
+            src.url ||
+            (st === 'subscription' && /^https?:\/\//i.test(src.name || '')
+              ? src.name
+              : '') ||
+            ''
+          ).trim();
+        })
+        .filter(Boolean),
+    );
     legacySubscriptionUrlItems.forEach((it) => {
       const u = (it.url || '').trim();
-      if (u && !seenSubUrls.has(u)) {
-        seenSubUrls.add(u);
-        subscriptionUrlItems.push(it);
+      if (!u || seenSubUrls.has(u)) return;
+      if (
+        outboundSources.length > 0 &&
+        (allModularSubUrls.has(u) ||
+          hasDirectNonDpiSourceRefs ||
+          hasInlineConnectionItems)
+      ) {
+        return;
       }
+      seenSubUrls.add(u);
+      subscriptionUrlItems.push(it);
     });
 
     if (extraProxyLinks.length) {
@@ -714,6 +749,16 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
         };
       });
       next.subscription_url_settings = compactSettingsMap(settings);
+    } else if (
+      outboundSources.length > 0 &&
+      (hasDirectNonDpiSourceRefs ||
+        hasInlineConnectionItems ||
+        getListValues(next.subscription_urls).some((u) =>
+          allModularSubUrls.has(u.trim()),
+        ))
+    ) {
+      delete next.subscription_urls;
+      delete next.subscription_url_settings;
     }
 
     if (interfaceItems.length || extraInterfaces.length) {

@@ -2815,10 +2815,16 @@ function configureOutboundsSection(sectionRef) {
       const hasRef = cur.includes(sectionId);
       const isLegacyChild =
         sectionId === `src_${sid}_links` ||
+        sectionId === `src_links_${sid}` ||
         sectionId === `src_${sid}_awg` ||
+        sectionId === `src_awg_${sid}` ||
+        sectionId === `src_amnezia_${sid}` ||
         sectionId === `src_${sid}_fptn` ||
+        sectionId === `src_fptn_${sid}` ||
         sectionId === `src_${sid}_json` ||
-        sectionId === `src_${sid}_desync`;
+        sectionId === `src_json_${sid}` ||
+        sectionId === `src_${sid}_desync` ||
+        sectionId === `src_desync_${sid}`;
       if (hasRef) {
         const next = cur.filter((id) => id !== sectionId);
         if (next.length)
@@ -2826,10 +2832,12 @@ function configureOutboundsSection(sectionRef) {
         else uci.unset(UCI_PACKAGE, sid, 'outbound_source_refs');
       }
       if (hasRef || isLegacyChild) {
-        if (srcType === 'links') {
+        if (srcType === 'links' || srcType === 'proxy_links') {
           uci.unset(UCI_PACKAGE, sid, 'selector_proxy_links');
           uci.unset(UCI_PACKAGE, sid, 'selector_proxy_links_text');
-        } else if (srcType === 'awg') {
+          uci.unset(UCI_PACKAGE, sid, 'proxy_links');
+          uci.unset(UCI_PACKAGE, sid, 'proxy_links_text');
+        } else if (srcType === 'awg' || srcType === 'amnezia_config') {
           uci.unset(UCI_PACKAGE, sid, 'selector_amnezia_configs');
           uci.unset(UCI_PACKAGE, sid, 'amnezia_configs');
           uci.unset(UCI_PACKAGE, sid, 'amnezia_conf_text');
@@ -3148,6 +3156,7 @@ function createOutboundsContent(section) {
   };
   o.write = function (sectionId, value) {
     const want = new Set(asArray(value));
+    const srcUrl = String(uci.get(UCI_PACKAGE, sectionId, 'url') || '').trim();
     (uci.sections(UCI_PACKAGE, 'section') || []).forEach((s) => {
       const sid = s['.name'];
       if (!sid) return;
@@ -3160,6 +3169,20 @@ function createOutboundsContent(section) {
         if (next.length)
           uci.set(UCI_PACKAGE, sid, 'outbound_source_refs', next);
         else uci.unset(UCI_PACKAGE, sid, 'outbound_source_refs');
+        if (srcUrl) {
+          (uci.sections(UCI_PACKAGE, 'subscription_url') || []).forEach(
+            (sub) => {
+              const subId = sub ? sub['.name'] : null;
+              if (
+                subId &&
+                String(sub.section || '').trim() === sid &&
+                String(sub.url || '').trim() === srcUrl
+              ) {
+                uci.remove(UCI_PACKAGE, subId);
+              }
+            },
+          );
+        }
       }
     });
   };

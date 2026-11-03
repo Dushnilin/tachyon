@@ -505,13 +505,16 @@ function outbound_source_by_url(value) {
     value = trim(as_string(value));
     if (value == "")
         return null;
+    let disabled_match = null;
     for (let src in outbound_source_sections()) {
-        if (!bool_option(src, "enabled", true))
+        if (outbound_source_subscription_url(src) != value)
             continue;
-        if (outbound_source_subscription_url(src) == value)
+        if (bool_option(src, "enabled", true))
             return src;
+        if (disabled_match == null)
+            disabled_match = src;
     }
-    return null;
+    return disabled_match;
 }
 
 function outbound_source_by_interface(value) {
@@ -562,11 +565,28 @@ function section_has_inline_connection_items(section) {
         length(whitespace_list_value(section, "connection_urls")) > 0 ||
         trim(option(section, "selector_proxy_links_text", "")) != "" ||
         trim(option(section, "proxy_links_text", "")) != "" ||
+        trim(option(section, "urltest_proxy_links_text", "")) != "" ||
         length(list_value(section, "outbound_jsons")) > 0 ||
         trim(option(section, "outbound_json", "")) != "" ||
         trim(option(section, "access_token", "")) != "")
         return true;
     return false;
+}
+
+function section_allows_legacy_subscription_url(section, url) {
+    if (length(outbound_source_sections()) == 0)
+        return true;
+    url = trim(as_string(url || ""));
+    if (url != "" && outbound_source_by_url(url) != null)
+        return false;
+    for (let src_id in section_outbound_source_refs(section)) {
+        let src = outbound_source_section(src_id);
+        if (src != null && !is_dpi_or_desync_source_type(option(src, "source_type", "")))
+            return false;
+    }
+    if (section_has_inline_connection_items(section))
+        return false;
+    return true;
 }
 
 function section_effective_outbound_sources(section) {
@@ -607,7 +627,7 @@ function section_effective_outbound_sources(section) {
                         add_src(src);
                 }
             }
-        } else {
+        } else if (!has_explicit_non_dpi_sources) {
             for (let src_id in grp_sources)
                 add_src(outbound_source_section(src_id));
         }
@@ -941,7 +961,7 @@ function connection_urls(section) {
     }
     for (let u in child_values(section, "subscription_url", "url", "subscription_urls")) {
         let su = trim(as_string(u || ""));
-        if (su != "" && !core_url.is_subscription_url(su))
+        if (su != "" && !core_url.is_subscription_url(su) && section_allows_legacy_subscription_url(section, su))
             push_unique_str(links, seen, su);
     }
     let sec_action = action(section);
@@ -1014,7 +1034,7 @@ function subscription_urls(section) {
     }
     for (let u in child_values(section, "subscription_url", "url", "subscription_urls")) {
         let su = trim(as_string(u || ""));
-        if (su != "" && core_url.is_subscription_url(su))
+        if (su != "" && core_url.is_subscription_url(su) && section_allows_legacy_subscription_url(section, su))
             push_unique_str(result, seen, su);
     }
     return result;

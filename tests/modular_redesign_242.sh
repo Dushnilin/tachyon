@@ -719,6 +719,77 @@ if (length(filtered_277) != 2) {
     warn("Issue #277: Expected 2 candidate outbounds in urltest_filtered_outbounds with group_refs, got: " + sprintf("%J", filtered_277) + "\n");
     exit(1);
 }
+
+// Regression: section configured only with individual VLESS links (src_links_main)
+// must NOT inherit detached subscription src_sub_1 via leftover subscription_url child,
+// outbound_group.source_refs, or balancer.source_refs.
+connections.set_item_sections_from_data({
+    outbound_source: [
+        {
+            ".name": "src_links_main",
+            ".type": "outbound_source",
+            enabled: "1",
+            source_type: "proxy_links",
+            proxy_links: [ "vless://11111111-1111-1111-1111-111111111111@198.51.100.1:443?security=tls&type=xhttp#Moscow" ]
+        },
+        {
+            ".name": "src_sub_1",
+            ".type": "outbound_source",
+            enabled: "1",
+            source_type: "subscription",
+            url: "https://provider.example/sub"
+        }
+    ],
+    outbound_group: [
+        {
+            ".name": "grp_migrated_main",
+            ".type": "outbound_group",
+            enabled: "1",
+            source_refs: [ "src_sub_1", "src_links_main" ]
+        }
+    ],
+    balancer: [
+        {
+            ".name": "bal_fastest",
+            ".type": "balancer",
+            enabled: "1",
+            balancer_type: "urltest",
+            source_refs: [ "src_sub_1" ]
+        }
+    ],
+    subscription_url: [
+        {
+            ".name": "sub_child_stale",
+            ".type": "subscription_url",
+            section: "main",
+            url: "https://provider.example/sub"
+        }
+    ],
+    section: [
+        {
+            ".name": "main",
+            ".type": "section",
+            enabled: "1",
+            action: "connection",
+            outbound_source_refs: [ "src_links_main" ],
+            outbound_group_refs: [ "grp_migrated_main" ],
+            balancer_refs: [ "bal_fastest" ]
+        }
+    ]
+});
+let main_sub_urls = connections.subscription_urls({
+    ".name": "main",
+    ".type": "section",
+    enabled: "1",
+    action: "connection",
+    outbound_source_refs: [ "src_links_main" ],
+    outbound_group_refs: [ "grp_migrated_main" ],
+    balancer_refs: [ "bal_fastest" ]
+});
+if (length(main_sub_urls) != 0) {
+    warn("Expected 0 subscription_urls on section with only src_links_main, got: " + sprintf("%J", main_sub_urls) + "\n");
+    exit(1);
+}
 UCODE
 
 cat >"$WORK_DIR/all_disabled_sections.json" <<'JSON'

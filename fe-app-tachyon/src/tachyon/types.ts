@@ -637,6 +637,8 @@ export namespace Tachyon {
     source_type?: string;
     proxy_links?: string | string[];
     proxy_links_text?: string;
+    connection_urls?: string | string[];
+    urltest_proxy_links_text?: string;
     amnezia_configs?: string | string[];
     amnezia_conf_text?: string;
     awg_private_key?: string;

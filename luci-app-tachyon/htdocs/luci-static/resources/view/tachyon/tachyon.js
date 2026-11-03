@@ -1257,6 +1257,16 @@ const EntryPoint = {
               .map((s) => (s ? s[".name"] : null))
               .filter(Boolean),
           );
+          const sourceByName = new Map(
+            (uci.sections(self.config, "outbound_source") || [])
+              .filter((s) => s && s[".name"])
+              .map((s) => [s[".name"], s]),
+          );
+          const allSourceUrls = new Set(
+            Array.from(sourceByName.values())
+              .map((s) => String(s.url || "").trim())
+              .filter(Boolean),
+          );
           [
             "urltest",
             "priority_group",
@@ -1270,6 +1280,38 @@ const EntryPoint = {
               const parentSec = String(child.section || "").trim();
               if (cid && parentSec && !validSectionIds.has(parentSec)) {
                 uci.remove(self.config, cid);
+                return;
+              }
+              if (
+                childType === "subscription_url" &&
+                cid &&
+                parentSec &&
+                sourceByName.size > 0
+              ) {
+                const childUrl = String(child.url || "").trim();
+                const secRefs = asArray(
+                  uci.get(self.config, parentSec, "outbound_source_refs"),
+                );
+                const attachedUrls = new Set(
+                  secRefs
+                    .map((id) => String(sourceByName.get(id)?.url || "").trim())
+                    .filter(Boolean),
+                );
+                const hasNonDpiRef = secRefs.some((id) => {
+                  const st = String(
+                    sourceByName.get(id)?.source_type || "subscription",
+                  ).toLowerCase();
+                  return !["zapret", "zapret2", "byedpi", "desync"].includes(
+                    st,
+                  );
+                });
+                if (
+                  childUrl &&
+                  !attachedUrls.has(childUrl) &&
+                  (allSourceUrls.has(childUrl) || hasNonDpiRef)
+                ) {
+                  uci.remove(self.config, cid);
+                }
               }
             });
           });
