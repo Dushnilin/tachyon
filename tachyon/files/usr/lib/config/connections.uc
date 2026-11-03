@@ -1283,17 +1283,31 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
         }
         if (length(tr_list) > 0) obj.transport = tr_list;
         let cipher = trim(option(src, "tewfai_inner_cipher", ""));
-        if (cipher == "aes-256-gcm" || cipher == "none") obj.inner_cipher = cipher;
+        if (cipher == "aes-256-gcm" || cipher == "none" || cipher == "null") obj.inner_cipher = cipher;
         let morph = trim(option(src, "tewfai_morph_profile", ""));
-        if (morph == "browsing" || morph == "video" || morph == "webrtc" || morph == "bulk")
+        if (morph == "auto" || morph == "adaptive" || morph == "transformer" ||
+            morph == "browsing" || morph == "video" || morph == "webrtc" || morph == "bulk")
             obj.morph_profile = morph;
         let max_s = int(option(src, "tewfai_max_streams", "0") || 0);
         if (max_s > 0) obj.max_streams = max_s;
         let mtu = int(option(src, "tewfai_mtu", "0") || 0);
         if (mtu > 0) obj.mtu = mtu;
         if (bool_option(src, "tewfai_pqc_enabled", false)) obj.pqc = true;
-        if (bool_option(src, "tewfai_handover_enabled", false)) obj.handover = { enabled: true };
+        let rot_s = int(option(src, "tewfai_rotate_secs", "0") || 0);
+        let rot_mb = int(option(src, "tewfai_rotate_mb", "0") || 0);
+        if (bool_option(src, "tewfai_handover_enabled", false) || rot_s > 0 || rot_mb > 0) {
+            let ho = { enabled: bool_option(src, "tewfai_handover_enabled", true) };
+            if (rot_s > 0) ho.rotate_secs = rot_s;
+            if (rot_mb > 0) ho.rotate_mb = rot_mb;
+            obj.handover = ho;
+        }
         if (bool_option(src, "tewfai_fec_enabled", false)) obj.fec = true;
+        if (bool_option(src, "tewfai_desync_enabled", false)) obj.desync = true;
+        if (bool_option(src, "tewfai_shaper_enabled", false)) {
+            let sp = trim(option(src, "tewfai_shaper_profile", "adaptive"));
+            let mode = (sp == "fixed" || sp == "off") ? sp : "adaptive";
+            obj.shaper = { mode };
+        }
         return finalize(obj);
     }
     if (stype == "masque") {
@@ -1544,10 +1558,12 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
             if (val == "" || val == "none" || val == "custom") return "";
             if (val == "auto" || val == "adaptive" || val == "smart")
                 return "auto";
-            if (val == "fake_split" || val == "fakesplit" || val == "fake+split")
+            if (val == "fake_split" || val == "fakesplit" || val == "fake+split" || val == "fakedsplit" || val == "faked_split")
                 return "fake_split";
             if (val == "fake_disorder" || val == "fakedisorder" || val == "fake+disorder")
                 return "fake_disorder";
+            if (val == "multi_disorder" || val == "multidisorder" || val == "multi+disorder" || val == "fakeddisorder" || val == "faked_disorder")
+                return "multi_disorder";
             if (val == "multi_split" || val == "multisplit" || val == "multi+split")
                 return "multi_split";
             if (val == "tlsrec" || val == "tls_rec")
@@ -1571,10 +1587,12 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
             if (val == "") return "";
             if (val == "auto" || val == "adaptive" || val == "smart")
                 return "auto";
-            if (val == "fake_split" || val == "fakesplit" || val == "fake+split")
+            if (val == "fake_split" || val == "fakesplit" || val == "fake+split" || val == "fakedsplit" || val == "faked_split")
                 return "fake_split";
-            if (val == "fake_disorder" || val == "fakedisorder" || val == "fake+disorder" || val == "multidisorder")
+            if (val == "fake_disorder" || val == "fakedisorder" || val == "fake+disorder")
                 return "fake_disorder";
+            if (val == "multi_disorder" || val == "multidisorder" || val == "multi+disorder" || val == "fakeddisorder" || val == "faked_disorder")
+                return "multi_disorder";
             if (val == "multi_split" || val == "multisplit" || val == "multi+split")
                 return "multi_split";
             if (val == "tlsrec" || val == "tls_rec")
@@ -1586,24 +1604,71 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
         let norm_fooling = function(val) {
             val = lc(trim(as_string(val)));
             if (val == "") return "";
-            if (val == "ts" || val == "timestamp")
+            if (val == "md5" || val == "tcp_md5" || val == "wrong-md5" || val == "wrong_md5")
+                return "md5";
+            if (val == "ts" || val == "tcp_ts" || val == "timestamp" || val == "wrong-timestamp" || val == "wrong_timestamp")
                 return "timestamp";
-            if (val in ["md5", "autottl", "badseq", "badsum"])
-                return val;
+            if (val == "badseq" || val == "seq" || val == "wrong-sequence" || val == "wrong_sequence")
+                return "badseq";
+            if (val == "badack" || val == "ack" || val == "tcp_ack" || val == "wrong-ack" || val == "wrong_ack")
+                return "badack";
+            if (val == "badsum" || val == "sum" || val == "wrong-checksum" || val == "wrong_checksum")
+                return "badsum";
+            if (val == "autottl" || val == "auto_ttl" || val == "ttl" || val == "low-ttl" || val == "low_ttl")
+                return "autottl";
+            if (val == "hopbyhop" || val == "ip6_hopbyhop" || val == "hopbyhop2" || val == "ip6_hopbyhop2" || val == "destopt" || val == "ip6_destopt")
+                return "hopbyhop";
+            if (val == "badseq_badack_badsum" || val == "combo" || val == "badsum_combo")
+                return "badseq_badack_badsum";
+            if (val == "md5_badack" || val == "tcp_md5_badack" || val == "md5+badack")
+                return "md5_badack";
+            if (val == "datanoack" || val == "data_no_ack" || val == "noack")
+                return "datanoack";
             return "";
         };
-        let norm_split_pos = function(val) {
+        let norm_single_split_pos = function(val) {
             val = lc(trim(as_string(val)));
             if (val == "midsld" || val == "sld" || val == "host")
                 return "midsld";
+            if (val == "midsld-2" || val == "sld-2")
+                return "midsld-2";
+            if (val == "midsld+2" || val == "sld+2")
+                return "midsld+2";
             if (val == "sni" || val == "sniext")
                 return "sni";
+            if (val == "sniext+1" || val == "sni+1")
+                return "sniext+1";
+            if (val == "host+1")
+                return "host+1";
+            if (val == "endhost-1" || val == "endsld-1" || val == "endhost")
+                return "endhost-1";
+            if (val == "extlen")
+                return "extlen";
             if (val != "" && match(val, /^[0-9]+$/)) {
                 let n = int(val, 10);
                 if (n >= 1 && n <= 1400)
                     return n;
             }
             return null;
+        };
+        let norm_split_pos = function(val) {
+            val = trim(as_string(val));
+            if (val == "")
+                return null;
+            if (index(val, ",") >= 0) {
+                let arr = [];
+                for (let part in split(val, ",")) {
+                    let item = norm_single_split_pos(part);
+                    if (item != null)
+                        push(arr, item);
+                }
+                if (length(arr) == 1)
+                    return arr[0];
+                if (length(arr) > 1)
+                    return arr;
+                return null;
+            }
+            return norm_single_split_pos(val);
         };
         let ds_obj = {
             type: "desync",
@@ -1623,6 +1688,8 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
         let auto_tune_raw = trim(option(src, "desync_auto_tune", ""));
         if (auto_tune_raw != "")
             ds_obj.auto_tune = bool_option(src, "desync_auto_tune", false);
+        if (bool_option(src, "desync_tlsrec_first", false))
+            ds_obj.tlsrec_first = true;
         if (lc(raw_preset) == "discord" && !bool_option(src, "desync_udp_fake", false))
             ds_obj.udp_fake = true;
         if (ds_obj.preset == null && ds_obj.mode == null)
@@ -1630,6 +1697,19 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
         let sp = norm_split_pos(option(src, "desync_split_pos", ""));
         if (sp != null)
             ds_obj.split_pos = sp;
+        let seqovl = int(option(src, "desync_seqovl", "0") || 0);
+        if (seqovl > 0)
+            ds_obj.seqovl = seqovl;
+        if (bool_option(src, "desync_syndata", false))
+            ds_obj.syndata = true;
+        let wsize = int(option(src, "desync_wsize", "0") || 0);
+        if (wsize > 0)
+            ds_obj.wsize = wsize;
+        if (bool_option(src, "desync_ipfrag", false))
+            ds_obj.ipfrag = true;
+        let udplen = int(option(src, "desync_udplen", "0") || 0);
+        if (udplen > 0)
+            ds_obj.udplen = udplen;
         let fttl = int(option(src, "desync_fake_ttl", "0") || 0);
         if (fttl > 0)
             ds_obj.fake_ttl = fttl;
@@ -1660,6 +1740,10 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
                     let k = lc(trim(substr(token, 0, eq)));
                     if (substr(k, 0, 2) == "--")
                         k = replace(substr(k, 2), /-/g, "_");
+                    if (substr(k, 0, 11) == "dpi_desync_")
+                        k = substr(k, 11);
+                    else if (k == "dpi_desync")
+                        k = "mode";
                     let v = trim(substr(token, eq + 1));
                     if (v == "") continue;
                     if (k == "preset") {
@@ -1673,10 +1757,17 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
                         if (nf != "") ds_obj.fooling = nf;
                     } else if (k == "auto_tune") {
                         ds_obj.auto_tune = (lc(v) == "1" || lc(v) == "true" || lc(v) == "yes");
+                    } else if (k == "tlsrec_first") {
+                        ds_obj.tlsrec_first = (lc(v) == "1" || lc(v) == "true" || lc(v) == "yes");
                     } else if (k == "split_pos") {
                         let nsp = norm_split_pos(v);
                         if (nsp != null) ds_obj.split_pos = nsp;
-                    } else if (k == "fake_ttl" && match(v, /^[0-9]+$/)) ds_obj.fake_ttl = int(v, 10);
+                    } else if ((k == "seqovl" || k == "split_seqovl") && match(v, /^[0-9]+$/)) ds_obj.seqovl = int(v, 10);
+                    else if (k == "syndata") ds_obj.syndata = (lc(v) == "1" || lc(v) == "true" || lc(v) == "yes");
+                    else if (k == "wsize" && match(v, /^[0-9]+$/)) ds_obj.wsize = int(v, 10);
+                    else if (k == "ipfrag") ds_obj.ipfrag = (lc(v) == "1" || lc(v) == "true" || lc(v) == "yes");
+                    else if (k == "udplen" && match(v, /^[0-9]+$/)) ds_obj.udplen = int(v, 10);
+                    else if ((k == "fake_ttl" || k == "ttl") && match(v, /^[0-9]+$/)) ds_obj.fake_ttl = int(v, 10);
                     else if (k == "fake_sni") ds_obj.fake_sni = v;
                     else if (k == "repeats" && match(v, /^[0-9]+$/)) ds_obj.repeats = int(v, 10);
                     else if (k == "split_delay_ms" && match(v, /^[0-9]+$/)) ds_obj.split_delay_ms = int(v, 10);

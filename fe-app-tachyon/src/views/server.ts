@@ -1530,6 +1530,7 @@ function ensureProtocolDefaults(sectionId, protocol, forceProtocolDefaults) {
     setDefault(sectionId, 'tewfai_password', generatePassword());
     setDefault(sectionId, 'tewfai_inbound_transport', 'tcp');
     setDefault(sectionId, 'tewfai_inner_cipher', 'aes-256-gcm');
+    setDefault(sectionId, 'tewfai_morph_profile', 'auto');
     setDefault(sectionId, 'tewfai_pqc_enabled', '1');
     setDefault(sectionId, 'tewfai_handover_enabled', '1');
     setDefault(sectionId, 'tewfai_fec_enabled', '0');
@@ -2190,6 +2191,11 @@ function buildTewfaiLink(sectionId, identity, options = {}) {
   if (innerCipher) {
     params.inner_cipher = innerCipher;
   }
+  const morphProfile =
+    uci.get(UCI_PACKAGE, sectionId, 'tewfai_morph_profile') || '';
+  if (morphProfile) {
+    params.morph_profile = morphProfile;
+  }
   if (uci.get(UCI_PACKAGE, sectionId, 'tewfai_pqc_enabled') === '1') {
     params.pqc = '1';
   }
@@ -2199,6 +2205,9 @@ function buildTewfaiLink(sectionId, identity, options = {}) {
   if (uci.get(UCI_PACKAGE, sectionId, 'tewfai_fec_enabled') === '1') {
     params.fec = '1';
   }
+  if (uci.get(UCI_PACKAGE, sectionId, 'tewfai_desync_enabled') === '1') {
+    params.desync = '1';
+  }
   if (uci.get(UCI_PACKAGE, sectionId, 'tewfai_shaper_enabled') === '1') {
     params.shaper = '1';
     const shaperProfile =
@@ -2206,6 +2215,10 @@ function buildTewfaiLink(sectionId, identity, options = {}) {
     if (shaperProfile) {
       params.shaper_profile = shaperProfile;
     }
+  }
+  const tewfaiMtu = uci.get(UCI_PACKAGE, sectionId, 'tewfai_mtu') || '';
+  if (tewfaiMtu) {
+    params.mtu = tewfaiMtu;
   }
   const query = encodeQuery(params);
   return `tewfai://${cred}@${uriHost}:${port}${query ? `?${query}` : ''}#${encodeURIComponent(identity.name || sectionId)}`;
@@ -4679,6 +4692,7 @@ function autoConfigureServer(sectionId) {
         tewfaiTr === 'quic' ? 'quic' : 'tcp',
       );
       setWidgetValue(sectionId, 'tewfai_inner_cipher', innerCipher);
+      setWidgetValue(sectionId, 'tewfai_morph_profile', 'auto');
       setWidgetValue(sectionId, 'tewfai_pqc_enabled', '1');
       setWidgetValue(sectionId, 'tewfai_handover_enabled', '1');
       setWidgetValue(sectionId, 'tewfai_fec_enabled', '0');
@@ -5871,6 +5885,21 @@ function createServerContent(section, options = {}) {
   o.value('aes-256-gcm', 'AES-256-GCM');
   o.value('none', _('None (TLS/QUIC only)'));
   o.default = 'aes-256-gcm';
+  o.rmempty = true;
+  o.modalonly = true;
+  o.depends('protocol', 'tewfai');
+
+  o = section.option(
+    form.ListValue,
+    'tewfai_morph_profile',
+    _('Morph Profile'),
+  );
+  o.value('auto', _('Auto / Adaptive Transformer'));
+  o.value('browsing', 'Browsing');
+  o.value('video', 'Video');
+  o.value('webrtc', 'WebRTC');
+  o.value('bulk', 'Bulk');
+  o.default = 'auto';
   o.rmempty = true;
   o.modalonly = true;
   o.depends('protocol', 'tewfai');

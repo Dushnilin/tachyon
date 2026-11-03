@@ -3245,10 +3245,12 @@ function normalize_desync_preset_value(val) {
         return "";
     if (val == "auto" || val == "adaptive" || val == "smart")
         return "auto";
-    if (val == "fake_split" || val == "fakesplit" || val == "fake+split")
+    if (val == "fake_split" || val == "fakesplit" || val == "fake+split" || val == "fakedsplit" || val == "faked_split")
         return "fake_split";
     if (val == "fake_disorder" || val == "fakedisorder" || val == "fake+disorder")
         return "fake_disorder";
+    if (val == "multi_disorder" || val == "multidisorder" || val == "multi+disorder" || val == "fakeddisorder" || val == "faked_disorder")
+        return "multi_disorder";
     if (val == "multi_split" || val == "multisplit" || val == "multi+split")
         return "multi_split";
     if (val == "tlsrec" || val == "tls_rec")
@@ -3274,10 +3276,12 @@ function normalize_desync_mode_value(val) {
         return "";
     if (val == "auto" || val == "adaptive" || val == "smart")
         return "auto";
-    if (val == "fake_split" || val == "fakesplit" || val == "fake+split")
+    if (val == "fake_split" || val == "fakesplit" || val == "fake+split" || val == "fakedsplit" || val == "faked_split")
         return "fake_split";
-    if (val == "fake_disorder" || val == "fakedisorder" || val == "fake+disorder" || val == "multidisorder")
+    if (val == "fake_disorder" || val == "fakedisorder" || val == "fake+disorder")
         return "fake_disorder";
+    if (val == "multi_disorder" || val == "multidisorder" || val == "multi+disorder" || val == "fakeddisorder" || val == "faked_disorder")
+        return "multi_disorder";
     if (val == "multi_split" || val == "multisplit" || val == "multi+split")
         return "multi_split";
     if (val == "tlsrec" || val == "tls_rec")
@@ -3291,25 +3295,73 @@ function normalize_desync_fooling_value(val) {
     val = lc(trim(as_string(val)));
     if (val == "")
         return "";
-    if (val == "ts" || val == "timestamp")
+    if (val == "md5" || val == "tcp_md5" || val == "wrong-md5" || val == "wrong_md5")
+        return "md5";
+    if (val == "ts" || val == "tcp_ts" || val == "timestamp" || val == "wrong-timestamp" || val == "wrong_timestamp")
         return "timestamp";
-    if (val in ["md5", "autottl", "badseq", "badsum"])
-        return val;
+    if (val == "badseq" || val == "seq" || val == "wrong-sequence" || val == "wrong_sequence")
+        return "badseq";
+    if (val == "badack" || val == "ack" || val == "tcp_ack" || val == "wrong-ack" || val == "wrong_ack")
+        return "badack";
+    if (val == "badsum" || val == "sum" || val == "wrong-checksum" || val == "wrong_checksum")
+        return "badsum";
+    if (val == "autottl" || val == "auto_ttl" || val == "ttl" || val == "low-ttl" || val == "low_ttl")
+        return "autottl";
+    if (val == "hopbyhop" || val == "ip6_hopbyhop" || val == "hopbyhop2" || val == "ip6_hopbyhop2" || val == "destopt" || val == "ip6_destopt")
+        return "hopbyhop";
+    if (val == "badseq_badack_badsum" || val == "combo" || val == "badsum_combo")
+        return "badseq_badack_badsum";
+    if (val == "md5_badack" || val == "tcp_md5_badack" || val == "md5+badack")
+        return "md5_badack";
+    if (val == "datanoack" || val == "data_no_ack" || val == "noack")
+        return "datanoack";
     return "";
 }
 
-function normalize_desync_split_pos_value(val) {
+function normalize_desync_single_split_pos_value(val) {
     val = lc(trim(as_string(val)));
     if (val == "midsld" || val == "sld" || val == "host")
         return "midsld";
+    if (val == "midsld-2" || val == "sld-2")
+        return "midsld-2";
+    if (val == "midsld+2" || val == "sld+2")
+        return "midsld+2";
     if (val == "sni" || val == "sniext")
         return "sni";
+    if (val == "sniext+1" || val == "sni+1")
+        return "sniext+1";
+    if (val == "host+1")
+        return "host+1";
+    if (val == "endhost-1" || val == "endsld-1" || val == "endhost")
+        return "endhost-1";
+    if (val == "extlen")
+        return "extlen";
     if (val != "" && match(val, /^[0-9]+$/)) {
         let n = int(val, 10);
         if (n >= 1 && n <= 1400)
             return n;
     }
     return null;
+}
+
+function normalize_desync_split_pos_value(val) {
+    val = trim(as_string(val));
+    if (val == "")
+        return null;
+    if (index(val, ",") >= 0) {
+        let arr = [];
+        for (let part in split(val, ",")) {
+            let item = normalize_desync_single_split_pos_value(part);
+            if (item != null)
+                push(arr, item);
+        }
+        if (length(arr) == 1)
+            return arr[0];
+        if (length(arr) > 1)
+            return arr;
+        return null;
+    }
+    return normalize_desync_single_split_pos_value(val);
 }
 
 function apply_desync_opts_string(outbound, opts_str) {
@@ -3323,6 +3375,10 @@ function apply_desync_opts_string(outbound, opts_str) {
         let k = lc(trim(substr(token, 0, eq)));
         if (substr(k, 0, 2) == "--")
             k = replace(substr(k, 2), /-/g, "_");
+        if (substr(k, 0, 11) == "dpi_desync_")
+            k = substr(k, 11);
+        else if (k == "dpi_desync")
+            k = "mode";
         let v = trim(substr(token, eq + 1));
         if (v == "")
             continue;
@@ -3340,11 +3396,26 @@ function apply_desync_opts_string(outbound, opts_str) {
                 outbound.fooling = nf;
         } else if (k == "auto_tune") {
             outbound.auto_tune = is_true(v);
+        } else if (k == "tlsrec_first") {
+            outbound.tlsrec_first = is_true(v);
         } else if (k == "split_pos") {
             let nsp = normalize_desync_split_pos_value(v);
             if (nsp != null)
                 outbound.split_pos = nsp;
-        } else if (k == "fake_ttl") {
+        } else if (k == "seqovl" || k == "split_seqovl") {
+            if (match(v, /^[0-9]+$/))
+                outbound.seqovl = int(v, 10);
+        } else if (k == "syndata") {
+            outbound.syndata = is_true(v);
+        } else if (k == "wsize") {
+            if (match(v, /^[0-9]+$/))
+                outbound.wsize = int(v, 10);
+        } else if (k == "ipfrag") {
+            outbound.ipfrag = is_true(v);
+        } else if (k == "udplen") {
+            if (match(v, /^[0-9]+$/))
+                outbound.udplen = int(v, 10);
+        } else if (k == "fake_ttl" || k == "ttl") {
             if (match(v, /^[0-9]+$/))
                 outbound.fake_ttl = int(v, 10);
         } else if (k == "fake_sni") {
@@ -3387,11 +3458,26 @@ function add_desync_outbound(config, section) {
     let auto_tune_raw = trim(option(section, "desync_auto_tune", ""));
     if (auto_tune_raw != "")
         outbound.auto_tune = bool_option(section, "desync_auto_tune", false);
+    if (bool_option(section, "desync_tlsrec_first", false))
+        outbound.tlsrec_first = true;
     if (lc(raw_preset) == "discord" && !bool_option(section, "desync_udp_fake", false))
         outbound.udp_fake = true;
     let split_pos = normalize_desync_split_pos_value(option(section, "desync_split_pos", ""));
     if (split_pos != null)
         outbound.split_pos = split_pos;
+    let seqovl = int_option(section, "desync_seqovl", "0");
+    if (seqovl > 0)
+        outbound.seqovl = seqovl;
+    if (bool_option(section, "desync_syndata", false))
+        outbound.syndata = true;
+    let wsize = int_option(section, "desync_wsize", "0");
+    if (wsize > 0)
+        outbound.wsize = wsize;
+    if (bool_option(section, "desync_ipfrag", false))
+        outbound.ipfrag = true;
+    let udplen = int_option(section, "desync_udplen", "0");
+    if (udplen > 0)
+        outbound.udplen = udplen;
     let fake_ttl = int_option(section, "desync_fake_ttl", "0");
     if (fake_ttl > 0)
         outbound.fake_ttl = fake_ttl;
@@ -3459,10 +3545,11 @@ function add_tewfai_outbound(config, section) {
     if (length(tr_list) > 0)
         outbound.transport = tr_list;
     let cipher = option(section, "tewfai_inner_cipher", "");
-    if (cipher == "aes-256-gcm" || cipher == "none")
+    if (cipher == "aes-256-gcm" || cipher == "none" || cipher == "null")
         outbound.inner_cipher = cipher;
     let morph = option(section, "tewfai_morph_profile", "");
-    if (morph == "browsing" || morph == "video" || morph == "webrtc" || morph == "bulk")
+    if (morph == "auto" || morph == "adaptive" || morph == "transformer" ||
+        morph == "browsing" || morph == "video" || morph == "webrtc" || morph == "bulk")
         outbound.morph_profile = morph;
     let max_streams = int_option(section, "tewfai_max_streams", "0");
     if (max_streams > 0) outbound.max_streams = max_streams;
@@ -3470,10 +3557,18 @@ function add_tewfai_outbound(config, section) {
     if (mtu > 0) outbound.mtu = mtu;
     if (bool_option(section, "tewfai_pqc_enabled", false))
         outbound.pqc = true;
-    if (bool_option(section, "tewfai_handover_enabled", false))
-        outbound.handover = { enabled: true };
+    let rotate_secs = int_option(section, "tewfai_rotate_secs", "0");
+    let rotate_mb = int_option(section, "tewfai_rotate_mb", "0");
+    if (bool_option(section, "tewfai_handover_enabled", false) || rotate_secs > 0 || rotate_mb > 0) {
+        let ho = { enabled: bool_option(section, "tewfai_handover_enabled", true) };
+        if (rotate_secs > 0) ho.rotate_secs = rotate_secs;
+        if (rotate_mb > 0) ho.rotate_mb = rotate_mb;
+        outbound.handover = ho;
+    }
     if (bool_option(section, "tewfai_fec_enabled", false))
         outbound.fec = true;
+    if (bool_option(section, "tewfai_desync_enabled", false))
+        outbound.desync = true;
     if (bool_option(section, "tewfai_shaper_enabled", false)) {
         let sp = option(section, "tewfai_shaper_profile", "adaptive");
         let mode = (sp == "fixed" || sp == "off") ? sp : "adaptive";

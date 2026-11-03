@@ -1367,8 +1367,10 @@ function prepare_server_defaults(section) {
         if (cur_tr == "" || cur_tr == "auto")
             server_set_option(section, "tewfai_inbound_transport", "tcp");
         let cur_cipher = uci_get(config_path(section, "tewfai_inner_cipher"));
-        if (cur_cipher != "" && cur_cipher != "aes-256-gcm" && cur_cipher != "none")
+        if (cur_cipher != "" && cur_cipher != "aes-256-gcm" && cur_cipher != "none" && cur_cipher != "null")
             server_set_option(section, "tewfai_inner_cipher", "aes-256-gcm");
+        if (uci_get(config_path(section, "tewfai_morph_profile")) == "")
+            server_default_set_option(section, "tewfai_morph_profile", "auto");
     }
     if (protocol == "masque") {
         server_default_set_option(section, "masque_ipv4_pool", "172.16.0.0/24");

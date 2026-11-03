@@ -528,14 +528,25 @@ function serialize_tewfai(outbound) {
     add_query(params, "morph_profile", outbound.morph_profile);
     if (outbound.pqc === true || (type(outbound.pqc) == "object" && outbound.pqc.enabled === true))
         add_query(params, "pqc", "1");
-    if (outbound.handover === true || (type(outbound.handover) == "object" && outbound.handover.enabled === true))
+    if (outbound.handover === true || (type(outbound.handover) == "object" && outbound.handover.enabled !== false)) {
         add_query(params, "handover", "1");
+        if (type(outbound.handover) == "object") {
+            if (int(outbound.handover.rotate_secs || 0) > 0)
+                add_query(params, "rotate_secs", as_string(outbound.handover.rotate_secs));
+            if (int(outbound.handover.rotate_mb || 0) > 0)
+                add_query(params, "rotate_mb", as_string(outbound.handover.rotate_mb));
+        }
+    }
     if (outbound.fec === true || (type(outbound.fec) == "object" && outbound.fec.enabled === true))
         add_query(params, "fec", "1");
+    if (outbound.desync === true || (type(outbound.desync) == "object" && outbound.desync.enabled === true))
+        add_query(params, "desync", "1");
     if (type(outbound.shaper) == "object" && (outbound.shaper.enabled === true || outbound.shaper.mode != null)) {
         add_query(params, "shaper", "1");
         add_query(params, "shaper_profile", outbound.shaper.mode || outbound.shaper.profile);
     }
+    if (int(outbound.mtu || 0) > 0)
+        add_query(params, "mtu", as_string(outbound.mtu));
     return "tewfai://" + userinfo + "@" +
         host_port(outbound.server, outbound.server_port) + query_string(params) + fragment(outbound);
 }

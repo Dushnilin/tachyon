@@ -2130,7 +2130,8 @@ function cleanup_modular_entities_v1(ctx) {
         let sig_parts = [];
         for (let dk in [
             "desync_preset", "desync_mode", "desync_fooling", "desync_auto_tune",
-            "desync_split_pos", "desync_fake_ttl",
+            "desync_tlsrec_first", "desync_split_pos", "desync_seqovl", "desync_syndata",
+            "desync_wsize", "desync_ipfrag", "desync_udplen", "desync_fake_ttl",
             "desync_fake_sni", "desync_repeats", "desync_split_delay_ms",
             "desync_udp_fake", "desync_udp_repeats", "desync_udp_fake_ttl", "desync_opts"
         ]) {

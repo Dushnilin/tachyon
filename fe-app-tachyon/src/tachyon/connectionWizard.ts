@@ -1328,9 +1328,9 @@ export function openConnectionWizardModal(
 
   // Desync / DPI state
   let dpiEngineType: 'desync' | 'zapret2' | 'zapret' | 'byedpi' = 'desync';
-  let desyncPresetKey = 'fake_split';
-  let desyncMode = 'fake_split';
-  let desyncSplitPos = 'sni';
+  let desyncPresetKey = 'auto';
+  let desyncMode = 'fake_disorder';
+  let desyncSplitPos = 'midsld';
   let desyncFakeTtl = '6';
   let desyncFakeSni = 'www.google.com';
   const desyncUdpFake = true;
@@ -1395,7 +1395,8 @@ export function openConnectionWizardModal(
   // TewFai
   let tewfaiTransports = 'quic, h3_datagram, h2, tcp';
   let tewfaiInnerCipher = '';
-  let tewfaiMorphProfile = 'browsing';
+  let tewfaiMorphProfile = 'auto';
+  let tewfaiDesync = false;
 
   // ShadowTLS
   let shadowtlsVersion = '3';
@@ -2438,10 +2439,38 @@ export function openConnectionWizardModal(
       if (dpiEngineType === 'desync') {
         const presetOptions = [
           {
+            id: 'auto',
+            label: tr(
+              'Auto — адаптивный подбор стратегии (рекомендуется)',
+              'Auto — adaptive strategy selection (recommended)',
+            ),
+          },
+          {
+            id: 'fake_disorder',
+            label: tr(
+              'Fake + Disorder (фейк + обратный порядок сегментов)',
+              'Fake + Disorder (fake + out-of-order TCP segments)',
+            ),
+          },
+          {
+            id: 'multi_disorder',
+            label: tr(
+              'Multi-Disorder (несколько разрезов в обратном порядке)',
+              'Multi-Disorder (multi-cut reverse TCP segments)',
+            ),
+          },
+          {
             id: 'fake_split',
             label: tr(
-              'Fake + Split по SNI (рекомендуется для большинства ТСПУ)',
-              'Fake + Split at SNI (recommended for most ISPs)',
+              'Fake + Split по SNI (фейк + разрез на 2 сегмента)',
+              'Fake + Split at SNI (fake + 2 TCP segments)',
+            ),
+          },
+          {
+            id: 'multi_split',
+            label: tr(
+              'Multi-Split (разбиение на несколько мелких сегментов)',
+              'Multi-Split (multiple small TCP segments)',
             ),
           },
           {
@@ -2454,8 +2483,8 @@ export function openConnectionWizardModal(
           {
             id: 'disorder',
             label: tr(
-              'Disorder (отправка сегментов в обратном порядке с фейком)',
-              'Disorder (out-of-order TCP segments with fake)',
+              'Disorder (отправка сегментов в обратном порядке без fake)',
+              'Disorder (out-of-order TCP segments without fake)',
             ),
           },
           {
@@ -2468,8 +2497,8 @@ export function openConnectionWizardModal(
           {
             id: 'fake',
             label: tr(
-              'Fake ClientHello с малым TTL',
-              'Fake ClientHello with low TTL',
+              'Fake ClientHello с малым TTL / Fooling',
+              'Fake ClientHello with low TTL / Fooling',
             ),
           },
           {
@@ -2477,13 +2506,6 @@ export function openConnectionWizardModal(
             label: tr(
               'TCP Out-of-Band (URG-байт посреди SNI)',
               'TCP Out-of-Band (URG byte at SNI)',
-            ),
-          },
-          {
-            id: 'auto',
-            label: tr(
-              'Auto — каскадный перебор стратегий',
-              'Auto — automatic strategy fallback',
             ),
           },
           {
@@ -2542,7 +2564,10 @@ export function openConnectionWizardModal(
                       },
                     } as any,
                     [
+                      ['fake_disorder', 'Fake + Disorder'],
+                      ['multi_disorder', 'Multi-Disorder'],
                       ['fake_split', 'Fake + Split'],
+                      ['multi_split', 'Multi-Split'],
                       ['tlsrec', 'TLS Record Split'],
                       ['disorder', 'Disorder'],
                       ['split', 'TCP Split'],
@@ -2575,7 +2600,22 @@ export function openConnectionWizardModal(
                       },
                     } as any,
                     [
-                      ['sni', 'SNI (середина домена)'],
+                      ['midsld', 'midsld (середина домена 2-го уровня)'],
+                      ['sni', 'sni (начало SNI / Host)'],
+                      ['sniext+1', 'sniext+1 (начало расширения SNI + 1)'],
+                      ['host+1', 'host+1 (после первого символа хоста)'],
+                      ['midsld-2', 'midsld-2 (до середины домена)'],
+                      ['midsld+2', 'midsld+2 (после середины домена)'],
+                      ['endhost-1', 'endhost-1 (перед концом домена)'],
+                      ['extlen', 'extlen (поле длины расширений TLS)'],
+                      [
+                        '1,midsld',
+                        '1,midsld (мульти-разрез: байт 1 + середина домена)',
+                      ],
+                      [
+                        '1,sniext+1,midsld',
+                        '1,sniext+1,midsld (3 разреза: байт 1 + SNI ext + середина)',
+                      ],
                       ['1', 'Байт 1'],
                       ['2', 'Байт 2'],
                       ['3', 'Байт 3'],
@@ -3903,11 +3943,18 @@ export function openConnectionWizardModal(
                   },
                 } as any,
                 [
+                  [
+                    'auto',
+                    tr(
+                      'Авто / Адаптивный трансформер (Auto Transformer)',
+                      'Auto / Adaptive Transformer',
+                    ),
+                  ],
                   ['browsing', 'Web Browsing (HTTP/3 burst)'],
                   ['video', 'Video Streaming'],
                   ['webrtc', 'WebRTC Call'],
                   ['bulk', 'Bulk Transfer'],
-                  ['', tr('Без шейпинга', 'Disabled')],
+                  ['', tr('По умолчанию', 'Default')],
                 ].map(([val, lbl]) =>
                   E(
                     'option',
@@ -3920,6 +3967,23 @@ export function openConnectionWizardModal(
                 ),
               ),
             ]),
+          ]),
+          E('label', { class: 'tachyon-wizard__toggle-row' }, [
+            E('input', {
+              type: 'checkbox',
+              checked: tewfaiDesync ? true : undefined,
+              change: (ev: Event) => {
+                tewfaiDesync = (ev.target as HTMLInputElement).checked;
+              },
+            } as any),
+            E(
+              'span',
+              {},
+              tr(
+                'TCP-десинк первого полёта (First-Flight ClientHello Split)',
+                'TCP First-Flight Desync (ClientHello Split)',
+              ),
+            ),
           ]),
         );
       } else if (customProto === 'shadowtls') {
@@ -6488,6 +6552,14 @@ export function openConnectionWizardModal(
               tewfaiMorphProfile,
             );
           }
+          if (tewfaiDesync) {
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              'tewfai_desync_enabled',
+              '1',
+            );
+          }
         } else if (customProto === 'shadowtls') {
           uciObj.set(
             TACHYON_UCI_PACKAGE,
@@ -7365,6 +7437,7 @@ export function openConnectionWizardModal(
         'tewfai_inner_cipher',
         'aes-256-gcm',
       );
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tewfai_morph_profile', 'auto');
       uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tewfai_pqc_enabled', '1');
       uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tewfai_handover_enabled', '1');
       uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tewfai_fec_enabled', '0');

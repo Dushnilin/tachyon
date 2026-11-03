@@ -257,13 +257,16 @@ function build(s, fallback_host, pin) {
             push(transports, "tcp");
         if (length(transports) > 0) params.transport = join(",", transports);
         if (s.tewfai_inner_cipher) params.inner_cipher = s.tewfai_inner_cipher;
+        if (s.tewfai_morph_profile) params.morph_profile = s.tewfai_morph_profile;
         if (common.bool_value(s.tewfai_pqc_enabled)) params.pqc = "1";
         if (common.bool_value(s.tewfai_handover_enabled)) params.handover = "1";
         if (common.bool_value(s.tewfai_fec_enabled)) params.fec = "1";
+        if (common.bool_value(s.tewfai_desync_enabled)) params.desync = "1";
         if (common.bool_value(s.tewfai_shaper_enabled)) {
             params.shaper = "1";
             if (s.tewfai_shaper_profile) params.shaper_profile = s.tewfai_shaper_profile;
         }
+        if (s.tewfai_mtu) params.mtu = s.tewfai_mtu;
         return "tewfai://" + cred + "@" + uri_host(address) + ":" + port + query(params) + "#" + encode(user.name);
     }
     if (protocol == "masque") {

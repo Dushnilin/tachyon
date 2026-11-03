@@ -5205,11 +5205,22 @@ function createOutboundsContent(section) {
     _('Morph Profile'),
   );
   o.modalonly = true;
-  o.value('', _('None (Default)'));
+  o.value('', _('Auto / Adaptive Transformer (Default)'));
+  o.value('auto', _('Auto / Adaptive Transformer'));
   o.value('browsing', 'Browsing');
   o.value('video', 'Video');
   o.value('webrtc', 'WebRTC');
   o.value('bulk', 'Bulk');
+  o.depends('source_type', 'tewfai');
+
+  o = section.taboption(
+    'general',
+    form.Flag,
+    'tewfai_desync_enabled',
+    _('TCP Desync (First-Flight ClientHello Split)'),
+  );
+  o.modalonly = true;
+  o.default = '0';
   o.depends('source_type', 'tewfai');
 
   // ── 9. Network Interface / Tailscale / Tor / JSON ─────────────────────────
@@ -5554,6 +5565,10 @@ function createOutboundsContent(section) {
     'fake_disorder',
     _('Fake + Disorder (RAW Fake + Out-of-order MidSLD)'),
   );
+  o.value(
+    'multi_disorder',
+    _('Multi-Disorder (TLSRec + Fake + 3-way Out-of-order Split)'),
+  );
   o.value('multi_split', _('Multi-Split (3-way TLS Record + SNI + MidSLD)'));
   o.value('tlsrec', _('TLS Record Fragmentation (tlsrec, midsld)'));
   o.value('disorder', _('Disorder (Out-of-order TCP Split)'));
@@ -5573,6 +5588,10 @@ function createOutboundsContent(section) {
   o.default = 'fake_split';
   o.value('fake_split', 'fake_split (Fake + Split)');
   o.value('fake_disorder', 'fake_disorder (Fake + Out-of-order Split)');
+  o.value(
+    'multi_disorder',
+    'multi_disorder (TLSRec + Fake + 3-way Out-of-order Split)',
+  );
   o.value('multi_split', 'multi_split (3-way TLS Record + SNI + MidSLD)');
   o.value('tlsrec', 'tlsrec (TLS Record Fragmentation)');
   o.value('disorder', 'disorder (Out-of-order TCP Split)');
@@ -5594,14 +5613,23 @@ function createOutboundsContent(section) {
   o.default = '';
   o.value('', _('Default (TCP MD5 / Auto)'));
   o.value('md5', _('TCP MD5 Signature (Option 19 via TCP_REPAIR)'));
+  o.value('md5_badack', _('TCP MD5 + BadAck + TS-Up (Valid Checksum Combo)'));
+  o.value('badack', _('Out-of-window TCP ACK + TS-Up (badack)'));
+  o.value('datanoack', _('TCP Data Without ACK Flag + MD5 (datanoack)'));
   o.value('autottl', _('Auto-TTL (Calculated from kernel RTT hops)'));
   o.value('timestamp', _('TCP Timestamp PAWS (Backdated TSval)'));
   o.value('badseq', _('Out-of-window TCP Sequence (badseq)'));
   o.value('badsum', _('Invalid TCP Checksum (badsum)'));
+  o.value(
+    'badseq_badack_badsum',
+    _('Compound BadSeq + BadAck + TS-Up + BadSum'),
+  );
+  o.value('hopbyhop', _('IPv6 Dual Hop-by-Hop Extension (hopbyhop2)'));
   o.depends({ source_type: 'desync', desync_preset: 'auto' });
   o.depends({ source_type: 'desync', desync_preset: 'custom' });
   o.depends({ source_type: 'desync', desync_preset: 'fake_split' });
   o.depends({ source_type: 'desync', desync_preset: 'fake_disorder' });
+  o.depends({ source_type: 'desync', desync_preset: 'multi_disorder' });
   o.depends({ source_type: 'desync', desync_preset: 'fake' });
 
   o = section.taboption(
@@ -5619,18 +5647,29 @@ function createOutboundsContent(section) {
   o.depends({ source_type: 'desync', desync_preset: 'custom' });
   o.depends({ source_type: 'desync', desync_preset: 'fake_split' });
   o.depends({ source_type: 'desync', desync_preset: 'fake_disorder' });
+  o.depends({ source_type: 'desync', desync_preset: 'multi_disorder' });
 
   o = section.taboption(
     'general',
     form.Value,
     'desync_split_pos',
     _('Split Position'),
-    _('midsld, sni, or byte offset (1..1400)'),
+    _(
+      'midsld, sni, sniext+1, host+1, endhost-1, extlen, byte offset (1..1400), or comma-separated list (e.g. 1,sniext+1,midsld)',
+    ),
   );
   o.modalonly = true;
   o.placeholder = 'midsld';
   o.value('midsld', _('midsld (Middle of SLD domain)'));
   o.value('sni', _('sni (Start of SNI extension)'));
+  o.value('sniext+1', _('sniext+1 (1 byte into SNI extension)'));
+  o.value('host+1', _('host+1 (1 byte into hostname)'));
+  o.value('midsld-2', _('midsld-2 (2 bytes before MidSLD)'));
+  o.value('midsld+2', _('midsld+2 (2 bytes after MidSLD)'));
+  o.value('endhost-1', _('endhost-1 (1 byte before end of hostname)'));
+  o.value('extlen', _('extlen (TLS extensions length field)'));
+  o.value('1,midsld', _('1,midsld (Byte 1 + MidSLD)'));
+  o.value('1,sniext+1,midsld', _('1,sniext+1,midsld (3-way compound split)'));
   o.value('1', _('1 (Byte 1 after header)'));
   o.value('2', _('2 (Byte 2)'));
   o.value('3', _('3 (Byte 3)'));
@@ -5638,6 +5677,8 @@ function createOutboundsContent(section) {
   o.depends({ source_type: 'desync', desync_preset: 'custom' });
   o.depends({ source_type: 'desync', desync_preset: 'fake_split' });
   o.depends({ source_type: 'desync', desync_preset: 'fake_disorder' });
+  o.depends({ source_type: 'desync', desync_preset: 'multi_disorder' });
+  o.depends({ source_type: 'desync', desync_preset: 'multi_split' });
   o.depends({ source_type: 'desync', desync_preset: 'split' });
   o.depends({ source_type: 'desync', desync_preset: 'disorder' });
 

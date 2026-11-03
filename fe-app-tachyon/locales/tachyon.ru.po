@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-03 08:22+0300\n"
-"PO-Revision-Date: 2026-11-03 08:22+0300\n"
+"POT-Creation-Date: 2026-11-03 08:56+0300\n"
+"PO-Revision-Date: 2026-11-03 08:56+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -94,6 +94,12 @@ msgstr "0 серверов в кэше"
 
 msgid "1 (Byte 1 after header)"
 msgstr "1 (Байт 1 после заголовка)"
+
+msgid "1,midsld (Byte 1 + MidSLD)"
+msgstr ""
+
+msgid "1,sniext+1,midsld (3-way compound split)"
+msgstr ""
 
 msgid "1-Click Preset Quick Start — paste subscription & launch"
 msgstr "Быстрый старт по пресету — вставьте подписку и всё запустится"
@@ -905,6 +911,12 @@ msgstr "Авто (кооперация с SQM/CAKE)"
 msgid "Auto (from server link)"
 msgstr "Авто (из ссылки сервера)"
 
+msgid "Auto / Adaptive Transformer"
+msgstr "Авто / Адаптивный трансформер (Auto Transformer)"
+
+msgid "Auto / Adaptive Transformer (Default)"
+msgstr ""
+
 msgid "Auto Modes (--auto)"
 msgstr "Авто-режимы (--auto)"
 
@@ -917,8 +929,8 @@ msgstr "Режимы автовыбора"
 msgid "Auto update"
 msgstr "Автообновление"
 
-msgid "Auto — automatic strategy fallback"
-msgstr "Auto — каскадный перебор стратегий"
+msgid "Auto — adaptive strategy selection (recommended)"
+msgstr "Auto — адаптивный подбор стратегии под ТСПУ (рекомендуется)"
 
 msgid "Auto-Heal Network Stack"
 msgstr "Автолечение сетевого стека"
@@ -1837,6 +1849,9 @@ msgstr "Компоненты"
 
 msgid "Composite Boolean Rule (AND / OR / NOT)"
 msgstr "Составное булево правило (И / ИЛИ / НЕ)"
+
+msgid "Compound BadSeq + BadAck + TS-Up + BadSum"
+msgstr ""
 
 msgid "Comprehensive eco mode for low-power MIPS/MIPSEL routers (QCA9531 / MT7628): lower proxy priority (nice 15), nftables ct mark Short-Circuit + connlimit, tighter conntrack limits (600s / 256KB), and Control Plane hibernation under heavy load"
 msgstr "Комплексный эко-режим для слабых MIPS/MIPSEL роутеров (QCA9531 / MT7628): пониженный приоритет прокси (nice 15), ускорение nftables через ct mark Short-Circuit + connlimit, сжатые лимиты conntrack (600с / 256КБ) и гибернация фоновых проверок при нагрузке"
@@ -2789,8 +2804,8 @@ msgstr "Discord (шлюз + голос + CDN)"
 msgid "Disorder (Out-of-order TCP Split)"
 msgstr "Disorder (Отправка сегментов в обратном порядке)"
 
-msgid "Disorder (out-of-order TCP segments with fake)"
-msgstr "Disorder (отправка сегментов в обратном порядке с фейком)"
+msgid "Disorder (out-of-order TCP segments without fake)"
+msgstr "Disorder (отправка сегментов в обратном порядке без fake)"
 
 msgid "Disorder Values (-d)"
 msgstr "Значения Disorder (-d)"
@@ -3734,14 +3749,17 @@ msgstr "Переключения и перезапуски"
 msgid "Fake + Disorder (RAW Fake + Out-of-order MidSLD)"
 msgstr "Fake + Disorder (RAW-фейк + обратный порядок MidSLD)"
 
+msgid "Fake + Disorder (fake + out-of-order TCP segments)"
+msgstr "Fake + Disorder (фейк + обратный порядок сегментов)"
+
 msgid "Fake + Split (RAW Fake + MidSLD Split)"
 msgstr "Fake + Split (RAW-фейк + разрезание MidSLD)"
 
-msgid "Fake + Split at SNI (recommended for most ISPs)"
-msgstr "Fake + Split по SNI (рекомендуется для большинства ТСПУ)"
+msgid "Fake + Split at SNI (fake + 2 TCP segments)"
+msgstr "Fake + Split по SNI (фейк + разрез на 2 сегмента)"
 
-msgid "Fake ClientHello with low TTL"
-msgstr "Fake ClientHello с малым TTL"
+msgid "Fake ClientHello with low TTL / Fooling"
+msgstr "Fake ClientHello с малым TTL / Fooling"
 
 msgid "Fake Packet Fooling"
 msgstr "Маскировка фейк-пакетов (Fooling)"
@@ -4384,6 +4402,9 @@ msgstr "Только IPv4"
 
 msgid "IPv4 pool (CIDR)"
 msgstr "Пул IPv4 (CIDR)"
+
+msgid "IPv6 Dual Hop-by-Hop Extension (hopbyhop2)"
+msgstr ""
 
 msgid "IPv6 only"
 msgstr "Только IPv6"
@@ -5717,8 +5738,17 @@ msgstr "Вверх"
 msgid "Multi-Connection Selection Mode"
 msgstr "Режим работы нескольких подключений в секции"
 
+msgid "Multi-Disorder (TLSRec + Fake + 3-way Out-of-order Split)"
+msgstr ""
+
+msgid "Multi-Disorder (multi-cut reverse TCP segments)"
+msgstr "Multi-Disorder (несколько разрезов в обратном порядке)"
+
 msgid "Multi-Split (3-way TLS Record + SNI + MidSLD)"
 msgstr "Multi-Split (Тройная нарезка: TLS Record + SNI + MidSLD)"
+
+msgid "Multi-Split (multiple small TCP segments)"
+msgstr "Multi-Split (разбиение на несколько мелких сегментов)"
 
 msgid "Multi-URL Evaluation Strategy"
 msgstr "Стратегия оценки Multi-URL"
@@ -6067,9 +6097,6 @@ msgstr "Непустые включающие категории (Префикс
 
 msgid "None"
 msgstr "Нет"
-
-msgid "None (Default)"
-msgstr "Нет (по умолчанию)"
 
 msgid "None (TLS/QUIC only)"
 msgstr "Нет (только TLS/QUIC)"
@@ -6466,6 +6493,9 @@ msgstr "Другое"
 
 msgid "Other peers"
 msgstr "Другие пиры"
+
+msgid "Out-of-window TCP ACK + TS-Up (badack)"
+msgstr ""
 
 msgid "Out-of-window TCP Sequence (badseq)"
 msgstr "Смещение TCP Sequence вне окна (badseq)"
@@ -6961,6 +6991,12 @@ msgstr "Частный MAC (Wi-Fi)"
 
 msgid "Private keys are stored on the router. DNS and command hooks from the file are not applied."
 msgstr "Приватные ключи хранятся на роутере. DNS и команды из файла не применяются."
+
+msgid "Proactive Handover Rotation (MB)"
+msgstr ""
+
+msgid "Proactive Handover Rotation (sec)"
+msgstr ""
 
 msgid "Probe"
 msgstr "Проверить"
@@ -9065,8 +9101,20 @@ msgstr "Время работы системы"
 msgid "TCP"
 msgstr "TCP"
 
+msgid "TCP Data Without ACK Flag + MD5 (datanoack)"
+msgstr ""
+
+msgid "TCP Desync (First-Flight ClientHello Split)"
+msgstr ""
+
+msgid "TCP First-Flight Desync (ClientHello Split)"
+msgstr "TCP-десинк первого полёта (First-Flight ClientHello Split)"
+
 msgid "TCP Fragmentation (Split)"
 msgstr "TCP-фрагментация (Split)"
+
+msgid "TCP MD5 + BadAck + TS-Up (Valid Checksum Combo)"
+msgstr ""
 
 msgid "TCP MD5 Signature (Option 19 via TCP_REPAIR)"
 msgstr "Подпись TCP MD5 (Option 19 через TCP_REPAIR)"
@@ -10811,17 +10859,26 @@ msgstr "Например: youtube.com, discord.com, chatgpt.com, rutracker.org (
 msgid "en"
 msgstr "ru"
 
+msgid "endhost-1 (1 byte before end of hostname)"
+msgstr ""
+
 msgid "endpoints OK"
 msgstr "эндпоинтов доступно"
 
 msgid "extended"
 msgstr "расширенная"
 
+msgid "extlen (TLS extensions length field)"
+msgstr ""
+
 msgid "failed"
 msgstr "с ошибкой"
 
 msgid "gRPC service"
 msgstr "Сервис gRPC"
+
+msgid "host+1 (1 byte into hostname)"
+msgstr ""
 
 msgid "installed"
 msgstr "установлен"
@@ -10835,11 +10892,14 @@ msgstr "lx"
 msgid "midsld (Middle of SLD domain)"
 msgstr "midsld (середина домена второго уровня)"
 
-msgid "midsld, sni, or byte offset (1..1400)"
-msgstr "midsld, sni или смещение в байтах (1..1400)"
+msgid "midsld+2 (2 bytes after MidSLD)"
+msgstr ""
 
-msgid "midsld, sni, or byte offset in ClientHello (1..1400)"
-msgstr "midsld, sni или смещение в байтах в ClientHello (1..1400)"
+msgid "midsld, sni, sniext+1, host+1, endhost-1, extlen, byte offset (1..1400), or comma-separated list (e.g. 1,sniext+1,midsld)"
+msgstr ""
+
+msgid "midsld-2 (2 bytes before MidSLD)"
+msgstr ""
 
 msgid "min/day"
 msgstr "мин/день"
@@ -10888,6 +10948,9 @@ msgstr "сайтов"
 
 msgid "sni (Start of SNI extension)"
 msgstr "sni (начало расширения SNI)"
+
+msgid "sniext+1 (1 byte into SNI extension)"
+msgstr ""
 
 msgid "srv"
 msgstr "серв."
@@ -11092,6 +11155,27 @@ msgstr "● Высокий пинг"
 
 msgid "✓ No subscription needed for this preset — uses built-in Tachyon Core Desync"
 msgstr "✓ Для этого пресета подписка не требуется — используется встроенный Tachyon Core Desync"
+
+msgid "Auto — automatic strategy fallback"
+msgstr "Auto — каскадный перебор стратегий"
+
+msgid "Disorder (out-of-order TCP segments with fake)"
+msgstr "Disorder (отправка сегментов в обратном порядке с фейком)"
+
+msgid "Fake + Split at SNI (recommended for most ISPs)"
+msgstr "Fake + Split по SNI (рекомендуется для большинства ТСПУ)"
+
+msgid "Fake ClientHello with low TTL"
+msgstr "Fake ClientHello с малым TTL"
+
+msgid "None (Default)"
+msgstr "Нет (по умолчанию)"
+
+msgid "midsld, sni, or byte offset (1..1400)"
+msgstr "midsld, sni или смещение в байтах (1..1400)"
+
+msgid "midsld, sni, or byte offset in ClientHello (1..1400)"
+msgstr "midsld, sni или смещение в байтах в ClientHello (1..1400)"
 
 msgid "Host your own VPN/proxy server on this router (VLESS Reality, AmneziaWG, Hysteria2, TUIC, TewFai, AnyTLS, etc.) with 1-click key generation and QR codes."
 msgstr "Поднять свой собственный VPN/прокси-сервер на роутере (VLESS Reality, AmneziaWG, Hysteria2, TUIC, TewFai, AnyTLS и др.) с автогенерацией ключей и QR-кодом."

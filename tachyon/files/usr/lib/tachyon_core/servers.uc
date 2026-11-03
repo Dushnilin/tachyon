@@ -477,8 +477,12 @@ function add_standard_inbound(config, section, protocol, tag_name) {
         if (tr == "quic")
             inbound.quic = { enabled: true };
         let cipher = lc(trim(as_string(option(section, "tewfai_inner_cipher", ""))));
-        if (cipher == "aes-256-gcm" || cipher == "none")
+        if (cipher == "aes-256-gcm" || cipher == "none" || cipher == "null")
             inbound.inner_cipher = cipher;
+        let morph = lc(trim(as_string(option(section, "tewfai_morph_profile", ""))));
+        if (morph == "auto" || morph == "adaptive" || morph == "transformer" ||
+            morph == "browsing" || morph == "video" || morph == "webrtc" || morph == "bulk")
+            inbound.morph_profile = morph;
         let max_streams = int_option(section, "tewfai_max_streams", "0");
         if (max_streams > 0)
             inbound.max_streams = max_streams;

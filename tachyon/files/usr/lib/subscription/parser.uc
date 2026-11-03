@@ -1939,22 +1939,34 @@ function process_tewfai(raw, url) {
             outbound.transport = tr_list;
     }
     let cipher = as_string(url.query.inner_cipher || "");
-    if (cipher == "aes-256-gcm" || cipher == "none")
+    if (cipher == "aes-256-gcm" || cipher == "none" || cipher == "null")
         outbound.inner_cipher = cipher;
     let morph = as_string(url.query.morph_profile || "");
-    if (morph == "browsing" || morph == "video" || morph == "webrtc" || morph == "bulk")
+    if (morph == "auto" || morph == "adaptive" || morph == "transformer" ||
+        morph == "browsing" || morph == "video" || morph == "webrtc" || morph == "bulk")
         outbound.morph_profile = morph;
     if (is_true(url.query.pqc))
         outbound.pqc = true;
-    if (is_true(url.query.handover))
-        outbound.handover = { enabled: true };
+    let rot_s = int(url.query.rotate_secs || 0);
+    let rot_mb = int(url.query.rotate_mb || 0);
+    if (is_true(url.query.handover) || rot_s > 0 || rot_mb > 0) {
+        let ho = { enabled: true };
+        if (rot_s > 0) ho.rotate_secs = rot_s;
+        if (rot_mb > 0) ho.rotate_mb = rot_mb;
+        outbound.handover = ho;
+    }
     if (is_true(url.query.fec))
         outbound.fec = true;
+    if (is_true(url.query.desync))
+        outbound.desync = true;
     if (is_true(url.query.shaper)) {
         let sp = as_string(url.query.shaper_profile || "adaptive");
         let mode = (sp == "fixed" || sp == "off") ? sp : "adaptive";
         outbound.shaper = { mode };
     }
+    let mtu = int(url.query.mtu || 0);
+    if (mtu >= 256)
+        outbound.mtu = mtu;
 
     let tls_result = add_tls(url, url.query.security || "", true);
     if (!tls_result[1])
@@ -2730,6 +2742,14 @@ function parse_clash_record(record) {
             outbound.inner_cipher = as_string(record["inner-cipher"] || record.inner_cipher);
         if (as_string(record["morph-profile"] || record.morph_profile || "") != "")
             outbound.morph_profile = as_string(record["morph-profile"] || record.morph_profile);
+        if (is_true(record.pqc))
+            outbound.pqc = true;
+        if (is_true(record.fec))
+            outbound.fec = true;
+        if (is_true(record.desync))
+            outbound.desync = true;
+        if (is_true(record.handover))
+            outbound.handover = { enabled: true };
         options.always = true;
         add_clash_tls(outbound, options);
         return outbound;
