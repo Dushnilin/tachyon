@@ -107,7 +107,7 @@ function renderStatusBadge(
       'span',
       {
         style:
-          'display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: rgba(99, 102, 241, 0.18); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.35);',
+          'display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; background: rgba(99, 102, 241, 0.18); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.35);',
       },
       _('Testing...'),
     );
@@ -124,7 +124,7 @@ function renderStatusBadge(
       'span',
       {
         style:
-          'display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 11px; padding: 3px 9px; border-radius: 999px; background: rgba(16, 185, 129, 0.16); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.35);',
+          'display: inline-flex; align-items: center; justify-content: center; font-weight: 600; font-size: 11px; padding: 3px 9px; border-radius: 999px; background: rgba(16, 185, 129, 0.16); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.35);',
       },
       _('Available'),
     );
@@ -292,7 +292,7 @@ export function renderServiceCheckModal() {
           'b',
           {
             style:
-              'font-size: 20px; font-weight: 800; display: block; margin-top: 4px; color: var(--tachyon-text-main, inherit);',
+              'font-size: 20px; font-weight: 600; display: block; margin-top: 4px; color: var(--tachyon-text-main, inherit);',
           },
           `${targets.length}`,
         );
@@ -300,7 +300,7 @@ export function renderServiceCheckModal() {
           'b',
           {
             style:
-              'font-size: 20px; font-weight: 800; color: #10b981; display: block; margin-top: 4px;',
+              'font-size: 20px; font-weight: 600; color: #10b981; display: block; margin-top: 4px;',
           },
           '0',
         );
@@ -308,7 +308,7 @@ export function renderServiceCheckModal() {
           'b',
           {
             style:
-              'font-size: 20px; font-weight: 800; color: #ef4444; display: block; margin-top: 4px;',
+              'font-size: 20px; font-weight: 600; color: #ef4444; display: block; margin-top: 4px;',
           },
           '0',
         );
@@ -316,7 +316,7 @@ export function renderServiceCheckModal() {
           'b',
           {
             style:
-              'font-size: 20px; font-weight: 800; color: #38bdf8; display: block; margin-top: 4px;',
+              'font-size: 20px; font-weight: 600; color: #38bdf8; display: block; margin-top: 4px;',
           },
           '-',
         );
@@ -337,7 +337,7 @@ export function renderServiceCheckModal() {
                 'small',
                 {
                   style:
-                    'display: block; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--tachyon-text-muted, #94a3b8);',
+                    'display: block; font-size: 10.5px; font-weight: 600; letter-spacing: 0.05em; color: var(--tachyon-text-muted, #94a3b8);',
                 },
                 title,
               ),
@@ -377,7 +377,7 @@ export function renderServiceCheckModal() {
 
         const progressBarInner = E('div', {
           style:
-            'width: 0%; height: 100%; background: linear-gradient(90deg, #6366f1, #10b981); transition: width 0.2s ease;',
+            'width: 0%; height: 100%; background: var(--tachyon-accent, #5b8af0); transition: width 0.2s cubic-bezier(0.22, 1, 0.36, 1);',
         });
         const progressBarContainer = E(
           'div',

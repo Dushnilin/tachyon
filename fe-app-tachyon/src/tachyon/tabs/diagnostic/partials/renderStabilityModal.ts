@@ -165,7 +165,7 @@ export async function renderStabilityModal(): Promise<void> {
             {
               class: `label ${badgeClass}`,
               style:
-                'font-size: 13px; font-weight: 700; padding: 6px 12px; border-radius: 6px; white-space: nowrap; display: inline-flex; align-items: center; line-height: 1.2; letter-spacing: 0.3px;',
+                'font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: 6px; white-space: nowrap; display: inline-flex; align-items: center; line-height: 1.2; letter-spacing: 0.3px;',
             },
             `${score}% ${grade.toUpperCase()}`,
           ),
@@ -176,7 +176,7 @@ export async function renderStabilityModal(): Promise<void> {
               E(
                 'div',
                 {
-                  style: 'font-weight: 700; font-size: 14px; line-height: 1.2;',
+                  style: 'font-weight: 600; font-size: 14px; line-height: 1.2;',
                 },
                 _('System Stability Index'),
               ),
@@ -209,7 +209,7 @@ export async function renderStabilityModal(): Promise<void> {
                   'div',
                   {
                     style:
-                      'font-weight: 700; font-size: 13px; line-height: 1.2;',
+                      'font-weight: 600; font-size: 13px; line-height: 1.2;',
                   },
                   `${healthyServers} / ${totalServers} ${_('Nodes OK')}`,
                 ),
@@ -376,9 +376,9 @@ export async function renderStabilityModal(): Promise<void> {
           );
 
     const thLeftStyle =
-      'text-align: left !important; padding: 8px 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-color-medium, #666); border-bottom: 1px solid var(--border-color-medium, rgba(128,128,128,0.2)); background: var(--background-color-high, rgba(128,128,128,0.04)); white-space: nowrap;';
+      'text-align: left !important; padding: 8px 12px; font-size: 11px; font-weight: 600; letter-spacing: 0.4px; color: var(--text-color-medium, #666); border-bottom: 1px solid var(--border-color-medium, rgba(128,128,128,0.2)); background: var(--background-color-high, rgba(128,128,128,0.04)); white-space: nowrap;';
     const thRightStyle =
-      'text-align: right !important; padding: 8px 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-color-medium, #666); border-bottom: 1px solid var(--border-color-medium, rgba(128,128,128,0.2)); background: var(--background-color-high, rgba(128,128,128,0.04)); white-space: nowrap;';
+      'text-align: right !important; padding: 8px 12px; font-size: 11px; font-weight: 600; letter-spacing: 0.4px; color: var(--text-color-medium, #666); border-bottom: 1px solid var(--border-color-medium, rgba(128,128,128,0.2)); background: var(--background-color-high, rgba(128,128,128,0.04)); white-space: nowrap;';
     const tdLeftStyle =
       'text-align: left !important; padding: 9px 12px; vertical-align: middle; border-bottom: 1px solid var(--border-color-low, rgba(128,128,128,0.1));';
     const tdRightStyle =
@@ -491,7 +491,7 @@ export async function renderStabilityModal(): Promise<void> {
           {
             class: 'cbi-section-title',
             style:
-              'font-size: 13px; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;',
+              'font-size: 13px; font-weight: 600; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;',
           },
           [_('Managed Daemons Status')],
         ),
@@ -581,7 +581,7 @@ export async function renderStabilityModal(): Promise<void> {
               'div',
               {
                 style:
-                  'font-weight: 700; margin-bottom: 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.3px; color: var(--text-color-medium, #666);',
+                  'font-weight: 600; margin-bottom: 8px; font-size: 12px; letter-spacing: 0.3px; color: var(--text-color-medium, #666);',
               },
               _('Failovers & Restarts'),
             ),
@@ -633,7 +633,7 @@ export async function renderStabilityModal(): Promise<void> {
               'div',
               {
                 style:
-                  'font-weight: 700; margin-bottom: 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.3px; color: var(--text-color-medium, #666);',
+                  'font-weight: 600; margin-bottom: 8px; font-size: 12px; letter-spacing: 0.3px; color: var(--text-color-medium, #666);',
               },
               _('RAM & Resource Pressure'),
             ),
@@ -761,7 +761,7 @@ export async function renderStabilityModal(): Promise<void> {
           'td',
           {
             class: 'cbi-section-table-cell',
-            style: 'font-weight: bold; width: 36px;',
+            style: 'font-weight: 600; width: 36px;',
           },
           `#${index + 1}`,
         ),
@@ -778,7 +778,7 @@ export async function renderStabilityModal(): Promise<void> {
           'td',
           {
             class: 'cbi-section-table-cell',
-            style: 'font-size: 11px; font-weight: bold;',
+            style: 'font-size: 11px; font-weight: 600;',
           },
           server.type,
         ),
@@ -786,7 +786,7 @@ export async function renderStabilityModal(): Promise<void> {
           'td',
           {
             class: 'cbi-section-table-cell',
-            style: `font-weight: bold; color: ${latencyColor};`,
+            style: `font-weight: 600; color: ${latencyColor};`,
           },
           latencyMs > 0 ? `${latencyMs} ms` : '—',
         ),

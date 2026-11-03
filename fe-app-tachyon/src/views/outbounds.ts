@@ -257,7 +257,14 @@ function loadGlobalPoolChoices() {
     const upsertServer = (name, details) => {
       const cleanName = String(name || '').trim();
       if (!cleanName) return;
-      const existing = serverMap.get(cleanName);
+      const prefix = String(details.prefix || '').trim();
+      const mapKey =
+        prefix &&
+        !cleanName.startsWith(`${prefix}: `) &&
+        !cleanName.startsWith(`[${prefix}]`)
+          ? `[${prefix}] ${cleanName}`
+          : cleanName;
+      const existing = serverMap.get(mapKey);
       const proto = String(details.proto || (existing && existing.proto) || '')
         .trim()
         .toLowerCase();
@@ -270,8 +277,8 @@ function loadGlobalPoolChoices() {
       const port = String(
         details.port || (existing && existing.port) || '',
       ).trim();
-      const prefix = String(
-        details.prefix || (existing && existing.prefix) || '',
+      const effPrefix = String(
+        prefix || (existing && existing.prefix) || '',
       ).trim();
       const link = String(
         details.link || (existing && existing.link) || '',
@@ -285,24 +292,25 @@ function loadGlobalPoolChoices() {
         .trim()
         .toUpperCase();
       if (country.length === 2) countrySet.add(country);
-      if (prefix) prefixSet.add(prefix);
+      if (effPrefix) prefixSet.add(effPrefix);
 
       const pUp = proto.toUpperCase();
       const tUp = trans.toUpperCase();
       const badge =
         pUp && tUp && pUp !== tUp ? `${pUp}+${tUp}` : pUp || tUp || '';
-      const label = badge ? `${cleanName} [${badge}]` : cleanName;
+      const label = badge ? `${mapKey} [${badge}]` : mapKey;
       const sourceIds = existing ? existing.sourceIds : new Set();
       if (details.sourceId) sourceIds.add(details.sourceId);
 
-      serverMap.set(cleanName, {
-        value: cleanName,
+      serverMap.set(mapKey, {
+        value: mapKey,
+        rawName: cleanName,
         label,
         proto,
         trans,
         sec,
         port,
-        prefix,
+        prefix: effPrefix,
         link,
         country,
         sourceIds,
@@ -637,6 +645,7 @@ function filterPoolServersForGroup(poolServers, grp) {
     if (mode === 'disabled') return true;
 
     const name = String(srv.value || '');
+    const rawName = String(srv.rawName || name);
     const pfx = String(srv.prefix || '').toLowerCase();
     const cc = String(srv.country || extractFlagCountryIso(name)).toUpperCase();
     const proto = String(srv.proto || '').toLowerCase();
@@ -647,8 +656,13 @@ function filterPoolServersForGroup(poolServers, grp) {
     if (mode === 'include' || mode === 'mixed') {
       if (incPfx.length && !incPfx.includes(pfx)) return false;
       if (incCountries.length && !incCountries.includes(cc)) return false;
-      if (incNames.size && !incNames.has(name)) return false;
-      if (incRx.length && !incRx.some((rx) => rx.test(name))) return false;
+      if (incNames.size && !incNames.has(name) && !incNames.has(rawName))
+        return false;
+      if (
+        incRx.length &&
+        !incRx.some((rx) => rx.test(name) || rx.test(rawName))
+      )
+        return false;
       if (incProto.length && !incProto.includes(proto)) return false;
       if (incTrans.length && !incTrans.includes(trans)) return false;
       if (incSec.length && !incSec.includes(sec)) return false;
@@ -658,8 +672,9 @@ function filterPoolServersForGroup(poolServers, grp) {
     if (mode === 'exclude' || mode === 'mixed') {
       if (excPfx.length && pfx && excPfx.includes(pfx)) return false;
       if (excCountries.length && cc && excCountries.includes(cc)) return false;
-      if (excNames.has(name)) return false;
-      if (excRx.length && excRx.some((rx) => rx.test(name))) return false;
+      if (excNames.has(name) || excNames.has(rawName)) return false;
+      if (excRx.length && excRx.some((rx) => rx.test(name) || rx.test(rawName)))
+        return false;
       if (excProto.length && proto && excProto.includes(proto)) return false;
       if (excTrans.length && trans && excTrans.includes(trans)) return false;
       if (excSec.length && sec && excSec.includes(sec)) return false;
@@ -856,7 +871,7 @@ function createServerChecklistPicker(inputEl) {
             },
             [
               E('span', {}, `✓ ${name}`),
-              E('span', { style: 'opacity: 0.75; font-weight: 700;' }, '×'),
+              E('span', { style: 'opacity: 0.75; font-weight: 600;' }, '×'),
             ],
           ),
         );
@@ -2352,7 +2367,7 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
                       'span',
                       {
                         style:
-                          'font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.65; margin-right: 2px;',
+                          'font-size: 10px; font-weight: 600; letter-spacing: 0.04em; opacity: 0.65; margin-right: 2px;',
                       },
                       `${_('Used in sections')}:`,
                     ),
@@ -2642,7 +2657,7 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
                       'span',
                       {
                         style:
-                          'color: var(--success-color, #27ae60); font-weight: bold; display: inline-flex; align-items: center; gap: 4px;',
+                          'color: var(--success-color, #27ae60); font-weight: 600; display: inline-flex; align-items: center; gap: 4px;',
                       },
                       [
                         typeof main.renderCheckIcon === 'function'
@@ -6018,6 +6033,52 @@ function createOutboundsContent(section) {
       if (sid) this.value(sid, s.label || s.name || sid);
     });
     return uci.get(UCI_PACKAGE, sectionId, 'outbound_detour_section');
+  };
+
+  // Outbound Interface (bind_interface) — Issue #320
+  o = section.taboption(
+    'advanced',
+    form.Value,
+    'bind_interface',
+    _('Outbound Interface (bind_interface)'),
+    _(
+      'Optional: bind this connection to a specific network interface (e.g. eth1, wan2, wg0). Leave empty for automatic routing.',
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = _('Automatic (default)');
+  o.load = function (sectionId) {
+    this.keylist = [];
+    this.vallist = [];
+    this.value('', _('Automatic (default)'));
+    const seen = new Set<string>(['', 'lo', 'loopback']);
+    (uci.sections('network', 'interface') || []).forEach((iface) => {
+      const name = String(iface['.name'] || '').trim();
+      const dev = String(iface.device || iface.ifname || '').trim();
+      const candidate = dev && !dev.startsWith('@') ? dev : name;
+      if (candidate && !seen.has(candidate)) {
+        seen.add(candidate);
+        const label =
+          name && dev && name !== dev ? `${candidate} (${name})` : candidate;
+        this.value(candidate, label);
+      }
+    });
+    for (const preset of [
+      'eth0',
+      'eth1',
+      'wan',
+      'pppoe-wan',
+      'wg0',
+      'awg0',
+      'tun0',
+    ]) {
+      if (!seen.has(preset)) {
+        seen.add(preset);
+        this.value(preset, preset);
+      }
+    }
+    return uci.get(UCI_PACKAGE, sectionId, 'bind_interface') || '';
   };
 }
 

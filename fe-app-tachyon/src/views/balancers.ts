@@ -240,13 +240,18 @@ function loadGlobalPoolChoices() {
         const proto = String(protocols[tag] || '').toUpperCase();
         if (proto === 'URLTEST' || proto === 'SELECTOR') return;
         const trans = String(transports[tag] || '').toUpperCase();
+        const pfx = String(prefixes[tag] || '').trim();
+        const val =
+          pfx && !name.startsWith(`${pfx}: `) && !name.startsWith(`[${pfx}]`)
+            ? `[${pfx}] ${name}`
+            : name;
         const badge =
           proto && trans && proto !== trans
             ? `${proto}+${trans}`
             : proto || trans;
-        const label = badge ? `${name} [${badge}]` : name;
-        if (!serverMap.has(name)) {
-          serverMap.set(name, label);
+        const label = badge ? `${val} [${badge}]` : val;
+        if (!serverMap.has(val)) {
+          serverMap.set(val, label);
         }
       });
 
@@ -843,7 +848,60 @@ function createBalancersContent(section) {
   o.modalonly = true;
   o.default = '1';
 
-  // Tab 2: Server Filters (prefixes, countries, servers, protocols, regex)
+  // Tab 2: Server Filters (groups, sources, prefixes, countries, servers, protocols, regex)
+  o = section.taboption(
+    'pool',
+    form.DynamicList,
+    'group_refs',
+    _('Reusable Server Groups'),
+    _(
+      'Optional reusable Server Groups (Outbound Groups) to use as the candidate pool for this URLTest balancer.',
+    ),
+  );
+  o.modalonly = true;
+  o.placeholder = _('-- Select server group --');
+  o.depends('balancer_type', 'urltest');
+  o.load = function (sectionId) {
+    this.keylist = [];
+    this.vallist = [];
+    (uci.sections(UCI_PACKAGE, 'outbound_group') || []).forEach((g) => {
+      const gid = g['.name'];
+      if (gid) {
+        this.value(gid, `📦 ${g.name || g.label || gid}`);
+      }
+    });
+    return form.DynamicList.prototype.load.call(this, sectionId);
+  };
+
+  o = section.taboption(
+    'pool',
+    form.DynamicList,
+    'source_refs',
+    _('Linked Subscription / Server Sources'),
+    _(
+      'Optional specific Outbound Sources (subscriptions or proxy pools) to restrict this URLTest balancer to.',
+    ),
+  );
+  o.modalonly = true;
+  o.placeholder = _('-- Select source --');
+  o.depends('balancer_type', 'urltest');
+  o.load = function (sectionId) {
+    this.keylist = [];
+    this.vallist = [];
+    (uci.sections(UCI_PACKAGE, 'outbound_source') || []).forEach((src) => {
+      const sid = src['.name'];
+      if (!sid) return;
+      const stypeLower = String(
+        src.source_type || 'subscription',
+      ).toLowerCase();
+      if (DPI_SOURCE_TYPES.has(stypeLower)) return;
+      const stype = stypeLower.toUpperCase();
+      const pfx = src.node_prefix ? ` [${src.node_prefix}]` : ` [${stype}]`;
+      this.value(sid, `📡 ${src.name || src.label || sid}${pfx}`);
+    });
+    return form.DynamicList.prototype.load.call(this, sectionId);
+  };
+
   o = section.taboption(
     'pool',
     form.ListValue,

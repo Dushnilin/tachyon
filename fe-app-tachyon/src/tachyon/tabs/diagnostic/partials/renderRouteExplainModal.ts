@@ -178,7 +178,7 @@ export function renderRouteExplainModal(initialTarget = 'instagram.com') {
         'td',
         {
           class: 'td',
-          style: 'width: 36px; text-align: center; font-weight: bold;',
+          style: 'width: 36px; text-align: center; font-weight: 600;',
         },
         String(stepNum),
       ),

@@ -38,8 +38,8 @@ export NFT_LOG
 # reject with icmpx, not drop: a client whose QUIC is dropped waits out its own
 # timeout before falling back to TCP, an ICMP port-unreachable makes it
 # immediate.
-QUIC_TUNNELED_RULE=$'nft\tadd\trule\tinet\tTachyonTable\tmangle\tiifname\t@tachyon_interfaces\tmeta\tl4proto\tudp\tth\tdport\t443\tmeta\tmark\t&\t0x00100000\t==\t0x00100000\tcounter\treject\twith\ticmpx\ttype\tport-unreachable'
-QUIC_ALL_RULE=$'nft\tadd\trule\tinet\tTachyonTable\tmangle\tiifname\t@tachyon_interfaces\tmeta\tl4proto\tudp\tth\tdport\t443\tcounter\treject\twith\ticmpx\ttype\tport-unreachable'
+QUIC_TUNNELED_RULE=$'nft\tadd\trule\tinet\tTachyonTable\tmangle\tiifname\t@tachyon_interfaces\tmeta\tl4proto\tudp\tth\tdport\t443\tmeta\tmark\t&\t0x00100000\t==\t0x00100000\tmeta\tmark\tset\tmeta\tmark\t&\t0xffefffff\tcounter\treject\twith\ticmpx\ttype\tport-unreachable'
+QUIC_ALL_RULE=$'nft\tadd\trule\tinet\tTachyonTable\tmangle\tiifname\t@tachyon_interfaces\tmeta\tl4proto\tudp\tth\tdport\t443\tmeta\tmark\tset\tmeta\tmark\t&\t0xffefffff\tcounter\treject\twith\ticmpx\ttype\tport-unreachable'
 
 base_args=(nft-create-runtime-base TachyonTable localv4 tachyon_subnets
   tachyon_ports tachyon_ip_ports tachyon_interfaces "br-lan" 0x00100000

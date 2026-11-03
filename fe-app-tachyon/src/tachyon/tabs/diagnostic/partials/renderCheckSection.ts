@@ -14,9 +14,23 @@ import { IDiagnosticsChecksStoreItem } from '../../../services';
 type IRenderCheckSectionProps = IDiagnosticsChecksStoreItem;
 
 const expandedCheckCards = new Set<string>();
+const collapsedByUserCheckCards = new Set<string>();
 
 export function clearExpandedCheckCards() {
   expandedCheckCards.clear();
+  collapsedByUserCheckCards.clear();
+}
+
+function shouldAutoExpandCheckCard(props: IRenderCheckSectionProps): boolean {
+  if (!props.items.length || collapsedByUserCheckCards.has(props.code)) {
+    return false;
+  }
+  if (props.state === 'error' || props.state === 'warning') {
+    return true;
+  }
+  return props.items.some(
+    (item) => item.state === 'error' || item.state === 'warning',
+  );
 }
 
 function renderCheckSummary(
@@ -106,6 +120,7 @@ function attachCardExpandHandler(
     const nextExpanded = !expandedCheckCards.has(props.code);
     if (nextExpanded) {
       expandedCheckCards.add(props.code);
+      collapsedByUserCheckCards.delete(props.code);
       card.classList.add('tachyon_diagnostic_alert--expanded');
       summaryEl?.classList.add('tachyon_diagnostic_alert__summary--expanded');
       if (hintEl) {
@@ -113,6 +128,7 @@ function attachCardExpandHandler(
       }
     } else {
       expandedCheckCards.delete(props.code);
+      collapsedByUserCheckCards.add(props.code);
       card.classList.remove('tachyon_diagnostic_alert--expanded');
       summaryEl?.classList.remove(
         'tachyon_diagnostic_alert__summary--expanded',
@@ -248,6 +264,10 @@ function renderSkippedState(props: IRenderCheckSectionProps) {
 export function renderCheckSection(props: IRenderCheckSectionProps) {
   if (props.state === 'loading') {
     return renderLoadingState(props);
+  }
+
+  if (shouldAutoExpandCheckCard(props)) {
+    expandedCheckCards.add(props.code);
   }
 
   if (props.state === 'warning') {

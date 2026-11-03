@@ -1428,6 +1428,115 @@ function get_service_primary_pid(process_name, is_core) {
     return length(pids) > 0 ? int(pids[0]) : null;
 }
 
+function parse_sensor_temp_c(raw) {
+    let text = trim(as_string(raw || ""));
+    if (text == "" || match(text, /^-?[0-9]+$/) == null)
+        return null;
+    let val = int(text);
+    if (val >= 1000 && val <= 150000)
+        return int((val + 500) / 1000);
+    if (val >= 10 && val <= 150)
+        return val;
+    return null;
+}
+
+function read_cpu_temperature_c() {
+    let fallback_temp = null;
+    for (let i = 0; i <= 6; i++) {
+        let base = "/sys/class/thermal/thermal_zone" + i;
+        let temp_c = parse_sensor_temp_c(fs.readfile(base + "/temp"));
+        if (temp_c == null)
+            continue;
+        let zone_type = lc(trim(as_string(fs.readfile(base + "/type") || "")));
+        if (index(zone_type, "cpu") >= 0 || index(zone_type, "soc") >= 0 || index(zone_type, "pkg") >= 0 || index(zone_type, "core") >= 0)
+            return temp_c;
+        if (fallback_temp == null)
+            fallback_temp = temp_c;
+    }
+    for (let i = 0; i <= 6; i++) {
+        let base = "/sys/class/hwmon/hwmon" + i;
+        let temp_c = parse_sensor_temp_c(fs.readfile(base + "/temp1_input"));
+        if (temp_c == null)
+            continue;
+        let hw_name = lc(trim(as_string(fs.readfile(base + "/name") || "")));
+        if (index(hw_name, "cpu") >= 0 || index(hw_name, "soc") >= 0 || index(hw_name, "core") >= 0 || index(hw_name, "k10temp") >= 0 || index(hw_name, "coretemp") >= 0)
+            return temp_c;
+        if (fallback_temp == null)
+            fallback_temp = temp_c;
+    }
+    return fallback_temp;
+}
+
+function read_cpu_load_percent() {
+    let stat_raw = as_string(fs.readfile("/proc/stat") || "");
+    if (stat_raw == "")
+        return null;
+    let first_line = split(stat_raw, "\n")[0] || "";
+    let parts = split(trim(first_line), /[ \t]+/);
+    if (length(parts) < 5 || parts[0] != "cpu")
+        return null;
+    let total = 0;
+    let max_idx = length(parts) < 9 ? length(parts) : 9;
+    for (let i = 1; i < max_idx; i++)
+        total += int(parts[i] || 0);
+    let idle = int(parts[4] || 0) + int(parts[5] || 0);
+    let cache_path = "/var/run/tachyon/cpu_stat.json";
+    let prev = read_json_file(cache_path);
+    let pct = null;
+    if (type(prev) == "object" && prev.total != null && prev.idle != null) {
+        let d_total = total - int(prev.total);
+        let d_idle = idle - int(prev.idle);
+        if (d_total > 0) {
+            let busy = d_total - d_idle;
+            if (busy < 0)
+                busy = 0;
+            pct = int((busy * 100 + int(d_total / 2)) / d_total);
+            if (pct > 100)
+                pct = 100;
+        } else if (prev.pct != null) {
+            pct = int(prev.pct);
+        }
+    }
+    if (pct == null) {
+        let lavg_raw = trim(as_string(fs.readfile("/proc/loadavg") || ""));
+        if (lavg_raw != "") {
+            let lparts = split(lavg_raw, /[ \t]+/);
+            let l1 = lparts[0] || "0";
+            let dot = index(l1, ".");
+            let load_x100 = 0;
+            if (dot >= 0) {
+                let whole = int(substr(l1, 0, dot) || 0);
+                let frac_str = substr(l1 + "00", dot + 1, 2);
+                load_x100 = whole * 100 + int(frac_str || 0);
+            } else {
+                load_x100 = int(l1) * 100;
+            }
+            let cores = 0;
+            for (let line in split(stat_raw, "\n")) {
+                if (match(line, /^cpu[0-9]+[ \t]/) != null)
+                    cores++;
+            }
+            if (cores < 1)
+                cores = 1;
+            pct = int((load_x100 + int(cores / 2)) / cores);
+            if (pct < 0)
+                pct = 0;
+            if (pct > 100)
+                pct = 100;
+        }
+    }
+    try {
+        ensure_dirs();
+        fs.writefile(cache_path, sprintf("%J", {
+            total: total,
+            idle: idle,
+            pct: pct,
+            ts: now_seconds()
+        }));
+    } catch (e) {}
+    return pct;
+}
+
 function current_ui_state_json() {
     maybe_refresh_action_dirs(false);
 
@@ -1571,7 +1680,9 @@ function current_ui_state_json() {
                 memory_rss_mb: tachyon_rss,
                 pid: tachyon_pid,
                 uptime_seconds: tachyon_uptime,
-                uptime_pretty: tachyon_uptime_pretty
+                uptime_pretty: tachyon_uptime_pretty,
+                cpu_load_percent: read_cpu_load_percent(),
+                cpu_temp_c: read_cpu_temperature_c()
             },
             sing_box: {
                 running: sing_box_is_running,

@@ -905,6 +905,8 @@ function filteredOutboundMetadataFromCache(cache) {
   const transports = plainObject(metadata.transports);
   const securities = plainObject(metadata.securities);
   const ports = plainObject(metadata.ports);
+  const prefixes = plainObject(metadata.prefixes);
+  const sources = plainObject(metadata.sources);
   const candidateTags = Array.isArray(cache.urltestCandidateTags)
     ? cache.urltestCandidateTags
     : [];
@@ -916,6 +918,8 @@ function filteredOutboundMetadataFromCache(cache) {
     transports: {},
     securities: {},
     ports: {},
+    prefixes: {},
+    sources: {},
   };
 
   if (candidateTags.length > 0) {
@@ -941,6 +945,12 @@ function filteredOutboundMetadataFromCache(cache) {
       }
       if (ports[tag] != null) {
         result.ports[tag] = ports[tag];
+      }
+      if (prefixes[tag] != null) {
+        result.prefixes[tag] = prefixes[tag];
+      }
+      if (sources[tag] != null) {
+        result.sources[tag] = sources[tag];
       }
     });
     return result;
@@ -976,6 +986,16 @@ function filteredOutboundMetadataFromCache(cache) {
       result.ports[tag] = port;
     }
   });
+  Object.entries(prefixes).forEach(([tag, prefix]) => {
+    if (!groups[tag]) {
+      result.prefixes[tag] = prefix;
+    }
+  });
+  Object.entries(sources).forEach(([tag, source]) => {
+    if (!groups[tag]) {
+      result.sources[tag] = source;
+    }
+  });
 
   return result;
 }
@@ -989,6 +1009,8 @@ function readSingleSectionCacheMetadata(targetId) {
       transports: {},
       securities: {},
       ports: {},
+      prefixes: {},
+      sources: {},
     });
   }
 
@@ -1012,6 +1034,8 @@ function readSingleSectionCacheMetadata(targetId) {
       transports: {},
       securities: {},
       ports: {},
+      prefixes: {},
+      sources: {},
     }));
 }
 
@@ -1044,6 +1068,8 @@ function readOutboundMetadataFromSectionCache(section_id) {
       transports: {},
       securities: {},
       ports: {},
+      prefixes: {},
+      sources: {},
     };
     metaList.forEach((meta) => {
       if (!meta) return;
@@ -1053,6 +1079,8 @@ function readOutboundMetadataFromSectionCache(section_id) {
       Object.assign(merged.transports, meta.transports);
       Object.assign(merged.securities, meta.securities);
       Object.assign(merged.ports, meta.ports);
+      Object.assign(merged.prefixes, meta.prefixes);
+      Object.assign(merged.sources, meta.sources);
     });
     return merged;
   });
@@ -1163,6 +1191,17 @@ function evaluateLiveServerFilterPreview(metadata, filterSpec) {
   const excludeCompiledRegexes = compileRegexList(excludeRegexes);
 
   const seenTypeCounts = new Map();
+  const seenPrefixedTypeCounts = new Map();
+  const prefixesMap = plainObject(meta.prefixes);
+  const sourcesMap = plainObject(meta.sources);
+  const distinctSources = new Set();
+  Object.keys(namesMap).forEach((tag) => {
+    const p = `${prefixesMap[tag] || ''}`.trim();
+    const s = `${sourcesMap[tag] || ''}`.trim();
+    if (p) distinctSources.add(`p:${p}`);
+    else if (s) distinctSources.add(`s:${s}`);
+  });
+  const hasMultipleSources = distinctSources.size > 1;
   const entries = [];
 
   Object.entries(namesMap).forEach(([tag, rawName]) => {
@@ -1179,6 +1218,23 @@ function evaluateLiveServerFilterPreview(metadata, filterSpec) {
     const indexedLabel =
       count > 1 ? `${nameWithType} (#${count})` : nameWithType;
 
+    const pfx = `${prefixesMap[tag] || ''}`.trim();
+    const srcKey = `${sourcesMap[tag] || ''}`.trim();
+    let srcBadge = '';
+    if (pfx && !name.startsWith(`${pfx}: `) && !name.startsWith(`[${pfx}]`)) {
+      srcBadge = pfx;
+    } else if (!pfx && hasMultipleSources && /^sub:\d+$/i.test(srcKey)) {
+      srcBadge = srcKey;
+    }
+    const prefixedName = srcBadge ? `[${srcBadge}] ${name}` : name;
+    const prefixedWithType = typeLabel
+      ? `${prefixedName} [${typeLabel}]`
+      : prefixedName;
+    const pCount = (seenPrefixedTypeCounts.get(prefixedWithType) || 0) + 1;
+    seenPrefixedTypeCounts.set(prefixedWithType, pCount);
+    const prefixedIndexed =
+      pCount > 1 ? `${prefixedWithType} (#${pCount})` : prefixedWithType;
+
     const flagCountry = extractCountryFromFlagEmojiName(name);
     const metaCountry = `${countriesMap[tag] || ''}`.trim().toUpperCase();
     const country =
@@ -1187,8 +1243,12 @@ function evaluateLiveServerFilterPreview(metadata, filterSpec) {
     entries.push({
       tag,
       name,
-      label: indexedLabel,
+      label: srcBadge ? prefixedIndexed : indexedLabel,
+      legacyLabel: indexedLabel,
       nameWithType,
+      prefixedName,
+      prefixedWithType,
+      prefixedIndexed,
       country,
       protocol: protocol.toLowerCase(),
       transport: transport.toLowerCase(),
@@ -1214,6 +1274,10 @@ function evaluateLiveServerFilterPreview(metadata, filterSpec) {
       nameFilter.includes(entry.tag) ||
       nameFilter.includes(entry.nameWithType) ||
       nameFilter.includes(entry.label) ||
+      nameFilter.includes(entry.legacyLabel) ||
+      nameFilter.includes(entry.prefixedName) ||
+      nameFilter.includes(entry.prefixedWithType) ||
+      nameFilter.includes(entry.prefixedIndexed) ||
       compiledRegexes.some((rx) => rx.test(entry.name));
     const countryMatched =
       Boolean(entry.country) && countryFilter.includes(entry.country);
@@ -1333,6 +1397,16 @@ function loadOutboundNameChoices(section_id) {
   const task = readOutboundMetadataFromSectionCache(targetId)
     .then((metadata) => {
       const namesMap = plainObject(metadata.names);
+      const prefixesMap = plainObject(metadata.prefixes);
+      const sourcesMap = plainObject(metadata.sources);
+      const distinctSourceSet = new Set();
+      Object.keys(namesMap).forEach((tag) => {
+        const p = `${prefixesMap[tag] || ''}`.trim();
+        const s = `${sourcesMap[tag] || ''}`.trim();
+        if (p) distinctSourceSet.add(`p:${p}`);
+        else if (s) distinctSourceSet.add(`s:${s}`);
+      });
+      const hasMultipleSources = distinctSourceSet.size > 1;
       const nameCounts = new Map();
       Object.values(namesMap).forEach((rawName) => {
         const n = `${rawName || ''}`.trim();
@@ -1358,15 +1432,30 @@ function loadOutboundNameChoices(section_id) {
           typeMap.set(name, typeLabel);
         }
 
+        const pfx = `${prefixesMap[tag] || ''}`.trim();
+        const srcKey = `${sourcesMap[tag] || ''}`.trim();
+        let srcBadge = '';
+        if (
+          pfx &&
+          !name.startsWith(`${pfx}: `) &&
+          !name.startsWith(`[${pfx}]`)
+        ) {
+          srcBadge = pfx;
+        } else if (!pfx && hasMultipleSources && /^sub:\d+$/i.test(srcKey)) {
+          srcBadge = srcKey;
+        }
+
         const isDuplicateName = (nameCounts.get(name) || 0) > 1;
         let choiceValue = name;
-        let choiceLabel = name;
+        let choiceLabel = srcBadge ? `[${srcBadge}] ${name}` : name;
 
         if (typeLabel) {
-          choiceLabel = `${name} [${typeLabel}]`;
+          choiceLabel = `${choiceLabel} [${typeLabel}]`;
           if (isDuplicateName) {
             choiceValue = choiceLabel;
           }
+        } else if (isDuplicateName && srcBadge) {
+          choiceValue = choiceLabel;
         }
 
         if (seenLabels.has(choiceLabel)) {
@@ -4150,7 +4239,7 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
       'span',
       {
         style:
-          'display:inline-flex;align-items:center;padding:3px 9px;border-radius:6px;font-size:11px;font-weight:700;letter-spacing:0.03em;border:1px solid rgba(147,197,253,0.45);background:#1e3a8a;color:#93c5fd;box-shadow:0 1px 2px rgba(0,0,0,0.2);',
+          'display:inline-flex;align-items:center;padding:3px 9px;border-radius:6px;font-size:11px;font-weight: 600;letter-spacing:0.03em;border:1px solid rgba(147,197,253,0.45);background:#1e3a8a;color:#93c5fd;box-shadow:0 1px 2px rgba(0,0,0,0.2);',
       },
       'Префикс',
     );
@@ -4209,7 +4298,7 @@ function addSubscriptionUrlItemOptions(itemSection, options = {}) {
         {
           type: 'button',
           class: 'btn cbi-button',
-          style: `padding:2px 8px;min-height:24px;line-height:1.3;font-size:11px;font-weight:700;border-radius:6px;background:${pBg};color:${pCol};border:1px solid ${pCol};cursor:pointer;`,
+          style: `padding:2px 8px;min-height:24px;line-height:1.3;font-size:11px;font-weight: 600;border-radius:6px;background:${pBg};color:${pCol};border:1px solid ${pCol};cursor:pointer;`,
           click: function (ev) {
             ev.preventDefault();
             const bgUi = prefixBgOption.getUIElement(section_id);
@@ -11860,7 +11949,7 @@ function createSectionContent(section) {
         ),
         E(
           'label',
-          { style: 'display:block;margin-bottom:4px;font-weight:bold;' },
+          { style: 'display:block;margin-bottom:4px;font-weight: 600;' },
           _('Or paste hosts file content:'),
         ),
         textArea,
@@ -18377,7 +18466,7 @@ function createTracerSearchWidget(sectionRef) {
                   E(
                     'span',
                     {
-                      style: `background: ${actionBadgeColor}; color: #fff; padding: 1px 4px; border-radius: 3px; font-weight: bold; font-size: 80%; margin-left: 0.1rem;`,
+                      style: `background: ${actionBadgeColor}; color: #fff; padding: 1px 4px; border-radius: 3px; font-weight: 600; font-size: 80%; margin-left: 0.1rem;`,
                     },
                     actionLabel,
                   ),
@@ -18669,7 +18758,7 @@ function showSectionRulesModal(section_id) {
           'label',
           {
             class: 'cbi-value-title',
-            style: 'padding-top: 0; font-weight: bold;',
+            style: 'padding-top: 0; font-weight: 600;',
           },
           _('Section action'),
         ),
@@ -18677,7 +18766,7 @@ function showSectionRulesModal(section_id) {
           'div',
           {
             class: 'cbi-value-field',
-            style: 'font-weight: bold; color: var(--text-color-high, #2980b9);',
+            style: 'font-weight: 600; color: var(--text-color-high, #2980b9);',
           },
           getRuleActionDisplayValue(section_id),
         ),

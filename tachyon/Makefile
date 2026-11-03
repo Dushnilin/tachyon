@@ -15,14 +15,14 @@ PKG_VERSION:=$(or $(TACHYON_HAS_RELEASE_VERSION),0.0.0)
 PKG_RELEASE:=
 
 PKG_MAINTAINER:=Dushnilin <dushnilin@gmail.com>
-PKG_LICENSE:=GPL-2.0-or-later
+PKG_LICENSE:=GPL-2.0-or-later Apache-2.0
 
 include $(INCLUDE_DIR)/package.mk
 
 define Package/tachyon
 	SECTION:=net
 	CATEGORY:=Network
-	DEPENDS:=+ca-bundle +curl +ucode +ucode-mod-fs +ucode-mod-uci +ucode-mod-uloop +coreutils-base64 +coreutils-timeout +bind-dig +nftables +ip-full +kmod-nft-tproxy +kmod-tun +kmod-inet-diag
+	DEPENDS:=+ca-bundle +curl +openssl-util +ucode +ucode-mod-fs +ucode-mod-uci +ucode-mod-uloop +coreutils-base64 +coreutils-timeout +bind-dig +nftables +ip-full +kmod-nft-tproxy +kmod-tun +kmod-inet-diag
 	CONFLICTS:=https-dns-proxy nextdns luci-app-passwall luci-app-passwall2
 	PROVIDES:=forkop
 	REPLACES:=forkop

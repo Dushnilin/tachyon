@@ -31,7 +31,7 @@ export function renderConnections(
           E(
             'div',
             { class: 'tachyon_dashboard-page__top-domains-header' },
-            tr('Популярные домены в обходе:', 'Top active domains in bypass:'),
+            tr('Популярные домены:', 'Popular domains:'),
           ),
           E(
             'div',

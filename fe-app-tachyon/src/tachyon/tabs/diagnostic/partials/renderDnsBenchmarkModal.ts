@@ -15,7 +15,7 @@ export function renderDnsBenchmarkModal() {
 
   const progressBar = E('div', {
     style:
-      'width: 0%; height: 6px; background: linear-gradient(90deg, #007bff, #28a745); border-radius: 3px; transition: width 0.3s ease;',
+      'width: 0%; height: 6px; background: var(--tachyon-accent, #5b8af0); border-radius: 3px; transition: width 0.3s cubic-bezier(0.22, 1, 0.36, 1);',
   });
 
   const progressContainer = E(
@@ -145,7 +145,7 @@ export function renderDnsBenchmarkModal() {
           E(
             'span',
             {
-              style: `display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; background: ${
+              style: `display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; background: ${
                 r.type === 'doh' ? '#6f42c1' : '#007bff'
               }; color: #fff;`,
             },

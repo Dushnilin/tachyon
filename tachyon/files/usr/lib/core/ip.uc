@@ -272,6 +272,39 @@ function normalize_to_cidrs(items) {
     return result;
 }
 
+function expand_ipv4_mapped_cidrs(cidrs, include_ipv6_mapped) {
+    let arr = type(cidrs) == "array" ? cidrs : (cidrs != null && as_string(cidrs) != "" ? [ cidrs ] : []);
+    let map_v6 = include_ipv6_mapped != null ? !!include_ipv6_mapped : ipv6_supported();
+    let result = [];
+    let seen = {};
+    let push_unique = function(val) {
+        val = trim(as_string(val));
+        if (val != "" && !seen[val]) {
+            seen[val] = true;
+            push(result, val);
+        }
+    };
+
+    for (let item in arr) {
+        let val = trim(as_string(item));
+        if (val == "")
+            continue;
+        push_unique(val);
+        if (!map_v6)
+            continue;
+        if (valid_ipv4_cidr(val, false)) {
+            let slash = index(val, "/");
+            let addr = substr(val, 0, slash);
+            let prefix = int(substr(val, slash + 1));
+            push_unique("::ffff:" + addr + "/" + as_string(96 + prefix));
+        } else if (valid_ipv4(val, false, false)) {
+            push_unique("::ffff:" + val + "/128");
+        }
+    }
+
+    return result;
+}
+
 const CLOUDFLARE_SHARED_CIDRS = [
     "104.16.0.0/12", "104.24.0.0/14", "172.64.0.0/13", "162.158.0.0/15",
     "108.162.192.0/18", "190.93.240.0/20", "188.114.96.0/20", "197.234.240.0/22",
@@ -348,6 +381,7 @@ return {
     ipv6_supported,
     resolve_mac_to_ips,
     normalize_to_cidrs,
+    expand_ipv4_mapped_cidrs,
     CLOUDFLARE_SHARED_CIDRS,
     is_cloudflare_shared_cidr,
     DISCORD_VOICE_PORTS_NFT,

@@ -1702,8 +1702,12 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
 
         const servers = Array.from(serverMap.values());
         if (servers.length > 0 || foundMeta) {
+          const existingMtime =
+            (subUrl ? subCacheByUrl.get(subUrl)?.mtime : 0) ||
+            subCacheBySid.get(sid)?.mtime ||
+            0;
           const entry: SubCacheEntryInfo = {
-            mtime: 0,
+            mtime: existingMtime,
             servers,
             metadata: foundMeta,
           };
@@ -2998,7 +3002,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
           }
           if (srvMap.size > 0 || foundMeta) {
             return {
-              mtime: 0,
+              mtime: fromUrl?.mtime || fromSid?.mtime || 0,
               servers: Array.from(srvMap.values()),
               metadata: foundMeta,
             };
@@ -3110,6 +3114,21 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
               'span',
               { class: 'tachyon-studio-badge tachyon-studio-badge--transport' },
               [renderActivityIcon(10), E('span', {}, ` ${quotaText}`)],
+            ),
+          );
+        }
+        const updBadgeTime = formatUpdatedTime(
+          subCache?.mtime || (subCache?.metadata as any)?.updatedAt,
+        );
+        if (updBadgeTime) {
+          typeBadges.push(
+            E(
+              'span',
+              {
+                class: 'tachyon-studio-badge tachyon-studio-badge--transport',
+                title: `${tr('Последнее обновление кэша подписки', 'Subscription cache last updated')}: ${updBadgeTime}`,
+              },
+              `${tr('Обновлено', 'Updated')}: ${updBadgeTime}`,
             ),
           );
         }
@@ -3337,94 +3356,149 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
 
       const renderCompactServersTable = (
         items: { name: string; proto: string; trans?: string; link?: string }[],
-      ) =>
-        E('div', { class: 'tachyon-studio-server-table-wrap' }, [
-          E('table', { class: 'tachyon-studio-server-table' }, [
-            E('thead', {}, [
-              E('tr', {}, [
-                E('th', {}, '#'),
-                E('th', {}, tr('Сервер', 'Server')),
-                E('th', {}, tr('Протокол', 'Protocol')),
+      ) => {
+        let sortCol: 'idx' | 'name' | 'proto' = 'idx';
+        let sortDir: 'asc' | 'desc' = 'asc';
+        const tbody = E('tbody', {});
+        const thIndicators = new Map<'idx' | 'name' | 'proto', HTMLElement>();
+
+        const indexedItems = items.map((srv, idx) => ({
+          ...srv,
+          origIdx: idx,
+          badge:
+            srv.trans && srv.trans !== srv.proto
+              ? `${srv.proto} • ${srv.trans}`
+              : srv.proto,
+        }));
+
+        const populateRows = () => {
+          thIndicators.forEach((ind, col) => {
+            ind.textContent =
+              sortCol === col ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+          });
+
+          const sorted = [...indexedItems].sort((a, b) => {
+            let cmp = 0;
+            if (sortCol === 'idx') {
+              cmp = a.origIdx - b.origIdx;
+            } else if (sortCol === 'name') {
+              cmp = a.name.localeCompare(b.name, 'ru');
+            } else if (sortCol === 'proto') {
+              cmp = a.badge.localeCompare(b.badge, 'ru');
+            }
+            return sortDir === 'asc' ? cmp : -cmp;
+          });
+
+          tbody.replaceChildren(
+            ...sorted.map((srv) => {
+              const resolvedLink = srv.link || lookupLiveLinkByName(srv.name);
+              const displaySrvName = ensureOutboundDisplayFlag({
+                displayName: srv.name,
+              });
+              return E('tr', {}, [
                 E(
-                  'th',
-                  { style: 'text-align:right;' },
-                  tr('Ссылка', 'Proxy Link'),
+                  'td',
+                  { class: 'tachyon-studio-server-table__idx' },
+                  String(srv.origIdx + 1),
                 ),
-              ]),
-            ]),
-            E(
-              'tbody',
-              {},
-              items.map((srv, idx) => {
-                const badge =
-                  srv.trans && srv.trans !== srv.proto
-                    ? `${srv.proto} • ${srv.trans}`
-                    : srv.proto;
-                const resolvedLink = srv.link || lookupLiveLinkByName(srv.name);
-                const displaySrvName = ensureOutboundDisplayFlag({
-                  displayName: srv.name,
-                });
-                return E('tr', {}, [
+                E(
+                  'td',
+                  { class: 'tachyon-studio-server-table__name' },
+                  renderFlagEmojis(displaySrvName),
+                ),
+                E('td', { class: 'tachyon-studio-server-table__proto' }, [
                   E(
-                    'td',
-                    { class: 'tachyon-studio-server-table__idx' },
-                    String(idx + 1),
-                  ),
-                  E(
-                    'td',
-                    { class: 'tachyon-studio-server-table__name' },
-                    renderFlagEmojis(displaySrvName),
-                  ),
-                  E('td', { class: 'tachyon-studio-server-table__proto' }, [
-                    E(
-                      'span',
-                      {
-                        class:
-                          'tachyon-studio-badge tachyon-studio-badge--proto',
-                      },
-                      badge,
-                    ),
-                  ]),
-                  E(
-                    'td',
+                    'span',
                     {
-                      class: 'tachyon-studio-server-table__actions',
-                      style: 'text-align:right;',
+                      class: 'tachyon-studio-badge tachyon-studio-badge--proto',
                     },
-                    resolvedLink
-                      ? [
-                          E(
-                            'button',
-                            {
-                              type: 'button',
-                              class:
-                                'tachyon-studio-action-btn tachyon-studio-copy-link-btn',
-                              title: tr(
-                                'Скопировать ссылку на прокси (Copy proxy link)',
-                                'Copy proxy link',
-                              ),
-                              click: (ev: MouseEvent) => {
-                                ev.preventDefault();
-                                ev.stopPropagation();
-                                copyProxyLinkToClipboard(
-                                  resolvedLink,
-                                  ev.currentTarget as HTMLElement,
-                                );
-                              },
-                            },
-                            [
-                              renderCopyIcon(12),
-                              E('span', {}, tr('Копировать', 'Copy link')),
-                            ],
-                          ),
-                        ]
-                      : [E('span', { style: 'opacity:0.45;' }, '—')],
+                    srv.badge,
                   ),
-                ]);
-              }),
-            ),
+                ]),
+                E(
+                  'td',
+                  {
+                    class: 'tachyon-studio-server-table__actions',
+                    style: 'text-align:right;',
+                  },
+                  resolvedLink
+                    ? [
+                        E(
+                          'button',
+                          {
+                            type: 'button',
+                            class:
+                              'tachyon-studio-action-btn tachyon-studio-copy-link-btn',
+                            title: tr(
+                              'Скопировать ссылку на прокси (Copy proxy link)',
+                              'Copy proxy link',
+                            ),
+                            click: (ev: MouseEvent) => {
+                              ev.preventDefault();
+                              ev.stopPropagation();
+                              copyProxyLinkToClipboard(
+                                resolvedLink,
+                                ev.currentTarget as HTMLElement,
+                              );
+                            },
+                          },
+                          [
+                            renderCopyIcon(12),
+                            E('span', {}, tr('Копировать', 'Copy link')),
+                          ],
+                        ),
+                      ]
+                    : [E('span', { style: 'opacity:0.45;' }, '—')],
+                ),
+              ]);
+            }),
+          );
+        };
+
+        const makeTh = (col: 'idx' | 'name' | 'proto', label: string) => {
+          const ind = E('span', { style: 'font-size: 10px; opacity: 0.75;' });
+          thIndicators.set(col, ind);
+          return E(
+            'th',
+            {
+              style: 'cursor: pointer; user-select: none;',
+              click: (e: MouseEvent) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (sortCol === col) {
+                  sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+                } else {
+                  sortCol = col;
+                  sortDir = 'asc';
+                }
+                populateRows();
+              },
+            },
+            [E('span', {}, label), ind],
+          );
+        };
+
+        const tableEl = E('table', { class: 'tachyon-studio-server-table' }, [
+          E('thead', {}, [
+            E('tr', {}, [
+              makeTh('idx', '#'),
+              makeTh('name', tr('Сервер', 'Server')),
+              makeTh('proto', tr('Протокол', 'Protocol')),
+              E(
+                'th',
+                { style: 'text-align:right;' },
+                tr('Ссылка', 'Proxy Link'),
+              ),
+            ]),
           ]),
+          tbody,
         ]);
+
+        populateRows();
+        return E('div', { class: 'tachyon-studio-server-table-wrap' }, [
+          tableEl,
+        ]);
+      };
 
       const inspectorRows: HTMLElement[] = [];
       if (stype === 'subscription') {
@@ -3448,8 +3522,10 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
             ]),
           );
         }
-        if (subCache?.metadata) {
-          const md = subCache.metadata;
+        const effectiveMtime =
+          subCache?.mtime || (subCache?.metadata as any)?.updatedAt || 0;
+        if (subCache?.metadata || effectiveMtime > 0) {
+          const md = subCache?.metadata || {};
           const infoParts: string[] = [];
           if (md.title)
             infoParts.push(`${tr('Провайдер', 'Title')}: ${md.title}`);
@@ -3469,6 +3545,12 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
               infoParts.push(`${tr('Истекает', 'Expires')}: ${expDate}`);
             } catch (_e) {
               // ignore invalid date
+            }
+          }
+          if (effectiveMtime > 0) {
+            const updText = formatUpdatedTime(effectiveMtime);
+            if (updText) {
+              infoParts.push(`${tr('Обновлено', 'Updated')}: ${updText}`);
             }
           }
           if (infoParts.length > 0) {
@@ -3768,7 +3850,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                           'span',
                           {
                             style:
-                              'font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.65; margin-right: 2px;',
+                              'font-size: 10px; font-weight: 600; letter-spacing: 0.04em; opacity: 0.65; margin-right: 2px;',
                           },
                           tr('В группах:', 'In groups:'),
                         ),

@@ -582,7 +582,7 @@ function injectServerStyles() {
 .fkp-server-info-modal__details-col{display:flex;flex-direction:column;gap:14px;flex:1 1 0;min-width:0;max-width:100%;box-sizing:border-box !important;overflow:hidden}
 .fkp-server-info-modal__details-grid{display:flex;flex-direction:column;gap:10px;background:rgba(128,128,128,0.06);padding:14px 16px;border:1px solid rgba(128,128,128,0.16);box-sizing:border-box !important;border-radius:8px;width:100% !important;max-width:100% !important}
 .fkp-server-info-modal__detail-item{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;width:100% !important;max-width:100% !important;box-sizing:border-box}
-.fkp-server-info-modal__detail-label{font-size:11px;opacity:0.65;text-transform:uppercase;letter-spacing:0.05em;font-weight:700;flex:0 0 auto}
+.fkp-server-info-modal__detail-label{font-size:11px;opacity:0.65;letter-spacing:0.05em;font-weight: 600;flex:0 0 auto}
 .fkp-server-info-modal__detail-value{font-size:13px;font-weight:500;text-align:right;max-width:100%;overflow-wrap:anywhere;word-break:break-word}
 .fkp-server-info-modal__detail-value--title{font-weight:600;font-size:14px}
 .fkp-server-info-modal__detail-value--mono{font-family:var(--font-mono,monospace);font-size:12px;background:rgba(128,128,128,0.12);padding:2px 8px;border-radius:6px;border:1px solid rgba(128,128,128,0.15);word-break:break-all;overflow-wrap:anywhere;box-sizing:border-box}

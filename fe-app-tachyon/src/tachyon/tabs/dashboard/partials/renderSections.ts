@@ -73,7 +73,26 @@ function matchesServerRuleKey(
     .trim()
     .toLowerCase();
   const dispWithFlag = ensureOutboundDisplayFlag(outbound).trim().toLowerCase();
-  return k === code || k === disp || k === dispWithFlag;
+  const pfx = String(outbound.prefix || '')
+    .trim()
+    .toLowerCase();
+  if (k === code) return true;
+  if (pfx) {
+    if (
+      k === `${pfx}: ${disp}` ||
+      k === `${pfx} ${disp}` ||
+      k === `[${pfx}] ${disp}` ||
+      k === `${pfx}: ${dispWithFlag}` ||
+      k === `${pfx} ${dispWithFlag}` ||
+      k === `[${pfx}] ${dispWithFlag}`
+    ) {
+      return true;
+    }
+    if (k.includes(': ') || k.startsWith('[')) {
+      return false;
+    }
+  }
+  return k === disp || k === dispWithFlag;
 }
 
 function getPinnedDomainsForOutbound(
@@ -443,6 +462,28 @@ function renderMetadataAction(
   );
 }
 
+function formatDateTime(seconds?: number) {
+  if (
+    typeof seconds !== 'number' ||
+    !Number.isFinite(seconds) ||
+    seconds <= 0
+  ) {
+    return undefined;
+  }
+
+  const date = new Date(seconds * 1000);
+  if (Number.isNaN(date.getTime())) {
+    return undefined;
+  }
+
+  return date.toLocaleString(undefined, {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 function renderSubscriptionMetadata(
   metadata: Tachyon.SubscriptionMetadata | undefined,
   options?: {
@@ -450,10 +491,12 @@ function renderSubscriptionMetadata(
     selectedOutbound?: Tachyon.Outbound;
     isGroupCollapsed?: boolean;
     onToggleGroup?: () => void;
+    onUpdateSubscription?: () => void;
+    subscriptionUpdating?: boolean;
   },
 ) {
   if (!metadata || Object.keys(metadata).length <= 1) {
-    if (!options?.onToggleGroup) {
+    if (!options?.onToggleGroup && !options?.onUpdateSubscription) {
       return undefined;
     }
   }
@@ -466,6 +509,11 @@ function renderSubscriptionMetadata(
     : formatBytes(traffic?.total) || '0 B';
   const expire = formatDate(metadata?.expire);
   const refillDate = formatDate(metadata?.refillDate);
+  const updatedAt = formatDateTime(metadata?.updatedAt);
+
+  const isRu =
+    typeof document !== 'undefined' &&
+    (document.documentElement?.lang || '').toLowerCase().startsWith('ru');
 
   const rows = [
     traffic
@@ -488,18 +536,83 @@ function renderSubscriptionMetadata(
     refillDate
       ? { kind: 'refill' as const, label: _('Refill'), value: refillDate }
       : undefined,
+    updatedAt
+      ? {
+          kind: 'updated' as const,
+          label: isRu ? 'Обновлено' : _('Updated'),
+          value: updatedAt,
+        }
+      : undefined,
   ].filter(Boolean) as {
-    kind: 'traffic' | 'expire' | 'refill';
+    kind: 'traffic' | 'expire' | 'refill' | 'updated';
     label: string;
     value: string;
     percent?: number;
   }[];
 
-  const isRu =
-    typeof document !== 'undefined' &&
-    (document.documentElement?.lang || '').toLowerCase().startsWith('ru');
+  const updateBtn = options?.onUpdateSubscription
+    ? E(
+        'button',
+        {
+          type: 'button',
+          class: 'btn tachyon_dashboard-page__subscription-meta__action',
+          title: _('Update subscriptions'),
+          'aria-label': _('Update subscriptions'),
+          disabled: options.subscriptionUpdating ? true : undefined,
+          click: (event: MouseEvent) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (!options.subscriptionUpdating) {
+              options.onUpdateSubscription?.();
+            }
+          },
+        },
+        options.subscriptionUpdating
+          ? [
+              renderLoaderCircleIcon24(),
+              E(
+                'span',
+                {
+                  class:
+                    'tachyon_dashboard-page__subscription-meta__action-label',
+                },
+                isRu ? 'Обновление...' : _('Updating...'),
+              ),
+            ]
+          : [
+              svgEl(
+                'svg',
+                {
+                  width: '14',
+                  height: '14',
+                  viewBox: '0 0 24 24',
+                  fill: 'none',
+                  stroke: 'currentColor',
+                  'stroke-width': '2',
+                  'stroke-linecap': 'round',
+                  'stroke-linejoin': 'round',
+                },
+                [
+                  svgEl('path', {
+                    d: 'M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8',
+                  }),
+                  svgEl('polyline', { points: '21 3 21 8 16 8' }),
+                ],
+              ),
+              E(
+                'span',
+                {
+                  class:
+                    'tachyon_dashboard-page__subscription-meta__action-label',
+                },
+                isRu ? 'Обновить' : _('Update'),
+              ),
+            ],
+      )
+    : undefined;
 
   const actions = [
+    updateBtn,
     renderMetadataAction(
       _('Profile'),
       metadata?.webPageUrl,
@@ -2363,7 +2476,8 @@ function renderDefaultState({
       return E(
         'th',
         {
-          class: `tachyon-dashboard-nodes-table__th tachyon-dashboard-nodes-table__th--${col}`,
+          class: `tachyon-dashboard-nodes-table__th tachyon-dashboard-nodes-table__th--sortable tachyon-dashboard-nodes-table__th--${col}`,
+          style: 'cursor: pointer; user-select: none;',
           click: (e: MouseEvent) => {
             e.preventDefault();
             const cur = sectionTableSortState.get(sortKey);
@@ -2509,7 +2623,24 @@ function renderDefaultState({
       (countryGroups.length === 1 && countryGroups[0].countryCode !== 'OTHER');
 
     const metadataNodes = metadataList
-      .map((metadata) => renderSubscriptionMetadata(metadata))
+      .map((metadata, idx) => {
+        const fallbackTitle =
+          serverOutbounds[0]?.prefix ||
+          (metadataList.length > 1
+            ? `${_('Subscription')} #${metadata.sourceIndex || idx + 1}`
+            : _('Subscription'));
+        const enrichedMeta: Tachyon.SubscriptionMetadata =
+          metadata.title || metadata.fileName
+            ? metadata
+            : { ...metadata, title: fallbackTitle };
+        return renderSubscriptionMetadata(enrichedMeta, {
+          onUpdateSubscription:
+            subSourceCount > 0
+              ? () => onUpdateSubscription(section)
+              : undefined,
+          subscriptionUpdating,
+        });
+      })
       .filter(Boolean) as HTMLElement[];
 
     const subMap = new Map<string, Tachyon.Outbound[]>();
@@ -2708,13 +2839,19 @@ function renderDefaultState({
           ? `${_('Subscription')} #${subNumber}`
           : _('Subscription');
 
-      const headerMeta =
+      const resolvedSubTitle =
+        meta?.title || meta?.fileName || members[0]?.prefix || fallbackSubTitle;
+      const headerMeta: Tachyon.SubscriptionMetadata =
         meta && Object.keys(meta).length > 1
-          ? meta
-          : ({
-              title: members[0]?.prefix || fallbackSubTitle,
+          ? {
+              ...meta,
+              title:
+                meta.title || (meta.fileName ? undefined : resolvedSubTitle),
+            }
+          : {
+              title: resolvedSubTitle,
               sourceIndex: subNumber,
-            } as Tachyon.SubscriptionMetadata);
+            };
 
       const metaHeader = renderSubscriptionMetadata(headerMeta, {
         groupCount: visibleMembers.length,
@@ -2724,6 +2861,9 @@ function renderDefaultState({
           visibleMembers.length > 0
             ? () => onToggleSourceGroupCollapse?.(collapseKey)
             : undefined,
+        onUpdateSubscription:
+          subSourceCount > 0 ? () => onUpdateSubscription(section) : undefined,
+        subscriptionUpdating,
       });
 
       if (metaHeader) {

@@ -966,12 +966,21 @@ function nft_create_priority_sets(table, sets) {
         nft_create_ipv6_set(table, sets.sources6);
 }
 
-function nft_priority_verdict_args(priority_action, mark) {
+function nft_priority_verdict_args(priority_action, mark, match_args) {
     let lite = lite_mode_enabled(null);
     if (priority_action == "bypass")
         return lite ? [ "ct", "mark", "set", CT_LITE_DIRECT_MARK, "counter", "accept" ] : [ "counter", "accept" ];
-    if (priority_action == "block")
+    if (priority_action == "block") {
+        if (type(match_args) == "array") {
+            for (let tok in match_args) {
+                if (tok == "tcp")
+                    return [ "counter", "reject", "with", "tcp", "reset" ];
+                if (tok == "udp")
+                    return [ "counter", "reject" ];
+            }
+        }
         return [ "counter", "drop" ];
+    }
     if (lite)
         return [ "meta", "mark", "set", mark, "ct", "mark", "set", CT_LITE_PROXY_MARK, "counter", "accept" ];
     return [ "meta", "mark", "set", mark, "counter", "accept" ];
@@ -1025,7 +1034,7 @@ function nft_priority_rule_args(section, family, local_set, match_args, mark) {
     append_array(args, nft_excluded_source_match_args(section, family));
     append_array(args, [ family == 6 ? "ip6" : "ip", "daddr", "!=", "@" + as_string(local_set) ]);
     append_array(args, match_args);
-    append_array(args, nft_priority_verdict_args(section_priority_action(section), mark));
+    append_array(args, nft_priority_verdict_args(section_priority_action(section), mark, match_args));
     return args;
 }
 
@@ -1058,7 +1067,6 @@ function nft_add_section_priority_rules(table, section, interface_set, localv4_s
     let needs_ip_port_rules = section_priority_needs_ip_port_rules(section);
     let has_port_only_matchers = section_has_nft_port_only_matchers(section);
     let p_action = section_priority_action(section);
-    let is_bypass = (p_action == "bypass" || p_action == "block");
     let match_ip4 = [ "ip", "daddr", "@" + as_string(sets.subnets) ];
     let match_ip6 = [ "ip6", "daddr", "@" + as_string(sets.subnets6) ];
     let match_ip4_tcp = [ "ip", "daddr", "@" + as_string(sets.subnets), "meta", "l4proto", "tcp" ];
@@ -1075,8 +1083,16 @@ function nft_add_section_priority_rules(table, section, interface_set, localv4_s
     let match_port6_udp = [ "udp", "dport", "@" + as_string(sets.ports) ];
 
     if (needs_plain_ip_rules) {
-        if (is_bypass) {
+        if (p_action == "bypass") {
             if (!nft_add_priority_rule_pair(table, "priority_rules", section, interface_set, localv4_set, localv6_set, match_ip4, match_ip6, mark) ||
+                !nft_add_priority_rule_pair(table, "priority_output_rules", section, interface_set, localv4_set, localv6_set, match_ip4, match_ip6, mark))
+                return false;
+        } else if (p_action == "block") {
+            if (!nft_add_priority_rule_pair(table, "priority_rules", section, interface_set, localv4_set, localv6_set, match_ip4_tcp, match_ip6_tcp, mark) ||
+                !nft_add_priority_rule_pair(table, "priority_rules", section, interface_set, localv4_set, localv6_set, match_ip4_udp, match_ip6_udp, mark) ||
+                !nft_add_priority_rule_pair(table, "priority_rules", section, interface_set, localv4_set, localv6_set, match_ip4, match_ip6, mark) ||
+                !nft_add_priority_rule_pair(table, "priority_output_rules", section, interface_set, localv4_set, localv6_set, match_ip4_tcp, match_ip6_tcp, mark) ||
+                !nft_add_priority_rule_pair(table, "priority_output_rules", section, interface_set, localv4_set, localv6_set, match_ip4_udp, match_ip6_udp, mark) ||
                 !nft_add_priority_rule_pair(table, "priority_output_rules", section, interface_set, localv4_set, localv6_set, match_ip4, match_ip6, mark))
                 return false;
         } else {
@@ -1123,8 +1139,18 @@ function nft_add_section_priority_rules(table, section, interface_set, localv4_s
         length(connections.geoip_country_list(section)) == 0;
 
     if (has_source_only_matchers) {
-        if (is_bypass) {
+        if (p_action == "bypass") {
             if (!nft_add_priority_rule_pair(table, "priority_rules", section, interface_set, localv4_set, localv6_set, [], [], mark) ||
+                !nft_add_priority_rule_pair(table, "priority_output_rules", section, interface_set, localv4_set, localv6_set, [], [], mark))
+                return false;
+        } else if (p_action == "block") {
+            let match_tcp = [ "meta", "l4proto", "tcp" ];
+            let match_udp = [ "meta", "l4proto", "udp" ];
+            if (!nft_add_priority_rule_pair(table, "priority_rules", section, interface_set, localv4_set, localv6_set, match_tcp, match_tcp, mark) ||
+                !nft_add_priority_rule_pair(table, "priority_rules", section, interface_set, localv4_set, localv6_set, match_udp, match_udp, mark) ||
+                !nft_add_priority_rule_pair(table, "priority_rules", section, interface_set, localv4_set, localv6_set, [], [], mark) ||
+                !nft_add_priority_rule_pair(table, "priority_output_rules", section, interface_set, localv4_set, localv6_set, match_tcp, match_tcp, mark) ||
+                !nft_add_priority_rule_pair(table, "priority_output_rules", section, interface_set, localv4_set, localv6_set, match_udp, match_udp, mark) ||
                 !nft_add_priority_rule_pair(table, "priority_output_rules", section, interface_set, localv4_set, localv6_set, [], [], mark))
                 return false;
         } else {
@@ -1785,11 +1811,16 @@ function nft_add_quic_block_rule(table, interface_set, fakeip_mark, mode) {
     // timeout before falling back to TCP, while an ICMP port-unreachable makes
     // the fallback immediate.
     //
-    // UDP only: avoid conflicting L4 protocol expressions in nftables.
+    // Clear the tproxy fwmark bit before rejecting: otherwise Linux's
+    // icmp_route_lookup() inherits skb_in->mark, hits the `local 0.0.0.0/0`
+    // route in table 105, and floods dmesg with
+    // `icmp: detected local route for <client> during ICMP sending, src 198.18.x.x`.
+    let mark_num = int(fakeip_mark, 0);
+    let clear_mask = mark_num > 0 ? sprintf("0x%08x", (~mark_num) & 0xffffffff) : "0xfbffffff";
     let rule = [ "iifname", "@" + as_string(interface_set), "meta", "l4proto", "udp", "th", "dport", "443" ];
     if (mode == "tunneled")
         append_array(rule, [ "meta", "mark", "&", as_string(fakeip_mark), "==", as_string(fakeip_mark) ]);
-    append_array(rule, [ "counter", "reject", "with", "icmpx", "type", "port-unreachable" ]);
+    append_array(rule, [ "meta", "mark", "set", "meta", "mark", "&", clear_mask, "counter", "reject", "with", "icmpx", "type", "port-unreachable" ]);
     return nft_add_rule(table, "mangle", rule);
 }
 
@@ -1967,7 +1998,7 @@ function nft_add_tproxy_rules(table, fakeip_mark, tproxy_port, tproxy6_address, 
     if (!tproxy_intercept_enabled())
         return true;
     run_args_quiet([ "modprobe", "nft_tproxy" ]);
-    let mark_num = int(fakeip_mark);
+    let mark_num = int(fakeip_mark, 0);
     let clear_mask = mark_num > 0 ? sprintf("0x%08x", (~mark_num) & 0xffffffff) : "0xfbffffff";
     if (!nft_add_rule(table, "proxy", [ "ct", "status", "dnat", "meta", "mark", "set", "meta", "mark", "&", clear_mask, "return" ]) ||
         !nft_add_rule(table, "proxy", [ "fib", "daddr", "type", "local", "return" ]))
@@ -2770,13 +2801,14 @@ function nft_insert_fully_routed_ip_rules(source_ip, table, interface_set, local
     let is_bypass = as_string(mark) == "bypass";
     let is_block = as_string(mark) == "block";
     let lite = lite_mode_enabled(null);
-    let verdict_args = is_bypass
+    let tcp_verdict_args = is_bypass
         ? (lite ? [ "ct", "mark", "set", CT_LITE_DIRECT_MARK, "counter", "return" ] : [ "counter", "return" ])
         : (is_block
-            ? [ "counter", "drop" ]
+            ? [ "counter", "reject", "with", "tcp", "reset" ]
             : (lite
                 ? [ "meta", "mark", "set", mark, "ct", "mark", "set", CT_LITE_PROXY_MARK, "counter" ]
                 : [ "meta", "mark", "set", mark, "counter" ]));
+    let udp_verdict_args = is_block ? [ "counter", "reject" ] : tcp_verdict_args;
 
     if (family == 0) {
         if (core_ip.valid_mac(source_ip)) {
@@ -2784,9 +2816,9 @@ function nft_insert_fully_routed_ip_rules(source_ip, table, interface_set, local
             let localv4 = as_string(localv4_set);
             let localv6 = as_string(default_arg(localv6_set, "localv6"));
             let tcp_args = [ "nft", "insert", "rule", "inet", table, "mangle", "iifname", "@" + as_string(interface_set), "ether", "saddr", mac, "meta", "l4proto", "tcp" ];
-            append_array(tcp_args, verdict_args);
+            append_array(tcp_args, tcp_verdict_args);
             let udp_args = [ "nft", "insert", "rule", "inet", table, "mangle", "iifname", "@" + as_string(interface_set), "ether", "saddr", mac, "meta", "l4proto", "udp" ];
-            append_array(udp_args, verdict_args);
+            append_array(udp_args, udp_verdict_args);
             let ok = run_args(tcp_args) &&
                      run_args(udp_args) &&
                      run_args([ "nft", "insert", "rule", "inet", table, "mangle", "ether", "saddr", mac, "ip", "saddr", ".", "tcp", "sport", "@tachyon_dnat_tcp_v4", "return" ]) &&
@@ -2805,9 +2837,9 @@ function nft_insert_fully_routed_ip_rules(source_ip, table, interface_set, local
     let dnat_tcp_set = family == 6 ? "@tachyon_dnat_tcp_v6" : "@tachyon_dnat_tcp_v4";
     let dnat_udp_set = family == 6 ? "@tachyon_dnat_udp_v6" : "@tachyon_dnat_udp_v4";
     let tcp_rule = [ "nft", "insert", "rule", "inet", table, "mangle", "iifname", "@" + as_string(interface_set), ip_key, "saddr", source_ip, "meta", "l4proto", "tcp" ];
-    append_array(tcp_rule, verdict_args);
+    append_array(tcp_rule, tcp_verdict_args);
     let udp_rule = [ "nft", "insert", "rule", "inet", table, "mangle", "iifname", "@" + as_string(interface_set), ip_key, "saddr", source_ip, "meta", "l4proto", "udp" ];
-    append_array(udp_rule, verdict_args);
+    append_array(udp_rule, udp_verdict_args);
 
     return (
         run_args(tcp_rule) &&

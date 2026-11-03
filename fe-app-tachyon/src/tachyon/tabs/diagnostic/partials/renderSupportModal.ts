@@ -85,14 +85,14 @@ export function renderSupportModal(): void {
     'div',
     {
       style:
-        'display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 12px; background: linear-gradient(135deg, rgba(244, 63, 94, 0.12), rgba(99, 102, 241, 0.08)); border: 1px solid rgba(244, 63, 94, 0.24);',
+        'display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 10px; background: var(--tachyon-bg-card-elevated, rgba(148, 163, 184, 0.06)); border: 1px solid var(--tachyon-border-subtle, rgba(148, 163, 184, 0.18));',
     },
     [
       E(
         'div',
         {
           style:
-            'width: 42px; height: 42px; border-radius: 11px; background: rgba(244, 63, 94, 0.18); border: 1px solid rgba(244, 63, 94, 0.34); display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0;',
+            'width: 40px; height: 40px; border-radius: 8px; background: var(--tachyon-accent-soft, rgba(124, 134, 255, 0.12)); border: 1px solid var(--tachyon-accent-border, rgba(124, 134, 255, 0.24)); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;',
         },
         [renderHeartIcon24()],
       ),
@@ -114,7 +114,7 @@ export function renderSupportModal(): void {
     'div',
     {
       style:
-        'display: flex; flex-direction: column; justify-content: space-between; gap: 12px; padding: 14px 16px; border-radius: 12px; background: linear-gradient(145deg, rgba(241, 95, 44, 0.12), rgba(241, 95, 44, 0.03)); border: 1px solid rgba(241, 95, 44, 0.35);',
+        'display: flex; flex-direction: column; justify-content: space-between; gap: 12px; padding: 14px 16px; border-radius: 10px; background: var(--tachyon-bg-card-elevated, rgba(148, 163, 184, 0.05)); border: 1px solid var(--tachyon-border-subtle, rgba(148, 163, 184, 0.2));',
     },
     [
       E(
@@ -125,7 +125,7 @@ export function renderSupportModal(): void {
             'div',
             {
               style:
-                'width: 38px; height: 38px; border-radius: 10px; background: rgba(241, 95, 44, 0.2); border: 1px solid rgba(241, 95, 44, 0.38); display: flex; align-items: center; justify-content: center; color: #f15f2c; flex-shrink: 0;',
+                'width: 36px; height: 36px; border-radius: 8px; background: rgba(241, 95, 44, 0.12); border: 1px solid rgba(241, 95, 44, 0.26); display: flex; align-items: center; justify-content: center; color: #f15f2c; flex-shrink: 0;',
             },
             [renderSparklesIcon(18)],
           ),
@@ -140,7 +140,7 @@ export function renderSupportModal(): void {
                 'div',
                 {
                   style:
-                    'font-weight: 700; font-size: 14px; color: var(--tachyon-text-main, inherit);',
+                    'font-weight: 600; font-size: 14px; color: var(--tachyon-text-main, inherit);',
                 },
                 'Boosty',
               ),
@@ -172,7 +172,7 @@ export function renderSupportModal(): void {
     'div',
     {
       style:
-        'display: flex; flex-direction: column; justify-content: space-between; gap: 12px; padding: 14px 16px; border-radius: 12px; background: linear-gradient(145deg, rgba(14, 165, 233, 0.12), rgba(14, 165, 233, 0.03)); border: 1px solid rgba(14, 165, 233, 0.35);',
+        'display: flex; flex-direction: column; justify-content: space-between; gap: 12px; padding: 14px 16px; border-radius: 10px; background: var(--tachyon-bg-card-elevated, rgba(148, 163, 184, 0.05)); border: 1px solid var(--tachyon-border-subtle, rgba(148, 163, 184, 0.2));',
     },
     [
       E(
@@ -183,7 +183,7 @@ export function renderSupportModal(): void {
             'div',
             {
               style:
-                'width: 38px; height: 38px; border-radius: 10px; background: rgba(14, 165, 233, 0.2); border: 1px solid rgba(14, 165, 233, 0.38); display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #0ea5e9;',
+                'width: 36px; height: 36px; border-radius: 8px; background: rgba(14, 165, 233, 0.12); border: 1px solid rgba(14, 165, 233, 0.26); display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #0ea5e9;',
             },
             [renderCreditCardIcon(18)],
           ),
@@ -198,7 +198,7 @@ export function renderSupportModal(): void {
                 'div',
                 {
                   style:
-                    'font-weight: 700; font-size: 14px; color: var(--tachyon-text-main, inherit);',
+                    'font-weight: 600; font-size: 14px; color: var(--tachyon-text-main, inherit);',
                 },
                 _('Credit Cards / SBP / Tinkoff Pay'),
               ),
@@ -301,13 +301,13 @@ export function renderSupportModal(): void {
                 E(
                   'span',
                   {
-                    style: `width: 26px; height: 26px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; background: ${item.accent}22; color: ${item.accent}; border: 1px solid ${item.accent}44; flex-shrink: 0;`,
+                    style: `width: 26px; height: 26px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; background: ${item.accent}1f; color: ${item.accent}; border: 1px solid ${item.accent}3d; flex-shrink: 0;`,
                   },
                   typeof item.icon === 'function' ? [item.icon()] : item.icon,
                 ),
                 E(
                   'span',
-                  { style: 'font-weight: 700; font-size: 13px;' },
+                  { style: 'font-weight: 600; font-size: 13px;' },
                   item.name,
                 ),
                 E(
@@ -315,7 +315,7 @@ export function renderSupportModal(): void {
                   {
                     class: 'badge cbi-value-title',
                     style:
-                      'font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 999px; opacity: 0.9;',
+                      'font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 5px; opacity: 0.9;',
                   },
                   item.badge,
                 ),
@@ -335,14 +335,14 @@ export function renderSupportModal(): void {
     'div',
     {
       style:
-        'display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--tachyon-border-subtle, rgba(148, 163, 184, 0.18)); background: var(--tachyon-bg-card, rgba(30, 41, 59, 0.35));',
+        'display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: 10px; border: 1px solid var(--tachyon-border-subtle, rgba(148, 163, 184, 0.18)); background: var(--tachyon-bg-card, rgba(30, 41, 59, 0.35));',
     },
     [
       E(
         'div',
         {
           style:
-            'font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--tachyon-text-muted, #94a3b8); display: flex; align-items: center; gap: 6px;',
+            'font-weight: 600; font-size: 12.5px; color: var(--tachyon-text-muted, #94a3b8); display: flex; align-items: center; gap: 6px;',
         },
         [renderCoinsIcon(14), _('Cryptocurrency')],
       ),

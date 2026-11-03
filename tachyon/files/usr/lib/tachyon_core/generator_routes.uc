@@ -399,14 +399,51 @@ function tag_display_name_with_type(tag, names, metadata) {
     return label != "" ? (name + " [" + label + "]") : name;
 }
 
-function tag_name_filter_matches(tag, names, name_filter, regex_set, metadata, name_with_type_indexed) {
+function tag_source_badge(tag, name, metadata) {
+    metadata = object_or_empty(metadata);
+    let stored_prefix = trim(as_string(object_or_empty(metadata.prefixes)[tag] || ""));
+    if (stored_prefix != "" &&
+        index(name, stored_prefix + ": ") != 0 &&
+        index(name, "[" + stored_prefix + "]") != 0)
+        return stored_prefix;
+    let stored_source = trim(as_string(object_or_empty(metadata.sources)[tag] || ""));
+    if (stored_prefix == "" && match(stored_source, /^sub:[0-9]+$/i) != null)
+        return stored_source;
+    return "";
+}
+
+function tag_prefixed_name_with_type(tag, names, metadata) {
+    let name = tag_display_name(tag, names);
+    let badge = tag_source_badge(tag, name, metadata);
+    let base = badge != "" ? ("[" + badge + "] " + name) : name;
+    let proto = object_or_empty(object_or_empty(metadata).protocols)[tag];
+    let trans = object_or_empty(object_or_empty(metadata).transports)[tag];
+    let label = format_outbound_type_label(proto, trans);
+    return label != "" ? (base + " [" + label + "]") : base;
+}
+
+function tag_name_filter_matches(tag, names, name_filter, regex_set, metadata, name_with_type_indexed, prefixed_with_type_indexed, is_first_for_type, is_first_for_prefixed_type) {
     let name = tag_display_name(tag, names);
     if (array_contains(name_filter, name) || array_contains(name_filter, tag) || regex_set[tag])
         return true;
+    let name_with_type = tag_display_name_with_type(tag, names, metadata);
+    if (name_with_type != name && (is_first_for_type !== false) && array_contains(name_filter, name_with_type))
+        return true;
+    let badge = tag_source_badge(tag, name, metadata);
+    if (badge != "") {
+        let b_name = "[" + badge + "] " + name;
+        let b_with_type = tag_prefixed_name_with_type(tag, names, metadata);
+        if (array_contains(name_filter, b_name) ||
+            ((is_first_for_prefixed_type !== false) && array_contains(name_filter, b_with_type)) ||
+            array_contains(name_filter, badge + ": " + name) ||
+            array_contains(name_filter, badge + " " + name))
+            return true;
+    }
     let stored_prefix = trim(as_string(object_or_empty(object_or_empty(metadata).prefixes)[tag] || ""));
     if (stored_prefix != "") {
         if (array_contains(name_filter, stored_prefix + ": " + name) ||
-            array_contains(name_filter, stored_prefix + " " + name))
+            array_contains(name_filter, stored_prefix + " " + name) ||
+            array_contains(name_filter, "[" + stored_prefix + "] " + name))
             return true;
         if (index(name, stored_prefix + ": ") == 0 &&
             array_contains(name_filter, trim(substr(name, length(stored_prefix) + 2))))
@@ -417,11 +454,8 @@ function tag_name_filter_matches(tag, names, name_filter, regex_set, metadata, n
     }
     if (name_with_type_indexed != null && array_contains(name_filter, name_with_type_indexed))
         return true;
-    if (name_with_type_indexed == null && type(metadata) == "object") {
-        let name_with_type = tag_display_name_with_type(tag, names, metadata);
-        if (name_with_type != name && array_contains(name_filter, name_with_type))
-            return true;
-    }
+    if (prefixed_with_type_indexed != null && array_contains(name_filter, prefixed_with_type_indexed))
+        return true;
     return false;
 }
 
@@ -520,13 +554,19 @@ function urltest_matching_candidate_outbounds(urltest_candidate_tags, names, cou
     let result = [];
 
     let seen_type_counts = {};
+    let seen_prefixed_type_counts = {};
     for (let tag in array_or_empty(urltest_candidate_tags)) {
         let name_with_type = tag_display_name_with_type(tag, names, metadata);
         seen_type_counts[name_with_type] = (seen_type_counts[name_with_type] || 0) + 1;
         let count = seen_type_counts[name_with_type];
         let name_with_type_indexed = count > 1 ? (name_with_type + " (#" + count + ")") : name_with_type;
 
-        let base_matches = tag_name_filter_matches(tag, names, name_filter, regex_set, metadata, name_with_type_indexed) ||
+        let prefixed_with_type = tag_prefixed_name_with_type(tag, names, metadata);
+        seen_prefixed_type_counts[prefixed_with_type] = (seen_prefixed_type_counts[prefixed_with_type] || 0) + 1;
+        let p_count = seen_prefixed_type_counts[prefixed_with_type];
+        let prefixed_with_type_indexed = p_count > 1 ? (prefixed_with_type + " (#" + p_count + ")") : prefixed_with_type;
+
+        let base_matches = tag_name_filter_matches(tag, names, name_filter, regex_set, metadata, name_with_type_indexed, prefixed_with_type_indexed, count == 1, p_count == 1) ||
             tag_country_filter_matches(tag, countries, country_filter);
         let matches = additional_set[tag] || base_matches;
         if (proxy_parameters_enabled && proxy_parameters_operator == "or") {
@@ -741,18 +781,24 @@ function filter_tags_by_group_spec(candidate_tags, spec, state) {
 
     let result = [];
     let seen_type_counts = {};
+    let seen_prefixed_type_counts = {};
     for (let t in all_tags) {
         let name_with_type = tag_display_name_with_type(t, names, metadata);
         seen_type_counts[name_with_type] = (seen_type_counts[name_with_type] || 0) + 1;
         let count = seen_type_counts[name_with_type];
         let name_with_type_indexed = count > 1 ? (name_with_type + " (#" + count + ")") : name_with_type;
 
+        let prefixed_with_type = tag_prefixed_name_with_type(t, names, metadata);
+        seen_prefixed_type_counts[prefixed_with_type] = (seen_prefixed_type_counts[prefixed_with_type] || 0) + 1;
+        let p_count = seen_prefixed_type_counts[prefixed_with_type];
+        let prefixed_with_type_indexed = p_count > 1 ? (prefixed_with_type + " (#" + p_count + ")") : prefixed_with_type;
+
         if ((mode == "include" || mode == "mixed") && any_inc_category) {
             if (has_inc_prefix && !tag_prefix_filter_matches(t, names, metadata, inc_prefixes))
                 continue;
             if (has_inc_base) {
                 let base_matches = (has_inc_country && tag_country_filter_matches(t, countries, inc_countries)) ||
-                    (has_inc_name_regex && tag_name_filter_matches(t, names, inc_names, inc_regex_set, metadata, name_with_type_indexed));
+                    (has_inc_name_regex && tag_name_filter_matches(t, names, inc_names, inc_regex_set, metadata, name_with_type_indexed, prefixed_with_type_indexed));
                 if (!base_matches)
                     continue;
             }
@@ -769,7 +815,7 @@ function filter_tags_by_group_spec(candidate_tags, spec, state) {
             if (!is_excluded && length(exc_countries) > 0 && tag_country_filter_matches(t, countries, exc_countries))
                 is_excluded = true;
             if (!is_excluded && (length(exc_names) > 0 || length(exc_regex) > 0) &&
-                tag_name_filter_matches(t, names, exc_names, exc_regex_set, metadata, name_with_type_indexed))
+                tag_name_filter_matches(t, names, exc_names, exc_regex_set, metadata, name_with_type_indexed, prefixed_with_type_indexed))
                 is_excluded = true;
             if (!is_excluded && exc_params && proxy_parameter_filter_matches_any(
                 t, metadata, spec.exclude_protocols, spec.exclude_transports, spec.exclude_securities, spec.exclude_ports
@@ -2696,7 +2742,7 @@ function add_source_dns_matchers(rule, source_ip_cidr) {
         return;
 
     rule.inbound = source_dns_inbound_matcher();
-    rule.source_ip_cidr = single_or_array(source_ip_cidr);
+    rule.source_ip_cidr = single_or_array(core_ip.expand_ipv4_mapped_cidrs(source_ip_cidr));
 }
 
 function add_dns_action_rules_for_clause(config, section) {
@@ -2966,7 +3012,11 @@ const ACTION_KEYS = {
     timeout: true,
     method: true,
     no_drop: true,
-    strategy: true
+    strategy: true,
+    rcode: true,
+    answer: true,
+    ns: true,
+    extra: true
 };
 
 // The two "everything except the selected countries" modes match the inverted
@@ -3144,7 +3194,53 @@ function apply_inverted_subrules(rule, inv_subrules) {
     return logical_rule;
 }
 
+function section_is_dns_block_eligible(section) {
+    let override = section_fail_policy_override_target(section);
+    let is_block = override != null
+        ? override.fail_policy == "block"
+        : option(section, "action", "") == "block";
+    if (!is_block)
+        return false;
+    if (length(list_option(section, "ports")) > 0 ||
+        trim(option(section, "ports_text", "")) != "" ||
+        length(list_option(section, "protocol")) > 0 ||
+        length(connections.dscp_list(section)) > 0 ||
+        length(connections.geoip_country_list(section)) > 0)
+        return false;
+    if (type(section.__inverted_conditions) == "array" && length(section.__inverted_conditions) > 0)
+        return false;
+    return true;
+}
+
 function push_section_dns_matcher_rule(config, section, rule, excluded_cidrs, domain_rule_set_tags) {
+    let dns_excluded_cidrs = core_ip.expand_ipv4_mapped_cidrs(excluded_cidrs);
+    if (section_is_dns_block_eligible(section)) {
+        let ttl_num = int(rule.rewrite_ttl != null ? rule.rewrite_ttl : 60);
+        if (ttl_num == null || ttl_num < 0)
+            ttl_num = 60;
+        let ttl_str = as_string(ttl_num);
+        let is_tachyon_core = ctx.is_tachyon_core && ctx.is_tachyon_core();
+        let rule_a = {};
+        let rule_aaaa = {};
+        for (let key, value in rule) {
+            if (key == "action" || key == "server" || key == "rewrite_ttl" || key == "query_type")
+                continue;
+            rule_a[key] = value;
+            rule_aaaa[key] = value;
+        }
+        rule_a.action = "predefined";
+        rule_a.rcode = "NOERROR";
+        rule_a.query_type = [ "A" ];
+        rule_a.answer = [ is_tachyon_core ? { ttl: ttl_num, value: "0.0.0.0" } : "* " + ttl_str + " IN A 0.0.0.0" ];
+        push_dns_matcher_rule(config, apply_excluded_source_ips(rule_a, dns_excluded_cidrs));
+
+        rule_aaaa.action = "predefined";
+        rule_aaaa.rcode = "NOERROR";
+        rule_aaaa.query_type = [ "AAAA" ];
+        rule_aaaa.answer = [ is_tachyon_core ? { ttl: ttl_num, value: "::" } : "* " + ttl_str + " IN AAAA ::" ];
+        push_dns_matcher_rule(config, apply_excluded_source_ips(rule_aaaa, dns_excluded_cidrs));
+        return;
+    }
     let action = option(section, "action", "");
     let routed_tag = runtime_constants.tag(section[".name"], "routed-dns-server");
     if ((action == "zapret" || action == "zapret2" || action == "byedpi") &&
@@ -3166,10 +3262,10 @@ function push_section_dns_matcher_rule(config, section, rule, excluded_cidrs, do
             fakeip_rule.rule_set = single_or_array(domain_rule_set_tags);
         fakeip_rule.server = runtime_constants.FAKEIP_DNS_SERVER_TAG;
         add_fakeip_query_type(fakeip_rule, fakeip_rule.server, section_is_ipv4_only_dpi(section));
-        push_dns_matcher_rule(config, apply_excluded_source_ips(fakeip_rule, excluded_cidrs));
+        push_dns_matcher_rule(config, apply_excluded_source_ips(fakeip_rule, dns_excluded_cidrs));
     }
     // Retain routed DNS for other query types and non-domain rulesets.
-    push_dns_matcher_rule(config, apply_excluded_source_ips(rule, excluded_cidrs));
+    push_dns_matcher_rule(config, apply_excluded_source_ips(rule, dns_excluded_cidrs));
 }
 
 function push_section_route_rule(config, rule, target_outbound, excluded_cidrs, geo_tags, country_mode) {
@@ -3292,19 +3388,33 @@ function resolve_section_server_outbound_tag(config, section, server_key) {
     }
 
     let state = section_state_map[section_name];
-    let names = object_or_empty(object_or_empty(object_or_empty(state).outboundMetadata).names);
+    let metadata = object_or_empty(object_or_empty(state).outboundMetadata);
+    let names = object_or_empty(metadata.names);
     let leaves = array_or_empty(section_leaf_tags[section_name]);
 
     for (let t in leaves) {
         let t_str = as_string(t);
         let disp = trim(as_string(names[t_str] || ""));
-        if (lc(t_str) == key_lc || (disp != "" && lc(disp) == key_lc))
+        let badge = tag_source_badge(t_str, disp, metadata);
+        let b_disp = badge != "" ? ("[" + badge + "] " + disp) : "";
+        let p_disp = badge != "" ? (badge + ": " + disp) : "";
+        if (lc(t_str) == key_lc ||
+            (disp != "" && lc(disp) == key_lc) ||
+            (b_disp != "" && lc(b_disp) == key_lc) ||
+            (p_disp != "" && lc(p_disp) == key_lc))
             return t_str;
     }
     for (let t, disp_raw in names) {
+        let t_str = as_string(t);
         let disp = trim(as_string(disp_raw));
-        if (lc(as_string(t)) == key_lc || (disp != "" && lc(disp) == key_lc))
-            return as_string(t);
+        let badge = tag_source_badge(t_str, disp, metadata);
+        let b_disp = badge != "" ? ("[" + badge + "] " + disp) : "";
+        let p_disp = badge != "" ? (badge + ": " + disp) : "";
+        if (lc(t_str) == key_lc ||
+            (disp != "" && lc(disp) == key_lc) ||
+            (b_disp != "" && lc(b_disp) == key_lc) ||
+            (p_disp != "" && lc(p_disp) == key_lc))
+            return t_str;
     }
     for (let t in leaves) {
         let t_str = as_string(t);
@@ -3629,6 +3739,7 @@ function add_combined_route_for_clause(config, section) {
     let ip_cidr = core_ip.normalize_to_cidrs(legacy_condition_values(section, "ip_cidr"));
     let source_ip_cidr = core_ip.normalize_to_cidrs(legacy_condition_values(section, "source_ip_cidr"));
     let excluded_cidrs = core_ip.normalize_to_cidrs(list_option(section, "excluded_ips"));
+    let dns_excluded_cidrs = core_ip.expand_ipv4_mapped_cidrs(excluded_cidrs);
     let rule_set_tags = [];
     let dns_query_rule_set_tags = [];
     let dns_response_rule_set_tags = [];
@@ -3914,7 +4025,7 @@ function add_combined_route_for_clause(config, section) {
                 };
                 add_domain_array(aaaa_rule, key, values);
                 add_source_dns_matchers(aaaa_rule, source_ip_cidr);
-                push_dns_matcher_rule(config, apply_excluded_source_ips(aaaa_rule, excluded_cidrs));
+                push_dns_matcher_rule(config, apply_excluded_source_ips(aaaa_rule, dns_excluded_cidrs));
             }
         }
     }
@@ -3946,7 +4057,7 @@ function add_combined_route_for_clause(config, section) {
                     rule_set: single_or_array(dns_query_rule_set_tags)
                 };
                 add_source_dns_matchers(aaaa_rule, source_ip_cidr);
-                push_dns_matcher_rule(config, apply_excluded_source_ips(aaaa_rule, excluded_cidrs));
+                push_dns_matcher_rule(config, apply_excluded_source_ips(aaaa_rule, dns_excluded_cidrs));
             }
         }
         if (length(dns_response_rule_set_tags) > 0) {
@@ -3955,7 +4066,7 @@ function add_combined_route_for_clause(config, section) {
                 server: runtime_constants.DNS_SERVER_TAG
             };
             add_source_dns_matchers(eval_rule, source_ip_cidr);
-            push_dns_matcher_rule(config, apply_excluded_source_ips(eval_rule, excluded_cidrs));
+            push_dns_matcher_rule(config, apply_excluded_source_ips(eval_rule, dns_excluded_cidrs));
 
             let dns_rule = {
                 action: "route",
@@ -3994,7 +4105,7 @@ function add_combined_route_for_clause(config, section) {
                     rule_set: single_or_array(all_dns_tags)
                 };
                 add_source_dns_matchers(aaaa_rule, source_ip_cidr);
-                push_dns_matcher_rule(config, apply_excluded_source_ips(aaaa_rule, excluded_cidrs));
+                push_dns_matcher_rule(config, apply_excluded_source_ips(aaaa_rule, dns_excluded_cidrs));
             }
         }
     }

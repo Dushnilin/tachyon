@@ -1359,7 +1359,7 @@ export function openSectionIconPickerModal(
       E('div', { class: 'tachyon-icon-picker__preview-text' }, [
         E(
           'div',
-          { style: 'font-weight: 800; font-size: 14px;' },
+          { style: 'font-weight: 600; font-size: 14px;' },
           section.displayName || secName,
         ),
         previewDomainLabel,
@@ -1370,7 +1370,7 @@ export function openSectionIconPickerModal(
         'label',
         {
           style:
-            'font-weight: 700; font-size: 12px; display: block; margin-bottom: 4px;',
+            'font-weight: 600; font-size: 12px; display: block; margin-bottom: 4px;',
         },
         tr(
           'Домен сайта (подгрузит favicon.ico автоматически) или прямая ссылка на иконку:',
@@ -1384,7 +1384,7 @@ export function openSectionIconPickerModal(
         'div',
         {
           style:
-            'font-weight: 700; font-size: 11px; opacity: 0.72; text-transform: uppercase; margin-bottom: 6px;',
+            'font-weight: 600; font-size: 11px; opacity: 0.72; margin-bottom: 6px;',
         },
         tr('Быстрый выбор популярных сайтов:', 'Quick pick popular websites:'),
       ),

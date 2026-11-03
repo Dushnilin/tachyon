@@ -424,16 +424,18 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
         }
       }
       if (stype === 'subscription' || src.url) {
+        const isSubUrl = (val: string) =>
+          /^https?:\/\//i.test(val) || /^(happ:\/\/)?crypt[2-5]?\//i.test(val);
         const rawSubName = (src.name || '').trim();
         const u = (
           src.url ||
-          (stype === 'subscription' && /^https?:\/\//i.test(rawSubName)
+          (stype === 'subscription' && isSubUrl(rawSubName)
             ? rawSubName
             : '') ||
           ''
         ).trim();
         if (u) {
-          if (/^https?:\/\//i.test(u)) {
+          if (isSubUrl(u)) {
             if (!seenSubUrls.has(u)) {
               seenSubUrls.add(u);
               subscriptionUrlItems.push({ ...src, url: u });
@@ -670,10 +672,19 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
         if (!item.url) {
           return;
         }
+        const rawItemName = (item.name || '').trim();
+        const cleanItemName =
+          rawItemName &&
+          rawItemName !== item.url &&
+          !/^https?:\/\//i.test(rawItemName) &&
+          !/^(happ:\/\/)?crypt[2-5]?\//i.test(rawItemName)
+            ? rawItemName
+            : undefined;
         settings[item.url] = {
           // Carried so the dashboard can tell a disabled source from an enabled
           // one. `enabled` is absent on sections written before the flag existed,
           // which means enabled - the same default the backend applies.
+          name: cleanItemName,
           enabled: item.enabled,
           subscription_update_enabled: item.subscription_update_enabled,
           subscription_update_interval: item.subscription_update_interval,
@@ -2590,13 +2601,35 @@ function getSubscriptionMetadata(
   const metadataItems = Array.isArray(dashboardCache.subscriptionMetadata)
     ? dashboardCache.subscriptionMetadata
     : [dashboardCache.subscriptionMetadata];
-  const visibleMetadataItems = metadataItems.filter(
-    (metadata) =>
-      metadata &&
-      Object.keys(metadata).length > 1 &&
-      metadataMatchesCurrentSource(section['.name'], sourceCount, metadata) &&
-      isSubscriptionMetadataVisible(section, sourceCount, metadata),
-  );
+  const settingsMap = itemSettingsMap(section.subscription_url_settings);
+  const subUrls = getListValues(section.subscription_urls);
+  const visibleMetadataItems = metadataItems
+    .filter(
+      (metadata) =>
+        metadata &&
+        Object.keys(metadata).length > 1 &&
+        metadataMatchesCurrentSource(section['.name'], sourceCount, metadata) &&
+        isSubscriptionMetadataVisible(section, sourceCount, metadata),
+    )
+    .map((metadata) => {
+      if (metadata.title || metadata.fileName) {
+        return metadata;
+      }
+      const sourceIndex = getSubscriptionMetadataSourceIndex(
+        section['.name'],
+        sourceCount,
+        metadata,
+      );
+      const sourceEntry =
+        sourceIndex && sourceIndex >= 1 ? subUrls[sourceIndex - 1] : undefined;
+      const srcSettings = sourceEntry ? settingsMap[sourceEntry] : undefined;
+      const fallbackName =
+        (typeof srcSettings?.name === 'string' && srcSettings.name.trim()) ||
+        (typeof srcSettings?.node_prefix === 'string' &&
+          srcSettings.node_prefix.trim()) ||
+        '';
+      return fallbackName ? { ...metadata, title: fallbackName } : metadata;
+    });
 
   if (visibleMetadataItems.length > 0) {
     return visibleMetadataItems;

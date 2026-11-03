@@ -169,24 +169,46 @@ function read_section_metadata(section_name, source_section, source_index) {
     return selected;
 }
 
-function read_source_metadata(section_name, source_section, source_index, source_entry) {
+function source_json_path(source_section) {
+    return TMP_SUBSCRIPTION_FOLDER + "/" + source_section + ".json";
+}
+
+function read_source_metadata(section_name, source_section, source_index, source_entry, fallback_title) {
     let metadata = read_section_metadata(section_name, source_section, source_index);
     if (length(metadata) == 0)
         metadata = read_persistent_source_metadata(source_section, source_entry);
+
+    let updated_at = 0;
+    let st_tmp = fs.stat(source_json_path(source_section));
+    if (st_tmp != null && int(st_tmp.mtime || 0) > 0)
+        updated_at = int(st_tmp.mtime);
+    else {
+        let st_pers = fs.stat(persistent_source_path(source_section, ".json"));
+        if (st_pers != null && int(st_pers.mtime || 0) > 0)
+            updated_at = int(st_pers.mtime);
+    }
+
+    fallback_title = trim(as_string(fallback_title || ""));
+    if (length(metadata) == 0 && updated_at > 0)
+        metadata = [ { updatedAt: updated_at } ];
 
     let result = [];
     for (let item in metadata) {
         item.sourceIndex = source_index;
         item.sourceSection = source_section;
+        if (updated_at > 0 && item.updatedAt == null)
+            item.updatedAt = updated_at;
+        if (fallback_title != "" && trim(as_string(item.title || "")) == "" && trim(as_string(item.fileName || "")) == "")
+            item.title = fallback_title;
         push(result, item);
     }
     return result;
 }
 
-function merge_source_metadata(state, section_name, source_section, source_index, source_entry) {
+function merge_source_metadata(state, section_name, source_section, source_index, source_entry, fallback_title) {
     if (type(state) != "object")
         return;
-    for (let item in read_source_metadata(section_name, source_section, source_index, source_entry))
+    for (let item in read_source_metadata(section_name, source_section, source_index, source_entry, fallback_title))
         push(state.subscriptionMetadata, item);
 }
 
@@ -445,10 +467,6 @@ function source_cache_is_current(source_section, source_entry, expected_user_age
         return false;
 
     return true;
-}
-
-function source_json_path(source_section) {
-    return TMP_SUBSCRIPTION_FOLDER + "/" + source_section + ".json";
 }
 
 function read_source_outbounds(source_section) {

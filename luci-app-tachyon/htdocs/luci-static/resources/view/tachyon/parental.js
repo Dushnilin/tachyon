@@ -383,7 +383,7 @@ function createProfileContent(section) {
         const label = isMac ? "MAC" : "IP";
         return (
           `<span class="badge" style="background:var(--background-color-low, rgba(0,0,0,0.06));padding:2px 6px;border-radius:4px;font-size:11px;font-family:monospace;margin-right:4px;font-weight:600;display:inline-flex;align-items:center;margin-bottom:2px;border:1px solid var(--border-color-low, rgba(0,0,0,0.12));max-width:100%;word-break:break-all;overflow-wrap:anywhere;">` +
-          `<span style="opacity:0.75;font-weight:700;margin-right:3px;">${label}:</span>` +
+          `<span style="opacity:0.75;font-weight: 600;margin-right:3px;">${label}:</span>` +
           dev +
           "</span>"
         );
@@ -803,7 +803,7 @@ function createParentalContent(section) {
         const label = isMac ? "MAC" : "IP";
         items.push(
           `<span class="badge" style="background:var(--background-color-low, rgba(0,0,0,0.06));padding:2px 6px;border-radius:4px;font-size:11px;font-family:monospace;margin-right:4px;font-weight:600;display:inline-flex;align-items:center;margin-bottom:2px;border:1px solid var(--border-color-low, rgba(0,0,0,0.12));max-width:100%;word-break:break-all;overflow-wrap:anywhere;">` +
-            `<span style="opacity:0.75;font-weight:700;margin-right:3px;">${label}:</span>` +
+            `<span style="opacity:0.75;font-weight: 600;margin-right:3px;">${label}:</span>` +
             dev +
             "</span>",
         );

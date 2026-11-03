@@ -24,6 +24,14 @@ cat >"$WORK_DIR/dns-action.json" <<'JSON'
       "dns_type": "udp",
       "dns_server": "10.0.0.18",
       "fully_routed_ips": [ "192.168.1.164", "192.168.1.225" ]
+    },
+    {
+      ".name": "adblock_sec",
+      ".type": "section",
+      "enabled": "1",
+      "action": "block",
+      "user_domains": [ "ads.example.com" ],
+      "source_ip_cidr": [ "192.168.1.164" ]
     }
   ]
 }
@@ -46,8 +54,11 @@ if (rules.length === 0) {
 
 // Rule 0 must be the excluded client bypass to dnsmasq
 const firstRule = rules[0];
-if (!firstRule.source_ip_cidr || !firstRule.source_ip_cidr.includes("192.168.1.50") || firstRule.server !== "dnsmasq-server") {
-  console.error("FAIL: first dns rule must be excluded client bypass to dnsmasq, got:", JSON.stringify(firstRule));
+const firstCidrs = Array.isArray(firstRule.source_ip_cidr)
+  ? firstRule.source_ip_cidr
+  : [firstRule.source_ip_cidr];
+if (!firstCidrs.includes("192.168.1.50/32") || !firstCidrs.includes("::ffff:192.168.1.50/128") || firstRule.server !== "dnsmasq-server") {
+  console.error("FAIL: first dns rule must be excluded client bypass to dnsmasq with IPv4-mapped IPv6, got:", JSON.stringify(firstRule));
   process.exit(1);
 }
 
@@ -59,7 +70,12 @@ for (let i = 0; i < rules.length; i++) {
   const r = rules[i];
   if (r.server && r.server.includes("custom_dns") && r.source_ip_cidr) {
     const cidrs = Array.isArray(r.source_ip_cidr) ? r.source_ip_cidr : [r.source_ip_cidr];
-    if (cidrs.includes("192.168.1.164/32") && cidrs.includes("192.168.1.225/32")) {
+    if (
+      cidrs.includes("192.168.1.164/32") &&
+      cidrs.includes("::ffff:192.168.1.164/128") &&
+      cidrs.includes("192.168.1.225/32") &&
+      cidrs.includes("::ffff:192.168.1.225/128")
+    ) {
       customDnsIdx = i;
     }
   }
@@ -83,7 +99,38 @@ if (customDnsIdx >= fallbackDnsmasqIdx) {
   process.exit(1);
 }
 
-console.log("✓ Section Action DNS ordering verified: custom DNS precedes fallback");
+// Verify block section emits predefined 0.0.0.0 (A) and :: (AAAA) rules with IPv4-mapped source_ip_cidr
+const matchesAnswerIp = (ans, ip, textPart) => {
+  if (!ans) return false;
+  if (typeof ans === "string") return ans.includes(textPart);
+  return typeof ans === "object" && ans.value === ip;
+};
+const blockARule = rules.find(
+  (r) =>
+    r.action === "predefined" &&
+    Array.isArray(r.query_type) &&
+    r.query_type.includes("A") &&
+    Array.isArray(r.answer) &&
+    matchesAnswerIp(r.answer[0], "0.0.0.0", "IN A 0.0.0.0")
+);
+const blockAAAARule = rules.find(
+  (r) =>
+    r.action === "predefined" &&
+    Array.isArray(r.query_type) &&
+    r.query_type.includes("AAAA") &&
+    Array.isArray(r.answer) &&
+    matchesAnswerIp(r.answer[0], "::", "IN AAAA ::")
+);
+if (!blockARule || !blockAAAARule) {
+  console.error("FAIL: block section did not emit predefined 0.0.0.0 / :: DNS rules:", JSON.stringify(rules, null, 2));
+  process.exit(1);
+}
+if (!blockARule.source_ip_cidr.includes("192.168.1.164/32") || !blockARule.source_ip_cidr.includes("::ffff:192.168.1.164/128")) {
+  console.error("FAIL: block section DNS rule missing IPv4-mapped CIDR:", JSON.stringify(blockARule));
+  process.exit(1);
+}
+
+console.log("✓ Section Action DNS ordering and predefined block 0.0.0.0/:: verified");
 NODE
 
 # 2. Test parental_quota.uc cron formatting & migration with >/dev/null 2>&1

@@ -1146,7 +1146,7 @@ export function detectQuickConnectionInput(
     };
   }
 
-  if (/^https?:\/\/\S+/i.test(firstLine)) {
+  if (/^(https?:\/\/|(happ:\/\/)?crypt([2-5])?\/)\S+/i.test(firstLine)) {
     return {
       valid: true,
       method: 'subscription',
@@ -4620,7 +4620,7 @@ export function openConnectionWizardModal(
                     'div',
                     {
                       style:
-                        'font-size:12px;font-weight:700;margin-bottom:6px;opacity:0.85;display:flex;align-items:center;gap:6px;',
+                        'font-size:12px;font-weight: 600;margin-bottom:6px;opacity:0.85;display:flex;align-items:center;gap:6px;',
                     },
                     [
                       renderCommunityListServiceIcon(cat.id, 13),

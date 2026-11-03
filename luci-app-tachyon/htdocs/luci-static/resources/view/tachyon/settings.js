@@ -1027,7 +1027,7 @@ function createSnapshotsWidget() {
               "display:flex;align-items:center;gap:10px;padding:2px 0;flex-wrap:wrap;",
           });
           row.appendChild(
-            E("span", { style: "font-weight:bold;" }, snap.name || ""),
+            E("span", { style: "font-weight: 600;" }, snap.name || ""),
           );
           row.appendChild(
             E(
@@ -1879,7 +1879,7 @@ function createMenuTabsOrderWidget(option, section_id) {
       "span",
       {
         style:
-          "font-size:0.75rem;font-weight:bold;color:var(--text-color-medium,#888);min-width:22px;text-align:center;",
+          "font-size:0.75rem;font-weight: 600;color:var(--text-color-medium,#888);min-width:22px;text-align:center;",
       },
       String(idxInGroup + 1),
     );
@@ -1894,7 +1894,7 @@ function createMenuTabsOrderWidget(option, section_id) {
       style: [
         "width:22px;height:22px;padding:0;border-radius:6px;border:2px solid;",
         "display:flex;align-items:center;justify-content:center;",
-        "font-size:13px;font-weight:bold;line-height:1;cursor:",
+        "font-size:13px;font-weight: 600;line-height:1;cursor:",
         isFixed ? "default;" : "pointer;",
         "flex-shrink:0;",
         isFixed || isVisible
@@ -1927,7 +1927,7 @@ function createMenuTabsOrderWidget(option, section_id) {
         style: "flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;",
       },
       [
-        E("span", { style: "font-weight:700;font-size:0.88rem;" }, [
+        E("span", { style: "font-weight: 600;font-size:0.88rem;" }, [
           tabMeta.label,
           isFixed
             ? E(
@@ -2040,7 +2040,7 @@ function createMenuTabsOrderWidget(option, section_id) {
         "div",
         {
           style:
-            "padding: 7px 12px; font-weight: 700; font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-color-medium, #888); background: rgba(128, 128, 128, 0.06); border-bottom: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.13));",
+            "padding: 7px 12px; font-weight: 600; font-size: 0.76rem; letter-spacing: 0.05em; color: var(--text-color-medium, #888); background: rgba(128, 128, 128, 0.06); border-bottom: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.13));",
         },
         group.title,
       );
@@ -2230,7 +2230,7 @@ function createComponentsVisibilityWidget(option, section_id) {
         style: [
           "width:22px;height:22px;padding:0;border-radius:6px;border:2px solid;",
           "display:flex;align-items:center;justify-content:center;",
-          "font-size:13px;font-weight:bold;line-height:1;cursor:",
+          "font-size:13px;font-weight: 600;line-height:1;cursor:",
           isFixed ? "default;" : "pointer;",
           "flex-shrink:0;",
           isFixed || isVisible
@@ -3464,7 +3464,7 @@ function createSettingsContent(section, capabilities) {
           "span",
           {
             style:
-              "display: inline-flex; align-items: center; color: var(--color-green-base, #2ecc71); font-weight: bold;",
+              "display: inline-flex; align-items: center; color: var(--color-green-base, #2ecc71); font-weight: 600;",
           },
           [
             typeof main !== "undefined" && main.renderCheckIcon
@@ -3477,7 +3477,7 @@ function createSettingsContent(section, capabilities) {
           "span",
           {
             style:
-              "display: inline-flex; align-items: center; color: var(--color-red-base, #e74c3c); font-weight: bold;",
+              "display: inline-flex; align-items: center; color: var(--color-red-base, #e74c3c); font-weight: 600;",
           },
           [
             typeof main !== "undefined" && main.renderXIcon
@@ -4793,7 +4793,7 @@ function createTelegramStatusWidget() {
   const indicator = E("span", {
     id: "tachyon-telegram-status-indicator",
     style:
-      "display:inline-flex;align-items:center;gap:6px;font-weight:bold;font-size:14px;",
+      "display:inline-flex;align-items:center;gap:6px;font-weight: 600;font-size:14px;",
   });
 
   const dot = E("span", {

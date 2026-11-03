@@ -310,7 +310,7 @@ export function renderAiDoctorModal(options: AiDoctorModalOptions): void {
           {
             class: `label ${labelClass}`,
             style:
-              'font-size: 11px; padding: 4px 10px; border-radius: 4px; display: inline-flex; align-items: center; gap: 6px; font-weight: bold;',
+              'font-size: 11px; padding: 4px 10px; border-radius: 4px; display: inline-flex; align-items: center; gap: 6px; font-weight: 600;',
           },
           [
             E('span', {}, node.name),
@@ -352,7 +352,7 @@ export function renderAiDoctorModal(options: AiDoctorModalOptions): void {
                 'div',
                 {
                   style:
-                    'font-weight: bold; margin-bottom: 8px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px;',
+                    'font-weight: 600; margin-bottom: 8px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px;',
                 },
                 [renderWrenchIcon(14), _('Recommended Quick Fixes:')],
               ),
@@ -474,7 +474,7 @@ export function renderAiDoctorModal(options: AiDoctorModalOptions): void {
             'span',
             {
               style:
-                'font-weight: bold; font-size: 12px; display: inline-flex; align-items: center; gap: 6px;',
+                'font-weight: 600; font-size: 12px; display: inline-flex; align-items: center; gap: 6px;',
             },
             [
               renderSmartphoneIcon(14),
@@ -517,7 +517,7 @@ export function renderAiDoctorModal(options: AiDoctorModalOptions): void {
                   E('div', {}, [
                     E(
                       'div',
-                      { style: 'font-weight: bold; font-size: 12px;' },
+                      { style: 'font-weight: 600; font-size: 12px;' },
                       client.hostname,
                     ),
                     E(
@@ -607,7 +607,7 @@ export function renderAiDoctorModal(options: AiDoctorModalOptions): void {
               'div',
               {
                 style:
-                  'display: flex; justify-content: space-between; font-weight: bold; font-size: 11px; margin-bottom: 6px; opacity: 0.8;',
+                  'display: flex; justify-content: space-between; font-weight: 600; font-size: 11px; margin-bottom: 6px; opacity: 0.8;',
               },
               [
                 E('span', {}, `#${historyEntries.length - i}`),

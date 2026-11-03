@@ -1419,6 +1419,7 @@ function add_manual_proxy_link(config, state, section_name, manual_index, link, 
     let node_prefix = (src_obj != null && bool_option(src_obj, "prefix_nodes", true))
         ? trim(option(src_obj, "node_prefix", ""))
         : "";
+    let src_bind_iface = src_obj != null ? trim(option(src_obj, "bind_interface", "")) : "";
 
     let display_info = {};
     let outbound = manual_link_outbound(link, tag_name, display_info);
@@ -1426,6 +1427,8 @@ function add_manual_proxy_link(config, state, section_name, manual_index, link, 
     if (display_name == "")
         display_name = as_string(display_info.name || tag_name);
     ensure_explicit_outbound_supported(outbound, "manual outbound", display_name);
+    if (src_bind_iface != "" && as_string(outbound.detour || "") == "" && as_string(outbound.bind_interface || "") == "")
+        outbound.bind_interface = src_bind_iface;
     if (outbound.type == "wireguard")
         add_imported_wireguard_endpoint(config, outbound);
     else if (outbound.type == "shadowtls") {
@@ -1689,8 +1692,14 @@ function add_subscription_source_with_state(config, section, source_index, sourc
     }
     let outbounds = compatible_subscription_outbounds(source_outbounds, section_name);
 
-    if (show_metadata !== false)
-        runtime_subscription.merge_source_metadata(state, section_name, source_section, source_index, source_entry);
+    if (show_metadata !== false) {
+        let src_cfg = connections.subscription_url_settings(section, source_entry);
+        let raw_src_name = trim(option(src_cfg, "name", option(src_cfg, "label", "")));
+        if (raw_src_name != "" && (raw_src_name == source_entry || match(lc(raw_src_name), /^https?:\/\//) != null || match(lc(raw_src_name), /^(happ:\/\/)?crypt[2-5]?\//) != null))
+            raw_src_name = "";
+        let src_fallback_title = raw_src_name != "" ? raw_src_name : trim(as_string(node_prefix || option(src_cfg, "node_prefix", "")));
+        runtime_subscription.merge_source_metadata(state, section_name, source_section, source_index, source_entry, src_fallback_title);
+    }
     let visibility_refs = subscription_visibility_refs(outbounds);
     if (include_urltest_groups === false)
         hide_urltest_group_outbounds = false;
@@ -1716,6 +1725,13 @@ function add_subscription_source_with_state(config, section, source_index, sourc
     node_prefix = trim(as_string(node_prefix));
     let keyword_filter = subscription_keyword_filter(section, source_entry);
     let sub_tls_fp = connections.subscription_tls_fingerprint(section, source_entry);
+    let sub_src_id_for_bind = (connections && connections.source_id_for_manual_item)
+        ? connections.source_id_for_manual_item(section, source_entry)
+        : "";
+    let sub_src_obj = (connections && connections.outbound_source_section && sub_src_id_for_bind != "")
+        ? connections.outbound_source_section(sub_src_id_for_bind)
+        : null;
+    let sub_bind_iface = sub_src_obj != null ? trim(option(sub_src_obj, "bind_interface", "")) : "";
     let prepared = [];
     let display_names = [];
     let source_links = [];
@@ -1754,6 +1770,10 @@ function add_subscription_source_with_state(config, section, source_index, sourc
         if (as_string(outbound.remark || "") != "")
             tag_map[as_string(outbound.remark)] = new_tag;
         let copied_outbound = copy_subscription_outbound(outbound, new_tag);
+        if (sub_bind_iface != "" && !subscription_group_outbound(outbound) &&
+            as_string(copied_outbound.detour || "") == "" && as_string(copied_outbound.bind_interface || "") == "") {
+            copied_outbound.bind_interface = sub_bind_iface;
+        }
         if (type(copied_outbound.tls) == "object" && copied_outbound.tls.enabled === true) {
             if (sub_tls_fp != "") {
                 copied_outbound.tls.utls = { enabled: true, fingerprint: sub_tls_fp };
@@ -2064,6 +2084,15 @@ function prepare_json_connection_outbounds(section, taken, existing_outbounds) {
         push(legacy_tags, [ legacy_tag, tag_name ]);
 
         outbound.tag = tag_name;
+        if (src_id != "" && src_id != "manual" && connections && connections.outbound_source_section) {
+            let json_src_obj = connections.outbound_source_section(src_id);
+            let json_bind_iface = json_src_obj != null ? trim(option(json_src_obj, "bind_interface", "")) : "";
+            if (json_bind_iface != "" && lc(as_string(outbound.type || "")) != "desync" &&
+                !subscription_group_outbound(outbound) &&
+                as_string(outbound.detour || "") == "" && as_string(outbound.bind_interface || "") == "") {
+                outbound.bind_interface = json_bind_iface;
+            }
+        }
         push(outbounds, outbound);
         push(prepared, {
             outbound,
@@ -2248,8 +2277,34 @@ function apply_section_detour_to_connection_outbounds(config, start_index, detou
             outbound_type == "desync")
             continue;
 
-        if (as_string(outbound.detour || "") == "")
+        if (as_string(outbound.detour || "") == "") {
             outbound.detour = detour_tag;
+            delete outbound.bind_interface;
+        }
+    }
+}
+
+function apply_section_bind_interface_to_connection_outbounds(config, start_index, bind_iface) {
+    bind_iface = trim(as_string(bind_iface || ""));
+    if (bind_iface == "")
+        return;
+
+    let outbounds = array_or_empty(config.outbounds);
+    for (let i = int(start_index || 0); i < length(outbounds); i++) {
+        let outbound = outbounds[i];
+        if (type(outbound) != "object")
+            continue;
+
+        let outbound_type = lc(as_string(outbound.type || ""));
+        if (outbound_type == "" ||
+            outbound_type == "selector" ||
+            outbound_type == "urltest" || outbound_type == "dns" ||
+            outbound_type == "block" || outbound_type == "direct" ||
+            outbound_type == "desync")
+            continue;
+
+        if (as_string(outbound.detour || "") == "" && as_string(outbound.bind_interface || "") == "")
+            outbound.bind_interface = bind_iface;
     }
 }
 
@@ -2562,6 +2617,11 @@ function add_connections_outbound(config, section, taken) {
     add_connection_interfaces(config, state, section, taken, selector_tags, urltest_candidate_tags);
     add_connection_json_outbounds(config, state, section, taken, selector_tags, urltest_candidate_tags);
     add_connection_inline_uci_outbound(config, state, section, taken, selector_tags, urltest_candidate_tags);
+    apply_section_bind_interface_to_connection_outbounds(
+        config,
+        cascade_start,
+        option(section, "bind_interface", "")
+    );
     apply_section_packet_encoding_to_connection_outbounds(
         config,
         cascade_start,

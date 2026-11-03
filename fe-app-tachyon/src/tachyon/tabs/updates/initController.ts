@@ -1693,7 +1693,7 @@ function renderFormattedReleaseNotes(container: HTMLElement, rawText: string) {
         E(
           'div',
           {
-            style: `font-weight: 700; font-size: ${fontSize}; margin: 10px 0 4px;`,
+            style: `font-weight: 600; font-size: ${fontSize}; margin: 10px 0 4px;`,
           },
           renderInlineReleaseMarkdown(headingMatch[2]!),
         ),

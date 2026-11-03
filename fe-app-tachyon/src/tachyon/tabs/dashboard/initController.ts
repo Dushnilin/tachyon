@@ -1493,7 +1493,14 @@ function renderMemberUrlDelaysPopover(
           'div',
           { class: 'tachyon_proto-popover__rows' },
           effectiveUrls.map((url, idx) => {
-            const delayVal = memberDelays[url];
+            const rawDelayVal = memberDelays[url];
+            const delayVal =
+              rawDelayVal === undefined &&
+              idx === 0 &&
+              typeof member.latency === 'number' &&
+              member.latency !== 0
+                ? member.latency
+                : rawDelayVal;
             const hasDelay = typeof delayVal === 'number' && delayVal > 0;
             const isFailed = typeof delayVal === 'number' && delayVal <= 0;
             return E('div', { class: 'tachyon_proto-popover__row' }, [
@@ -1735,6 +1742,11 @@ function renderUrlTestCopyButton(
   );
 }
 
+const modalNodesSortState = new Map<
+  string,
+  { col: 'name' | 'type' | 'latency'; dir: 'asc' | 'desc' }
+>();
+
 function renderCommonDetailsModal(
   info: any,
   fields: Array<{
@@ -1748,6 +1760,312 @@ function renderCommonDetailsModal(
   outbound?: Tachyon.Outbound,
 ) {
   const isManual = Boolean(info.isManualSelection);
+  const sortKey = `${section?.code || ''}:${outbound?.code || info.code || ''}`;
+  const isRu =
+    typeof document !== 'undefined' &&
+    (document.documentElement?.lang || '').toLowerCase().startsWith('ru');
+  const tableEl = E('div', {
+    class: 'tachyon_dashboard-page__urltest-details__table',
+  });
+  const colInds = new Map<'name' | 'type' | 'latency', HTMLElement>();
+
+  const populateModalRows = () => {
+    const sortState = modalNodesSortState.get(sortKey);
+    colInds.forEach((ind, col) => {
+      ind.textContent =
+        sortState && sortState.col === col
+          ? sortState.dir === 'asc'
+            ? ' ▲'
+            : ' ▼'
+          : '';
+    });
+
+    const rawMembers: any[] = Array.isArray(info.outbounds)
+      ? [...info.outbounds]
+      : [];
+    const sortedMembers = sortState
+      ? rawMembers.sort((a, b) => {
+          let cmp = 0;
+          if (sortState.col === 'name') {
+            cmp = String(a.displayName || a.code || '').localeCompare(
+              String(b.displayName || b.code || ''),
+              'ru',
+            );
+          } else if (sortState.col === 'type') {
+            const ta = `${a.type || ''} ${a.transport || ''}`.trim();
+            const tb = `${b.type || ''} ${b.transport || ''}`.trim();
+            cmp = ta.localeCompare(tb, 'ru');
+          } else if (sortState.col === 'latency') {
+            const la =
+              typeof a.latency === 'number' && a.latency > 0
+                ? a.latency
+                : a.latency < 0
+                  ? 999998
+                  : 999999;
+            const lb =
+              typeof b.latency === 'number' && b.latency > 0
+                ? b.latency
+                : b.latency < 0
+                  ? 999998
+                  : 999999;
+            cmp = la - lb;
+          }
+          return sortState.dir === 'asc' ? cmp : -cmp;
+        })
+      : rawMembers;
+
+    if (!sortedMembers.length) {
+      tableEl.replaceChildren(
+        E(
+          'div',
+          { class: 'tachyon_dashboard-page__urltest-details__empty' },
+          _('Node list is empty'),
+        ),
+      );
+      return;
+    }
+
+    tableEl.replaceChildren(
+      ...sortedMembers.map((member: any) => {
+        const isMemberActive =
+          member.selected || member.code === info.selectedCode;
+
+        return E(
+          'div',
+          {
+            class: [
+              'tachyon_dashboard-page__urltest-details__row',
+              isMemberActive
+                ? 'tachyon_dashboard-page__urltest-details__row--active'
+                : '',
+            ]
+              .filter(Boolean)
+              .join(' '),
+          },
+          [
+            E(
+              'div',
+              {
+                class: 'tachyon_dashboard-page__urltest-details__row-name',
+              },
+              isPriority
+                ? [
+                    E(
+                      'b',
+                      {
+                        class:
+                          'tachyon_dashboard-page__urltest-details__priority-name',
+                      },
+                      renderMemberName(member),
+                    ),
+                    ...(member.type
+                      ? [
+                          renderOutboundTypeWithPopover(
+                            member.type,
+                            member.transport,
+                            member.details,
+                            'tachyon_dashboard-page__urltest-details__row-type',
+                          ),
+                        ]
+                      : []),
+                  ]
+                : [
+                    E('b', {}, renderMemberName(member)),
+                    ...(member.type
+                      ? [
+                          renderOutboundTypeWithPopover(
+                            member.type,
+                            member.transport,
+                            member.details,
+                            'tachyon_dashboard-page__urltest-details__row-type',
+                          ),
+                        ]
+                      : []),
+                  ],
+            ),
+            E(
+              'div',
+              {
+                class: 'tachyon_dashboard-page__urltest-details__row-actions',
+              },
+              [
+                E(
+                  'div',
+                  {
+                    class: 'tachyon_dashboard-page__urltest-details__row-meta',
+                  },
+                  [
+                    E(
+                      'span',
+                      { class: getUrlTestLatencyClass(member.latency) },
+                      formatUrlTestLatency(member.latency),
+                    ),
+                    ...(renderMemberUrlDelaysPopover(
+                      member,
+                      info.urls || info.healthUrls,
+                    )
+                      ? [
+                          renderMemberUrlDelaysPopover(
+                            member,
+                            info.urls || info.healthUrls,
+                          )!,
+                        ]
+                      : []),
+                  ],
+                ),
+                ...(section && section.withTagSelect
+                  ? isMemberActive
+                    ? [
+                        E(
+                          'span',
+                          {
+                            class:
+                              'badge badge-success tachyon_dashboard-page__urltest-details__active-badge',
+                          },
+                          [
+                            svgEl(
+                              'svg',
+                              {
+                                width: '12',
+                                height: '12',
+                                viewBox: '0 0 24 24',
+                                fill: 'none',
+                                stroke: 'currentColor',
+                                'stroke-width': '2',
+                                'stroke-linecap': 'round',
+                                'stroke-linejoin': 'round',
+                              },
+                              [
+                                svgEl('polyline', {
+                                  points: '20 6 9 17 4 12',
+                                }),
+                              ],
+                            ),
+                            _('Active'),
+                          ],
+                        ),
+                      ]
+                    : isPriority ||
+                        section.outbounds.some((o) => o.code === member.code)
+                      ? [
+                          E(
+                            'button',
+                            {
+                              type: 'button',
+                              class:
+                                'btn cbi-button cbi-button-action tachyon_dashboard-page__urltest-details__select-btn',
+                              click: async (event: MouseEvent) => {
+                                event.preventDefault();
+                                const btn =
+                                  event.currentTarget as HTMLButtonElement | null;
+                                if (btn) {
+                                  btn.disabled = true;
+                                }
+                                const targetSelector = isPriority
+                                  ? outbound?.code || section.code
+                                  : section.code;
+                                await handleChooseOutbound(
+                                  section.sectionName,
+                                  targetSelector,
+                                  member.code,
+                                );
+                                const updatedSection = store
+                                  .get()
+                                  .sectionsWidget.data.find(
+                                    (s) =>
+                                      s.sectionName === section.sectionName,
+                                  );
+                                const updatedOutbound =
+                                  updatedSection?.outbounds.find(
+                                    (o) => o.code === outbound?.code,
+                                  );
+                                if (updatedSection && updatedOutbound) {
+                                  if (isPriority) {
+                                    handleShowPriorityInfo(
+                                      updatedSection,
+                                      updatedOutbound,
+                                    );
+                                  } else {
+                                    handleShowUrlTestInfo(
+                                      updatedSection,
+                                      updatedOutbound,
+                                    );
+                                  }
+                                } else {
+                                  ui.hideModal();
+                                }
+                              },
+                            },
+                            _('Select'),
+                          ),
+                        ]
+                      : []
+                  : []),
+                (() => {
+                  const matchedOutbound = section?.outbounds?.find(
+                    (o) =>
+                      o.code === member.code ||
+                      (member.displayName &&
+                        o.displayName === member.displayName),
+                  );
+                  const effectiveLink = member.link || matchedOutbound?.link;
+                  const canCopyMemberLink = Boolean(
+                    member.canCopyLink ||
+                      matchedOutbound?.canCopyLink ||
+                      isCopyableProxyLink(effectiveLink),
+                  );
+                  return canCopyMemberLink
+                    ? renderUrlTestCopyButton(_('Copy proxy link'), (event) => {
+                        event.preventDefault();
+                        void handleCopyOutbound({
+                          ...matchedOutbound,
+                          ...member,
+                          link: effectiveLink,
+                          canCopyLink: true,
+                        });
+                      })
+                    : E('span', {
+                        class:
+                          'tachyon_dashboard-page__urltest-details__copy-placeholder',
+                      });
+                })(),
+              ],
+            ),
+          ],
+        );
+      }),
+    );
+  };
+
+  const makeSortPill = (col: 'name' | 'type' | 'latency', label: string) => {
+    const ind = E('span', { style: 'font-size: 10px; opacity: 0.8;' });
+    colInds.set(col, ind);
+    return E(
+      'button',
+      {
+        type: 'button',
+        class: 'btn cbi-button',
+        style:
+          'cursor: pointer; user-select: none; padding: 2px 8px; height: 24px; min-height: 24px; font-size: 11px; font-weight: 600; border-radius: 6px;',
+        click: (e: MouseEvent) => {
+          e.preventDefault();
+          const cur = modalNodesSortState.get(sortKey);
+          if (cur && cur.col === col) {
+            modalNodesSortState.set(sortKey, {
+              col,
+              dir: cur.dir === 'asc' ? 'desc' : 'asc',
+            });
+          } else {
+            modalNodesSortState.set(sortKey, { col, dir: 'asc' });
+          }
+          populateModalRows();
+        },
+      },
+      [E('span', {}, label), ind],
+    );
+  };
+
+  populateModalRows();
 
   return E('div', { class: 'tachyon_dashboard-page__urltest-details' }, [
     E(
@@ -1767,239 +2085,28 @@ function renderCommonDetailsModal(
     E('div', { class: 'tachyon_dashboard-page__urltest-details__outbounds' }, [
       E(
         'div',
-        { class: 'tachyon_dashboard-page__urltest-details__outbounds-title' },
-        _('Nodes'),
-      ),
-      E(
-        'div',
-        { class: 'tachyon_dashboard-page__urltest-details__table' },
-        info.outbounds.length
-          ? info.outbounds.map((member: any) => {
-              const isMemberActive =
-                member.selected || member.code === info.selectedCode;
-
-              return E(
-                'div',
-                {
-                  class: [
-                    'tachyon_dashboard-page__urltest-details__row',
-                    isMemberActive
-                      ? 'tachyon_dashboard-page__urltest-details__row--active'
-                      : '',
-                  ]
-                    .filter(Boolean)
-                    .join(' '),
-                },
-                [
-                  E(
-                    'div',
-                    {
-                      class:
-                        'tachyon_dashboard-page__urltest-details__row-name',
-                    },
-                    isPriority
-                      ? [
-                          E(
-                            'b',
-                            {
-                              class:
-                                'tachyon_dashboard-page__urltest-details__priority-name',
-                            },
-                            renderMemberName(member),
-                          ),
-                          ...(member.type
-                            ? [
-                                renderOutboundTypeWithPopover(
-                                  member.type,
-                                  member.transport,
-                                  member.details,
-                                  'tachyon_dashboard-page__urltest-details__row-type',
-                                ),
-                              ]
-                            : []),
-                        ]
-                      : [
-                          E('b', {}, renderMemberName(member)),
-                          ...(member.type
-                            ? [
-                                renderOutboundTypeWithPopover(
-                                  member.type,
-                                  member.transport,
-                                  member.details,
-                                  'tachyon_dashboard-page__urltest-details__row-type',
-                                ),
-                              ]
-                            : []),
-                        ],
-                  ),
-                  E(
-                    'div',
-                    {
-                      class:
-                        'tachyon_dashboard-page__urltest-details__row-actions',
-                    },
-                    [
-                      E(
-                        'div',
-                        {
-                          class:
-                            'tachyon_dashboard-page__urltest-details__row-meta',
-                        },
-                        [
-                          E(
-                            'span',
-                            { class: getUrlTestLatencyClass(member.latency) },
-                            formatUrlTestLatency(member.latency),
-                          ),
-                          ...(renderMemberUrlDelaysPopover(
-                            member,
-                            info.urls || info.healthUrls,
-                          )
-                            ? [
-                                renderMemberUrlDelaysPopover(
-                                  member,
-                                  info.urls || info.healthUrls,
-                                )!,
-                              ]
-                            : []),
-                        ],
-                      ),
-                      ...(section && section.withTagSelect
-                        ? isMemberActive
-                          ? [
-                              E(
-                                'span',
-                                {
-                                  class:
-                                    'badge badge-success tachyon_dashboard-page__urltest-details__active-badge',
-                                },
-                                [
-                                  svgEl(
-                                    'svg',
-                                    {
-                                      width: '12',
-                                      height: '12',
-                                      viewBox: '0 0 24 24',
-                                      fill: 'none',
-                                      stroke: 'currentColor',
-                                      'stroke-width': '2',
-                                      'stroke-linecap': 'round',
-                                      'stroke-linejoin': 'round',
-                                    },
-                                    [
-                                      svgEl('polyline', {
-                                        points: '20 6 9 17 4 12',
-                                      }),
-                                    ],
-                                  ),
-                                  _('Active'),
-                                ],
-                              ),
-                            ]
-                          : isPriority ||
-                              section.outbounds.some(
-                                (o) => o.code === member.code,
-                              )
-                            ? [
-                                E(
-                                  'button',
-                                  {
-                                    type: 'button',
-                                    class:
-                                      'btn cbi-button cbi-button-action tachyon_dashboard-page__urltest-details__select-btn',
-                                    click: async (event: MouseEvent) => {
-                                      event.preventDefault();
-                                      const btn =
-                                        event.currentTarget as HTMLButtonElement | null;
-                                      if (btn) {
-                                        btn.disabled = true;
-                                      }
-                                      const targetSelector = isPriority
-                                        ? outbound?.code || section.code
-                                        : section.code;
-                                      await handleChooseOutbound(
-                                        section.sectionName,
-                                        targetSelector,
-                                        member.code,
-                                      );
-                                      const updatedSection = store
-                                        .get()
-                                        .sectionsWidget.data.find(
-                                          (s) =>
-                                            s.sectionName ===
-                                            section.sectionName,
-                                        );
-                                      const updatedOutbound =
-                                        updatedSection?.outbounds.find(
-                                          (o) => o.code === outbound?.code,
-                                        );
-                                      if (updatedSection && updatedOutbound) {
-                                        if (isPriority) {
-                                          handleShowPriorityInfo(
-                                            updatedSection,
-                                            updatedOutbound,
-                                          );
-                                        } else {
-                                          handleShowUrlTestInfo(
-                                            updatedSection,
-                                            updatedOutbound,
-                                          );
-                                        }
-                                      } else {
-                                        ui.hideModal();
-                                      }
-                                    },
-                                  },
-                                  _('Select'),
-                                ),
-                              ]
-                            : []
-                        : []),
-                      (() => {
-                        const matchedOutbound = section?.outbounds?.find(
-                          (o) =>
-                            o.code === member.code ||
-                            (member.displayName &&
-                              o.displayName === member.displayName),
-                        );
-                        const effectiveLink =
-                          member.link || matchedOutbound?.link;
-                        const canCopyMemberLink = Boolean(
-                          member.canCopyLink ||
-                            matchedOutbound?.canCopyLink ||
-                            isCopyableProxyLink(effectiveLink),
-                        );
-                        return canCopyMemberLink
-                          ? renderUrlTestCopyButton(
-                              _('Copy proxy link'),
-                              (event) => {
-                                event.preventDefault();
-                                void handleCopyOutbound({
-                                  ...matchedOutbound,
-                                  ...member,
-                                  link: effectiveLink,
-                                  canCopyLink: true,
-                                });
-                              },
-                            )
-                          : E('span', {
-                              class:
-                                'tachyon_dashboard-page__urltest-details__copy-placeholder',
-                            });
-                      })(),
-                    ],
-                  ),
-                ],
-              );
-            })
-          : [
-              E(
-                'div',
-                { class: 'tachyon_dashboard-page__urltest-details__empty' },
-                _('Node list is empty'),
-              ),
+        {
+          class: 'tachyon_dashboard-page__urltest-details__outbounds-title',
+          style:
+            'display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;',
+        },
+        [
+          E('span', {}, _('Nodes')),
+          E(
+            'div',
+            {
+              style:
+                'display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;',
+            },
+            [
+              makeSortPill('name', isRu ? 'Сервер' : _('Server')),
+              makeSortPill('type', isRu ? 'Протокол' : _('Protocol')),
+              makeSortPill('latency', isRu ? 'Задержка' : _('Latency')),
             ],
+          ),
+        ],
       ),
+      tableEl,
     ]),
     E('div', { class: 'tachyon_dashboard-page__urltest-details__footer' }, [
       ...(section && outbound && isManual
@@ -2260,6 +2367,43 @@ function attachModalLiveCheckTimer(
   }, 1000);
 }
 
+function syncUrlTestMembersWithLatencies(
+  info: Tachyon.UrlTestInfo,
+  section?: Tachyon.OutboundGroup,
+  outbound?: Tachyon.Outbound,
+) {
+  const secOutboundByCode = new Map<string, Tachyon.Outbound>();
+  (section?.outbounds || []).forEach((ob) => {
+    secOutboundByCode.set(ob.code, ob);
+  });
+
+  info.outbounds = (info.outbounds || []).map((member) => {
+    const customLat = customProxyLatencies.get(member.code);
+    const secLat = secOutboundByCode.get(member.code)?.latency;
+    const isSelected = member.selected || member.code === info.selectedCode;
+    let nextLatency =
+      customLat !== undefined
+        ? customLat
+        : typeof member.latency === 'number' && member.latency !== 0
+          ? member.latency
+          : typeof secLat === 'number' && secLat !== 0
+            ? secLat
+            : 0;
+    if (
+      nextLatency === 0 &&
+      isSelected &&
+      outbound &&
+      typeof outbound.latency === 'number' &&
+      outbound.latency > 0
+    ) {
+      nextLatency = outbound.latency;
+    }
+    return nextLatency !== member.latency
+      ? { ...member, latency: nextLatency }
+      : member;
+  });
+}
+
 function handleShowUrlTestInfo(
   section: Tachyon.OutboundGroup,
   outbound: Tachyon.Outbound,
@@ -2269,6 +2413,7 @@ function handleShowUrlTestInfo(
   }
 
   const info = outbound.urlTestInfo;
+  syncUrlTestMembersWithLatencies(info, section, outbound);
   const body = E('div', {}, [renderUrlTestInfoModal(outbound, section)]);
 
   ui.showModal(
@@ -2281,6 +2426,7 @@ function handleShowUrlTestInfo(
   const repaintModal = () => {
     if (!body.isConnected) return;
     if (body.querySelector('.tachyon_proto-popover-trigger:hover')) return;
+    syncUrlTestMembersWithLatencies(info, section, outbound);
     body.replaceChildren(
       renderUrlTestInfoModal(
         { ...outbound, urlTestInfo: { ...info } },
@@ -2291,10 +2437,12 @@ function handleShowUrlTestInfo(
 
   const runLiveMultiUrlProbe = async () => {
     const urls = normalizeDetailsUrlList(info.url, info.urls);
-    if (urls.length === 0 || !body.isConnected) return;
+    const probeUrls =
+      urls.length > 0 ? urls : ['https://www.gstatic.com/generate_204'];
+    if (!body.isConnected) return;
     const perUrlMap = await probeModalMultiUrlLatencies(
       info.outbounds || [],
-      urls,
+      probeUrls,
     );
     if (!body.isConnected || perUrlMap.size === 0) return;
 
@@ -2304,13 +2452,21 @@ function handleShowUrlTestInfo(
       if (!mDelays) return member;
       const positive = Object.values(mDelays).filter((d) => d > 0);
       const nextLatency =
-        positive.length > 0 ? Math.max(...positive) : member.latency;
+        positive.length > 0
+          ? Math.max(...positive)
+          : member.latency > 0
+            ? member.latency
+            : -1;
+      if (nextLatency !== 0) {
+        customProxyLatencies.set(member.code, nextLatency);
+      }
       return {
         ...member,
         latency: nextLatency,
         urlDelays: { ...(member.urlDelays || {}), ...mDelays },
       };
     });
+    capMapSize(customProxyLatencies);
     repaintModal();
   };
 
@@ -2333,13 +2489,19 @@ function handleShowUrlTestInfo(
         const hasAnyUrlDelays = (info.outbounds || []).some(
           (m) => m.urlDelays && Object.keys(m.urlDelays).length > 0,
         );
-        if (urls.length > 1 && !hasAnyUrlDelays) {
+        const hasMissingLatencies = (info.outbounds || []).some(
+          (m) => !m.latency || m.latency === 0,
+        );
+        if ((urls.length > 1 && !hasAnyUrlDelays) || hasMissingLatencies) {
           void runLiveMultiUrlProbe();
         }
       });
   } else {
     const urls = normalizeDetailsUrlList(info.url, info.urls);
-    if (urls.length > 1) {
+    const hasMissingLatencies = (info.outbounds || []).some(
+      (m) => !m.latency || m.latency === 0,
+    );
+    if (urls.length > 1 || hasMissingLatencies) {
       void runLiveMultiUrlProbe();
     }
   }
@@ -4921,6 +5083,62 @@ export async function renderSystemServicesWidget() {
     },
   ];
 
+  const cpuLoadPct =
+    typeof srvData?.cpuLoadPercent === 'number' &&
+    Number.isFinite(srvData.cpuLoadPercent)
+      ? Math.max(0, Math.min(100, Math.round(srvData.cpuLoadPercent)))
+      : null;
+  const cpuTempC =
+    typeof srvData?.cpuTempC === 'number' && Number.isFinite(srvData.cpuTempC)
+      ? Math.round(srvData.cpuTempC)
+      : null;
+
+  if (cpuLoadPct !== null || cpuTempC !== null) {
+    const cpuParts: string[] = [];
+    if (cpuLoadPct !== null) {
+      cpuParts.push(`${cpuLoadPct}%`);
+    }
+    if (cpuTempC !== null) {
+      cpuParts.push(`${cpuTempC} °C`);
+    }
+    const isHot =
+      (cpuTempC !== null && cpuTempC >= 80) ||
+      (cpuLoadPct !== null && cpuLoadPct >= 90);
+    const isWarm =
+      !isHot &&
+      ((cpuTempC !== null && cpuTempC >= 70) ||
+        (cpuLoadPct !== null && cpuLoadPct >= 75));
+    const pillStyle = isHot
+      ? 'font-variant-numeric: tabular-nums; border-color: rgba(239, 68, 68, 0.45); background: rgba(239, 68, 68, 0.12); color: #ef4444;'
+      : isWarm
+        ? 'font-variant-numeric: tabular-nums; border-color: rgba(245, 158, 11, 0.45); background: rgba(245, 158, 11, 0.12); color: #f59e0b;'
+        : 'font-variant-numeric: tabular-nums;';
+    const cpuTitleParts: string[] = [];
+    if (cpuLoadPct !== null) {
+      cpuTitleParts.push(`${tr('Нагрузка CPU', 'CPU Load')}: ${cpuLoadPct}%`);
+    }
+    if (cpuTempC !== null) {
+      cpuTitleParts.push(
+        `${tr('Температура SoC/CPU', 'SoC/CPU Temp')}: ${cpuTempC} °C`,
+      );
+    }
+    routingItems.push({
+      key: tr('Процессор (CPU)', 'CPU Load & Temp'),
+      value: E(
+        'span',
+        {
+          class: 'tachyon-stat-pill tachyon-stat-pill--conns',
+          style: pillStyle,
+          'data-cpu-telemetry': '1',
+        } as any,
+        cpuParts.join(' • '),
+      ),
+      attributes: {
+        title: cpuTitleParts.join(' | '),
+      },
+    });
+  }
+
   const srvItems: Array<{
     key?: string | HTMLElement;
     value: string | HTMLElement | (string | HTMLElement)[];
@@ -5017,6 +5235,50 @@ export async function renderSystemServicesWidget() {
           tooltip: zapret2Tooltip,
         }),
       );
+    }
+
+    if (cpuLoadPct !== null || cpuTempC !== null) {
+      const cpuPills: HTMLElement[] = [];
+      if (cpuLoadPct !== null) {
+        cpuPills.push(
+          E(
+            'span',
+            { class: 'tachyon-service-pill tachyon-service-pill--ram' },
+            `${cpuLoadPct}%`,
+          ),
+        );
+      }
+      if (cpuTempC !== null) {
+        cpuPills.push(
+          E(
+            'span',
+            { class: 'tachyon-service-pill tachyon-service-pill--uptime' },
+            `${cpuTempC} °C`,
+          ),
+        );
+      }
+      const cpuTitleParts: string[] = [];
+      if (cpuLoadPct !== null) {
+        cpuTitleParts.push(`${tr('Нагрузка CPU', 'CPU Load')}: ${cpuLoadPct}%`);
+      }
+      if (cpuTempC !== null) {
+        cpuTitleParts.push(
+          `${tr('Температура SoC/CPU', 'SoC/CPU Temp')}: ${cpuTempC} °C`,
+        );
+      }
+      srvItems.push({
+        key: E('span', { class: 'tachyon-service-key' }, [
+          E('span', {
+            class: 'tachyon-service-dot tachyon-service-dot--online',
+          }),
+          E('span', { class: 'tachyon-service-name' }, 'CPU'),
+        ]),
+        value: E('span', { class: 'tachyon-service-value' }, cpuPills),
+        attributes: {
+          title: cpuTitleParts.join(' • '),
+          class: 'tachyon-service-row--running',
+        },
+      });
     }
   }
 

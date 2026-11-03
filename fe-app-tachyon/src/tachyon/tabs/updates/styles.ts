@@ -101,7 +101,7 @@ export const styles = `
 .tachyon_updates-page__component__title {
     color: var(--text-color-high);
     font-size: 14px;
-    font-weight: 700;
+    font-weight: 600;
     line-height: 1.25;
     white-space: nowrap;
 }
@@ -111,6 +111,7 @@ export const styles = `
     font-size: 12px;
     font-weight: 500;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -204,7 +205,7 @@ export const styles = `
 .tachyon_updates-page__component__release-version-link {
     color: var(--link-color, #3498db) !important;
     text-decoration: underline;
-    font-weight: 700;
+    font-weight: 600;
 }
 
 .tachyon_updates-page__component__release-version-link:hover {
@@ -307,7 +308,7 @@ export const styles = `
 
 .tachyon_updates-page__component__variants-title {
     font-size: 11px;
-    font-weight: bold;
+    font-weight: 600;
     color: var(--text-color-medium, gray);
 }
 
@@ -344,15 +345,16 @@ export const styles = `
 
 .tachyon-update-modal__component-name {
     font-size: 16px;
-    font-weight: bold;
+    font-weight: 600;
     color: var(--text-color-high, inherit);
 }
 
 .tachyon-update-modal__version-badge {
     font-size: 12px;
     font-family: monospace;
+    font-variant-numeric: tabular-nums;
     padding: 2px 6px;
-    border-radius: 4px;
+    border-radius: 5px;
     background: var(--background-color-low, rgba(0, 0, 0, 0.05));
     color: var(--text-color-high, inherit);
     border: 1px solid var(--border-color-low, #dee2e6);
@@ -364,6 +366,7 @@ export const styles = `
     gap: 4px;
     font-size: 13px;
     font-family: monospace;
+    font-variant-numeric: tabular-nums;
     color: var(--text-color-medium, #6c757d);
 }
 
@@ -373,7 +376,7 @@ export const styles = `
     color: var(--color-blue-base, #3498db);
     background: var(--color-blue-bg, #ebf5fb);
     padding: 2px 8px;
-    border-radius: 4px;
+    border-radius: 5px;
     white-space: nowrap;
 }
 
@@ -385,16 +388,16 @@ export const styles = `
     display: flex;
     align-items: center;
     gap: 8px;
-    color: var(--color-green-base, #2ecc71);
-    font-weight: bold;
+    color: var(--color-green-base, #4cc38a);
+    font-weight: 600;
 }
 
 .tachyon-update-modal__error-banner {
     display: flex;
     align-items: center;
     gap: 8px;
-    color: var(--color-red-base, #e74c3c);
-    font-weight: bold;
+    color: var(--color-red-base, #e5484d);
+    font-weight: 600;
 }
 
 .tachyon-update-modal__actions {
@@ -493,8 +496,9 @@ export const styles = `
 }
 
 .tachyon-version-picker__tag {
-    font-weight: bold;
+    font-weight: 600;
     font-size: 13px;
+    font-variant-numeric: tabular-nums;
     color: var(--text-color-high, inherit);
     white-space: nowrap;
 }

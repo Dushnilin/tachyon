@@ -172,6 +172,8 @@ export interface StoreType {
       tachyonPid?: number;
       tachyonUptimeSeconds?: number;
       tachyonUptimePretty?: string;
+      cpuLoadPercent?: number | null;
+      cpuTempC?: number | null;
       watchdogRunning: number;
       singboxMemoryMb?: number;
       singboxPid?: number;

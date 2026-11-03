@@ -993,6 +993,7 @@ function base_config(settings, service_address, runtime_context) {
             push(dns_hosts_entries, line);
     }
 
+    let is_tachyon_core = is_tachyon_core_detected();
     for (let host_entry in dns_hosts_entries) {
         let entry_str = trim(host_entry);
         if (entry_str == "" || substr(entry_str, 0, 1) == "#") continue;
@@ -1009,7 +1010,7 @@ function base_config(settings, service_address, runtime_context) {
                         push(dns_hosts_predefined, {
                             action: "predefined",
                             domain: [d],
-                            answer: [d + ". 60 IN " + rr_type + " " + ip]
+                            answer: [is_tachyon_core ? { name: d, ttl: 60, value: ip } : d + ". 60 IN " + rr_type + " " + ip]
                         });
                     }
                 }
@@ -1020,7 +1021,7 @@ function base_config(settings, service_address, runtime_context) {
                 push(dns_hosts_predefined, {
                     action: "predefined",
                     domain: [domain],
-                    answer: [domain + ". 60 IN " + rr_type + " " + ip]
+                    answer: [is_tachyon_core ? { name: domain, ttl: 60, value: ip } : domain + ". 60 IN " + rr_type + " " + ip]
                 });
             }
         }
@@ -1685,16 +1686,17 @@ function add_safesearch_dns_rules(target, profiles) {
         }
     ];
 
+    let is_tachyon_core = is_tachyon_core_detected();
     for (let engine in search_engines) {
         for (let domain in engine.domains) {
             let rule = {
                 action: "predefined",
                 inbound: [ runtime_constants.DNS_BLOCK_INBOUND_TAG ],
                 domain: [ domain ],
-                answer: [ domain + ". 60 IN A " + engine.ip ]
+                answer: [ is_tachyon_core ? { name: domain, ttl: 60, value: engine.ip } : domain + ". 60 IN A " + engine.ip ]
             };
             if (length(all_sources) > 0 && !has_mac)
-                rule.source_ip_cidr = all_sources;
+                rule.source_ip_cidr = core_ip.expand_ipv4_mapped_cidrs(all_sources);
             push(rules_arr, rule);
         }
     }
@@ -1733,7 +1735,7 @@ function add_content_block_dns_rules(target, schedules) {
                     rule[key] = matchers[key];
             }
             if (length(sources) > 0 && !has_mac)
-                rule.source_ip_cidr = sources;
+                rule.source_ip_cidr = core_ip.expand_ipv4_mapped_cidrs(sources);
             if (mode == "allow")
                 rule.invert = true;
             push(rules_arr, rule);
@@ -1967,7 +1969,7 @@ function add_source_aware_dns_fallback(config, source_aware_dns) {
         action: "route",
         server: runtime_constants.DNSMASQ_DNS_SERVER_TAG,
         inbound: [ runtime_constants.SOURCE_DNS_INBOUND_TAG ],
-        source_ip_cidr: single_or_array(source_aware_dns),
+        source_ip_cidr: single_or_array(core_ip.expand_ipv4_mapped_cidrs(source_aware_dns)),
         rewrite_ttl
     };
     push(config.dns.rules, rule);
@@ -1983,7 +1985,7 @@ function add_excluded_clients_dns_rule(config, settings) {
         action: "route",
         server: runtime_constants.DNSMASQ_DNS_SERVER_TAG,
         inbound: [ runtime_constants.SOURCE_DNS_INBOUND_TAG ],
-        source_ip_cidr: single_or_array(excluded_cidrs),
+        source_ip_cidr: single_or_array(core_ip.expand_ipv4_mapped_cidrs(excluded_cidrs)),
         rewrite_ttl
     });
 }

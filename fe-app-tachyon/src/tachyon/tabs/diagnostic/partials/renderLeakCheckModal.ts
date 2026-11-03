@@ -32,7 +32,7 @@ export function renderLeakCheckModal() {
 
   const progressBar = E('div', {
     style:
-      'width: 0%; height: 6px; background: linear-gradient(90deg, #007bff, #28a745); border-radius: 3px; transition: width 0.4s ease;',
+      'width: 0%; height: 6px; background: var(--tachyon-accent, #5b8af0); border-radius: 3px; transition: width 0.4s cubic-bezier(0.22, 1, 0.36, 1);',
   });
 
   const progressContainer = E(

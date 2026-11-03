@@ -848,7 +848,7 @@ export function renderStrategyFuzzerModal(
           'div',
           {
             style:
-              'font-size: 13px; font-weight: bold; display: flex; align-items: center; gap: 6px;',
+              'font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;',
           },
           [renderZapIcon(14), 'Zapret v2 (nfqws2) Matrix Patterns'],
         ),
@@ -896,7 +896,7 @@ export function renderStrategyFuzzerModal(
           'div',
           {
             style:
-              'font-size: 13px; font-weight: bold; display: flex; align-items: center; gap: 6px;',
+              'font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;',
           },
           [renderZapIcon(14), 'Zapret v1 (nfqws) Matrix Patterns'],
         ),
@@ -938,7 +938,7 @@ export function renderStrategyFuzzerModal(
           'div',
           {
             style:
-              'font-size: 13px; font-weight: bold; display: flex; align-items: center; gap: 6px;',
+              'font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;',
           },
           [renderZapIcon(14), 'ByeDPI (ciadpi) Matrix Patterns'],
         ),
@@ -992,7 +992,7 @@ export function renderStrategyFuzzerModal(
           'div',
           {
             style:
-              'font-size: 13px; font-weight: bold; display: flex; align-items: center; gap: 6px;',
+              'font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;',
           },
           [renderZapIcon(14), 'Native Desync (tachyon-core) Matrix Patterns'],
         ),
@@ -1302,7 +1302,7 @@ export function renderStrategyFuzzerModal(
         'div',
         {
           style:
-            'font-weight: bold; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;',
+            'font-weight: 600; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;',
         },
         [
           renderBrainIcon(16),
@@ -1328,7 +1328,7 @@ export function renderStrategyFuzzerModal(
         'div',
         {
           style:
-            'font-size: 13px; font-weight: bold; display: flex; align-items: center; justify-content: space-between;',
+            'font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: space-between;',
         },
         [
           E(
@@ -1381,7 +1381,7 @@ export function renderStrategyFuzzerModal(
           'div',
           {
             style:
-              'font-size: 13px; font-weight: bold; display: flex; align-items: center; gap: 6px;',
+              'font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;',
           },
           [renderFileTextIcon(14), _('Benchmark History')],
         ),
@@ -1531,7 +1531,7 @@ export function renderStrategyFuzzerModal(
                     'td',
                     {
                       class: 'cbi-section-table-cell',
-                      style: 'padding: 8px; font-weight: bold;',
+                      style: 'padding: 8px; font-weight: 600;',
                     },
                     bestScore,
                   ),
@@ -1629,7 +1629,7 @@ export function renderStrategyFuzzerModal(
           E(
             'span',
             {
-              style: `font-size: 10px; margin-left: 6px; font-weight: bold; color: ${
+              style: `font-size: 10px; margin-left: 6px; font-weight: 600; color: ${
                 isBest ? '#28a745' : '#17a2b8'
               };`,
             },
@@ -1835,7 +1835,7 @@ export function renderStrategyFuzzerModal(
             'td',
             {
               class: 'cbi-section-table-cell',
-              style: 'padding: 8px 10px; font-weight: bold;',
+              style: 'padding: 8px 10px; font-weight: 600;',
             },
             item.success ? String(item.score) : '0',
           ),
@@ -2203,7 +2203,7 @@ export function renderStrategyFuzzerModal(
         meta.iconRenderer(14),
         E(
           'span',
-          { style: 'font-weight: bold;' },
+          { style: 'font-weight: 600;' },
           `${_('DPI Detected')}: ${label}`,
         ),
         E(

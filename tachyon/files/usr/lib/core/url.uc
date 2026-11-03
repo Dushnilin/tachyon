@@ -280,6 +280,13 @@ function github_to_jsdelivr(url) {
     return "https://cdn.jsdelivr.net/gh/" + owner + "/" + repo + "@" + ref + "/" + file;
 }
 
+// Classify subscription inputs without loading the decryption implementation.
+// Unknown Happ schemes stay out of the manual proxy parser as well.
+function is_subscription_url(value) {
+    value = replace(as_string(value), /^\s+|\s+$/g, "");
+    return match(value, /^(https?:\/\/|happ:\/\/|crypt([2-5])?\/)/i) != null;
+}
+
 function download_candidates(value) {
     value = as_string(value);
     if (value == "")
@@ -338,5 +345,6 @@ return {
     query_params,
     normalize_github_raw,
     github_to_jsdelivr,
+    is_subscription_url,
     download_candidates
 };

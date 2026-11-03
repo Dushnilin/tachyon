@@ -496,6 +496,7 @@ export namespace Tachyon {
     traffic?: SubscriptionTraffic;
     expire?: number;
     refillDate?: number;
+    updatedAt?: number;
     webPageUrl?: string;
     supportUrl?: string;
     announce?: string;
@@ -934,6 +935,8 @@ export namespace Tachyon {
     pid?: number;
     uptime_seconds?: number;
     uptime_pretty?: string;
+    cpu_load_percent?: number | null;
+    cpu_temp_c?: number | null;
   }
 
   export interface GetOutboundMetadata {

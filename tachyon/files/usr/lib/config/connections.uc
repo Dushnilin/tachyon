@@ -4,6 +4,7 @@ let fs = require("fs");
 let common = require("core.common");
 let uci_core = require("core.uci");
 let constants = require("core.constants");
+let core_url = require("core.url");
 
 let as_string = common.as_string;
 let object_or_empty = common.object_or_empty;
@@ -940,14 +941,14 @@ function connection_urls(section) {
     }
     for (let u in child_values(section, "subscription_url", "url", "subscription_urls")) {
         let su = trim(as_string(u || ""));
-        if (su != "" && !match(lc(su), /^https?:\/\//))
+        if (su != "" && !core_url.is_subscription_url(su))
             push_unique_str(links, seen, su);
     }
     let sec_action = action(section);
     for (let src in section_effective_outbound_sources(section)) {
         let stype = lc(option(src, "source_type", "subscription"));
         let su = trim(option(src, "url", ""));
-        if (su != "" && !match(lc(su), /^https?:\/\//)) {
+        if (su != "" && !core_url.is_subscription_url(su)) {
             if (index(su, "#") < 0) {
                 let sname = trim(option(src, "name", ""));
                 if (sname != "")
@@ -1008,12 +1009,12 @@ function subscription_urls(section) {
     for (let src in section_effective_outbound_sources(section)) {
         let stype = lc(option(src, "source_type", "subscription"));
         let u = outbound_source_subscription_url(src);
-        if ((stype == "subscription" || u != "") && u != "" && match(lc(u), /^https?:\/\//))
+        if ((stype == "subscription" || u != "") && u != "" && core_url.is_subscription_url(u))
             push_unique_str(result, seen, u);
     }
     for (let u in child_values(section, "subscription_url", "url", "subscription_urls")) {
         let su = trim(as_string(u || ""));
-        if (su != "" && match(lc(su), /^https?:\/\//))
+        if (su != "" && core_url.is_subscription_url(su))
             push_unique_str(result, seen, su);
     }
     return result;
@@ -1086,6 +1087,12 @@ function is_remote_proxy_section(section) {
 
 function synthesize_protocol_outbound_json_from_source(src, stype) {
     let tag_name = trim(option(src, "name", section_name(src))) || section_name(src);
+    let src_bind_iface = trim(option(src, "bind_interface", ""));
+    let finalize = function(obj) {
+        if (src_bind_iface != "" && lc(as_string(obj.type || "")) != "desync" && as_string(obj.detour || "") == "" && as_string(obj.bind_interface || "") == "")
+            obj.bind_interface = src_bind_iface;
+        return sprintf("%J", obj);
+    };
     if (stype == "anytls") {
         let srv = trim(option(src, "anytls_server", option(src, "server", "")));
         if (srv == "") return "";
@@ -1107,7 +1114,7 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
         if (ci != "") obj.idle_session_check_interval = ci;
         let ito = trim(option(src, "anytls_idle_session_timeout", ""));
         if (ito != "") obj.idle_session_timeout = ito;
-        return sprintf("%J", obj);
+        return finalize(obj);
     }
     if (stype == "naive") {
         let srv = trim(option(src, "naive_server", option(src, "server", "")));
@@ -1154,7 +1161,7 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
                     obj.extra_headers = hdrs;
             }
         }
-        return sprintf("%J", obj);
+        return finalize(obj);
     }
     if (stype == "mieru") {
         let srv = trim(option(src, "mieru_server", option(src, "server", "")));
@@ -1199,7 +1206,7 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
         if (hmode != "") obj.handshake_mode = hmode;
         let tpat = trim(option(src, "mieru_traffic_pattern", ""));
         if (tpat != "") obj.traffic_pattern = tpat;
-        return sprintf("%J", obj);
+        return finalize(obj);
     }
     if (stype == "trusttunnel") {
         let srv = trim(option(src, "trusttunnel_server", option(src, "server", "")));
@@ -1226,7 +1233,7 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
             obj.health_check = true;
         let cc = trim(option(src, "trusttunnel_congestion_control", ""));
         if (cc != "") obj.quic_congestion_control = cc;
-        return sprintf("%J", obj);
+        return finalize(obj);
     }
     if (stype == "tewfai") {
         let srv = trim(option(src, "tewfai_server", option(src, "server", "")));
@@ -1267,7 +1274,7 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
         if (bool_option(src, "tewfai_pqc_enabled", false)) obj.pqc = true;
         if (bool_option(src, "tewfai_handover_enabled", false)) obj.handover = { enabled: true };
         if (bool_option(src, "tewfai_fec_enabled", false)) obj.fec = true;
-        return sprintf("%J", obj);
+        return finalize(obj);
     }
     if (stype == "masque") {
         let srv = trim(option(src, "masque_server", option(src, "server", "162.159.198.2"))) || "162.159.198.2";
@@ -1310,7 +1317,7 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
             if (rfrag) tls.record_fragment = true;
             obj.tls = tls;
         }
-        return sprintf("%J", obj);
+        return finalize(obj);
     }
     if (stype == "openconnect") {
         let srv = trim(option(src, "openconnect_server", option(src, "server", "")));
@@ -1349,7 +1356,7 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
         if (bool_option(src, "openconnect_esp", false)) obj.esp = true;
         let mtu = int(option(src, "openconnect_mtu", "0") || 0);
         if (mtu > 0) obj.mtu = as_string(mtu);
-        return sprintf("%J", obj);
+        return finalize(obj);
     }
     if (stype == "shadowtls") {
         let srv = trim(option(src, "shadowtls_server", option(src, "server", "")));
@@ -1368,7 +1375,7 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
         };
         if (bool_option(src, "shadowtls_insecure", false))
             obj.tls.insecure = true;
-        return sprintf("%J", obj);
+        return finalize(obj);
     }
     if (stype == "snell") {
         let srv = trim(option(src, "snell_server", option(src, "server", "")));
@@ -1389,7 +1396,7 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
         }
         if (bool_option(src, "snell_uot", false))
             obj.udp_over_tcp = true;
-        return sprintf("%J", obj);
+        return finalize(obj);
     }
     if (stype == "sudoku") {
         let srv = trim(option(src, "sudoku_server", option(src, "server", "")));
@@ -1403,7 +1410,7 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
         };
         let aead = trim(option(src, "sudoku_aead_method", ""));
         if (aead != "") obj.aead_method = aead;
-        return sprintf("%J", obj);
+        return finalize(obj);
     }
     if (stype == "warp") {
         let pk = trim(option(src, "warp_private_key", option(src, "awg_private_key", "")));
@@ -1422,7 +1429,7 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
                 ip: "172.16.0.2/32"
             };
             if (tok != "") m_obj.auth_token = tok;
-            return sprintf("%J", m_obj);
+            return finalize(m_obj);
         }
         let w_srv = explicit_wg_srv != "" ? explicit_wg_srv : "162.159.192.1";
         let w_port = int(option(src, "warp_server_port", option(src, "warp_endpoint_port", option(src, "awg_server_port", "2408"))) || 2408);
@@ -1509,7 +1516,7 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
             let fpm = trim(option(src, "warp_fake_packets_mode", ""));
             if (fpm != "") wg_obj.fake_packets_mode = fpm;
         }
-        return sprintf("%J", wg_obj);
+        return finalize(wg_obj);
     }
     if (stype == "desync") {
         let norm_preset = function(val) {
@@ -1679,7 +1686,7 @@ function source_id_for_manual_item(section, value) {
         if (su != "") {
             if (su == value)
                 return src_id;
-            if (!match(lc(su), /^https?:\/\//)) {
+            if (!core_url.is_subscription_url(su)) {
                 let sname = trim(option(src, "name", ""));
                 if (sname != "" && (su + "#" + sname) == value)
                     return src_id;

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-02 14:19+0300\n"
-"PO-Revision-Date: 2026-11-02 14:19+0300\n"
+"POT-Creation-Date: 2026-11-03 06:06+0300\n"
+"PO-Revision-Date: 2026-11-03 06:06+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -76,6 +76,12 @@ msgstr "-- Выберите защиту --"
 
 msgid "-- Select server --"
 msgstr "-- Выберите сервер --"
+
+msgid "-- Select server group --"
+msgstr ""
+
+msgid "-- Select source --"
+msgstr ""
 
 msgid "-- Select transport --"
 msgstr "-- Выберите транспорт --"
@@ -992,6 +998,9 @@ msgstr "Автоматическая проверка DNS, правил марш
 msgid "Automatic (Priority Failover when mixing connections / DPI + VPN)"
 msgstr "Автоматически (Приоритет и отказоустойчивость при смешивании подключений)"
 
+msgid "Automatic (default)"
+msgstr ""
+
 msgid "Automatic HWID Header (x-hwid)"
 msgstr "Автоматический заголовок HWID (x-hwid)"
 
@@ -1384,6 +1393,12 @@ msgstr "СОСТАВНОЕ"
 
 msgid "CORE ONLINE"
 msgstr "ЯДРО АКТИВНО"
+
+msgid "CPU Load"
+msgstr "Нагрузка CPU"
+
+msgid "CPU Load & Temp"
+msgstr "Процессор (CPU)"
 
 msgid "CUSTOM DNS → DIRECT"
 msgstr "ПОЛЬЗОВАТЕЛЬСКИЙ DNS → НАПРЯМУЮ"
@@ -5267,6 +5282,9 @@ msgstr "Светло-жёлтый"
 msgid "Lightweight proxy server for LAN devices or Telegram MTProto"
 msgstr "Локальный или внешний прокси-сервер для устройств и Telegram"
 
+msgid "Linked Subscription / Server Sources"
+msgstr ""
+
 msgid "Links"
 msgstr "Ссылки"
 
@@ -6380,8 +6398,14 @@ msgstr "Необязательное имя, отображаемое в вер�
 msgid "Optional raw WireGuard / AmneziaWG [Interface] + [Peer] configuration text."
 msgstr "Необязательный текст конфигурации WireGuard / AmneziaWG с секциями [Interface] и [Peer]."
 
+msgid "Optional reusable Server Groups (Outbound Groups) to use as the candidate pool for this URLTest balancer."
+msgstr ""
+
 msgid "Optional server name or IP from the token to prefer."
 msgstr "Необязательное имя или IP-адрес предпочитаемого сервера из токена."
+
+msgid "Optional specific Outbound Sources (subscriptions or proxy pools) to restrict this URLTest balancer to."
+msgstr ""
 
 msgid "Optional tls-auth or tls-crypt key"
 msgstr "Опциональный ключ tls-auth или tls-crypt"
@@ -6394,6 +6418,9 @@ msgstr "Опциональные значения должны быть прис
 
 msgid "Optional — leave empty for default"
 msgstr "Опционально — оставьте пустым для значения по умолчанию"
+
+msgid "Optional: bind this connection to a specific network interface (e.g. eth1, wan2, wg0). Leave empty for automatic routing."
+msgstr ""
 
 msgid "Optional: leave blank for proxy-free Desync or paste a subscription URL https://..."
 msgstr "Необязательно: оставьте пустым для работы без прокси (Desync) или вставьте подписку https://..."
@@ -6442,6 +6469,9 @@ msgstr "Другие пиры"
 
 msgid "Out-of-window TCP Sequence (badseq)"
 msgstr "Смещение TCP Sequence вне окна (badseq)"
+
+msgid "Outbound Interface (bind_interface)"
+msgstr ""
 
 msgid "Outbound JSON Objects"
 msgstr "JSON-объекты аутбаундов"
@@ -6739,6 +6769,9 @@ msgstr "Полиморфный профиль энтропии"
 
 msgid "Pool"
 msgstr "Пул"
+
+msgid "Popular domains:"
+msgstr "Популярные домены:"
 
 msgid "Port"
 msgstr "Порт"
@@ -7477,6 +7510,9 @@ msgstr "Продолжить обновление"
 
 msgid "Return NXDOMAIN for blocked domains (recommended). When enabled, blocked domains are not resolved at all. When disabled, only direct connections are rejected."
 msgstr "Возвращать NXDOMAIN для заблокированных доменов (рекомендуется). При включении заблокированные домены вообще не резолвятся. При выключении отклоняются только прямые соединения."
+
+msgid "Reusable Server Groups"
+msgstr ""
 
 msgid "Reusable URLTest and Priority selection policies decoupled from specific server pools."
 msgstr "Переиспользуемые балансировщики URLTest и Priority, отделённые от конкретных пулов серверов."
@@ -8561,6 +8597,9 @@ msgstr "Версия протокола Snell"
 msgid "Snell Version"
 msgstr "Версия Snell"
 
+msgid "SoC/CPU Temp"
+msgstr "Температура SoC/CPU"
+
 msgid "Social media"
 msgstr "Социальные сети"
 
@@ -8893,6 +8932,9 @@ msgstr "Настройки URL подписки"
 
 msgid "Subscription auto update"
 msgstr "Автообновление подписки"
+
+msgid "Subscription cache last updated"
+msgstr "Последнее обновление кэша подписки"
 
 msgid "Subscription exclude keywords"
 msgstr "Ключевые слова исключения подписки"
@@ -9616,9 +9658,6 @@ msgstr "Допуск"
 
 msgid "Tolerance (ms)"
 msgstr "Допуск задержки (мс)"
-
-msgid "Top active domains in bypass:"
-msgstr "Популярные ресурсы в обходе:"
 
 msgid "Top level has the highest priority; lower levels are used as fallback"
 msgstr "Верхний уровень имеет наивысший приоритет; нижние уровни используются как запасные"
