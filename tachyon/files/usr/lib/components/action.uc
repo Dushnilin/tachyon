@@ -1452,7 +1452,7 @@ function install_tailscale(action) {
     let proxy_address = service_proxy_address();
     if (!run_logged("Refreshing package index", pkg_list_update_command(proxy_address), 30))
         updates_log("Package index refresh failed; trying to install from the cached index", "warn");
-    if (!run_logged("Installing " + label + " package", pkg_install_name_command("tailscale", proxy_address), 60)) {
+    if (!run_logged("Installing " + label + " package", pkg_install_name_command("tailscale", proxy_address), PKG_TX_INSTALL_TIMEOUT)) {
         if (proxy_address == "")
             updates_log("Upstream package download failed. If downloads.openwrt.org is blocked by your ISP, configure a proxy section and enable 'Download components via proxy' in Settings", "warn");
         action_fail(component, "install", "Failed to install " + label + " package from the feed");

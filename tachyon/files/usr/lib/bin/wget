@@ -1,0 +1,102 @@
+#!/bin/sh
+# Tachyon wget wrapper: transparently delegates to curl when available to
+# properly support HTTP CONNECT proxy tunneling (https_proxy / http_proxy).
+# Falls back to native uclient-fetch / busybox wget otherwise.
+
+out=""
+stdout=0
+timeout=""
+url=""
+insecure=""
+out_dir=""
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -O)
+            if [ "$2" = "-" ]; then
+                stdout=1
+            else
+                out="$2"
+            fi
+            shift 2
+            ;;
+        -O-)
+            stdout=1
+            shift
+            ;;
+        -O*)
+            out="${1#-O}"
+            if [ "$out" = "-" ]; then
+                stdout=1
+                out=""
+            fi
+            shift
+            ;;
+        -T)
+            timeout="$2"
+            shift 2
+            ;;
+        -T*)
+            timeout="${1#-T}"
+            shift
+            ;;
+        -P)
+            out_dir="$2"
+            shift 2
+            ;;
+        -P*)
+            out_dir="${1#-P}"
+            shift
+            ;;
+        --no-check-certificate)
+            insecure="-k"
+            shift
+            ;;
+        -q|-c|--passive-ftp)
+            shift
+            ;;
+        http://*|https://*|ftp://*)
+            url="$1"
+            shift
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+
+if [ -n "$url" ] && command -v curl >/dev/null 2>&1; then
+    curl_args="-sSL"
+    if [ -n "$timeout" ]; then
+        curl_args="$curl_args -m $timeout"
+    fi
+    if [ -n "$insecure" ]; then
+        curl_args="$curl_args $insecure"
+    fi
+
+    if [ "$stdout" -eq 1 ]; then
+        exec curl $curl_args "$url"
+    elif [ -n "$out" ]; then
+        exec curl $curl_args -o "$out" "$url"
+    elif [ -n "$out_dir" ]; then
+        filename="${url##*/}"
+        filename="${filename%%\?*}"
+        exec curl $curl_args -o "$out_dir/$filename" "$url"
+    else
+        filename="${url##*/}"
+        filename="${filename%%\?*}"
+        exec curl $curl_args -o "$filename" "$url"
+    fi
+fi
+
+# Fallback to system fetchers if curl is missing
+for bin in /usr/bin/wget-ssl /bin/uclient-fetch /bin/busybox; do
+    if [ -x "$bin" ]; then
+        if [ "$bin" = "/bin/busybox" ]; then
+            exec /bin/busybox wget "$@"
+        fi
+        exec "$bin" "$@"
+    fi
+done
+
+exit 1
