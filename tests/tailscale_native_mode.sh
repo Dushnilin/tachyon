@@ -120,10 +120,9 @@ OUTPUT=$(ucode -L "$TACHYON_LIB" "$RUNTIME_UC" package-version)
 ucode -L "$TACHYON_LIB" "$RUNTIME_UC" status >/dev/null ||
   fail "status mode must always produce JSON"
 
-# #318: Standalone tailscaled stamps 0x00080000 on regular LAN packets in its
-# ts-input/ts-forward chains before Tachyon's mangle chain runs. Tachyon's
-# mangle bypass mask must NOT include 0x00080000, and must never skip FakeIP
-# (198.18.0.0/15) traffic, or all LAN clients lose FakeIP/TPROXY access.
+# #318: Forwarding marks and tailscaled's own 0x00080000 socket mark have
+# different roles. FakeIP must remain eligible for interception in either case.
+# Generated-rule behavior is covered by tailscale_fakeip_nft.sh.
 NFT_APPLY_UC="$TACHYON_LIB/nft/apply.uc"
 grep -Fq 'const TAILSCALE_TUNNEL_BYPASS_MARK_MASK = "0x00340000";' "$NFT_APPLY_UC" ||
   fail "nft/apply.uc must use 0x00340000 tunnel bypass mask (excluding standalone tailscaled 0x00080000 bit)"

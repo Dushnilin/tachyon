@@ -80,3 +80,7 @@ jobs:
             ! -name 'ucode_syntax_lint.sh' \
             ! -name 'inside_docker.sh' \
             -print0 | xargs -0 -n1 -P4 bash
+
+      - name: Verify Tailscale packet classification
+        shell: bash
+        run: sudo bash tests/tailscale_fakeip_nft.sh
