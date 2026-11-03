@@ -2143,6 +2143,7 @@ function try_fetch_subscription_with_core(
     if (bool_value(allow_insecure, false))
         push(args, "-k");
 
+    unlink_path(full_tmpfile);
     let status = command_status_from_args(args);
     if (status != 0) {
         unlink_path(full_tmpfile);
@@ -2188,50 +2189,40 @@ function try_fetch_subscription_with_core(
         if (as_string(md.announce || "") != "")
             push(header_lines, "Announce: " + as_string(md.announce));
     }
-    if (length(header_lines) > 0) {
-        write_file(headers_tmpfile, join("\r\n", header_lines) + "\r\n");
+    write_file(headers_tmpfile, length(header_lines) > 0 ? (join("\r\n", header_lines) + "\r\n") : "");
+
+    let raw_body = type(full_obj.raw_body) == "string" ? full_obj.raw_body : "";
+    if (raw_body != "") {
+        write_file(raw_tmpfile, raw_body);
+        parser.extract_ui_metadata_file(headers_tmpfile, raw_tmpfile, metadata_tmpfile) || unlink_path(metadata_tmpfile);
+        copy_valid_metadata_output(metadata_tmpfile, metadata_output_path);
+        if (!parser.normalize_content_validated(raw_tmpfile, normalized_tmpfile, headers_tmpfile, "core")) {
+            unlink_path(raw_tmpfile);
+            unlink_path(headers_tmpfile);
+            unlink_path(normalized_tmpfile);
+            unlink_path(metadata_tmpfile);
+            return -1;
+        }
+    } else {
+        let fallback_peer = parser.extract_peer_params_from_headers_file(headers_tmpfile);
+        let outbounds = parser.normalize_sing_box_json_outbounds(full_obj.outbounds, fallback_peer);
+        if (length(outbounds) == 0) {
+            unlink_path(headers_tmpfile);
+            return -1;
+        }
+        let norm_payload = {
+            version: 1,
+            format: "sing-box-json",
+            outbounds: outbounds
+        };
+        if (!common.write_json_file(normalized_tmpfile, norm_payload) || !parser.validate_subscription(normalized_tmpfile)) {
+            unlink_path(headers_tmpfile);
+            unlink_path(normalized_tmpfile);
+            return -1;
+        }
         write_file(raw_tmpfile, "");
         parser.extract_ui_metadata_file(headers_tmpfile, raw_tmpfile, metadata_tmpfile) || unlink_path(metadata_tmpfile);
         copy_valid_metadata_output(metadata_tmpfile, metadata_output_path);
-    }
-
-    let primary_set = {};
-    let has_primary = type(full_obj.primary_tags) == "array" && length(full_obj.primary_tags) > 0;
-    if (has_primary) {
-        for (let t in full_obj.primary_tags)
-            primary_set[as_string(t)] = true;
-    }
-    let detour_targets = {};
-    for (let ob in full_obj.outbounds) {
-        if (type(ob) == "object" && as_string(ob.detour || "") != "")
-            detour_targets[as_string(ob.detour)] = true;
-    }
-    for (let ob in full_obj.outbounds) {
-        if (type(ob) != "object")
-            continue;
-        let ob_type = lc(as_string(ob.type || ""));
-        if (ob_type == "urltest" || ob_type == "selector") {
-            ob.__tachyon_allow_group = true;
-            continue;
-        }
-        let ob_tag = as_string(ob.tag || "");
-        if ((has_primary && ob_tag != "" && !primary_set[ob_tag]) || (ob_tag != "" && detour_targets[ob_tag]))
-            ob.__tachyon_hidden = true;
-        else if (as_string(ob.remark || "") == "" && ob_tag != "")
-            ob.remark = ob_tag;
-    }
-
-    write_json(normalized_tmpfile, {
-        version: 1,
-        format: "sing-box-json",
-        outbounds: full_obj.outbounds
-    });
-    if (!parser.validate_subscription(normalized_tmpfile)) {
-        unlink_path(raw_tmpfile);
-        unlink_path(headers_tmpfile);
-        unlink_path(normalized_tmpfile);
-        unlink_path(metadata_tmpfile);
-        return -1;
     }
 
     return finalize_downloaded_subscription_cache(

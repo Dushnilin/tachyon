@@ -97,4 +97,58 @@ if grep -Fq '"obfs"' "$plain_output"; then
   fail "hysteria2 without finalmask must not grow an obfs"
 fi
 
+# Flat Xray VLESS settings (`settings.address` / `port` / `id` / `flow` without `vnext`)
+flat_vless_input="$WORK_DIR/xray-flat-vless.json"
+flat_vless_output="$WORK_DIR/xray-flat-vless-normalized.json"
+cat >"$flat_vless_input" <<'JSON'
+[
+  {
+    "remarks": "🇷🇺 Россия · XHTTP",
+    "inbounds": [],
+    "outbounds": [
+      {
+        "tag": "proxy",
+        "protocol": "vless",
+        "settings": {
+          "address": "arseniy.online",
+          "port": 8443,
+          "id": "e3e1a852-b8ed-bc84-a451-577ba0a45ec1",
+          "encryption": "none",
+          "flow": "xtls-rprx-vision"
+        },
+        "streamSettings": {
+          "network": "xhttp",
+          "security": "reality",
+          "realitySettings": {
+            "serverName": "api-maps.yandex.ru",
+            "publicKey": "E99v69e07uX9dY8v116750k9044m3x8037B9s5647F8",
+            "shortId": "9ef12456efbd135a",
+            "fingerprint": "firefox"
+          },
+          "xhttpSettings": {
+            "host": "api-maps.yandex.ru",
+            "path": "/xh-path",
+            "mode": "auto"
+          }
+        }
+      }
+    ]
+  }
+]
+JSON
+normalize "$flat_vless_input" "$flat_vless_output"
+
+if ! grep -Fq '"type": "vless"' "$flat_vless_output"; then
+  cat "$flat_vless_output" >&2
+  fail "Xray flat VLESS settings must normalize to a sing-box vless outbound"
+fi
+if ! grep -Fq '"flow": "xtls-rprx-vision"' "$flat_vless_output"; then
+  cat "$flat_vless_output" >&2
+  fail "Xray flat VLESS settings must preserve settings.flow"
+fi
+if ! grep -Fq '"tag": "🇷🇺 Россия · XHTTP"' "$flat_vless_output"; then
+  cat "$flat_vless_output" >&2
+  fail "Xray flat VLESS settings must use remarks as tag when outbound tag is generic"
+fi
+
 printf 'subscription Xray finalmask checks passed\n'

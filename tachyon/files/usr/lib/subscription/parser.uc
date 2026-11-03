@@ -3666,10 +3666,10 @@ function convert_xray_vless(outbound, tag) {
         uuid: uuid
     };
 
-    let flow = as_string(user.flow || outbound.flow || "");
+    let flow = as_string(user.flow || outbound.flow || settings.flow || "");
     if (flow != "")
         result.flow = flow;
-    let encryption = normalize_vless_encryption(user.encryption || outbound.encryption || "");
+    let encryption = normalize_vless_encryption(user.encryption || outbound.encryption || settings.encryption || "");
     if (encryption != "")
         result.encryption = encryption;
 
@@ -3696,7 +3696,7 @@ function convert_xray_vmess(outbound, tag) {
         security: security != "" ? security : "auto"
     };
 
-    let alter_id = user.alterId != null ? user.alterId : (outbound.alter_id != null ? outbound.alter_id : outbound.alterId);
+    let alter_id = user.alterId != null ? user.alterId : (outbound.alter_id != null ? outbound.alter_id : (outbound.alterId != null ? outbound.alterId : (settings.alterId != null ? settings.alterId : settings.alter_id)));
     if (alter_id != null && as_string(alter_id) != "")
         result.alter_id = int(alter_id);
 
@@ -5047,6 +5047,8 @@ function module_exports() {
         parse_share_link,
         add_transport,
         parse_subscription_source_entry,
+        extract_peer_params_from_headers_file,
+        normalize_sing_box_json_outbounds,
         validate_subscription,
         normalize_content_validated,
         core_subscription_cli_supported,
