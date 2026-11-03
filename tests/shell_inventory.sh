@@ -43,6 +43,7 @@ expected_shell_scripts="$(
     'tachyon/files/etc/init.d/tachyon' \
     'tachyon/files/etc/init.d/tachyon-steer-zapret' \
     'tachyon/files/etc/init.d/tachyon-torrserver-direct' \
+    'tachyon/files/usr/lib/bin/wget' \
     'tachyon/files/usr/lib/cgi-bin/tachyon-agent' \
     'tachyon/files/usr/lib/firewall.include' \
     'tachyon/files/usr/sbin/steer-nfqws' \
