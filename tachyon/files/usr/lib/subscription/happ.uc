@@ -187,14 +187,16 @@ function decrypt_rsa(work, mode, payload) {
 
 function decrypt(value, ...legacy_keys) {
     value = trim(value);
-    if (length(value) > MAX_LINK_BYTES)
-        return null;
     let parsed = match(value, /^(happ:\/\/)?(crypt([2-5])?)\/(.+)$/i);
     if (parsed == null)
         return null;
     let mode = lc(parsed[2]);
     let plain = null;
-    let work = trim(common.command_output_from_args([ "mktemp", "-d", "/tmp/tachyon-happ.XXXXXX" ]));
+    // Bound RSA processing, but let the legacy AES/HWID fallback handle larger
+    // crypt4 subscription bodies as it did before the shared Happ decryptor.
+    let work = "";
+    if (length(value) <= MAX_LINK_BYTES)
+        work = trim(common.command_output_from_args([ "mktemp", "-d", "/tmp/tachyon-happ.XXXXXX" ]));
     if (match(work, /^\/tmp\/tachyon-happ\.[A-Za-z0-9]+$/)) {
         try { plain = decrypt_rsa(work, mode, parsed[4]); } catch (e) {}
         for (let path in (fs.glob(work + "/*") || []))
