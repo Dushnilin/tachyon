@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-03 10:30+0300\n"
-"PO-Revision-Date: 2026-11-03 10:30+0300\n"
+"POT-Creation-Date: 2026-11-03 13:33+0300\n"
+"PO-Revision-Date: 2026-11-03 13:33+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -76,12 +76,6 @@ msgstr "-- Выберите защиту --"
 
 msgid "-- Select server --"
 msgstr "-- Выберите сервер --"
-
-msgid "-- Select server group --"
-msgstr ""
-
-msgid "-- Select source --"
-msgstr ""
 
 msgid "-- Select transport --"
 msgstr "-- Выберите транспорт --"
@@ -4130,9 +4124,6 @@ msgstr "Участники группы"
 msgid "Group nodes"
 msgstr "Узлов в группе"
 
-msgid "Groups"
-msgstr "Группы"
-
 msgid "Guest Devices (MAC / IP)"
 msgstr "Гостевые устройства (MAC / IP)"
 
@@ -5303,9 +5294,6 @@ msgstr "Светло-жёлтый"
 msgid "Lightweight proxy server for LAN devices or Telegram MTProto"
 msgstr "Локальный или внешний прокси-сервер для устройств и Telegram"
 
-msgid "Linked Subscription / Server Sources"
-msgstr ""
-
 msgid "Links"
 msgstr "Ссылки"
 
@@ -6425,14 +6413,8 @@ msgstr "Необязательное имя, отображаемое в вер�
 msgid "Optional raw WireGuard / AmneziaWG [Interface] + [Peer] configuration text."
 msgstr "Необязательный текст конфигурации WireGuard / AmneziaWG с секциями [Interface] и [Peer]."
 
-msgid "Optional reusable Server Groups (Outbound Groups) to use as the candidate pool for this URLTest balancer."
-msgstr ""
-
 msgid "Optional server name or IP from the token to prefer."
 msgstr "Необязательное имя или IP-адрес предпочитаемого сервера из токена."
-
-msgid "Optional specific Outbound Sources (subscriptions or proxy pools) to restrict this URLTest balancer to."
-msgstr ""
 
 msgid "Optional tls-auth or tls-crypt key"
 msgstr "Опциональный ключ tls-auth или tls-crypt"
@@ -7546,9 +7528,6 @@ msgstr "Продолжить обновление"
 
 msgid "Return NXDOMAIN for blocked domains (recommended). When enabled, blocked domains are not resolved at all. When disabled, only direct connections are rejected."
 msgstr "Возвращать NXDOMAIN для заблокированных доменов (рекомендуется). При включении заблокированные домены вообще не резолвятся. При выключении отклоняются только прямые соединения."
-
-msgid "Reusable Server Groups"
-msgstr ""
 
 msgid "Reusable URLTest and Priority selection policies decoupled from specific server pools."
 msgstr "Переиспользуемые балансировщики URLTest и Priority, отделённые от конкретных пулов серверов."
@@ -8977,9 +8956,6 @@ msgstr "Ключевые слова исключения подписки"
 
 msgid "Subscription include keywords"
 msgstr "Ключевые слова включения подписки"
-
-msgid "Subscription info:"
-msgstr "Информация о подписке:"
 
 msgid "Subscription or Links (optional for DPI Desync mode)"
 msgstr "Подписка или ключи (необязательно для режима DPI Desync)"
@@ -11155,6 +11131,30 @@ msgstr "● Высокий пинг"
 
 msgid "✓ No subscription needed for this preset — uses built-in Tachyon Core Desync"
 msgstr "✓ Для этого пресета подписка не требуется — используется встроенный Tachyon Core Desync"
+
+msgid "-- Select server group --"
+msgstr ""
+
+msgid "-- Select source --"
+msgstr ""
+
+msgid "Groups"
+msgstr "Группы"
+
+msgid "Linked Subscription / Server Sources"
+msgstr ""
+
+msgid "Optional reusable Server Groups (Outbound Groups) to use as the candidate pool for this URLTest balancer."
+msgstr ""
+
+msgid "Optional specific Outbound Sources (subscriptions or proxy pools) to restrict this URLTest balancer to."
+msgstr ""
+
+msgid "Reusable Server Groups"
+msgstr ""
+
+msgid "Subscription info:"
+msgstr "Информация о подписке:"
 
 msgid "Auto — automatic strategy fallback"
 msgstr "Auto — каскадный перебор стратегий"

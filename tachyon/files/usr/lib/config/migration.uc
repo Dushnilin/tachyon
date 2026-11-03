@@ -2261,8 +2261,31 @@ function cleanup_modular_entities_v1(ctx) {
     for (let k, v in valid_sources)
         valid_groups_and_sources[k] = v;
     for (let bal in (ctx.model.balancer || [])) {
-        prune_ref_list(bal, "source_refs", valid_sources, null);
-        prune_ref_list(bal, "group_refs", valid_groups, null);
+        let bid = section_name(bal);
+        let bal_srcs = list_option(bal, "source_refs");
+        let bal_grps = list_option(bal, "group_refs");
+        if (length(bal_srcs) > 0 || length(bal_grps) > 0) {
+            if (bid != "") {
+                for (let sec in (ctx.model.sections || [])) {
+                    if (index(list_option(sec, "balancer_refs"), bid) < 0)
+                        continue;
+                    if (length(list_option(sec, "outbound_source_refs")) == 0 && length(list_option(sec, "outbound_group_refs")) == 0) {
+                        for (let sref in bal_srcs) {
+                            if (valid_sources[sref])
+                                add_list_unique(ctx, sec, "outbound_source_refs", sref);
+                        }
+                        for (let gref in bal_grps) {
+                            if (valid_groups[gref])
+                                add_list_unique(ctx, sec, "outbound_group_refs", gref);
+                        }
+                    }
+                }
+            }
+            if (option_exists(bal, "source_refs"))
+                delete_option(ctx, bal, "source_refs");
+            if (option_exists(bal, "group_refs"))
+                delete_option(ctx, bal, "group_refs");
+        }
         prune_ref_list(bal, "outbound_group_levels", valid_groups_and_sources, "direct");
     }
     for (let grp in (ctx.model.outbound_group || [])) {

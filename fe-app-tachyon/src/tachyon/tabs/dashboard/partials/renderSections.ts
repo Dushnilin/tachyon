@@ -690,13 +690,6 @@ function renderSubscriptionMetadata(
                       ),
                     ]
                   : []),
-                E(
-                  'div',
-                  {
-                    class: 'tachyon_dashboard-page__subscription-meta__heading',
-                  },
-                  _('Subscription info:'),
-                ),
                 title
                   ? E(
                       'div',
@@ -706,7 +699,14 @@ function renderSubscriptionMetadata(
                       },
                       renderFlagEmojis(title),
                     )
-                  : '',
+                  : E(
+                      'div',
+                      {
+                        class:
+                          'tachyon_dashboard-page__subscription-meta__heading',
+                      },
+                      _('Subscription'),
+                    ),
                 typeof options?.groupCount === 'number'
                   ? E(
                       'span',
@@ -728,6 +728,65 @@ function renderSubscriptionMetadata(
                   : '',
               ],
             ),
+            rows.length
+              ? E(
+                  'div',
+                  { class: 'tachyon_dashboard-page__subscription-meta__facts' },
+                  rows.map((row) =>
+                    E(
+                      'div',
+                      {
+                        class: `tachyon_dashboard-page__subscription-meta__fact tachyon_dashboard-page__subscription-meta__fact--${row.kind}`,
+                      },
+                      [
+                        E(
+                          'div',
+                          {
+                            class:
+                              'tachyon_dashboard-page__subscription-meta__fact-top',
+                          },
+                          [
+                            E(
+                              'span',
+                              {
+                                class:
+                                  'tachyon_dashboard-page__subscription-meta__fact-key',
+                              },
+                              row.label,
+                            ),
+                            E(
+                              'span',
+                              {
+                                class:
+                                  'tachyon_dashboard-page__subscription-meta__fact-value',
+                              },
+                              row.value,
+                            ),
+                          ],
+                        ),
+                        ...(typeof row.percent === 'number'
+                          ? [
+                              E(
+                                'div',
+                                {
+                                  class:
+                                    'tachyon_dashboard-page__subscription-meta__progress',
+                                },
+                                [
+                                  E('div', {
+                                    class:
+                                      'tachyon_dashboard-page__subscription-meta__progress-bar',
+                                    style: `width: ${row.percent.toFixed(1)}%;`,
+                                  }),
+                                ],
+                              ),
+                            ]
+                          : []),
+                      ],
+                    ),
+                  ),
+                )
+              : '',
             actions.length
               ? E(
                   'div',
@@ -739,65 +798,6 @@ function renderSubscriptionMetadata(
               : '',
           ],
         ),
-        rows.length
-          ? E(
-              'div',
-              { class: 'tachyon_dashboard-page__subscription-meta__facts' },
-              rows.map((row) =>
-                E(
-                  'div',
-                  {
-                    class: `tachyon_dashboard-page__subscription-meta__fact tachyon_dashboard-page__subscription-meta__fact--${row.kind}`,
-                  },
-                  [
-                    E(
-                      'div',
-                      {
-                        class:
-                          'tachyon_dashboard-page__subscription-meta__fact-top',
-                      },
-                      [
-                        E(
-                          'span',
-                          {
-                            class:
-                              'tachyon_dashboard-page__subscription-meta__fact-key',
-                          },
-                          row.label,
-                        ),
-                        E(
-                          'span',
-                          {
-                            class:
-                              'tachyon_dashboard-page__subscription-meta__fact-value',
-                          },
-                          row.value,
-                        ),
-                      ],
-                    ),
-                    ...(typeof row.percent === 'number'
-                      ? [
-                          E(
-                            'div',
-                            {
-                              class:
-                                'tachyon_dashboard-page__subscription-meta__progress',
-                            },
-                            [
-                              E('div', {
-                                class:
-                                  'tachyon_dashboard-page__subscription-meta__progress-bar',
-                                style: `width: ${row.percent.toFixed(1)}%;`,
-                              }),
-                            ],
-                          ),
-                        ]
-                      : []),
-                  ],
-                ),
-              ),
-            )
-          : '',
       ]),
       !isGroupCollapsed && metadata?.announce
         ? E(
@@ -2840,13 +2840,12 @@ function renderDefaultState({
           : _('Subscription');
 
       const resolvedSubTitle =
-        meta?.title || meta?.fileName || members[0]?.prefix || fallbackSubTitle;
+        meta?.title || members[0]?.prefix || meta?.fileName || fallbackSubTitle;
       const headerMeta: Tachyon.SubscriptionMetadata =
         meta && Object.keys(meta).length > 1
           ? {
               ...meta,
-              title:
-                meta.title || (meta.fileName ? undefined : resolvedSubTitle),
+              title: meta.title || resolvedSubTitle,
             }
           : {
               title: resolvedSubTitle,

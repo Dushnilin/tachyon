@@ -652,12 +652,12 @@ export const styles = `
 }
 
 .tachyon_dashboard-page__subscription-meta {
-    --subscription-meta-action-size: 28px;
+    --subscription-meta-action-size: 26px;
     --subscription-meta-action-gap: 6px;
     grid-column: 1 / -1;
     border: 1px solid var(--border-color-low, rgba(148, 163, 184, 0.2));
-    border-radius: 10px;
-    padding: 11px 14px;
+    border-radius: 8px;
+    padding: 8px 12px;
     background: var(--tachyon-bg-card-elevated, var(--background-color-high, rgba(148, 163, 184, 0.04)));
     box-sizing: border-box;
     min-width: 0;
@@ -712,7 +712,7 @@ export const styles = `
 .tachyon_dashboard-page__subscription-meta__main {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
     min-width: 0;
     width: 100%;
 }
@@ -728,7 +728,7 @@ export const styles = `
     align-items: center;
     justify-content: space-between;
     flex-wrap: wrap;
-    gap: 8px 12px;
+    gap: 6px 10px;
     min-width: 0;
     width: 100%;
 }
@@ -739,17 +739,17 @@ export const styles = `
     flex-wrap: wrap;
     gap: 6px 8px;
     min-width: 0;
-    flex: 1 1 auto;
+    flex: 0 1 auto;
+    margin-right: auto;
 }
 
 .tachyon_dashboard-page__subscription-meta__heading {
     flex: 0 0 auto;
     color: var(--text-color-medium, #94a3b8);
-    font-size: 11.5px;
+    font-size: 12px;
     font-weight: 600;
     line-height: 1.25;
     white-space: nowrap;
-    letter-spacing: 0.01em;
 }
 
 .tachyon_dashboard-page__source-group--manual .tachyon_dashboard-page__subscription-meta__heading {
@@ -764,7 +764,7 @@ export const styles = `
     flex: 0 1 auto;
     min-width: 0;
     color: var(--text-color-high);
-    font-size: 14px;
+    font-size: 13.5px;
     font-weight: 600;
     line-height: 1.3;
     word-break: normal;
@@ -772,64 +772,64 @@ export const styles = `
 }
 
 .tachyon_dashboard-page__subscription-meta__facts {
-    width: 100%;
     min-width: 0;
     display: flex;
     flex-wrap: wrap;
-    align-items: stretch;
-    gap: 8px;
+    align-items: center;
+    gap: 6px;
+    flex: 0 1 auto;
 }
 
 .tachyon_dashboard-page__subscription-meta__fact {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 4px;
-    min-width: 130px;
-    flex: 0 1 auto;
-    padding: 5px 10px;
-    border-radius: 8px;
-    background: var(--background-color-low, rgba(128, 128, 128, 0.08));
-    border: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.16));
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 26px;
+    padding: 0 9px;
+    border-radius: 6px;
+    background: var(--background-color-low, rgba(148, 163, 184, 0.06));
+    border: 1px solid var(--border-color-low, rgba(148, 163, 184, 0.16));
     box-sizing: border-box;
-    line-height: 1.25;
+    line-height: 1;
+    white-space: nowrap;
+    flex: 0 0 auto;
 }
 
 .tachyon_dashboard-page__subscription-meta__fact--traffic {
-    min-width: 185px;
-    flex: 1 1 200px;
-    max-width: 340px;
+    min-width: 0;
+    flex: 0 0 auto;
+    max-width: none;
 }
 
 .tachyon_dashboard-page__subscription-meta__fact-top {
-    display: flex;
+    display: inline-flex;
     align-items: baseline;
-    justify-content: space-between;
-    gap: 8px;
+    gap: 5px;
     min-width: 0;
 }
 
 .tachyon_dashboard-page__subscription-meta__fact-key {
     color: var(--text-color-medium);
-    font-size: 11.5px;
-    font-weight: 600;
+    font-size: 11px;
+    font-weight: 500;
     white-space: nowrap;
 }
 
 .tachyon_dashboard-page__subscription-meta__fact-value {
     color: var(--text-color-high);
-    font-size: 12.5px;
+    font-size: 12px;
     font-weight: 600;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
 }
 
 .tachyon_dashboard-page__subscription-meta__progress {
-    width: 100%;
+    width: 36px;
     height: 4px;
     border-radius: 999px;
-    background: rgba(148, 130, 224, 0.16);
+    background: rgba(148, 130, 224, 0.18);
     overflow: hidden;
+    flex-shrink: 0;
 }
 
 .tachyon_dashboard-page__subscription-meta__progress-bar {
@@ -841,7 +841,6 @@ export const styles = `
 
 .tachyon_dashboard-page__subscription-meta__actions {
     flex: 0 0 auto;
-    margin-left: auto;
     display: flex;
     flex-wrap: wrap;
     justify-content: flex-end;
@@ -900,12 +899,6 @@ export const styles = `
 
     .tachyon_dashboard-page__subscription-meta__actions {
         margin-left: 0;
-    }
-
-    .tachyon_dashboard-page__subscription-meta__fact,
-    .tachyon_dashboard-page__subscription-meta__fact--traffic {
-        flex: 1 1 100%;
-        max-width: 100%;
     }
 }
 

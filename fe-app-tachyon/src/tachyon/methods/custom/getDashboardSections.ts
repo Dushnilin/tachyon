@@ -2657,7 +2657,7 @@ function getSubscriptionMetadata(
         isSubscriptionMetadataVisible(section, sourceCount, metadata),
     )
     .map((metadata) => {
-      if (metadata.title || metadata.fileName) {
+      if (metadata.title) {
         return metadata;
       }
       const sourceIndex = getSubscriptionMetadataSourceIndex(

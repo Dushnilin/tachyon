@@ -7090,54 +7090,6 @@ export function openConnectionWizardModal(
         uciObj.set(TACHYON_UCI_PACKAGE, balId, 'tolerance', '50');
         uciObj.set(TACHYON_UCI_PACKAGE, balId, 'idle_timeout', '30m');
         uciObj.set(TACHYON_UCI_PACKAGE, secId, 'balancer_refs', [balId]);
-      } else {
-        for (const existingBalId of curBals) {
-          const balSrcRefsRaw = uciObj.get(
-            TACHYON_UCI_PACKAGE,
-            existingBalId,
-            'source_refs',
-          );
-          const balSrcRefs = Array.isArray(balSrcRefsRaw)
-            ? balSrcRefsRaw
-            : balSrcRefsRaw
-              ? String(balSrcRefsRaw).split(/\s+/).filter(Boolean)
-              : [];
-          if (balSrcRefs.length > 0 && !balSrcRefs.includes(srcId)) {
-            uciObj.set(TACHYON_UCI_PACKAGE, existingBalId, 'source_refs', [
-              ...balSrcRefs,
-              srcId,
-            ]);
-          }
-        }
-      }
-    } else if (outboundMethod !== 'desync') {
-      const curBalsRaw = uciObj.get(
-        TACHYON_UCI_PACKAGE,
-        secId,
-        'balancer_refs',
-      );
-      const curBals = Array.isArray(curBalsRaw)
-        ? curBalsRaw
-        : curBalsRaw
-          ? String(curBalsRaw).split(/\s+/).filter(Boolean)
-          : [];
-      for (const existingBalId of curBals) {
-        const balSrcRefsRaw = uciObj.get(
-          TACHYON_UCI_PACKAGE,
-          existingBalId,
-          'source_refs',
-        );
-        const balSrcRefs = Array.isArray(balSrcRefsRaw)
-          ? balSrcRefsRaw
-          : balSrcRefsRaw
-            ? String(balSrcRefsRaw).split(/\s+/).filter(Boolean)
-            : [];
-        if (balSrcRefs.length > 0 && !balSrcRefs.includes(srcId)) {
-          uciObj.set(TACHYON_UCI_PACKAGE, existingBalId, 'source_refs', [
-            ...balSrcRefs,
-            srcId,
-          ]);
-        }
       }
     }
 

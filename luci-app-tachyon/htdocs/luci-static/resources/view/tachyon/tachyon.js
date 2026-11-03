@@ -1231,8 +1231,12 @@ const EntryPoint = {
           (uci.sections(self.config, "balancer") || []).forEach((bal) => {
             const bid = bal ? bal[".name"] : null;
             if (!bid) return;
-            pruneList(bid, "source_refs", validSources, false, false);
-            pruneList(bid, "group_refs", validGroups, false, false);
+            if (uci.get(self.config, bid, "source_refs") != null) {
+              uci.unset(self.config, bid, "source_refs");
+            }
+            if (uci.get(self.config, bid, "group_refs") != null) {
+              uci.unset(self.config, bid, "group_refs");
+            }
             pruneList(
               bid,
               "outbound_group_levels",

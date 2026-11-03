@@ -198,7 +198,7 @@ function read_source_metadata(section_name, source_section, source_index, source
         item.sourceSection = source_section;
         if (updated_at > 0 && item.updatedAt == null)
             item.updatedAt = updated_at;
-        if (fallback_title != "" && trim(as_string(item.title || "")) == "" && trim(as_string(item.fileName || "")) == "")
+        if (fallback_title != "" && trim(as_string(item.title || "")) == "")
             item.title = fallback_title;
         push(result, item);
     }

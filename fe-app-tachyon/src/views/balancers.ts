@@ -381,15 +381,7 @@ function summarizeBalancer(sectionId) {
   const parts = [
     `URLTest (${_('Interval')}: ${interval}, ${_('Tolerance')}: ${tol} ms${activePart}${multiPart})`,
   ];
-  const srcRefs = asArray(uci.get(UCI_PACKAGE, sectionId, 'source_refs')).map(
-    resolveEntityName,
-  );
-  const grpRefs = asArray(uci.get(UCI_PACKAGE, sectionId, 'group_refs')).map(
-    resolveEntityName,
-  );
   const fmode = uci.get(UCI_PACKAGE, sectionId, 'filter_mode') || 'disabled';
-  if (srcRefs.length) parts.push(`${_('Sources')}: ${srcRefs.join(', ')}`);
-  if (grpRefs.length) parts.push(`${_('Groups')}: ${grpRefs.join(', ')}`);
   if (fmode !== 'disabled') {
     const incC = asArray(uci.get(UCI_PACKAGE, sectionId, 'include_countries'));
     const excC = asArray(uci.get(UCI_PACKAGE, sectionId, 'exclude_countries'));
@@ -848,60 +840,7 @@ function createBalancersContent(section) {
   o.modalonly = true;
   o.default = '1';
 
-  // Tab 2: Server Filters (groups, sources, prefixes, countries, servers, protocols, regex)
-  o = section.taboption(
-    'pool',
-    form.DynamicList,
-    'group_refs',
-    _('Reusable Server Groups'),
-    _(
-      'Optional reusable Server Groups (Outbound Groups) to use as the candidate pool for this URLTest balancer.',
-    ),
-  );
-  o.modalonly = true;
-  o.placeholder = _('-- Select server group --');
-  o.depends('balancer_type', 'urltest');
-  o.load = function (sectionId) {
-    this.keylist = [];
-    this.vallist = [];
-    (uci.sections(UCI_PACKAGE, 'outbound_group') || []).forEach((g) => {
-      const gid = g['.name'];
-      if (gid) {
-        this.value(gid, `📦 ${g.name || g.label || gid}`);
-      }
-    });
-    return form.DynamicList.prototype.load.call(this, sectionId);
-  };
-
-  o = section.taboption(
-    'pool',
-    form.DynamicList,
-    'source_refs',
-    _('Linked Subscription / Server Sources'),
-    _(
-      'Optional specific Outbound Sources (subscriptions or proxy pools) to restrict this URLTest balancer to.',
-    ),
-  );
-  o.modalonly = true;
-  o.placeholder = _('-- Select source --');
-  o.depends('balancer_type', 'urltest');
-  o.load = function (sectionId) {
-    this.keylist = [];
-    this.vallist = [];
-    (uci.sections(UCI_PACKAGE, 'outbound_source') || []).forEach((src) => {
-      const sid = src['.name'];
-      if (!sid) return;
-      const stypeLower = String(
-        src.source_type || 'subscription',
-      ).toLowerCase();
-      if (DPI_SOURCE_TYPES.has(stypeLower)) return;
-      const stype = stypeLower.toUpperCase();
-      const pfx = src.node_prefix ? ` [${src.node_prefix}]` : ` [${stype}]`;
-      this.value(sid, `📡 ${src.name || src.label || sid}${pfx}`);
-    });
-    return form.DynamicList.prototype.load.call(this, sectionId);
-  };
-
+  // Tab 2: Server Filters (prefixes, countries, servers, protocols, regex)
   o = section.taboption(
     'pool',
     form.ListValue,
