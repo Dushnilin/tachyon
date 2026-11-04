@@ -2562,6 +2562,9 @@ function nft_build_chunks_from_values(values, kind, ports_csv, chunk_size_text, 
     let chunk = [];
     let ports = split(as_string(ports_csv), ",");
     family_filter = int(family_filter || 0);
+    let ipv6_enabled = core_ip.ipv6_supported();
+    if (family_filter == 6 && !ipv6_enabled)
+        return { chunks: chunks, invalid: invalid };
 
     for (let line in values) {
         if (kind == "ports") {
@@ -2585,6 +2588,8 @@ function nft_build_chunks_from_values(values, kind, ports_csv, chunk_size_text, 
             let ip = substr(line, 0, separator);
             let port = substr(line, last_separator + 3);
             let original_port = port;
+            if (!ipv6_enabled && index(ip, ":") >= 0)
+                continue;
             if (!nft_ip_or_cidr(ip)) {
                 nft_invalid(invalid, ip, "is not IP or CIDR");
                 continue;
@@ -2603,6 +2608,10 @@ function nft_build_chunks_from_values(values, kind, ports_csv, chunk_size_text, 
             continue;
         }
 
+        // Mixed lists retain IPv6 entries even on IPv4-only systems. Discard
+        // the disabled family before validation and IP/port tuple expansion.
+        if (!ipv6_enabled && index(line, ":") >= 0)
+            continue;
         if (!nft_ip_or_cidr(line)) {
             nft_invalid(invalid, line, "is not IP or CIDR");
             continue;
@@ -2700,14 +2709,22 @@ function nft_add_csv_chunks_to_set(csv, table, set_name, kind, ports_csv, chunk_
     return nft_add_chunks_to_set(table, set_name, prepared.chunks, prepared.invalid);
 }
 
+function nft_add_values_to_family_sets(values, table, ipv4_set, ipv6_set, kind, ports_csv, chunk_size_text) {
+    let prep4 = nft_build_chunks_from_values(values, kind, ports_csv, chunk_size_text, 4);
+    let ok4 = nft_add_chunks_to_set(table, ipv4_set, prep4.chunks, prep4.invalid);
+    if (!ok4 || !core_ip.ipv6_supported())
+        return ok4;
+    let prep6 = nft_build_chunks_from_values(values, kind, ports_csv, chunk_size_text, 6);
+    let ok6 = nft_add_chunks_to_set(table, ipv6_set, prep6.chunks, prep6.invalid);
+    return ok4 && ok6;
+}
+
 function nft_add_file_chunks_to_family_sets(path, table, ipv4_set, ipv6_set, kind, ports_csv, chunk_size_text) {
-    return nft_add_file_chunks_to_set(path, table, ipv4_set, kind, ports_csv, chunk_size_text, 4) &&
-        nft_add_file_chunks_to_set(path, table, ipv6_set, kind, ports_csv, chunk_size_text, 6);
+    return nft_add_values_to_family_sets(nft_trimmed_lines(path), table, ipv4_set, ipv6_set, kind, ports_csv, chunk_size_text);
 }
 
 function nft_add_csv_chunks_to_family_sets(csv, table, ipv4_set, ipv6_set, kind, ports_csv, chunk_size_text) {
-    return nft_add_csv_chunks_to_set(csv, table, ipv4_set, kind, ports_csv, chunk_size_text, 4) &&
-        nft_add_csv_chunks_to_set(csv, table, ipv6_set, kind, ports_csv, chunk_size_text, 6);
+    return nft_add_values_to_family_sets(nft_csv_values(csv), table, ipv4_set, ipv6_set, kind, ports_csv, chunk_size_text);
 }
 
 function nft_community_subnet_lines(path, service, filter_mode) {
@@ -2760,14 +2777,6 @@ function nft_community_subnet_lines(path, service, filter_mode) {
     }
 
     return result;
-}
-
-function nft_add_values_to_family_sets(values, table, ipv4_set, ipv6_set, kind, ports_csv, chunk_size_text) {
-    let prep4 = nft_build_chunks_from_values(values, kind, ports_csv, chunk_size_text, 4);
-    let ok4 = nft_add_chunks_to_set(table, ipv4_set, prep4.chunks, prep4.invalid);
-    let prep6 = nft_build_chunks_from_values(values, kind, ports_csv, chunk_size_text, 6);
-    let ok6 = nft_add_chunks_to_set(table, ipv6_set, prep6.chunks, prep6.invalid);
-    return ok4 && ok6;
 }
 
 function nft_add_values_to_section_port_sets(values, table, sets, ports_csv, chunk_size_text) {

@@ -40,6 +40,49 @@ assert(ip.ip_family("1.1.1.1") == 4, "family of 1.1.1.1 is 4");
 assert(ip.ip_family("2001:db8::1") == 6, "family of 2001:db8::1 is 6");
 assert(ip.ip_family("abc") == 0, "family of abc is 0");
 
+// The native fast path must preserve strict nft syntax, legacy IPv4 forms,
+// CIDR bounds and rejection of malformed IPv6.
+let cases = [
+    ["0.0.0.0", true, true, 4],
+    ["255.255.255.255/32", true, true, 4],
+    ["192.0.2.0/0", true, true, 4],
+    ["192.0.2.0/00", true, false, 4],
+    ["001.002.003.004", true, false, 4],
+    ["001.002.003.004/24", true, false, 4],
+    ["192.0.2.1.", false, true, 0],
+    ["192.0.2.1./24", false, false, 0],
+    ["192.0.2.0/33", false, false, 0],
+    ["192.0.2.0/-1", false, false, 0],
+    ["192.0.2.0/24/1", false, false, 0],
+    ["192.0.2.0/", false, false, 0],
+    ["192.0.2.0/ 24", false, false, 0],
+    ["192.0.2.0/24\n", false, false, 0],
+    ["256.0.0.1", false, false, 0],
+    ["1.2.3", false, false, 0],
+    ["2130706433", false, false, 0],
+    ["::", true, true, 6],
+    ["2001:db8::1/128", true, true, 6],
+    ["2001:db8::/000", true, true, 6],
+    ["2001:db8::/129", false, false, 0],
+    ["2001:db8:::1", false, false, 0],
+    ["::ffff:192.0.2.1", true, true, 6],
+    ["::ffff:001.002.003.004/96", true, true, 6],
+    ["fe80::1%eth0", false, false, 0],
+    ["[::1]", false, false, 0],
+    ["", false, false, 0]
+];
+let native_parser = global.iptoarr;
+for (let use_native in [true, false]) {
+    global.iptoarr = use_native ? native_parser : null;
+    for (let c in cases) {
+        let label = sprintf("%J (native=%J)", c[0], use_native);
+        assert(ip.valid_ip_or_cidr(c[0]) == c[1], "valid_ip_or_cidr " + label);
+        assert(ip.nft_ip_or_cidr(c[0]) == c[2], "nft_ip_or_cidr " + label);
+        assert(ip.ip_family(c[0]) == c[3], "ip_family " + label);
+    }
+}
+global.iptoarr = native_parser;
+
 // format_ipv6_tproxy_target
 assert(ip.format_ipv6_tproxy_target("2001:db8::1", 1234) == "[2001:db8::1]:1234", "format IPv6 target");
 

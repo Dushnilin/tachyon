@@ -638,6 +638,57 @@ if grep -Fq 'tachyon_discord_subnets' "$NFT_LOG"; then
 fi
 assert_contains "$NFT_LOG" $'198.51.100.210 . 53,198.51.100.210 . 853,198.51.100.210 . 5353' "discord community with ports uses scoped import"
 
+# Mixed lists must retain IPv4 and port matchers while omitting IPv6 elements
+# when the kernel has IPv6 disabled. Exercise file, inline CSV and community
+# value imports, then repeat with IPv6 enabled to cover both runtime modes.
+assert_ipv6_elements() {
+  local enabled="$1"
+  local label="$2"
+  if [ "$enabled" = 0 ]; then
+    if grep -F '2001:db8::' "$NFT_LOG" | grep -F $'nft\tadd\telement' >/dev/null; then
+      fail "$label: disabled IPv6 populated an address or tuple set"
+    fi
+  else
+    if ! grep -F '2001:db8::' "$NFT_LOG" | grep -F $'nft\tadd\telement' >/dev/null; then
+      fail "$label: enabled IPv6 was omitted from address or tuple sets"
+    fi
+  fi
+}
+
+for ipv6 in 0 1; do
+  for section in inline_no_ports ports_only; do
+    : > "$NFT_LOG"
+    TACHYON_ENABLE_IPV6="$ipv6" nft_ucode nft-add-subnet-file-for-section-fixture "$WORK_DIR/populate-fixture.json" "$section" "$plain_subnets" TachyonTable tachyon_subnets tachyon_ip_ports 3
+    assert_contains "$NFT_LOG" '198.51.100.210' "IPv4 file import (IPv6=$ipv6, section=$section)"
+    assert_ipv6_elements "$ipv6" "file import $section"
+  done
+
+  : > "$NFT_LOG"
+  TACHYON_ENABLE_IPV6="$ipv6" nft_ucode nft-populate-runtime-sets-fixture "$WORK_DIR/populate-fixture.json" 1 "deferred" TachyonTable tachyon_subnets tachyon_ports tachyon_ip_ports tachyon_interfaces localv4 0x00100000
+  assert_contains "$NFT_LOG" '198.51.100.1 . 80' "IPv4 inline tuples (IPv6=$ipv6)"
+  assert_contains "$NFT_LOG" $'tachyon_rule_ports_only_ports\t{ 53,853,5353 }' "port-only import (IPv6=$ipv6)"
+  assert_ipv6_elements "$ipv6" "inline import"
+
+  : > "$NFT_LOG"
+  TACHYON_ENABLE_IPV6="$ipv6" nft_ucode nft-add-community-subnet-file-for-section-fixture "$WORK_DIR/populate-fixture.json" inline_no_ports discord "$plain_subnets" TachyonTable tachyon_subnets tachyon_ip_ports tachyon_interfaces tachyon_discord_subnets 0x00100000 5000
+  assert_contains "$NFT_LOG" '198.51.100.210' "IPv4 community import (IPv6=$ipv6)"
+  assert_ipv6_elements "$ipv6" "community import"
+done
+
+# A colon in an invalid IPv4 port must still be reported as an error; only
+# the tuple's address determines whether it belongs to the disabled family.
+cat > "$WORK_DIR/mixed-tuples.txt" <<'EOF_TUPLES'
+198.51.100.210 . 443
+2001:db8::210 . 443
+198.51.100.211 . 80:90
+EOF_TUPLES
+TACHYON_ENABLE_IPV6=0 nft_ucode nft-prepare-chunks "$WORK_DIR/mixed-tuples.txt" ip-ports "" 5000 "$WORK_DIR/mixed-tuples.chunks" "$WORK_DIR/mixed-tuples.invalid"
+assert_contains "$WORK_DIR/mixed-tuples.chunks" '198.51.100.210 . 443' "disabled IPv6 keeps valid IPv4 tuples"
+assert_contains "$WORK_DIR/mixed-tuples.invalid" '80:90' "disabled IPv6 preserves IPv4 port validation"
+if grep -Fq '2001:db8::' "$WORK_DIR/mixed-tuples.chunks"; then
+  fail "disabled IPv6 remained in prepared tuple chunks"
+fi
+
 : > "$NFT_LOG"
 nft_ucode nft-populate-runtime-sets-fixture "$WORK_DIR/populate-fixture.json" 1 "deferred" TachyonTable tachyon_subnets tachyon_ports tachyon_ip_ports tachyon_interfaces localv4 0x00100000
 assert_contains "$NFT_LOG" $'198.51.100.1 . 80,198.51.100.1 . 443-444,203.0.113.0/24 . 80' "populate inline ip-port first chunk"

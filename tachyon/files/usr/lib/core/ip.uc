@@ -118,15 +118,54 @@ function valid_ip_cidr(value) {
     return valid_ipv4_cidr(value, false) || valid_ipv6_cidr(value);
 }
 
+// Native parsing avoids repeatedly walking every octet/hextet in large lists.
+// Keep the existing validators as a fallback for older ucode and legacy forms
+// such as IPv4 with leading zeroes or nft's optional trailing dot.
+function native_ip_cidr_family(value, strict_decimal) {
+    if (type(global.iptoarr) != "function")
+        return 0;
+
+    value = as_string(value);
+    // Leave embedded NULs to the legacy validators instead of relying on
+    // inet_pton() stopping at the end of a C string.
+    if (index(value, "\u0000") >= 0)
+        return 0;
+
+    let slash = index(value, "/");
+    let address = slash < 0 ? value : substr(value, 0, slash);
+    let parsed = iptoarr(address);
+    if (parsed == null)
+        return 0;
+
+    let family = length(parsed) == 4 ? 4 : 6;
+    if (slash >= 0) {
+        let prefix = substr(value, slash + 1);
+        if (!decimal_text(prefix, family == 4 && strict_decimal))
+            return 0;
+        let bits = int(prefix);
+        if (bits < 0 || bits > (family == 4 ? 32 : 128))
+            return 0;
+    }
+
+    return family;
+}
+
 function valid_ip_or_cidr(value) {
+    if (native_ip_cidr_family(value, false) != 0)
+        return true;
     return valid_ip(value) || valid_ip_cidr(value);
 }
 
 function nft_ip_or_cidr(value) {
+    if (native_ip_cidr_family(value, true) != 0)
+        return true;
     return valid_ipv4(value, true, true) || valid_ipv4_cidr(value, true) || valid_ipv6(value) || valid_ipv6_cidr(value);
 }
 
 function ip_family(value) {
+    let family = native_ip_cidr_family(value, false);
+    if (family != 0)
+        return family;
     return valid_ipv4(value, false, false) || valid_ipv4_cidr(value, false) ? 4 :
         (valid_ipv6(value) || valid_ipv6_cidr(value) ? 6 : 0);
 }
