@@ -967,6 +967,12 @@ function remote_community_lists() {
         if (length(parts) > 1)
             served[parts[length(parts) - 1]] = true;
     }
+    let m_url = match(raw, /\/release\/(sing-box|tachyon-core)\/([a-zA-Z0-9_-]+)\.(srs|trs)/g);
+    for (let hit in m_url || []) {
+        let sub = match(hit, /\/([a-zA-Z0-9_-]+)\.(srs|trs)$/);
+        if (sub != null && length(sub) > 1)
+            served[sub[1]] = true;
+    }
     return served;
 }
 
