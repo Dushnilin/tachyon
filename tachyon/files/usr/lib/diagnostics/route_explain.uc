@@ -451,9 +451,9 @@ function run_binary_ruleset_match_file(rs_path, target_value, is_ip) {
     for (let bin in bins) {
         if (fs.stat(bin) == null)
             continue;
-        let out = exec.run_output([ bin, "rule-set", "match", rs_path, flag, target_value ]);
+        let out = exec.command_output_from_args([ bin, "rule-set", "match", rs_path, flag, target_value ]);
         if (out == null || out == "")
-            out = exec.run_output([ bin, "rule-set", "match", rs_path, target_value ]);
+            out = exec.command_output_from_args([ bin, "rule-set", "match", rs_path, target_value ]);
         if (out != null && out != "" && (match(out, /\[[0-9]+\][ \t]*match/) != null || (index(out, "match") >= 0 && index(out, "no match") < 0)))
             return true;
     }
@@ -1225,7 +1225,7 @@ function evaluate_section_match(raw_section, client_info, target_info, port, pro
 function query_clash_proxies_map() {
     try {
         let exec = require("core.exec");
-        let raw = exec.run_output([ "curl", "-s", "--max-time", "1", "http://127.0.0.1:9090/proxies" ]);
+        let raw = exec.command_output_from_args([ "curl", "-s", "--max-time", "1", "http://127.0.0.1:9090/proxies" ]);
         if (raw && raw != "") {
             let parsed = json(raw);
             if (type(parsed) == "object" && type(parsed.proxies) == "object")
