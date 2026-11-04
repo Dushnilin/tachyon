@@ -143,7 +143,7 @@ function native_ip_cidr_family(value, strict_decimal) {
         if (!decimal_text(prefix, family == 4 && strict_decimal))
             return 0;
         let bits = int(prefix);
-        if (bits < 0 || bits > (family == 4 ? 32 : 128))
+        if (!(bits >= 0 && bits <= (family == 4 ? 32 : 128)))
             return 0;
     }
 

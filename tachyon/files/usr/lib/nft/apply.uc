@@ -2588,7 +2588,7 @@ function nft_build_chunks_from_values(values, kind, ports_csv, chunk_size_text, 
             let ip = substr(line, 0, separator);
             let port = substr(line, last_separator + 3);
             let original_port = port;
-            if (!ipv6_enabled && index(ip, ":") >= 0)
+            if (!ipv6_enabled && index(ip, ":") >= 0 && core_ip.ip_family(ip) == 6)
                 continue;
             if (!nft_ip_or_cidr(ip)) {
                 nft_invalid(invalid, ip, "is not IP or CIDR");
@@ -2608,9 +2608,10 @@ function nft_build_chunks_from_values(values, kind, ports_csv, chunk_size_text, 
             continue;
         }
 
-        // Mixed lists retain IPv6 entries even on IPv4-only systems. Discard
-        // the disabled family before validation and IP/port tuple expansion.
-        if (!ipv6_enabled && index(line, ":") >= 0)
+        // Skip genuine IPv6 entries before nft validation and tuple expansion.
+        // A colon alone can also be an invalid IPv4 endpoint: keep such errors
+        // visible so an invalid list cannot replace the previous batch.
+        if (!ipv6_enabled && index(line, ":") >= 0 && core_ip.ip_family(line) == 6)
             continue;
         if (!nft_ip_or_cidr(line)) {
             nft_invalid(invalid, line, "is not IP or CIDR");

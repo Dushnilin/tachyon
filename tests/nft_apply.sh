@@ -689,6 +689,29 @@ if grep -Fq '2001:db8::' "$WORK_DIR/mixed-tuples.chunks"; then
   fail "disabled IPv6 remained in prepared tuple chunks"
 fi
 
+# Invalid endpoints, malformed IPv6 and overflowing CIDRs must reject an
+# atomic list replacement in both runtime modes, before any elements are
+# appended. Treating every value containing ':' as disabled IPv6 hid errors.
+for ipv6 in 0 1; do
+  for kind in ips ip-ports; do
+    for invalid_address in '198.51.100.211:443' '198.51.100.211/9223372036854775808' '2001:db8:::1' '2001:db8::/9223372036854775808'; do
+      if [ "$kind" = ips ]; then
+        printf '198.51.100.210\n%s\n' "$invalid_address" > "$WORK_DIR/invalid-addresses.txt"
+      else
+        printf '198.51.100.210 . 443\n%s . 443\n' "$invalid_address" > "$WORK_DIR/invalid-addresses.txt"
+      fi
+      : > "$WORK_DIR/invalid-addresses.batch"
+      if TACHYON_ENABLE_IPV6="$ipv6" TACHYON_NFT_BATCH_FILE="$WORK_DIR/invalid-addresses.batch" \
+        nft_ucode nft-add-file-chunks-to-set "$WORK_DIR/invalid-addresses.txt" TachyonTable tachyon_subnets "$kind" "" 5000; then
+        fail "invalid address accepted (IPv6=$ipv6, kind=$kind): $invalid_address"
+      fi
+      if [ -s "$WORK_DIR/invalid-addresses.batch" ]; then
+        fail "invalid address partially updated the nft batch: $invalid_address"
+      fi
+    done
+  done
+done
+
 : > "$NFT_LOG"
 nft_ucode nft-populate-runtime-sets-fixture "$WORK_DIR/populate-fixture.json" 1 "deferred" TachyonTable tachyon_subnets tachyon_ports tachyon_ip_ports tachyon_interfaces localv4 0x00100000
 assert_contains "$NFT_LOG" $'198.51.100.1 . 80,198.51.100.1 . 443-444,203.0.113.0/24 . 80' "populate inline ip-port first chunk"
