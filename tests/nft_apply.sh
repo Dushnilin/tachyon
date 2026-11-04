@@ -712,6 +712,30 @@ for ipv6 in 0 1; do
   done
 done
 
+# Disabled IPv6 must not hide an invalid tuple port or a shared expansion
+# port. In both cases the old list must survive an atomic refresh unchanged.
+for ipv6 in 0 1; do
+  for kind in ip-ports ip-port-from-ip; do
+    ports_csv=""
+    if [ "$kind" = ip-ports ]; then
+      printf '198.51.100.210 . 443\n2001:db8::210 . 80:90\n' > "$WORK_DIR/invalid-ipv6-ports.txt"
+    else
+      printf '2001:db8::210\n' > "$WORK_DIR/invalid-ipv6-ports.txt"
+      ports_csv='443,80:90'
+    fi
+    : > "$WORK_DIR/invalid-ipv6-ports.batch"
+    if TACHYON_ENABLE_IPV6="$ipv6" TACHYON_NFT_BATCH_FILE="$WORK_DIR/invalid-ipv6-ports.batch" \
+      nft_ucode nft-add-file-chunks-to-set "$WORK_DIR/invalid-ipv6-ports.txt" TachyonTable tachyon_ip_ports "$kind" "$ports_csv" 5000; then
+      fail "invalid IPv6 port accepted (IPv6=$ipv6, kind=$kind)"
+    fi
+    if [ -s "$WORK_DIR/invalid-ipv6-ports.batch" ]; then
+      fail "invalid IPv6 port partially updated the nft batch"
+    fi
+  done
+  : > "$WORK_DIR/empty-subnets.txt"
+  TACHYON_ENABLE_IPV6="$ipv6" nft_ucode nft-add-file-chunks-to-set "$WORK_DIR/empty-subnets.txt" TachyonTable tachyon_ip_ports ip-port-from-ip '80:90' 5000
+done
+
 : > "$NFT_LOG"
 nft_ucode nft-populate-runtime-sets-fixture "$WORK_DIR/populate-fixture.json" 1 "deferred" TachyonTable tachyon_subnets tachyon_ports tachyon_ip_ports tachyon_interfaces localv4 0x00100000
 assert_contains "$NFT_LOG" $'198.51.100.1 . 80,198.51.100.1 . 443-444,203.0.113.0/24 . 80' "populate inline ip-port first chunk"

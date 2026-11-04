@@ -2566,6 +2566,22 @@ function nft_build_chunks_from_values(values, kind, ports_csv, chunk_size_text, 
     if (family_filter == 6 && !ipv6_enabled)
         return { chunks: chunks, invalid: invalid };
 
+    // Validate shared ports once, including for IPv6-only lists that will be
+    // skipped below. An empty list has no tuples to expand or validate.
+    if (kind == "ip-port-from-ip" && length(values) > 0) {
+        let normalized_ports = [];
+        for (let port in ports) {
+            if (port == "")
+                continue;
+            let normalized = normalize_port_condition_value(port);
+            if (normalized == null)
+                nft_invalid(invalid, port, "is not a valid port or port range");
+            else
+                push(normalized_ports, normalized);
+        }
+        ports = normalized_ports;
+    }
+
     for (let line in values) {
         if (kind == "ports") {
             let port = normalize_port_condition_value(line);
@@ -2588,21 +2604,21 @@ function nft_build_chunks_from_values(values, kind, ports_csv, chunk_size_text, 
             let ip = substr(line, 0, separator);
             let port = substr(line, last_separator + 3);
             let original_port = port;
-            if (!ipv6_enabled && index(ip, ":") >= 0 && core_ip.ip_family(ip) == 6)
-                continue;
             if (!nft_ip_or_cidr(ip)) {
                 nft_invalid(invalid, ip, "is not IP or CIDR");
                 continue;
             }
-
-            if (family_filter != 0 && core_ip.ip_family(ip) != family_filter)
-                continue;
 
             port = normalize_port_condition_value(port);
             if (port == null) {
                 nft_invalid(invalid, original_port, "is not a valid port or port range");
                 continue;
             }
+
+            if (!ipv6_enabled && index(ip, ":") >= 0 && core_ip.ip_family(ip) == 6)
+                continue;
+            if (family_filter != 0 && core_ip.ip_family(ip) != family_filter)
+                continue;
 
             chunk = nft_push_chunk_value(chunks, chunk, ip + " . " + port, chunk_size);
             continue;
@@ -2623,16 +2639,7 @@ function nft_build_chunks_from_values(values, kind, ports_csv, chunk_size_text, 
 
         if (kind == "ip-port-from-ip") {
             for (let port in ports) {
-                if (port == "")
-                    continue;
-
-                let normalized = normalize_port_condition_value(port);
-                if (normalized == null) {
-                    nft_invalid(invalid, port, "is not a valid port or port range");
-                    continue;
-                }
-
-                chunk = nft_push_chunk_value(chunks, chunk, line + " . " + normalized, chunk_size);
+                chunk = nft_push_chunk_value(chunks, chunk, line + " . " + port, chunk_size);
             }
         }
         else if (kind == "ips") {
