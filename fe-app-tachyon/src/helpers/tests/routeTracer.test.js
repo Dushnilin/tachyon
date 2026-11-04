@@ -19,7 +19,9 @@ const names = [
   'matchDomainInList',
   'matchDomainInRuleset',
   'detectQueryType',
+  'traceRulesetFileEntry',
   'readRulesetFile',
+  'readSubnetListFile',
   'findCachedRulesetFile',
   'matchCommunityList',
   'matchConfiguredRulesets',
@@ -52,7 +54,7 @@ function setup(
     },
   ];
   const mockFs = {
-    read: vi.fn(async () => null),
+    read: vi.fn(options.read || (async () => null)),
     stat: vi.fn(async (file) =>
       files.includes(file) ? { type: 'file' } : null,
     ),
@@ -60,6 +62,7 @@ function setup(
       bin === '/bin/cat' ? { code: 1 } : exec(bin, args),
     ),
   };
+  if (options.list) mockFs.list = vi.fn(options.list);
   const get = (_pkg, id, key) =>
     sections.find((section) => section['.name'] === id)?.[key];
   if (options.proxyReferences) sections[0].rule_set = options.proxyReferences;
@@ -81,7 +84,7 @@ function setup(
   };
   const api = new Function(
     ...Object.keys(dependencies),
-    `${functions.join('\n')}\nreturn { performTrace, matchCommunityList };`,
+    `let _subnetListCache = {};\n${functions.join('\n')}\nreturn { performTrace, matchCommunityList, readRulesetFile, readSubnetListFile, findCachedRulesetFile };`,
   )(...Object.values(dependencies));
   return { ...api, fs: mockFs, resolve };
 }
@@ -141,6 +144,204 @@ describe('routing section tracer community caches', () => {
     await expect(
       tracer.performTrace('unlisted.example'),
     ).resolves.toMatchObject({ matched: false });
+    expect(
+      tracer.fs.exec.mock.calls.filter(([bin]) =>
+        [
+          '/usr/bin/tachyon-core',
+          '/usr/bin/sing-box',
+          '/usr/sbin/sing-box',
+        ].includes(bin),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('reads missing JSON ruleset locations only once per trace', async () => {
+    const tracer = setup([], undefined, { resolvedIps: ['192.0.2.42'] });
+    await tracer.performTrace('unlisted.example');
+
+    for (const section of ['proxy', 'zapret']) {
+      for (const file of [
+        `${section}-lists-ruleset.json`,
+        `${section}-remote-domain-ruleset.json`,
+        `${section}-remote-subnet-ruleset.json`,
+      ]) {
+        const reads = tracer.fs.read.mock.calls.filter(([path]) =>
+          path.endsWith(`/${file}`),
+        );
+        expect(reads).toHaveLength(2);
+        expect(reads.map(([path]) => path)).toEqual([
+          `/tmp/tachyon-core/rulesets/${file}`,
+          `/tmp/sing-box/rulesets/${file}`,
+        ]);
+      }
+    }
+  });
+
+  it('uses directory inventories to skip absent JSON and subnet files', async () => {
+    const tracer = setup([], undefined, { list: async () => [] });
+    const snapshots = {
+      directoryEntries: new Map(),
+      rulesetFiles: new Map(),
+    };
+
+    await expect(
+      tracer.readRulesetFile(
+        '/tmp/tachyon-core/rulesets/proxy-lists-ruleset.json',
+        snapshots,
+      ),
+    ).resolves.toBeNull();
+    await expect(
+      tracer.readSubnetListFile('youtube', snapshots),
+    ).resolves.toEqual([]);
+
+    expect(tracer.fs.read).not.toHaveBeenCalled();
+    expect(tracer.fs.exec).not.toHaveBeenCalledWith(
+      '/bin/cat',
+      expect.anything(),
+    );
+    expect(tracer.fs.list).toHaveBeenCalledTimes(4);
+  });
+
+  it('reads a listed alternate JSON path and falls back to stat when list is denied', async () => {
+    const contents = '{"rules":[]}';
+    const tracer = setup(
+      ['/tmp/tachyon-core/rulesets/community-youtube.trs'],
+      undefined,
+      {
+        list: async (directory) =>
+          directory === '/tmp/sing-box/rulesets'
+            ? [{ name: 'listed.json', type: 'file' }]
+            : [],
+        read: async (file) =>
+          file === '/tmp/sing-box/rulesets/listed.json' ? contents : null,
+      },
+    );
+    const snapshots = {
+      directoryEntries: new Map(),
+      rulesetFiles: new Map(),
+    };
+
+    await expect(
+      tracer.readRulesetFile(
+        '/tmp/tachyon-core/rulesets/listed.json',
+        snapshots,
+      ),
+    ).resolves.toEqual({ rules: [] });
+    expect(tracer.fs.read).toHaveBeenCalledTimes(1);
+    expect(tracer.fs.read).toHaveBeenCalledWith(
+      '/tmp/sing-box/rulesets/listed.json',
+    );
+
+    const denied = setup(
+      ['/tmp/tachyon-core/rulesets/community-youtube.trs'],
+      undefined,
+      {
+        list: async () => {
+          throw new Error('Permission denied');
+        },
+      },
+    );
+    await expect(
+      denied.findCachedRulesetFile('zapret', 'youtube', [], {
+        directoryEntries: new Map(),
+      }),
+    ).resolves.toBe('/tmp/tachyon-core/rulesets/community-youtube.trs');
+    expect(denied.fs.stat).toHaveBeenCalledTimes(1);
+
+    const symlink = setup(
+      ['/tmp/tachyon-core/rulesets/community-youtube.trs'],
+      undefined,
+      {
+        list: async (directory) =>
+          directory === '/tmp/tachyon-core/rulesets'
+            ? [{ name: 'community-youtube.trs', type: 'symlink' }]
+            : [],
+      },
+    );
+    await expect(
+      symlink.findCachedRulesetFile('zapret', 'youtube', [], {
+        directoryEntries: new Map(),
+      }),
+    ).resolves.toBe('/tmp/tachyon-core/rulesets/community-youtube.trs');
+    expect(symlink.fs.stat).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats a missing inventory directory as empty without probing files', async () => {
+    const tracer = setup([], undefined, {
+      list: async () => {
+        const error = new Error('missing directory');
+        error.name = 'NotFoundError';
+        throw error;
+      },
+    });
+    const snapshots = { directoryEntries: new Map() };
+
+    await expect(
+      tracer.findCachedRulesetFile('zapret', 'youtube', [], snapshots),
+    ).resolves.toBeNull();
+    expect(tracer.fs.stat).not.toHaveBeenCalled();
+  });
+
+  it('refreshes directory inventories between traces', async () => {
+    let hasCommunity = false;
+    const directory = '/tmp/tachyon-core/rulesets';
+    const tracer = setup([], undefined, {
+      list: async (path) =>
+        path === directory && hasCommunity
+          ? [{ name: 'community-youtube.trs', type: 'file' }]
+          : [],
+    });
+
+    await expect(tracer.performTrace('youtube.com')).resolves.toMatchObject({
+      matched: false,
+    });
+    hasCommunity = true;
+    await expect(tracer.performTrace('youtube.com')).resolves.toMatchObject({
+      matched: true,
+      ruleType: 'Community List (youtube)',
+    });
+    expect(
+      tracer.fs.list.mock.calls.filter(([path]) => path === directory),
+    ).toHaveLength(2);
+  });
+
+  it('caches missing community paths only for one trace', async () => {
+    const tracer = setup([], undefined, { references: ['youtube'] });
+
+    await tracer.performTrace('unlisted.example');
+    expect(
+      tracer.fs.stat.mock.calls.filter(([file]) =>
+        file.endsWith('/community-youtube.trs'),
+      ),
+    ).toHaveLength(3);
+
+    await tracer.performTrace('unlisted.example');
+    expect(
+      tracer.fs.stat.mock.calls.filter(([file]) =>
+        file.endsWith('/community-youtube.trs'),
+      ),
+    ).toHaveLength(6);
+  });
+
+  it('keeps community match results separate for domain and resolved IP queries', async () => {
+    const file = '/tmp/tachyon-core/rulesets/community-youtube.trs';
+    const tracer = setup(
+      [file],
+      async (_bin, args) =>
+        args.includes('--ip')
+          ? { code: 0, stdout: '[0] match\n' }
+          : { code: 0, stdout: 'no match\n' },
+      { resolvedIps: ['192.0.2.42'] },
+    );
+
+    await expect(
+      tracer.performTrace('unlisted.example'),
+    ).resolves.toMatchObject({
+      matched: true,
+      ruleType: 'Resolved IP -> Community List (youtube)',
+      matchedIp: '192.0.2.42',
+    });
+    expect(tracer.fs.stat).toHaveBeenCalledTimes(1);
   });
 
   it('does not replace a valid TRS miss with a match from an older SRS cache', async () => {

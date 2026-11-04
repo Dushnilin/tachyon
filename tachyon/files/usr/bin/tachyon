@@ -324,7 +324,7 @@ function command_spec(command) {
         component_update_check_cache: [ "components/updates.uc", "component-update-check-cache", 0 ],
         hosts_list_update: [ "components/hosts.uc", "list-update", 1 ],
         hosts_list_status: [ "components/hosts.uc", "list-status", 0 ],
-        extract_ruleset: [ "diagnostics/runtime.uc", "extract-ruleset", 1 ],
+        extract_ruleset: [ "diagnostics/ruleset_inspect.uc", "extract-ruleset", 1 ],
         check_dns_available: [ "diagnostics/runtime.uc", "check-dns-available", 0 ],
         global_check: [ "diagnostics/runtime.uc", "global-check", 2 ],
         service_health_check: [ "diagnostics/runtime.uc", "service-health-check", 2 ],

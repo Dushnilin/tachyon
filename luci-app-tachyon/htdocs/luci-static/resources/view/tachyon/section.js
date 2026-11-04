@@ -17403,7 +17403,49 @@ function isCloudflareSharedCidr(cidr) {
 
 let _subnetListCache = {};
 
-async function readSubnetListFile(service) {
+async function traceRulesetFileEntry(path, snapshots) {
+  const directory = path.slice(0, path.lastIndexOf("/"));
+  const name = path.slice(path.lastIndexOf("/") + 1);
+  const directoryEntries = snapshots?.directoryEntries;
+  if (!directoryEntries || typeof fs.list !== "function") return undefined;
+
+  if (!directoryEntries.has(directory)) {
+    const pending = Promise.resolve()
+      .then(() => fs.list(directory))
+      .then((entries) => {
+        if (!Array.isArray(entries)) return undefined;
+        const byName = new Map();
+        for (const entry of entries) {
+          if (entry && typeof entry.name === "string") {
+            byName.set(entry.name, entry);
+          }
+        }
+        return byName;
+      })
+      .catch((error) => {
+        if (
+          error?.name === "NotFoundError" ||
+          error?.code === "ENOENT" ||
+          /not found/i.test(error?.message || String(error || ""))
+        ) {
+          return null;
+        }
+        return undefined;
+      });
+    directoryEntries.set(directory, pending);
+  }
+
+  const entries = await directoryEntries.get(directory);
+  if (entries === null) return null;
+  if (!(entries instanceof Map)) return undefined;
+  const entry = entries.get(name);
+  if (!entry) return null;
+  if (entry.type === "file") return entry;
+  if (entry.type === "directory" || entry.type === "dir") return null;
+  return undefined;
+}
+
+async function readSubnetListFile(service, snapshots) {
   if (!service) return [];
   if (_subnetListCache[service]) return _subnetListCache[service];
 
@@ -17416,6 +17458,7 @@ async function readSubnetListFile(service) {
 
   for (const p of paths) {
     try {
+      if ((await traceRulesetFileEntry(p, snapshots)) === null) continue;
       let content = await fs.read(p).catch(() => null);
       if (!content) {
         const res = await fs.exec("/bin/cat", [p]).catch(() => null);
@@ -17575,36 +17618,59 @@ function detectQueryType(query) {
   return "domain";
 }
 
-async function readRulesetFile(path) {
-  const candidates = [path];
-  if (path.startsWith("/tmp/sing-box/rulesets/")) {
-    candidates.unshift(
-      path.replace("/tmp/sing-box/rulesets/", "/tmp/tachyon-core/rulesets/"),
-    );
-  } else if (path.startsWith("/tmp/tachyon-core/rulesets/")) {
-    candidates.push(
-      path.replace("/tmp/tachyon-core/rulesets/", "/tmp/sing-box/rulesets/"),
-    );
-  }
-  for (const candidate of candidates) {
-    try {
-      let content = await fs.read(candidate).catch(() => null);
-      if (!content) {
-        const res = await fs.exec("/bin/cat", [candidate]).catch(() => null);
-        if (res && res.code === 0 && res.stdout) {
-          content = res.stdout;
-        }
-      }
-      if (!content) continue;
-      return JSON.parse(content);
-    } catch (e) {
-      console.warn("Failed to parse ruleset file JSON:", candidate, e);
+async function readRulesetFile(path, snapshots) {
+  const cachePath = path.replace(
+    "/tmp/sing-box/rulesets/",
+    "/tmp/tachyon-core/rulesets/",
+  );
+  const rulesetFiles = snapshots?.rulesetFiles;
+  if (rulesetFiles?.has(cachePath)) return rulesetFiles.get(cachePath);
+
+  const read = async () => {
+    const candidates = [path];
+    if (path.startsWith("/tmp/sing-box/rulesets/")) {
+      candidates.unshift(
+        path.replace("/tmp/sing-box/rulesets/", "/tmp/tachyon-core/rulesets/"),
+      );
+    } else if (path.startsWith("/tmp/tachyon-core/rulesets/")) {
+      candidates.push(
+        path.replace("/tmp/tachyon-core/rulesets/", "/tmp/sing-box/rulesets/"),
+      );
     }
-  }
-  return null;
+    for (const candidate of candidates) {
+      try {
+        if ((await traceRulesetFileEntry(candidate, snapshots)) === null)
+          continue;
+        let content = await fs.read(candidate).catch(() => null);
+        if (!content) {
+          const res = await fs.exec("/bin/cat", [candidate]).catch(() => null);
+          if (res && res.code === 0 && res.stdout) {
+            content = res.stdout;
+          }
+        }
+        if (!content) continue;
+        return JSON.parse(content);
+      } catch (e) {
+        console.warn("Failed to parse ruleset file JSON:", candidate, e);
+      }
+    }
+    return null;
+  };
+
+  if (!rulesetFiles) return read();
+  const pending = read();
+  rulesetFiles.set(cachePath, pending);
+  const result = await pending;
+  rulesetFiles.set(cachePath, result);
+  return result;
 }
 
-async function findCachedRulesetFile(secName, community, skipped = []) {
+async function findCachedRulesetFile(
+  secName,
+  community,
+  skipped = [],
+  snapshots,
+) {
   const candidates = [
     `/tmp/tachyon-core/rulesets/community-${community}.trs`,
     `/tmp/sing-box/rulesets/community-${community}.trs`,
@@ -17616,6 +17682,9 @@ async function findCachedRulesetFile(secName, community, skipped = []) {
 
   for (const rulesetPath of candidates) {
     if (skipped.includes(rulesetPath)) continue;
+    const entry = await traceRulesetFileEntry(rulesetPath, snapshots);
+    if (entry === null) continue;
+    if (entry?.type === "file") return rulesetPath;
     const st = await fs.stat(rulesetPath).catch(() => null);
     if (st && st.type === "file") {
       return rulesetPath;
@@ -17625,11 +17694,28 @@ async function findCachedRulesetFile(secName, community, skipped = []) {
   return null;
 }
 
-async function matchCommunityList(secName, community, query, type) {
-  const skipped = [];
-  let rulesetPath = await findCachedRulesetFile(secName, community, skipped);
+async function matchCommunityList(secName, community, query, type, snapshots) {
+  const matchKey = `${community}\0${type}\0${type === "domain" ? (query || "").toLowerCase() : query}`;
+  const communityMatches = snapshots?.communityMatches;
+  if (communityMatches?.has(matchKey)) return communityMatches.get(matchKey);
 
-  while (rulesetPath) {
+  const match = async () => {
+    const communityPaths = snapshots?.communityPaths;
+    let rulesetPath;
+    if (communityPaths?.has(community)) {
+      rulesetPath = await communityPaths.get(community);
+    } else {
+      const pendingPath = findCachedRulesetFile(
+        secName,
+        community,
+        [],
+        snapshots,
+      );
+      if (communityPaths) communityPaths.set(community, pendingPath);
+      rulesetPath = await pendingPath;
+      communityPaths?.set(community, rulesetPath);
+    }
+
     const checkMatch = (res) => {
       if (!res || res.code !== 0) return false;
       const output = (res.stdout || "") + (res.stderr || "");
@@ -17639,33 +17725,44 @@ async function matchCommunityList(secName, community, query, type) {
       );
     };
 
-    const matchArgs = [
-      "rule-set",
-      "match",
-      rulesetPath,
-      ...(type === "ip"
-        ? ["--ip", query]
-        : ["--domain", (query || "").toLowerCase()]),
-    ];
-
-    let checked = false;
-    for (const bin of [
-      "/usr/bin/tachyon-core",
-      "/usr/bin/sing-box",
-      "/usr/sbin/sing-box",
-    ]) {
-      const res = await fs.exec(bin, matchArgs).catch(() => null);
-      if (res && res.code === 0) checked = true;
-      if (checkMatch(res)) return true;
+    const skipped = [];
+    while (rulesetPath) {
+      const matchArgs = [
+        "rule-set",
+        "match",
+        rulesetPath,
+        ...(type === "ip"
+          ? ["--ip", query]
+          : ["--domain", (query || "").toLowerCase()]),
+      ];
+      for (const bin of [
+        "/usr/bin/tachyon-core",
+        "/usr/bin/sing-box",
+        "/usr/sbin/sing-box",
+      ]) {
+        const res = await fs.exec(bin, matchArgs).catch(() => null);
+        if (!res || res.code !== 0) continue;
+        return checkMatch(res);
+      }
+      skipped.push(rulesetPath);
+      rulesetPath = await findCachedRulesetFile(
+        secName,
+        community,
+        skipped,
+        snapshots,
+      );
+      communityPaths?.set(community, rulesetPath);
     }
-    // A valid negative result belongs to the current cache. Only try another
-    // format when no installed binary could read this one (e.g. TRS on sing-box).
-    if (checked) break;
-    skipped.push(rulesetPath);
-    rulesetPath = await findCachedRulesetFile(secName, community, skipped);
-  }
 
-  return false;
+    return false;
+  };
+
+  if (!communityMatches) return match();
+  const pending = match();
+  communityMatches.set(matchKey, pending);
+  const result = await pending;
+  communityMatches.set(matchKey, result);
+  return result;
 }
 
 async function matchConfiguredRulesets(secName, query, type, snapshots) {
@@ -17678,7 +17775,7 @@ async function matchConfiguredRulesets(secName, query, type, snapshots) {
   for (const reference of references) {
     // Community aliases in rule_set use the same caches as community_lists.
     if (!/^https?:\/\//.test(reference) && !reference.startsWith("/")) {
-      if (await matchCommunityList(secName, reference, query, type))
+      if (await matchCommunityList(secName, reference, query, type, snapshots))
         return reference;
       continue;
     }
@@ -17922,7 +18019,13 @@ function getSectionGeoMode(secName) {
   return "exclude";
 }
 
-async function matchesGeoCountrySet(secName, countries, domain, ips) {
+async function matchesGeoCountrySet(
+  secName,
+  countries,
+  domain,
+  ips,
+  snapshots,
+) {
   for (const cc of countries) {
     if (domain) {
       const d = domain.toLowerCase();
@@ -17936,19 +18039,31 @@ async function matchesGeoCountrySet(secName, countries, domain, ips) {
         return { matched: true, source: "tld_ru", pattern: domain };
       }
       if (
-        await matchCommunityList(secName, `geosite_${cc}`, domain, "domain")
+        await matchCommunityList(
+          secName,
+          `geosite_${cc}`,
+          domain,
+          "domain",
+          snapshots,
+        )
       ) {
         return { matched: true, source: `geosite_${cc}`, pattern: domain };
       }
       if (
         cc === "ru" &&
-        (await matchCommunityList(secName, "ru_domains", domain, "domain"))
+        (await matchCommunityList(
+          secName,
+          "ru_domains",
+          domain,
+          "domain",
+          snapshots,
+        ))
       ) {
         return { matched: true, source: "ru_domains", pattern: domain };
       }
     }
     const geoService = `geoip_${cc}`;
-    const geoSubnets = await readSubnetListFile(geoService);
+    const geoSubnets = await readSubnetListFile(geoService, snapshots);
     for (const ip of ips || []) {
       if (!ip || isSyntheticFakeIp(ip)) continue;
       const matchedCidr = matchIpInCidrs(ip, geoSubnets);
@@ -17960,7 +18075,7 @@ async function matchesGeoCountrySet(secName, countries, domain, ips) {
           ip: ip,
         };
       }
-      if (await matchCommunityList(secName, geoService, ip, "ip")) {
+      if (await matchCommunityList(secName, geoService, ip, "ip", snapshots)) {
         return {
           matched: true,
           source: geoService,
@@ -17976,6 +18091,10 @@ async function matchesGeoCountrySet(secName, countries, domain, ips) {
 async function performTrace(query) {
   const snapshots = new Map();
   snapshots.warnings = [];
+  snapshots.rulesetFiles = new Map();
+  snapshots.communityPaths = new Map();
+  snapshots.communityMatches = new Map();
+  snapshots.directoryEntries = new Map();
   const result = await performTraceRules(query, snapshots);
   return { ...result, rulesetWarnings: [...new Set(snapshots.warnings)] };
 }
@@ -18105,13 +18224,10 @@ async function performTraceRules(query, rulesetSnapshots) {
         };
       }
 
-      const listsRuleset =
-        (await readRulesetFile(
-          `/tmp/tachyon-core/rulesets/${secName}-lists-ruleset.json`,
-        )) ||
-        (await readRulesetFile(
-          `/tmp/sing-box/rulesets/${secName}-lists-ruleset.json`,
-        ));
+      const listsRuleset = await readRulesetFile(
+        `/tmp/tachyon-core/rulesets/${secName}-lists-ruleset.json`,
+        rulesetSnapshots,
+      );
       const matchedListIp = matchIpInRuleset(queryForMatching, listsRuleset);
       if (matchedListIp) {
         const domainIpLists = getSectionEffectiveOptionValues(
@@ -18131,13 +18247,10 @@ async function performTraceRules(query, rulesetSnapshots) {
         };
       }
 
-      const remoteSubnetRuleset =
-        (await readRulesetFile(
-          `/tmp/tachyon-core/rulesets/${secName}-remote-subnet-ruleset.json`,
-        )) ||
-        (await readRulesetFile(
-          `/tmp/sing-box/rulesets/${secName}-remote-subnet-ruleset.json`,
-        ));
+      const remoteSubnetRuleset = await readRulesetFile(
+        `/tmp/tachyon-core/rulesets/${secName}-remote-subnet-ruleset.json`,
+        rulesetSnapshots,
+      );
       const matchedRemoteIp = matchIpInRuleset(
         queryForMatching,
         remoteSubnetRuleset,
@@ -18169,7 +18282,7 @@ async function performTraceRules(query, rulesetSnapshots) {
           "community_lists",
         );
         for (const community of communityLists) {
-          const subnets = await readSubnetListFile(community);
+          const subnets = await readSubnetListFile(community, rulesetSnapshots);
           const matchedCidr = matchIpInCidrs(queryForMatching, subnets);
           if (matchedCidr) {
             const isDiscordCfVoice =
@@ -18194,7 +18307,13 @@ async function performTraceRules(query, rulesetSnapshots) {
             };
           }
           if (
-            await matchCommunityList(secName, community, queryForMatching, type)
+            await matchCommunityList(
+              secName,
+              community,
+              queryForMatching,
+              type,
+              rulesetSnapshots,
+            )
           ) {
             return {
               matched: true,
@@ -18218,6 +18337,7 @@ async function performTraceRules(query, rulesetSnapshots) {
           geoCountries,
           null,
           [queryForMatching],
+          rulesetSnapshots,
         );
         const inverts = geoMode === "exclude" || geoMode === "exclude_direct";
         if (inverts ? !geoCheck.matched : geoCheck.matched) {
@@ -18319,13 +18439,10 @@ async function performTraceRules(query, rulesetSnapshots) {
         };
       }
 
-      const listsRuleset =
-        (await readRulesetFile(
-          `/tmp/tachyon-core/rulesets/${secName}-lists-ruleset.json`,
-        )) ||
-        (await readRulesetFile(
-          `/tmp/sing-box/rulesets/${secName}-lists-ruleset.json`,
-        ));
+      const listsRuleset = await readRulesetFile(
+        `/tmp/tachyon-core/rulesets/${secName}-lists-ruleset.json`,
+        rulesetSnapshots,
+      );
       if (listsRuleset) {
         const matchedListDomain = matchDomainInRuleset(
           queryForMatching,
@@ -18350,13 +18467,10 @@ async function performTraceRules(query, rulesetSnapshots) {
         }
       }
 
-      const remoteDomainRuleset =
-        (await readRulesetFile(
-          `/tmp/tachyon-core/rulesets/${secName}-remote-domain-ruleset.json`,
-        )) ||
-        (await readRulesetFile(
-          `/tmp/sing-box/rulesets/${secName}-remote-domain-ruleset.json`,
-        ));
+      const remoteDomainRuleset = await readRulesetFile(
+        `/tmp/tachyon-core/rulesets/${secName}-remote-domain-ruleset.json`,
+        rulesetSnapshots,
+      );
       if (remoteDomainRuleset) {
         const matchedRemoteDomain = matchDomainInRuleset(
           queryForMatching,
@@ -18388,7 +18502,13 @@ async function performTraceRules(query, rulesetSnapshots) {
       );
       for (const community of communityLists) {
         if (
-          await matchCommunityList(secName, community, queryForMatching, type)
+          await matchCommunityList(
+            secName,
+            community,
+            queryForMatching,
+            type,
+            rulesetSnapshots,
+          )
         ) {
           return {
             matched: true,
@@ -18442,9 +18562,11 @@ async function performTraceRules(query, rulesetSnapshots) {
         const ipCidr = getSectionEffectiveOptionValues(secName, "ip_cidr");
         const listsRuleset = await readRulesetFile(
           `/tmp/tachyon-core/rulesets/${secName}-lists-ruleset.json`,
+          rulesetSnapshots,
         );
         const remoteSubnetRuleset = await readRulesetFile(
           `/tmp/tachyon-core/rulesets/${secName}-remote-subnet-ruleset.json`,
+          rulesetSnapshots,
         );
         const communitySubnetsEnabled =
           getSectionEffectiveScalar(secName, "community_subnets") !== "0";
@@ -18544,7 +18666,7 @@ async function performTraceRules(query, rulesetSnapshots) {
           }
 
           for (const community of communityLists) {
-            let subnets = await readSubnetListFile(community);
+            let subnets = await readSubnetListFile(community, rulesetSnapshots);
             const matchedCommunityCidr = matchIpInCidrs(ip, subnets);
             if (matchedCommunityCidr) {
               return {
@@ -18562,7 +18684,15 @@ async function performTraceRules(query, rulesetSnapshots) {
                 sharedCdnWarning: getSharedCdnWarning(matchedCommunityCidr),
               };
             }
-            if (await matchCommunityList(secName, community, ip, "ip")) {
+            if (
+              await matchCommunityList(
+                secName,
+                community,
+                ip,
+                "ip",
+                rulesetSnapshots,
+              )
+            ) {
               return {
                 matched: true,
                 sectionName: secName,
@@ -18590,6 +18720,7 @@ async function performTraceRules(query, rulesetSnapshots) {
           geoCountries,
           queryForMatching,
           resolvedIps,
+          rulesetSnapshots,
         );
         const inverts = geoMode === "exclude" || geoMode === "exclude_direct";
         const resolvedSuffix =
