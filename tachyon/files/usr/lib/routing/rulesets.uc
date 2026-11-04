@@ -703,8 +703,20 @@ function compile_plain_list(plain_path, ruleset_srs_path, ruleset_json_path) {
 
     let rulesets_mod = null;
     try { rulesets_mod = require("tachyon_core.rulesets"); } catch (e) {}
-    if (rulesets_mod && rulesets_mod.ensure_empty_srs_stub)
-        rulesets_mod.ensure_empty_srs_stub(ruleset_srs_path);
+    // ensure_empty_srs_stub() intentionally keeps an existing valid SRS. Build
+    // the empty replacement separately so clearing a list removes its old rules.
+    let stage = trim(common.command_output_from_args([ "mktemp", ruleset_srs_path + ".empty.XXXXXX" ]));
+    let ok = stage != "" && rulesets_mod &&
+        rulesets_mod.ensure_empty_srs_stub(stage) &&
+        rulesets_mod.is_referenceable_srs_file(stage);
+    if (ok && rulesets_mod.is_referenceable_srs_file(ruleset_srs_path))
+        ok = common.command_success_from_args([ "cp", "-p", ruleset_srs_path, ruleset_srs_path + ".bak" ]);
+    if (ok)
+        ok = common.command_success_from_args([ "mv", "-f", stage, ruleset_srs_path ]);
+    if (!ok) {
+        if (stage != "") fs.unlink(stage);
+        return { format: "source", path: ruleset_json_path, has_domains: false, has_ips: false, kind: "unknown" };
+    }
     fs.unlink(ruleset_json_path);
     return { format: "binary", path: ruleset_srs_path, has_domains: false, has_ips: false, kind: "unknown" };
 }
