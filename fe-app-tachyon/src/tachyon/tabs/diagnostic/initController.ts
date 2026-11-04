@@ -8,7 +8,6 @@ import { notifyActionFailure } from '../../helpers/notifyActionFailure';
 import { capSetSize } from '../../helpers/capCollectionSize';
 import { runDnsCheck } from './checks/runDnsCheck';
 import { runSingBoxCheck } from './checks/runSingBoxCheck';
-import { runSteerCheck } from './checks/runSteerCheck';
 import { runInboundsCheck } from './checks/runInboundsCheck';
 import { runNftCheck } from './checks/runNftCheck';
 import { runFakeIPCheck } from './checks/runFakeIPCheck';
@@ -20,7 +19,6 @@ import {
   DiagnosticsProviderOptions,
   getDiagnosticsChecks,
   getLoadingDiagnosticsChecks,
-  isSteerEngine,
 } from './diagnostic.store';
 import {
   logger,
@@ -1695,10 +1693,10 @@ function setDiagnosticCheckLoading(code: DIAGNOSTICS_CHECKS) {
 function getDiagnosticRunners(
   providerOptions: DiagnosticsProviderOptions,
 ): DiagnosticRunner[] {
-  // Select the engine-specific runner. Add Mihomo/Xray cases here when needed.
-  const engineRunner = isSteerEngine(providerOptions.activeEngine)
-    ? { code: DIAGNOSTICS_CHECKS.STEER, run: runSteerCheck }
-    : { code: DIAGNOSTICS_CHECKS.SINGBOX, run: runSingBoxCheck };
+  const engineRunner = {
+    code: DIAGNOSTICS_CHECKS.SINGBOX,
+    run: runSingBoxCheck,
+  };
 
   return [
     { code: DIAGNOSTICS_CHECKS.DNS, run: runDnsCheck },

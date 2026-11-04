@@ -1,19 +1,12 @@
 import { DIAGNOSTICS_CHECKS, DIAGNOSTICS_CHECKS_MAP } from './checks/constants';
 import { IDiagnosticsChecksStoreItem, StoreType } from '../../services';
 
-export type ActiveEngine = 'sing-box' | 'steer' | 'steer-extended';
+export type ActiveEngine = 'tachyon-core' | 'sing-box';
 
-/** Returns true for any Steer variant (base or extended). */
-export function isSteerEngine(engine: string | undefined): boolean {
-  return engine === 'steer' || engine === 'steer-extended';
-}
-
-/** Returns the engine check code for the given active engine.
- *  Add new engines here when Mihomo/Xray support is needed. */
+/** Returns the engine check code for the given active engine. */
 export function getEngineCheckCode(
-  engine: string | undefined,
+  _engine: string | undefined,
 ): DIAGNOSTICS_CHECKS {
-  if (isSteerEngine(engine)) return DIAGNOSTICS_CHECKS.STEER;
   return DIAGNOSTICS_CHECKS.SINGBOX;
 }
 
@@ -108,12 +101,6 @@ export const initialDiagnosticStore: Pick<
     sing_box_repo_url: '',
     sing_box_backup_version: '',
     sing_box_backup_time: 0,
-    steer_version: 'loading',
-    steer_installed: 0,
-    steer_extended: 0,
-    steer_repo_url: 'https://github.com/xyzmean/steer',
-    steer_backup_version: '',
-    steer_backup_time: 0,
     active_engine: 'sing-box',
     zapret_version: 'loading',
     zapret_installed: 0,
@@ -241,10 +228,6 @@ export const initialDiagnosticStore: Pick<
     tailscaleInstall: { loading: false },
     tailscaleRemove: { loading: false },
     tailscaleRollback: { loading: false },
-    steerCheck: { loading: false },
-    steerInstall: { loading: false },
-    steerRemove: { loading: false },
-    steerRollback: { loading: false },
     directBypassEnable: { loading: false },
     directBypassDisable: { loading: false },
     torrserverDirectCheck: { loading: false },
@@ -272,8 +255,6 @@ export const initialDiagnosticStore: Pick<
     olcrtc: { status: null, latest_version: '', release_url: '' },
     fptn: { status: null, latest_version: '', release_url: '' },
     tailscale: { status: null, latest_version: '', release_url: '' },
-    steer: { status: null, latest_version: '', release_url: '' },
-    'steer-extended': { status: null, latest_version: '', release_url: '' },
     direct_bypass: { status: null, latest_version: '', release_url: '' },
     torrserver_direct: { status: null, latest_version: '', release_url: '' },
     engine: { status: null, latest_version: '', release_url: '' },

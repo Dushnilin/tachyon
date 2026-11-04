@@ -325,6 +325,56 @@ function get_resolved_host_flags(url) {
     return "";
 }
 
+let _fuzzer_ip_cache = {};
+
+function resolve_host_ipv4(host) {
+    host = trim(as_string(host || ""));
+    if (host == "") return null;
+    if (is_valid_public_ip(host)) return host;
+    if (match(host, /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) || index(host, ":") >= 0) return null;
+    if (!fuzzer_runner.is_valid_hostname(host)) return null;
+    if (exists(_fuzzer_ip_cache, host))
+        return _fuzzer_ip_cache[host];
+
+    let flags = get_resolved_host_flags("https://" + host + "/");
+    let m = match(flags, /:443:([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
+    let ip = (m && m[1] && is_valid_public_ip(m[1])) ? m[1] : null;
+    _fuzzer_ip_cache[host] = ip;
+    return ip;
+}
+
+function parse_udp_target_url(url) {
+    let u = trim(as_string(url || ""));
+    let m = match(u, /^udp:\/\/([^\/:]+)(:([0-9]{1,5}))?/);
+    if (!m || !m[1]) return null;
+    let host = m[1];
+    let port = (m[3] && m[3] != "") ? int(m[3]) : 3478;
+    if (port < 1 || port > 65535) port = 3478;
+    let ip = resolve_host_ipv4(host);
+    return {
+        host: host,
+        ip: ip || host,
+        port: port
+    };
+}
+
+function probe_udp_stun_cmd(host_ip, port, res_file) {
+    let rf = shell_quote(res_file || (STATE_DIR + "/fuzzer_udp_res.bin"));
+    let safe_ip = shell_quote(as_string(host_ip));
+    let p = int(port) || 19302;
+    return sprintf(
+        "rm -f %s; read _u1 _ < /proc/uptime 2>/dev/null || _u1=0; " +
+        "if [ -x /bin/bash ]; then printf 'exec 3<>/dev/udp/%%s/%%d && printf \"\\\\x00\\\\x01\\\\x00\\\\x00\\\\x21\\\\x12\\\\xa4\\\\x42tachyonstun1\" >&3 && dd bs=64 count=1 <&3 >%%s 2>/dev/null\\n' %s %d %s | /bin/bash 2>/dev/null; " +
+        "elif command -v socat >/dev/null 2>&1; then printf '\\x00\\x01\\x00\\x00\\x21\\x12\\xa4\\x42tachyonstun1' | socat -T 2 - UDP:%s:%d >%s 2>/dev/null; fi; " +
+        "read _u2 _ < /proc/uptime 2>/dev/null || _u2=\"$_u1\"; " +
+        "_sz=$(wc -c <%s 2>/dev/null || echo 0); _hdr=$(hexdump -n 2 -e '2/1 \"%%02x\"' %s 2>/dev/null || echo ''); rm -f %s; " +
+        "_dt=$(awk -v a=\"$_u1\" -v b=\"$_u2\" 'BEGIN{d=b-a; if(d<=0) d=0.02; printf \"%%.3f\", d}'); " +
+        "if [ \"$_sz\" -ge 20 ] 2>/dev/null && [ \"$_hdr\" = \"0101\" ]; then printf '200\\t%%s\\t%%s\\t32768\\t%%d\\t%%s\\t1\\t0\\n' \"$_dt\" \"$_dt\" \"$_sz\" \"$_dt\"; " +
+        "else printf '000\\t0.000\\t0.000\\t0\\t0\\t0.000\\t1\\t28\\n'; fi",
+        rf, safe_ip, p, rf, safe_ip, p, rf, rf, rf, rf
+    );
+}
+
 const KNOWN_BLOB_FILES = {
     tls_max: { file: "tls_clienthello_max_ru.bin", size: 654, desc: "Max.ru authentic ClientHello" },
     tls_google: { file: "tls_clienthello_www_google_com.bin", size: 681, desc: "Google authentic ClientHello" },
@@ -468,7 +518,14 @@ function target_scope_match(target_ips) {
 function probe_target_ips(urls_list) {
     let ips = [];
     for (let item in (type(urls_list) == "array" ? urls_list : [])) {
-        let flags = get_resolved_host_flags(as_string(item.url));
+        let u = as_string(item.url || "");
+        if (index(u, "udp://") == 0) {
+            let udp_info = parse_udp_target_url(u);
+            if (udp_info && is_valid_public_ip(udp_info.ip))
+                push(ips, udp_info.ip);
+            continue;
+        }
+        let flags = get_resolved_host_flags(u);
         for (let m in match(flags, /:([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+) /g) || [])
             push(ips, m[1]);
     }
@@ -485,14 +542,14 @@ function add_bypass_singbox_chain(scope, with_udp) {
     system(sprintf("nft 'add rule inet tachyon_fuzzer bypass_singbox meta mark & %s == %s counter return' 2>/dev/null", FUZZER_FWMARK, FUZZER_FWMARK));
     system(sprintf("nft 'add rule inet tachyon_fuzzer bypass_singbox %smeta mark 0 meta l4proto tcp tcp dport { 80, 443, 2053, 2083, 2087, 2096, 8443 } meta mark set %s counter' 2>/dev/null", scope, FUZZER_OUTBOUND_MARK));
     if (with_udp) {
-        system(sprintf("nft 'add rule inet tachyon_fuzzer bypass_singbox %smeta mark 0 meta l4proto udp udp dport { 80, 443, 19294-19344, 50000-65535 } meta mark set %s counter' 2>/dev/null", scope, FUZZER_OUTBOUND_MARK));
+        system(sprintf("nft 'add rule inet tachyon_fuzzer bypass_singbox %smeta mark 0 meta l4proto udp udp dport { 80, 443, 3478-3481, 5000-5020, 19294-19344, 27015-27050, 50000-65535 } meta mark set %s counter' 2>/dev/null", scope, FUZZER_OUTBOUND_MARK));
     }
 }
 
 // Ports the fuzzer queue rule matches. Split per protocol so each rule can carry
 // its own counter.
 const FUZZER_QUEUE_PORTS_TCP = "80, 443, 2053, 2083, 2087, 2096, 8443";
-const FUZZER_QUEUE_PORTS_UDP = "443, 2053, 2083, 2087, 2096, 8443, 3478, 5000-5020, 19294-19344, 50000-65535";
+const FUZZER_QUEUE_PORTS_UDP = "443, 2053, 2083, 2087, 2096, 8443, 3478-3481, 5000-5020, 19294-19344, 27015-27050, 50000-65535";
 
 /**
  * One nft rule for the fuzzer queue, with a per-protocol counter comment.
@@ -717,6 +774,22 @@ const TARGET_SUITES = {
             { name: "Main Portal", url: "https://rutracker.org", weight: 60, required: true, probe_kind: "tls_http" },
             { name: "CDN Static Logo", url: "https://static.rutracker.cc/logo/logo-3.png", weight: 40, required: false, probe_kind: "tls_http" }
         ]
+    },
+    cs2_faceit_suite: {
+        name: "CS2 / Faceit / Cybershoke Suite (Web + API + UDP)",
+        urls: [
+            { name: "Faceit Web Portal", url: "https://www.faceit.com/", weight: 35, required: true, probe_kind: "tls_http" },
+            { name: "Cybershoke CS2 Servers", url: "https://cybershoke.net/", weight: 30, required: true, probe_kind: "tls_http" },
+            { name: "Steam SDR Relay Config (CS2)", url: "https://api.steampowered.com/ISteamApps/GetSDRConfig/v1/?appid=730", weight: 20, required: false, probe_kind: "tls_http" },
+            { name: "Gaming STUN / UDP Session", url: "udp://stun.l.google.com:19302", weight: 15, required: false, probe_kind: "udp_stun" }
+        ]
+    },
+    gaming_udp_suite: {
+        name: "Gaming & Voice UDP Suite (STUN + Source)",
+        urls: [
+            { name: "Google STUN UDP (19302)", url: "udp://stun.l.google.com:19302", weight: 60, required: true, probe_kind: "udp_stun" },
+            { name: "Cloudflare STUN UDP (3478)", url: "udp://stun.cloudflare.com:3478", weight: 40, required: false, probe_kind: "udp_stun" }
+        ]
     }
 };
 
@@ -738,10 +811,30 @@ const TARGET_URLS = {
     rutracker: "https://rutracker.org",
     telegram_suite: "https://web.telegram.org",
     telegram: "https://web.telegram.org",
+    cs2_faceit_suite: "https://www.faceit.com/",
+    cs2_faceit: "https://www.faceit.com/",
+    cybershoke: "https://cybershoke.net/",
+    gaming_udp_suite: "udp://stun.l.google.com:19302",
     quic_http3: "https://www.google.com"
 };
 
 function resolve_target_url(target_key, custom_url) {
+    target_key = trim(as_string(target_key || ""));
+    if (index(target_key, ",") >= 0) {
+        for (let part in split(target_key, ",")) {
+            let k = trim(as_string(part));
+            if (k == "") continue;
+            if (k == "custom" && custom_url && custom_url != "") {
+                for (let u in split(custom_url, /[,\n]+/)) {
+                    let trimmed = trim(as_string(u));
+                    if (trimmed != "")
+                        return trimmed;
+                }
+            }
+            if (TARGET_URLS[k])
+                return TARGET_URLS[k];
+        }
+    }
     if (custom_url && custom_url != "") {
         let urls = split(custom_url, /[,\n]+/);
         for (let u in urls) {
@@ -753,36 +846,63 @@ function resolve_target_url(target_key, custom_url) {
     return TARGET_URLS[target_key] || TARGET_URLS.youtube;
 }
 
-function resolve_target_urls_list(target_key, custom_url) {
-    if (custom_url && custom_url != "") {
-        let urls = split(custom_url, /[,\n]+/);
-        let result = [];
-        let idx = 0;
-        for (let u in urls) {
-            let trimmed = trim(as_string(u));
-            if (trimmed == "") continue;
-            idx++;
-            push(result, {
-                name: sprintf("Custom Target %d", idx),
-                url: trimmed,
-                weight: 100,
-                required: true,
-                probe_kind: "tls_http"
-            });
-        }
-        if (length(result) > 0) return result;
-        return [ { name: "Custom Target", url: custom_url, weight: 100, required: true, probe_kind: "tls_http" } ];
+function build_custom_targets_list(custom_url) {
+    let urls = split(as_string(custom_url || ""), /[,\n]+/);
+    let result = [];
+    let idx = 0;
+    for (let u in urls) {
+        let trimmed = trim(as_string(u));
+        if (trimmed == "") continue;
+        idx++;
+        let is_udp_url = index(trimmed, "udp://") == 0;
+        push(result, {
+            name: sprintf("Custom Target %d", idx),
+            url: trimmed,
+            weight: 100,
+            required: true,
+            probe_kind: is_udp_url ? "udp_stun" : "tls_http"
+        });
     }
-    target_key = as_string(target_key || "youtube_suite");
-    if (target_key == "quic_http3") {
+    if (length(result) > 0) return result;
+    return [ { name: "Custom Target", url: custom_url, weight: 100, required: true, probe_kind: "tls_http" } ];
+}
+
+function resolve_single_target_urls(key, custom_url) {
+    if (key == "custom" && custom_url && custom_url != "")
+        return build_custom_targets_list(custom_url);
+    if (key == "quic_http3")
         return [ { name: "Google QUIC Initial / HTTP3", url: "https://www.google.com", weight: 100, required: true, probe_kind: "quic" } ];
-    }
-    let suite = TARGET_SUITES[target_key];
-    if (suite && suite.urls && length(suite.urls) > 0) {
+    let suite = TARGET_SUITES[key];
+    if (suite && suite.urls && length(suite.urls) > 0)
         return suite.urls;
+    let single = TARGET_URLS[key] || TARGET_URLS.youtube;
+    let is_udp_url = index(as_string(single), "udp://") == 0;
+    return [ { name: key, url: single, weight: 100, required: true, probe_kind: is_udp_url ? "udp_stun" : (key == "quic_http3" ? "quic" : "tls_http") } ];
+}
+
+function resolve_target_urls_list(target_key, custom_url) {
+    target_key = trim(as_string(target_key || "youtube_suite"));
+    if (index(target_key, ",") >= 0) {
+        let keys_arr = split(target_key, ",");
+        let combined = [];
+        let seen = {};
+        for (let raw_k in keys_arr) {
+            let k = trim(as_string(raw_k));
+            if (k == "") continue;
+            let sub_list = resolve_single_target_urls(k, custom_url);
+            for (let item in sub_list) {
+                let sig = as_string(item.url) + "|" + as_string(item.probe_kind || "tls_http");
+                if (seen[sig]) continue;
+                seen[sig] = true;
+                push(combined, item);
+            }
+        }
+        if (length(combined) > 0)
+            return combined;
     }
-    let single = TARGET_URLS[target_key] || TARGET_URLS.youtube;
-    return [ { name: target_key, url: single, weight: 100, required: true, probe_kind: (target_key == "quic_http3" ? "quic" : "tls_http") } ];
+    if (custom_url && custom_url != "")
+        return build_custom_targets_list(custom_url);
+    return resolve_single_target_urls(target_key, custom_url);
 }
 
 function module_exports() {
@@ -807,6 +927,9 @@ function module_exports() {
         is_valid_public_ip,
         get_fuzzer_curl_dns_flags,
         get_resolved_host_flags,
+        resolve_host_ipv4,
+        parse_udp_target_url,
+        probe_udp_stun_cmd,
         get_zapret2_blob_dir,
         resolve_zapret2_blobs,
         setup_fuzzer_direct_nftables,
@@ -817,7 +940,7 @@ function module_exports() {
         read_nfqueue_stats,
         read_fuzzer_proto_counters,
         parse_proto_counters,
-    fuzzer_queue_rule_spec,
+        fuzzer_queue_rule_spec,
         wait_nfqueue_bound,
         TARGET_SUITES,
         TARGET_URLS,

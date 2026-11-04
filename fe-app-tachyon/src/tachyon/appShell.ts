@@ -2,6 +2,7 @@
 import { svgEl } from '../helpers';
 import { showToast } from '../helpers/showToast';
 import { tr } from './helpers/i18n';
+import { getRouterUiPrefs, setRouterUiPrefs } from './helpers/uiPrefs';
 import { renderTachyonDuckMascotSvg } from '../icons/duckMascot';
 import {
   renderZapIcon,
@@ -28,13 +29,17 @@ const TOPBAR_COLLAPSED_STORAGE_KEY = 'tachyon_topbar_collapsed_v1';
 const SIDEBAR_EXPANDED_MENUS_KEY = 'tachyon_sidebar_menus_v1';
 
 export function getUiMode(): TachyonUiMode {
-  if (typeof localStorage === 'undefined') return 'simple';
   try {
-    const val = localStorage.getItem(UI_MODE_STORAGE_KEY);
-    return val === 'advanced' ? 'advanced' : 'simple';
+    if (typeof localStorage !== 'undefined') {
+      const val = localStorage.getItem(UI_MODE_STORAGE_KEY);
+      if (val === 'advanced' || val === 'simple') return val;
+    }
   } catch {
-    return 'simple';
+    // ignore
   }
+  const fromRouter = getRouterUiPrefs()?.ui_mode;
+  if (fromRouter === 'advanced' || fromRouter === 'simple') return fromRouter;
+  return 'simple';
 }
 
 export function setUiMode(mode: TachyonUiMode): void {
@@ -45,19 +50,24 @@ export function setUiMode(mode: TachyonUiMode): void {
       // ignore
     }
   }
+  setRouterUiPrefs({ ui_mode: mode });
   if (typeof document !== 'undefined' && document.body) {
     document.body.setAttribute('data-tachyon-ui-mode', mode);
   }
 }
 
 export function getSidebarPos(): TachyonSidebarPos {
-  if (typeof localStorage === 'undefined') return 'left';
   try {
-    const val = localStorage.getItem(SIDEBAR_POS_STORAGE_KEY);
-    return val === 'right' ? 'right' : 'left';
+    if (typeof localStorage !== 'undefined') {
+      const val = localStorage.getItem(SIDEBAR_POS_STORAGE_KEY);
+      if (val === 'right' || val === 'left') return val;
+    }
   } catch {
-    return 'left';
+    // ignore
   }
+  const fromRouter = getRouterUiPrefs()?.sidebar_pos;
+  if (fromRouter === 'right' || fromRouter === 'left') return fromRouter;
+  return 'left';
 }
 
 export function setSidebarPos(pos: TachyonSidebarPos): void {
@@ -68,15 +78,20 @@ export function setSidebarPos(pos: TachyonSidebarPos): void {
       // ignore
     }
   }
+  setRouterUiPrefs({ sidebar_pos: pos });
 }
 
 export function getSidebarCollapsed(): boolean {
-  if (typeof localStorage === 'undefined') return false;
   try {
-    return localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === 'true';
+    if (typeof localStorage !== 'undefined') {
+      const val = localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY);
+      if (val === 'true' || val === 'false') return val === 'true';
+    }
   } catch {
-    return false;
+    // ignore
   }
+  const fromRouter = getRouterUiPrefs()?.sidebar_collapsed;
+  return typeof fromRouter === 'boolean' ? fromRouter : false;
 }
 
 export function setSidebarCollapsed(collapsed: boolean): void {
@@ -90,15 +105,20 @@ export function setSidebarCollapsed(collapsed: boolean): void {
       // ignore
     }
   }
+  setRouterUiPrefs({ sidebar_collapsed: collapsed });
 }
 
 export function getTopbarCollapsed(): boolean {
-  if (typeof localStorage === 'undefined') return false;
   try {
-    return localStorage.getItem(TOPBAR_COLLAPSED_STORAGE_KEY) === 'true';
+    if (typeof localStorage !== 'undefined') {
+      const val = localStorage.getItem(TOPBAR_COLLAPSED_STORAGE_KEY);
+      if (val === 'true' || val === 'false') return val === 'true';
+    }
   } catch {
-    return false;
+    // ignore
   }
+  const fromRouter = getRouterUiPrefs()?.topbar_collapsed;
+  return typeof fromRouter === 'boolean' ? fromRouter : false;
 }
 
 export function setTopbarCollapsed(collapsed: boolean): void {
@@ -112,6 +132,7 @@ export function setTopbarCollapsed(collapsed: boolean): void {
       // ignore
     }
   }
+  setRouterUiPrefs({ topbar_collapsed: collapsed });
 }
 
 function getExpandedMenus(): Set<string> {
@@ -868,12 +889,6 @@ function formatSidebarEngineLabel(): string {
   const srvVariant = (
     state.servicesInfoWidget?.data?.engineVariant || ''
   ).toLowerCase();
-  if (
-    state.activeEngine === 'steer' ||
-    state.activeEngine === 'steer-extended'
-  ) {
-    return tr('Ядро: Steer', 'Engine: Steer');
-  }
   if (srvVariant === 'lx' || sys?.sing_box_lx) {
     return tr('Ядро: sing-box-lx', 'Engine: sing-box-lx');
   }

@@ -2,13 +2,15 @@
 
 let fs = require("fs");
 let constants = require("core.constants");
-let core_ip = require("core.ip");
 let uci_core = require("core.uci");
 let common = require("core.common");
-let cmp_cat = require("components.catalog");
-let network_mod = require("diagnostics.network");
-let dns_mod = require("diagnostics.dns");
-let status_bridge = require("diagnostics.status_bridge");
+
+let _cmp_cat = null;
+let _network_mod = null;
+let _status_bridge = null;
+function get_cmp_cat() { if (_cmp_cat == null) _cmp_cat = require("components.catalog"); return _cmp_cat; }
+function network_mod() { if (_network_mod == null) _network_mod = require("diagnostics.network"); return _network_mod; }
+function status_bridge() { if (_status_bridge == null) _status_bridge = require("diagnostics.status_bridge"); return _status_bridge; }
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || constants.TACHYON_CONFIG_NAME || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
@@ -68,10 +70,19 @@ let read_json_file = common.read_json_file;
 let write_json = common.write_json;
 
 function arg_number(value) { return int(value); }
-function words(value) { return network_mod.words(value); }
-function parse_json_or_null(text) { return network_mod.parse_json_or_null(text); }
-function get_wan_ip_addresses() { return network_mod.get_wan_ip_addresses(); }
-function sing_box_standard_ports_listening(netstat) { return network_mod.sing_box_standard_ports_listening(netstat); }
+function words(value) {
+    let out = [];
+    for (let item in split(trim(as_string(value)), /[ \t\r\n]+/))
+        if (item != "") push(out, item);
+    return out;
+}
+function parse_json_or_null(text) {
+    text = trim(as_string(text));
+    if (text == "") return null;
+    try { return json(text); } catch (e) { return null; }
+}
+function get_wan_ip_addresses() { return network_mod().get_wan_ip_addresses(); }
+function sing_box_standard_ports_listening(netstat) { return network_mod().sing_box_standard_ports_listening(netstat); }
 
 function option(cfg, key, fallback) {
     if (type(cfg) != "object") return fallback;
@@ -99,14 +110,9 @@ function active_engine_name() {
     return (engine != null && engine != "") ? as_string(engine) : "tachyon-core";
 }
 
-function active_engine_is_steer() {
-    let name = active_engine_name();
-    return name == "steer" || name == "steer-extended";
-}
-
-function status_capture(args, input) { return status_bridge.status_capture(args, input); }
-function status_output(args, input) { return status_bridge.status_output(args, input); }
-function status_success(args, input) { return status_bridge.status_success(args, input); }
+function status_capture(args, input) { return status_bridge().status_capture(args, input); }
+function status_output(args, input) { return status_bridge().status_output(args, input); }
+function status_success(args, input) { return status_bridge().status_success(args, input); }
 
 function module_args(module_path, args) {
     let result = [ "ucode", "-L", LIB_DIR, "--", module_path ];
@@ -155,7 +161,10 @@ function helper_output(mode, args) {
 }
 
 function file_exists(path) { return fs.stat(as_string(path)) != null; }
-function file_executable(path) { return command_success_from_args([ "test", "-x", as_string(path) ]); }
+function file_executable(path) {
+    let st = fs.stat(as_string(path));
+    return st != null && st.mode != null && (int(st.mode) & 73) != 0;
+}
 function command_exists(name) { return command_success_from_args([ "command", "-v", as_string(name) ]); }
 function stdout_is_tty() { return command_status("test -t 1") == 0; }
 function nolog(message) { if (stdout_is_tty()) print(as_string(message), "
@@ -193,8 +202,6 @@ function check_logs() {
 }
 
 function is_tachyon_core_selected() {
-    if (active_engine_is_steer())
-        return false;
     let marker = first_line_value(SB_VARIANT_STATE_FILE);
     if (marker == "" && getenv("SB_VARIANT_STATE_FILE") == null)
         marker = first_line_value(SB_LEGACY_VARIANT_STATE_FILE);
@@ -520,17 +527,6 @@ function build_system_info() {
     let fptn_supported = (fptn_installed == 1 || is_fptn_supported()) ? 1 : 0;
     let fptn_version = fptn_installed ? provider_version(FPTN_RUNTIME_UC) : "not installed";
     let fptn_mode = require("config.connections").fptn_transport_mode();
-    let steer_installed = file_executable("/usr/sbin/steer") ? 1 : 0;
-    let steer_version = "not installed";
-    let steer_extended = 0;
-    if (steer_installed) {
-        let steer_out = trim(command_output_from_args([ "/usr/sbin/steer", "version" ]));
-        let m = match(steer_out, /steer\s+([0-9a-zA-Z\.\-]+)/);
-        steer_version = m ? m[1] : (steer_out != "" ? steer_out : "installed");
-        steer_extended = (match(steer_out, /расширенная|extended/i) != null ||
-            command_success_from_args([ "/usr/sbin/steer", "help", "vless" ]) ||
-            module_success(PACKAGES_UC, [ "installed", "steer-extended" ])) ? 1 : 0;
-    }
     let device_model = first_line_value("/tmp/sysinfo/model", "unknown");
 
     let direct_bypass_enabled = bool_option(settings(), "direct_bypass_enabled", false) ? 1 : 0;
@@ -573,6 +569,7 @@ function build_system_info() {
     let olcrtc_meta = read_backup_meta("olcrtc");
     let tailscale_meta = read_backup_meta("tailscale");
     let fptn_meta = read_backup_meta("fptn");
+    let cmp_cat = get_cmp_cat();
 
     return {
         tachyon_version: TACHYON_VERSION,
@@ -622,13 +619,6 @@ function build_system_info() {
         fptn_mode,
         fptn_backup_version: fptn_meta ? as_string(fptn_meta.version) : "",
         fptn_backup_time: fptn_meta ? int(fptn_meta.timestamp || 0) : 0,
-        steer_version,
-        steer_installed,
-        steer_extended,
-        // What the next steer install will keep: the configured selection, with
-        // an absent option meaning every module.
-        steer_modules: cmp_cat.steer_modules_from_settings(settings()),
-        steer_repo_url: "https://github.com/xyzmean/steer",
         direct_bypass_enabled,
         direct_bypass_address,
         direct_bypass_port,
@@ -720,7 +710,13 @@ function write_service_status(running, enabled, dns_configured) {
 }
 
 function dnsmasq_has_tachyon_dns() {
-    return module_success(DNS_APPLY_UC, [ "has-tachyon-dns" ]);
+    let addr = getenv("SB_DNS_INBOUND_ADDRESS") || "127.0.0.42";
+    let servers = uci_core.get("dhcp.@dnsmasq[0].server");
+    let raw = type(servers) == "array" ? join(" ", servers) : as_string(servers);
+    for (let item in words(raw))
+        if (item == addr)
+            return true;
+    return uci_core.exists("dhcp.tachyon");
 }
 
 function sing_box_variant_label() {
@@ -753,91 +749,26 @@ function get_sing_box_status() {
     return 0;
 }
 
-// Engine-aware service status for the dashboard. On sing-box it is the same
-// answer as get_sing_box_status; on steer it reports the steer service and the
-// active engine, so the UI does not show a false "sing-box stopped".
 function get_engine_status() {
-    let active = "tachyon-core";
-    try {
-        active = require("core.engine").get_active();
-    }
-    catch (e) {
-        active = "tachyon-core";
-    }
-
-    if (active == "tachyon-core") {
-        let running = module_success(SERVICE_STATE_UC, [
-            "tachyon-core-service-stable",
-            RUNTIME_STABLE_MIN_AGE
-        ]) ? 1 : 0;
-        let enabled = file_executable("/etc/rc.d/S99" + TACHYON_SERVICE_NAME) ? 1 : 0;
-        let dns_configured = dnsmasq_has_tachyon_dns() ? 1 : 0;
-        write_json({
-            running,
-            enabled,
-            engine: "tachyon-core",
-            variant: sing_box_variant_label(),
-            managed_by: TACHYON_SERVICE_NAME,
-            status: service_status_label(running, enabled),
-            dns_configured
-        });
-        return 0;
-    }
-
-    let running = 0;
-    let enabled = 0;
-    let channels = [];
-    try {
-        // The library, not the CLI shim: requiring service/engine_runtime.uc would run
-        // its main() with this process's arguments and then exit the interpreter.
-        let engine_runtime = require("service.engine_runtime_lib");
-        let info = require("core.engine").detect(active);
-        // steer registers with START=94, so the enable symlink is S94steer
-        // (get_status below has the same check). Liveness comes from the init
-        // script itself, not from the symlink: an enabled-but-dead service
-        // must not be reported as running.
-        enabled = command_success_from_args([ "sh", "-c", "ls /etc/rc.d/S*steer >/dev/null 2>&1" ]) ? 1 : 0;
-        running = info.installed && command_success_from_args([ "/etc/init.d/steer", "status" ]) ? 1 : 0;
-        if (running) {
-            let status_raw = fs.readfile("/var/lib/steer/status.json");
-            if (status_raw == null || status_raw == "") {
-                status_raw = command_output_from_args([ "/usr/sbin/steer", "status" ]);
-            }
-            if (status_raw != null && status_raw != "") {
-                let parsed = json(status_raw);
-                if (parsed && type(parsed.channels) == "array")
-                    channels = parsed.channels;
-            }
-        }
-    }
-    catch (e) {
-        running = 0;
-        enabled = 0;
-    }
-    let dns_configured = 1;
+    let running = module_success(SERVICE_STATE_UC, [
+        "tachyon-core-service-stable",
+        RUNTIME_STABLE_MIN_AGE
+    ]) ? 1 : 0;
+    let enabled = file_executable("/etc/rc.d/S99" + TACHYON_SERVICE_NAME) ? 1 : 0;
+    let dns_configured = dnsmasq_has_tachyon_dns() ? 1 : 0;
     write_json({
         running,
         enabled,
-        engine: active,
+        engine: "tachyon-core",
+        variant: sing_box_variant_label(),
+        managed_by: TACHYON_SERVICE_NAME,
         status: service_status_label(running, enabled),
-        dns_configured,
-        channels
+        dns_configured
     });
     return 0;
 }
 
 function get_status() {
-    // On steer the sing-box runtime checks do not apply: liveness comes from
-    // the steer init script and its own nftables table.
-    if (active_engine_is_steer()) {
-        let running = command_success_from_args([ "/etc/init.d/steer", "status" ]) ? 1 : 0;
-        // steer uses START=94, so the enable symlink is S94steer.
-        let enabled = command_success_from_args([ "sh", "-c", "ls /etc/rc.d/S*steer >/dev/null 2>&1" ]) ? 1 : 0;
-        let dns_configured = 1;
-        write_service_status(running, enabled, dns_configured);
-        return 0;
-    }
-
     let running = module_success(SERVICE_STATE_UC, [
         "tachyon-stably-running", RT_TABLE_NAME, NFT_TABLE_NAME, NFT_FAKEIP_MARK, RUNTIME_STABLE_MIN_AGE
     ]) ? 1 : 0;
@@ -931,68 +862,7 @@ function strip_leading_v(value) {
 }
 
 
-function check_steer() {
-    // These checks describe steer state; on sing-box they are not applicable.
-    if (!active_engine_is_steer()) {
-        write_json({ not_applicable: 1, engine: active_engine_name() });
-        return 0;
-    }
-
-    let steer_installed = 0;
-    let steer_version = "";
-    let steer_service_exist = 0;
-    let steer_autostart_enabled = 0;
-    let steer_process_running = 0;
-    let steer_extended = 0;
-
-    let steer_bin = "/usr/sbin/steer";
-    if (file_executable(steer_bin)) {
-        steer_installed = 1;
-        let ver = trim(command_output(command_from_args([steer_bin, "version"]) + " 2>/dev/null"));
-        if (ver == "")
-            ver = trim(command_output(command_from_args([steer_bin, "--version"]) + " 2>/dev/null"));
-        steer_version = ver != "" ? ver : "";
-
-        // Detect extended build: check version string, active engine ID, or binary size heuristic
-        let stat = fs.stat(steer_bin);
-        if ((stat != null && stat.size > 8 * 1024 * 1024) ||
-            match(steer_version, /расширенная|extended/i) != null ||
-            active_engine_name() == "steer-extended")
-            steer_extended = 1;
-    }
-
-    if (file_exists("/etc/init.d/steer")) {
-        steer_service_exist = 1;
-        // Steer uses START=94, enabled if S94steer symlink is present in /etc/rc.d/
-        steer_autostart_enabled = command_success_from_args(
-            ["sh", "-c", "ls /etc/rc.d/S*steer >/dev/null 2>&1"]
-        ) ? 1 : 0;
-    }
-
-    if (steer_installed && file_exists("/etc/init.d/steer")) {
-        steer_process_running = command_success_from_args(
-            ["/etc/init.d/steer", "status"]
-        ) ? 1 : 0;
-    }
-
-    write_json({
-        steer_installed,
-        steer_version,
-        steer_extended,
-        steer_service_exist,
-        steer_autostart_enabled,
-        steer_process_running
-    });
-    return 0;
-}
-
 function check_sing_box() {
-    // These checks describe sing-box state; on steer they are not applicable
-    // rather than failing, so the dashboard shows an honest answer.
-    if (active_engine_is_steer()) {
-        write_json({ not_applicable: 1, engine: active_engine_name() });
-        return 0;
-    }
     let sing_box_installed = 0;
     let sing_box_version_ok = 0;
     let sing_box_extended = 0;
@@ -1100,6 +970,5 @@ return {
     validate_nfqws2_strategy_json,
     validate_byedpi_strategy_json,
     strip_leading_v,
-    check_steer,
     check_sing_box
 };

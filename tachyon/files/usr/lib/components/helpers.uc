@@ -536,8 +536,6 @@ function sanitize_apk_world() {
     let removable_if_uninstalled = [
         "tachyon-core",
         "sing-box-extended", "sing-box", "sing-box-tiny", "sing-box-lx",
-        "steer-extended", "steer", "steer-core",
-        "steer-obfs", "steer-tgws", "steer-vless", "steer-xsteer", "steer-proxy", "steer-hysteria2",
         "zapret2", "zapret",
         "byedpi", "wdtt", "olcrtc", "fptn",
         "forkop", "luci-app-forkop", "podkop", "luci-app-podkop", "netshift", "luci-app-netshift",
@@ -551,7 +549,7 @@ function sanitize_apk_world() {
         command_success("sed -i -E " + shell_quote("/^ip-tiny([><=~ \t].*)?$/d") + " " + shell_quote(world_file) + " 2>/dev/null");
     // Strip pinned version/hash constraints (e.g. pkg><HASH= or pkg=ver)
     // from /etc/apk/world for all managed packages so local .apk upgrades succeed
-    let pattern = "^(tachyon|tachyon-core|luci-app-tachyon|luci-i18n-tachyon-[a-z_-]+|steer|steer-extended|steer-core|steer-(obfs|tgws|vless|xsteer|proxy|hysteria2)|zapret|zapret2|byedpi|wdtt|olcrtc|fptn|sing-box|sing-box-extended|sing-box-tiny|sing-box-lx)[><=].*$";
+    let pattern = "^(tachyon|tachyon-core|luci-app-tachyon|luci-i18n-tachyon-[a-z_-]+|zapret|zapret2|byedpi|wdtt|olcrtc|fptn|sing-box|sing-box-extended|sing-box-tiny|sing-box-lx)[><=].*$";
     command_success("sed -i -E " + shell_quote("s/" + pattern + "/\\1/") + " " + shell_quote(world_file) + " 2>/dev/null");
 
     // Heal any remaining broken world entries (e.g. third-party packages no longer

@@ -58,9 +58,7 @@ raw_system|tachyon/files/usr/lib/service/telegram/commands.uc|2
 raw_system|tachyon/files/usr/lib/service/telegram/rendering.uc|1
 raw_system|tachyon/files/usr/lib/service/ui.uc|2
 raw_system|tachyon/files/usr/lib/service/uninstall.uc|4
-raw_system|tachyon/files/usr/lib/service/watchdog.uc|28
-raw_system|tachyon/files/usr/lib/steer/dns.uc|1
-raw_system|tachyon/files/usr/lib/steer/lists.uc|1
+raw_system|tachyon/files/usr/lib/service/watchdog.uc|25
 raw_system|tachyon/files/usr/lib/subscription/cache.uc|8
 raw_system|tachyon/files/usr/lib/subscription/parser.uc|1
 raw_system|tachyon/files/usr/lib/subscription/share_link.uc|1
@@ -74,6 +72,5 @@ shell_c|tachyon/files/usr/lib/core/common.uc|2
 shell_c|tachyon/files/usr/lib/core/exec.uc|3
 shell_c|tachyon/files/usr/lib/diagnostics/leak_check.uc|1
 shell_c|tachyon/files/usr/lib/diagnostics/routing.uc|1
-shell_c|tachyon/files/usr/lib/service/engine_runtime_lib.uc|1
 shell_c|tachyon/files/usr/lib/service/ui.uc|1
 shell_c|tachyon/files/usr/lib/subscription/cache.uc|2

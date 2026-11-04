@@ -1717,17 +1717,47 @@ function add_subscription_source_with_state(config, section, source_index, sourc
         : {};
     let survivors = 0;
     let survivor_endpoints = {};
+    let outbounds_by_tag = {};
     for (let candidate in array_or_empty(outbounds)) {
         if (type(candidate) != "object")
             continue;
+        let candidate_tag = as_string(candidate.tag || "");
+        if (candidate_tag != "")
+            outbounds_by_tag[candidate_tag] = candidate;
         if (subscription_urltest_group_outbound(candidate))
             continue;
-        let candidate_tag = as_string(candidate.tag || "");
-        if (candidate_tag == "" || !(candidate_tag in urltest_member_tags)) {
+        if (candidate_tag == "" || !(candidate_tag in (visibility_refs.urltest || {}))) {
             survivors++;
             let ep_key = lc(as_string(candidate.type || "")) + "|" + lc(as_string(candidate.server || "")) + "|" + as_string(candidate.server_port || "");
             if (as_string(candidate.server || "") != "")
                 survivor_endpoints[ep_key] = true;
+        }
+    }
+    let preserved_urltest_groups = {};
+    let preserved_urltest_members = {};
+    for (let candidate in array_or_empty(outbounds)) {
+        if (!subscription_urltest_group_outbound(candidate))
+            continue;
+        let group_tag = as_string(candidate.tag || "");
+        let has_internal_member = false;
+        for (let m in array_or_empty(candidate.outbounds)) {
+            let m_tag = as_string(m);
+            let m_obj = outbounds_by_tag[m_tag];
+            if (type(m_obj) != "object" || !internal_flag(m_obj.__tachyon_hidden))
+                continue;
+            let ep_key = lc(as_string(m_obj.type || "")) + "|" + lc(as_string(m_obj.server || "")) + "|" + as_string(m_obj.server_port || "");
+            if (match(lc(m_tag), /^bal-[0-9]+-/) != null || survivor_endpoints[ep_key] === true) {
+                has_internal_member = true;
+                break;
+            }
+        }
+        if (has_internal_member && group_tag != "") {
+            preserved_urltest_groups[group_tag] = true;
+            for (let m in array_or_empty(candidate.outbounds)) {
+                let m_tag = as_string(m);
+                if (m_tag != "")
+                    preserved_urltest_members[m_tag] = true;
+            }
         }
     }
     let drop_urltest_members = include_urltest_groups === false && survivors > 0;
@@ -1746,17 +1776,21 @@ function add_subscription_source_with_state(config, section, source_index, sourc
     let source_links = [];
     let group_flags = [];
     let hidden_flags = [];
+    let internal_member_flags = [];
     let tag_map = {};
     for (let i = 0; i < length(outbounds); i++) {
         let outbound = outbounds[i];
-        if (include_urltest_groups === false && subscription_urltest_group_outbound(outbound))
+        let orig_tag = as_string(outbound.tag || "");
+        if (include_urltest_groups === false &&
+            subscription_urltest_group_outbound(outbound) &&
+            !preserved_urltest_groups[orig_tag])
             continue;
         // A node that only a disabled native sing-box urltest group pointed at, or
         // an internal Xray balancer member (`bal-*` / duplicate of a standalone server
         // in the same subscription), is dropped when urltest group import is disabled.
         // Distinct named leaf servers inside an Xray balancer remain visible.
-        if (drop_urltest_members && (as_string(outbound.tag || "") in urltest_member_tags)) {
-            let member_tag = as_string(outbound.tag || "");
+        if (drop_urltest_members && (orig_tag in urltest_member_tags) && !preserved_urltest_members[orig_tag]) {
+            let member_tag = orig_tag;
             let member_remark = as_string(outbound.remark || "");
             let ep_key = lc(as_string(outbound.type || "")) + "|" + lc(as_string(outbound.server || "")) + "|" + as_string(outbound.server_port || "");
             if (member_remark == "" ||
@@ -1805,7 +1839,9 @@ function add_subscription_source_with_state(config, section, source_index, sourc
             source_link = subscription_share_link.serialize_outbound_link(outbound);
         push(source_links, source_link);
         push(group_flags, subscription_group_outbound(outbound));
-        push(hidden_flags, subscription_hidden_outbound(outbound, visibility_refs, hide_urltest_group_outbounds, hide_detour_outbounds));
+        let is_internal_member = preserved_urltest_members[orig_tag] === true;
+        push(internal_member_flags, is_internal_member);
+        push(hidden_flags, is_internal_member || subscription_hidden_outbound(outbound, visibility_refs, hide_urltest_group_outbounds, hide_detour_outbounds));
     }
 
     if (keyword_filter != null && length(prepared) == 0)
@@ -1875,14 +1911,14 @@ function add_subscription_source_with_state(config, section, source_index, sourc
             push(config.outbounds, outbound);
         }
         added++;
-        if (!is_group)
+        if (!is_group && !internal_member_flags[i])
             push(urltest_candidate_tags, outbound.tag);
         runtime_subscription.remember_source_outbound(
             state,
             outbound.tag,
             display_names[i],
             outbound,
-            source_links[i],
+            internal_member_flags[i] ? "" : source_links[i],
             node_prefix,
             "sub:" + source_index
         );

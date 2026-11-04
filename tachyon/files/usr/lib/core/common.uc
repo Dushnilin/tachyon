@@ -67,8 +67,8 @@ function csv_to_json_array(value) {
 //
 // On a router the flash is the scarcest resource that actually dies. NAND wears
 // out long before the CPU does, and nearly everything Tachyon regenerates is
-// derived data that comes back byte-identical most of the time: the steer spec,
-// the per-channel domain lists, the zapret opts files, the compiled .srs rulesets,
+// derived data that comes back byte-identical most of the time: the per-channel
+// domain lists, the zapret opts files, the compiled .srs rulesets,
 // the subscription cache, the sing-box config.
 //
 // Measured on 192.168.1.1: one list update rewrote all 33 .srs rulesets - 2.5 MB

@@ -811,6 +811,9 @@ function is_tachyon_core_version(sb_version_val) {
     if (sing_box_banner_names_tachyon_core())
         return true;
 
+    if (match(as_string(sb_version_val), /^v?0\.[0-9]+\.[0-9]+/) != null)
+        return true;
+
     return false;
 }
 
@@ -950,7 +953,7 @@ function singbox_log_section(log_level, sb_version_val) {
 function base_config(settings, service_address, runtime_context) {
     runtime_context = object_or_empty(runtime_context);
     let log_level = option(settings, "log_level", "warn");
-    let rewrite_ttl = int_option(settings, "dns_rewrite_ttl", "60");
+    let rewrite_ttl = int_option(settings, "dns_rewrite_ttl", "15");
     let turbo_cache = bool_option(settings, "dns_turbo_cache", false);
     // Persistent by default. The FakeIP pool hands out addresses and the core
     // keeps the reverse mapping; clients cache the address they were given, so
@@ -1117,7 +1120,8 @@ for (let inbound in dns_config.inbounds)
         servers: dns_servers,
         rules: dns_rules,
         final: runtime_constants.DNS_SERVER_TAG,
-        strategy: option(settings, "dns_strategy", "prefer_ipv4")
+        strategy: option(settings, "dns_strategy", "prefer_ipv4"),
+        reverse_mapping: bool_option(settings, "dns_reverse_mapping", true)
     };
 
     let sb_version_val = detect_sing_box_version();
@@ -1152,8 +1156,8 @@ for (let inbound in dns_config.inbounds)
         cache_file_section.store_dns = true;
 
     if (is_sb_1_15_plus) {
-        cache_file_section.buffer_size = "1MB";
-        cache_file_section.flush_interval = "10m";
+        cache_file_section.buffer_size = option(settings, "cache_buffer_size", "16KB");
+        cache_file_section.flush_interval = option(settings, "cache_flush_interval", "10s");
     }
 
     let base_cfg = {
@@ -1963,7 +1967,7 @@ function add_source_aware_dns_fallback(config, source_aware_dns) {
         return;
 
     let settings = runtime_settings_cache || {};
-    let rewrite_ttl = int_option(settings, "dns_rewrite_ttl", "60");
+    let rewrite_ttl = int_option(settings, "dns_rewrite_ttl", "15");
 
     let rule = {
         action: "route",
@@ -1980,7 +1984,7 @@ function add_excluded_clients_dns_rule(config, settings) {
     if (length(excluded_cidrs) == 0)
         return;
 
-    let rewrite_ttl = int_option(settings, "dns_rewrite_ttl", "60");
+    let rewrite_ttl = int_option(settings, "dns_rewrite_ttl", "15");
     unshift(config.dns.rules, {
         action: "route",
         server: runtime_constants.DNSMASQ_DNS_SERVER_TAG,

@@ -396,9 +396,32 @@ function configure_firewall(section) {
     return true;
 }
 
+function configure_dnsmasq_localservice() {
+    let changed = false;
+    let sections = uci_core.sections("dhcp", "dnsmasq");
+    if (type(sections) == "array" && length(sections) > 0) {
+        for (let s in sections) {
+            let sname = as_string(s[".name"] || "");
+            if (sname != "" && as_string(s.localservice) != "0") {
+                uci_core.set("dhcp." + sname + ".localservice", "0");
+                changed = true;
+            }
+        }
+    } else if (uci_core.get("dhcp", "@dnsmasq[0]", ".type") == "dnsmasq") {
+        if (as_string(uci_core.get("dhcp", "@dnsmasq[0]", "localservice")) != "0") {
+            uci_core.set("dhcp.@dnsmasq[0].localservice", "0");
+            changed = true;
+        }
+    }
+    if (changed)
+        uci_core.commit("dhcp");
+    return changed;
+}
+
 function configure_magicdns_dns() {
     // Hand *.ts.net to the tailnet resolver without letting tailscaled touch
     // resolv.conf; dnsmasq picks the file up from its conf-dir.
+    configure_dnsmasq_localservice();
     if (!command_success_from_args([ "mkdir", "-p", parent_dir(MAGICDNS_DNSMASQ_FILE) ]))
         return false;
     let lines = [

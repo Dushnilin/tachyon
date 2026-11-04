@@ -128,6 +128,271 @@ function createCloneIcon() {
   ]);
 }
 
+function isEmptyObject(obj) {
+  if (!obj || typeof obj !== 'object') return true;
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) return false;
+  }
+  return true;
+}
+
+function areUciValuesEqual(a, b) {
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return (
+      a.length === b.length &&
+      a.every((v, i) => String(v ?? '') === String(b[i] ?? ''))
+    );
+  }
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return false;
+  }
+  return String(a ?? '') === String(b ?? '');
+}
+
+function cloneModalFormValue(val) {
+  if (Array.isArray(val)) {
+    return val.map((v) => String(v ?? ''));
+  }
+  if (val === null || val === undefined) {
+    return '';
+  }
+  return String(val);
+}
+
+function areModalFormValuesEqual(a, b) {
+  const normA = cloneModalFormValue(a);
+  const normB = cloneModalFormValue(b);
+  if (Array.isArray(normA) && Array.isArray(normB)) {
+    return (
+      normA.length === normB.length && normA.every((v, i) => v === normB[i])
+    );
+  }
+  if (Array.isArray(normA)) {
+    return normA.length === 0 && normB === '';
+  }
+  if (Array.isArray(normB)) {
+    return normB.length === 0 && normA === '';
+  }
+  return normA === normB;
+}
+
+function getUciStateFingerprint() {
+  const state = typeof uci !== 'undefined' ? uci.state : null;
+  if (!state) return '';
+  try {
+    return JSON.stringify({
+      creates: state.creates?.[UCI_PACKAGE] || {},
+      changes: state.changes?.[UCI_PACKAGE] || {},
+      deletes: state.deletes?.[UCI_PACKAGE] || {},
+      reorder: Boolean(state.reorder?.[UCI_PACKAGE]),
+    });
+  } catch (_e) {
+    return '';
+  }
+}
+
+function hasPendingUciStateChanges() {
+  const state = typeof uci !== 'undefined' ? uci.state : null;
+  if (!state) return false;
+  return (
+    !isEmptyObject(state.creates?.[UCI_PACKAGE]) ||
+    !isEmptyObject(state.changes?.[UCI_PACKAGE]) ||
+    !isEmptyObject(state.deletes?.[UCI_PACKAGE]) ||
+    Boolean(state.reorder?.[UCI_PACKAGE])
+  );
+}
+
+function sanitizeUciDeletes(targetSectionId) {
+  const state = typeof uci !== 'undefined' ? uci.state : null;
+  if (!state) {
+    return;
+  }
+
+  const creates = state.creates?.[UCI_PACKAGE] || {};
+  const values = state.values?.[UCI_PACKAGE] || {};
+  const deletes = state.deletes?.[UCI_PACKAGE];
+
+  if (deletes) {
+    for (const sid in deletes) {
+      if (creates[sid] || !values[sid]) {
+        delete deletes[sid];
+        continue;
+      }
+
+      if (deletes[sid] !== true && typeof deletes[sid] === 'object') {
+        for (const opt in deletes[sid]) {
+          if (!Object.prototype.hasOwnProperty.call(values[sid], opt)) {
+            delete deletes[sid][opt];
+          }
+        }
+        if (isEmptyObject(deletes[sid])) {
+          delete deletes[sid];
+        }
+      }
+    }
+
+    if (
+      targetSectionId &&
+      (creates[targetSectionId] || !values[targetSectionId])
+    ) {
+      delete deletes[targetSectionId];
+    }
+
+    if (isEmptyObject(state.deletes[UCI_PACKAGE])) {
+      delete state.deletes[UCI_PACKAGE];
+    }
+  }
+
+  const changes = state.changes?.[UCI_PACKAGE];
+  if (changes) {
+    for (const sid in changes) {
+      if (
+        creates[sid] ||
+        !values[sid] ||
+        state.deletes?.[UCI_PACKAGE]?.[sid] === true
+      ) {
+        if (creates[sid] && changes[sid] && typeof changes[sid] === 'object') {
+          Object.assign(creates[sid], changes[sid]);
+        }
+        delete changes[sid];
+        continue;
+      }
+
+      if (changes[sid] && typeof changes[sid] === 'object') {
+        for (const opt in changes[sid]) {
+          if (
+            Object.prototype.hasOwnProperty.call(values[sid], opt) &&
+            !state.deletes?.[UCI_PACKAGE]?.[sid]?.[opt] &&
+            areUciValuesEqual(values[sid][opt], changes[sid][opt])
+          ) {
+            delete changes[sid][opt];
+          }
+        }
+        if (isEmptyObject(changes[sid])) {
+          delete changes[sid];
+        }
+      }
+    }
+
+    if (isEmptyObject(state.changes[UCI_PACKAGE])) {
+      delete state.changes[UCI_PACKAGE];
+    }
+  }
+}
+
+function attachModalNoOpParseGuard(modalMap, defaultSid) {
+  if (!modalMap || !defaultSid) return;
+  sanitizeUciDeletes(defaultSid);
+  const initialUciFingerprint = getUciStateFingerprint();
+  const trackedPairs = [];
+
+  const guardSectionOptions = (secObj) => {
+    if (!secObj || !Array.isArray(secObj.children)) return;
+    const sectionIds =
+      typeof secObj.cfgsections === 'function'
+        ? secObj.cfgsections()
+        : [secObj.section || defaultSid].filter(Boolean);
+
+    secObj.children.forEach((opt) => {
+      if (!opt || opt.disable) return;
+      if (opt.subsection) {
+        guardSectionOptions(opt.subsection);
+        return;
+      }
+
+      const initialStateBySid = new Map();
+      sectionIds.forEach((sid) => {
+        if (
+          !sid ||
+          uci.state?.creates?.[UCI_PACKAGE]?.[sid] ||
+          !uci.state?.values?.[UCI_PACKAGE]?.[sid]
+        ) {
+          return;
+        }
+        initialStateBySid.set(sid, {
+          active: Boolean(opt.isActive(sid)),
+          formVal: cloneModalFormValue(opt.formvalue(sid)),
+        });
+        trackedPairs.push({ opt, sid });
+      });
+
+      const isOptChangedForSid = (targetOpt, sid) => {
+        const snap = initialStateBySid.get(sid);
+        if (!snap) return true;
+        if (
+          uci.state?.creates?.[UCI_PACKAGE]?.[sid] ||
+          !uci.state?.values?.[UCI_PACKAGE]?.[sid]
+        ) {
+          return true;
+        }
+        const currentActive = Boolean(targetOpt.isActive(sid));
+        if (currentActive !== snap.active) {
+          return true;
+        }
+        if (!currentActive) {
+          return false;
+        }
+        const ownerId =
+          typeof targetOpt.childOwner === 'function'
+            ? targetOpt.childOwner(sid)
+            : sid;
+        if (
+          targetOpt.pendingChildSettings &&
+          !isEmptyObject(targetOpt.pendingChildSettings[ownerId])
+        ) {
+          return true;
+        }
+        return !areModalFormValuesEqual(targetOpt.formvalue(sid), snap.formVal);
+      };
+
+      opt.__isModalOptChangedForSid = isOptChangedForSid;
+
+      if (!opt.__tachyonNoOpGuardAttached) {
+        opt.__tachyonNoOpGuardAttached = true;
+        const origParse = opt.parse;
+        opt.parse = function (sid) {
+          const targetSid = sid ?? defaultSid;
+          if (!isOptChangedForSid(this, targetSid)) {
+            if (
+              Boolean(this.isActive(targetSid)) &&
+              typeof this.isValid === 'function' &&
+              !this.isValid(targetSid)
+            ) {
+              return origParse.apply(this, arguments);
+            }
+            return Promise.resolve();
+          }
+          return origParse.apply(this, arguments);
+        };
+      }
+    });
+  };
+
+  if (Array.isArray(modalMap.children)) {
+    modalMap.children.forEach((secObj) => guardSectionOptions(secObj));
+  }
+
+  modalMap.__hasAnyModalChanges = function () {
+    if (getUciStateFingerprint() !== initialUciFingerprint) {
+      return true;
+    }
+    return trackedPairs.some(({ opt, sid }) =>
+      typeof opt.__isModalOptChangedForSid === 'function'
+        ? opt.__isModalOptChangedForSid(opt, sid)
+        : true,
+    );
+  };
+
+  modalMap.__hasInvalidActiveOptions = function () {
+    return trackedPairs.some(
+      ({ opt, sid }) =>
+        Boolean(opt.isActive(sid)) &&
+        typeof opt.isValid === 'function' &&
+        !opt.isValid(sid),
+    );
+  };
+}
+
 function configureGridSection(sectionRef, type, title, addTitle) {
   sectionRef.anonymous = false;
   sectionRef.addremove = true;
@@ -157,48 +422,222 @@ function configureGridSection(sectionRef, type, title, addTitle) {
     return renderSectionAdd(sectionRef, extra_class);
   };
 
-  const origMoreModal = sectionRef.renderMoreOptionsModal;
-  sectionRef.renderMoreOptionsModal = function () {
+  const origMoreModal = Object.prototype.hasOwnProperty.call(
+    sectionRef,
+    'renderMoreOptionsModal',
+  )
+    ? sectionRef.renderMoreOptionsModal
+    : null;
+  sectionRef.renderMoreOptionsModal = function (section_id) {
+    const rawSid =
+      typeof section_id === 'string' && section_id
+        ? uci.resolveSID?.(UCI_PACKAGE, section_id) || section_id
+        : null;
+    const prevNode =
+      typeof this.getPreviousModalMap === 'function'
+        ? this.getPreviousModalMap()
+        : null;
+    const prevMap = prevNode ? dom.findClassInstance(prevNode) : this.map;
+    const isExistingSection = Boolean(
+      rawSid &&
+        prevMap?.addedSection !== rawSid &&
+        this.map?.addedSection !== rawSid &&
+        !uci.state?.creates?.[UCI_PACKAGE]?.[rawSid] &&
+        uci.state?.values?.[UCI_PACKAGE]?.[rawSid],
+    );
+
     const res = origMoreModal
       ? origMoreModal.apply(this, arguments)
       : form.GridSection.prototype.renderMoreOptionsModal.apply(
           this,
           arguments,
         );
-    return Promise.resolve(res).finally(() => {
-      if (typeof sectionRef._refreshStudioDeck === 'function') {
-        window.setTimeout(() => sectionRef._refreshStudioDeck(), 80);
-      }
-    });
+    return Promise.resolve(res)
+      .then((r) => {
+        if (isExistingSection) {
+          const mapNode =
+            typeof this.getActiveModalMap === 'function'
+              ? this.getActiveModalMap()
+              : null;
+          const modalMap = mapNode ? dom.findClassInstance(mapNode) : null;
+          const targetSid =
+            modalMap?.section || modalMap?.children?.[0]?.section || rawSid;
+          if (modalMap && targetSid) {
+            attachModalNoOpParseGuard(modalMap, targetSid);
+          }
+        }
+        return r;
+      })
+      .finally(() => {
+        if (typeof sectionRef._refreshStudioDeck === 'function') {
+          window.setTimeout(() => sectionRef._refreshStudioDeck(), 80);
+        }
+      });
   };
 
-  const origModalSave = sectionRef.handleModalSave;
-  sectionRef.handleModalSave = function () {
-    const res = origModalSave
-      ? origModalSave.apply(this, arguments)
-      : form.GridSection.prototype.handleModalSave.apply(this, arguments);
-    return Promise.resolve(res).finally(() => {
-      try {
-        if (typeof uci !== 'undefined' && typeof uci.save === 'function') {
-          Promise.resolve(uci.save())
-            .then(() => {
-              if (
-                typeof ui !== 'undefined' &&
-                ui.changes &&
-                typeof ui.changes.init === 'function'
-              ) {
-                return ui.changes.init();
-              }
-              return null;
-            })
-            .finally(() => {
-              if (typeof sectionRef._refreshStudioDeck === 'function') {
-                sectionRef._refreshStudioDeck();
-              }
-            });
-        } else if (typeof sectionRef._refreshStudioDeck === 'function') {
-          sectionRef._refreshStudioDeck();
+  const origModalSave = Object.prototype.hasOwnProperty.call(
+    sectionRef,
+    'handleModalSave',
+  )
+    ? sectionRef.handleModalSave
+    : null;
+  sectionRef.handleModalSave = function (modalMap, ev) {
+    const targetMap =
+      modalMap ||
+      (typeof this.getActiveModalMap === 'function'
+        ? dom.findClassInstance(this.getActiveModalMap())
+        : null);
+
+    const targetSectionId =
+      targetMap?.section || targetMap?.children?.[0]?.section;
+
+    sanitizeUciDeletes(targetSectionId);
+
+    if (
+      !origModalSave &&
+      targetMap &&
+      typeof targetMap.__hasAnyModalChanges === 'function'
+    ) {
+      if (typeof targetMap.checkDepends === 'function') {
+        targetMap.checkDepends();
+      }
+      const hasInvalid =
+        typeof targetMap.__hasInvalidActiveOptions === 'function' &&
+        targetMap.__hasInvalidActiveOptions();
+      if (!hasInvalid && !targetMap.__hasAnyModalChanges()) {
+        return Promise.resolve(
+          this.handleModalCancel(targetMap, ev, true),
+        ).finally(() => {
+          if (typeof sectionRef._refreshStudioDeck === 'function') {
+            sectionRef._refreshStudioDeck();
+          }
+        });
+      }
+    }
+
+    const origCallDelete =
+      typeof uci !== 'undefined' && typeof uci.callDelete === 'function'
+        ? uci.callDelete
+        : null;
+    if (origCallDelete) {
+      uci.callDelete = function (config, sectionName) {
+        if (config === UCI_PACKAGE) {
+          const creates = uci.state?.creates?.[UCI_PACKAGE];
+          const values = uci.state?.values?.[UCI_PACKAGE];
+          if (creates?.[sectionName] || !values?.[sectionName]) {
+            return Promise.resolve(0);
+          }
         }
+        return origCallDelete.apply(this, arguments).catch((err) => {
+          const msg = typeof err?.message === 'string' ? err.message : '';
+          const coded = /\bubus code \d+\b/.test(msg);
+          if (
+            config === UCI_PACKAGE &&
+            (/\bubus code 4\b/.test(msg) ||
+              (!coded &&
+                (msg.includes('Ресурс не найден') ||
+                  msg.includes('Not found'))))
+          ) {
+            return 0;
+          }
+          return Promise.reject(err);
+        });
+      };
+    }
+
+    const beforeUciSave = () => {
+      sanitizeUciDeletes(targetSectionId);
+    };
+
+    let saveSucceeded = false;
+    let res;
+    if (origModalSave) {
+      res = Promise.resolve(origModalSave.apply(this, arguments)).then((r) => {
+        saveSucceeded = true;
+        return r;
+      });
+    } else if (!targetMap) {
+      res = Promise.resolve();
+    } else {
+      let saveTasks;
+      try {
+        saveTasks = targetMap.save(beforeUciSave, true);
+      } catch (e) {
+        if (origCallDelete) {
+          uci.callDelete = origCallDelete;
+        }
+        return Promise.reject(e);
+      }
+
+      saveTasks = saveTasks.then(() => {
+        saveSucceeded = true;
+        let reloadChain = Promise.resolve();
+        let curr = targetMap;
+        while (curr.parent) {
+          curr = curr.parent;
+          const parentMap = curr;
+          reloadChain = reloadChain
+            .then(() =>
+              typeof parentMap.load === 'function' ? parentMap.load() : null,
+            )
+            .then(() =>
+              typeof parentMap.reset === 'function' ? parentMap.reset() : null,
+            )
+            .catch(() => null);
+        }
+        return reloadChain;
+      });
+
+      res = saveTasks
+        .then(() => this.handleModalCancel(targetMap, ev, true))
+        .catch((err) => {
+          if (
+            typeof ui !== 'undefined' &&
+            typeof ui.addNotification === 'function' &&
+            err
+          ) {
+            ui.addNotification(
+              null,
+              E('p', {}, String(err.message || err)),
+              'danger',
+            );
+          }
+        });
+    }
+
+    return Promise.resolve(res).finally(() => {
+      if (origCallDelete) {
+        uci.callDelete = origCallDelete;
+      }
+      if (!saveSucceeded) {
+        return;
+      }
+      try {
+        sanitizeUciDeletes(targetSectionId);
+        const saveDone =
+          origModalSave &&
+          hasPendingUciStateChanges() &&
+          typeof uci !== 'undefined' &&
+          typeof uci.save === 'function'
+            ? Promise.resolve(uci.save())
+            : Promise.resolve();
+        saveDone
+          .then(() => {
+            if (
+              typeof ui !== 'undefined' &&
+              ui.changes &&
+              typeof ui.changes.init === 'function'
+            ) {
+              return ui.changes.init();
+            }
+            return null;
+          })
+          .catch(() => null)
+          .finally(() => {
+            if (typeof sectionRef._refreshStudioDeck === 'function') {
+              sectionRef._refreshStudioDeck();
+            }
+          });
       } catch (_e) {
         if (typeof sectionRef._refreshStudioDeck === 'function') {
           sectionRef._refreshStudioDeck();
@@ -479,6 +918,16 @@ const EntryPoint = {
       if (typeof data?.luci_lang === 'string' && data.luci_lang.trim()) {
         uiCapabilities.luciLang = data.luci_lang.trim();
       }
+      if (data?.ui_prefs && typeof data.ui_prefs === 'object') {
+        (globalThis as any).__tachyonUiPrefs = {
+          ...(data.ui_prefs || {}),
+          ...((globalThis as any).__tachyonUiPrefs || {}),
+          studio_views: {
+            ...(data.ui_prefs.studio_views || {}),
+            ...((globalThis as any).__tachyonUiPrefs?.studio_views || {}),
+          },
+        };
+      }
       const serverInboundsEnabledCount =
         typeof data?.server_inbounds_enabled_count !== 'undefined'
           ? Number(data.server_inbounds_enabled_count)
@@ -649,9 +1098,15 @@ const EntryPoint = {
       _('Configuration for Tachyon service'),
     );
     tachyonMap.tabbed = true;
+    let initialUciLoaded = Boolean(uci.state?.values?.[UCI_PACKAGE]);
     tachyonMap.load = function () {
       const self = this;
-      return uci.load(self.config).then(() => {
+      const loadPromise =
+        initialUciLoaded && uci.state?.values?.[self.config]
+          ? Promise.resolve()
+          : uci.load(self.config);
+      initialUciLoaded = false;
+      return loadPromise.then(() => {
         if (!uci.get(self.config, 'settings')) {
           uci.add(self.config, 'settings', 'settings');
         }
@@ -997,10 +1452,17 @@ const EntryPoint = {
                 }
                 const activeBalId = balFound ? balFound['.name'] : balId;
                 if (!uci.get(self.config, activeBalId)) return;
+                const curSecLevels = toArr(
+                  uci.get(self.config, parentSec, 'outbound_group_levels'),
+                );
                 const curBalLevels = toArr(
                   uci.get(self.config, activeBalId, 'outbound_group_levels'),
                 );
-                if (alreadyMigrated && curBalLevels.length > 0) return;
+                if (
+                  alreadyMigrated &&
+                  (curSecLevels.length > 0 || curBalLevels.length > 0)
+                )
+                  return;
 
                 const pgId = pg['.name'];
                 const matchedLevels = (
@@ -1017,7 +1479,9 @@ const EntryPoint = {
                     const ob = parseInt(b.order || '0', 10);
                     return oa - ob;
                   });
-                  const balLevels = [...curBalLevels];
+                  const balLevels = [
+                    ...(curSecLevels.length ? curSecLevels : curBalLevels),
+                  ];
                   const secSources = toArr(
                     uci.get(self.config, parentSec, 'outbound_source_refs'),
                   );
@@ -1172,7 +1636,7 @@ const EntryPoint = {
                   if (balLevels.length) {
                     uci.set(
                       self.config,
-                      activeBalId,
+                      parentSec,
                       'outbound_group_levels',
                       balLevels,
                     );
@@ -1205,10 +1669,23 @@ const EntryPoint = {
           );
 
           const pruneList = (sid, key, validSet, allowPrefix, allowDirect) => {
-            const cur = toArr(uci.get(self.config, sid, key));
+            const raw = uci.get(self.config, sid, key);
+            const cur = allowDirect
+              ? Array.isArray(raw)
+                ? raw.map((x) => String(x).trim()).filter(Boolean)
+                : raw
+                  ? String(raw).trim().startsWith('srv:')
+                    ? [String(raw).trim()]
+                    : toArr(raw)
+                  : []
+              : toArr(raw);
             if (!cur.length) return;
             const next = cur.filter((tok) => {
-              if (allowDirect && tok === 'direct') return true;
+              if (
+                allowDirect &&
+                (tok === 'direct' || String(tok).startsWith('srv:'))
+              )
+                return true;
               const bare = allowPrefix ? stripPrefix(tok) : tok;
               return validSet.has(bare);
             });
@@ -1218,6 +1695,10 @@ const EntryPoint = {
             }
           };
 
+          const validGroupsAndSources = new Set([
+            ...validGroups,
+            ...validSources,
+          ]);
           (uci.sections(self.config, 'section') || []).forEach((sec) => {
             const sid = sec ? sec['.name'] : null;
             if (!sid) return;
@@ -1225,11 +1706,14 @@ const EntryPoint = {
             pruneList(sid, 'outbound_source_refs', validSources, false, false);
             pruneList(sid, 'outbound_group_refs', validGroups, false, false);
             pruneList(sid, 'balancer_refs', validBalancers, false, false);
+            pruneList(
+              sid,
+              'outbound_group_levels',
+              validGroupsAndSources,
+              false,
+              true,
+            );
           });
-          const validGroupsAndSources = new Set([
-            ...validGroups,
-            ...validSources,
-          ]);
           (uci.sections(self.config, 'balancer') || []).forEach((bal) => {
             const bid = bal ? bal['.name'] : null;
             if (!bid) return;
@@ -1552,10 +2036,19 @@ const EntryPoint = {
           el: root.querySelector('#cbi-tachyon-schedule'),
         },
       ];
+      const isTestEnv = Boolean(
+        typeof globalThis !== 'undefined' &&
+          ((globalThis as any).__vitest_worker__ ||
+            (typeof process !== 'undefined' && process.env?.VITEST)),
+      );
+      let deferredIndex = 0;
       targets.forEach(({ type, el }) => {
         const ref = gridSectionRegistry[type];
         if (!ref || !el) return;
+        el.classList.add('tachyon-studio-managed');
+        let mountedOnce = false;
         const doMount = () => {
+          mountedOnce = true;
           main.mountTachyonStudioDeck({
             type,
             sectionRef: ref,
@@ -1572,7 +2065,26 @@ const EntryPoint = {
           });
         };
         ref._refreshStudioDeck = doMount;
-        doMount();
+        const tabPane = el.closest
+          ? el.closest('.cbi-tab, .cbi-tab-descr')
+          : null;
+        const isHiddenTab =
+          !isTestEnv &&
+          tabPane &&
+          tabPane.classList &&
+          tabPane.classList.contains('cbi-tab-descr');
+        if (
+          isHiddenTab &&
+          typeof window !== 'undefined' &&
+          typeof window.setTimeout === 'function'
+        ) {
+          deferredIndex += 1;
+          window.setTimeout(() => {
+            if (!mountedOnce) doMount();
+          }, deferredIndex * 20);
+        } else {
+          doMount();
+        }
       });
     };
 

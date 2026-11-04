@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Section group (action 'group'): one flat URLTest over the union of member
-# leaves, member route rules repointed at that URLTest, members validated, and
-# the whole action parked on steer.
+# leaves, member route rules repointed at that URLTest, members validated.
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
@@ -378,7 +377,7 @@ if (!awg_rule || awg_rule.outbound != "grp-out")
         (awg_rule ? awg_rule.outbound : "null") + "\n");
 ' "$group_awg_config" || fail "generated section group with manual awg member"
 
-# ─── parking: sing-box supports sections.group, steer does not ────────────────
+# ─── capability: tachyon-core supports sections.group ─────────────────────────
 
 parking="$(ucode -L "$TACHYON_LIB" -e '
 let st = require("components.engine_state");
@@ -391,19 +390,12 @@ function has(values, needle) {
 }
 printf("feat=%s\n", st.section_feature({ ".type": "section", "action": "group" }));
 printf("singbox=%d\n", has(e.capabilities("tachyon-core"), "sections.group"));
-printf("steer=%d\n", has(e.capabilities("steer"), "sections.group"));
-let g = require("steer.generator");
-printf("steer_supported=%d\n", g.section_supported({ ".name": "grp", "action": "group" }));
 ' 2>&1)" || fail "could not read group parking metadata: $parking"
 
 grep -q '^feat=sections.group$' <<<"$parking" ||
   fail "a group section must map to the sections.group feature: $parking"
 grep -q '^singbox=1$' <<<"$parking" ||
   fail "sing-box capabilities must include sections.group: $parking"
-grep -q '^steer=0$' <<<"$parking" ||
-  fail "steer capabilities must not include sections.group: $parking"
-grep -q '^steer_supported=0$' <<<"$parking" ||
-  fail "the steer generator must skip group sections: $parking"
 
 # ─── UI: action is choosable and members are pickable ─────────────────────────
 

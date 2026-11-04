@@ -214,13 +214,16 @@ function prerm_cleanup(action) {
 
     remember_upgrade_state(action);
     if (!PACKAGE_TEST_MODE) {
-        // Stop the service using BIN_PATH directly (bypasses rc.common flock)
-        bounded_command_success_from_args([BIN_PATH, "stop"]);
-        bounded_command_success_from_args([INIT_PATH, "stop"]);
+        // Stop the service using BIN_PATH directly (bypasses rc.common flock);
+        // only fall back to INIT_PATH when BIN_PATH is unavailable or fails.
+        if (!bounded_command_success_from_args([BIN_PATH, "stop"]))
+            bounded_command_success_from_args([INIT_PATH, "stop"]);
 
         // Kill any remaining tachyon processes, minus this hook's own ancestors.
         system(kill_matching_command("-F '" + BIN_PATH + "'"));
-        restore_dnsmasq_if_needed();
+        if (as_string(action) != "upgrade" ||
+            uci_core.get(CONFIG_NAME + ".settings.keep_dns_on_upgrade") == "0")
+            restore_dnsmasq_if_needed();
     }
     remove_rt_tables_entry(); // best-effort
     return true;

@@ -93,29 +93,15 @@ IN
 [ "$SING_BOX_INSTALL_VARIANT" = "stable" ] ||
   fail "empty sing-box choice must default to stable (got: ${SING_BOX_INSTALL_VARIANT:-empty})"
 
+SING_BOX_INSTALL_VARIANT=""
 ENGINE_INSTALL_CHOICE=""
 select_sing_box_installation <<'IN' >/dev/null 2>&1 || true
 6
 IN
-[ "$ENGINE_INSTALL_CHOICE" = "steer" ] ||
-  fail "menu choice 6 must select steer (got: ${ENGINE_INSTALL_CHOICE:-empty})"
-
-ENGINE_INSTALL_CHOICE=""
-select_sing_box_installation <<'IN' >/dev/null 2>&1 || true
-7
-IN
-[ "$ENGINE_INSTALL_CHOICE" = "steer-extended" ] ||
-  fail "menu choice 7 must select steer-extended (got: ${ENGINE_INSTALL_CHOICE:-empty})"
-
-SING_BOX_INSTALL_VARIANT=""
-ENGINE_INSTALL_CHOICE=""
-select_sing_box_installation <<'IN' >/dev/null 2>&1 || true
-8
-IN
 [ "$SING_BOX_INSTALL_VARIANT" = "tachyon-core" ] ||
-  fail "menu choice 8 must select tachyon-core (got: ${SING_BOX_INSTALL_VARIANT:-empty})"
+  fail "menu choice 6 must select tachyon-core (got: ${SING_BOX_INSTALL_VARIANT:-empty})"
 [ "$ENGINE_INSTALL_CHOICE" = "sing-box" ] ||
-  fail "menu choice 8 must set engine sing-box (got: ${ENGINE_INSTALL_CHOICE:-empty})"
+  fail "menu choice 6 must set engine sing-box (got: ${ENGINE_INSTALL_CHOICE:-empty})"
 
 SING_BOX_INSTALL_VARIANT="keep"
 ENGINE_INSTALL_CHOICE="keep"

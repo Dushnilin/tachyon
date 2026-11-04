@@ -469,7 +469,7 @@ function handle_tools() {
             },
             {
                 name:         "tachyon_route_explain",
-                description:  "Explain why and how traffic from a client to a target domain/IP is routed or bypassed (nftables, DNS, policy routing, sing-box/steer outbound).",
+                description:  "Explain why and how traffic from a client to a target domain/IP is routed or bypassed (nftables, DNS, policy routing, tachyon-core outbound).",
                 method:       "GET",
                 path:         "/tachyon/agent/v1/route/explain",
                 input_schema: {

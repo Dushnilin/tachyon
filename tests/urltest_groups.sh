@@ -940,24 +940,33 @@ ucode -e '
 let fs = require("fs");
 let config = json(fs.readfile(ARGV[0]));
 let selector = null;
+let auto_grp = null;
 let hy2 = null;
+let bal_hy2 = false;
+let bal_vless = false;
 for (let ob in config.outbounds || []) {
     if (ob && ob.type == "selector" && ob.tag == "MAIN-out")
         selector = ob;
+    if (ob && ob.type == "urltest" && ob.tag == "🇪🇺 Автовыбор")
+        auto_grp = ob;
     if (ob && ob.type == "hysteria2" && ob.tag == "🇳🇱 Нидерланды · Hysteria²")
         hy2 = ob;
-    if (ob && (ob.tag == "bal-1-hysteria" || ob.tag == "bal-1-vless"))
-        die("internal bal-1-* balancer member leaked into config when include_urltest_groups is disabled\n");
+    if (ob && ob.tag == "bal-1-hysteria")
+        bal_hy2 = true;
+    if (ob && ob.tag == "bal-1-vless")
+        bal_vless = true;
 }
 if (!selector)
     die("missing MAIN-out selector for arblaze\n");
+if (!auto_grp || !bal_hy2 || !bal_vless)
+    die("expected 🇪🇺 Автовыбор urltest group and its hidden bal-1-* backing members in config.outbounds\n");
 if (!hy2 || type(hy2.obfs) != "object" || hy2.obfs.type != "gecko" || hy2.obfs.password != "gecko-pass" || hy2.obfs.min_packet_size != 512 || hy2.obfs.max_packet_size != 1200)
     die("expected Hysteria2 finalmask packetSize 512-1200 to produce gecko obfs\n");
 let members = {};
 for (let m in selector.outbounds || [])
     members[m] = true;
-if (!members["🇳🇱 Нидерланды · Hysteria²"] || !members["🇫🇮 Финляндия · XHTTP"] || members["bal-1-hysteria"] || members["bal-1-vless"])
-    die("expected only standalone servers in MAIN-out without bal-1-* duplicates\n");
-' "$arblaze_config" || fail "ARBlazeAG balancer + standalone subscription drops duplicate bal-1-* members and preserves Hysteria2 gecko obfs"
+if (!members["🇪🇺 Автовыбор"] || !members["🇳🇱 Нидерланды · Hysteria²"] || !members["🇫🇮 Финляндия · XHTTP"] || members["bal-1-hysteria"] || members["bal-1-vless"])
+    die("expected 🇪🇺 Автовыбор and standalone servers in MAIN-out without bal-1-* duplicates\n");
+' "$arblaze_config" || fail "ARBlazeAG balancer + standalone subscription preserves 🇪🇺 Автовыбор, hides bal-1-* members from selector, and preserves Hysteria2 gecko obfs"
 
 printf 'URLTest group checks passed\n'

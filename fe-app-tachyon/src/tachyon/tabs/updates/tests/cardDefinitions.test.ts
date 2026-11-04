@@ -45,9 +45,6 @@ const mockSystemInfo: StoreType['diagnosticsSystemInfo'] = {
   fptn_installed: 0,
   fptn_version: 'not installed',
   tailscale_version: 'not installed',
-  steer_installed: 1,
-  steer_version: '1.5.7',
-  steer_extended: 1,
   direct_bypass_enabled: 0,
   torrserver_direct_enabled: 0,
   torrserver_direct_active: 0,
@@ -69,7 +66,6 @@ describe('updates cardDefinitions helpers', () => {
       '1.11.0',
     );
     expect(getComponentCurrentVersion('zapret', mockSystemInfo)).toBe('68.0');
-    expect(getComponentCurrentVersion('steer', mockSystemInfo)).toBe('1.5.7');
     expect(getComponentCurrentVersion('wdtt', mockSystemInfo)).toBe(
       'not installed',
     );
@@ -87,7 +83,6 @@ describe('updates cardDefinitions helpers', () => {
     expect(getComponentInstallKey('tachyon')).toBe('tachyonInstall');
     expect(getComponentInstallKey('sing_box')).toBe('singBoxInstall');
     expect(getComponentInstallKey('zapret2')).toBe('zapret2Install');
-    expect(getComponentInstallKey('steer')).toBe('steerInstall');
     expect(getComponentInstallKey('engine')).toBe('engineSwitch');
   });
 
@@ -183,6 +178,5 @@ describe('updates cardDefinitions helpers', () => {
   it('provides known GitHub / repo URLs', () => {
     expect(COMPONENT_REPO_URLS.tachyon).toContain('tachyon');
     expect(COMPONENT_REPO_URLS.sing_box).toContain('sing-box');
-    expect(COMPONENT_REPO_URLS.steer).toContain('steer');
   });
 });

@@ -119,14 +119,10 @@ reset(); nft_ok = true; heal_nftables({});
 check(rec_calls == 0 && length(background) == 0, "Stale event caused unnecessary repair");
 
 // Late activation: a writer already queued before failsafe must undo its work.
-for (let engine in ["tachyon-core", "steer"]) {
-    reset(); active = engine; repair_works = true; bypass_during_reconcile = true;
-    heal_nftables({});
-    check(is_emergency_failsafe_active() && length(shell_calls) > 0 && last_ai_incident == null,
-        "In-flight reconciler repair defeated emergency cleanup");
-    if (engine == "steer")
-        check(index(join(" ", commands), "nft delete table inet steer") >= 0, "Steer bypass did not remove interception");
-}
+reset(); active = "tachyon-core"; repair_works = true; bypass_during_reconcile = true;
+heal_nftables({});
+check(is_emergency_failsafe_active() && length(shell_calls) > 0 && last_ai_incident == null,
+    "In-flight reconciler repair defeated emergency cleanup");
 reset(); pause_during_rebuild = true;
 check(firewall_repair_worker() == 1 && length(shell_calls) > 0,
     "In-flight firewall reload defeated a newly activated bypass");
@@ -163,9 +159,6 @@ for (let failure in ["nft", "routing", "listener", "dns", "proxy", "bypass"]) {
 reset(); files[EMERGENCY_STATE_TMP] = "{}"; files["/var/run/tachyon/starting"] = "1";
 check(!release_emergency_failsafe_if_recovered() && length(commands) == 0,
     "Failsafe release raced a lifecycle operation");
-reset(); active = "steer"; files[EMERGENCY_STATE_FILE] = "{}";
-check(!release_emergency_failsafe_if_recovered() && length(commands) == 0,
-    "Steer used tachyon-core-specific release");
 print("watchdog failsafe recovery tests passed\n");
 UC
 ucode -S -L "$TACHYON_LIB" "$WORK_DIR/probe.uc"

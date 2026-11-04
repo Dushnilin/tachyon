@@ -1,20 +1,7 @@
 #!/usr/bin/env ucode
 //
 // Engine state: what the current Tachyon configuration uses, expressed as the
-// engine features from core/engine.uc, plus the switch transaction that reports
-// what the target engine cannot express.
-//
-// The switch is deliberately conservative:
-//   1. PLAN      - compute the feature list and what the target engine cannot do
-//   2. VALIDATE  - target engine must be installed (or the caller opted in)
-//   3. MUTATE    - flip settings.engine / engine_previous
-// A failed validation rolls the mutation back, so the device never ends up
-// pointing at an engine that is not there.
-//
-// Nothing is disabled on disk. Unsupported sections stay in the configuration
-// and the generator skips them for the active engine, so switching back needs no
-// restoration step. An earlier version persisted a snapshot of the parked set
-// and returned a "restored" field; nothing ever consumed it.
+// engine features from core/engine.uc, plus the switch transaction.
 //
 
 let common = require("core.common");
@@ -22,7 +9,6 @@ let uci_core = require("core.uci");
 let engine = require("core.engine");
 
 let as_string = common.as_string;
-let file_exists = common.file_exists;
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 
@@ -30,9 +16,6 @@ const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 // Configuration -> feature vocabulary
 // ============================================================================
 
-// Map one UCI section to the engine feature it needs. Sections that do not map
-// to a feature are ignored on purpose: they are either settings-only or belong
-// to a category that every engine handles the same way.
 function section_feature(section) {
     let action = as_string(section.action || "");
     let stype = as_string(section[".type"] || "");
@@ -45,12 +28,6 @@ function section_feature(section) {
         return "sections.subscription";
 
     if (stype == "section") {
-        // zapret2 strategies are Lua. contract-v1 stored `nfqws_bin`, the
-        // resolved nfqws2 path, so steer launched the Lua-capable binary; spec v2
-        // has no such key and an unknown key rejects the whole spec. So the
-        // capability is real and steer cannot express it, and parking the section
-        // is the honest outcome - emitting the output would leave a strategy that
-        // looks configured and silently runs without its Lua part.
         if (action == "zapret2")
             return "outbound.zapret_lua";
         if (action == "zapret")
@@ -68,24 +45,6 @@ function section_feature(section) {
         if (action == "tailscale")
             return "sections.tailscale";
         if (action == "urltest")
-            // Deliberately NOT a steer capability, and not a formatting gap.
-            //
-            // Spec v2 does have `pick: latency`, but a group measures its
-            // *members*, and members are outputs that have a device. A sing-box
-            // urltest group is the opposite: its members are the individual
-            // nodes of one subscription, which are not outputs and have no name
-            // in the outputs namespace. Tachyon merges every provider of a
-            // section into one subscription file, so a section is one tunnel
-            // output and a latency group over it has exactly one member - which
-            // measures nothing and cannot pick a node.
-            //
-            // Node *filtering* does work on steer (include/exclude/regex/countries
-            // reach the cache and the merged sub file), so what is lost is the
-            // latency ordering, not the composition.
-            //
-            // Un-parking this would either silently stop choosing by latency or
-            // require one output per node, which the single merged subscription
-            // file cannot produce.
             return "routing.urltest";
         if (action == "direct_bypass")
             return "routing.direct_bypass";
@@ -126,8 +85,6 @@ function list_length(value) {
     return 0;
 }
 
-// Options on settings and sections that imply a feature. Kept explicit so a
-// new option does not silently fall out of the parity check.
 function option_features(settings, features) {
     if (bool_option(settings, "dns_detour_enabled"))
         push(features, "dns.failover");
@@ -147,9 +104,6 @@ function option_features(settings, features) {
         push(features, "obs.custom_service_script");
 }
 
-// Collect the distinct feature list the current configuration needs, together
-// with the section names that carry each feature. The names are what parking
-// stores, so switching back can point at exactly the sections that were parked.
 function current_feature_map() {
     let features = {};
     let settings = uci_core.get_all(CONFIG_NAME, "settings") || {};
@@ -199,13 +153,11 @@ function current_feature_map() {
         });
     }
     catch (e) {
-        // Partial map is fine: the switch parks less, and uci already logged.
     }
 
     return features;
 }
 
-// Collect the distinct feature list the current configuration needs.
 function current_features() {
     let map = current_feature_map();
     return keys(map);
@@ -223,9 +175,6 @@ function commit() {
     return uci_core.commit(CONFIG_NAME);
 }
 
-// Validate that a switch target can actually run before we point the config at
-// it. `allow_install` lets the caller switch anyway when it intends to install
-// the engine right after (install.sh / component install path).
 function validate_target(target, allow_install) {
     let info = engine.detect(target);
     if (!info.known)
@@ -237,58 +186,12 @@ function validate_target(target, allow_install) {
     return { ok: false, reason: "engine_not_installed", installable: true };
 }
 
-// Everything under /etc/steer is derived from the Tachyon config and is
-// regenerated on demand, so once steer is not the active engine none of it is
-// read by anything. It is also all on the flash overlay, and the biggest piece -
-// the per-channel list files and the spec - was being rewritten on every apply
-// even when a router never runs steer.
-//
-// Measured on 192.168.1.1, which runs sing-box: /etc/steer still held ten files
-// including a full spec.json and every channel list, untouched since the day the
-// engine was switched away. Nothing cleaned it up, because only the switching
-// code knows the engine just changed.
-//
-// Only the paths Tachyon writes are removed. The steer package owns the rest of
-// /etc/steer and uninstalling its files is not this function's business.
-//
-// The spec path is a parameter so the test can point this at a scratch directory.
-// It used to be pinned to /etc/steer, which made the test need root and therefore
-// only pass in the local docker image - the CI runner is not root and the suite
-// went red on "mkdir: cannot create directory /etc/steer". The safety floor is
-// kept where it matters: never the filesystem root, never a single top-level
-// system directory. Both are refused regardless of what the caller passes.
-function discard_steer_artifacts(target, spec_path) {
-    if (as_string(target) == engine.ENGINE_STEER ||
-        as_string(target) == engine.ENGINE_STEER_EXTENDED)
-        return;
-
-    spec_path = as_string(spec_path != null ? spec_path : engine.STEER_SPEC_FILE);
-    if (spec_path == "" || substr(spec_path, 0, 1) != "/")
-        return;
-
-    let base = common.parent_dir(spec_path);
-    // Refuse the filesystem root and any single top-level directory such as
-    // /etc. Compared by component count rather than with rindex(), whose
-    // behaviour with a needle is not what the same call suggests elsewhere in
-    // the codebase. "/tmp" splits to 2, "/etc/steer" to 3.
-    if (base == "" || length(split(base, "/")) < 3)
-        return;
-
-    for (let name in [ "lists", "zapret" ])
-        common.remove_tree(base + "/" + name);
-    common.remove_tree(spec_path);
-}
-
-// Perform the switch plan: park what cannot come along, flip the engine.
-// Returns { ok, plan, restored, validation }.
 function apply_switch(target, opts) {
     opts = type(opts) == "object" ? opts : {};
     target = engine.normalize_engine(target);
     let active = engine.get_active();
 
     let validation = validate_target(target, opts.allow_install);
-    // The feature map carries the section names behind each feature, so the
-    // parked snapshot can name exactly what was set aside.
     let feature_map = current_feature_map();
     let plan = engine.plan_switch(target, feature_map);
 
@@ -307,20 +210,9 @@ function apply_switch(target, opts) {
     if (opts.dry_run)
         return { ok: true, reason: "dry_run", from_engine: active, to_engine: target, plan, validation };
 
-    // No snapshot is taken and none is needed. Parking is a decision the
-    // generator makes per section - section_supported() in steer/generator.uc
-    // simply skips what the active engine cannot express - and the sections
-    // themselves are never modified, so they come back on their own when the
-    // engine is switched again. This code used to write a JSON snapshot into UCI
-    // under unsupported_snapshot_<engine> and read it back into a `restored`
-    // field that nothing consumed: a restore that was documented, named, and
-    // never performed. Dropping it removes a growing UCI option and a field
-    // that made API consumers believe a restore had happened.
     set_option("engine", target);
     set_option("engine_previous", active);
     commit();
-
-    discard_steer_artifacts(target);
 
     return {
         ok: true,
@@ -332,7 +224,6 @@ function apply_switch(target, opts) {
     };
 }
 
-// Restore the previously active engine, if one is recorded and installed.
 function switch_back(opts) {
     let previous = engine.get_previous();
     if (previous == "")
@@ -351,7 +242,6 @@ function module_exports() {
         current_feature_map,
         validate_target,
         apply_switch,
-        discard_steer_artifacts,
         switch_back,
         set_option,
         commit

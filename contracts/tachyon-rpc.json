@@ -299,20 +299,6 @@
       }
     },
     {
-      "name": "check_steer",
-      "cli_command": "check_steer",
-      "category": "diagnostics",
-      "acl": "read",
-      "description": "check-steer (diagnostics/runtime.uc)",
-      "async": false,
-      "timeout_ms": 5000,
-      "params": [],
-      "returns": {
-        "type": "object",
-        "description": "command output"
-      }
-    },
-    {
       "name": "check_tor_runtime",
       "cli_command": "check_tor_runtime",
       "category": "diagnostics",
@@ -1016,41 +1002,6 @@
       }
     },
     {
-      "name": "engine_diag",
-      "cli_command": "engine_diag",
-      "category": "system",
-      "acl": "read",
-      "description": "engine-diag (service/engine_runtime.uc)",
-      "async": false,
-      "timeout_ms": 5000,
-      "params": [],
-      "returns": {
-        "type": "object",
-        "description": "command output"
-      }
-    },
-    {
-      "name": "engine_explain",
-      "cli_command": "engine_explain",
-      "category": "system",
-      "acl": "read",
-      "description": "engine-explain (service/engine_runtime.uc)",
-      "async": false,
-      "timeout_ms": 5000,
-      "params": [
-        {
-          "name": "arg1",
-          "type": "string",
-          "required": false,
-          "description": "positional argument 1 of engine_explain"
-        }
-      ],
-      "returns": {
-        "type": "object",
-        "description": "command output"
-      }
-    },
-    {
       "name": "engine_features",
       "cli_command": "engine_features",
       "category": "system",
@@ -1059,27 +1010,6 @@
       "async": false,
       "timeout_ms": 5000,
       "params": [],
-      "returns": {
-        "type": "object",
-        "description": "command output"
-      }
-    },
-    {
-      "name": "engine_generate",
-      "cli_command": "engine_generate",
-      "category": "system",
-      "acl": "write",
-      "description": "engine-generate (service/engine_runtime.uc)",
-      "async": false,
-      "timeout_ms": 60000,
-      "params": [
-        {
-          "name": "arg1",
-          "type": "string",
-          "required": false,
-          "description": "positional argument 1 of engine_generate"
-        }
-      ],
       "returns": {
         "type": "object",
         "description": "command output"
@@ -2111,6 +2041,20 @@
       "category": "system",
       "acl": "read",
       "description": "get-ui-capabilities (service/ui.uc)",
+      "async": false,
+      "timeout_ms": 5000,
+      "params": [],
+      "returns": {
+        "type": "object",
+        "description": "command output"
+      }
+    },
+    {
+      "name": "get_ui_prefs",
+      "cli_command": "get_ui_prefs",
+      "category": "system",
+      "acl": "read",
+      "description": "get-ui-prefs (service/ui.uc)",
       "async": false,
       "timeout_ms": 5000,
       "params": [],
@@ -3677,6 +3621,27 @@
           "type": "string",
           "required": false,
           "description": "positional argument 1 of set_lite_mode"
+        }
+      ],
+      "returns": {
+        "type": "object",
+        "description": "command output"
+      }
+    },
+    {
+      "name": "set_ui_prefs",
+      "cli_command": "set_ui_prefs",
+      "category": "system",
+      "acl": "write",
+      "description": "set-ui-prefs (service/ui.uc)",
+      "async": false,
+      "timeout_ms": 60000,
+      "params": [
+        {
+          "name": "arg1",
+          "type": "string",
+          "required": false,
+          "description": "positional argument 1 of set_ui_prefs"
         }
       ],
       "returns": {

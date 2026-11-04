@@ -18,19 +18,33 @@ let shell_quote = common.shell_quote;
 function probe_single_target_dpi(target_item, dns_flags) {
     let target_url = target_item.url;
     let p_kind = target_item.probe_kind || "tls_http";
+    let is_udp_stun = (p_kind == "udp_stun" || index(as_string(target_url || ""), "udp://") == 0);
     let extra_flags = "";
     if (p_kind == "streaming") {
         extra_flags = "-r 0-65535 ";
     }
 
-    let target_flags = binaries.get_resolved_host_flags(target_url);
-    if (target_flags == "") target_flags = dns_flags;
+    let target_flags = is_udp_stun ? "" : binaries.get_resolved_host_flags(target_url);
+    if (!is_udp_stun && target_flags == "") target_flags = dns_flags;
 
-    let curl_cmd = binaries.wrap_probe_cmd(
-        binaries.probe_curl_cmd(extra_flags, target_flags, target_url, (getenv("TACHYON_FUZZER_STATE_DIR") || "/var/run/tachyon") + "/fuzzer_curl_err.log"),
-        8
-    );
-    let pipe = fs.popen(curl_cmd, "r");
+    let probe_cmd_str;
+    if (is_udp_stun) {
+        let udp_info = binaries.parse_udp_target_url(target_url);
+        probe_cmd_str = binaries.wrap_probe_cmd(
+            binaries.probe_udp_stun_cmd(
+                udp_info ? udp_info.ip : "74.125.250.129",
+                udp_info ? udp_info.port : 19302,
+                (getenv("TACHYON_FUZZER_STATE_DIR") || "/var/run/tachyon") + "/fuzzer_udp_dpi.bin"
+            ),
+            4
+        );
+    } else {
+        probe_cmd_str = binaries.wrap_probe_cmd(
+            binaries.probe_curl_cmd(extra_flags, target_flags, target_url, (getenv("TACHYON_FUZZER_STATE_DIR") || "/var/run/tachyon") + "/fuzzer_curl_err.log"),
+            8
+        );
+    }
+    let pipe = fs.popen(probe_cmd_str, "r");
     let output = pipe ? pipe.read("all") : "";
     if (pipe) pipe.close();
     output = trim(output);
@@ -51,7 +65,7 @@ function probe_single_target_dpi(target_item, dns_flags) {
 
     // Also check for DNS-level blocking
     let domain = target_url;
-    let dm = match(domain, /https?:\/\/([^/]+)/);
+    let dm = match(domain, /^(?:https?|udp):\/\/([^/:]+)/);
     if (dm && dm[1]) domain = dm[1];
 
     let dns_cmd = binaries.wrap_probe_cmd(sprintf("nslookup %s 77.88.8.8 2>&1 || nslookup %s 2>&1", shell_quote(domain), shell_quote(domain)), 4);

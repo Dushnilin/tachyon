@@ -3408,6 +3408,27 @@ function createOutboundsContent(section) {
 
   o = section.taboption(
     'general',
+    form.Value,
+    'subscription_update_jitter',
+    _('Update Interval Randomization (Jitter)'),
+    _(
+      'Add a randomized offset to automatic subscription updates (e.g. 15%, 25%, or 15m) so updates do not fire at fixed clock intervals.',
+    ),
+  );
+  o.modalonly = true;
+  o.default = '';
+  o.placeholder = _('Disabled (Exact interval)');
+  o.value('', _('Disabled (Exact interval)'));
+  o.value('15%', _('±15% (Recommended — spreads auto-update load)'));
+  o.value('25%', _('±25% (Medium randomization)'));
+  o.value('40%', _('±40% (High randomization)'));
+  o.depends({
+    source_type: 'subscription',
+    subscription_update_enabled: '1',
+  });
+
+  o = section.taboption(
+    'general',
     form.Flag,
     'download_via_proxy_enabled',
     _('Download Subscription via Proxy Section'),

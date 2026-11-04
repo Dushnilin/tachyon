@@ -840,6 +840,12 @@ function apply_strategy(engine, args_val, target_rule) {
                 if (parsed_ds.udp_fake != null) uci.set(CONFIG_NAME, sid, "desync_udp_fake", parsed_ds.udp_fake ? "1" : "0");
                 if (parsed_ds.udp_repeats != null) uci.set(CONFIG_NAME, sid, "desync_udp_repeats", as_string(parsed_ds.udp_repeats));
                 if (parsed_ds.udp_fake_ttl != null) uci.set(CONFIG_NAME, sid, "desync_udp_fake_ttl", as_string(parsed_ds.udp_fake_ttl));
+                if (parsed_ds.seqovl != null) uci.set(CONFIG_NAME, sid, "desync_seqovl", as_string(parsed_ds.seqovl));
+                if (parsed_ds.syndata != null) uci.set(CONFIG_NAME, sid, "desync_syndata", parsed_ds.syndata ? "1" : "0");
+                if (parsed_ds.wsize != null) uci.set(CONFIG_NAME, sid, "desync_wsize", as_string(parsed_ds.wsize));
+                if (parsed_ds.ipfrag != null) uci.set(CONFIG_NAME, sid, "desync_ipfrag", as_string(parsed_ds.ipfrag));
+                if (parsed_ds.udplen != null) uci.set(CONFIG_NAME, sid, "desync_udplen", as_string(parsed_ds.udplen));
+                if (parsed_ds.tlsrec_first != null) uci.set(CONFIG_NAME, sid, "desync_tlsrec_first", parsed_ds.tlsrec_first ? "1" : "0");
             }
         }
     };

@@ -476,6 +476,7 @@ assert(JSON.stringify(secTwo.outbound_group_refs) === JSON.stringify(['grp_sec_t
 const balCascade = cfg.balancer.find(b => b['.name'] === 'bal_sec_two_Cascade');
 assert(balCascade && balCascade.balancer_type === 'priority', 'bal_sec_two_Cascade should be a priority balancer');
 assert(JSON.stringify(balCascade.outbound_group_levels) === JSON.stringify(['grp_sec_two_lvl_1', 'grp_sec_two_lvl_2', 'direct']), 'bal_sec_two_Cascade should have outbound_group_levels set');
+assert(JSON.stringify(secTwo.outbound_group_levels) === JSON.stringify(['grp_sec_two_lvl_1', 'grp_sec_two_lvl_2', 'direct']), 'sec_two should also have outbound_group_levels migrated onto the section');
 
 const grpFast = cfg.outbound_group.find(g => g['.name'] === 'grp_sec_two_lvl_1');
 assert(grpFast && JSON.stringify(grpFast.include_countries) === JSON.stringify(['NL', 'DE']), 'grp_sec_two_lvl_1 should preserve include_countries');
@@ -815,5 +816,67 @@ grep -q '"direct-out"' "$WORK_DIR/all_disabled_out.json" || {
   printf 'Expected generate-config-fixture with all sections disabled to produce direct-only config\n' >&2
   exit 1
 }
+
+# 6. Verify reusable Priority balancer across 2 sections with distinct per-section outbound_group_levels
+TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" - <<'UCODE'
+let connections = require("config.connections");
+
+let sec_alpha = {
+    ".name": "sec_alpha",
+    ".type": "section",
+    enabled: "1",
+    action: "connection",
+    balancer_refs: [ "bal_shared_prio" ],
+    outbound_group_levels: [
+        "srv:[Akenai] Akenai BE Бельгия [VLESS+TCP]",
+        "srv:[Akenai] Akenai DE Германия [VLESS+TCP]"
+    ]
+};
+let sec_beta = {
+    ".name": "sec_beta",
+    ".type": "section",
+    enabled: "1",
+    action: "connection",
+    balancer_refs: [ "bal_shared_prio" ],
+    outbound_group_levels: [
+        "srv:[Other] Нидерланды [VLESS+REALITY]",
+        "srv:[Other] Финляндия [VLESS+REALITY]",
+        "direct"
+    ]
+};
+connections.set_item_sections_from_data({
+    settings: {
+        ".name": "settings",
+        ".type": "settings",
+        dns_server: "1.1.1.1"
+    },
+    balancer: [
+        {
+            ".name": "bal_shared_prio",
+            ".type": "balancer",
+            enabled: "1",
+            balancer_type: "priority",
+            name: "Shared Priority",
+            interrupt_exist_connections: "0"
+        }
+    ],
+    section: [ sec_alpha, sec_beta ]
+});
+
+let alpha_items = connections.priority_level_items("bal_shared_prio", sec_alpha);
+let beta_items = connections.priority_level_items("bal_shared_prio", sec_beta);
+if (length(alpha_items) != 2 || alpha_items[0].include_outbounds[0] != "[Akenai] Akenai BE Бельгия [VLESS+TCP]") {
+    warn("Expected sec_alpha to resolve its own 2 server tiers, got: " + sprintf("%J", alpha_items) + "\n");
+    exit(1);
+}
+if (length(beta_items) != 3 || beta_items[0].include_outbounds[0] != "[Other] Нидерланды [VLESS+REALITY]" || beta_items[2].direct != "1") {
+    warn("Expected sec_beta to resolve its own 3 tiers including direct, got: " + sprintf("%J", beta_items) + "\n");
+    exit(1);
+}
+if (connections.section_interrupt_exist_connections(sec_alpha) !== false) {
+    warn("Expected section_interrupt_exist_connections(sec_alpha) to inherit false from bal_shared_prio\n");
+    exit(1);
+}
+UCODE
 
 printf 'modular redesign #242 checks passed\n'

@@ -123,10 +123,16 @@ function fallback_managed_core_init_script(marker) {
         "        procd_set_param env GODEBUG=\"madvdontneed=1\" GOGC=\"50\" TACHYON_RULESET_SOFT_START=\"1\"\n" +
         "    fi\n" +
         "    procd_set_param term_timeout 15\n" +
-        "    procd_set_param respawn ${respawn_threshold:-3600} ${respawn_timeout:-5} ${respawn_retry:-5}\n" +
+        "    procd_set_param respawn ${respawn_threshold:-3600} ${respawn_timeout:-5} ${respawn_retry:-0}\n" +
         "    procd_close_instance\n" +
         "}\n\n" +
         "stop_service() {\n" +
+        "    for p in $(pidof tachyon-core sing-box 2>/dev/null); do\n" +
+        "        [ \"$p\" != \"$$\" ] || continue\n" +
+        "        case \"$(readlink -f /proc/$p/exe 2>/dev/null)\" in\n" +
+        "            */tachyon-core|*/sing-box) kill -TERM \"$p\" 2>/dev/null || true ;;\n" +
+        "        esac\n" +
+        "    done\n" +
         "    local i=0\n" +
         "    while [ \"$i\" -lt 20 ]; do\n" +
         "        _has_running_daemon || return 0\n" +
@@ -896,6 +902,7 @@ function managed_service_script_stale() {
         index(data, "GOMEMLIMIT") < 0 ||
         index(data, "PROG=\"/usr/bin/sing-box\"") < 0 ||
         index(data, "stop_service()") < 0 ||
+        index(data, "kill -TERM") < 0 ||
         index(data, "reload_service()") < 0 ||
         kills_self;
 }
@@ -2162,6 +2169,52 @@ function check_with_field_repairs(temp_config, runtime_log) {
                             if (!srs_st || srs_st.size < 17)
                                 fs.writefile(rs_entry.path, EMPTY_SRS_BINARY);
                         }
+                        write_file(temp_config, sprintf("%J", cfg));
+                        stripped = true;
+                    }
+                }
+            }
+            else if (match(check_result.reason, /dns\.rules\[\d+\]\.answer|bad owner name/)) {
+                let cfg_text = as_string(fs.readfile(temp_config) || "");
+                let cfg = length(cfg_text) > 0 ? json(cfg_text) : null;
+                if (type(cfg) == "object" && type(cfg.dns) == "object" && type(cfg.dns.rules) == "array") {
+                    let fixed_owner = false;
+                    let stripped_ans = false;
+                    for (let r in cfg.dns.rules) {
+                        if (type(r) != "object" || type(r.answer) != "array")
+                            continue;
+                        let new_ans = [];
+                        for (let item in r.answer) {
+                            if (type(item) == "string" && substr(item, 0, 2) == "* ") {
+                                push(new_ans, "*." + substr(item, 1));
+                                fixed_owner = true;
+                            } else if (type(item) == "object" && item.value != null) {
+                                let owner = trim(as_string(item.name || "*"));
+                                if (substr(owner, length(owner) - 1, 1) != ".")
+                                    owner = owner + ".";
+                                let ttl_s = as_string(item.ttl != null ? item.ttl : 60);
+                                let rr_t = index(as_string(item.value), ":") >= 0 ? "AAAA" : "A";
+                                push(new_ans, owner + " " + ttl_s + " IN " + rr_t + " " + as_string(item.value));
+                                fixed_owner = true;
+                            } else {
+                                push(new_ans, item);
+                            }
+                        }
+                        if (fixed_owner)
+                            r.answer = new_ans;
+                    }
+                    if (!fixed_owner) {
+                        for (let r in cfg.dns.rules) {
+                            if (type(r) == "object" && r.action == "predefined" && r.answer != null) {
+                                delete r.answer;
+                                if (r.rcode == null)
+                                    r.rcode = "NOERROR";
+                                stripped_ans = true;
+                            }
+                        }
+                    }
+                    if (fixed_owner || stripped_ans) {
+                        log_message("Installed sing-box rejected DNS predefined answer (" + check_result.reason + "); repaired and retrying", "warn");
                         write_file(temp_config, sprintf("%J", cfg));
                         stripped = true;
                     }

@@ -65,6 +65,10 @@ arch() {
   fail "armv7l must resolve to armv7-musl, got '$(arch armv7l)'"
 [ "$(arch mipsel)" = "mipsel-musl" ] ||
   fail "mipsel must resolve to mipsel-musl, got '$(arch mipsel)'"
+[ "$(arch mips64)" = "mips64-musl" ] ||
+  fail "mips64 must resolve to mips64-musl, got '$(arch mips64)'"
+[ "$(arch mips64el)" = "mips64el-musl" ] ||
+  fail "mips64el must resolve to mips64el-musl, got '$(arch mips64el)'"
 # The Go name is exactly the trap: if this ever comes back "arm64", the asset
 # lookup is using the wrong table again.
 [ "$(arch aarch64)" != "arm64" ] ||

@@ -4,6 +4,7 @@ import { getProxyUrlTransport } from '../helpers/getProxyUrlTransport';
 import { formatOutboundType } from '../helpers/formatOutboundType';
 import { openConnectionWizardModal } from './connectionWizard';
 import { tr } from './helpers/i18n';
+import { getRouterUiPrefs, setRouterUiPrefs } from './helpers/uiPrefs';
 import { ensureOutboundDisplayFlag } from './helpers/country';
 import { renderFlagEmojis } from './tabs/dashboard/partials/renderFlagEmojis';
 import {
@@ -214,12 +215,26 @@ function stripPrefix(tok: string): string {
 }
 
 function getStudioViewMode(type: StudioEntityType): StudioViewMode {
-  if (typeof localStorage === 'undefined') {
-    return type === 'section' ? 'pipeline' : 'cards';
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const saved = localStorage.getItem(`tachyon_studio_view_${type}_v1`);
+      if (saved === 'cards' || saved === 'pipeline') return saved;
+    }
+  } catch {
+    // ignore
   }
   try {
-    const saved = localStorage.getItem(`tachyon_studio_view_${type}_v1`);
-    if (saved === 'cards' || saved === 'pipeline') return saved;
+    const fromRouter = getRouterUiPrefs()?.studio_views?.[type];
+    if (fromRouter === 'cards' || fromRouter === 'pipeline') {
+      try {
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem(`tachyon_studio_view_${type}_v1`, fromRouter);
+        }
+      } catch {
+        // ignore
+      }
+      return fromRouter;
+    }
   } catch {
     // ignore
   }
@@ -227,12 +242,14 @@ function getStudioViewMode(type: StudioEntityType): StudioViewMode {
 }
 
 function setStudioViewMode(type: StudioEntityType, mode: StudioViewMode): void {
-  if (typeof localStorage === 'undefined') return;
   try {
-    localStorage.setItem(`tachyon_studio_view_${type}_v1`, mode);
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(`tachyon_studio_view_${type}_v1`, mode);
+    }
   } catch {
     // ignore
   }
+  setRouterUiPrefs({ studio_views: { [type]: mode } });
 }
 
 function sanitizeStaleUciDeletes(targetSectionId?: string): void {
@@ -243,20 +260,24 @@ function sanitizeStaleUciDeletes(targetSectionId?: string): void {
     const values = state.values?.[UCI_PACKAGE] || {};
     const deletes = state.deletes[UCI_PACKAGE];
     for (const sid in deletes) {
-      if (creates[sid]) {
-        if (deletes[sid] === true) {
-          delete deletes[sid];
-        }
+      if (creates[sid] || !values[sid]) {
+        delete deletes[sid];
         continue;
       }
-      if (!values[sid] && deletes[sid] !== true) {
-        delete deletes[sid];
+      if (deletes[sid] !== true && typeof deletes[sid] === 'object') {
+        for (const opt in deletes[sid]) {
+          if (!Object.prototype.hasOwnProperty.call(values[sid], opt)) {
+            delete deletes[sid][opt];
+          }
+        }
+        if (Object.keys(deletes[sid]).length === 0) {
+          delete deletes[sid];
+        }
       }
     }
     if (
       targetSectionId &&
-      creates[targetSectionId] &&
-      deletes[targetSectionId] === true
+      (creates[targetSectionId] || !values[targetSectionId])
     ) {
       delete deletes[targetSectionId];
     }
@@ -4204,6 +4225,9 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
 
       const interval =
         raw.check_interval || (btype === 'priority' ? '30s' : '3m');
+      const intervalJitter = String(
+        raw.check_interval_jitter || raw.urltest_check_interval_jitter || '',
+      ).trim();
       const tolerance = raw.tolerance || '50';
       const testUrl = raw.testing_url || 'https://www.gstatic.com/generate_204';
       const excCountries = asArray(raw.exclude_countries);
@@ -4216,7 +4240,11 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
           { class: 'tachyon-studio-chip tachyon-studio-chip--source' },
           [
             renderClockIcon(11),
-            E('span', {}, `${tr('Интервал', 'Interval')}: ${interval}`),
+            E(
+              'span',
+              {},
+              `${tr('Интервал', 'Interval')}: ${interval}${intervalJitter && intervalJitter !== '0' ? ` (±${intervalJitter.replace(/^[±+-]+/, '')})` : ''}`,
+            ),
           ],
         ),
       ];

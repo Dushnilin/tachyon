@@ -194,19 +194,6 @@ export function computeSystemInfoMutation(
     }
   }
 
-  if (result.component === 'steer' || result.component === 'steer-extended') {
-    if (result.action === 'remove') {
-      nextSystemInfo.steer_installed = 0;
-      nextSystemInfo.steer_version = 'not installed';
-      nextSystemInfo.steer_extended = 0;
-    } else {
-      nextSystemInfo.steer_installed = 1;
-      nextSystemInfo.steer_version = version;
-      nextSystemInfo.steer_extended =
-        result.component === 'steer-extended' ? 1 : 0;
-    }
-  }
-
   if (result.component === 'direct_bypass') {
     nextSystemInfo.direct_bypass_enabled = result.action === 'enable' ? 1 : 0;
   }

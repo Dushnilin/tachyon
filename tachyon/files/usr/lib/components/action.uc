@@ -477,10 +477,16 @@ function fallback_managed_core_init_script(marker, reset_log) {
         "        procd_set_param env GODEBUG=\"madvdontneed=1\" GOGC=\"50\" TACHYON_RULESET_SOFT_START=\"1\"\n" +
         "    fi\n" +
         "    procd_set_param term_timeout 15\n" +
-        "    procd_set_param respawn ${respawn_threshold:-3600} ${respawn_timeout:-5} ${respawn_retry:-5}\n" +
+        "    procd_set_param respawn ${respawn_threshold:-3600} ${respawn_timeout:-5} ${respawn_retry:-0}\n" +
         "    procd_close_instance\n" +
         "}\n\n" +
         "stop_service() {\n" +
+        "    for p in $(pidof tachyon-core sing-box 2>/dev/null); do\n" +
+        "        [ \"$p\" != \"$$\" ] || continue\n" +
+        "        case \"$(readlink -f /proc/$p/exe 2>/dev/null)\" in\n" +
+        "            */tachyon-core|*/sing-box) kill -TERM \"$p\" 2>/dev/null || true ;;\n" +
+        "        esac\n" +
+        "    done\n" +
         "    local i=0\n" +
         "    while [ \"$i\" -lt 20 ]; do\n" +
         "        _has_running_daemon || return 0\n" +
@@ -520,6 +526,7 @@ function managed_sing_box_service_installed() {
     return index(s, SB_MANAGED_SERVICE_MARKER) >= 0 &&
         index(s, "GOGC=\"50\"") >= 0 &&
         index(s, "stop_service()") >= 0 &&
+        index(s, "kill -TERM") >= 0 &&
         index(s, "reload_service()") >= 0 &&
         !kills_self;
 }
@@ -617,10 +624,15 @@ function capture_tachyon_running_state() {
     tachyon_was_running = tachyon_status_running_with_timeout() || intended;
 }
 
-function restart_tachyon_after_successful_change() {
+function restart_tachyon_after_successful_change(skip_reload_if_running) {
     if (!tachyon_was_running) {
         updates_log("Tachyon was not running before component change; restart skipped");
         prepare_sing_box_service_disabled();
+        return true;
+    }
+
+    if (skip_reload_if_running && !tachyon_stopped_for_sing_box_change && tachyon_status_running_with_timeout()) {
+        updates_log("Tachyon is already running after package postinst; skipping redundant reload");
         return true;
     }
 
@@ -648,7 +660,7 @@ function restart_tachyon_after_successful_change() {
     if (!file_exists(target_bin))
         return false;
 
-    let action_name = tachyon_status_running_with_timeout() ? "restart" : "start";
+    let action_name = (!tachyon_stopped_for_sing_box_change && tachyon_status_running_with_timeout()) ? "restart" : "start";
     return run_logged("Restarting Tachyon after successful component change", command_from_args([ target_bin, action_name ]), 300);
 }
 
@@ -661,7 +673,8 @@ function stop_tachyon_before_sing_box_change() {
     if (tachyon_was_running && file_exists(stop_bin))
         run_logged("Stopping Tachyon before tachyon-core update", command_from_args([ stop_bin, "stop" ]), 30);
 
-    if (tachyon_was_running && file_exists(BIN_PATH))
+    if (tachyon_was_running && file_exists(BIN_PATH) &&
+        uci_core.get(TACHYON_CONFIG_NAME, "settings", "keep_dns_on_upgrade") == "0")
         command_success_from_args([ BIN_PATH, "restore_dnsmasq" ]);
 
     prepare_sing_box_service_disabled();
@@ -1292,147 +1305,6 @@ function install_fptn(action, target_tag) {
     action_success("fptn", action, "FPTN package has been installed", current_version, pkg.version, 1, "latest", release.release_url || "");
 }
 
-// The steer core package. 2.0.0 renamed it from "steer" to "steer-core"; the old
-// name still exists on routers upgraded from 1.x, and the two conflict.
-const STEER_CORE_PACKAGE = "steer-core";
-
-// What is actually installed, whichever name it carries. "steer-core" declares
-// "Provides: steer", so a package manager may well answer for either name, and a
-// router that has not been updated since 1.x only has "steer".
-function installed_steer_version() {
-    let from_core = installed_package_version(STEER_CORE_PACKAGE);
-    if (from_core != "")
-        return from_core;
-    return installed_package_version("steer");
-}
-
-function install_steer(action, target_tag, extended) {
-    let component = extended ? "steer-extended" : "steer";
-    let label = extended ? "steer-extended" : "steer";
-    init_tmp_dir() || action_fail(component, action, "Failed to create temporary directory");
-    let arch = resolve_arch_candidates();
-    if (arch == null)
-        action_fail(component, action, "Failed to detect package architecture");
-    let release = null;
-    let modular = null;
-    retry_resolve("Resolving " + label + " package", function() {
-        // steer 2.0.0+ resolves as a core package plus feature modules. A release
-        // without a core is a 1.x one and falls back to the single-package walk.
-        modular = cmp_cat.resolve_steer_module_assets(arch, target_tag);
-        if (modular == null)
-            release = cmp_cat.resolve_steer_release(arch, target_tag, extended);
-        return modular != null || release != null;
-    });
-    if (modular != null)
-        release = modular.core;
-    if (release == null)
-        action_fail(component, action, "Failed to resolve " + label + " package for this router architecture");
-
-    if (action == "check_update") {
-        if (!engine.binary_present(component))
-            action_success(component, action, label + " is not installed", "", release.version, 0, "", release.release_url || "");
-        check_success(component, installed_steer_version() || "unknown", release.version, release.release_url || "");
-    }
-
-    // Everything is downloaded before anything is removed: a failed download must
-    // not leave the router without its engine.
-    let files = [];
-    let pkg = download_direct_package(release);
-    if (pkg == null)
-        action_fail(component, action, "Failed to download " + label + " package");
-    push(files, pkg.file);
-
-    let wanted_modules = [];
-    if (modular != null) {
-        let selection = cmp_cat.steer_modules_from_settings(uci_core.get_all(TACHYON_CONFIG_NAME, "settings") || {});
-        for (let m in cmp_cat.steer_module_names()) {
-            for (let want in selection) {
-                if (want == m) {
-                    push(wanted_modules, m);
-                    break;
-                }
-            }
-        }
-        for (let m in wanted_modules) {
-            let entry = null;
-            for (let cand in modular.modules) {
-                if (cand.module == m) {
-                    entry = cand;
-                    break;
-                }
-            }
-            if (entry == null) {
-                updates_log("The steer release has no " + m + " package; skipping it", "warn");
-                continue;
-            }
-            let mpkg = download_direct_package(entry);
-            if (mpkg == null)
-                action_fail(component, action, "Failed to download steer " + m + " package");
-            push(files, mpkg.file);
-        }
-    }
-
-    // The steer packages conflict in the package managers (apk/opkg), and
-    // steer-core additionally declares "Conflicts: steer". Everything that can
-    // collide has to go BEFORE the new one is installed, or the install is
-    // rejected over a package the user never chose to keep.
-    let conflicts = [ "steer", STEER_CORE_PACKAGE, "steer-extended" ];
-    let wanted = modular != null ? STEER_CORE_PACKAGE : (extended ? "steer-extended" : STEER_CORE_PACKAGE);
-    for (let other in conflicts) {
-        if (other == wanted) continue;
-        if (pkg_is_installed(other))
-            run_logged_pkg_remove_sing_box_conflict(other, "Removing " + other + " before " + label + " package installation");
-    }
-
-    // The selection is the contract: a module the user unchecked must not stay
-    // installed. Removal runs after the conflicts above so nothing still depends
-    // on these packages.
-    if (modular != null) {
-        for (let m in cmp_cat.steer_module_names()) {
-            let enabled = false;
-            for (let w in wanted_modules) {
-                if (w == m) {
-                    enabled = true;
-                    break;
-                }
-            }
-            if (enabled) continue;
-            let stale_pkg = "steer-" + m;
-            if (pkg_is_installed(stale_pkg))
-                run_logged_pkg_remove_sing_box_conflict(stale_pkg, "Removing " + stale_pkg + " (not in the selected steer modules)");
-        }
-    }
-
-    if (!run_logged_pkg_install_files("Installing " + label + " package " + pkg.name, files, PKG_INSTALL_TIMEOUT))
-        action_fail(component, action, "Failed to install " + label + " package");
-
-    // Package post-install enables and starts the steer service on its own.
-    // Tachyon drives engine lifecycle itself, and the reload below only
-    // restarts the active engine - a stray steerd would keep running next
-    // to sing-box. Leave it stopped while steer is not the active engine.
-    let active_engine = engine.get_active();
-    if (active_engine != engine.ENGINE_STEER && active_engine != engine.ENGINE_STEER_EXTENDED)
-        disable_standalone_service("steer");
-
-    let nfqws_wrapper = fs.stat("/usr/share/tachyon/steer-nfqws") != null ? "/usr/share/tachyon/steer-nfqws" : (LIB_DIR + "/../../usr/sbin/steer-nfqws");
-    if (fs.stat(nfqws_wrapper) != null && fs.stat("/usr/sbin/steer-nfqws") != null) {
-        let current = fs.readfile("/usr/sbin/steer-nfqws", 256) || "";
-        if (index(current, "Tachyon") < 0 && index(current, "tachyon") < 0) {
-            fs.writefile("/usr/sbin/steer-nfqws", fs.readfile(nfqws_wrapper));
-            fs.chmod("/usr/sbin/steer-nfqws", 0755);
-        }
-    }
-
-    clear_version_caches();
-    // Let the lifecycle pick the package up: it generates the steer spec and
-    // (re)starts the engine when steer is the active one.
-    restart_tachyon_after_successful_change();
-    let installed_msg = label + " package has been installed";
-    if (length(wanted_modules) > 0)
-        installed_msg += " with modules " + join(",", wanted_modules);
-    action_success(component, action, installed_msg, release.version, release.version, 1, "latest", release.release_url || "");
-}
-
 function install_tailscale(action) {
     let component = "tailscale";
     let label = "Tailscale";
@@ -1452,7 +1324,7 @@ function install_tailscale(action) {
     let proxy_address = service_proxy_address();
     if (!run_logged("Refreshing package index", pkg_list_update_command(proxy_address), 30))
         updates_log("Package index refresh failed; trying to install from the cached index", "warn");
-    if (!run_logged("Installing " + label + " package", pkg_install_name_command("tailscale", proxy_address), 60)) {
+    if (!run_logged("Installing " + label + " package", pkg_install_name_command("tailscale", proxy_address), PKG_TX_INSTALL_TIMEOUT)) {
         if (proxy_address == "")
             updates_log("Upstream package download failed. If downloads.openwrt.org is blocked by your ISP, configure a proxy section and enable 'Download components via proxy' in Settings", "warn");
         action_fail(component, "install", "Failed to install " + label + " package from the feed");
@@ -1486,49 +1358,6 @@ function remove_optional_component(component, package_name, label, runtime_modul
         action_fail(component, "remove", label + " package was removed, but provider files are still present", current_version);
     restart_tachyon_after_successful_change();
     action_success(component, "remove", label + " package has been removed", current_version, "", 1);
-}
-
-// steer is not an optional provider, so remove_optional_component does not fit
-// it: there is no providers/steer/runtime.uc to verify leftovers against, and
-// the install is not one package. 2.0.0 ships a core plus feature modules named
-// steer-<module>, and the modules depend on the core, so they go first. The core
-// carries either of two names depending on how the router got there.
-function steer_packages_to_remove() {
-    let packages = [];
-
-    for (let module_name in cmp_cat.steer_module_names())
-        if (pkg_is_installed("steer-" + module_name))
-            push(packages, "steer-" + module_name);
-
-    for (let core in [ STEER_CORE_PACKAGE, "steer", "steer-extended" ])
-        if (pkg_is_installed(core))
-            push(packages, core);
-
-    return packages;
-}
-
-function remove_steer(component, label) {
-    let active = engine.get_active();
-    if (active == component)
-        action_fail(component, "remove", label + " is the active engine. Switch to sing-box first, then remove it.");
-
-    let packages = steer_packages_to_remove();
-    if (length(packages) == 0) {
-        if (engine.binary_present(component))
-            action_fail(component, "remove", label + " exists outside the package manager and was not removed automatically");
-        action_success(component, "remove", label + " is already removed", "", "", 0);
-    }
-
-    let current_version = installed_steer_version() || "";
-    for (let package_name in packages)
-        if (!run_logged_pkg_remove_sing_box_conflict(package_name, "Removing " + package_name))
-            action_fail(component, "remove", "Failed to remove " + label + " package", current_version);
-
-    clear_version_caches();
-    if (engine.binary_present(component))
-        action_fail(component, "remove", label + " packages were removed, but the engine binary is still present", current_version);
-    restart_tachyon_after_successful_change();
-    action_success(component, "remove", label + " has been removed", current_version, "", 1);
 }
 
 // Delegated to components/* modules (branch 4 god-module split).
@@ -2525,7 +2354,15 @@ function validate_tachyon_core_binary(binary, library_dir) {
         let trimmed_output = trim(raw_output);
         let status = command_status_from_args([ binary, "version" ]);
         if (status == 132) {
-            updates_log("Downloaded binary crashed with SIGILL (Illegal instruction) - your CPU lacks required AVX2/x86-64-v3 instructions (if on Proxmox/KVM VM, set CPU type to 'host')", "error");
+            let host_arch = lc(trim(command_output_from_args([ "uname", "-m" ])));
+            let distrib_arch = lc(read_openwrt_release_value("DISTRIB_ARCH"));
+            if (index(host_arch, "mips") >= 0 || index(distrib_arch, "mips") >= 0) {
+                updates_log("Downloaded binary crashed with SIGILL (Illegal instruction) - MIPS FPU / soft-float ABI mismatch (router CPU has no hardware FPU)", "error");
+            } else if (host_arch == "x86_64" || index(distrib_arch, "x86") >= 0) {
+                updates_log("Downloaded binary crashed with SIGILL (Illegal instruction) - your CPU lacks required AVX2/x86-64-v3 instructions (if on Proxmox/KVM VM, set CPU type to 'host')", "error");
+            } else {
+                updates_log("Downloaded binary crashed with SIGILL (Illegal instruction) - CPU instruction set or ABI mismatch for architecture " + (distrib_arch != "" ? distrib_arch : host_arch), "error");
+            }
         } else if (status > 128) {
             updates_log("Downloaded binary crashed with signal " + (status - 128) + (trimmed_output != "" ? "; output: " + trimmed_output : ""), "error");
         } else if (trimmed_output == "") {
@@ -2605,7 +2442,10 @@ function install_tachyon_core(action, target_tag) {
                 run_logged_pkg_remove_sing_box_conflict(item[0], item[1]);
         }
 
+        prepare_sing_box_package_service_install();
         let pkg_ok = run_logged_pkg_install_files("Installing " + label + " package", [ archive_file ], 180, true);
+        if (pkg_ok)
+            prepare_sing_box_service_disabled();
         if (pkg_ok && (!file_exists("/usr/bin/tachyon-core") || is_symlink_path("/usr/bin/tachyon-core"))) {
             let fallback_bin = cmp.tmp_dir_path() + "/tachyon-core.pkg-fallback." + owner_pid();
             let extracted = false;
@@ -3210,7 +3050,7 @@ function reinstall_tachyon() {
     if (file_exists("/etc/init.d/rpcd"))
         command_success_from_args([ "/etc/init.d/rpcd", "reload" ]);
 
-    restart_tachyon_after_successful_change();
+    restart_tachyon_after_successful_change(true);
     clear_version_caches();
     let new_version = installed_package_version("tachyon");
     if (new_version == "")
@@ -3261,7 +3101,7 @@ function install_tachyon() {
     if (file_exists("/etc/init.d/rpcd"))
         command_success_from_args([ "/etc/init.d/rpcd", "reload" ]);
 
-    restart_tachyon_after_successful_change();
+    restart_tachyon_after_successful_change(true);
     clear_version_caches();
     let new_version = installed_package_version("tachyon");
     if (new_version == "")
@@ -3308,7 +3148,7 @@ function install_tachyon_version(target_tag) {
     if (file_exists("/etc/init.d/rpcd"))
         command_success_from_args([ "/etc/init.d/rpcd", "reload" ]);
 
-    restart_tachyon_after_successful_change();
+    restart_tachyon_after_successful_change(true);
     clear_version_caches();
     let new_version = installed_package_version("tachyon");
     if (new_version == "")
@@ -3367,8 +3207,6 @@ function normalize_component_name(component) {
         return "tachyon-core";
     if (component == "sing-box" || component == "singbox")
         return "sing_box";
-    if (component == "steer_extended")
-        return "steer-extended";
     if (component == "fptn-client" || component == "fptn_client")
         return "fptn";
     if (component == "tachyon")
@@ -3777,8 +3615,6 @@ function list_component_releases(component, count, page) {
         owner = "Dushnilin"; repo = "openwrt-olcrtc";
     } else if (component == "fptn") {
         owner = "Dushnilin"; repo = "fptn";
-    } else if (component == "steer" || component == "steer-extended" || component == "steer_extended") {
-        owner = "xyzmean"; repo = "steer";
     } else if (component == "torrserver_direct") {
         owner = "YouROK"; repo = "TorrServer";
     } else {
@@ -4051,10 +3887,6 @@ function install_component_version(component, tag) {
         install_sing_box_extended("install_extended_compressed", true, tag);
     } else if (component == "sing_box") {
         dispatch_sing_box("install", tag);
-    } else if (component == "steer" || component == "steer-extended" || component == "steer_extended") {
-        let is_ext = (component == "steer-extended" || component == "steer_extended" ||
-                      engine.get_active() == "steer-extended" || engine.steer_has_extended_build());
-        install_steer("install", tag, is_ext);
     } else if (component == "zapret") {
         install_zapret("install", tag);
     } else if (component == "zapret2") {
@@ -4349,14 +4181,6 @@ function component_action(component, action, extra) {
         remove_optional_component("fptn", "fptn-client", "FPTN", LIB_DIR + "/providers/fptn/runtime.uc");
     else if (component == "fptn" && (action == "set_native_mode" || action == "set_component_mode"))
         set_fptn_mode(action);
-    else if (component == "steer" && (action == "check_update" || action == "install"))
-        install_steer(action, extra, false);
-    else if (component == "steer-extended" && (action == "check_update" || action == "install"))
-        install_steer(action, extra, true);
-    else if (component == "steer" && action == "remove")
-        remove_steer(component, "steer");
-    else if (component == "steer-extended" && action == "remove")
-        remove_steer(component, "steer-extended");
     else if (component == "tailscale" && (action == "check_update" || action == "install"))
         install_tailscale(action);
     else if (component == "tailscale" && action == "remove")

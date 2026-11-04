@@ -163,8 +163,7 @@ caps="$(ui_capabilities)"
 # 8. Upgrade from 1.5.14 with sing-box 1.14.3-extended-2.7.3 installed (no tachyon-core):
 #    must report sing_box_extended=1, sing_box_tachyon_core=0, profile=extended,
 #    and frontend Routing Engine card must label it "sing-box" (not "tachyon-core")
-#    and bind Check/Update to the selected engine family (never updating steer when
-#    a sing-box variant is selected).
+#    and bind Check/Update to the selected engine family.
 rm -f "$WORK_DIR/tachyon-core-variant" "$WORK_DIR/tachyon-core-version" "$WORK_DIR/system-info.json" "$WORK_DIR/sb-version-cache"
 printf 'extended\n' >"$WORK_DIR/tachyon-core-variant"
 make_binary '1.14.3-extended-2.7.3'
@@ -186,7 +185,7 @@ caps="$(ui_capabilities)"
 FE_CARD="$ROOT_DIR/fe-app-tachyon/src/tachyon/tabs/updates/initController.ts"
 grep -qF "if (!isSelectedInstalled || isSingBoxActive)" "$FE_CARD" ||
   fail "renderEngineCard must run runComponentAction when switching between sing-box variants"
-grep -qF "const selectedCheckComponent: Tachyon.ComponentName = isSelectedSingBox" "$FE_CARD" ||
-  fail "renderEngineCard must bind Check update / Update to the selected engine family, not steer"
+grep -qF "const selectedCheckComponent: Tachyon.ComponentName = 'sing_box'" "$FE_CARD" ||
+  fail "renderEngineCard must bind Check update / Update to sing_box"
 
 printf 'tachyon-core ui flag checks passed\n'

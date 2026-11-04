@@ -1362,44 +1362,44 @@ function validate_priority_group(section, group_id) {
     if (connections.priority_group_switch_to_faster_same_priority(section, group_id))
         validate_required_duration_option(connections.priority_group_fastest_check_interval(section, group_id), "rule." + name + ".priority." + group_id + ".fastest_check_interval");
 
-    for (let level_id in connections.priority_levels(group_id)) {
+    for (let level_id in connections.priority_levels(group_id, section)) {
         validate_priority_identifier_value(level_id, name);
-        if (trim(connections.priority_level_display_name(group_id, level_id)) == "")
+        if (trim(connections.priority_level_display_name(group_id, level_id, section)) == "")
             fail_validation("Priority level '" + level_id + "' in rule '" + name + "', priority '" + group_id + "' has no display name. Aborted.");
 
-        validate_priority_level_order(connections.priority_level_order(group_id, level_id), name, group_id, level_id);
-        if (connections.priority_level_direct(group_id, level_id))
+        validate_priority_level_order(connections.priority_level_order(group_id, level_id, section), name, group_id, level_id);
+        if (connections.priority_level_direct(group_id, level_id, section))
             continue;
 
-        let filter_mode = connections.priority_level_filter_mode(group_id, level_id);
+        let filter_mode = connections.priority_level_filter_mode(group_id, level_id, section);
         validate_priority_filter_mode_value(filter_mode, name, group_id, level_id);
         if (filter_mode != "disabled")
-            validate_detect_server_country_value(connections.priority_level_detect_server_country(group_id, level_id), name);
+            validate_detect_server_country_value(connections.priority_level_detect_server_country(group_id, level_id, section), name);
         if (filter_mode == "include" || filter_mode == "mixed") {
-            for (let value in connections.priority_level_include_countries(group_id, level_id))
+            for (let value in connections.priority_level_include_countries(group_id, level_id, section))
                 validate_country_code_value(value, name);
-            for (let value in connections.priority_level_include_regex(group_id, level_id))
+            for (let value in connections.priority_level_include_regex(group_id, level_id, section))
                 validate_urltest_regex_value(value, name);
-            if (connections.priority_level_include_proxy_parameters(group_id, level_id))
+            if (connections.priority_level_include_proxy_parameters(group_id, level_id, section))
                 validate_proxy_parameter_filters(
-                    connections.priority_level_include_protocols(group_id, level_id),
-                    connections.priority_level_include_transports(group_id, level_id),
-                    connections.priority_level_include_securities(group_id, level_id),
-                    connections.priority_level_include_ports(group_id, level_id),
+                    connections.priority_level_include_protocols(group_id, level_id, section),
+                    connections.priority_level_include_transports(group_id, level_id, section),
+                    connections.priority_level_include_securities(group_id, level_id, section),
+                    connections.priority_level_include_ports(group_id, level_id, section),
                     name
                 );
         }
         if (filter_mode == "exclude" || filter_mode == "mixed") {
-            for (let value in connections.priority_level_exclude_countries(group_id, level_id))
+            for (let value in connections.priority_level_exclude_countries(group_id, level_id, section))
                 validate_country_code_value(value, name);
-            for (let value in connections.priority_level_exclude_regex(group_id, level_id))
+            for (let value in connections.priority_level_exclude_regex(group_id, level_id, section))
                 validate_urltest_regex_value(value, name);
-            if (connections.priority_level_exclude_proxy_parameters(group_id, level_id))
+            if (connections.priority_level_exclude_proxy_parameters(group_id, level_id, section))
                 validate_proxy_parameter_filters(
-                    connections.priority_level_exclude_protocols(group_id, level_id),
-                    connections.priority_level_exclude_transports(group_id, level_id),
-                    connections.priority_level_exclude_securities(group_id, level_id),
-                    connections.priority_level_exclude_ports(group_id, level_id),
+                    connections.priority_level_exclude_protocols(group_id, level_id, section),
+                    connections.priority_level_exclude_transports(group_id, level_id, section),
+                    connections.priority_level_exclude_securities(group_id, level_id, section),
+                    connections.priority_level_exclude_ports(group_id, level_id, section),
                     name
                 );
         }

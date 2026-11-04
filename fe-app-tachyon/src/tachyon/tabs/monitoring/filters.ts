@@ -18,6 +18,7 @@ export interface ClashConnectionMetadata {
   destinationIP?: string;
   destinationPort?: string | number;
   host?: string;
+  inbound?: string;
   network?: string;
   processPath?: string;
   protocol?: string;
@@ -384,6 +385,11 @@ export function getConnectionSourceIp(connection: ClashConnection): string {
 }
 
 export function getConnectionInboundTag(connection: ClashConnection): string {
+  const inbound = normalizeString(connection.metadata?.inbound);
+  if (inbound) {
+    return inbound;
+  }
+
   const metadataType = normalizeString(connection.metadata?.type);
   const metadataTypeParts = metadataType.split('/');
   const metadataTag = normalizeString(
@@ -454,12 +460,9 @@ export function getDeviceFilterLabel(
   localDeviceChoices: LocalDeviceChoices = {},
 ): string {
   const serverName = getServerSourceNameByIp(ip, connections);
-  if (serverName) {
-    return serverName;
-  }
-
   const deviceName = getDeviceName(ip, localDeviceChoices);
-  return deviceName ? `${deviceName} (${ip})` : ip;
+  const label = deviceName ? `${deviceName} (${ip})` : ip;
+  return serverName ? `${label} · ${serverName}` : label;
 }
 
 export function getSourceCellParts(
@@ -470,32 +473,18 @@ export function getSourceCellParts(
   const ip = getConnectionSourceIp(connection);
   const inboundTag = getConnectionInboundTag(connection);
   const serverName = getServerDisplayNameByInboundTag(inboundTag);
-
-  if (serverName) {
-    return {
-      primary: serverName,
-      ip: '',
-      copyValue: serverName,
-      searchValue: [serverName, ip, inboundTag].filter(Boolean).join(' '),
-    };
-  }
-
   const deviceName = getDeviceName(ip, localDeviceChoices);
-
-  if (deviceName) {
-    return {
-      primary: deviceName,
-      ip: ip,
-      copyValue: `${deviceName} (${ip})`,
-      searchValue: `${deviceName} ${ip}`,
-    };
-  }
+  const primary = (ip ? deviceName || ip : serverName || inboundTag) || '-';
+  const copyValue = deviceName ? `${deviceName} (${ip})` : primary;
 
   return {
-    primary: ip || '-',
-    ip: '',
-    copyValue: ip || '-',
-    searchValue: ip,
+    primary,
+    ip: deviceName ? ip : '',
+    inbound: serverName || inboundTag,
+    copyValue,
+    searchValue: [deviceName, ip, serverName, inboundTag]
+      .filter(Boolean)
+      .join(' '),
   };
 }
 

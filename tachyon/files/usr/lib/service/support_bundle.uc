@@ -21,7 +21,7 @@
 //   - config_sanitized/: /etc/config/tachyon, network, firewall, dhcp, sing-box config.json
 //   - events_and_jobs/: event journal (tail), recent job records, AI Doctor reports
 //   - network_and_routing/: routing tables (main & tachyon), policy rules, interfaces, resolv.conf
-//   - firewall_and_nftables/: TachyonTable / steer ruleset, set counts and element statistics
+//   - firewall_and_nftables/: TachyonTable ruleset, set counts and element statistics
 //   - diagnostics_and_logs/: system logread (tail 500), tachyon logs, process tree, FD counts
 //   - checksums.sha256: SHA-256 hashes of all bundled artifacts
 //
@@ -276,8 +276,7 @@ function collect_service_status() {
 
     let st = {
         enabled: settings.enabled == "1" || settings.enabled == "true" || settings.enabled == true,
-        engine: settings.engine || "sing-box",
-        is_steer: settings.engine == "steer" || settings.engine == "steer-extended",
+        engine: "tachyon-core",
         dns_mode: settings.dns_mode || "dnsmasq",
         tproxy_port: settings.tproxy_port || "1602",
         mixed_port: settings.mixed_port || "4534",
@@ -425,7 +424,6 @@ function stage_bundle(stage_dir) {
 
     // 4. Firewall and nftables
     let nft_tachyon = command_output("nft list table inet TachyonTable");
-    if (nft_tachyon == "") nft_tachyon = command_output("nft list table inet steer");
     write_file_safe(stage_dir + "/firewall_and_nftables/nft_ruleset.txt", nft_tachyon);
 
     // 5. Diagnostics, Process & Log stats

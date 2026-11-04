@@ -31,6 +31,20 @@ let command_success_from_args = common.command_success_from_args;
 let core_binary_running = common.core_binary_running;
 let write_text_file = helpers.write_text_file;
 
+function utf8_prefix(text, limit) {
+    text = as_string(text);
+    limit = int(limit || 0);
+    if (limit <= 0)
+        return "";
+    let len = length(text);
+    if (len <= limit)
+        return text;
+    let end = limit;
+    while (end > 0 && end < len && ord(text, end) >= 128 && ord(text, end) < 192)
+        end--;
+    return substr(text, 0, end);
+}
+
 let cb_map_cache = null;
 let mixed_port_alive_cached = null;
 let mixed_port_checked_at = 0;
@@ -307,7 +321,7 @@ function send_message(token, chat_id, text, parse_mode, keyboard) {
     let t = get_t();
     text = apply_router_prefix(text, parse_mode);
     if (length(text) > 3900) {
-        text = substr(text, 0, 3900) + "\n... " + t("msg_truncated");
+        text = utf8_prefix(text, 3900) + "\n... " + t("msg_truncated");
         if (parse_mode == "HTML") {
             if (index(text, "<pre>") >= 0 && index(text, "</pre>") < 0) text += "</pre>";
             if (index(text, "<code>") >= 0 && index(text, "</code>") < 0) text += "</code>";
@@ -351,7 +365,7 @@ function edit_message(token, chat_id, message_id, text, parse_mode, keyboard) {
     let t = get_t();
     text = apply_router_prefix(text, parse_mode);
     if (length(text) > 3900) {
-        text = substr(text, 0, 3900) + "\n... " + t("msg_truncated");
+        text = utf8_prefix(text, 3900) + "\n... " + t("msg_truncated");
         if (parse_mode == "HTML") {
             if (index(text, "<pre>") >= 0 && index(text, "</pre>") < 0) text += "</pre>";
             if (index(text, "<code>") >= 0 && index(text, "</code>") < 0) text += "</code>";

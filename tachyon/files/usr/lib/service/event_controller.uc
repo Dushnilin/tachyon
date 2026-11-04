@@ -735,19 +735,6 @@ function controller(bus, opts) {
         if (ctx.reload_in_progress) return;
         if (ctx.list_update_running) return;
 
-        let active_engine = "tachyon-core";
-        try {
-            active_engine = require("core.engine").get_active();
-        } catch (e) {}
-
-        if (active_engine != "tachyon-core") {
-            let steer_running = command_success_from_args([ "/etc/init.d/steer", "status" ]) ||
-                                command_success_from_args([ "pgrep", "-f", "steer" ]);
-            if (!steer_running)
-                bus.emit(EV.CORE_STOPPED, { reason: "steer service stopped" });
-            return;
-        }
-
         let pid = ctx.singbox_pid;
         if (pid != "" && ctx.singbox_running) return;
 
@@ -894,24 +881,10 @@ function controller(bus, opts) {
             return;
         }
 
-        let active_engine = "tachyon-core";
-        try {
-            active_engine = require("core.engine").get_active();
-        } catch (e) {}
-
-        if (active_engine == "steer" || active_engine == "steer-extended") {
-            let steer_running = command_success_from_args([ "/etc/init.d/steer", "status" ]) ||
-                                command_success_from_args([ "pgrep", "-f", "steer" ]);
-            if (!steer_running) {
-                clear_dns_streak();
-                return;
-            }
-        } else {
-            let pid = ctx.singbox_pid;
-            if (pid == "" || !ctx.singbox_running) {
-                clear_dns_streak();
-                return;
-            }
+        let pid = ctx.singbox_pid;
+        if (pid == "" || !ctx.singbox_running) {
+            clear_dns_streak();
+            return;
         }
 
         // Adaptive interval pacing: honor ai_dns_interval (default 60s)
@@ -995,7 +968,7 @@ function controller(bus, opts) {
         if (ctx.list_update_running) return;
         if (ctx.reload_in_progress) return;
         let health = firewall_health.inspect(ctx.settings);
-        let table = health.steer ? "inet steer" : (getenv("NFT_TABLE_NAME") || "TachyonTable");
+        let table = getenv("NFT_TABLE_NAME") || "TachyonTable";
         if (!health.nft_ok) {
             bus.emit(EV.NFT_MISSING, { table: table });
             return;

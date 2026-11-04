@@ -1533,48 +1533,6 @@ function migrate_ensure_dns_server_defaults(ctx) {
         set_list_option(ctx, settings, "bootstrap_dns_server", [ "77.88.8.8" ]);
 }
 
-// Record that this configuration targets steer spec v2, and say so once if the
-// installed steer cannot read it.
-//
-// No UCI data is rewritten here, and that is the finding rather than an
-// omission: contract-v1's `prefer`, `latency_interval_s` and
-// `latency_tolerance_ms` were never stored. They were computed at generate time
-// from the `config urltest` child options, which are still named the same and
-// now feed a v2 `pick: latency` group. So the options carry over untouched and
-// anything that renamed them would have broken sing-box as well.
-//
-// What genuinely does not carry over is the kernel. Spec v2 is a different
-// document, only steer 2.0+ reads it, and the failure is a refusal rather than a
-// degradation - so an upgrading router on a 1.x steer is told here rather than
-// discovering it when the proxy refuses to come up.
-function migrate_steer_spec_v2(ctx) {
-    let settings = ctx.model.settings;
-    set_option(ctx, settings, "steer_spec_format", "2");
-
-    let engine_id = as_string(option(settings, "engine", ""));
-    if (engine_id != "steer" && engine_id != "steer-extended")
-        return;
-
-    let engine = null;
-    try {
-        engine = require("core.engine");
-    }
-    catch (e) {
-        return;
-    }
-    if (engine == null || !engine.binary_present(engine.ENGINE_STEER))
-        return;
-
-    if (engine.steer_supports_spec_v2())
-        return;
-
-    let parts = engine.steer_version_parts();
-    warn("Tachyon now writes steer spec v2, which needs steer 2.0 or newer" +
-        (parts != null ? " (installed: " + as_string(parts[0]) + "." + as_string(parts[1]) +
-            "." + as_string(parts[2]) + ")" : " (installed version could not be read)") +
-        ". Update steer before switching to it, or stay on sing-box.\n");
-}
-
 function migrate_dns_hosts_to_option(ctx) {
     let raw = object_or_empty(ctx.model.settings)["dns_hosts"];
     if (raw == null)
@@ -1758,9 +1716,11 @@ function migrate_engine_identity(ctx) {
     const OLD_SHARE_DIR = "/usr/share/sing-box";
     const NEW_SHARE_DIR = "/usr/share/tachyon-core";
 
-    if (option(settings, "engine", "") == "sing-box")
+    let cur_engine = option(settings, "engine", "");
+    if (cur_engine != "" && cur_engine != "tachyon-core")
         set_option(ctx, settings, "engine", "tachyon-core");
-    if (option(settings, "engine_previous", "") == "sing-box")
+    let prev_engine = option(settings, "engine_previous", "");
+    if (prev_engine != "" && prev_engine != "tachyon-core")
         set_option(ctx, settings, "engine_previous", "tachyon-core");
 
     for (let key in [ "config_path", "cache_path" ]) {
@@ -2480,8 +2440,11 @@ function migrate_priority_group_levels_for_balancer(ctx, section, pg, bal) {
             push(bal_levels, grp_id);
         add_list_unique(ctx, section, "outbound_group_refs", grp_id);
     }
-    if (length(bal_levels) > 0)
+    if (length(bal_levels) > 0) {
         set_list_option(ctx, bal, "outbound_group_levels", bal_levels);
+        if (length(raw_list_option(section, "outbound_group_levels")) == 0)
+            set_list_option(ctx, section, "outbound_group_levels", bal_levels);
+    }
 }
 
 function migrate_modular_entities_v1(ctx) {
@@ -2892,6 +2855,53 @@ function migrate_modular_entities_v1(ctx) {
     cleanup_modular_entities_v1(ctx);
 }
 
+function priority_level_list_option(section, key) {
+    let value = object_or_empty(section)[key];
+    if (value == null)
+        return [];
+    if (type(value) == "array") {
+        let out = [];
+        for (let item in value) {
+            let s = trim(as_string(item));
+            if (s != "")
+                push(out, s);
+        }
+        return out;
+    }
+    let s = trim(as_string(value));
+    if (s == "")
+        return [];
+    if (substr(s, 0, 4) == "srv:")
+        return [ s ];
+    return list_option(section, key);
+}
+
+function migrate_balancer_levels_to_sections(ctx) {
+    for (let section in (ctx.model.sections || [])) {
+        let sname = section_name(section);
+        if (sname == "")
+            continue;
+        if (length(priority_level_list_option(section, "outbound_group_levels")) > 0)
+            continue;
+        let sec_bal_refs = list_option(section, "balancer_refs");
+        for (let bal_id in sec_bal_refs) {
+            for (let b in (ctx.model.balancer || [])) {
+                if (section_name(b) != bal_id)
+                    continue;
+                if (lc(option(b, "balancer_type", "urltest")) != "priority")
+                    continue;
+                let b_levels = priority_level_list_option(b, "outbound_group_levels");
+                if (length(b_levels) > 0) {
+                    set_list_option(ctx, section, "outbound_group_levels", b_levels);
+                    break;
+                }
+            }
+            if (length(priority_level_list_option(section, "outbound_group_levels")) > 0)
+                break;
+        }
+    }
+}
+
 function migrate_priority_levels_to_outbound_groups(ctx) {
     for (let section in (ctx.model.sections || [])) {
         let sname = section_name(section);
@@ -2922,6 +2932,7 @@ function migrate_priority_levels_to_outbound_groups(ctx) {
             migrate_priority_group_levels_for_balancer(ctx, section, pg, existing_bal);
         }
     }
+    migrate_balancer_levels_to_sections(ctx);
 }
 
 const MIGRATIONS = [
@@ -2929,7 +2940,6 @@ const MIGRATIONS = [
     { id: "enable_component_checks", run: migrate_enable_component_checks },
     { id: "http_connection_urls", run: migrate_http_connection_urls },
     { id: "dns_hosts_to_option", run: migrate_dns_hosts_to_option },
-    { id: "steer_spec_v2", run: migrate_steer_spec_v2 },
     { id: "global_hosts_to_section", run: migrate_global_hosts_to_section },
     { id: "orphan_section_interface_cleanup", run: migrate_orphan_section_interfaces },
     { id: "ensure_dns_server_defaults", run: migrate_ensure_dns_server_defaults },
@@ -3044,10 +3054,18 @@ function migrate_tachyon_model(model) {
     if (converted_any_rules)
         migrate_modular_entities_v1(ctx);
     cleanup_modular_entities_v1(ctx);
+    migrate_balancer_levels_to_sections(ctx);
     // How client traffic reaches the proxy. Defaulted rather than left absent:
     // the generator has to be able to express a legal config for a router that
     // predates this option, and "no proxy_mode" would have to be read as tproxy
     // in every caller - one of them forgetting is a silent mode switch.
+    let cur_engine = option(ctx.model.settings, "engine", "");
+    if (cur_engine != "" && cur_engine != "tachyon-core" && cur_engine != "sing-box")
+        set_option(ctx, ctx.model.settings, "engine", "tachyon-core");
+    if (option_exists(ctx.model.settings, "engine_previous") &&
+        option(ctx.model.settings, "engine_previous", "") != "tachyon-core" &&
+        option(ctx.model.settings, "engine_previous", "") != "sing-box")
+        delete_option(ctx, ctx.model.settings, "engine_previous");
     set_option_if_missing(ctx, ctx.model.settings, "proxy_mode", "tproxy");
     set_option_if_missing(ctx, ctx.model.settings, "tun_interface", "tun0");
     set_option_if_missing(ctx, ctx.model.settings, "tun_inet4", "172.19.0.1/30");

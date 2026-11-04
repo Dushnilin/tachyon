@@ -1,7 +1,7 @@
 let fs=require("fs");
 let lifecycle=fs.readfile(ARGV[0]);let updates=fs.readfile(ARGV[1]);
 let start=index(lifecycle,"function prepare_community_rulesets()");
-let end=index(lifecycle,"// Start the steer engine",start);
+let end=index(lifecycle,"function start_main()",start);
 if(end<0)end=index(lifecycle,"// Whether the active routing engine",start);
 let update_start=index(updates,"    // Фаза 1: скачивание файлов");
 let relative_end=index(substr(updates,update_start),"    for (let section in sections)");

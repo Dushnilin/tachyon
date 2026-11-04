@@ -278,10 +278,6 @@ export const TachyonShellMethods = {
     callBaseMethod<Tachyon.SingBoxCheckResult>(
       Tachyon.AvailableMethods.CHECK_SING_BOX,
     ),
-  checkSteer: async () =>
-    callBaseMethod<Tachyon.SteerCheckResult>(
-      Tachyon.AvailableMethods.CHECK_STEER,
-    ),
   checkInbounds: async () =>
     callBaseMethod<Tachyon.InboundsCheckResult>(
       Tachyon.AvailableMethods.CHECK_INBOUNDS,

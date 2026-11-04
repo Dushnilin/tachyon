@@ -1073,9 +1073,6 @@ function restore_emergency_runtime() {
 
 function restore_interception_bypass() {
     restore_emergency_runtime();
-    let engine = active_engine_name();
-    if (engine == "steer" || engine == "steer-extended")
-        command_success_from_args([ "nft", "delete", "table", "inet", "steer" ]);
 }
 
 function trigger_emergency_failsafe(reason, details) {
@@ -1253,8 +1250,6 @@ function release_emergency_failsafe_if_recovered() {
     if (sample == null || !sample.ok || time() - sample.ts < 0 || time() - sample.ts > interval * 2 + 15)
         return false;
     let engine = active_engine_name();
-    // Emergency dataplane restoration below implements the tachyon-core
-    // contract; steer has a different policy-routing/DNS lifecycle.
     if (engine != "tachyon-core" || !ctx.singbox_running) return false;
 
     // The CLI is also the controller's operation marker: probes see this
@@ -1316,11 +1311,14 @@ function safe_proxy_restart(reason, force_level) {
     // cheaper, not free — three of them in ten minutes is still a proxy that is
     // not going to be fixed by a fourth.
     if (proxy_restart_count >= 3) {
-        log_message("Proxy restart rate limit: " + as_string(proxy_restart_count) + " in 10 min, skipping (" + reason + ")", "warn");
-        if (force_level != ESCALATION_LIGHT) {
-            trigger_emergency_failsafe(reason, "Proxy restart rate limit reached (3 in 10 min)");
+        if (reason != "core_stopped") {
+            log_message("Proxy restart rate limit: " + as_string(proxy_restart_count) + " in 10 min, skipping (" + reason + ")", "warn");
+            if (force_level != ESCALATION_LIGHT) {
+                trigger_emergency_failsafe(reason, "Proxy restart rate limit reached (3 in 10 min)");
+            }
+            return false;
         }
-        return false;
+        log_message("Proxy restart rate limit reached, but core is stopped — starting core service (" + reason + ")", "warn");
     }
     if (fs.stat(PROXY_RESTART_LOCK) != null) {
         let lock_content = trim(fs.readfile(PROXY_RESTART_LOCK) || "0");
@@ -1346,20 +1344,16 @@ function safe_proxy_restart(reason, force_level) {
         let active_engine = active_engine_name();
 
         log_message("Restarting " + active_engine + " service only (" + reason + ")", "warn");
-        if (active_engine == "steer" || active_engine == "steer-extended") {
-            bg_system("/etc/init.d/steer stop >/dev/null 2>&1; " +
-                "/etc/init.d/steer start >/dev/null 2>&1; rm -f " + lock_path);
-        } else {
-            let init_script = core_init_script();
-            let dns_apply_cmd = "ucode -L " + shell_quote(LIB_DIR) + " " + shell_quote(LIB_DIR + "/dns/apply.uc") + " configure";
-            // Re-check in the background job: failsafe can engage while the
-            // service is restarting. Keep direct DNS until verified release.
-            dns_apply_cmd = "if [ ! -e " + shell_quote(EMERGENCY_STATE_FILE) + " ] && [ ! -e " +
-                shell_quote(EMERGENCY_STATE_TMP) + " ]; then " + dns_apply_cmd + "; fi";
-            bg_system(init_script + " stop >/dev/null 2>&1; " +
-                init_script + " start >/dev/null 2>&1; " +
-                dns_apply_cmd + " >/dev/null 2>&1; rm -f " + lock_path);
-        }
+        let init_script = core_init_script();
+        let dns_apply_cmd = "ucode -L " + shell_quote(LIB_DIR) + " " + shell_quote(LIB_DIR + "/dns/apply.uc") + " configure";
+        let fw_repair_cmd = "if ! nft list table inet TachyonTable >/dev/null 2>&1; then /usr/bin/tachyon reload_firewall >/dev/null 2>&1; fi";
+        // Re-check in the background job: failsafe can engage while the
+        // service is restarting. Keep direct DNS until verified release.
+        dns_apply_cmd = "if [ ! -e " + shell_quote(EMERGENCY_STATE_FILE) + " ] && [ ! -e " +
+            shell_quote(EMERGENCY_STATE_TMP) + " ]; then " + dns_apply_cmd + "; " + fw_repair_cmd + "; fi";
+        bg_system(init_script + " stop >/dev/null 2>&1; " +
+            init_script + " start >/dev/null 2>&1; " +
+            dns_apply_cmd + " >/dev/null 2>&1; rm -f " + lock_path);
     } else {
         log_message("Escalating to full Tachyon restart (" + reason + "): the lighter restart did not restore service", "warn");
         // The lock is released after the restart, not alongside it. This line used
@@ -1389,10 +1383,7 @@ function safe_reload_firewall() {
 function firewall_repair_worker() {
     let ctx = controller.create_tick_context();
     if (firewall_health.interception_suppressed(ctx.settings)) return 1;
-    let engine = active_engine_name();
-    let ok = engine == "steer" || engine == "steer-extended"
-        ? command_success_from_args([ "/usr/sbin/steer", "apply" ])
-        : command_success_from_args([ "/usr/bin/tachyon", "reload_firewall" ]);
+    let ok = command_success_from_args([ "/usr/bin/tachyon", "reload_firewall" ]);
     // A previously queued writer must not re-enable interception after L5 or
     // a user bypass engaged while a large list-backed rebuild was running.
     if (firewall_health.interception_suppressed(controller.create_tick_context().settings)) {
@@ -1558,13 +1549,6 @@ function heal_uncached_rulesets_detour() {
 // Threshold 3 is the original ai_heal_dns() streak: two isolated failures are
 // noise, three in a row is a stall. The streak reset after acting prevents the
 // in-flight restart from tripping the same threshold on the next tick.
-function heal_dns_stall_steer() {
-    log_message("Watchdog: DNS stalled after 3 attempts on steer, reloading steer dnsd and dnsmasq", "warn");
-    system("/etc/init.d/steer reload_dnsd >/dev/null 2>&1");
-    system("/etc/init.d/dnsmasq reload >/dev/null 2>&1");
-    ai_heal_report("dns", "DNS resolution stalled on steer", "Перезапущены steer dnsd и dnsmasq", "fixed");
-}
-
 function heal_dns_stall(ev) {
     if (settings().recovery_bypass == "1") return;
     if (int(ev.payload.streak) < 3) return;
@@ -1573,11 +1557,6 @@ function heal_dns_stall(ev) {
     controller.reset_dns_streak();
 
     let active_engine = active_engine_name();
-
-    if (active_engine == "steer" || active_engine == "steer-extended") {
-        heal_dns_stall_steer();
-        return;
-    }
 
     let detour_healed = heal_uncached_rulesets_detour();
     log_message("Watchdog: DNS stalled after 3 attempts, soft-reloading proxy runtime", "warn");
@@ -1622,6 +1601,8 @@ function heal_proxy_connectivity(ev) {
     // recovery via the threshold it already carries.
     if (int(ev.payload.streak) < 2) return;
     if (suppressed_by_root_cause("heal_proxy_connectivity")) return;
+
+    bg_system("/usr/bin/tachyon failover_check");
 
     let eng = active_engine_name();
     let proxy_addr = (ev.payload.host ? ev.payload.host : "127.0.0.1") + ":" + as_string(ev.payload.port);
@@ -1808,19 +1789,13 @@ function heal_uci_config(ev) {
 // ─── Config validation: sing-box check ────────────────────────────────────────
 function validate_singbox_config() {
     if (settings().ai_config_validation_enabled == "0") return true;
-    let eng = active_engine_name();
     let cfg_path = "/etc/tachyon-core/config.json";
-    if (eng == "steer" || eng == "steer-extended") {
-        cfg_path = "/etc/steer/spec.json";
-    }
     let st = fs.stat(cfg_path);
     if (!st || st.size == 0) return false;
     let content = fs.readfile(cfg_path);
     if (!content) return false;
     try {
         let obj = json(content);
-        if (eng == "steer" || eng == "steer-extended")
-            return type(obj) == "object";
         return type(obj) == "object" && type(obj.outbounds) == "array";
     } catch (e) {
         return false;
@@ -1843,6 +1818,8 @@ function heal_proxy_health(ev) {
     let fails = int(ev.payload.streak);
     if (fails < threshold) return;
     if (suppressed_by_root_cause("heal_proxy_health")) return;
+
+    bg_system("/usr/bin/tachyon failover_check");
 
     let eng = active_engine_name();
     let incident = {
@@ -1872,51 +1849,10 @@ function heal_proxy_health(ev) {
 // ─── DNS Continuous Check ─────────────────────────────────────────────────────
 // The second DNS subscriber: restores dnsmasq's own configuration rather than
 // restarting the proxy, so it is complementary to heal_dns_stall().
-function heal_dns_continuous_steer() {
-    let current_noresolv = trim(as_string(uci_core.get("dhcp", "@dnsmasq[0]", "noresolv") || ""));
-    let servers = uci_core.get("dhcp", "@dnsmasq[0]", "server") || [];
-    if (type(servers) == "string") servers = [ servers ];
-    let has_bad_server = false;
-    let has_good_server = false;
-    for (let s in servers) {
-        if (index(s, "127.0.0.42") >= 0) has_bad_server = true;
-        else if (s != "") has_good_server = true;
-    }
-
-    if (current_noresolv == "0" && !has_bad_server && has_good_server) {
-        controller.reset_dns_consecutive();
-        ai_heal_report(
-            "dns_continuous",
-            "DNS resolution failed 3 times consecutively on steer",
-            "dnsmasq уже настроен (noresolv=0), перезагрузка не требуется",
-            "skipped"
-        );
-        return;
-    }
-
-    let rc = system("ucode -L " + common.shell_quote(LIB_DIR) + " " + common.shell_quote(LIB_DIR + "/dns/apply.uc") + " configure-steer >/dev/null 2>&1");
-    controller.reset_dns_consecutive();
-
-    ai_heal_report(
-        "dns_continuous",
-        "DNS resolution failed 3 times consecutively on steer",
-        "Настройка dnsmasq для steer (noresolv=0, удаление 127.0.0.42) и перезагрузка",
-        rc == 0 ? "fixed" : "failed"
-    );
-}
-
 function heal_dns_continuous(ev) {
     if (settings().ai_dns_continuous_enabled == "0") return;
     if (int(ev.payload.consecutive) < 3) return;
     if (suppressed_by_root_cause("heal_dns_continuous")) return;
-
-    let active_engine = "tachyon-core";
-    try {
-        active_engine = require("core.engine").get_active();
-    } catch (e) {}
-
-    if (active_engine == "steer" || active_engine == "steer-extended")
-        return heal_dns_continuous_steer();
 
     // This repair only ever sets noresolv to the one value it wants, so on the
     // second and later failures it rewrote a setting that already held that
@@ -2228,11 +2164,7 @@ function increment_reconnect_count() {
 // version too old; repeating its binary-variant advice here is deliberate, since
 // this is the message the user sees while the loop is running.
 function singbox_service_absent() {
-    let eng = active_engine_name();
     let init_script = core_init_script();
-    if (eng == "steer" || eng == "steer-extended") {
-        init_script = "/etc/init.d/steer";
-    }
     return common.command_status_from_args([ "test", "-x", init_script ]) != 0;
 }
 
@@ -2247,7 +2179,7 @@ function heal_core_stopped(ev) {
     if (singbox_service_absent()) {
         if (now - missing_singbox_reported_at > 3600) {
             missing_singbox_reported_at = now;
-            let init_script = (eng == "steer" || eng == "steer-extended") ? "/etc/init.d/steer" : core_init_script();
+            let init_script = core_init_script();
             log_message(sprintf("%s is not installed (no %s). Restarting cannot fix this - install a %s package or reinstall the binary variant. Watchdog will not retry until it appears.", eng, init_script, eng), "error");
             let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
             if (tcfg.notify_crash != "0") {
@@ -3419,7 +3351,7 @@ function check_mixed_proxy_port() {
 
     if (mixed_port_fail_streak == 2) {
         log_message(sprintf("Restarting %s to restore the mixed inbound.", eng), "warn");
-        command_status("/usr/bin/tachyon restart >/dev/null 2>&1");
+        safe_proxy_restart("mixed_port", ESCALATION_LIGHT);
     } else if (mixed_port_fail_streak > 2) {
         let now = time();
         if (now - mixed_port_last_notify >= 3600) {

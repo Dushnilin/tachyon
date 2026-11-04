@@ -262,10 +262,7 @@ function get_active_engine() {
 }
 
 function get_engine_pid(engine_id) {
-    engine_id = engine_id || get_active_engine();
-    let names = (engine_id == "steer" || engine_id == "steer-extended")
-        ? [ "steer" ]
-        : [ "tachyon-core", "sing-box" ];
+    let names = [ "tachyon-core", "sing-box" ];
     for (let proc_name in names) {
         let p = fs.popen("pidof " + shell_quote(proc_name) + " 2>/dev/null", "r");
         if (!p) continue;
@@ -304,15 +301,7 @@ function probe_system_health(engine_id) {
         let out = as_string(nft_probe.read("all"));
         let rc = nft_probe.close();
         if (rc != 0 && index(out, "No such file") >= 0) {
-            if (engine_id == "steer") {
-                let st_probe = fs.popen("nft list table inet steer 2>&1", "r");
-                if (st_probe) {
-                    let st_rc = st_probe.close();
-                    routing_ok = st_rc == 0;
-                }
-            } else {
-                routing_ok = service_alive;
-            }
+            routing_ok = service_alive;
         }
     }
 

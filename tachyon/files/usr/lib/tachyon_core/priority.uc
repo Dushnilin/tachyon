@@ -127,6 +127,9 @@ function normalize_group(group, tag_name) {
 
     let primary_url = as_string(group.health_url || group.url || "https://www.gstatic.com/generate_204");
     let extra_urls = group.health_urls != null ? group.health_urls : group.testing_urls;
+    let tol = int(group.tolerance || 50, 10);
+    if (tol <= 0)
+        tol = 50;
     return {
         id: as_string(group.id || ""),
         tag: as_string(group.tag || tag_name),
@@ -142,6 +145,8 @@ function normalize_group(group, tag_name) {
         pick_fastest: bool_value(group.pick_fastest, false),
         switch_to_faster_same_priority: bool_value(group.switch_to_faster_same_priority, false),
         fastest_check_interval: as_string(group.fastest_check_interval || "3m"),
+        tolerance: tol,
+        min_hold_time: as_string(group.min_hold_time || "15s"),
         levels
     };
 }
@@ -269,7 +274,21 @@ function urlencode_segment(value) {
     return join("", out);
 }
 
+let recent_probe_cache = {};
+const PROBE_DEDUP_TTL_S = 3;
+
 function module_capture(args) {
+    let is_latency_probe = type(args) == "array" && length(args) > 0 && as_string(args[0] || "") == "get_proxy_latency";
+    let probe_cache_key = "";
+    let now_s = 0;
+    if (is_latency_probe) {
+        now_s = now_seconds();
+        probe_cache_key = as_string(args[1] || "") + "|" + as_string(args[2] || "2000") + "|" + as_string(args[3] || "https://www.gstatic.com/generate_204");
+        let cached = recent_probe_cache[probe_cache_key];
+        if (cached != null && (now_s - cached.at) <= PROBE_DEDUP_TTL_S)
+            return cached.res;
+    }
+
     if (getenv("TACHYON_DIAGNOSTICS_UC") == null && type(args) == "array" && length(args) > 0) {
         let action = as_string(args[0] || "");
         let info = priority_clash_info();
@@ -291,7 +310,9 @@ function module_capture(args) {
             push(curl_args, "url=" + health_url);
             push(curl_args, "--data-urlencode");
             push(curl_args, "timeout=" + timeout_ms);
-            return common.command_capture(command_from_args(curl_args));
+            let res = common.command_capture(command_from_args(curl_args));
+            recent_probe_cache[probe_cache_key] = { at: now_s, res };
+            return res;
         }
         if (action == "set_group_proxy") {
             let group_tag = as_string(args[1] || "");
@@ -324,7 +345,10 @@ function module_capture(args) {
     for (let arg in args)
         command += " " + shell_quote(arg);
 
-    return common.command_capture(command);
+    let res = common.command_capture(command);
+    if (is_latency_probe && probe_cache_key != "")
+        recent_probe_cache[probe_cache_key] = { at: now_s, res };
+    return res;
 }
 
 function parse_delay_output(output) {
@@ -685,13 +709,16 @@ function choose_from_level_range(group, start_index, end_index, probe, skip_tag)
 // Single-shot RTT noise on a home line is tens of milliseconds; without a
 // tolerance the group ping-pongs on noise and the user pays a reconnect every
 // fastest_check_interval for a "gain" that was never real. Same default the
-// sing-box urltest and the steer group pick use.
+// sing-box urltest uses.
 const FASTEST_SWITCH_TOLERANCE_MS = 50;
 
 function choose_fastest_same_level(group, level_index, active_tag, probe) {
     let level = object_or_empty(array_or_empty(group.levels)[level_index]);
     let active = null;
     let best = null;
+    let tol = group && group.tolerance != null && int(group.tolerance, 10) > 0
+        ? int(group.tolerance, 10)
+        : FASTEST_SWITCH_TOLERANCE_MS;
 
     for (let tag_name in array_or_empty(level.outbounds)) {
         let result = probe(tag_name, group);
@@ -710,7 +737,7 @@ function choose_fastest_same_level(group, level_index, active_tag, probe) {
 
     if (best == null || best.tag == active_tag)
         return null;
-    if (active == null || !active.alive || best.delay + FASTEST_SWITCH_TOLERANCE_MS <= active.delay)
+    if (active == null || !active.alive || best.delay + tol <= active.delay)
         return best;
     return null;
 }
@@ -773,7 +800,31 @@ function write_group_status(group, state, selected) {
     common.write_json_file(status_dir + "/" + urlencode_segment(group.tag) + ".json", payload);
 }
 
-function switch_group(state, group, selected) {
+function record_selector_transition(group, prev_active, prev_delay, selected, reason) {
+    if (!ensure_dir(RUNTIME_STATE_DIR))
+        return;
+    let events_file = RUNTIME_STATE_DIR + "/selector_events.json";
+    let events = array_or_empty(read_json_file(events_file));
+    push(events, {
+        ts: now_seconds(),
+        group: as_string(group.tag || ""),
+        from: as_string(prev_active || ""),
+        to: as_string(selected.tag || ""),
+        from_delay: int(prev_delay || 0),
+        to_delay: int(selected.delay || 0),
+        level: int(selected.levelIndex || 0),
+        reason: as_string(reason || "switch")
+    });
+    if (length(events) > 50) {
+        let trimmed = [];
+        for (let i = length(events) - 50; i < length(events); i++)
+            push(trimmed, events[i]);
+        events = trimmed;
+    }
+    common.write_json_file(events_file, events);
+}
+
+function switch_group(state, group, selected, reason) {
     if (selected == null || selected.tag == "")
         return false;
 
@@ -789,10 +840,14 @@ function switch_group(state, group, selected) {
         return false;
     }
 
+    let prev_active = state.active;
+    let prev_delay = state.activeDelay;
     state.active = selected.tag;
     state.levelIndex = selected.levelIndex;
     state.activeDelay = selected.delay;
+    state.lastSwitchAt = now_seconds();
     write_group_status(group, state, selected);
+    record_selector_transition(group, prev_active, prev_delay, selected, reason || (prev_active == "" ? "initial" : "switch"));
     return true;
 }
 
@@ -801,6 +856,7 @@ function init_group_state(group) {
         active: "",
         levelIndex: -1,
         activeDelay: 0,
+        lastSwitchAt: 0,
         guard: reachability_guard.create({
             fail_threshold: 3,
             recover_threshold: 8,
@@ -825,7 +881,7 @@ function tick_group(state, group) {
 
     if (state.active == "" && now >= state.nextActiveCheck) {
         let selected = choose_from_level_range(group, 0, length(group.levels) - 1, clash_probe);
-        if (switch_group(state, group, selected) && state.levelIndex > 0 && state.guard) {
+        if (switch_group(state, group, selected, "initial") && state.levelIndex > 0 && state.guard) {
             state.guard.escalated = true;
             state.guard.escalated_at = now;
             state.guard.ok_streak = 0;
@@ -859,7 +915,7 @@ function tick_group(state, group) {
                 clash_probe,
                 state.active
             );
-            if (switch_group(state, group, selected)) {
+            if (switch_group(state, group, selected, "failover")) {
                 if (state.levelIndex > 0 && state.guard && !state.guard.escalated) {
                     state.guard.escalated = true;
                     state.guard.escalated_at = now;
@@ -889,15 +945,18 @@ function tick_group(state, group) {
             });
             ready_to_return = (selected != null && !snap.escalated);
         }
-        if (ready_to_return && switch_group(state, group, selected))
+        if (ready_to_return && switch_group(state, group, selected, "recovery"))
             state.nextFastestCheck = now + duration_to_seconds(group.fastest_check_interval, 180);
         state.nextRecoveryCheck = now + duration_to_seconds(group.recovery_check_interval, 15);
     }
 
     if (state.active != "" && group.switch_to_faster_same_priority && now >= state.nextFastestCheck) {
-        let selected = choose_fastest_same_level(group, state.levelIndex, state.active, clash_probe);
-        if (selected != null)
-            switch_group(state, group, selected);
+        let min_hold = duration_to_seconds(group.min_hold_time, 15);
+        if (state.lastSwitchAt <= 0 || (now - state.lastSwitchAt) >= min_hold) {
+            let selected = choose_fastest_same_level(group, state.levelIndex, state.active, clash_probe);
+            if (selected != null)
+                switch_group(state, group, selected, "faster_same_tier");
+        }
         state.nextFastestCheck = now + duration_to_seconds(group.fastest_check_interval, 180);
     }
 }

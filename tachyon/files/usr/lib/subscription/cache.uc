@@ -286,6 +286,53 @@ function section_subscription_update_interval(section) {
     return result;
 }
 
+function section_subscription_update_jitter(section) {
+    if (type(connections.subscription_update_jitter) != "function")
+        return "";
+    for (let entry in connections.subscription_urls(section)) {
+        if (!connections.subscription_update_enabled(section, entry))
+            continue;
+        let jit = trim(as_string(connections.subscription_update_jitter(section, entry) || ""));
+        if (jit != "")
+            return jit;
+    }
+    return trim(as_string(connections.subscription_update_jitter(section, "") || ""));
+}
+
+function apply_subscription_jitter_seconds(base_seconds, jitter_spec, section_name_val, last_run_val) {
+    base_seconds = int(base_seconds || 0);
+    jitter_spec = trim(as_string(jitter_spec || ""));
+    if (base_seconds <= 1 || jitter_spec == "" || jitter_spec == "0" || lc(jitter_spec) == "disabled")
+        return base_seconds;
+    let max_delta = 0;
+    let pct_match = match(jitter_spec, /^([0-9]+)%$/);
+    if (pct_match != null) {
+        let pct = int(pct_match[1], 10);
+        if (pct > 80)
+            pct = 80;
+        if (pct > 0)
+            max_delta = int((base_seconds * pct) / 100.0 + 0.5);
+    } else {
+        let dur = duration_to_seconds_value(jitter_spec);
+        if (dur != null && dur > 0)
+            max_delta = dur > int(base_seconds * 0.8) ? int(base_seconds * 0.8) : dur;
+        else
+            max_delta = int(base_seconds * 0.15 + 0.5);
+    }
+    if (max_delta <= 0)
+        return base_seconds;
+    let seed = as_string(section_name_val || "") + ":" + as_string(last_run_val || "0");
+    let h = 2166136261;
+    for (let i = 0; i < length(seed); i++)
+        h = ((h ^ ord(seed, i)) * 16777619) & 0x7fffffff;
+    let span = max_delta * 2 + 1;
+    let offset = (h % span) - max_delta;
+    if (offset == 0)
+        offset = (h & 1) ? 1 : -1;
+    let eff = base_seconds + offset;
+    return eff < 60 ? 60 : eff;
+}
+
 function subscription_source_count(section) {
     return length(connections.subscription_urls(section));
 }
@@ -2521,7 +2568,12 @@ function subscription_update_due_result(section) {
         return 2;
     }
 
-    return update_due_status(current_timestamp_value(), file_first_line_value(subscription_update_timestamp_path(section_name(section))), seconds);
+    let last_run = file_first_line_value(subscription_update_timestamp_path(section_name(section)));
+    let jitter = section_subscription_update_jitter(section);
+    if (jitter != "")
+        seconds = apply_subscription_jitter_seconds(seconds, jitter, section_name(section), last_run);
+
+    return update_due_status(current_timestamp_value(), last_run, seconds);
 }
 
 function finalize_subscription_section_metadata(section_name_value, metadata_tmpfile, superseded) {

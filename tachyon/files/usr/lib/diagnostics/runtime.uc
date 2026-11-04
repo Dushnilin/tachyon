@@ -2,15 +2,21 @@
 
 let fs = require("fs");
 let constants = require("core.constants");
-let core_ip = require("core.ip");
 let uci_core = require("core.uci");
 let common = require("core.common");
-let network_mod = require("diagnostics.network");
-let dns_mod = require("diagnostics.dns");
-let routing_mod = require("diagnostics.routing");
-let sysinfo_mod = require("diagnostics.system_info");
-let doctor_mod = require("diagnostics.doctor");
-let repairs_mod = require("diagnostics.repairs");
+
+let _network_mod = null;
+let _dns_mod = null;
+let _routing_mod = null;
+let _sysinfo_mod = null;
+let _doctor_mod = null;
+let _repairs_mod = null;
+function network_mod() { if (_network_mod == null) _network_mod = require("diagnostics.network"); return _network_mod; }
+function dns_mod() { if (_dns_mod == null) _dns_mod = require("diagnostics.dns"); return _dns_mod; }
+function routing_mod() { if (_routing_mod == null) _routing_mod = require("diagnostics.routing"); return _routing_mod; }
+function sysinfo_mod() { if (_sysinfo_mod == null) _sysinfo_mod = require("diagnostics.system_info"); return _sysinfo_mod; }
+function doctor_mod() { if (_doctor_mod == null) _doctor_mod = require("diagnostics.doctor"); return _doctor_mod; }
+function repairs_mod() { if (_repairs_mod == null) _repairs_mod = require("diagnostics.repairs"); return _repairs_mod; }
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || constants.TACHYON_CONFIG_NAME || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
@@ -57,20 +63,20 @@ function module_passthrough(module_path, args) {
 }
 
 function uci_backup_save() {
-    return repairs_mod.uci_backup_save();
+    return repairs_mod().uci_backup_save();
 }
 
 function uci_backup_restore() {
     let rc = command_status("true");
-    return repairs_mod.uci_backup_restore();
+    return repairs_mod().uci_backup_restore();
 }
 
 function doctor_fix_overused(code) {
-    return repairs_mod.doctor_fix_overused(code);
+    return repairs_mod().doctor_fix_overused(code);
 }
 
 function sing_box_marker_is(expected) {
-    return sysinfo_mod.sing_box_marker_is(expected);
+    return sysinfo_mod().sing_box_marker_is(expected);
 }
 
 function sing_box_live_probe_disabled() {
@@ -79,43 +85,28 @@ function sing_box_live_probe_disabled() {
 }
 
 function get_engine_status() {
-    let active_name = uci_core.get(CONFIG_NAME, "settings", "engine") || "sing-box";
-    let is_steer = active_name == "steer" || active_name == "steer-extended";
-    if (is_steer) {
-        let enabled = length(fs.glob("/etc/rc.d/S*steer")) > 0;
-        let running = command_status("pgrep -f '(^|/)steer([[:space:]]|$)' >/dev/null 2>&1") == 0;
-        let installed = fs.stat("/usr/bin/steer") != null;
-        common.write_json({
-            running: running ? 1 : 0,
-            enabled: enabled ? 1 : 0,
-            engine: active_name,
-            status: sysinfo_mod.service_status_label(running ? 1 : 0, enabled ? 1 : 0),
-            dns_configured: 1
-        });
-        return 0;
-    }
-    return sysinfo_mod.get_engine_status();
+    return sysinfo_mod().get_engine_status();
 }
 
 function get_status() {
-    return sysinfo_mod.get_status();
+    return sysinfo_mod().get_status();
 }
 
 function tachyon_is_running() {
-    return doctor_mod.tachyon_is_running();
+    return doctor_mod().tachyon_is_running();
 }
 
 function run_recovery_checks() {
-    return doctor_mod.run_recovery_checks();
+    return doctor_mod().run_recovery_checks();
 }
 
 function verify_system() {
-    return doctor_mod.verify_system();
+    return doctor_mod().verify_system();
 }
 
 function local_rule_doctor(res, pre_verify) {
     let verify = (pre_verify != null) ? pre_verify : verify_system();
-    return doctor_mod.local_rule_doctor(res, verify);
+    return doctor_mod().local_rule_doctor(res, verify);
 }
 
 function ai_doctor(lang, async_arg) {
@@ -129,61 +120,60 @@ function ai_doctor(lang, async_arg) {
     // rag_context = rag.retrieve(user_query, prov, ...);
     // let local_res = local_rule_doctor(res, verify);
 
-    return doctor_mod.ai_doctor(lang, async_arg);
+    return doctor_mod().ai_doctor(lang, async_arg);
 }
 
 // ── Delegates to submodules ─────────────────────────────────────────────────
-function extract_ruleset(arg1) { return doctor_mod.extract_ruleset(arg1); }
-function check_proxy() { return routing_mod.check_proxy(); }
-function check_nft() { return routing_mod.check_nft(); }
-function check_nft_rules() { return routing_mod.check_nft_rules(); }
-function check_sing_box() { return sysinfo_mod.check_sing_box(); }
-function check_steer() { return sysinfo_mod.check_steer(); }
-function sing_box_standard_ports_listening_fixture() { return network_mod.sing_box_standard_ports_listening_fixture(); }
-function check_inbounds_config() { return routing_mod.check_inbounds_config(); }
-function check_inbounds() { return routing_mod.check_inbounds(); }
-function check_logs() { return sysinfo_mod.check_logs(); }
-function check_sing_box_logs() { return sysinfo_mod.check_sing_box_logs(); }
-function tachyon_logs_fixture() { return sysinfo_mod.tachyon_logs_fixture(); }
-function check_fakeip() { return dns_mod.check_fakeip(); }
-function neutralize_zapret_defaults() { return repairs_mod.neutralize_zapret_defaults(); }
-function clash_api(a1, a2, a3, a4) { return routing_mod.clash_api(a1, a2, a3, a4); }
-function show_config(v) { return sysinfo_mod.show_config(v); }
-function show_version() { return sysinfo_mod.show_version(); }
-function show_sing_box_config(v) { return sysinfo_mod.show_sing_box_config(v); }
-function show_sing_box_version() { return sysinfo_mod.show_sing_box_version(); }
-function get_outbound_metadata(sec) { return sysinfo_mod.get_outbound_metadata(sec); }
-function get_subscription_metadata(sec) { return sysinfo_mod.get_subscription_metadata(sec); }
-function get_sing_box_status() { return sysinfo_mod.get_sing_box_status(); }
-function get_system_info() { return sysinfo_mod.get_system_info(); }
-function get_server_capabilities() { return sysinfo_mod.get_server_capabilities(); }
-function check_dns_available() { return dns_mod.check_dns_available(); }
-function global_check(a1, a2) { return doctor_mod.global_check(a1, a2); }
+function extract_ruleset(arg1) { return doctor_mod().extract_ruleset(arg1); }
+function check_proxy() { return routing_mod().check_proxy(); }
+function check_nft() { return routing_mod().check_nft(); }
+function check_nft_rules() { return routing_mod().check_nft_rules(); }
+function check_sing_box() { return sysinfo_mod().check_sing_box(); }
+function sing_box_standard_ports_listening_fixture() { return network_mod().sing_box_standard_ports_listening_fixture(); }
+function check_inbounds_config() { return routing_mod().check_inbounds_config(); }
+function check_inbounds() { return routing_mod().check_inbounds(); }
+function check_logs() { return sysinfo_mod().check_logs(); }
+function check_sing_box_logs() { return sysinfo_mod().check_sing_box_logs(); }
+function tachyon_logs_fixture() { return sysinfo_mod().tachyon_logs_fixture(); }
+function check_fakeip() { return dns_mod().check_fakeip(); }
+function neutralize_zapret_defaults() { return repairs_mod().neutralize_zapret_defaults(); }
+function clash_api(a1, a2, a3, a4) { return routing_mod().clash_api(a1, a2, a3, a4); }
+function show_config(v) { return sysinfo_mod().show_config(v); }
+function show_version() { return sysinfo_mod().show_version(); }
+function show_sing_box_config(v) { return sysinfo_mod().show_sing_box_config(v); }
+function show_sing_box_version() { return sysinfo_mod().show_sing_box_version(); }
+function get_outbound_metadata(sec) { return sysinfo_mod().get_outbound_metadata(sec); }
+function get_subscription_metadata(sec) { return sysinfo_mod().get_subscription_metadata(sec); }
+function get_sing_box_status() { return sysinfo_mod().get_sing_box_status(); }
+function get_system_info() { return sysinfo_mod().get_system_info(); }
+function get_server_capabilities() { return sysinfo_mod().get_server_capabilities(); }
+function check_dns_available() { return dns_mod().check_dns_available(); }
+function global_check(a1, a2) { return doctor_mod().global_check(a1, a2); }
 function doctor(format_arg, fix_requested) {
     // Regression anchor for ai_doctor_local check:
     // busy: res.busy == true
     if (!tachyon_is_running()) {
         return run_recovery_checks();
     }
-    return doctor_mod.doctor(format_arg, fix_requested);
+    return doctor_mod().doctor(format_arg, fix_requested);
 }
 function diagnose_json() {
     // Structured path: build problems directly from checks
     // Legacy fallback for recovery mode
-    return doctor_mod.diagnose_json();
+    return doctor_mod().diagnose_json();
 }
-function ai_doctor_last() { return doctor_mod.ai_doctor_last(); }
+function ai_doctor_last() { return doctor_mod().ai_doctor_last(); }
 function apply_quick_fix(codes_str) {
     let code = codes_str;
     if (doctor_fix_overused(code)) return;
-    return repairs_mod.apply_quick_fix(codes_str);
+    return repairs_mod().apply_quick_fix(codes_str);
 }
-function lan_clients() { return network_mod.lan_clients(); }
-function toggle_client_bypass(ip) { return network_mod.toggle_client_bypass(ip); }
-function validate_nfqws_strategy_json(opt) { return sysinfo_mod.validate_nfqws_strategy_json(opt); }
-function validate_nfqws2_strategy_json(opt) { return sysinfo_mod.validate_nfqws2_strategy_json(opt); }
-function validate_byedpi_strategy_json(opt) { return sysinfo_mod.validate_byedpi_strategy_json(opt); }
-function resolve_domain_cli(dom) { return dns_mod.resolve_domain_cli(dom); }
+function lan_clients() { return network_mod().lan_clients(); }
+function toggle_client_bypass(ip) { return network_mod().toggle_client_bypass(ip); }
+function validate_nfqws_strategy_json(opt) { return sysinfo_mod().validate_nfqws_strategy_json(opt); }
+function validate_nfqws2_strategy_json(opt) { return sysinfo_mod().validate_nfqws2_strategy_json(opt); }
+function validate_byedpi_strategy_json(opt) { return sysinfo_mod().validate_byedpi_strategy_json(opt); }
+function resolve_domain_cli(dom) { return dns_mod().resolve_domain_cli(dom); }
 function route_explain(client, target, port, proto, format) {
     let route_explain_mod = require("diagnostics.route_explain");
     let report = route_explain_mod.explain_route(client, target, port, proto);
@@ -208,8 +198,6 @@ else if (mode == "check-nft-rules")
     exit(check_nft_rules());
 else if (mode == "check-sing-box")
     exit(check_sing_box());
-else if (mode == "check-steer")
-    exit(check_steer());
 else if (mode == "sing-box-standard-ports-listening-fixture")
     sing_box_standard_ports_listening_fixture();
 else if (mode == "check-inbounds-config")

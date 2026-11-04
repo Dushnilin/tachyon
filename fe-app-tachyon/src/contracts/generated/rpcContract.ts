@@ -36,7 +36,6 @@ export const TACHYON_RPC_METHODS = [
   'check_proxy',
   'check_sing_box',
   'check_sing_box_logs',
-  'check_steer',
   'check_tor_runtime',
   'check_zapret2_runtime',
   'check_zapret_runtime',
@@ -73,10 +72,7 @@ export const TACHYON_RPC_METHODS = [
   'emergency_trigger',
   'enable',
   'engine_apply',
-  'engine_diag',
-  'engine_explain',
   'engine_features',
-  'engine_generate',
   'engine_info',
   'engine_plan',
   'engine_reload',
@@ -134,6 +130,7 @@ export const TACHYON_RPC_METHODS = [
   'get_tailscale_status',
   'get_tls_certificate_sha256',
   'get_ui_capabilities',
+  'get_ui_prefs',
   'get_ui_state',
   'get_wdtt_status',
   'get_zapret2_status',
@@ -213,6 +210,7 @@ export const TACHYON_RPC_METHODS = [
   'service_action_status',
   'service_health_check',
   'set_lite_mode',
+  'set_ui_prefs',
   'show_config',
   'show_sing_box_config',
   'show_sing_box_version',
@@ -381,11 +379,6 @@ export type ChecksingboxResult = Record<string, unknown>;
 export type ChecksingboxlogsParams = Record<string, never>;
 
 export type ChecksingboxlogsResult = Record<string, unknown>;
-
-/** check-steer (diagnostics/runtime.uc) */
-export type ChecksteerParams = Record<string, never>;
-
-export type ChecksteerResult = Record<string, unknown>;
 
 /** check-tor-runtime (diagnostics/runtime.uc) */
 export type ChecktorruntimeParams = Record<string, never>;
@@ -646,31 +639,10 @@ export interface EngineapplyParams {
 
 export type EngineapplyResult = Record<string, unknown>;
 
-/** engine-diag (service/engine_runtime.uc) */
-export type EnginediagParams = Record<string, never>;
-
-export type EnginediagResult = Record<string, unknown>;
-
-/** engine-explain (service/engine_runtime.uc) */
-export interface EngineexplainParams {
-  /** positional argument 1 of engine_explain */
-  arg1?: string;
-}
-
-export type EngineexplainResult = Record<string, unknown>;
-
 /** engine-features (service/engine_runtime.uc) */
 export type EnginefeaturesParams = Record<string, never>;
 
 export type EnginefeaturesResult = Record<string, unknown>;
-
-/** engine-generate (service/engine_runtime.uc) */
-export interface EnginegenerateParams {
-  /** positional argument 1 of engine_generate */
-  arg1?: string;
-}
-
-export type EnginegenerateResult = Record<string, unknown>;
 
 /** engine-info (service/engine_runtime.uc) */
 export type EngineinfoParams = Record<string, never>;
@@ -1048,6 +1020,11 @@ export type Gettlscertificatesha256Result = Record<string, unknown>;
 export type GetuicapabilitiesParams = Record<string, never>;
 
 export type GetuicapabilitiesResult = Record<string, unknown>;
+
+/** get-ui-prefs (service/ui.uc) */
+export type GetuiprefsParams = Record<string, never>;
+
+export type GetuiprefsResult = Record<string, unknown>;
 
 /** get-ui-state (service/ui.uc) */
 export type GetuistateParams = Record<string, never>;
@@ -1627,6 +1604,14 @@ export interface SetlitemodeParams {
 
 export type SetlitemodeResult = Record<string, unknown>;
 
+/** set-ui-prefs (service/ui.uc) */
+export interface SetuiprefsParams {
+  /** positional argument 1 of set_ui_prefs */
+  arg1?: string;
+}
+
+export type SetuiprefsResult = Record<string, unknown>;
+
 /** show-config (diagnostics/runtime.uc) */
 export interface ShowconfigParams {
   /** positional argument 1 of show_config */
@@ -1985,10 +1970,6 @@ export interface TachyonRpcRegistry {
     params: ChecksingboxlogsParams;
     result: ChecksingboxlogsResult;
   };
-  check_steer: {
-    params: ChecksteerParams;
-    result: ChecksteerResult;
-  };
   check_tor_runtime: {
     params: ChecktorruntimeParams;
     result: ChecktorruntimeResult;
@@ -2133,21 +2114,9 @@ export interface TachyonRpcRegistry {
     params: EngineapplyParams;
     result: EngineapplyResult;
   };
-  engine_diag: {
-    params: EnginediagParams;
-    result: EnginediagResult;
-  };
-  engine_explain: {
-    params: EngineexplainParams;
-    result: EngineexplainResult;
-  };
   engine_features: {
     params: EnginefeaturesParams;
     result: EnginefeaturesResult;
-  };
-  engine_generate: {
-    params: EnginegenerateParams;
-    result: EnginegenerateResult;
   };
   engine_info: {
     params: EngineinfoParams;
@@ -2376,6 +2345,10 @@ export interface TachyonRpcRegistry {
   get_ui_capabilities: {
     params: GetuicapabilitiesParams;
     result: GetuicapabilitiesResult;
+  };
+  get_ui_prefs: {
+    params: GetuiprefsParams;
+    result: GetuiprefsResult;
   };
   get_ui_state: {
     params: GetuistateParams;
@@ -2692,6 +2665,10 @@ export interface TachyonRpcRegistry {
   set_lite_mode: {
     params: SetlitemodeParams;
     result: SetlitemodeResult;
+  };
+  set_ui_prefs: {
+    params: SetuiprefsParams;
+    result: SetuiprefsResult;
   };
   show_config: {
     params: ShowconfigParams;
@@ -3063,16 +3040,6 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
       category: 'diagnostics',
       acl: 'read',
       description: 'check-sing-box-logs (diagnostics/runtime.uc)',
-      async: false,
-      timeout_ms: 5000,
-      params: [],
-    },
-    check_steer: {
-      name: 'check_steer',
-      cli_command: 'check_steer',
-      category: 'diagnostics',
-      acl: 'read',
-      description: 'check-steer (diagnostics/runtime.uc)',
       async: false,
       timeout_ms: 5000,
       params: [],
@@ -3636,33 +3603,6 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
         },
       ],
     },
-    engine_diag: {
-      name: 'engine_diag',
-      cli_command: 'engine_diag',
-      category: 'system',
-      acl: 'read',
-      description: 'engine-diag (service/engine_runtime.uc)',
-      async: false,
-      timeout_ms: 5000,
-      params: [],
-    },
-    engine_explain: {
-      name: 'engine_explain',
-      cli_command: 'engine_explain',
-      category: 'system',
-      acl: 'read',
-      description: 'engine-explain (service/engine_runtime.uc)',
-      async: false,
-      timeout_ms: 5000,
-      params: [
-        {
-          name: 'arg1',
-          type: 'string',
-          required: false,
-          description: 'positional argument 1 of engine_explain',
-        },
-      ],
-    },
     engine_features: {
       name: 'engine_features',
       cli_command: 'engine_features',
@@ -3672,23 +3612,6 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
       async: false,
       timeout_ms: 5000,
       params: [],
-    },
-    engine_generate: {
-      name: 'engine_generate',
-      cli_command: 'engine_generate',
-      category: 'system',
-      acl: 'write',
-      description: 'engine-generate (service/engine_runtime.uc)',
-      async: false,
-      timeout_ms: 60000,
-      params: [
-        {
-          name: 'arg1',
-          type: 'string',
-          required: false,
-          description: 'positional argument 1 of engine_generate',
-        },
-      ],
     },
     engine_info: {
       name: 'engine_info',
@@ -4492,6 +4415,16 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
       category: 'system',
       acl: 'read',
       description: 'get-ui-capabilities (service/ui.uc)',
+      async: false,
+      timeout_ms: 5000,
+      params: [],
+    },
+    get_ui_prefs: {
+      name: 'get_ui_prefs',
+      cli_command: 'get_ui_prefs',
+      category: 'system',
+      acl: 'read',
+      description: 'get-ui-prefs (service/ui.uc)',
       async: false,
       timeout_ms: 5000,
       params: [],
@@ -5742,6 +5675,23 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
           type: 'string',
           required: false,
           description: 'positional argument 1 of set_lite_mode',
+        },
+      ],
+    },
+    set_ui_prefs: {
+      name: 'set_ui_prefs',
+      cli_command: 'set_ui_prefs',
+      category: 'system',
+      acl: 'write',
+      description: 'set-ui-prefs (service/ui.uc)',
+      async: false,
+      timeout_ms: 60000,
+      params: [
+        {
+          name: 'arg1',
+          type: 'string',
+          required: false,
+          description: 'positional argument 1 of set_ui_prefs',
         },
       ],
     },

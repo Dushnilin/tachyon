@@ -2265,7 +2265,7 @@ const SettingsDynamicList = form.DynamicList.extend({
       if (typeof this.afterMaterializeChildItems === 'function') {
         this.afterMaterializeChildItems(ownerId, itemIds);
       }
-      uci.unset(UCI_PACKAGE, section_id, this.option);
+      unsetIfPresent(section_id, this.option);
       cleanupListItemSettings(ownerId, this.settingsKey, itemIds);
       if (typeof this.clearStagedChildSettings === 'function') {
         this.clearStagedChildSettings(ownerId);
@@ -2286,12 +2286,12 @@ const SettingsDynamicList = form.DynamicList.extend({
         [],
         this.ownerOption,
       );
-      uci.unset(UCI_PACKAGE, section_id, this.option);
+      unsetIfPresent(section_id, this.option);
       return;
     }
 
     if (this.settingsKey) {
-      uci.unset(UCI_PACKAGE, section_id, this.settingsKey);
+      unsetIfPresent(section_id, this.settingsKey);
     }
 
     return form.DynamicList.prototype.remove.apply(this, arguments);
@@ -2657,8 +2657,144 @@ function currentDraftOutboundNames(section_id) {
   currentSourceOptionValues(section_id, 'access_token').forEach((value) => {
     fptnTokenServerNames(value).forEach((name) => names.push(name));
   });
+  currentSourceOptionValues(section_id, 'outbound_source_refs').forEach(
+    (srcId) => {
+      const sid = `${srcId || ''}`.trim();
+      if (!sid) return;
+      const stype =
+        `${uci.get(UCI_PACKAGE, sid, 'source_type') || 'subscription'}`
+          .trim()
+          .toLowerCase();
+      if (
+        ['zapret', 'zapret2', 'byedpi', 'desync', 'wdtt', 'olcrtc'].includes(
+          stype,
+        )
+      ) {
+        return;
+      }
+      const rawLinks = [
+        ...normalizeOptionValues(uci.get(UCI_PACKAGE, sid, 'proxy_links')),
+        ...normalizeOptionValues(
+          uci.get(UCI_PACKAGE, sid, 'selector_proxy_links'),
+        ),
+        ...`${uci.get(UCI_PACKAGE, sid, 'proxy_links_text') || ''}`
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter(Boolean),
+        ...`${uci.get(UCI_PACKAGE, sid, 'selector_proxy_links_text') || ''}`
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter(Boolean),
+      ];
+      rawLinks.forEach((link) => {
+        const fptnServers = fptnTokenServerNames(link);
+        if (fptnServers.length > 0) {
+          fptnServers.forEach((sName) => names.push(sName));
+        } else {
+          const lname = main.getProxyUrlName(link);
+          if (lname) names.push(lname);
+        }
+      });
+      const fptnToken =
+        `${uci.get(UCI_PACKAGE, sid, 'access_token') || ''}`.trim();
+      if (fptnToken) {
+        fptnTokenServerNames(fptnToken).forEach((sName) => names.push(sName));
+      }
+      if (stype !== 'subscription' && stype !== 'proxy_links') {
+        const sname =
+          `${uci.get(UCI_PACKAGE, sid, 'name') || uci.get(UCI_PACKAGE, sid, 'label') || sid}`.trim();
+        if (sname) names.push(sname);
+      }
+    },
+  );
 
   return names;
+}
+
+function currentSectionPriorityTierChoices(section_id, selectedValues = []) {
+  if (!outboundNameChoicesCache.has(section_id)) {
+    loadOutboundNameChoices(section_id);
+  }
+  const dpiTypes = new Set([
+    'zapret',
+    'zapret2',
+    'byedpi',
+    'desync',
+    'wdtt',
+    'olcrtc',
+  ]);
+  const seen = new Set();
+  const result = [];
+  const pushChoice = (value, label) => {
+    const v = `${value || ''}`.trim();
+    if (!v || seen.has(v)) return;
+    seen.add(v);
+    result.push({ value: v, label: `${label || v}`.trim() });
+  };
+
+  const secGroupRefs = new Set(
+    currentSourceOptionValues(section_id, 'outbound_group_refs'),
+  );
+  const allGroups = uci.sections(UCI_PACKAGE, 'outbound_group') || [];
+  allGroups.forEach((g) => {
+    const gid = g['.name'];
+    if (!gid) return;
+    if (secGroupRefs.size > 0 && !secGroupRefs.has(gid)) return;
+    pushChoice(gid, `📦 ${_('Group')}: ${g.name || g.label || gid}`);
+  });
+  if (secGroupRefs.size > 0) {
+    allGroups.forEach((g) => {
+      const gid = g['.name'];
+      if (!gid || seen.has(gid)) return;
+      pushChoice(gid, `📦 ${_('Group')}: ${g.name || g.label || gid}`);
+    });
+  }
+
+  const secSourceRefs = new Set(
+    currentSourceOptionValues(section_id, 'outbound_source_refs'),
+  );
+  const allSources = uci.sections(UCI_PACKAGE, 'outbound_source') || [];
+  const appendSource = (src) => {
+    const sid = src && src['.name'];
+    if (!sid) return;
+    const stypeLower = String(src.source_type || 'subscription').toLowerCase();
+    if (dpiTypes.has(stypeLower)) return;
+    const stype = stypeLower.toUpperCase();
+    const pfx = src.node_prefix ? ` [${src.node_prefix}]` : ` [${stype}]`;
+    pushChoice(sid, `📡 ${_('Source')}: ${src.name || src.label || sid}${pfx}`);
+  };
+  if (secSourceRefs.size > 0) {
+    allSources.forEach((src) => {
+      if (src && secSourceRefs.has(src['.name'])) appendSource(src);
+    });
+  } else {
+    allSources.forEach(appendSource);
+  }
+
+  currentOutboundNameChoices(section_id, []).forEach((s) => {
+    if (!s || !s.value) return;
+    pushChoice(`srv:${s.value}`, `🎯 ${_('Server')}: ${s.label || s.value}`);
+  });
+
+  pushChoice('direct', _('Direct Connection (Fallback)'));
+
+  normalizeDynamicListItems(selectedValues).forEach((rawVal) => {
+    const val = `${rawVal || ''}`.trim();
+    if (!val || seen.has(val)) return;
+    if (val === 'direct') {
+      pushChoice('direct', _('Direct Connection (Fallback)'));
+    } else if (val.startsWith('srv:')) {
+      pushChoice(val, `🎯 ${_('Server')}: ${val.slice(4)}`);
+    } else {
+      const name =
+        uci.get(UCI_PACKAGE, val, 'name') ||
+        uci.get(UCI_PACKAGE, val, 'label') ||
+        val;
+      pushChoice(val, name);
+    }
+  });
+
+  return result;
 }
 
 function currentSectionGroupValues(section_id, typeName) {
@@ -5766,8 +5902,8 @@ function showUrlTestSettingsModal(
         const displayName = `${settings.name || inputValue || ''}`.trim();
 
         if (existing) {
-          uci.unset(UCI_PACKAGE, itemId, 'id');
-          uci.unset(UCI_PACKAGE, itemId, 'display_name');
+          unsetIfPresent(itemId, 'id');
+          unsetIfPresent(itemId, 'display_name');
           updateDynamicListItemLabel(itemNode, displayName);
           return;
         }
@@ -7052,6 +7188,19 @@ function unsetIfPresent(section_id, key) {
   const cur = uci.get(UCI_PACKAGE, section_id, key);
   if (cur !== undefined && cur !== null) {
     uci.unset(UCI_PACKAGE, section_id, key);
+    const values = uci.state?.values?.[UCI_PACKAGE];
+    const deletes = uci.state?.deletes?.[UCI_PACKAGE];
+    if (
+      deletes?.[section_id] &&
+      typeof deletes[section_id] === 'object' &&
+      (!values?.[section_id] ||
+        !Object.prototype.hasOwnProperty.call(values[section_id], key))
+    ) {
+      delete deletes[section_id][key];
+      if (Object.keys(deletes[section_id]).length === 0) {
+        delete deletes[section_id];
+      }
+    }
   }
 }
 
@@ -15012,7 +15161,7 @@ function createSectionContent(section) {
           .filter(Boolean);
     if (refs.length)
       uci.set(UCI_PACKAGE, sectionId, 'outbound_source_refs', refs);
-    else uci.unset(UCI_PACKAGE, sectionId, 'outbound_source_refs');
+    else unsetIfPresent(sectionId, 'outbound_source_refs');
     const attachedUrls = new Set(
       refs
         .map((id) => String(uci.get(UCI_PACKAGE, id, 'url') || '').trim())
@@ -15055,6 +15204,7 @@ function createSectionContent(section) {
       label: `[GROUP] ${grp.name || grp.label || grp['.name']}`,
     })),
   );
+  outboundNameSourceOptions.set('outbound_group_refs', o);
 
   o = section.taboption(
     'settings',
@@ -15073,6 +15223,91 @@ function createSectionContent(section) {
       label: `[${(bal.balancer_type || 'urltest').toUpperCase()}] ${bal.name || bal.label || bal['.name']}`,
     })),
   );
+
+  const parsePriorityLevelsList = (raw) => {
+    if (!raw) return [];
+    if (Array.isArray(raw))
+      return raw.map((v) => String(v || '').trim()).filter(Boolean);
+    const str = String(raw || '').trim();
+    if (!str) return [];
+    if (str.startsWith('srv:')) return [str];
+    return str
+      .split(/\s+/)
+      .map((v) => v.trim())
+      .filter(Boolean);
+  };
+
+  const migrateLegacyBalancerLevels = (currentSectionId) => {
+    const balRefs = normalizeOptionValues(
+      uci.get(UCI_PACKAGE, currentSectionId, 'balancer_refs'),
+    );
+    for (const balId of balRefs) {
+      const legacy = parsePriorityLevelsList(
+        uci.get(UCI_PACKAGE, balId, 'outbound_group_levels'),
+      );
+      if (!legacy.length) continue;
+      (uci.sections(UCI_PACKAGE, 'section') || []).forEach((sec) => {
+        const sid = sec && sec['.name'];
+        if (!sid || sid === currentSectionId) return;
+        const refs = normalizeOptionValues(sec.balancer_refs);
+        if (!refs.includes(balId)) return;
+        const existing = parsePriorityLevelsList(
+          uci.get(UCI_PACKAGE, sid, 'outbound_group_levels'),
+        );
+        if (!existing.length) {
+          uci.set(UCI_PACKAGE, sid, 'outbound_group_levels', legacy);
+        }
+      });
+      unsetIfPresent(balId, 'outbound_group_levels');
+    }
+  };
+
+  o = section.taboption(
+    'settings',
+    form.DynamicList,
+    'outbound_group_levels',
+    _('Priority Tiers (Groups / Sources / Servers)'),
+    _(
+      "Ordered list of Outbound Groups, Sources, individual Servers from subscriptions/pool, or 'direct' for direct fallback. Tier 1 is tried first, then Tier 2, etc.",
+    ),
+  );
+  o.modalonly = true;
+  ['connection', 'proxy', 'outbound', 'vpn', 'awg', 'fptn', 'group'].forEach(
+    (act) => o.depends('action', act),
+  );
+  o.cfgvalue = function (sectionId) {
+    const own = parsePriorityLevelsList(
+      uci.get(UCI_PACKAGE, sectionId, 'outbound_group_levels'),
+    );
+    if (own.length > 0) return own;
+    const balRefs = normalizeOptionValues(
+      uci.get(UCI_PACKAGE, sectionId, 'balancer_refs'),
+    );
+    for (const balId of balRefs) {
+      const btype = String(
+        uci.get(UCI_PACKAGE, balId, 'balancer_type') || 'urltest',
+      ).toLowerCase();
+      if (btype === 'priority') {
+        const legacy = parsePriorityLevelsList(
+          uci.get(UCI_PACKAGE, balId, 'outbound_group_levels'),
+        );
+        if (legacy.length > 0) return legacy;
+      }
+    }
+    return [];
+  };
+  o.write = function (sectionId, value) {
+    migrateLegacyBalancerLevels(sectionId);
+    const levels = parsePriorityLevelsList(value);
+    if (levels.length)
+      uci.set(UCI_PACKAGE, sectionId, 'outbound_group_levels', levels);
+    else unsetIfPresent(sectionId, 'outbound_group_levels');
+  };
+  o.remove = function (sectionId) {
+    migrateLegacyBalancerLevels(sectionId);
+    unsetIfPresent(sectionId, 'outbound_group_levels');
+  };
+  configureLiveDynamicListChoices(o, currentSectionPriorityTierChoices);
 
   o = section.taboption(
     'settings',
@@ -16291,7 +16526,7 @@ function createSectionContent(section) {
         'domain_keyword_text_mode',
         'domain_regex_text_mode',
       ].forEach((key) => {
-        uci.unset(UCI_PACKAGE, section_id, key);
+        unsetIfPresent(section_id, key);
         syncLinkedConditionOption(section_id, key, null);
       });
     },
@@ -17172,7 +17407,6 @@ function isCloudflareSharedCidr(cidr) {
 }
 
 let _subnetListCache = {};
-let _communityDomainsCache = {};
 
 async function readSubnetListFile(service) {
   if (!service) return [];
@@ -17183,8 +17417,6 @@ async function readSubnetListFile(service) {
     `/tmp/sing-box/rulesets/community-subnets-${service}.lst`,
     `/etc/tachyon/rulesets/community-subnets-${service}.lst`,
     `/usr/share/tachyon/rulesets/community-subnets-${service}.lst`,
-    // steer cache: decoded from .srs by steer srs-read
-    `/etc/steer/lists/cache/${service}.prefixes`,
   ];
 
   for (const p of paths) {
@@ -17436,36 +17668,6 @@ async function matchCommunityList(secName, community, query, type) {
     if (checked) break;
     skipped.push(rulesetPath);
     rulesetPath = await findCachedRulesetFile(secName, community, skipped);
-  }
-
-  // Steer fallback: when steer is active engine, sing-box may not be installed.
-  // Read the decoded domain cache that steer srs-read produces.
-  if (type === 'domain') {
-    if (!_communityDomainsCache[community]) {
-      const cachePath = `/etc/steer/lists/cache/${community}.domains`;
-      try {
-        let content = await fs.read(cachePath).catch(() => null);
-        if (!content) {
-          const res2 = await fs.exec('/bin/cat', [cachePath]).catch(() => null);
-          if (res2 && res2.code === 0 && res2.stdout) content = res2.stdout;
-        }
-        if (content) {
-          _communityDomainsCache[community] = content
-            .split('\n')
-            .map((l) => l.trim().replace(/\r/g, ''))
-            .filter((l) => l && !l.startsWith('#'));
-        } else {
-          _communityDomainsCache[community] = [];
-        }
-      } catch (e) {
-        _communityDomainsCache[community] = [];
-      }
-    }
-    const domainList = _communityDomainsCache[community] || [];
-    if (domainList.length > 0) {
-      const matched = matchDomainInList(query, domainList);
-      if (matched) return true;
-    }
   }
 
   return false;

@@ -180,9 +180,76 @@ function duration_to_seconds(value) {
     return total <= 0 ? null : int(total + 0.5);
 }
 
+let cached_boot_seed = null;
+function current_boot_seed() {
+    if (cached_boot_seed != null)
+        return cached_boot_seed;
+    cached_boot_seed = trim(as_string(fs.readfile("/proc/sys/kernel/random/boot_id") || ""));
+    return cached_boot_seed;
+}
+
+function deterministic_jitter_offset(seed_text, max_delta) {
+    max_delta = int(max_delta || 0);
+    if (max_delta <= 0)
+        return 0;
+    let s = as_string(seed_text || "");
+    let h = 2166136261;
+    for (let i = 0; i < length(s); i++) {
+        h = ((h ^ ord(s, i)) * 16777619) & 0x7fffffff;
+    }
+    let span = max_delta * 2 + 1;
+    let offset = (h % span) - max_delta;
+    if (offset == 0)
+        offset = (h & 1) ? 1 : -1;
+    return offset;
+}
+
+function parse_jitter_max_delta(base_seconds, jitter_spec) {
+    base_seconds = int(base_seconds || 0);
+    jitter_spec = trim(as_string(jitter_spec || ""));
+    if (base_seconds <= 1 || jitter_spec == "" || jitter_spec == "0" || lc(jitter_spec) == "disabled")
+        return 0;
+    let pct_match = match(jitter_spec, /^([0-9]+)%$/);
+    if (pct_match != null) {
+        let pct = int(pct_match[1], 10);
+        if (pct <= 0)
+            return 0;
+        if (pct > 80)
+            pct = 80;
+        let delta = int((base_seconds * pct) / 100.0 + 0.5);
+        return delta > 0 ? delta : 1;
+    }
+    let dur = duration_to_seconds(jitter_spec);
+    if (dur != null && dur > 0) {
+        let max_allowed = int(base_seconds * 0.8);
+        if (max_allowed < 1)
+            max_allowed = 1;
+        return dur > max_allowed ? max_allowed : dur;
+    }
+    let fallback = int(base_seconds * 0.15 + 0.5);
+    return fallback > 0 ? fallback : 1;
+}
+
 function urltest_check_interval(section, urltest_id) {
     let interval = connections.urltest_check_interval(section, urltest_id);
-    return interval != "" ? interval : "3m";
+    let base_interval = interval != "" ? interval : "3m";
+    let jitter = type(connections.urltest_check_interval_jitter) == "function"
+        ? connections.urltest_check_interval_jitter(section, urltest_id)
+        : "";
+    if (jitter == "")
+        return base_interval;
+    let base_sec = duration_to_seconds(base_interval);
+    if (base_sec == null || base_sec <= 1)
+        return base_interval;
+    let max_delta = parse_jitter_max_delta(base_sec, jitter);
+    if (max_delta <= 0)
+        return base_interval;
+    let sec_name = type(section) == "object" ? as_string(section[".name"] || "") : as_string(section || "");
+    let seed = current_boot_seed() + ":" + sec_name + ":" + as_string(urltest_id || "urltest");
+    let eff_sec = base_sec + deterministic_jitter_offset(seed, max_delta);
+    if (eff_sec < 5)
+        eff_sec = 5;
+    return as_string(eff_sec) + "s";
 }
 
 function urltest_idle_timeout(section, urltest_id) {
@@ -242,15 +309,15 @@ function section_needs_country_is(section) {
     }
 
     for (let group_id in connections.priority_groups(section)) {
-        for (let level_id in connections.priority_levels(group_id)) {
-            if (connections.priority_level_direct(group_id, level_id))
+        for (let level_id in connections.priority_levels(group_id, section)) {
+            if (connections.priority_level_direct(group_id, level_id, section))
                 continue;
-            let mode = connections.priority_level_filter_mode(group_id, level_id);
-            if (connections.priority_level_detect_server_country(group_id, level_id) == "country_is" &&
+            let mode = connections.priority_level_filter_mode(group_id, level_id, section);
+            if (connections.priority_level_detect_server_country(group_id, level_id, section) == "country_is" &&
                 configured_country_filter(
                     mode,
-                    connections.priority_level_include_countries(group_id, level_id),
-                    connections.priority_level_exclude_countries(group_id, level_id)
+                    connections.priority_level_include_countries(group_id, level_id, section),
+                    connections.priority_level_exclude_countries(group_id, level_id, section)
                 ))
                 return true;
         }
@@ -273,8 +340,8 @@ function section_needs_country_is(section) {
 
 function section_has_direct_priority_level(section) {
     for (let group_id in connections.priority_groups(section))
-        for (let level_id in connections.priority_levels(group_id))
-            if (connections.priority_level_direct(group_id, level_id))
+        for (let level_id in connections.priority_levels(group_id, section))
+            if (connections.priority_level_direct(group_id, level_id, section))
                 return true;
     return false;
 }
@@ -427,14 +494,14 @@ function tag_name_filter_matches(tag, names, name_filter, regex_set, metadata, n
     if (array_contains(name_filter, name) || array_contains(name_filter, tag) || regex_set[tag])
         return true;
     let name_with_type = tag_display_name_with_type(tag, names, metadata);
-    if (name_with_type != name && (is_first_for_type !== false) && array_contains(name_filter, name_with_type))
+    if (name_with_type != name && (is_first_for_type != false) && array_contains(name_filter, name_with_type))
         return true;
     let badge = tag_source_badge(tag, name, metadata);
     if (badge != "") {
         let b_name = "[" + badge + "] " + name;
         let b_with_type = tag_prefixed_name_with_type(tag, names, metadata);
         if (array_contains(name_filter, b_name) ||
-            ((is_first_for_prefixed_type !== false) && array_contains(name_filter, b_with_type)) ||
+            ((is_first_for_prefixed_type != false) && array_contains(name_filter, b_with_type)) ||
             array_contains(name_filter, badge + ": " + name) ||
             array_contains(name_filter, badge + " " + name))
             return true;
@@ -798,7 +865,7 @@ function filter_tags_by_group_spec(candidate_tags, spec, state) {
                 continue;
             if (has_inc_base) {
                 let base_matches = (has_inc_country && tag_country_filter_matches(t, countries, inc_countries)) ||
-                    (has_inc_name_regex && tag_name_filter_matches(t, names, inc_names, inc_regex_set, metadata, name_with_type_indexed, prefixed_with_type_indexed));
+                    (has_inc_name_regex && tag_name_filter_matches(t, names, inc_names, inc_regex_set, metadata, name_with_type_indexed, prefixed_with_type_indexed, count == 1, p_count == 1));
                 if (!base_matches)
                     continue;
             }
@@ -815,7 +882,7 @@ function filter_tags_by_group_spec(candidate_tags, spec, state) {
             if (!is_excluded && length(exc_countries) > 0 && tag_country_filter_matches(t, countries, exc_countries))
                 is_excluded = true;
             if (!is_excluded && (length(exc_names) > 0 || length(exc_regex) > 0) &&
-                tag_name_filter_matches(t, names, exc_names, exc_regex_set, metadata, name_with_type_indexed, prefixed_with_type_indexed))
+                tag_name_filter_matches(t, names, exc_names, exc_regex_set, metadata, name_with_type_indexed, prefixed_with_type_indexed, count == 1, p_count == 1))
                 is_excluded = true;
             if (!is_excluded && exc_params && proxy_parameter_filter_matches_any(
                 t, metadata, spec.exclude_protocols, spec.exclude_transports, spec.exclude_securities, spec.exclude_ports
@@ -834,6 +901,7 @@ function urltest_filtered_outbounds(section, urltest_id, urltest_candidate_tags,
     let grefs = type(connections.urltest_group_refs) == "function"
         ? connections.urltest_group_refs(section, urltest_id)
         : [];
+    let matched_grefs = false;
     if (length(grefs) > 0) {
         let union_cand = [];
         for (let grp_id in grefs) {
@@ -843,9 +911,11 @@ function urltest_filtered_outbounds(section, urltest_id, urltest_candidate_tags,
             for (let t in filter_tags_by_group_spec(urltest_candidate_tags, gspec, state))
                 push(union_cand, t);
         }
-        urltest_candidate_tags = unique_string_array(union_cand);
-        if (length(urltest_candidate_tags) == 0)
-            return [];
+        union_cand = unique_string_array(union_cand);
+        if (length(union_cand) > 0) {
+            urltest_candidate_tags = union_cand;
+            matched_grefs = true;
+        }
     }
     let inc_prefixes = connections.urltest_include_prefixes(section, urltest_id);
     let exc_prefixes = connections.urltest_exclude_prefixes(section, urltest_id);
@@ -888,7 +958,7 @@ function urltest_filtered_outbounds(section, urltest_id, urltest_candidate_tags,
         length(exc_ports) > 0;
 
     let eff_mode = connections.urltest_filter_mode(section, urltest_id);
-    if (length(grefs) > 0 && !has_own_includes) {
+    if (matched_grefs && !has_own_includes) {
         if (has_own_excludes)
             eff_mode = "exclude";
         else
@@ -948,10 +1018,10 @@ function urltest_filtered_outbounds(section, urltest_id, urltest_candidate_tags,
     );
 }
 
-function priority_level_country_metadata(group_id, level_id, state) {
+function priority_level_country_metadata(group_id, level_id, state, section, force_from_section_pool) {
     let names = object_or_empty(object_or_empty(state.outboundMetadata).names);
     let from_flags = runtime_urltest.countries_from_flag_names(names);
-    let detect_method = connections.priority_level_detect_server_country(group_id, level_id);
+    let detect_method = connections.priority_level_detect_server_country(group_id, level_id, section, force_from_section_pool);
     if (detect_method == "flag_emoji")
         return from_flags;
     let metadata = object_or_empty(object_or_empty(state.outboundMetadata).countries);
@@ -964,13 +1034,13 @@ function priority_level_country_metadata(group_id, level_id, state) {
     return result;
 }
 
-function priority_level_filtered_outbounds(group_id, level_id, urltest_candidate_tags, state) {
-    if (connections.priority_level_direct(group_id, level_id))
+function priority_level_filtered_outbounds(group_id, level_id, urltest_candidate_tags, state, section, force_from_section_pool) {
+    if (connections.priority_level_direct(group_id, level_id, section, force_from_section_pool))
         return [ runtime_constants.DIRECT_OUTBOUND_TAG ];
 
-    let inc_prefixes = connections.priority_level_include_prefixes(group_id, level_id);
-    let exc_prefixes = connections.priority_level_exclude_prefixes(group_id, level_id);
-    let child_obj = connections.priority_level_items(group_id);
+    let inc_prefixes = connections.priority_level_include_prefixes(group_id, level_id, section, force_from_section_pool);
+    let exc_prefixes = connections.priority_level_exclude_prefixes(group_id, level_id, section, force_from_section_pool);
+    let child_obj = connections.priority_level_items(group_id, section, force_from_section_pool);
     let from_outbound_group = false;
     for (let it in child_obj) {
         if (as_string(it[".name"] || "") == as_string(level_id) && it.outbound_group_ref != null) {
@@ -980,51 +1050,51 @@ function priority_level_filtered_outbounds(group_id, level_id, urltest_candidate
     }
     if (from_outbound_group || length(inc_prefixes) > 0 || length(exc_prefixes) > 0) {
         return filter_tags_by_group_spec(urltest_candidate_tags, {
-            mode: connections.priority_level_filter_mode(group_id, level_id),
-            country_mode: connections.priority_level_detect_server_country(group_id, level_id),
+            mode: connections.priority_level_filter_mode(group_id, level_id, section, force_from_section_pool),
+            country_mode: connections.priority_level_detect_server_country(group_id, level_id, section, force_from_section_pool),
             include_prefixes: inc_prefixes,
-            include_countries: connections.priority_level_include_countries(group_id, level_id),
-            include_outbounds: connections.priority_level_include_outbounds(group_id, level_id),
-            include_regex: connections.priority_level_include_regex(group_id, level_id),
-            include_proxy_parameters: connections.priority_level_include_proxy_parameters(group_id, level_id),
-            include_protocols: connections.priority_level_include_protocols(group_id, level_id),
-            include_transports: connections.priority_level_include_transports(group_id, level_id),
-            include_securities: connections.priority_level_include_securities(group_id, level_id),
-            include_ports: connections.priority_level_include_ports(group_id, level_id),
+            include_countries: connections.priority_level_include_countries(group_id, level_id, section, force_from_section_pool),
+            include_outbounds: connections.priority_level_include_outbounds(group_id, level_id, section, force_from_section_pool),
+            include_regex: connections.priority_level_include_regex(group_id, level_id, section, force_from_section_pool),
+            include_proxy_parameters: connections.priority_level_include_proxy_parameters(group_id, level_id, section, force_from_section_pool),
+            include_protocols: connections.priority_level_include_protocols(group_id, level_id, section, force_from_section_pool),
+            include_transports: connections.priority_level_include_transports(group_id, level_id, section, force_from_section_pool),
+            include_securities: connections.priority_level_include_securities(group_id, level_id, section, force_from_section_pool),
+            include_ports: connections.priority_level_include_ports(group_id, level_id, section, force_from_section_pool),
             exclude_prefixes: exc_prefixes,
-            exclude_countries: connections.priority_level_exclude_countries(group_id, level_id),
-            exclude_outbounds: connections.priority_level_exclude_outbounds(group_id, level_id),
-            exclude_regex: connections.priority_level_exclude_regex(group_id, level_id),
-            exclude_proxy_parameters: connections.priority_level_exclude_proxy_parameters(group_id, level_id),
-            exclude_protocols: connections.priority_level_exclude_protocols(group_id, level_id),
-            exclude_transports: connections.priority_level_exclude_transports(group_id, level_id),
-            exclude_securities: connections.priority_level_exclude_securities(group_id, level_id),
-            exclude_ports: connections.priority_level_exclude_ports(group_id, level_id)
+            exclude_countries: connections.priority_level_exclude_countries(group_id, level_id, section, force_from_section_pool),
+            exclude_outbounds: connections.priority_level_exclude_outbounds(group_id, level_id, section, force_from_section_pool),
+            exclude_regex: connections.priority_level_exclude_regex(group_id, level_id, section, force_from_section_pool),
+            exclude_proxy_parameters: connections.priority_level_exclude_proxy_parameters(group_id, level_id, section, force_from_section_pool),
+            exclude_protocols: connections.priority_level_exclude_protocols(group_id, level_id, section, force_from_section_pool),
+            exclude_transports: connections.priority_level_exclude_transports(group_id, level_id, section, force_from_section_pool),
+            exclude_securities: connections.priority_level_exclude_securities(group_id, level_id, section, force_from_section_pool),
+            exclude_ports: connections.priority_level_exclude_ports(group_id, level_id, section, force_from_section_pool)
         }, state);
     }
 
     return filter_candidate_outbounds(
-        connections.priority_level_filter_mode(group_id, level_id),
+        connections.priority_level_filter_mode(group_id, level_id, section, force_from_section_pool),
         urltest_candidate_tags,
         object_or_empty(object_or_empty(state.outboundMetadata).names),
-        priority_level_country_metadata(group_id, level_id, state),
+        priority_level_country_metadata(group_id, level_id, state, section, force_from_section_pool),
         object_or_empty(state.outboundMetadata),
-        connections.priority_level_include_outbounds(group_id, level_id),
-        connections.priority_level_include_regex(group_id, level_id),
-        connections.priority_level_include_countries(group_id, level_id),
-        connections.priority_level_include_proxy_parameters(group_id, level_id),
-        connections.priority_level_include_protocols(group_id, level_id),
-        connections.priority_level_include_transports(group_id, level_id),
-        connections.priority_level_include_securities(group_id, level_id),
-        connections.priority_level_include_ports(group_id, level_id),
-        connections.priority_level_exclude_outbounds(group_id, level_id),
-        connections.priority_level_exclude_regex(group_id, level_id),
-        connections.priority_level_exclude_countries(group_id, level_id),
-        connections.priority_level_exclude_proxy_parameters(group_id, level_id),
-        connections.priority_level_exclude_protocols(group_id, level_id),
-        connections.priority_level_exclude_transports(group_id, level_id),
-        connections.priority_level_exclude_securities(group_id, level_id),
-        connections.priority_level_exclude_ports(group_id, level_id),
+        connections.priority_level_include_outbounds(group_id, level_id, section, force_from_section_pool),
+        connections.priority_level_include_regex(group_id, level_id, section, force_from_section_pool),
+        connections.priority_level_include_countries(group_id, level_id, section, force_from_section_pool),
+        connections.priority_level_include_proxy_parameters(group_id, level_id, section, force_from_section_pool),
+        connections.priority_level_include_protocols(group_id, level_id, section, force_from_section_pool),
+        connections.priority_level_include_transports(group_id, level_id, section, force_from_section_pool),
+        connections.priority_level_include_securities(group_id, level_id, section, force_from_section_pool),
+        connections.priority_level_include_ports(group_id, level_id, section, force_from_section_pool),
+        connections.priority_level_exclude_outbounds(group_id, level_id, section, force_from_section_pool),
+        connections.priority_level_exclude_regex(group_id, level_id, section, force_from_section_pool),
+        connections.priority_level_exclude_countries(group_id, level_id, section, force_from_section_pool),
+        connections.priority_level_exclude_proxy_parameters(group_id, level_id, section, force_from_section_pool),
+        connections.priority_level_exclude_protocols(group_id, level_id, section, force_from_section_pool),
+        connections.priority_level_exclude_transports(group_id, level_id, section, force_from_section_pool),
+        connections.priority_level_exclude_securities(group_id, level_id, section, force_from_section_pool),
+        connections.priority_level_exclude_ports(group_id, level_id, section, force_from_section_pool),
         null,
         null,
         state ? state.hiddenOutboundTags : null
@@ -1094,31 +1164,83 @@ function dashboard_filtered_outbounds(section, selector_tags, state, group_outbo
     );
 }
 
-function priority_levels_with_outbounds(group_id, urltest_candidate_tags, state) {
+function build_priority_levels_for_mode(group_id, urltest_candidate_tags, state, section, force_from_section_pool) {
     let result = [];
     let assigned = {};
-
-    for (let level_id in connections.priority_levels(group_id)) {
+    for (let level_id in connections.priority_levels(group_id, section, force_from_section_pool)) {
         let outbounds = [];
-        for (let tag_name in priority_level_filtered_outbounds(group_id, level_id, urltest_candidate_tags, state)) {
+        for (let tag_name in priority_level_filtered_outbounds(group_id, level_id, urltest_candidate_tags, state, section, force_from_section_pool)) {
             if (!assigned[tag_name]) {
                 assigned[tag_name] = true;
                 push(outbounds, tag_name);
             }
         }
-
         push(result, {
             id: level_id,
-            displayName: connections.priority_level_display_name(group_id, level_id),
-            order: int(connections.priority_level_order(group_id, level_id), 10),
-            direct: connections.priority_level_direct(group_id, level_id),
-            filter_mode: connections.priority_level_filter_mode(group_id, level_id),
-            detect_server_country: connections.priority_level_detect_server_country(group_id, level_id),
+            displayName: connections.priority_level_display_name(group_id, level_id, section, force_from_section_pool),
+            order: int(connections.priority_level_order(group_id, level_id, section, force_from_section_pool), 10),
+            direct: connections.priority_level_direct(group_id, level_id, section, force_from_section_pool),
+            filter_mode: connections.priority_level_filter_mode(group_id, level_id, section, force_from_section_pool),
+            detect_server_country: connections.priority_level_detect_server_country(group_id, level_id, section, force_from_section_pool),
             outbounds
         });
     }
+    return { levels: result, assigned };
+}
 
-    if (length(result) == 0 && connections.balancer_section(group_id) != null && length(array_or_empty(urltest_candidate_tags)) > 0) {
+function priority_levels_have_non_direct_outbounds(levels) {
+    for (let lvl in array_or_empty(levels)) {
+        if (!lvl.direct && length(array_or_empty(lvl.outbounds)) > 0)
+            return true;
+    }
+    return false;
+}
+
+function priority_levels_with_outbounds(group_id, urltest_candidate_tags, state, section) {
+    let built = build_priority_levels_for_mode(group_id, urltest_candidate_tags, state, section, false);
+    let result = built.levels;
+    let assigned = built.assigned;
+
+    if (!priority_levels_have_non_direct_outbounds(result) &&
+        connections.balancer_section(group_id) != null &&
+        length(array_or_empty(urltest_candidate_tags)) > 0) {
+        let pool_built = build_priority_levels_for_mode(group_id, urltest_candidate_tags, state, section, true);
+        if (priority_levels_have_non_direct_outbounds(pool_built.levels)) {
+            let had_direct = false;
+            for (let lvl in result) {
+                if (lvl.direct) {
+                    had_direct = true;
+                    break;
+                }
+            }
+            result = pool_built.levels;
+            assigned = pool_built.assigned;
+            if (had_direct) {
+                let pool_has_direct = false;
+                for (let lvl in result) {
+                    if (lvl.direct) {
+                        pool_has_direct = true;
+                        break;
+                    }
+                }
+                if (!pool_has_direct) {
+                    push(result, {
+                        id: as_string(group_id) + "_lvl_" + (length(result) + 1),
+                        displayName: "Direct",
+                        order: length(result) + 1,
+                        direct: true,
+                        filter_mode: "include",
+                        detect_server_country: "flag_emoji",
+                        outbounds: [ runtime_constants.DIRECT_OUTBOUND_TAG ]
+                    });
+                }
+            }
+        }
+    }
+
+    if (!priority_levels_have_non_direct_outbounds(result) &&
+        connections.balancer_section(group_id) != null &&
+        length(array_or_empty(urltest_candidate_tags)) > 0) {
         let pool_outbounds = [];
         for (let tag_name in array_or_empty(urltest_candidate_tags)) {
             tag_name = as_string(tag_name);
@@ -1128,15 +1250,23 @@ function priority_levels_with_outbounds(group_id, urltest_candidate_tags, state)
             }
         }
         if (length(pool_outbounds) > 0) {
-            push(result, {
-                id: as_string(group_id) + "_lvl_1",
+            let fallback_lvl = {
+                id: as_string(group_id) + "_lvl_pool",
                 displayName: "Section Pool",
                 order: 1,
                 direct: false,
                 filter_mode: "disabled",
                 detect_server_country: "flag_emoji",
                 outbounds: pool_outbounds
-            });
+            };
+            let new_res = [ fallback_lvl ];
+            for (let lvl in result) {
+                if (lvl.direct) {
+                    lvl.order = length(new_res) + 1;
+                    push(new_res, lvl);
+                }
+            }
+            result = new_res;
         }
     }
 
@@ -1365,7 +1495,7 @@ function merge_member_state_into_group(group_state, member, config) {
 
 function add_priority_group_outbound(config, section, group_id, urltest_candidate_tags, state) {
     let section_name = section[".name"];
-    let levels = priority_levels_with_outbounds(group_id, urltest_candidate_tags, state);
+    let levels = priority_levels_with_outbounds(group_id, urltest_candidate_tags, state, section);
     let outbounds = priority_group_outbounds(levels);
     let priority_tag = priority_outbound_tag(section_name, group_id);
     let display_name = connections.priority_group_display_name(section, group_id);
@@ -1923,7 +2053,7 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
                 pick_fastest: true,
                 switch_to_faster_same_priority: true,
                 fastest_check_interval: "3m",
-                interrupt_exist_connections: true,
+                interrupt_exist_connections: connections.section_interrupt_exist_connections(section),
                 pin_dashboard: false,
                 outbounds: selector_outbounds,
                 levels: auto_levels
@@ -1973,7 +2103,7 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
         tag: selector_tag,
         outbounds: selector_outbounds,
         default: selector_default,
-        interrupt_exist_connections: true
+        interrupt_exist_connections: connections.section_interrupt_exist_connections(section)
     });
 }
 
@@ -2791,7 +2921,7 @@ function add_dns_action_rules_for_clause(config, section) {
         true
     );
 
-    let rewrite_ttl = int_option(ctx.runtime_settings(), "dns_rewrite_ttl", "60");
+    let rewrite_ttl = int_option(ctx.runtime_settings(), "dns_rewrite_ttl", "15");
     let section_servers = section_dns_servers(section);
     let server_tags = [];
     if (length(section_servers) <= 1) {
@@ -3231,13 +3361,13 @@ function push_section_dns_matcher_rule(config, section, rule, excluded_cidrs, do
         rule_a.action = "predefined";
         rule_a.rcode = "NOERROR";
         rule_a.query_type = [ "A" ];
-        rule_a.answer = [ is_tachyon_core ? { ttl: ttl_num, value: "0.0.0.0" } : "* " + ttl_str + " IN A 0.0.0.0" ];
+        rule_a.answer = [ is_tachyon_core ? { ttl: ttl_num, value: "0.0.0.0" } : "*. " + ttl_str + " IN A 0.0.0.0" ];
         push_dns_matcher_rule(config, apply_excluded_source_ips(rule_a, dns_excluded_cidrs));
 
         rule_aaaa.action = "predefined";
         rule_aaaa.rcode = "NOERROR";
         rule_aaaa.query_type = [ "AAAA" ];
-        rule_aaaa.answer = [ is_tachyon_core ? { ttl: ttl_num, value: "::" } : "* " + ttl_str + " IN AAAA ::" ];
+        rule_aaaa.answer = [ is_tachyon_core ? { ttl: ttl_num, value: "::" } : "*. " + ttl_str + " IN AAAA ::" ];
         push_dns_matcher_rule(config, apply_excluded_source_ips(rule_aaaa, dns_excluded_cidrs));
         return;
     }
@@ -3360,7 +3490,7 @@ function add_fully_routed_ips_rule(config, section) {
     let routed_dns = connections.routed_dns_enabled(section);
     if (routed_dns) {
         let server_tag = runtime_constants.tag(section[".name"], "routed-dns-server");
-        let rewrite_ttl = int_option(ctx.runtime_settings(), "dns_rewrite_ttl", "60");
+        let rewrite_ttl = int_option(ctx.runtime_settings(), "dns_rewrite_ttl", "15");
         let dns_rule = {
             action: "route",
             server: server_tag,
@@ -3446,7 +3576,7 @@ function add_server_domain_rules_for_section(config, section) {
     let excluded_cidrs = core_ip.normalize_to_cidrs(section_leaf_list_option(section, "excluded_ips"));
     let dns_server_tag = section_dns_server(section);
     let ipv4_only_dpi = section_is_ipv4_only_dpi(section);
-    let rewrite_ttl = int_option(ctx.runtime_settings(), "dns_rewrite_ttl", "60");
+    let rewrite_ttl = int_option(ctx.runtime_settings(), "dns_rewrite_ttl", "15");
 
     for (let entry in raw_entries) {
         let text = trim(as_string(entry));
@@ -3991,7 +4121,7 @@ function add_combined_route_for_clause(config, section) {
         }
     }
 
-    let rewrite_ttl = int_option(ctx.runtime_settings(), "dns_rewrite_ttl", "60");
+    let rewrite_ttl = int_option(ctx.runtime_settings(), "dns_rewrite_ttl", "15");
     let dns_server_tag = section_dns_server(section);
     let ipv4_only_dpi = section_is_ipv4_only_dpi(section) &&
         dns_server_tag == runtime_constants.FAKEIP_DNS_SERVER_TAG;
@@ -4399,15 +4529,19 @@ function add_service_route_rules(config, sections) {
         let catchall_target = outbound_tag(first[".name"]);
         if (failover_active) {
             let member_tags = [];
-            for (let section in target_candidates)
+            let failover_interrupt = true;
+            for (let section in target_candidates) {
                 push(member_tags, outbound_tag(section[".name"]));
+                if (!connections.section_interrupt_exist_connections(section))
+                    failover_interrupt = false;
+            }
             let def_name = failover_default_name(target_candidates);
             push(config.outbounds, {
                 type: "selector",
                 tag: FAILOVER_GROUP_TAG,
                 outbounds: member_tags,
                 default: outbound_tag(def_name),
-                interrupt_exist_connections: true
+                interrupt_exist_connections: failover_interrupt
             });
             catchall_target = FAILOVER_GROUP_TAG;
         }

@@ -216,24 +216,34 @@ function probe_udp_domain(server, domain) {
                 return { ok: true, ms: elapsed >= 0 ? elapsed : 0.0, error: null };
             }
         }
-        t0 = clock();
-        let res2 = exec.run({ argv: [ "nslookup", domain, server_arg ], timeout: 4, capture: false });
-        t1 = clock();
-        if (res2.status == 0 && t0 && t1) {
-            let elapsed = (t1[0] - t0[0]) * 1000.0 + (t1[1] - t0[1]) / 1000000.0;
-            return { ok: true, ms: elapsed >= 0 ? elapsed : 0.0, error: null };
-        }
     }
 
     return { ok: false, ms: null, error: { kind: "transport", code: 28 } };
 }
 
 function measure_udp(server, domains) {
-    if (length(domains) > 0)
-        probe_udp_domain(server, domains[0]);
     let samples = [];
+    let consecutive_fails = 0;
+    let last_error = { kind: "transport", code: 28 };
+    if (length(domains) > 0) {
+        let warm = probe_udp_domain(server, domains[0]);
+        if (!warm.ok) {
+            consecutive_fails++;
+            if (warm.error) last_error = warm.error;
+        }
+    }
     for (let domain in domains) {
+        if (consecutive_fails >= 2) {
+            push(samples, { domain, ok: false, ms: null, error: last_error });
+            continue;
+        }
         let p = probe_udp_domain(server, domain);
+        if (!p.ok) {
+            consecutive_fails++;
+            if (p.error) last_error = p.error;
+        } else {
+            consecutive_fails = 0;
+        }
         push(samples, { domain, ok: p.ok, ms: p.ms, error: p.error });
     }
     return { server: server.value, samples, stats: summarize(samples) };
@@ -242,22 +252,48 @@ function measure_udp(server, domains) {
 function measure(server, domains) {
     if (server.kind == "udp")
         return measure_udp(server, domains);
-    let args = [ "curl", "--disable" ];
     let count = length(domains);
+    if (count > 0) {
+        let probe_path = STATE_DIR + "/answer-probe";
+        let probe_query = replace(replace(replace(b64enc(dns_query(domains[0])), /\+/g, "-"), /\//g, "_"), /=+$/, "");
+        let probe_args = [
+            "curl", "--disable", "--silent", "--globoff", "--noproxy", "*", "--proto", "=https",
+            "--connect-timeout", "2", "--max-time", "3", "--max-filesize", "65535",
+            "--header", "accept: application/dns-message", "--header", "cache-control: no-cache",
+            "--output", probe_path,
+            "--write-out", "0|%{http_code}|%{time_total}|%{content_type}|%{size_download}|%{exitcode}\n"
+        ];
+        if (server.resolve != null) push(probe_args, "--resolve", server.resolve);
+        push(probe_args, "--url", server.address + "?dns=" + probe_query);
+        let probe_res = exec.run({ argv: probe_args, timeout: 4 });
+        fs.unlink(probe_path);
+        let probe_parts = split(trim(as_string(probe_res.output)), "|");
+        let probe_ok = length(probe_parts) == 6 && probe_parts[1] == "200" && probe_parts[5] == "0";
+        if (!probe_ok) {
+            let err = length(probe_parts) != 6 ? { kind: "transport", code: 28 } :
+                probe_parts[5] != "0" ? { kind: "transport", code: int(probe_parts[5]) } :
+                { kind: "http", code: int(probe_parts[1]) };
+            let failed_samples = [];
+            for (let d in domains)
+                push(failed_samples, { domain: d, ok: false, ms: null, error: err });
+            return { server: server.value, samples: failed_samples, stats: summarize(failed_samples) };
+        }
+    }
+    let args = [ "curl", "--disable" ];
     // One curl process keeps its connection cache for warm-up and measured requests.
     // Unlike the browser's concurrent fetches, transfers are serial to limit router load.
     for (let i = 0; i < count * 2; i++) {
         if (i > 0) push(args, "--next");
         let query = replace(replace(replace(b64enc(dns_query(domains[i % count])), /\+/g, "-"), /\//g, "_"), /=+$/, "");
         push(args, "--silent", "--globoff", "--noproxy", "*", "--proto", "=https",
-            "--connect-timeout", "5", "--max-time", "5", "--max-filesize", "65535",
+            "--connect-timeout", "2", "--max-time", "3", "--max-filesize", "65535",
             "--header", "accept: application/dns-message", "--header", "cache-control: no-cache",
             "--output", STATE_DIR + "/answer-" + i,
             "--write-out", sprintf("%d|%%{http_code}|%%{time_total}|%%{content_type}|%%{size_download}|%%{exitcode}\n", i));
         if (server.resolve != null) push(args, "--resolve", server.resolve);
         push(args, "--url", server.address + "?dns=" + query);
     }
-    let output = exec.run({ argv: args, timeout: count * 10 + 10 }).output;
+    let output = exec.run({ argv: args, timeout: 15 }).output;
     let reports = {};
     for (let line in split(as_string(output), "\n")) {
         let parts = split(line, "|");

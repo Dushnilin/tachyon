@@ -117,7 +117,6 @@ const CATEGORY_BY_MODULE_PREFIX = [
   ['diagnostics/doctor', 'diagnostics'],
   ['config/connections', 'system'],
   ['singbox/', 'engine'],
-  ['steer/', 'engine'],
   ['providers/', 'system'],
   ['config/', 'system'],
   ['subscription/', 'updates'],

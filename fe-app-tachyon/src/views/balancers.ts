@@ -345,14 +345,29 @@ function summarizeBalancer(sectionId) {
     );
   };
   if (btype === 'priority') {
-    const rawLevels = uci.get(UCI_PACKAGE, sectionId, 'outbound_group_levels');
-    const levelList = Array.isArray(rawLevels)
-      ? rawLevels.map((v) => String(v).trim()).filter(Boolean)
-      : String(rawLevels || '')
-            .trim()
-            .startsWith('srv:')
-        ? [String(rawLevels).trim()]
-        : asArray(rawLevels);
+    const parseLevels = (raw) =>
+      Array.isArray(raw)
+        ? raw.map((v) => String(v).trim()).filter(Boolean)
+        : String(raw || '')
+              .trim()
+              .startsWith('srv:')
+          ? [String(raw).trim()]
+          : asArray(raw);
+    let levelList = [];
+    for (const sid of sectionsUsingRef('balancer_refs', sectionId)) {
+      const secLevels = parseLevels(
+        uci.get(UCI_PACKAGE, sid, 'outbound_group_levels'),
+      );
+      if (secLevels.length) {
+        levelList = secLevels;
+        break;
+      }
+    }
+    if (!levelList.length) {
+      levelList = parseLevels(
+        uci.get(UCI_PACKAGE, sectionId, 'outbound_group_levels'),
+      );
+    }
     const levels = levelList.map(resolveEntityName);
     const interval =
       uci.get(UCI_PACKAGE, sectionId, 'active_check_interval') || '5s';
@@ -560,49 +575,6 @@ function createBalancersContent(section) {
     return this.cfgvalue(sectionId);
   };
 
-  // Priority fields
-  o = section.taboption(
-    'general',
-    form.DynamicList,
-    'outbound_group_levels',
-    _('Priority Tiers (Groups / Sources / Servers)'),
-    _(
-      "Ordered list of Outbound Groups, Sources, individual Servers from subscriptions/pool, or 'direct' for direct fallback. Tier 1 is tried first, then Tier 2, etc.",
-    ),
-  );
-  o.modalonly = true;
-  o.depends('balancer_type', 'priority');
-  o.load = function () {
-    return loadGlobalPoolChoices().then((pool) => {
-      this.keylist = [];
-      this.vallist = [];
-      (uci.sections(UCI_PACKAGE, 'outbound_group') || []).forEach((g) => {
-        const gid = g['.name'];
-        if (gid)
-          this.value(gid, `📦 ${_('Group')}: ${g.name || g.label || gid}`);
-      });
-      (uci.sections(UCI_PACKAGE, 'outbound_source') || []).forEach((src) => {
-        const sid = src['.name'];
-        if (!sid) return;
-        const stypeLower = String(
-          src.source_type || 'subscription',
-        ).toLowerCase();
-        if (DPI_SOURCE_TYPES.has(stypeLower)) return;
-        const stype = stypeLower.toUpperCase();
-        const pfx = src.node_prefix ? ` [${src.node_prefix}]` : ` [${stype}]`;
-        this.value(
-          sid,
-          `📡 ${_('Source')}: ${src.name || src.label || sid}${pfx}`,
-        );
-      });
-      (pool.servers || []).forEach((s) => {
-        this.value(`srv:${s.value}`, `🎯 ${_('Server')}: ${s.label}`);
-      });
-      this.value('direct', _('Direct Connection (Fallback)'));
-      return form.DynamicList.prototype.load.apply(this, arguments);
-    });
-  };
-
   // URLTest & Priority URL fields
   o = section.taboption('general', form.Value, 'testing_url', _('Testing URL'));
   o.modalonly = true;
@@ -687,6 +659,24 @@ function createBalancersContent(section) {
   o.modalonly = true;
   o.default = '3m';
   o.placeholder = '3m';
+  o.depends('balancer_type', 'urltest');
+
+  o = section.taboption(
+    'general',
+    form.Value,
+    'check_interval_jitter',
+    _('Check Interval Randomization (Jitter)'),
+    _(
+      'Randomize the URLTest interval across groups and reboots (e.g. 15%, 25%, or 30s) to avoid synchronized periodic probe bursts.',
+    ),
+  );
+  o.modalonly = true;
+  o.default = '';
+  o.placeholder = _('Disabled (Exact interval)');
+  o.value('', _('Disabled (Exact interval)'));
+  o.value('15%', _('±15% (Recommended — spreads probe intervals)'));
+  o.value('25%', _('±25% (Medium randomization)'));
+  o.value('40%', _('±40% (High randomization)'));
   o.depends('balancer_type', 'urltest');
 
   o = section.taboption(

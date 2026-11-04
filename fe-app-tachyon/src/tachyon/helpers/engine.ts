@@ -1,10 +1,6 @@
 import type { Tachyon } from '../types';
 
-export type ActiveEngine =
-  | 'tachyon-core'
-  | 'sing-box'
-  | 'steer'
-  | 'steer-extended';
+export type ActiveEngine = 'tachyon-core' | 'sing-box';
 
 /**
  * Whether a capability is available for the given engine. The capability names
@@ -21,28 +17,11 @@ export function engineSupports(
   return capabilities.includes(feature);
 }
 
-/**
- * Widgets that only sing-box can drive. On steer they must be hidden rather
- * than rendered as broken, because steer owns neither the Clash API nor the
- * sing-box inbounds.
- */
-const SING_BOX_ONLY_WIDGETS = [
-  'clash_connections',
-  'clash_groups',
-  'latency_groups',
-  'sing_box_inbounds',
-  'sing_box_version',
-  'server_inbounds',
-];
-
 export function isWidgetAvailable(
-  engine: string | undefined,
-  widget: string,
+  _engine: string | undefined,
+  _widget: string,
 ): boolean {
-  if (engine !== 'steer' && engine !== 'steer-extended') {
-    return true;
-  }
-  return !SING_BOX_ONLY_WIDGETS.includes(widget);
+  return true;
 }
 
 /**
@@ -53,10 +32,6 @@ export function engineLabel(engine: string | undefined): string {
   switch (engine) {
     case 'tachyon-core':
       return 'tachyon-core';
-    case 'steer':
-      return 'steer';
-    case 'steer-extended':
-      return 'steer-extended';
     case 'sing-box':
       return 'sing-box';
     default:

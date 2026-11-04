@@ -136,8 +136,7 @@ check_order() {
 }
 
 for spec in "subscription/cache.uc prepare_subscription_cache_section" \
-            "subscription/cache.uc subscription_update_section" \
-            "steer/section_cache.uc build_section_cache"; do
+            "subscription/cache.uc subscription_update_section"; do
     set -- $spec
     reason="$(check_order "$1" "$2")" || fail "$1/$2: $reason"
 done

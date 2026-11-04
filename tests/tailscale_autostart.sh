@@ -4,7 +4,7 @@
 # After a reboot with the sing-box engine the daemon was gone:
 # expected_process_count=1, running_process_count=0, and only a manual
 # `tachyon tailscale_restart` brought it back. The reload path starts the
-# runtime and so does the steer start branch, but start_main() - the sequence
+# runtime, but start_main() - the sequence
 # the boot actually runs for sing-box - never did, and a reload with an
 # unchanged configuration is skipped, so nothing else started it either.
 #
@@ -23,9 +23,6 @@ ok() { pass_count=$((pass_count + 1)); }
 
 start_main_body="$(sed -n '/^function start_main/,/^}/p' "$LIFECYCLE_UC")"
 [ -n "$start_main_body" ] || fail "start_main not found in lifecycle.uc"
-
-steer_body="$(sed -n '/^function start_steer_main/,/^}/p' "$LIFECYCLE_UC")"
-[ -n "$steer_body" ] || fail "start_steer_main not found in lifecycle.uc"
 
 reload_body="$(sed -n '/^function reload(/,/^}/p' "$LIFECYCLE_UC")"
 [ -n "$reload_body" ] || fail "reload not found in lifecycle.uc"
@@ -46,12 +43,7 @@ if [ "$tailscale_line" -ge "$singbox_line" ]; then
 fi
 ok
 
-# 3. The other two call sites are what kept this alive on some devices - both
-# must keep starting the runtime so the regression cannot hide in either.
-grep -qF 'TAILSCALE_UC, [ "start-runtime" ]' <<<"$steer_body" ||
-  fail "the steer start branch no longer starts the native Tailscale runtime"
-ok
-
+# 3. The reload path must keep starting the runtime so the regression cannot hide there.
 grep -qF 'TAILSCALE_UC, [ "start-runtime" ]' <<<"$reload_body" ||
   fail "the reload path no longer starts the native Tailscale runtime"
 ok

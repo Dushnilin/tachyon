@@ -44,6 +44,7 @@ let settings = transport.settings;
 
 let format_bytes = rendering.format_bytes;
 let escape_html = rendering.escape_html;
+let utf8_prefix = rendering.utf8_prefix;
 let setting_schema = rendering.setting_schema;
 let get_schema_label = rendering.get_schema_label;
 let is_boolean_key = rendering.is_boolean_key;
@@ -807,7 +808,7 @@ function view_sec_conds(token, chat_id, msg_id, sec_name) {
         if (item[".type"] != "condition" || linked_map[sname])
             continue;
         let clabel = item.label || item.name || sname;
-        if (length(clabel) > 22) clabel = substr(clabel, 0, 22) + "...";
+        if (length(clabel) > 22) clabel = utf8_prefix(clabel, 22) + "...";
         push(avail_rows, [
             { text: t("btn_link") + ": " + clabel, callback_data: "/sec_cond_tog " + sec_name + " " + sname },
             { text: "✏️", callback_data: "/set_cat condition " + sname }
@@ -1014,13 +1015,13 @@ function exec_doctor(token, chat_id) {
             }
             report = "<b>" + escape_html(header) + "</b>\n\n<pre>" + escape_html(text) + "</pre>";
             if (length(report) > 3900)
-                report = substr(report, 0, 3900) + "\n... (" + t("report_truncated") + ")";
+                report = utf8_prefix(report, 3900) + "\n... (" + t("report_truncated") + ")";
             send_message(token, chat_id, report, "HTML", [[{text:t("nav_back"), callback_data:"/menu"}]]);
             return;
         }
     }
 
-    if (length(report) > 3500) report = substr(report, 0, 3500) + "\n... (" + t("report_truncated") + ")";
+    if (length(report) > 3500) report = utf8_prefix(report, 3500) + "\n... (" + t("report_truncated") + ")";
     send_message(token, chat_id, "🩺 <b>" + t("diag_results") + "</b>\n\n<pre>" + escape_html(report) + "</pre>", "HTML", [[{text:t("nav_back"), callback_data:"/menu"}]]);
 }
 
@@ -1083,8 +1084,6 @@ function resolve_component_installed_version(comp_name, sys_info) {
         return as_string(sys_info.tachyon_version || "");
     if (comp_name == "sing_box" || comp_name == "sing-box" || comp_name == "tachyon-core" || comp_name == "tachyon_core")
         return as_string(sys_info.tachyon_core_version || sys_info.sing_box_version || "");
-    if (comp_name == "steer" || comp_name == "steer-extended")
-        return as_string(sys_info.steer_version || "");
     if (comp_name == "zapret")
         return as_string(sys_info.zapret_version || "");
     if (comp_name == "zapret2")
@@ -1144,7 +1143,7 @@ function exec_check_updates(token, chat_id, msg_id) {
                         let notes = rendering.clean_release_notes(comp.release_notes);
                         if (notes != "") {
                             if (length(notes) > 400)
-                                notes = substr(notes, 0, 400) + "...";
+                                notes = utf8_prefix(notes, 400) + "...";
                             text += "  📋 <b>" + t("update_whats_new") + ":</b>\n<pre>" + escape_html(notes) + "</pre>\n";
                         }
                         push(keyboard, [{text: "⬆️ " + t("btn_update_component") + " " + title + " (" + cur + ")", callback_data: "/update_component " + name}]);
@@ -1154,7 +1153,7 @@ function exec_check_updates(token, chat_id, msg_id) {
                         let notes = rendering.clean_release_notes(comp.release_notes);
                         if (notes != "") {
                             if (length(notes) > 400)
-                                notes = substr(notes, 0, 400) + "...";
+                                notes = utf8_prefix(notes, 400) + "...";
                             text += "  📋 <b>" + t("update_whats_new") + ":</b>\n<pre>" + escape_html(notes) + "</pre>\n";
                         }
                         push(keyboard, [{text: "⬆️ " + t("btn_update_component") + " " + title + " (" + cur + " → " + lat + ")", callback_data: "/update_component " + name}]);
@@ -1467,7 +1466,7 @@ function view_quick_test(token, chat_id, msg_id) {
     text += (sys && sys.watchdog_running ? "✅" : "❌") + " Watchdog\n";
 
     let nft = command_capture(command_from_args(["/usr/sbin/nft", "list", "tables"]));
-    text += (nft && nft.status == 0 && match(nft.output || "", /TachyonTable|\bsteer\b/)) ? "✅" : "❌";
+    text += (nft && nft.status == 0 && match(nft.output || "", /TachyonTable/)) ? "✅" : "❌";
     text += " " + t("test_nft") + "\n";
 
     let dns_ok = false;
@@ -1515,7 +1514,7 @@ function view_logs(token, chat_id, msg_id, level, count) {
             if (level == "error" && !match(line, /\[err\]|\[error\]/i)) continue;
             if (level == "warn" && !match(line, /\[warn\]/i)) continue;
             if (level == "info" && !match(line, /\[info\]/i)) continue;
-            if (match(line, /tachyon|tachyon-core|sing-box|steer|watchdog/i)) push(filtered, line);
+            if (match(line, /tachyon|tachyon-core|sing-box|watchdog/i)) push(filtered, line);
         }
         let start = length(filtered) - count;
         if (start < 0) start = 0;
@@ -1555,12 +1554,7 @@ function view_system_info(token, chat_id, msg_id) {
             text += "🔧 Tachyon: <code>" + as_string(info.tachyon_version || "N/A") + "</code>\n";
             text += "📱 LuCI App: <code>" + as_string(info.luci_app_version || "N/A") + "</code>\n\n";
             let active_engine = "tachyon-core";
-            try { active_engine = require("core.engine").get_active(); } catch (e) {}
-            if (active_engine == "steer" || active_engine == "steer-extended") {
-                text += "📦 steer: <code>" + as_string(info.steer_version || "N/A") + "</code>\n";
-                if (info.steer_extended == "1" || active_engine == "steer-extended")
-                    text += "   Variant: Extended 🔵\n";
-            } else if (info.sing_box_tachyon_core == 1 || active_engine == "tachyon-core") {
+            if (info.sing_box_tachyon_core == 1 || active_engine == "tachyon-core") {
                 text += "📦 tachyon-core: <code>" + as_string(info.tachyon_core_version || info.sing_box_version || "N/A") + "</code>\n";
             } else {
                 text += "📦 sing-box: <code>" + as_string(info.sing_box_version || "N/A") + "</code>\n";
@@ -1672,12 +1666,12 @@ function view_sec_subs(token, chat_id, msg_id, sec_name) {
         let sname = src[".name"];
         eff_map[sname] = true;
         let label = src.label || src.name || src.url || sname;
-        if (length(label) > 26) label = substr(label, 0, 26) + "...";
+        if (length(label) > 26) label = utf8_prefix(label, 26) + "...";
         let icon = src.enabled == "0" ? "❌" : "✅";
         let stype = src.source_type || (src[".type"] == "subscription_url" ? "subscription" : "subscription");
         let cat_type = src[".type"] || "outbound_source";
         text += icon + " <b>" + escape_html(src.label || src.name || sname) + "</b> <code>[" + escape_html(stype) + "]</code>";
-        if (src.url) text += "\n   └ <code>" + escape_html(length(src.url) > 45 ? substr(src.url, 0, 45) + "..." : src.url) + "</code>";
+        if (src.url) text += "\n   └ <code>" + escape_html(length(src.url) > 45 ? utf8_prefix(src.url, 45) + "..." : src.url) + "</code>";
         else if (src.zapret2_strategy) text += " (<code>" + escape_html(src.zapret2_strategy) + "</code>)";
         else if (src.desync_mode) text += " (<code>" + escape_html(src.desync_mode) + "</code>)";
         text += "\n";
@@ -1702,7 +1696,7 @@ function view_sec_subs(token, chat_id, msg_id, sec_name) {
         if (item[".type"] != "outbound_source" || eff_map[sname])
             continue;
         let slabel = item.label || item.name || sname;
-        if (length(slabel) > 22) slabel = substr(slabel, 0, 22) + "...";
+        if (length(slabel) > 22) slabel = utf8_prefix(slabel, 22) + "...";
         let stype = item.source_type || "subscription";
         push(avail, [
             { text: t("btn_link") + ": " + slabel + " [" + stype + "]", callback_data: "/sec_src_tog " + sec_name + " " + sname },
@@ -2106,7 +2100,7 @@ function exec_ai_status_full(token, chat_id, msg_id) {
     send_message(token, chat_id, "🔍 <b>" + t("ai_status_collecting") + "</b>", "HTML");
     let res = command_capture(command_from_args([ "/usr/bin/tachyon", "ai_status_full" ]));
     let data = res ? (res.output || t("err_no_data")) : t("ai_status_error");
-    if (length(data) > 3500) data = substr(data, 0, 3500) + "\n... (" + t("ai_data_truncated") + ")";
+    if (length(data) > 3500) data = utf8_prefix(data, 3500) + "\n... (" + t("ai_data_truncated") + ")";
     let text = "🤖 <b>" + t("ai_full_status_header") + "</b>\n\n<pre>" + escape_html(data) + "</pre>";
     let keyboard = [[{ text: "⬅️ " + t("nav_back"), callback_data: "/watchdog" }]];
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);

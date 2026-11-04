@@ -254,23 +254,6 @@ function get_daemon_pids(name) {
         return pids;
     }
 
-    if (name == "steer") {
-        let pids = [];
-        let seen = {};
-        let val = safe_read_file("/var/run/steer.pid");
-        if (val != "" && match(val, /^[0-9]+$/) && fs.stat("/proc/" + val) != null) {
-            push(pids, val);
-            seen[val] = true;
-        }
-        for (let pid in (pmap["steer"] || [])) {
-            if (!seen[pid]) {
-                push(pids, pid);
-                seen[pid] = true;
-            }
-        }
-        return pids;
-    }
-
     if (name == "wdtt") {
         let pids = [];
         for (let comm_name in [ "qwdtt-client", "qwdtt", "wdtt" ]) {
@@ -338,23 +321,12 @@ function get_relevant_daemons() {
     let sections = uci_core.section_objects(CONFIG_NAME, "section") || [];
     let servers = uci_core.section_objects(CONFIG_NAME, "server") || [];
 
-    let active_engine = "tachyon-core";
-    try {
-        active_engine = require("core.engine").get_active();
-    } catch (e) {}
-
-    let is_steer = (active_engine == "steer" || active_engine == "steer-extended");
     let list = [];
-
-    if (is_steer) {
-        push(list, "steer");
-    } else {
-        let marker = safe_read_file(constants.SB_VARIANT_STATE_FILE || "/etc/tachyon/tachyon-core-variant");
-        if (marker == "" && getenv("SB_VARIANT_STATE_FILE") == null)
-            marker = safe_read_file("/etc/tachyon/sing-box-variant");
-        let is_core = (marker == "tachyon-core");
-        push(list, is_core ? "tachyon-core" : "sing-box");
-    }
+    let marker = safe_read_file(constants.SB_VARIANT_STATE_FILE || "/etc/tachyon/tachyon-core-variant");
+    if (marker == "" && getenv("SB_VARIANT_STATE_FILE") == null)
+        marker = safe_read_file("/etc/tachyon/sing-box-variant");
+    let is_core = (marker == "tachyon-core");
+    push(list, is_core ? "tachyon-core" : "sing-box");
 
     if (length(get_daemon_pids("tachyon")) > 0)
         push(list, "tachyon");
@@ -667,7 +639,7 @@ function analyze_incidents_and_logs() {
             wan_flaps++;
         if (index(l, "wan.down") >= 0 || index(l, "watchdog: wan check failed") >= 0)
             wan_flaps++;
-        if ((index(l, "sing-box") >= 0 || index(l, "tachyon-core") >= 0 || index(l, "steer") >= 0) &&
+        if ((index(l, "sing-box") >= 0 || index(l, "tachyon-core") >= 0) &&
             (index(l, "panic:") >= 0 || index(l, "fatal error:") >= 0 || index(l, "sigsegv") >= 0 || index(l, "died unexpectedly") >= 0))
             engine_crashes++;
         if (index(l, "dnsmasq") >= 0 &&
@@ -765,7 +737,7 @@ function compute_stability_score(incidents, memory, servers, jobs, daemons) {
     let penalties = [];
 
     // 1. Process health: engine and (if enabled) watchdog must be running
-    if (!daemons["tachyon-core"]?.running && !daemons["sing-box"]?.running && !daemons["steer"]?.running) {
+    if (!daemons["tachyon-core"]?.running && !daemons["sing-box"]?.running) {
         score -= 40;
         push(penalties, "Routing engine is not running (-40)");
     }

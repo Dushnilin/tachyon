@@ -2100,10 +2100,10 @@ function child_effective_include_prefixes(child, section, keep_all_source_prefix
         if (length(explicit) > 0)
             return explicit;
     }
+    if (child[".type"] == "balancer" && !keep_all_source_prefixes)
+        return [];
     let srefs = whitespace_list_value(child, "source_refs");
     if (length(srefs) == 0 || srefs[0] == "*")
-        return [];
-    if (child[".type"] == "balancer" && index(section_name(child), "bal_auto_") == 0 && raw_mode == "" && !keep_all_source_prefixes)
         return [];
     if (type(section) == "object" && !keep_all_source_prefixes) {
         let eff_srcs = section_effective_outbound_sources(section);
@@ -2162,7 +2162,15 @@ function child_effective_include_prefixes(child, section, keep_all_source_prefix
     return prefixes;
 }
 
-function resolve_balancer_owner_section(group_id) {
+let last_priority_section_by_group = {};
+let last_priority_force_pool_by_group = {};
+
+function resolve_balancer_owner_section(group_id, section) {
+    if (type(section) == "object")
+        return section;
+    let cached = last_priority_section_by_group[as_string(group_id)];
+    if (type(cached) == "object")
+        return cached;
     let all_secs = object_or_empty(object_or_empty(get_item_sections())["section"]).list;
     if (type(all_secs) != "array" || length(all_secs) == 0)
         all_secs = uci_core.section_objects(CONFIG_NAME, "section");
@@ -2185,39 +2193,68 @@ function resolve_balancer_owner_section(group_id) {
     return null;
 }
 
-function synthesized_priority_levels_for_balancer(group_id) {
+function extract_entity_priority_level_refs(entity) {
+    if (type(entity) != "object")
+        return [];
+    let raw_lvls = raw_option(entity, "outbound_group_levels");
+    if (type(raw_lvls) == "array")
+        return raw_lvls;
+    let s = trim(as_string(raw_lvls));
+    if (s == "")
+        return [];
+    if (substr(s, 0, 4) == "srv:")
+        return [ s ];
+    return whitespace_list_value(entity, "outbound_group_levels");
+}
+
+function section_combined_pool_tier_refs(owner_sec) {
+    if (type(owner_sec) != "object")
+        return [];
+    let combined = [];
+    let seen = {};
+    for (let gid in section_outbound_group_refs(owner_sec))
+        push_unique_str(combined, seen, gid);
+    for (let sid in section_outbound_source_refs(owner_sec)) {
+        let src = outbound_source_section(sid);
+        if (src != null && is_dpi_or_desync_source_type(option(src, "source_type", "")))
+            continue;
+        push_unique_str(combined, seen, sid);
+    }
+    return combined;
+}
+
+function synthesized_priority_levels_for_balancer(group_id, section, force_from_section_pool) {
     let bal = balancer_section(group_id);
     if (bal == null || lc(option(bal, "balancer_type", "urltest")) != "priority")
         return [];
-    let owner_sec = resolve_balancer_owner_section(group_id);
-    let raw_lvls = raw_option(bal, "outbound_group_levels");
-    let group_refs = type(raw_lvls) == "array"
-        ? raw_lvls
-        : (substr(trim(as_string(raw_lvls)), 0, 4) == "srv:"
-            ? [ trim(as_string(raw_lvls)) ]
-            : whitespace_list_value(bal, "outbound_group_levels"));
-    if (length(group_refs) == 0) {
-        let has_legacy = false;
-        let owner_sec_name = type(owner_sec) == "object" ? section_name(owner_sec) : "";
-        for (let pg in uci_core.section_objects(CONFIG_NAME, "priority_group")) {
-            if (section_name(pg) == as_string(group_id) ||
-                (option(pg, "name", "") == option(bal, "name", "") &&
-                 (owner_sec_name == "" || option(pg, "section", "") == owner_sec_name))) {
+    if (type(section) == "object")
+        last_priority_section_by_group[as_string(group_id)] = section;
+    if (force_from_section_pool != null)
+        last_priority_force_pool_by_group[as_string(group_id)] = force_from_section_pool == true;
+    let use_force_pool = last_priority_force_pool_by_group[as_string(group_id)] == true;
+    let owner_sec = resolve_balancer_owner_section(group_id, section);
+    let group_refs = [];
+    if (use_force_pool) {
+        group_refs = section_combined_pool_tier_refs(owner_sec);
+    } else {
+        group_refs = extract_entity_priority_level_refs(owner_sec);
+        if (length(group_refs) == 0)
+            group_refs = extract_entity_priority_level_refs(bal);
+        if (length(group_refs) == 0) {
+            let has_legacy = false;
+            let owner_sec_name = type(owner_sec) == "object" ? section_name(owner_sec) : "";
+            for (let pg in uci_core.section_objects(CONFIG_NAME, "priority_group")) {
+                if (section_name(pg) == as_string(group_id) ||
+                    (option(pg, "name", "") == option(bal, "name", "") &&
+                     (owner_sec_name == "" || option(pg, "section", "") == owner_sec_name))) {
+                    has_legacy = true;
+                    break;
+                }
+            }
+            if (!has_legacy && length(child_items_by_owner("priority_level", "group", group_id)) > 0)
                 has_legacy = true;
-                break;
-            }
-        }
-        if (!has_legacy && length(child_items_by_owner("priority_level", "group", group_id)) > 0)
-            has_legacy = true;
-        if (!has_legacy) {
-            group_refs = whitespace_list_value(bal, "group_refs");
-            if (length(group_refs) == 0)
-                group_refs = whitespace_list_value(bal, "source_refs");
-            if (length(group_refs) == 0 && type(owner_sec) == "object") {
-                group_refs = section_outbound_group_refs(owner_sec);
-                if (length(group_refs) == 0)
-                    group_refs = section_outbound_source_refs(owner_sec);
-            }
+            if (!has_legacy)
+                group_refs = section_combined_pool_tier_refs(owner_sec);
         }
     }
     if (length(group_refs) == 0)
@@ -2353,7 +2390,7 @@ function synthesized_priority_levels_for_balancer(group_id) {
     return result;
 }
 
-function priority_level_child(group_id, value) {
+function priority_level_child(group_id, value, section, force_from_section_pool) {
     let child = child_section("priority_level", value);
     if (type(child) == "object") {
         if (option(child, "group", "") == as_string(group_id))
@@ -2365,7 +2402,7 @@ function priority_level_child(group_id, value) {
                 return child;
         }
     }
-    for (let item in synthesized_priority_levels_for_balancer(group_id)) {
+    for (let item in synthesized_priority_levels_for_balancer(group_id, section, force_from_section_pool)) {
         if (section_name(item) == as_string(value))
             return item;
     }
@@ -2383,15 +2420,15 @@ function priority_level_sort(left, right) {
     return left_name == right_name ? 0 : (left_name < right_name ? -1 : 1);
 }
 
-function priority_level_items(group_id) {
-    let synth = synthesized_priority_levels_for_balancer(group_id);
+function priority_level_items(group_id, section, force_from_section_pool) {
+    let synth = synthesized_priority_levels_for_balancer(group_id, section, force_from_section_pool);
     if (length(synth) > 0)
         return synth;
     let result = child_items_by_owner("priority_level", "group", group_id);
     if (length(result) == 0) {
         let bal = balancer_section(group_id);
         if (bal != null) {
-            let owner_sec = resolve_balancer_owner_section(group_id);
+            let owner_sec = resolve_balancer_owner_section(group_id, section);
             let owner_sec_name = type(owner_sec) == "object" ? section_name(owner_sec) : "";
             for (let pg in uci_core.section_objects(CONFIG_NAME, "priority_group")) {
                 if (option(pg, "name", "") == option(bal, "name", "") &&
@@ -2419,9 +2456,9 @@ function priority_level_items(group_id) {
     return [];
 }
 
-function priority_levels(group_id) {
+function priority_levels(group_id, section, force_from_section_pool) {
     let result = [];
-    for (let child in priority_level_items(group_id)) {
+    for (let child in priority_level_items(group_id, section, force_from_section_pool)) {
         let id = section_name(child);
         if (id != "")
             push(result, id);
@@ -3705,6 +3742,25 @@ function subscription_update_interval(section, value) {
         option(section, "subscription_update_interval", "1h") || "1h");
 }
 
+function subscription_update_jitter(section, value) {
+    let child = subscription_source_item(section, value);
+    let raw = "";
+    if (child != null)
+        raw = trim(child_option_alias(child, [ "subscription_update_jitter", "update_jitter" ], ""));
+    if (raw == "")
+        raw = trim(item_option(section, "subscription_url_settings", value, "subscription_update_jitter",
+            option(section, "subscription_update_jitter", "")));
+    if (raw == "") {
+        let settings = object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
+        raw = trim(option(settings, "subscription_update_jitter", ""));
+    }
+    if (raw == "0" || lc(raw) == "false" || lc(raw) == "disabled" || lc(raw) == "off")
+        return "";
+    if (raw == "1" || lc(raw) == "true" || lc(raw) == "enabled" || lc(raw) == "on")
+        return "15%";
+    return raw;
+}
+
 function subscription_dashboard_metadata_enabled(section, value) {
     let child = subscription_source_item(section, value);
     if (child != null)
@@ -3976,6 +4032,26 @@ function urltest_check_interval(section, value) {
         return child_option_alias(child, [ "check_interval", "urltest_check_interval" ], "3m");
     let fallback = option(section, "check_interval", option(section, "urltest_check_interval", "3m") || "3m") || "3m";
     return item_option(section, "urltest_settings", value, "urltest_check_interval", fallback);
+}
+
+function urltest_check_interval_jitter(section, value) {
+    let child = urltest_child(section, value);
+    let raw = "";
+    if (child != null)
+        raw = trim(child_option_alias(child, [ "check_interval_jitter", "urltest_check_interval_jitter" ], ""));
+    if (raw == "") {
+        let fallback = option(section, "check_interval_jitter", option(section, "urltest_check_interval_jitter", ""));
+        raw = trim(item_option(section, "urltest_settings", value, "urltest_check_interval_jitter", fallback));
+    }
+    if (raw == "") {
+        let settings = object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
+        raw = trim(option(settings, "urltest_check_interval_jitter", option(settings, "check_interval_jitter", "")));
+    }
+    if (raw == "0" || lc(raw) == "false" || lc(raw) == "disabled" || lc(raw) == "off")
+        return "";
+    if (raw == "1" || lc(raw) == "true" || lc(raw) == "enabled" || lc(raw) == "on")
+        return "15%";
+    return raw;
 }
 
 function urltest_tolerance(section, value) {
@@ -4336,125 +4412,148 @@ function priority_group_interrupt_exist_connections(section, value) {
     return child != null ? child_bool(child, "interrupt_exist_connections", true) : true;
 }
 
+function section_interrupt_exist_connections(section) {
+    if (raw_option(section, "interrupt_exist_connections") != null)
+        return bool_option(section, "interrupt_exist_connections", true);
+    if (raw_option(section, "urltest_interrupt_exist_connections") != null)
+        return bool_option(section, "urltest_interrupt_exist_connections", true);
+    for (let bal_ref in section_balancer_refs(section)) {
+        let bal = balancer_section(bal_ref);
+        if (bal != null && raw_option(bal, "interrupt_exist_connections") != null) {
+            if (!bool_option(bal, "interrupt_exist_connections", true))
+                return false;
+        }
+    }
+    for (let ut_id in urltests(section)) {
+        if (!urltest_interrupt_exist_connections(section, ut_id))
+            return false;
+    }
+    for (let pg_id in priority_groups(section)) {
+        if (!priority_group_interrupt_exist_connections(section, pg_id))
+            return false;
+    }
+    return bool_option(uci_core.get_all(CONFIG_NAME, "settings"), "interrupt_exist_connections", true);
+}
+
 function priority_group_pin_dashboard(section, value) {
     let child = priority_group_child(section, value);
     return child != null ? child_bool(child, "pin_dashboard", true) : true;
 }
 
-function priority_level_display_name(group_id, value) {
-    let child = priority_level_child(group_id, value);
+function priority_level_display_name(group_id, value, section, force_from_section_pool) {
+    let child = priority_level_child(group_id, value, section, force_from_section_pool);
     return child != null ? child_option(child, "name", as_string(value)) : as_string(value);
 }
 
-function priority_level_order(group_id, value) {
-    let child = priority_level_child(group_id, value);
+function priority_level_order(group_id, value, section, force_from_section_pool) {
+    let child = priority_level_child(group_id, value, section, force_from_section_pool);
     return child != null ? child_option(child, "order", "0") : "0";
 }
 
-function priority_level_direct(group_id, value) {
-    let child = priority_level_child(group_id, value);
+function priority_level_direct(group_id, value, section, force_from_section_pool) {
+    let child = priority_level_child(group_id, value, section, force_from_section_pool);
     return child != null ? child_bool(child, "direct", false) : false;
 }
 
-function priority_level_filter_mode(group_id, value) {
-    let child = priority_level_child(group_id, value);
+function priority_level_filter_mode(group_id, value, section, force_from_section_pool) {
+    let child = priority_level_child(group_id, value, section, force_from_section_pool);
     return child != null ? child_option(child, "filter_mode", "include") : "include";
 }
 
-function priority_level_include_countries(group_id, value) {
-    let child = priority_level_child(group_id, value);
+function priority_level_include_countries(group_id, value, section, force_from_section_pool) {
+    let child = priority_level_child(group_id, value, section, force_from_section_pool);
     return child != null ? child_list_alias(child, [ "include_countries", "country" ], []) : [];
 }
 
-function priority_level_include_outbounds(group_id, value) {
-    let child = priority_level_child(group_id, value);
+function priority_level_include_outbounds(group_id, value, section, force_from_section_pool) {
+    let child = priority_level_child(group_id, value, section, force_from_section_pool);
     return child != null ? child_list_alias(child, [ "include_outbounds", "server_name" ], []) : [];
 }
 
-function priority_level_include_regex(group_id, value) {
-    let child = priority_level_child(group_id, value);
+function priority_level_include_regex(group_id, value, section, force_from_section_pool) {
+    let child = priority_level_child(group_id, value, section, force_from_section_pool);
     return child != null ? child_list_alias(child, [ "include_regex", "regex" ], []) : [];
 }
 
-function priority_level_include_proxy_parameters(group_id, value) {
-    let child = priority_level_child(group_id, value);
+function priority_level_include_proxy_parameters(group_id, value, section, force_from_section_pool) {
+    let child = priority_level_child(group_id, value, section, force_from_section_pool);
     return child != null ? child_bool(child, "include_proxy_parameters", false) : false;
 }
 
-function priority_level_include_protocols(group_id, value) {
-    let child = priority_level_child(group_id, value);
+function priority_level_include_protocols(group_id, value, section, force_from_section_pool) {
+    let child = priority_level_child(group_id, value, section, force_from_section_pool);
     return child != null ? child_list(child, "include_protocols", []) : [];
 }
 
-function priority_level_include_transports(group_id, value) {
-    let child = priority_level_child(group_id, value);
+function priority_level_include_transports(group_id, value, section, force_from_section_pool) {
+    let child = priority_level_child(group_id, value, section, force_from_section_pool);
     return child != null ? child_list(child, "include_transports", []) : [];
 }
 
-function priority_level_include_securities(group_id, value) {
-    let child = priority_level_child(group_id, value);
+function priority_level_include_securities(group_id, value, section, force_from_section_pool) {
+    let child = priority_level_child(group_id, value, section, force_from_section_pool);
     return child != null ? child_list(child, "include_securities", []) : [];
 }
 
-function priority_level_include_ports(group_id, value) {
-    let child = priority_level_child(group_id, value);
+function priority_level_include_ports(group_id, value, section, force_from_section_pool) {
+    let child = priority_level_child(group_id, value, section, force_from_section_pool);
     return child != null ? child_list(child, "include_ports", []) : [];
 }
 
-function priority_level_exclude_countries(group_id, value) {
-    let child = priority_level_child(group_id, value);
+function priority_level_exclude_countries(group_id, value, section, force_from_section_pool) {
+    let child = priority_level_child(group_id, value, section, force_from_section_pool);
     return child != null ? child_list(child, "exclude_countries", []) : [];
 }
 
-function priority_level_exclude_outbounds(group_id, value) {
-    let child = priority_level_child(group_id, value);
+function priority_level_exclude_outbounds(group_id, value, section, force_from_section_pool) {
+    let child = priority_level_child(group_id, value, section, force_from_section_pool);
     return child != null ? child_list(child, "exclude_outbounds", []) : [];
 }
 
-function priority_level_exclude_regex(group_id, value) {
-    let child = priority_level_child(group_id, value);
+function priority_level_exclude_regex(group_id, value, section, force_from_section_pool) {
+    let child = priority_level_child(group_id, value, section, force_from_section_pool);
     return child != null ? child_list(child, "exclude_regex", []) : [];
 }
 
-function priority_level_exclude_proxy_parameters(group_id, value) {
-    let child = priority_level_child(group_id, value);
+function priority_level_exclude_proxy_parameters(group_id, value, section, force_from_section_pool) {
+    let child = priority_level_child(group_id, value, section, force_from_section_pool);
     return child != null ? child_bool(child, "exclude_proxy_parameters", false) : false;
 }
 
-function priority_level_exclude_protocols(group_id, value) {
-    let child = priority_level_child(group_id, value);
+function priority_level_exclude_protocols(group_id, value, section, force_from_section_pool) {
+    let child = priority_level_child(group_id, value, section, force_from_section_pool);
     return child != null ? child_list(child, "exclude_protocols", []) : [];
 }
 
-function priority_level_exclude_transports(group_id, value) {
-    let child = priority_level_child(group_id, value);
+function priority_level_exclude_transports(group_id, value, section, force_from_section_pool) {
+    let child = priority_level_child(group_id, value, section, force_from_section_pool);
     return child != null ? child_list(child, "exclude_transports", []) : [];
 }
 
-function priority_level_exclude_securities(group_id, value) {
-    let child = priority_level_child(group_id, value);
+function priority_level_exclude_securities(group_id, value, section, force_from_section_pool) {
+    let child = priority_level_child(group_id, value, section, force_from_section_pool);
     return child != null ? child_list(child, "exclude_securities", []) : [];
 }
 
-function priority_level_exclude_ports(group_id, value) {
-    let child = priority_level_child(group_id, value);
+function priority_level_exclude_ports(group_id, value, section, force_from_section_pool) {
+    let child = priority_level_child(group_id, value, section, force_from_section_pool);
     return child != null ? child_list(child, "exclude_ports", []) : [];
 }
 
-function priority_level_countries(group_id, value) {
-    return priority_level_include_countries(group_id, value);
+function priority_level_countries(group_id, value, section, force_from_section_pool) {
+    return priority_level_include_countries(group_id, value, section, force_from_section_pool);
 }
 
-function priority_level_outbounds(group_id, value) {
-    return priority_level_include_outbounds(group_id, value);
+function priority_level_outbounds(group_id, value, section, force_from_section_pool) {
+    return priority_level_include_outbounds(group_id, value, section, force_from_section_pool);
 }
 
-function priority_level_regex(group_id, value) {
-    return priority_level_include_regex(group_id, value);
+function priority_level_regex(group_id, value, section, force_from_section_pool) {
+    return priority_level_include_regex(group_id, value, section, force_from_section_pool);
 }
 
-function priority_level_detect_server_country(group_id, value) {
-    let child = priority_level_child(group_id, value);
+function priority_level_detect_server_country(group_id, value, section, force_from_section_pool) {
+    let child = priority_level_child(group_id, value, section, force_from_section_pool);
     return child != null ? child_option(child, "detect_server_country", "flag_emoji") : "flag_emoji";
 }
 
@@ -4474,13 +4573,13 @@ function urltest_exclude_prefixes(section, value) {
     return list_value(section, "urltest_exclude_prefixes");
 }
 
-function priority_level_include_prefixes(group_id, value) {
-    let child = priority_level_child(group_id, value);
+function priority_level_include_prefixes(group_id, value, section, force_from_section_pool) {
+    let child = priority_level_child(group_id, value, section, force_from_section_pool);
     return child != null ? child_list_alias(child, [ "include_prefixes", "prefix" ], []) : [];
 }
 
-function priority_level_exclude_prefixes(group_id, value) {
-    let child = priority_level_child(group_id, value);
+function priority_level_exclude_prefixes(group_id, value, section, force_from_section_pool) {
+    let child = priority_level_child(group_id, value, section, force_from_section_pool);
     return child != null ? child_list(child, "exclude_prefixes", []) : [];
 }
 
@@ -5955,6 +6054,7 @@ return {
     subscription_url_enabled,
     subscription_update_enabled,
     subscription_update_interval,
+    subscription_update_jitter,
     subscription_dashboard_metadata_enabled,
     subscription_auto_user_agent,
     subscription_auto_hwid,
@@ -5983,6 +6083,7 @@ return {
     interface_domain_resolver_dns_type,
     interface_domain_resolver_dns_server,
     urltest_check_interval,
+    urltest_check_interval_jitter,
     urltest_tolerance,
     urltest_testing_url,
     urltest_active_check_interval,
@@ -6025,6 +6126,7 @@ return {
     priority_group_switch_to_faster_same_priority,
     priority_group_fastest_check_interval,
     priority_group_interrupt_exist_connections,
+    section_interrupt_exist_connections,
     priority_group_pin_dashboard,
     priority_level_display_name,
     priority_level_order,

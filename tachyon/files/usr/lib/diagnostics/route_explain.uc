@@ -10,7 +10,7 @@
 //   → DNS Resolution Decision (FakeIP vs Tachyon DNS vs Direct)
 //   → nftables Interception & fwmark (inet TachyonTable)
 //   → Policy Routing Table (table 100 / ip rule)
-//   → Core Engine (sing-box / steer)
+//   → Core Engine (tachyon-core)
 //   → Outbound Group & Selected Node
 //
 // Provides machine-readable structured JSON and rich human-readable/AI explanations.
@@ -1361,9 +1361,8 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
     let uci_cfg = load_uci_tachyon_config();
     let settings = uci_cfg.settings || {};
     let active_engine = settings.engine || "tachyon-core";
-    let is_steer = active_engine == "steer" || active_engine == "steer-extended";
     let core_marker = trim(fs.readfile("/etc/tachyon/tachyon-core-variant") || fs.readfile("/etc/tachyon/sing-box-variant") || "");
-    let is_tachyon_core_bin = !is_steer && core_marker == "tachyon-core";
+    let is_tachyon_core_bin = core_marker == "tachyon-core";
     let fakeip_enabled = settings.fakeip == "1";
 
     let client_info = classify_client(client_in, uci_cfg);
@@ -1615,12 +1614,12 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
             dns_resolver = dns_tag + " (" + dns_type_str + ": " + dns_srvs_str + dns_detour_str + ")";
             dns_details = "Domain matches DNS section '" + section_name + "'. Resolved via custom DNS server " + dns_srvs_str + " (" + dns_type_str + ")" + dns_detour_str + " without FakeIP allocation.";
         } else if (fakeip_enabled) {
-            let core_dns_label = is_steer ? active_engine : (is_tachyon_core_bin ? "tachyon-core" : "sing-box");
+            let core_dns_label = is_tachyon_core_bin ? "tachyon-core" : "sing-box";
             dns_mode = "fakeip";
             dns_resolver = core_dns_label + " FakeIP (127.0.0.1:5353)";
             dns_details = "Domain resolved by " + core_dns_label + " FakeIP resolver. Synthetic IPv4 allocated in pool 198.18.0.0/15.";
         } else {
-            let core_dns_label = is_steer ? active_engine : (is_tachyon_core_bin ? "tachyon-core" : "sing-box");
+            let core_dns_label = is_tachyon_core_bin ? "tachyon-core" : "sing-box";
             dns_mode = "tachyon_dns";
             dns_resolver = "dnsmasq -> " + core_dns_label + " (127.0.0.1:5353)";
             dns_details = "Domain resolved via secure proxy DNS. dnsmasq automatically populates nftables set 'tachyon_target_v4' with resolved IP.";
@@ -1674,7 +1673,7 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
         nft_action = "meta mark set 0x40000000 redirect to :1080";
         nft_details = "Marked with 0x40000000 and redirected to local ByeDPI SOCKS proxy on port 1080.";
     } else {
-        // Proxy action (sing-box / steer)
+        // Proxy action (tachyon-core)
         nft_intercepted = true;
         nft_mark = NFT_FAKEIP_MARK;
         nft_action = "meta mark set " + NFT_FAKEIP_MARK + " tproxy to :" + SB_TPROXY_INBOUND_PORT + " accept";

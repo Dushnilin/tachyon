@@ -29,6 +29,9 @@ for (let status in [5,6,60,77,23]) {
     check(d.defer && !d.act && !d.seen && length(calls)==1, "DNS/local failures deferred: " + status);
 }
 check(probe([28,6]).dns_error && length(calls)==2, "second Direct DNS error deferred");
+check(probe([{status:0,http_code:403},{status:0,http_code:403},{status:0,http_code:200}]).act, "Plus confirms geoblocked 403 when proxy gets 200");
+check(!probe([{status:0,http_code:403},{status:0,http_code:403},{status:0,http_code:403}]).act, "Plus rejects 403 when proxy also gets 403");
+check(index(calls[0], "-L") >= 0, "Plus follows redirects (-L)");
 let controller = require("service.event_controller");
 controller.classify_log_line('[123455 0ms] outbound/direct[direct-out]: outbound connection to default.example.com:443');
 let default_facts = controller.classify_log_line('[123455 4s] outbound/direct[direct-out]: dial tcp 192.0.2.1:443: i/o timeout');

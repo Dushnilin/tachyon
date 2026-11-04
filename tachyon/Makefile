@@ -231,6 +231,8 @@ define Package/tachyon/install
 
 	$(INSTALL_DIR) $(1)/usr/lib/tachyon
 	$(CP) ./files/usr/lib/. $(1)/usr/lib/tachyon/
+	$(INSTALL_DIR) $(1)/usr/lib/tachyon/bin
+	$(INSTALL_BIN) ./files/usr/lib/bin/wget $(1)/usr/lib/tachyon/bin/wget
 
 	$(INSTALL_DIR) $(1)/usr/lib/tachyon/defaults
 	$(INSTALL_CONF) ./files/etc/config/tachyon $(1)/usr/lib/tachyon/defaults/config
@@ -260,12 +262,6 @@ define Package/tachyon/install
 	# read-only entry point, and the two files have to arrive together.
 	$(INSTALL_DIR) $(1)/usr/share/rpcd/acl.d
 	$(INSTALL_DATA) ./files/usr/share/rpcd/acl.d/luci-app-tachyon.json $(1)/usr/share/rpcd/acl.d/luci-app-tachyon.json
-	$(INSTALL_BIN) ./files/usr/sbin/steer-nfqws $(1)/usr/share/tachyon/steer-nfqws
-
-	# Zapret handler supervisor: steer 1.5.x init scripts do not spawn the
-	# kind: zapret handlers, so Tachyon (the control layer) runs them itself.
-	$(INSTALL_DIR) $(1)/etc/init.d
-	$(INSTALL_BIN) ./files/etc/init.d/tachyon-steer-zapret $(1)/etc/init.d/tachyon-steer-zapret
 
 	sed -i -e 's/__COMPILED_VERSION_VARIABLE__/$(TACHYON_COMPILED_VERSION)/g' \
 		-e 's/__COMPILED_COMMIT_SHA__/$(shell git -C $(TOPDIR)/../ rev-parse --short HEAD 2>/dev/null || echo unknown)/g' \

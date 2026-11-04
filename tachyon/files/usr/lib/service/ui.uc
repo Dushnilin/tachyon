@@ -3,7 +3,11 @@
 let fs = require("fs");
 let common = require("core.common");
 let uci_core = require("core.uci");
-let connections = require("config.connections");
+let _connections = null;
+function get_connections() {
+    if (_connections == null) _connections = require("config.connections");
+    return _connections;
+}
 let core_profile = require("tachyon_core.core_profile");
 
 let as_string = common.as_string;
@@ -59,6 +63,7 @@ for (let b in [ "/opt/zapret2/nfq2/nfqws2", "/opt/zapret2/nfq/nfqws2", "/opt/zap
 }
 const ZAPRET2_PROVIDER_NFQWS2_BIN = getenv("ZAPRET2_PROVIDER_NFQWS2_BIN") || default_zapret2_bin;
 const BYEDPI_BIN = getenv("BYEDPI_BIN") || "/usr/bin/ciadpi";
+const UI_PREFS_FILE = getenv("TACHYON_UI_PREFS_FILE") || "/etc/tachyon/ui-prefs.json";
 
 let read_json_file = common.read_json_file;
 
@@ -903,18 +908,6 @@ function sing_box_running() {
 }
 
 function tachyon_running() {
-    let active_engine = "tachyon-core";
-    try {
-        active_engine = require("core.engine").get_active();
-    }
-    catch (e) {
-        active_engine = "tachyon-core";
-    }
-    if (active_engine != "tachyon-core") {
-        let engine_runtime = require("service.engine_runtime");
-        return engine_runtime.run_init(active_engine, "status").ok;
-    }
-
     return module_success(LIB_DIR + "/service/state.uc", [
         "tachyon-stably-running",
         RT_TABLE_NAME,
@@ -925,16 +918,6 @@ function tachyon_running() {
 }
 
 function dns_configured() {
-    let active_engine = "tachyon-core";
-    try {
-        active_engine = require("core.engine").get_active();
-    }
-    catch (e) {
-        active_engine = "tachyon-core";
-    }
-    if (active_engine != "tachyon-core")
-        return true;
-
     return index(uci_core.get("dhcp.@dnsmasq[0].server"), SB_DNS_INBOUND_ADDRESS) >= 0;
 }
 
@@ -1114,6 +1097,72 @@ function server_inbounds_enabled_count() {
     return count;
 }
 
+function read_ui_prefs() {
+    let prefs = read_json_file(UI_PREFS_FILE);
+    if (type(prefs) != "object") {
+        let uci_raw = uci_core.get(CONFIG_NAME + ".settings.ui_prefs_json");
+        let parsed = uci_raw ? parse_json_or_null(uci_raw) : null;
+        prefs = type(parsed) == "object" ? parsed : {};
+    }
+    if (prefs.dashboard_layout == null) {
+        let dl_raw = uci_core.get(CONFIG_NAME + ".settings.dashboard_layout_json");
+        let dl_parsed = dl_raw ? parse_json_or_null(dl_raw) : null;
+        if (type(dl_parsed) == "object")
+            prefs.dashboard_layout = dl_parsed;
+    }
+    return prefs;
+}
+
+function get_ui_prefs() {
+    write_json({
+        success: true,
+        prefs: read_ui_prefs()
+    });
+}
+
+function set_ui_prefs(raw_json) {
+    let incoming = parse_json_or_null(raw_json || "{}");
+    if (type(incoming) != "object") {
+        write_json({ success: false, message: "Invalid UI preferences JSON" });
+        exit(1);
+    }
+
+    let prefs = read_ui_prefs();
+    for (let k, v in incoming) {
+        if (v == null) {
+            delete prefs[k];
+        } else if (k == "studio_views" && type(v) == "object" && type(prefs.studio_views) == "object") {
+            for (let sk, sv in v) {
+                if (sv == null)
+                    delete prefs.studio_views[sk];
+                else
+                    prefs.studio_views[sk] = sv;
+            }
+        } else {
+            prefs[k] = v;
+        }
+    }
+
+    common.write_json_file(UI_PREFS_FILE, prefs);
+
+    let serialized = sprintf("%J", prefs);
+    if (uci_core.get(CONFIG_NAME + ".settings.ui_prefs_json") != serialized) {
+        uci_core.set(CONFIG_NAME, "settings", "ui_prefs_json", serialized);
+        if (type(prefs.dashboard_layout) == "object") {
+            uci_core.set(CONFIG_NAME, "settings", "dashboard_layout_json", sprintf("%J", prefs.dashboard_layout));
+            if (type(prefs.dashboard_layout.preset) == "string" && prefs.dashboard_layout.preset != "")
+                uci_core.set(CONFIG_NAME, "settings", "dashboard_preset", prefs.dashboard_layout.preset);
+        }
+        uci_core.commit(CONFIG_NAME);
+        module_success(LIB_DIR + "/service/state.uc", [ "mark-internal-config-guard" ]);
+    }
+
+    write_json({
+        success: true,
+        prefs: prefs
+    });
+}
+
 function capability_flags() {
     let result = {
         sing_box_extended: 0,
@@ -1135,6 +1184,7 @@ function capability_flags() {
         olcrtc_installed: file_executable("/usr/bin/olcrtc") ? 1 : 0,
         i18n_ru_installed: fs.stat("/usr/lib/lua/luci/i18n/tachyon.ru.lmo") != null ? 1 : 0,
         luci_lang: trim(as_string(uci_core.get("luci.main.lang") || "auto")) || "auto",
+        ui_prefs: read_ui_prefs(),
         server_inbounds_enabled_count: 0
     };
 
@@ -1544,38 +1594,18 @@ function current_ui_state_json() {
     let tachyon_is_running = tachyon_running() ? 1 : 0;
     let tachyon_is_enabled = service_enabled() ? 1 : 0;
     let active_engine = "tachyon-core";
-    try {
-        active_engine = require("core.engine").get_active();
-    }
-    catch (e) {
-        active_engine = "tachyon-core";
-    }
-    let is_steer = (active_engine == "steer" || active_engine == "steer-extended");
 
-    let sing_box_is_running = 0;
-    let sing_box_is_enabled = 0;
-    let sing_box_rss = 0;
+    let sing_box_is_running = tachyon_is_running ? 1 : (sing_box_running() ? 1 : 0);
+    let sing_box_is_enabled = sing_box_enabled() ? 1 : 0;
     let sing_box_pid = null;
-
-    if (is_steer) {
-        let engine_runtime = require("service.engine_runtime");
-        sing_box_is_running = engine_runtime.run_init(active_engine, "status").ok ? 1 : 0;
-        sing_box_is_enabled = tachyon_is_enabled;
-        if (sing_box_is_running)
-            sing_box_pid = get_service_primary_pid("steer", false);
-        sing_box_rss = sing_box_is_running ? (sing_box_pid ? pid_memory_rss_mb(sing_box_pid) : process_memory_rss_mb("steer")) : 0;
-    } else {
-        sing_box_is_running = tachyon_is_running ? 1 : (sing_box_running() ? 1 : 0);
-        sing_box_is_enabled = sing_box_enabled() ? 1 : 0;
-        if (sing_box_is_running) {
-            sing_box_pid = get_service_primary_pid("tachyon-core", true);
-            if (!sing_box_pid)
-                sing_box_pid = get_service_primary_pid("sing-box", true);
-        }
-        // Считываем RSS именно основного демон-процесса ядра (по sing_box_pid),
-        // чтобы дочерние/форкнутые процессы не умножали показатель памяти в 2-3 раза.
-        sing_box_rss = sing_box_is_running ? (sing_box_pid ? pid_memory_rss_mb(sing_box_pid) : (process_memory_rss_mb("tachyon-core") || process_memory_rss_mb("sing-box"))) : 0;
+    if (sing_box_is_running) {
+        sing_box_pid = get_service_primary_pid("tachyon-core", true);
+        if (!sing_box_pid)
+            sing_box_pid = get_service_primary_pid("sing-box", true);
     }
+    // Считываем RSS именно основного демон-процесса ядра (по sing_box_pid),
+    // чтобы дочерние/форкнутые процессы не умножали показатель памяти в 2-3 раза.
+    let sing_box_rss = sing_box_is_running ? (sing_box_pid ? pid_memory_rss_mb(sing_box_pid) : (process_memory_rss_mb("tachyon-core") || process_memory_rss_mb("sing-box"))) : 0;
 
     let tachyon_status = service_status_text(tachyon_is_running, tachyon_is_enabled);
     let sing_box_status = service_status_text(sing_box_is_running, sing_box_is_enabled);
@@ -1611,29 +1641,19 @@ function current_ui_state_json() {
 
     let engine_version = "";
     let engine_variant = "";
-    if (is_steer) {
-        engine_variant = (active_engine == "steer-extended") ? "Steer Ext" : "Steer";
-        try {
-            let steer_out = bounded_command_output_from_args([ "/usr/bin/steer", "version" ], 2);
-            let steer_info = sing_box_version_info_from_output(steer_out);
-            if (steer_info && steer_info.version)
-                engine_version = steer_info.version;
-        } catch (e) {}
-    } else {
-        let info = sing_box_version_info();
-        if (info && info.version)
-            engine_version = info.version;
-        if (capabilities.sing_box_tachyon_core)
-            engine_variant = "Tachyon Core";
-        else if (capabilities.sing_box_lx)
-            engine_variant = "Sing-box LX";
-        else if (capabilities.sing_box_extended)
-            engine_variant = "Sing-box Ext";
-        else if (capabilities.sing_box_tiny)
-            engine_variant = "Sing-box Tiny";
-        else
-            engine_variant = "Sing-box";
-    }
+    let info = sing_box_version_info();
+    if (info && info.version)
+        engine_version = info.version;
+    if (capabilities.sing_box_tachyon_core)
+        engine_variant = "Tachyon Core";
+    else if (capabilities.sing_box_lx)
+        engine_variant = "Sing-box LX";
+    else if (capabilities.sing_box_extended)
+        engine_variant = "Sing-box Ext";
+    else if (capabilities.sing_box_tiny)
+        engine_variant = "Sing-box Tiny";
+    else
+        engine_variant = "Sing-box";
 
     let sing_box_uptime = sing_box_pid ? get_process_uptime(sing_box_pid) : null;
     let sing_box_uptime_pretty = format_uptime_pretty(sing_box_uptime);
@@ -1713,6 +1733,7 @@ function current_ui_state_json() {
             }
         },
         capabilities,
+        ui_prefs: capabilities.ui_prefs,
         actions: action_state_from_dirs()
     });
 }
@@ -2175,7 +2196,7 @@ function latency_boot_sweep() {
     for (let section in sections) {
         if (!bool_option(section, "enabled", true))
             continue;
-        if (length(connections.urltests(section)) > 0 || option(section, "action", "connection") == "connection") {
+        if (length(get_connections().urltests(section)) > 0 || option(section, "action", "connection") == "connection") {
             has_groups = true;
             break;
         }
@@ -2353,6 +2374,10 @@ else if (mode == "get-lite-mode")
     get_lite_mode();
 else if (mode == "set-lite-mode")
     set_lite_mode(ARGV[1]);
+else if (mode == "get-ui-prefs")
+    get_ui_prefs();
+else if (mode == "set-ui-prefs")
+    set_ui_prefs(ARGV[1]);
 else if (mode == "service-status-text")
     print_service_status_text(ARGV[1], ARGV[2]);
 else if (mode == "action-start-response")

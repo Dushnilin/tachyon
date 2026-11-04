@@ -287,73 +287,217 @@ export function renderStrategyFuzzerModal(
     engineSelect,
   ]);
 
-  // 2. Target Preset Select
-  const targetSelect = E(
-    'select',
-    { class: 'cbi-input-select', style: selectStyle },
-    [
-      E(
-        'option',
-        { value: 'youtube_suite', selected: true },
-        _('YouTube Full Suite (Web + 4K Stream + CDN)'),
-      ),
-      E(
-        'option',
-        { value: 'discord_suite' },
-        _('Discord Suite (Gateway + Voice + CDN)'),
-      ),
-      E(
-        'option',
-        { value: 'twitch_suite' },
-        _('Twitch Suite (Live Stream + HLS CDN)'),
-      ),
-      E(
-        'option',
-        { value: 'twitter_suite' },
-        _('X / Twitter Suite (API + Media CDN)'),
-      ),
-      E('option', { value: 'chatgpt_suite' }, _('ChatGPT / OpenAI Suite')),
-      E(
-        'option',
-        { value: 'instagram_suite' },
-        _('Instagram / Meta (Web + CDN)'),
-      ),
-      E(
-        'option',
-        { value: 'telegram_suite' },
-        _('Telegram Suite (Web + Bot API)'),
-      ),
-      E('option', { value: 'rutracker_suite' }, _('RuTracker Suite')),
-      E('option', { value: 'quic_http3' }, _('QUIC / HTTP/3 (UDP 443)')),
-      E('option', { value: 'custom' }, _('Custom Target URL(s)...')),
-    ],
-  );
+  // 2. Target Multi-Select Checkboxes (allows selecting multiple suites at once, e.g. YouTube + Discord + CS2)
+  const targetSuiteOptions: Array<{ value: string; label: string }> = [
+    {
+      value: 'youtube_suite',
+      label: _('YouTube (Web + 4K Stream + CDN)'),
+    },
+    {
+      value: 'discord_suite',
+      label: _('Discord (Gateway + Voice + CDN)'),
+    },
+    {
+      value: 'cs2_faceit_suite',
+      label: _('CS2 / Faceit / Cybershoke (Web + API + UDP)'),
+    },
+    {
+      value: 'gaming_udp_suite',
+      label: _('Gaming & Voice UDP (STUN + Source)'),
+    },
+    {
+      value: 'twitch_suite',
+      label: _('Twitch (Live Stream + HLS CDN)'),
+    },
+    {
+      value: 'twitter_suite',
+      label: _('X / Twitter (API + Media CDN)'),
+    },
+    {
+      value: 'chatgpt_suite',
+      label: _('ChatGPT / OpenAI Suite'),
+    },
+    {
+      value: 'instagram_suite',
+      label: _('Instagram / Meta (Web + CDN)'),
+    },
+    {
+      value: 'telegram_suite',
+      label: _('Telegram (Web + Bot API)'),
+    },
+    {
+      value: 'rutracker_suite',
+      label: _('RuTracker Suite'),
+    },
+    {
+      value: 'quic_http3',
+      label: _('QUIC / HTTP/3 (UDP 443)'),
+    },
+    {
+      value: 'custom',
+      label: _('Custom Target URL(s)...'),
+    },
+  ];
+
+  const selectedTargetSet = new Set<string>(['youtube_suite']);
+  const targetCheckboxes = new Map<string, HTMLInputElement>();
 
   const customUrlInput = E('textarea', {
     class: 'cbi-input-text',
     placeholder:
-      'https://youtube.com\nhttps://instagram.com\nhttps://rutracker.org',
+      'https://www.faceit.com\nhttps://cybershoke.net\nudp://stun.l.google.com:19302',
     rows: 3,
     style:
-      'width: 100%; display: none; margin-top: 2px; resize: vertical; min-height: 64px; padding: 8px 10px; font-size: 12px; font-family: monospace; line-height: 1.5; border-radius: 4px; box-sizing: border-box; background: var(--background-color-secondary, rgba(0,0,0,0.18)); border: 1px solid var(--border-color, rgba(255,255,255,0.12)); color: var(--text-color, #fff);',
+      'width: 100%; display: none; margin-top: 4px; resize: vertical; min-height: 64px; padding: 8px 10px; font-size: 12px; font-family: monospace; line-height: 1.5; border-radius: 4px; box-sizing: border-box; background: var(--background-color-secondary, rgba(0,0,0,0.18)); border: 1px solid var(--border-color, rgba(255,255,255,0.12)); color: var(--text-color, #fff);',
   });
 
-  targetSelect.addEventListener('change', () => {
-    selectedTarget = (targetSelect as HTMLSelectElement)
-      .value as Tachyon.FuzzerTarget;
-    (customUrlInput as HTMLElement).style.display =
-      selectedTarget === 'custom' ? 'block' : 'none';
-  });
+  const syncSelectedTargets = () => {
+    if (selectedTargetSet.size === 0) {
+      selectedTargetSet.add('youtube_suite');
+      const ytCb = targetCheckboxes.get('youtube_suite');
+      if (ytCb) ytCb.checked = true;
+    }
+    selectedTarget = Array.from(selectedTargetSet).join(
+      ',',
+    ) as Tachyon.FuzzerTarget;
+    (customUrlInput as HTMLElement).style.display = selectedTargetSet.has(
+      'custom',
+    )
+      ? 'block'
+      : 'none';
+  };
+
+  const applyQuickTargetPreset = (keys: string[]) => {
+    selectedTargetSet.clear();
+    keys.forEach((k) => selectedTargetSet.add(k));
+    targetCheckboxes.forEach((cb, key) => {
+      cb.checked = selectedTargetSet.has(key);
+    });
+    syncSelectedTargets();
+  };
+
+  const quickTargetBar = E(
+    'div',
+    {
+      style:
+        'display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 2px;',
+    },
+    [
+      E('span', { style: 'font-size: 11px; opacity: 0.7;' }, _('Quick combo:')),
+      (() => {
+        const btn = E(
+          'button',
+          {
+            type: 'button',
+            class: 'cbi-button cbi-button-neutral',
+            style: 'padding: 2px 8px; font-size: 11px; border-radius: 4px;',
+          },
+          _('YouTube + Discord + CS2'),
+        );
+        btn.addEventListener('click', () =>
+          applyQuickTargetPreset([
+            'youtube_suite',
+            'discord_suite',
+            'cs2_faceit_suite',
+          ]),
+        );
+        return btn;
+      })(),
+      (() => {
+        const btn = E(
+          'button',
+          {
+            type: 'button',
+            class: 'cbi-button cbi-button-neutral',
+            style: 'padding: 2px 8px; font-size: 11px; border-radius: 4px;',
+          },
+          _('CS2 / Faceit + Discord (Games + UDP)'),
+        );
+        btn.addEventListener('click', () =>
+          applyQuickTargetPreset(['cs2_faceit_suite', 'discord_suite']),
+        );
+        return btn;
+      })(),
+      (() => {
+        const btn = E(
+          'button',
+          {
+            type: 'button',
+            class: 'cbi-button cbi-button-neutral',
+            style: 'padding: 2px 8px; font-size: 11px; border-radius: 4px;',
+          },
+          _('YouTube Only'),
+        );
+        btn.addEventListener('click', () =>
+          applyQuickTargetPreset(['youtube_suite']),
+        );
+        return btn;
+      })(),
+    ],
+  );
+
+  const targetCheckboxGrid = E(
+    'div',
+    {
+      style:
+        'display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px 10px; padding: 8px 10px; border-radius: 6px; background: var(--background-color-secondary, rgba(0,0,0,0.16)); border: 1px solid var(--border-color, rgba(255,255,255,0.1));',
+    },
+    targetSuiteOptions.map((opt) => {
+      const cb = E('input', {
+        type: 'checkbox',
+        checked: selectedTargetSet.has(opt.value) || undefined,
+        style: 'margin: 0; cursor: pointer;',
+      }) as HTMLInputElement;
+      cb.checked = selectedTargetSet.has(opt.value);
+      targetCheckboxes.set(opt.value, cb);
+      cb.addEventListener('change', () => {
+        if (cb.checked) {
+          selectedTargetSet.add(opt.value);
+        } else {
+          selectedTargetSet.delete(opt.value);
+        }
+        syncSelectedTargets();
+      });
+      return E(
+        'label',
+        {
+          style:
+            'display: flex; align-items: center; gap: 7px; font-size: 12px; cursor: pointer; user-select: none; line-height: 1.3;',
+        },
+        [cb, E('span', {}, opt.label)],
+      );
+    }),
+  );
 
   customUrlInput.addEventListener('input', () => {
     customUrl = (customUrlInput as HTMLTextAreaElement).value.trim();
   });
 
-  const targetGroup = E('div', { style: groupStyle }, [
-    E('label', { style: labelStyle }, _('Target Service / Suite')),
-    targetSelect,
-    customUrlInput,
-  ]);
+  const targetGroup = E(
+    'div',
+    { style: `${groupStyle} grid-column: 1 / -1;` },
+    [
+      E(
+        'div',
+        {
+          style:
+            'display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;',
+        },
+        [
+          E(
+            'label',
+            { style: labelStyle },
+            _(
+              'Target Services / Suites (select one or multiple for unified strategy)',
+            ),
+          ),
+          quickTargetBar,
+        ],
+      ),
+      targetCheckboxGrid,
+      customUrlInput,
+    ],
+  );
 
   // 3. Search Mode Select
   const modeSelect = E(
@@ -418,14 +562,12 @@ export function renderStrategyFuzzerModal(
     ruleSelect,
   ]);
 
-  // Make rule group span full width
-  ruleGroup.style.gridColumn = '1 / -1';
   controlsGrid.append(
     engineGroup,
-    targetGroup,
     modeGroup,
     timeoutGroup,
     ruleGroup,
+    targetGroup,
   );
 
   // Auto-Apply Toggle

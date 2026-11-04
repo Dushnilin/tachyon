@@ -121,6 +121,7 @@ let register_bot_commands = transport.register_bot_commands;
 
 let format_bytes = rendering.format_bytes;
 let escape_html = rendering.escape_html;
+let utf8_prefix = rendering.utf8_prefix;
 let apply_backup_restore = callbacks.apply_backup_restore;
 let dispatch_command = callbacks.dispatch_command;
 let view_set_arr = commands.view_set_arr;
@@ -232,7 +233,7 @@ function check_notified_updates(token, admin_ids) {
                     let notes = clean_release_notes(comp.release_notes);
                     if (notes != "") {
                         if (length(notes) > 1200)
-                            notes = substr(notes, 0, 1200) + "\n...";
+                            notes = utf8_prefix(notes, 1200) + "\n...";
                         msg += "\n\n📋 <b>" + t("update_whats_new") + ":</b>\n<pre>" + escape_html(notes) + "</pre>";
                     }
                     if (as_string(comp.release_url || "") != "") {
@@ -446,6 +447,25 @@ function sync_offset_for_bot(token) {
     return offset;
 }
 
+let chat_admin_cache = {};
+
+function is_chat_admin_cached(token, chat_id, user_id) {
+    if (!token || !chat_id || !user_id) return false;
+    let chat_num = int(chat_id);
+    if (chat_num >= 0) return false;
+    let cache_key = sprintf("%s:%s", as_string(chat_id), as_string(user_id));
+    let now = time();
+    let cached = chat_admin_cache[cache_key];
+    if (cached && (now - cached.time) < 300)
+        return cached.is_admin;
+
+    let res = tg_request(token, "getChatMember", { chat_id: chat_num, user_id: int(user_id) });
+    let status = res?.ok ? res.result?.status : null;
+    let is_adm = (status == "creator" || status == "administrator");
+    chat_admin_cache[cache_key] = { is_admin: is_adm, time: now };
+    return is_adm;
+}
+
 function process_updates(token, admin_ids) {
     let offset = sync_offset_for_bot(token);
     let res = tg_request(token, "getUpdates", { offset: offset, timeout: 50 });
@@ -517,7 +537,7 @@ function process_updates(token, admin_ids) {
             }
             if (index(as_string(cb.data), "/sd ") == 0) {
                 // A permitted group chat does not authorize every group member.
-                if (!cb.message || !is_admin(cb.from?.id, admin_ids)) {
+                if (!cb.message || (!is_admin(cb.from?.id, admin_ids) && !is_chat_admin_cached(token, chat_id, cb.from?.id))) {
                     tg_request(token, "answerCallbackQuery", { callback_query_id: cb.id, text: "Access Denied" });
                     continue;
                 }
@@ -533,12 +553,12 @@ function process_updates(token, admin_ids) {
                 }
                 continue;
             }
+            tg_request(token, "answerCallbackQuery", { callback_query_id: cb.id });
             try {
                 dispatch_command(token, chat_id, cb.data, cb.message ? cb.message.message_id : null);
             } catch (e) {
                 send_message(token, chat_id, "❌ " + t("exec_cmd_error") + " " + escape_html(as_string(e)), "HTML");
             }
-            tg_request(token, "answerCallbackQuery", { callback_query_id: cb.id });
             continue;
         }
 
@@ -596,7 +616,7 @@ function process_updates(token, admin_ids) {
                     send_message(token, chat_id, "⏳ " + t("exec_whitelist_msg") + "\n<code>" + escape_html(exec_cmd) + "</code>", "HTML");
                     let out = safe_execute(exec_cmd);
                     let result_text = "<b>Выполнено (код " + out.status + "):</b>\n<pre>" + escape_html(out.output || t("exec_no_output")) + "</pre>";
-                    if (length(result_text) > 4000) result_text = substr(result_text, 0, 4000) + "...</pre>";
+                    if (length(result_text) > 4000) result_text = utf8_prefix(result_text, 4000) + "...</pre>";
                     send_message(token, chat_id, result_text, "HTML");
                     continue;
                 }

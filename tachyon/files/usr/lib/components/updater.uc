@@ -791,10 +791,14 @@ function tachyon_core_arch_suffix(host_arch, distrib_arch) {
     host_arch = as_string(host_arch);
     distrib_arch = as_string(distrib_arch);
 
-    if (str_contains(distrib_arch, "mipsel") || str_contains(distrib_arch, "mipsle"))
-        host_arch = "mipsel";
-    else if (str_contains(distrib_arch, "mips64el") || str_contains(distrib_arch, "mips64le"))
+    if (str_contains(distrib_arch, "mips64el") || str_contains(distrib_arch, "mips64le"))
         host_arch = "mips64el";
+    else if (str_contains(distrib_arch, "mips64"))
+        host_arch = "mips64";
+    else if (str_contains(distrib_arch, "mipsel") || str_contains(distrib_arch, "mipsle"))
+        host_arch = "mipsel";
+    else if (str_contains(distrib_arch, "mips"))
+        host_arch = "mips";
 
     if (host_arch == "aarch64")
         print("aarch64-musl\n");
@@ -808,6 +812,10 @@ function tachyon_core_arch_suffix(host_arch, distrib_arch) {
         print("mips-musl\n");
     else if (host_arch == "mipsel" || host_arch == "mipsle")
         print("mipsel-musl\n");
+    else if (host_arch == "mips64")
+        print("mips64-musl\n");
+    else if (host_arch == "mips64el" || host_arch == "mips64le")
+        print("mips64el-musl\n");
     else if (host_arch == "riscv64")
         print("riscv64-musl\n");
     else

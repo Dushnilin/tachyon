@@ -102,7 +102,7 @@ if (customDnsIdx >= fallbackDnsmasqIdx) {
 // Verify block section emits predefined 0.0.0.0 (A) and :: (AAAA) rules with IPv4-mapped source_ip_cidr
 const matchesAnswerIp = (ans, ip, textPart) => {
   if (!ans) return false;
-  if (typeof ans === "string") return ans.includes(textPart);
+  if (typeof ans === "string") return ans.startsWith("*. ") && ans.includes(textPart);
   return typeof ans === "object" && ans.value === ip;
 };
 const blockARule = rules.find(
@@ -131,6 +131,34 @@ if (!blockARule.source_ip_cidr.includes("192.168.1.164/32") || !blockARule.sourc
 }
 
 console.log("✓ Section Action DNS ordering and predefined block 0.0.0.0/:: verified");
+NODE
+
+# 1b. Test sing-box 1.14.3-extended (Issue #329): wildcard owner must be FQDN "*. "
+OUTPUT_EXT="$WORK_DIR/config-extended.json"
+TACHYON_LIB="$TACHYON_LIB" \
+SB_VERSION_OVERRIDE="1.14.3-extended-2.7.3" \
+TACHYON_DNS_FAILOVER_STATE_FILE="$WORK_DIR/missing.json" \
+ucode -L "$TACHYON_LIB" "$GENERATOR" generate-config-fixture "$WORK_DIR/dns-action.json" "$OUTPUT_EXT" 192.168.1.1 0
+
+node - "$OUTPUT_EXT" <<'NODE'
+const fs = require("fs");
+const cfg = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+const rules = cfg.dns.rules || [];
+const blockARule = rules.find(
+  (r) => r.action === "predefined" && Array.isArray(r.query_type) && r.query_type.includes("A") && Array.isArray(r.answer)
+);
+const blockAAAARule = rules.find(
+  (r) => r.action === "predefined" && Array.isArray(r.query_type) && r.query_type.includes("AAAA") && Array.isArray(r.answer)
+);
+if (!blockARule || typeof blockARule.answer[0] !== "string" || !blockARule.answer[0].startsWith("*. ")) {
+  console.error("FAIL: sing-box extended block A answer must start with '*. ', got:", blockARule && blockARule.answer);
+  process.exit(1);
+}
+if (!blockAAAARule || typeof blockAAAARule.answer[0] !== "string" || !blockAAAARule.answer[0].startsWith("*. ")) {
+  console.error("FAIL: sing-box extended block AAAA answer must start with '*. ', got:", blockAAAARule && blockAAAARule.answer);
+  process.exit(1);
+}
+console.log("✓ sing-box 1.14.3-extended FQDN wildcard owner '*. ' verified (Issue #329)");
 NODE
 
 # 2. Test parental_quota.uc cron formatting & migration with >/dev/null 2>&1

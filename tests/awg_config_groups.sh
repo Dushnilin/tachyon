@@ -327,7 +327,6 @@ fs.writeFileSync(
         'global_hosts_to_section',
         'orphan_section_interface_cleanup',
         'ensure_dns_server_defaults',
-        'steer_spec_v2',
         'engine_identity_tachyon_core',
         'modular_entities_v1',
       ],

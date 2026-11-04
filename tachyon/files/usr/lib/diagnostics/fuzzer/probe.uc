@@ -315,7 +315,15 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
     };
     
     engine = lc(as_string(engine));
-    let is_udp = index(args_str, "--filter-udp") >= 0 || index(args_str, "--dpi-desync-any-protocol") >= 0 || target_key == "quic_http3";
+    let has_udp_target = false;
+    for (let u_item in urls_list) {
+        let pk = as_string(u_item.probe_kind || "");
+        if (pk == "udp_stun" || pk == "quic" || index(as_string(u_item.url || ""), "udp://") == 0) {
+            has_udp_target = true;
+            break;
+        }
+    }
+    let is_udp = index(args_str, "--filter-udp") >= 0 || index(args_str, "--dpi-desync-any-protocol") >= 0 || target_key == "quic_http3" || target_key == "gaming_udp_suite";
     
     let tok_res = fuzzer_runner.tokenize_strategy_args(args_str);
     if (!tok_res.valid) {
@@ -345,6 +353,34 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
                 result.error = "Invalid desync strategy arguments";
                 return result;
             }
+            let desync_inbounds = [
+                {
+                    type: "mixed",
+                    tag: "fuzzer-in",
+                    listen: "127.0.0.1",
+                    listen_port: listen_port
+                }
+            ];
+            let udp_idx = 0;
+            for (let u_item in urls_list) {
+                if ((u_item.probe_kind || "") == "udp_stun" || index(as_string(u_item.url || ""), "udp://") == 0) {
+                    let udp_info = binaries.parse_udp_target_url(u_item.url);
+                    if (udp_info && udp_info.ip) {
+                        udp_idx++;
+                        let u_port = listen_port + udp_idx;
+                        u_item._local_udp_port = u_port;
+                        push(desync_inbounds, {
+                            type: "direct",
+                            tag: sprintf("fuzzer-udp-in-%d", udp_idx),
+                            listen: "127.0.0.1",
+                            listen_port: u_port,
+                            network: "udp",
+                            override_address: udp_info.ip,
+                            override_port: udp_info.port
+                        });
+                    }
+                }
+            }
             let desync_cfg = {
                 log: { level: "error" },
                 dns: {
@@ -353,14 +389,7 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
                     ],
                     final: "dns-direct"
                 },
-                inbounds: [
-                    {
-                        type: "mixed",
-                        tag: "fuzzer-in",
-                        listen: "127.0.0.1",
-                        listen_port: listen_port
-                    }
-                ],
+                inbounds: desync_inbounds,
                 outbounds: [ desync_out ],
                 route: {
                     final: "desync-out"
@@ -414,7 +443,7 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
         system("nft add table inet tachyon_fuzzer 2>/dev/null");
         system("nft 'add chain inet tachyon_fuzzer bypass_singbox { type route hook output priority -155 ; policy accept; }' 2>/dev/null");
         exec.command_status_from_args([ "nft", "add rule inet tachyon_fuzzer bypass_singbox meta mark 0 meta l4proto tcp tcp dport { 80, 443, 2053, 2083, 2087, 2096, 8443 } meta mark set " + binaries.FUZZER_OUTBOUND_MARK + " counter" ]);
-        exec.command_status_from_args([ "nft", "add rule inet tachyon_fuzzer bypass_singbox meta mark 0 meta l4proto udp udp dport { 80, 443, 19294-19344, 50000-65535 } meta mark set " + binaries.FUZZER_OUTBOUND_MARK + " counter" ]);
+        exec.command_status_from_args([ "nft", "add rule inet tachyon_fuzzer bypass_singbox meta mark 0 meta l4proto udp udp dport { 80, 443, 3478-3481, 5000-5020, 19294-19344, 27015-27050, 50000-65535 } meta mark set " + binaries.FUZZER_OUTBOUND_MARK + " counter" ]);
         
         let passed_count = 0;
         let max_speed = 0;
@@ -429,6 +458,66 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
             let is_req = (target_item.required !== false) && !baseline_unreachable;
             let p_kind = target_item.probe_kind || "tls_http";
             let extra_flags = "";
+
+            if (p_kind == "udp_stun" || index(as_string(target_item.url || ""), "udp://") == 0) {
+                if (!is_desync) {
+                    if (!is_req)
+                        continue;
+                    let single_res = {
+                        target_name: target_item.name,
+                        url: target_item.url,
+                        required: is_req,
+                        weight: target_item.weight || 100,
+                        http_code: 0,
+                        handshake_ms: 0,
+                        ttfb_ms: 0,
+                        speed_kbps: 0,
+                        data_bytes: 0,
+                        data_verified: false,
+                        dpi_verdict: "unsupported_proto",
+                        score: 0,
+                        success: false,
+                        error: "UDP game/voice probing is not supported by ByeDPI (TCP-only engine)"
+                    };
+                    push(result.sub_probes, single_res);
+                    required_failed = true;
+                    result.error = single_res.error;
+                    break;
+                }
+                let udp_cmd = binaries.wrap_probe_cmd(
+                    binaries.probe_udp_stun_cmd("127.0.0.1", target_item._local_udp_port || (listen_port + 1), STATE_DIR + "/fuzzer_udp_res.bin"),
+                    4,
+                    probe_pid_path
+                );
+                let udp_out = common.command_output(udp_cmd);
+                try { fs.unlink(probe_pid_path); } catch (e) {}
+                let single_res = parse_curl_output(udp_out, {});
+                if (!single_res.success && single_res.error)
+                    single_res.error = "UDP STUN/Game probe timed out or dropped";
+                single_res.target_name = target_item.name;
+                single_res.url = target_item.url;
+                single_res.required = is_req;
+                single_res.baseline_unreachable = baseline_unreachable;
+                single_res.weight = target_item.weight || 100;
+                push(result.sub_probes, single_res);
+                if (single_res.success) {
+                    passed_count++;
+                    sum_data_bytes += single_res.data_bytes || 0;
+                    if (single_res.speed_kbps > max_speed) max_speed = single_res.speed_kbps;
+                    last_http = single_res.http_code;
+                    last_dpi_verdict = single_res.dpi_verdict || "available";
+                } else {
+                    let labeled_error = single_res.error ? sprintf("[%s] %s", target_item.name, single_res.error) : "";
+                    if (is_req) {
+                        if (labeled_error != "") result.error = labeled_error;
+                        last_dpi_verdict = single_res.dpi_verdict || "failed";
+                        required_failed = true;
+                        break;
+                    }
+                    if (labeled_error != "" && result.error == "") result.error = labeled_error;
+                }
+                continue;
+            }
 
             if (p_kind == "quic" || target_key == "quic_http3") {
                 if (!caps.http3) {
@@ -600,7 +689,7 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
                 fwmark_flag = sprintf("--dpi-desync-fwmark=%s ", binaries.FUZZER_FWMARK);
         }
         
-        if (!binaries.setup_fuzzer_direct_nftables(qnum, is_udp, binaries.probe_target_ips(urls_list))) {
+        if (!binaries.setup_fuzzer_direct_nftables(qnum, is_udp || has_udp_target, binaries.probe_target_ips(urls_list))) {
             result.error = "nftables setup failed: fuzzer queue rule could not be installed";
             cleanup_temp_daemons(job_id);
             return result;
@@ -672,6 +761,44 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
             let is_req = (target_item.required !== false) && !baseline_unreachable;
             let p_kind = target_item.probe_kind || "tls_http";
             let extra_flags = "";
+
+            if (p_kind == "udp_stun" || index(as_string(target_item.url || ""), "udp://") == 0) {
+                probes_attempted++;
+                let udp_info = binaries.parse_udp_target_url(target_item.url);
+                let udp_cmd = binaries.wrap_probe_cmd(
+                    binaries.probe_udp_stun_cmd(udp_info ? udp_info.ip : "74.125.250.129", udp_info ? udp_info.port : 19302, STATE_DIR + "/fuzzer_udp_res.bin"),
+                    4,
+                    probe_pid_path
+                );
+                let udp_out = common.command_output(udp_cmd);
+                try { fs.unlink(probe_pid_path); } catch (e) {}
+                let single_res = parse_curl_output(udp_out, {});
+                if (!single_res.success && single_res.error)
+                    single_res.error = "UDP STUN/Game probe timed out or dropped";
+                single_res.target_name = target_item.name;
+                single_res.url = target_item.url;
+                single_res.required = is_req;
+                single_res.baseline_unreachable = baseline_unreachable;
+                single_res.weight = target_item.weight || 100;
+                push(result.sub_probes, single_res);
+                if (single_res.success) {
+                    passed_count++;
+                    sum_data_bytes += single_res.data_bytes || 0;
+                    if (single_res.speed_kbps > max_speed) max_speed = single_res.speed_kbps;
+                    last_http = single_res.http_code;
+                    last_dpi_verdict = single_res.dpi_verdict || "available";
+                } else {
+                    let labeled_error = single_res.error ? sprintf("[%s] %s", target_item.name, single_res.error) : "";
+                    if (is_req) {
+                        if (labeled_error != "") result.error = labeled_error;
+                        last_dpi_verdict = single_res.dpi_verdict || "failed";
+                        required_failed = true;
+                        break;
+                    }
+                    if (labeled_error != "" && result.error == "") result.error = labeled_error;
+                }
+                continue;
+            }
 
             if (p_kind == "quic" || target_key == "quic_http3") {
                 if (!caps.http3) {

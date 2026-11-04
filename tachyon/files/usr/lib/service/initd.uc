@@ -542,7 +542,15 @@ function retry_start_on_wan_up(owner_pid) {
     // duration of the init.d script, so a nested /etc/init.d/tachyon call would
     // block forever waiting for that same lock (recursive flock self-deadlock).
     // Call BIN_PATH directly, the same way start_service and stop_service do.
-    return command_status_from_args([ BIN_PATH, "restart" ]);
+    let rc = command_status_from_args([ BIN_PATH, "restart" ]);
+    if (rc == 0) {
+        clear_start_retry(START_RETRY_FILE);
+        cancel_scheduled_start_retry(START_RETRY_PID_FILE);
+    } else {
+        mark_start_retry(START_RETRY_FILE, "retry_failed");
+        schedule_start_retry(START_RETRY_PID_FILE, "60");
+    }
+    return rc;
 }
 
 function active_service_action_value() {

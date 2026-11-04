@@ -15,11 +15,11 @@
 //     - Restarting only the engine when the core process itself dies.
 //
 // Subsystems:
-//   - "engine":   core routing engine (sing-box / steer / steer-extended)
-//   - "dns":      dnsmasq interception, smartdns upstreams, localhost resolution
-//   - "nftables": kernel tables (TachyonTable / steer), chains, runtime sets
+//   - "engine":   core routing engine (tachyon-core / sing-box)
+//   - "dns":      dnsmasq interception, localhost resolution
+//   - "nftables": kernel tables (TachyonTable), chains, runtime sets
 //   - "routing":  policy routing rules (ip rule fwmark/tachyon), table routes
-//   - "daemons":  auxiliary providers (zapret nfqws, zapret2 nfqws2, byedpi ciadpi, steer-zapret)
+//   - "daemons":  auxiliary providers (zapret nfqws, zapret2 nfqws2, byedpi ciadpi)
 //
 // Integration:
 //   - Core Transaction Engine (core.transaction): multi-phase mutation with rollback
@@ -99,7 +99,6 @@ const ACTION_REPAIR_DAEMON = "repair_daemon";
 const ACTION_RELOAD_SERVICE = "reload_service";
 
 const NFT_TABLE_SINGBOX = "TachyonTable";
-const NFT_TABLE_STEER = "steer";
 const RT_TABLE_NAME = "tachyon";
 const RT_TABLE_ID = "4249";
 
@@ -209,11 +208,6 @@ function get_active_engine_id() {
     return s.engine || "sing-box";
 }
 
-function is_engine_steer(engine_id) {
-    let id = engine_id || get_active_engine_id();
-    return id == "steer" || id == "steer-extended";
-}
-
 function get_enabled_outbound_sections() {
     let sections = [];
     let all = uci_core.get_all(CONFIG_NAME);
@@ -244,7 +238,6 @@ function build_desired_engine(opts) {
     return {
         enabled: enabled,
         id: engine_id,
-        is_steer: is_engine_steer(engine_id),
         should_run: enabled
     };
 }
@@ -252,20 +245,15 @@ function build_desired_engine(opts) {
 function build_desired_dns(opts) {
     let enabled = is_service_enabled();
     let s = get_settings();
-    let engine_id = get_active_engine_id();
-    let is_steer = is_engine_steer(engine_id);
 
     // If dont_touch_dhcp is set to 1, Tachyon should NOT manage dnsmasq
     let dont_touch = s.dont_touch_dhcp == "1" || s.dont_touch_dhcp == "true";
     let manage_dnsmasq = enabled && !dont_touch;
 
-    let encrypted_dns = s.dns_type && s.dns_type != "udp";
-    let smartdns_needed = is_steer && manage_dnsmasq && encrypted_dns;
-
     return {
         manage_dnsmasq: manage_dnsmasq,
-        mode: is_steer ? "steer" : "sing-box",
-        smartdns_needed: smartdns_needed,
+        mode: "sing-box",
+        smartdns_needed: false,
         dns_type: s.dns_type || "doh",
         expect_resolving: enabled
     };
@@ -273,22 +261,12 @@ function build_desired_dns(opts) {
 
 function build_desired_nftables(opts) {
     let enabled = is_service_enabled();
-    let engine_id = get_active_engine_id();
-    let is_steer = is_engine_steer(engine_id);
 
     if (!enabled) {
         return {
             table_needed: false,
-            table_name: is_steer ? NFT_TABLE_STEER : NFT_TABLE_SINGBOX,
+            table_name: NFT_TABLE_SINGBOX,
             sets_needed: []
-        };
-    }
-
-    if (is_steer) {
-        return {
-            table_needed: true,
-            table_name: NFT_TABLE_STEER,
-            sets_needed: [] // steer manages its own sets internally
         };
     }
 
@@ -301,13 +279,12 @@ function build_desired_nftables(opts) {
 
 function build_desired_routing(opts) {
     let enabled = is_service_enabled();
-    let is_steer = is_engine_steer();
     let settings = get_settings();
     let proxy_mode = lc(trim(as_string(settings.proxy_mode || "tproxy")));
     let need_tproxy_routing = proxy_mode != "tun" && proxy_mode != "socks";
 
     return {
-        needed: enabled && !is_steer && need_tproxy_routing, // steer and tun/socks do not use tproxy policy routing
+        needed: enabled && need_tproxy_routing, // tun/socks do not use tproxy policy routing
         table_name: RT_TABLE_NAME,
         table_id: RT_TABLE_ID,
         rule_mark: "0x04000000"
@@ -316,55 +293,41 @@ function build_desired_routing(opts) {
 
 function build_desired_daemons(opts) {
     let enabled = is_service_enabled();
-    let is_steer = is_engine_steer();
     let daemons = [];
 
     if (!enabled) return daemons;
 
-    if (is_steer) {
-        // On steer, zapret is handled by tachyon-steer-zapret procd init
-        if (has_provider_sections("zapret") || has_provider_sections("zapret2")) {
-            push(daemons, {
-                id: "steer-zapret",
-                name: "tachyon-steer-zapret",
-                kind: "procd_service",
-                critical: false
-            });
-        }
-    } else {
-        // On sing-box, auxiliary daemons run as local background providers
-        if (has_provider_sections("zapret")) {
-            push(daemons, {
-                id: "zapret",
-                name: "nfqws",
-                kind: "provider",
-                critical: false
-            });
-        }
-        if (has_provider_sections("zapret2")) {
-            push(daemons, {
-                id: "zapret2",
-                name: "nfqws2",
-                kind: "provider",
-                critical: false
-            });
-        }
-        if (has_provider_sections("byedpi")) {
-            push(daemons, {
-                id: "byedpi",
-                name: "ciadpi",
-                kind: "provider",
-                critical: false
-            });
-        }
-        if (has_provider_sections("fptn")) {
-            push(daemons, {
-                id: "fptn",
-                name: "fptn",
-                kind: "provider",
-                critical: false
-            });
-        }
+    if (has_provider_sections("zapret")) {
+        push(daemons, {
+            id: "zapret",
+            name: "nfqws",
+            kind: "provider",
+            critical: false
+        });
+    }
+    if (has_provider_sections("zapret2")) {
+        push(daemons, {
+            id: "zapret2",
+            name: "nfqws2",
+            kind: "provider",
+            critical: false
+        });
+    }
+    if (has_provider_sections("byedpi")) {
+        push(daemons, {
+            id: "byedpi",
+            name: "ciadpi",
+            kind: "provider",
+            critical: false
+        });
+    }
+    if (has_provider_sections("fptn")) {
+        push(daemons, {
+            id: "fptn",
+            name: "fptn",
+            kind: "provider",
+            critical: false
+        });
     }
 
     return daemons;
@@ -391,20 +354,14 @@ function inspect_actual_engine(desired_engine) {
     let running = false;
     let pid = "";
 
-    if (desired_engine.is_steer) {
-        pid = read_pid_file("/var/run/steer.pid", "steer");
-        if (!pid) pid = get_pid_by_name("steer");
-        running = pid != "";
-    } else {
-        for (let p in [ "/var/run/tachyon-core.pid", "/var/run/sing-box.pid", "/var/run/sing-box/sing-box.pid" ]) {
-            pid = read_pid_file(p, "tachyon-core");
-            if (!pid) pid = read_pid_file(p, "sing-box");
-            if (pid) break;
-        }
-        if (!pid) pid = get_pid_by_name("tachyon-core");
-        if (!pid) pid = get_pid_by_name("sing-box");
-        running = pid != "";
+    for (let p in [ "/var/run/tachyon-core.pid", "/var/run/sing-box.pid", "/var/run/sing-box/sing-box.pid" ]) {
+        pid = read_pid_file(p, "tachyon-core");
+        if (!pid) pid = read_pid_file(p, "sing-box");
+        if (pid) break;
     }
+    if (!pid) pid = get_pid_by_name("tachyon-core");
+    if (!pid) pid = get_pid_by_name("sing-box");
+    running = pid != "";
 
     return {
         id: engine_id,
@@ -443,8 +400,7 @@ function inspect_actual_dns(desired_dns) {
     let smartdns_running = false;
     let smartdns_pid = "";
     if (desired_dns.smartdns_needed) {
-        smartdns_pid = read_pid_file(RUNTIME_STATE_DIR + "/steer-smartdns.pid", "smartdns");
-        if (!smartdns_pid) smartdns_pid = get_pid_by_name("smartdns");
+        smartdns_pid = get_pid_by_name("smartdns");
         smartdns_running = smartdns_pid != "";
     }
 
@@ -528,9 +484,6 @@ function inspect_actual_daemons(desired_daemons) {
             let res = command_capture(sprintf("/etc/init.d/%s status 2>/dev/null", d.name));
             if (res.status == 0 && index(res.output, "running") >= 0) {
                 running = true;
-            } else {
-                let pids = command_output_from_args([ "pgrep", "-f", "steer-nfqws" ]);
-                if (pids != "") running = true;
             }
         } else {
             pid = get_pid_by_name(d.name);
@@ -625,7 +578,7 @@ function diff_dns(desired_dns, actual_dns) {
             actual: "stopped",
             severity: SEVERITY_HIGH,
             action: ACTION_REPAIR_DNS,
-            reason: "Encrypted DNS upstream smartdns is not running for steer"
+            reason: "Encrypted DNS upstream smartdns is not running"
         });
     }
 
@@ -834,9 +787,6 @@ function repair_engine_subsystem(drift_items, opts) {
 
 function repair_dns_subsystem(drift_items, opts) {
     log("Reconciler: repairing DNS subsystem...", "info");
-    let engine_id = get_active_engine_id();
-    let is_steer = is_engine_steer(engine_id);
-    let s = get_settings();
 
     // 1. If dnsmasq is dead, resurrect it first
     let dnsmasq_pid = read_pid_file("/var/run/dnsmasq/dnsmasq.pid", "dnsmasq");
@@ -846,25 +796,14 @@ function repair_dns_subsystem(drift_items, opts) {
         command_status("/etc/init.d/dnsmasq restart >/dev/null 2>&1");
     }
 
-    // 2. If steer smartdns is dead, restart it
-    if (is_steer && s.dns_type && s.dns_type != "udp") {
-        let steer_dns = null;
-        try { steer_dns = require("steer.dns"); } catch (e) {}
-        if (steer_dns && steer_dns.start_runtime) {
-            log("Reconciler: restarting steer smartdns upstream...", "info");
-            steer_dns.start_runtime();
-        }
-    }
-
-    // 3. Re-apply Tachyon DNS interception in dnsmasq
-    let apply_subcmd = is_steer ? "configure-steer" : "configure";
-    let cmd = sprintf("ucode -L %s %s/dns/apply.uc %s force >/dev/null 2>&1", LIB_DIR, LIB_DIR, apply_subcmd);
+    // 2. Re-apply Tachyon DNS interception in dnsmasq
+    let cmd = sprintf("ucode -L %s %s/dns/apply.uc configure force >/dev/null 2>&1", LIB_DIR, LIB_DIR);
     let code = command_status(cmd);
 
-    // 4. Send SIGHUP to flush dnsmasq caches
+    // 3. Send SIGHUP to flush dnsmasq caches
     command_status("killall -SIGHUP dnsmasq >/dev/null 2>&1 || ubus call dnsmasq reload >/dev/null 2>&1");
 
-    // 5. Verification
+    // 4. Verification
     let resolving = probe_dns_resolution();
     if (code == 0 || resolving) {
         log("Reconciler: DNS subsystem repaired and verified", "info");
@@ -877,16 +816,7 @@ function repair_dns_subsystem(drift_items, opts) {
 
 function repair_nftables_subsystem(drift_items, opts) {
     log("Reconciler: repairing nftables subsystem...", "info");
-    let is_steer = is_engine_steer();
 
-    if (is_steer) {
-        // On steer, trigger spec apply
-        log("Reconciler: applying steer spec rules...", "info");
-        let code = command_status("steer apply >/dev/null 2>&1 || /etc/init.d/steer reload >/dev/null 2>&1");
-        return { ok: code == 0, subsystem: SUBSYSTEM_NFTABLES };
-    }
-
-    // On sing-box:
     // Determine whether table is missing or only sets need repopulating
     let table_missing = false;
     for (let item in drift_items) {
@@ -936,10 +866,7 @@ function repair_daemons_subsystem(drift_items, opts) {
         log(sprintf("Reconciler: restarting daemon '%s'...", daemon_id), "info");
         let ok = false;
 
-        if (daemon_id == "steer-zapret") {
-            let code = command_status("/etc/init.d/tachyon-steer-zapret restart >/dev/null 2>&1");
-            ok = code == 0;
-        } else if (daemon_id == "zapret") {
+        if (daemon_id == "zapret") {
             let cmd = sprintf("ucode -L %s %s/providers/zapret/runtime.uc start-runtime >/dev/null 2>&1", LIB_DIR, LIB_DIR);
             ok = command_status(cmd) == 0;
         } else if (daemon_id == "zapret2") {
@@ -1240,7 +1167,7 @@ if (mode == "selftest") {
 
     // Test 2: diff_state on clean synthetic state
     let clean_desired = {
-        engine: { should_run: true, id: "sing-box", is_steer: false },
+        engine: { should_run: true, id: "sing-box" },
         dns: { manage_dnsmasq: true, smartdns_needed: false, expect_resolving: true },
         nftables: { table_needed: true, table_name: "TachyonTable", sets_needed: [ "localv4" ] },
         routing: { needed: true, table_name: "tachyon" },
@@ -1312,7 +1239,7 @@ if (mode == "selftest") {
 
     // Test 6: Daemons stopped detection
     let daemon_desired = {
-        engine: { should_run: true, id: "sing-box", is_steer: false },
+        engine: { should_run: true, id: "sing-box" },
         dns: { manage_dnsmasq: true, smartdns_needed: false, expect_resolving: true },
         nftables: { table_needed: true, table_name: "TachyonTable", sets_needed: [] },
         routing: { needed: true, table_name: "tachyon" },

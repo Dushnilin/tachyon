@@ -30,9 +30,6 @@ const RT_TABLE_NAME = getenv("RT_TABLE_NAME") || constants.RT_TABLE_NAME || "tac
 const NFT_TABLE_NAME = getenv("NFT_TABLE_NAME") || constants.NFT_TABLE_NAME || "TachyonTable";
 const NFT_FAKEIP_MARK = getenv("NFT_FAKEIP_MARK") || constants.NFT_FAKEIP_MARK || "0x04000000";
 const SB_DNS_INBOUND_ADDRESS = getenv("SB_DNS_INBOUND_ADDRESS") || constants.SB_DNS_INBOUND_ADDRESS || "127.0.0.42";
-const STEER_DNS_ADDRESS = getenv("STEER_DNS_ADDRESS") || "127.0.0.1";
-const STEER_DNS_PORT = getenv("STEER_DNS_PORT") || "5300";
-const STEER_NFT_TABLE = getenv("STEER_NFT_TABLE") || "steer";
 const SB_TPROXY_INBOUND6_ADDRESS = getenv("SB_TPROXY_INBOUND6_ADDRESS") || constants.SB_TPROXY_INBOUND6_ADDRESS || "::1";
 const SB_TPROXY_INBOUND_PORT = getenv("SB_TPROXY_INBOUND_PORT") || constants.SB_TPROXY_INBOUND_PORT || "1602";
 const ZAPRET_LEGACY_DEFAULT_NFQWS_OPT = getenv("ZAPRET_LEGACY_DEFAULT_NFQWS_OPT") || constants.ZAPRET_LEGACY_DEFAULT_NFQWS_OPT || "";
@@ -108,14 +105,7 @@ function active_engine_name() {
     return (engine != null && engine != "") ? as_string(engine) : "sing-box";
 }
 
-function active_engine_is_steer() {
-    let name = active_engine_name();
-    return name == "steer" || name == "steer-extended";
-}
-
 function is_tachyon_core_active() {
-    if (active_engine_is_steer())
-        return false;
     let marker = trim(fs.readfile("/etc/tachyon/tachyon-core-variant") || fs.readfile("/etc/tachyon/sing-box-variant") || "");
     if (marker == "tachyon-core")
         return true;
@@ -338,10 +328,6 @@ function get_server_capabilities() {
 
 function check_sing_box() {
     return sysinfo_mod.check_sing_box();
-}
-
-function check_steer() {
-    return sysinfo_mod.check_steer();
 }
 
 function check_dns_available() {
@@ -594,11 +580,6 @@ function is_adguardhome_primary_dns(cfg) {
 function tachyon_is_running() {
     let wd_pid = trim(fs.readfile("/var/run/tachyon_watchdog.pid") || "");
     if (wd_pid != "" && fs.stat("/proc/" + wd_pid) != null) return true;
-    let eng = "tachyon-core";
-    try { eng = require("core.engine").get_active(); } catch (e) {}
-    if (eng == "steer" || eng == "steer-extended") {
-        return find_process_pid("steer") != "" || command_success_from_args([ "/etc/init.d/steer", "status" ]);
-    }
     return find_core_process_pid() != "";
 }
 
@@ -611,13 +592,6 @@ function is_degraded() {
 }
 
 function kill_our_core_processes() {
-    let eng = "tachyon-core";
-    try { eng = require("core.engine").get_active(); } catch (e) {}
-    if (eng == "steer" || eng == "steer-extended") {
-        command_status("/etc/init.d/steer stop >/dev/null 2>&1");
-        command_status("killall -9 steer >/dev/null 2>&1");
-        return;
-    }
     let proc = require("core.process");
     command_status(proc.core_contract().init_script + " stop >/dev/null 2>&1");
     // killall of the procd name also signals /etc/init.d/tachyon-core:
@@ -1042,12 +1016,11 @@ function run_doctor_checks_impl(repair) {
     try {
         active_engine = require("core.engine").get_active();
     } catch (e) {}
-    let is_steer = (active_engine == "steer" || active_engine == "steer-extended");
-    let is_tachyon_core = !is_steer && is_tachyon_core_active();
+    let is_tachyon_core = is_tachyon_core_active();
 
-    let binary_name = is_steer ? "steer" : (is_tachyon_core ? "tachyon-core" : "sing-box");
-    let init_script = is_steer ? "/etc/init.d/steer" : "/etc/init.d/tachyon-core";
-    let config_file_path = is_steer ? "/etc/steer/spec.json" : "/etc/tachyon-core/config.json";
+    let binary_name = is_tachyon_core ? "tachyon-core" : "sing-box";
+    let init_script = "/etc/init.d/tachyon-core";
+    let config_file_path = "/etc/tachyon-core/config.json";
 
     // 1. Process Check
     let has_sections = false;
@@ -1061,57 +1034,33 @@ function run_doctor_checks_impl(repair) {
         }
     }
 
-    let pid = is_steer ? find_process_pid("steer") : find_core_process_pid();
+    let pid = find_core_process_pid();
     if (pid != "") {
-        doc_check("✅", (is_steer ? active_engine : binary_name) + " process", "running (PID " + pid + ")", "");
-    } else if (!has_sections && !is_steer) {
+        doc_check("✅", binary_name + " process", "running (PID " + pid + ")", "");
+    } else if (!has_sections) {
         doc_check("ℹ️", binary_name + " process", "not started", "→ Настройте подключение в LuCI — ядро запустится автоматически");
     } else {
         issues++;
         if (!DOCTOR_REPAIR_MODE) {
             doc_plan("kill conflicting processes; " + init_script + " start");
-            doc_check("⚠️", (is_steer ? active_engine : binary_name) + " process", "stopped", "→ WILL FIX (doctor --fix): запуск службы " + active_engine);
+            doc_check("⚠️", binary_name + " process", "stopped", "→ WILL FIX (doctor --fix): запуск службы " + active_engine);
         } else {
             kill_our_core_processes();
             command_status("sleep 1");
             command_status(init_script + " start >/dev/null 2>&1");
             command_status("sleep 3");
-            pid = is_steer ? find_process_pid("steer") : find_core_process_pid();
+            pid = find_core_process_pid();
             if (pid != "") {
-                doc_check("❌", (is_steer ? active_engine : binary_name) + " process", "stopped", "→ FIXED: запущен");
+                doc_check("❌", binary_name + " process", "stopped", "→ FIXED: запущен");
                 fixed++;
             } else {
-                doc_check("❌", (is_steer ? active_engine : binary_name) + " process", "stopped", "→ не удалось запустить — проверьте логи");
+                doc_check("❌", binary_name + " process", "stopped", "→ не удалось запустить — проверьте логи");
             }
         }
     }
 
     // 2. Configuration Check
-    if (is_steer) {
-        if (fs.stat(config_file_path) != null) {
-            let check_res = command_status("/usr/sbin/steer apply --dry-run >/dev/null 2>&1");
-            if (check_res == 0) {
-                doc_check("✅", active_engine + " spec", "valid", "");
-            } else {
-                issues++;
-                if (!DOCTOR_REPAIR_MODE) {
-                    doc_plan("regenerate steer spec (/usr/bin/tachyon reload)");
-                    doc_check("⚠️", active_engine + " spec", "invalid", "→ WILL FIX (doctor --fix): перегенерация спеки");
-                } else {
-                    command_status("ucode -L " + LIB_DIR + " " + LIB_DIR + "/service/engine_runtime.uc engine-apply >/dev/null 2>&1");
-                    let check_res2 = command_status("/usr/sbin/steer apply --dry-run >/dev/null 2>&1");
-                    if (check_res2 == 0) {
-                        doc_check("❌", active_engine + " spec", "invalid", "→ FIXED: спека восстановлена");
-                        fixed++;
-                    } else {
-                        doc_check("❌", active_engine + " spec", "invalid", "→ не удалось восстановить спеку");
-                    }
-                }
-            }
-        } else {
-            doc_check("ℹ️", active_engine + " spec", "not yet created", "");
-        }
-    } else if (fs.stat(config_file_path) != null) {
+    if (fs.stat(config_file_path) != null) {
         let check_res = command_status(binary_name + " check -c " + config_file_path + " >/dev/null 2>&1");
         if (check_res == 0) {
             doc_check("✅", binary_name + " config", "valid", "");
@@ -1200,117 +1149,74 @@ function run_doctor_checks_impl(repair) {
     }
 
     // 3. Nftables Table Check
-    if (is_steer) {
-        let out_nft = command_capture("nft list table inet steer 2>/dev/null").output;
-        if (index(out_nft, "table inet steer") >= 0) {
-            doc_check("✅", "nftables table (inet steer)", "present", "");
+    let proxy_mode = lc(trim(as_string(cfg.proxy_mode || "tproxy")));
+    if (routing_mode == "nftables" && proxy_mode != "tun" && proxy_mode != "socks") {
+        let out_nft = command_capture("nft list table inet " + NFT_TABLE_NAME + " | grep tproxy").output;
+        if (index(out_nft, "tproxy") >= 0) {
+            doc_check("✅", "nftables table", "present", "");
+        } else {
+            if (is_degraded_flag) {
+                doc_check("⚠️", "nftables table", "missing or incomplete", "→ GRACEFUL DEGRADATION: Proxy offline");
+            } else {
+                issues++;
+                let kmod_missing = !fs.stat("/sys/module/nft_tproxy") && !command_success_from_args([ "modprobe", "nft_tproxy" ]);
+                if (!DOCTOR_REPAIR_MODE) {
+                    let kmod_hint = kmod_missing ? " (kmod-nft-tproxy не установлен: apk add kmod-nft-tproxy)" : "";
+                    doc_plan("delete nft table + /usr/bin/tachyon restart");
+                    doc_check("⚠️", "nftables table", "missing or incomplete", "→ WILL FIX (doctor --fix): пересоздание правил" + kmod_hint);
+                } else {
+                    command_status("nft delete table inet " + NFT_TABLE_NAME + " >/dev/null 2>&1");
+                    let rebuild_status = command_status("/usr/bin/tachyon restart >/dev/null 2>&1");
+                    let out_nft_check = command_capture("nft list table inet " + NFT_TABLE_NAME + " | grep tproxy").output;
+                    if (index(out_nft_check, "tproxy") >= 0) {
+                        doc_check("❌", "nftables table", "missing or incomplete", "→ FIXED: правила пересозданы");
+                        fixed++;
+                    } else {
+                        let kmod_hint = kmod_missing ? " (kmod-nft-tproxy не установлен: apk add kmod-nft-tproxy)" : "";
+                        doc_check("❌", "nftables table", "missing or incomplete", "→ не удалось восстановить nftables правила" + kmod_hint);
+                    }
+                }
+            }
+        }
+
+        // 4. IP Rule Check
+        let ip_rule_out = command_capture("ip rule list").output;
+        if (index(ip_rule_out, "fwmark") >= 0 && index(ip_rule_out, "lookup " + RT_TABLE_NAME) >= 0) {
+            doc_check("✅", "ip rule (fwmark)", "present", "");
         } else {
             issues++;
             if (!DOCTOR_REPAIR_MODE) {
-                doc_plan("/usr/sbin/steer apply");
-                doc_check("⚠️", "nftables table (inet steer)", "missing", "→ WILL FIX (doctor --fix): применение правил steer");
+                doc_plan("/usr/bin/tachyon restart");
+                doc_check("⚠️", "ip rule", "missing", "→ WILL FIX (doctor --fix): восстановление маршрута");
             } else {
-                command_status("/usr/sbin/steer apply >/dev/null 2>&1");
-                let out_check = command_capture("nft list table inet steer 2>/dev/null").output;
-                if (index(out_check, "table inet steer") >= 0) {
-                    doc_check("❌", "nftables table (inet steer)", "missing", "→ FIXED: правила steer применены");
+                let rebuild_status = command_status("/usr/bin/tachyon restart >/dev/null 2>&1");
+                let ip_rule_check = command_capture("ip rule list").output;
+                if (index(ip_rule_check, "fwmark") >= 0 && index(ip_rule_check, "lookup " + RT_TABLE_NAME) >= 0) {
+                    doc_check("❌", "ip rule", "missing", "→ FIXED: маршрут восстановлен");
                     fixed++;
                 } else {
-                    doc_check("❌", "nftables table (inet steer)", "missing", "→ не удалось применить правила steer");
+                    doc_check("❌", "ip rule", "missing", "→ не удалось восстановить ip rule");
                 }
             }
-        }
-
-        // Steer Diag Check
-        let diag_str = trim(command_capture("/usr/sbin/steer diag 2>/dev/null").output);
-        if (diag_str != "") {
-            try {
-                let diag_res = json(diag_str);
-                if (type(diag_res) == "object" && type(diag_res.checks) == "array") {
-                    for (let c in diag_res.checks) {
-                        let icon = c.verdict == "ok" ? "✅" : (c.verdict == "note" ? "ℹ️" : "⚠️");
-                        if (c.verdict == "fail") {
-                            if (c.id == "zapret" && !provider_installed(ZAPRET_RUNTIME_UC)) {
-                                icon = "ℹ️";
-                            } else {
-                                issues++;
-                            }
-                        }
-                        doc_check(icon, "steer diag: " + c.id, c.what, c.why ? "→ " + c.why : "");
-                    }
-                }
-            } catch (e) {}
         }
     } else {
-        let proxy_mode = lc(trim(as_string(cfg.proxy_mode || "tproxy")));
-        if (routing_mode == "nftables" && proxy_mode != "tun" && proxy_mode != "socks") {
-            let out_nft = command_capture("nft list table inet " + NFT_TABLE_NAME + " | grep tproxy").output;
-            if (index(out_nft, "tproxy") >= 0) {
-                doc_check("✅", "nftables table", "present", "");
-            } else {
-                if (is_degraded_flag) {
-                    doc_check("⚠️", "nftables table", "missing or incomplete", "→ GRACEFUL DEGRADATION: Proxy offline");
-                } else {
-                    issues++;
-                    let kmod_missing = !fs.stat("/sys/module/nft_tproxy") && !command_success_from_args([ "modprobe", "nft_tproxy" ]);
-                    if (!DOCTOR_REPAIR_MODE) {
-                        let kmod_hint = kmod_missing ? " (kmod-nft-tproxy не установлен: apk add kmod-nft-tproxy)" : "";
-                        doc_plan("delete nft table + /usr/bin/tachyon restart");
-                        doc_check("⚠️", "nftables table", "missing or incomplete", "→ WILL FIX (doctor --fix): пересоздание правил" + kmod_hint);
-                    } else {
-                        command_status("nft delete table inet " + NFT_TABLE_NAME + " >/dev/null 2>&1");
-                        let rebuild_status = command_status("/usr/bin/tachyon restart >/dev/null 2>&1");
-                        let out_nft_check = command_capture("nft list table inet " + NFT_TABLE_NAME + " | grep tproxy").output;
-                        if (index(out_nft_check, "tproxy") >= 0) {
-                            doc_check("❌", "nftables table", "missing or incomplete", "→ FIXED: правила пересозданы");
-                            fixed++;
-                        } else {
-                            let kmod_hint = kmod_missing ? " (kmod-nft-tproxy не установлен: apk add kmod-nft-tproxy)" : "";
-                            doc_check("❌", "nftables table", "missing or incomplete", "→ не удалось восстановить nftables правила" + kmod_hint);
-                        }
-                    }
-                }
-            }
-
-            // 4. IP Rule Check
-            let ip_rule_out = command_capture("ip rule list").output;
-            if (index(ip_rule_out, "fwmark") >= 0 && index(ip_rule_out, "lookup " + RT_TABLE_NAME) >= 0) {
-                doc_check("✅", "ip rule (fwmark)", "present", "");
-            } else {
-                issues++;
-                if (!DOCTOR_REPAIR_MODE) {
-                    doc_plan("/usr/bin/tachyon restart");
-                    doc_check("⚠️", "ip rule", "missing", "→ WILL FIX (doctor --fix): восстановление маршрута");
-                } else {
-                    let rebuild_status = command_status("/usr/bin/tachyon restart >/dev/null 2>&1");
-                    let ip_rule_check = command_capture("ip rule list").output;
-                    if (index(ip_rule_check, "fwmark") >= 0 && index(ip_rule_check, "lookup " + RT_TABLE_NAME) >= 0) {
-                        doc_check("❌", "ip rule", "missing", "→ FIXED: маршрут восстановлен");
-                        fixed++;
-                    } else {
-                        doc_check("❌", "ip rule", "missing", "→ не удалось восстановить ip rule");
-                    }
-                }
-            }
+        let ip_link_out = command_capture("ip link show tun0").output;
+        if (index(ip_link_out, "tun0") >= 0) {
+            doc_check("✅", "tun0 interface", "up", "");
         } else {
-            let ip_link_out = command_capture("ip link show tun0").output;
-            if (index(ip_link_out, "tun0") >= 0) {
-                doc_check("✅", "tun0 interface", "up", "");
+            issues++;
+            if (!DOCTOR_REPAIR_MODE) {
+                doc_plan(init_script + " restart");
+                doc_check("⚠️", "tun0 interface", "missing", "→ WILL FIX (doctor --fix): перезапуск службы для поднятия tun0");
             } else {
-                issues++;
-                if (!DOCTOR_REPAIR_MODE) {
-                    doc_plan(init_script + " restart");
-                    doc_check("⚠️", "tun0 interface", "missing", "→ WILL FIX (doctor --fix): перезапуск службы для поднятия tun0");
+                command_status(init_script + " restart >/dev/null 2>&1");
+                command_status("sleep 3");
+                let ip_link_check = command_capture("ip link show tun0").output;
+                if (index(ip_link_check, "tun0") >= 0) {
+                    doc_check("❌", "tun0 interface", "missing", "→ FIXED: интерфейс tun0 поднят после перезапуска службы");
+                    fixed++;
                 } else {
-                    command_status(init_script + " restart >/dev/null 2>&1");
-                    command_status("sleep 3");
-                    let ip_link_check = command_capture("ip link show tun0").output;
-                    if (index(ip_link_check, "tun0") >= 0) {
-                        doc_check("❌", "tun0 interface", "missing", "→ FIXED: интерфейс tun0 поднят после перезапуска службы");
-                        fixed++;
-                    } else {
-                        doc_check("❌", "tun0 interface", "missing", "→ не удалось поднять tun0");
-                    }
+                    doc_check("❌", "tun0 interface", "missing", "→ не удалось поднять tun0");
                 }
             }
         }
@@ -1318,41 +1224,7 @@ function run_doctor_checks_impl(repair) {
 
     // 4e. Dnsmasq Redirection Check
     let agh_primary = is_adguardhome_primary_dns(cfg);
-    if (is_steer) {
-        let noresolv = uci_core.get("dhcp.@dnsmasq[0].noresolv");
-        let server_list = uci_core.get("dhcp.@dnsmasq[0].server");
-        let has_bad_server = false;
-        let servers = [];
-        if (type(server_list) == "array") servers = server_list;
-        else if (type(server_list) == "string" && server_list != "") servers = [ server_list ];
-        for (let s in servers) {
-            if (index(s, "127.0.0.42") >= 0) has_bad_server = true;
-        }
-
-        let resolver_ok = dns_check_router_resolver_available("example.com");
-
-        if (noresolv != "1" && !has_bad_server && resolver_ok) {
-            doc_check("✅", "dnsmasq server", "direct (steer handles DNS interception via inet steer)", "");
-            doc_check("✅", "dnsmasq params", "OK (noresolv=" + (noresolv || "0") + ", steer active)", "");
-        } else {
-            issues++;
-            if (!DOCTOR_REPAIR_MODE) {
-                doc_plan("dns/apply.uc configure-steer");
-                doc_check("⚠️", "dnsmasq params", "incorrect for steer", "→ WILL FIX (doctor --fix): configure dnsmasq for steer");
-            } else {
-                module_status(DNS_APPLY_UC, [ "configure-steer" ]);
-                command_status("sleep 1");
-                let noresolv2 = uci_core.get("dhcp.@dnsmasq[0].noresolv");
-                let resolver_ok2 = dns_check_router_resolver_available("example.com");
-                if (noresolv2 != "1" && resolver_ok2) {
-                    doc_check("❌", "dnsmasq params", "incorrect for steer", "→ FIXED: dnsmasq настроен для steer (noresolv=0, апстримы восстановлены)");
-                    fixed++;
-                } else {
-                    doc_check("❌", "dnsmasq params", "incorrect for steer", "→ не удалось настроить dnsmasq для steer");
-                }
-            }
-        }
-    } else if (agh_primary) {
+    if (agh_primary) {
         doc_check("✅", "dnsmasq server (Direct)", "bypassed (AdGuardHome on :53, dnsmasq DHCP-only)", "");
     } else if (module_status(DNS_APPLY_UC, [ "has-tachyon-dns" ]) == 0) {
         doc_check("✅", "dnsmasq server (Direct)", SB_DNS_INBOUND_ADDRESS, "");
@@ -1377,45 +1249,43 @@ function run_doctor_checks_impl(repair) {
         }
     }
 
-    // 4b. Dnsmasq Params Check (sing-box only)
-    if (!is_steer) {
-        if (agh_primary) {
-            doc_check("✅", "dnsmasq params", "bypassed (DHCP-only mode, port 0)", "");
+    // 4b. Dnsmasq Params Check
+    if (agh_primary) {
+        doc_check("✅", "dnsmasq params", "bypassed (DHCP-only mode, port 0)", "");
+    } else {
+        let noresolv = uci_core.get("dhcp.@dnsmasq[0].noresolv");
+        let raw_localuse = uci_core.get("dhcp.@dnsmasq[0].localuse");
+        // OpenWrt defaults localuse to 1 when omitted in UCI
+        let eff_localuse = (raw_localuse == null || raw_localuse == "") ? "1" : as_string(raw_localuse);
+        let raw_rebind = uci_core.get("dhcp.@dnsmasq[0].rebind_protection");
+        let eff_rebind = (raw_rebind == null || raw_rebind == "") ? "1" : as_string(raw_rebind);
+        if (noresolv == "1" && eff_localuse == "1") {
+            let detail = sprintf("OK (noresolv=1, localuse=%s, rebind_protection=%s)",
+                (raw_localuse == null || raw_localuse == "") ? "1 (default)" : eff_localuse,
+                eff_rebind);
+            doc_check("✅", "dnsmasq params", detail, "");
         } else {
-            let noresolv = uci_core.get("dhcp.@dnsmasq[0].noresolv");
-            let raw_localuse = uci_core.get("dhcp.@dnsmasq[0].localuse");
-            // OpenWrt defaults localuse to 1 when omitted in UCI
-            let eff_localuse = (raw_localuse == null || raw_localuse == "") ? "1" : as_string(raw_localuse);
-            let raw_rebind = uci_core.get("dhcp.@dnsmasq[0].rebind_protection");
-            let eff_rebind = (raw_rebind == null || raw_rebind == "") ? "1" : as_string(raw_rebind);
-            if (noresolv == "1" && eff_localuse == "1") {
-                let detail = sprintf("OK (noresolv=1, localuse=%s, rebind_protection=%s)",
-                    (raw_localuse == null || raw_localuse == "") ? "1 (default)" : eff_localuse,
-                    eff_rebind);
-                doc_check("✅", "dnsmasq params", detail, "");
+            issues++;
+            if (!DOCTOR_REPAIR_MODE) {
+                doc_plan("uci set dhcp noresolv=1 localuse=1 + dnsmasq restart");
+                doc_check("⚠️", "dnsmasq params",
+                    sprintf("incorrect (noresolv=%s, localuse=%s)", noresolv || "0", eff_localuse),
+                    "→ WILL FIX (doctor --fix): noresolv=1, localuse=1");
             } else {
-                issues++;
-                if (!DOCTOR_REPAIR_MODE) {
-                    doc_plan("uci set dhcp noresolv=1 localuse=1 + dnsmasq restart");
-                    doc_check("⚠️", "dnsmasq params",
-                        sprintf("incorrect (noresolv=%s, localuse=%s)", noresolv || "0", eff_localuse),
-                        "→ WILL FIX (doctor --fix): noresolv=1, localuse=1");
+                doc_set("dhcp.@dnsmasq[0].noresolv", "1");
+                if (eff_localuse != "1")
+                    doc_set("dhcp.@dnsmasq[0].localuse", "1");
+                doc_commit("dhcp");
+                command_status("/etc/init.d/dnsmasq restart >/dev/null 2>&1");
+                command_status("sleep 1");
+                let noresolv2 = uci_core.get("dhcp.@dnsmasq[0].noresolv");
+                let raw_lu2 = uci_core.get("dhcp.@dnsmasq[0].localuse");
+                let eff_lu2 = (raw_lu2 == null || raw_lu2 == "") ? "1" : as_string(raw_lu2);
+                if (noresolv2 == "1" && eff_lu2 == "1") {
+                    doc_check("❌", "dnsmasq params", "incorrect", "→ FIXED: noresolv=1, localuse=1");
+                    fixed++;
                 } else {
-                    doc_set("dhcp.@dnsmasq[0].noresolv", "1");
-                    if (eff_localuse != "1")
-                        doc_set("dhcp.@dnsmasq[0].localuse", "1");
-                    doc_commit("dhcp");
-                    command_status("/etc/init.d/dnsmasq restart >/dev/null 2>&1");
-                    command_status("sleep 1");
-                    let noresolv2 = uci_core.get("dhcp.@dnsmasq[0].noresolv");
-                    let raw_lu2 = uci_core.get("dhcp.@dnsmasq[0].localuse");
-                    let eff_lu2 = (raw_lu2 == null || raw_lu2 == "") ? "1" : as_string(raw_lu2);
-                    if (noresolv2 == "1" && eff_lu2 == "1") {
-                        doc_check("❌", "dnsmasq params", "incorrect", "→ FIXED: noresolv=1, localuse=1");
-                        fixed++;
-                    } else {
-                        doc_check("❌", "dnsmasq params", "incorrect", "→ не удалось исправить параметры");
-                    }
+                    doc_check("❌", "dnsmasq params", "incorrect", "→ не удалось исправить параметры");
                 }
             }
         }
@@ -1654,7 +1524,7 @@ function run_doctor_checks_impl(repair) {
     }
 
     // 5b. DNS Resolution through proxy core
-    if (has_sections && !is_steer) {
+    if (has_sections) {
         if (dns_check_through_singbox("google.com")) {
             doc_check("✅", binary_name + " DNS", "resolving via " + SB_DNS_INBOUND_ADDRESS, "");
         } else {
@@ -1702,33 +1572,29 @@ function run_doctor_checks_impl(repair) {
     }
 
     // 6. Clash API Check
-    if (is_steer) {
-        doc_check("➖", "Clash API", "not applicable for steer", "");
+    let clash_addr = clash_api_url();
+    let curl_clash = command_capture(clash_probe_cmd(clash_addr));
+    if (curl_clash.status == 0 && int(curl_clash.output) == 200) {
+        doc_check("✅", "Clash API", "reachable (" + clash_addr + ")", "");
     } else {
-        let clash_addr = clash_api_url();
-        let curl_clash = command_capture(clash_probe_cmd(clash_addr));
-        if (curl_clash.status == 0 && int(curl_clash.output) == 200) {
-            doc_check("✅", "Clash API", "reachable (" + clash_addr + ")", "");
-        } else {
-            issues++;
-            if (pid != "") {
-                if (!DOCTOR_REPAIR_MODE) {
-                    doc_plan(init_script + " restart");
-                    doc_check("⚠️", "Clash API", "unreachable", "→ WILL FIX (doctor --fix): перезапуск " + binary_name);
-                } else {
-                    command_status(init_script + " restart >/dev/null 2>&1");
-                    command_status("sleep 3");
-                    let curl_clash2 = command_capture(clash_probe_cmd(clash_addr));
-                    if (curl_clash2.status == 0 && int(curl_clash2.output) == 200) {
-                        doc_check("❌", "Clash API", "unreachable", "→ FIXED: " + binary_name + " перезапущен");
-                        fixed++;
-                    } else {
-                        doc_check("❌", "Clash API", "unreachable", "→ " + binary_name + " не отвечает на Clash API");
-                    }
-                }
+        issues++;
+        if (pid != "") {
+            if (!DOCTOR_REPAIR_MODE) {
+                doc_plan(init_script + " restart");
+                doc_check("⚠️", "Clash API", "unreachable", "→ WILL FIX (doctor --fix): перезапуск " + binary_name);
             } else {
-                doc_check("⚠️", "Clash API", "unreachable", "→ " + binary_name + " не запущен");
+                command_status(init_script + " restart >/dev/null 2>&1");
+                command_status("sleep 3");
+                let curl_clash2 = command_capture(clash_probe_cmd(clash_addr));
+                if (curl_clash2.status == 0 && int(curl_clash2.output) == 200) {
+                    doc_check("❌", "Clash API", "unreachable", "→ FIXED: " + binary_name + " перезапущен");
+                    fixed++;
+                } else {
+                    doc_check("❌", "Clash API", "unreachable", "→ " + binary_name + " не отвечает на Clash API");
+                }
             }
+        } else {
+            doc_check("⚠️", "Clash API", "unreachable", "→ " + binary_name + " не запущен");
         }
     }
 
@@ -1738,7 +1604,7 @@ function run_doctor_checks_impl(repair) {
     // correctly, the failure is outside Tachyon (server down, ISP filtering
     // the UDP endpoint). Surfacing this as its own check stops the classic
     // "Tachyon broke my AWG" misattribution.
-    if (!is_steer && pid != "") {
+    if (pid != "") {
         let wg_log = lc(command_capture("logread -l 400 2>/dev/null | grep -i 'outbound/wireguard' | tail -n 8").output);
         let wg_failures = index(wg_log, "operation timed out") >= 0 ||
             (index(wg_log, "handshake") >= 0 && index(wg_log, "timeout") >= 0);
@@ -2372,7 +2238,7 @@ function run_doctor_checks_impl(repair) {
     }
 
     // 22. TLS Certificate Pinning Capability Check
-    if (has_sections && !is_steer && has_certificate_pins_configured()) {
+    if (has_sections && has_certificate_pins_configured()) {
         let sb_ver = sing_box_resolved_version();
         let flags = sing_box_capability_flags(sb_ver.version, sb_ver.output);
         if (flags.cert_pin == 1) {
@@ -3149,21 +3015,10 @@ function verify_system() {
     }
 
     // Live checks — what a client on the LAN experiences right now.
-    let is_steer_active = active_engine_is_steer();
     let core_name = is_tachyon_core_active() ? "tachyon-core" : "sing-box";
-    // Function scope on purpose: the HTTP-via-proxy check further down reads
-    // sb_pid from outside this if/else. An out-of-scope read yields null, and
-    // null != "" is true, so the probe ran against a dead sing-box, scored a
-    // false FAIL, and local_rule_doctor escalated that to restore_native_internet.
-    let sb_pid = is_steer_active ? "" : find_core_process_pid();
-    if (is_steer_active) {
-        let steer_pid = find_process_pid("steer");
-        add("steer process", steer_pid != "" ? "pass" : "fail",
-            steer_pid != "" ? "running (pid " + steer_pid + ")" : "not running");
-    } else {
-        add(core_name + " process", sb_pid != "" ? "pass" : "fail",
-            sb_pid != "" ? "running (pid " + sb_pid + ")" : "not running");
-    }
+    let sb_pid = find_core_process_pid();
+    add(core_name + " process", sb_pid != "" ? "pass" : "fail",
+        sb_pid != "" ? "running (pid " + sb_pid + ")" : "not running");
 
     let lan_dns = dns_check_resolve_host("google.com", "127.0.0.1", 3);
     if (lan_dns == "") lan_dns = dns_check_resolve_host("cloudflare.com", "127.0.0.1", 3);
@@ -3177,16 +3032,10 @@ function verify_system() {
     add("Upstream DNS", up_dns != "" ? "pass" : "fail",
         up_dns != "" ? "resolved successfully" : "no answer from upstream resolvers");
 
-    if (is_steer_active) {
-        let steer_dns_ok = command_success_from_args([ "dig", "-p", STEER_DNS_PORT, "@" + STEER_DNS_ADDRESS, "example.com", "A", "+short", "+timeout=2", "+tries=1" ]);
-        add("Proxy DNS via steer", steer_dns_ok ? "pass" : "fail",
-            steer_dns_ok ? "resolved via " + STEER_DNS_ADDRESS + ":" + STEER_DNS_PORT : "steer dnsd not answering");
-    } else {
-        let sb_dns = dns_check_through_singbox("google.com");
-        if (!sb_dns) sb_dns = dns_check_through_singbox("cloudflare.com");
-        add("Proxy DNS via " + core_name, sb_dns ? "pass" : (sb_pid != "" ? "fail" : "skip"),
-            sb_dns ? "resolved via " + SB_DNS_INBOUND_ADDRESS : (sb_pid != "" ? "no answer" : core_name + " not running"));
-    }
+    let sb_dns = dns_check_through_singbox("google.com");
+    if (!sb_dns) sb_dns = dns_check_through_singbox("cloudflare.com");
+    add("Proxy DNS via " + core_name, sb_dns ? "pass" : (sb_pid != "" ? "fail" : "skip"),
+        sb_dns ? "resolved via " + SB_DNS_INBOUND_ADDRESS : (sb_pid != "" ? "no answer" : core_name + " not running"));
 
     // HTTP through the service mixed proxy — only present when download_via_proxy
     // is enabled; otherwise the tproxy/tun path is covered by the checks above.
@@ -3272,9 +3121,7 @@ const DOCTOR_FIX_PRIORITIES = {
     "switch_to_doh": 40,
     "clear_dns_cache": 45,
     "restart_singbox_dns": 48,
-    "restart_steer_dns": 48,
     "start_singbox": 50,
-    "start_steer": 50,
     "start_watchdog": 52,
     "restart_zapret": 60,
     "restart_providers": 62,
@@ -3535,9 +3382,8 @@ function local_rule_doctor(pre_res, pre_verify) {
     }
 
     // ── 1. End-to-end live verification & root-cause correlation ──
-    let is_steer_active = active_engine_is_steer();
     let core_name = is_tachyon_core_active() ? "tachyon-core" : "sing-box";
-    let engine_label = is_steer_active ? "steer" : core_name;
+    let engine_label = core_name;
     let engine_proc_name = engine_label + " process";
     let wan_failed = false;
     let engine_failed = false;
@@ -3563,7 +3409,7 @@ function local_rule_doctor(pre_res, pre_verify) {
         push(causes, wan_cause);
         add_fix("fix_wan_interface");
     } else if (engine_failed) {
-        let engine_fix = is_steer_active ? "start_steer" : "start_singbox";
+        let engine_fix = "start_singbox";
         engine_cause = {
             probability: 95,
             cause: lang == "en" ? (engine_label + " process is stopped or non-functional") : ("Процесс " + engine_label + " остановлен или не функционирует"),
@@ -3578,7 +3424,7 @@ function local_rule_doctor(pre_res, pre_verify) {
         if (c.status != "fail") continue;
         if (c.name == engine_proc_name) {
             if (!engine_cause && !wan_cause) {
-                let engine_fix = is_steer_active ? "start_steer" : "start_singbox";
+                let engine_fix = "start_singbox";
                 push(causes, {
                     probability: 95,
                     cause: lang == "en" ? (engine_label + " process is stopped or non-functional") : ("Процесс " + engine_label + " остановлен или не функционирует"),
@@ -3593,22 +3439,20 @@ function local_rule_doctor(pre_res, pre_verify) {
                 fix: "fix_dnsmasq"
             });
             add_fix("fix_dnsmasq");
-        } else if (c.name == "Proxy DNS via steer" || c.name == "Proxy DNS via sing-box" || c.name == "Proxy DNS via tachyon-core") {
+        } else if (c.name == "Proxy DNS via sing-box" || c.name == "Proxy DNS via tachyon-core") {
             if (wan_cause) {
                 push(wan_cause.symptoms, lang == "en" ? "Proxy DNS unavailable (WAN down)" : "Прокси-DNS недоступен (нет связи с WAN)");
             } else if (engine_cause) {
                 push(engine_cause.symptoms, lang == "en" ? ("Proxy DNS not answering (" + engine_label + " stopped)") : ("Прокси-DNS не отвечает (" + engine_label + " остановлен)"));
             } else {
-                let fix_action = is_steer_active ? "restart_steer_dns" : "clear_dns_cache";
+                let fix_action = "clear_dns_cache";
                 push(causes, {
                     probability: 85,
-                    cause: is_steer_active ?
-                        (lang == "en" ? "Proxy DNS via steer failed to respond" : "Прокси-DNS через steer (:5300) не отвечает") :
-                        (lang == "en" ? ("Proxy DNS via " + core_name + " failed to respond") : ("Прокси-DNS через " + core_name + " (127.0.0.42) не отвечает")),
+                    cause: lang == "en" ? ("Proxy DNS via " + core_name + " failed to respond") : ("Прокси-DNS через " + core_name + " (127.0.0.42) не отвечает"),
                     fix: fix_action
                 });
                 add_fix(fix_action);
-                if (!is_steer_active && cfg.dns_type != "doh") {
+                if (cfg.dns_type != "doh") {
                     add_fix("switch_to_doh");
                 }
             }

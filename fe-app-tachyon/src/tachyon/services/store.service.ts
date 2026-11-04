@@ -247,13 +247,6 @@ export interface StoreType {
     sing_box_repo_url?: string;
     sing_box_backup_version?: string;
     sing_box_backup_time?: number;
-    steer_version?: string;
-    steer_installed?: number;
-    steer_extended?: number;
-    steer_modules?: string[];
-    steer_repo_url?: string;
-    steer_backup_version?: string;
-    steer_backup_time?: number;
     active_engine?: string;
     zapret_version: string;
     zapret_installed: number;
@@ -341,10 +334,6 @@ export interface StoreType {
     tailscaleInstall: { loading: boolean };
     tailscaleRemove: { loading: boolean };
     tailscaleRollback: { loading: boolean };
-    steerCheck: { loading: boolean };
-    steerInstall: { loading: boolean };
-    steerRemove: { loading: boolean };
-    steerRollback: { loading: boolean };
     directBypassEnable: { loading: boolean };
     directBypassDisable: { loading: boolean };
     torrserverDirectCheck: { loading: boolean };

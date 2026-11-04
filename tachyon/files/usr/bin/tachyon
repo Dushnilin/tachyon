@@ -88,7 +88,6 @@ function show_help() {
     print("    check_nft               Check NFT rules\n");
     print("    check_nft_rules         Check NFT rules status\n");
     print("    check_sing_box          Check sing-box installation and status\n");
-    print("    check_steer             Check steer installation and status\n");
     print("    check_inbounds_config   Check whether enabled server inbounds are configured\n");
     print("    check_inbounds          Check server inbounds from the Servers tab\n");
     print("    check_logs              Show Tachyon logs from system journal\n");
@@ -127,11 +126,8 @@ function show_help() {
     print("    engine_start            Start the active engine, stopping the others\n");
     print("    engine_stop             Stop the active engine\n");
     print("    engine_reload [reason]  Reload the active engine\n");
-    print("    engine_status           Active engine status (steer passes through verbatim)\n");
+    print("    engine_status           Active engine status\n");
     print("    engine_apply [--dry-run] Compile and apply the active engine's rules\n");
-    print("    engine_generate [--dry-run] Generate the steer spec.json from Tachyon config\n");
-    print("    engine_diag             Active engine diagnostics (steer diag)\n");
-    print("    engine_explain <target> Which channel/output a name or address takes (steer)\n");
     print("    route_explain <client> <target> [port] [proto] Explain routing decision pipeline\n");
     print("    config_plan [candidate] [--json] Plan & preview configuration changes & impact\n");
     print("    config_validate [candidate]     Validate candidate configuration semantics & ports\n");
@@ -266,7 +262,6 @@ function command_spec(command) {
         check_nft: [ "diagnostics/runtime.uc", "check-nft", 0 ],
         check_nft_rules: [ "diagnostics/runtime.uc", "check-nft-rules", 0 ],
         check_sing_box: [ "diagnostics/runtime.uc", "check-sing-box", 0 ],
-        check_steer: [ "diagnostics/runtime.uc", "check-steer", 0 ],
         check_inbounds_config: [ "diagnostics/runtime.uc", "check-inbounds-config", 0 ],
         check_inbounds: [ "diagnostics/runtime.uc", "check-inbounds", 0 ],
         check_logs: [ "diagnostics/runtime.uc", "check-logs", 0 ],
@@ -304,6 +299,8 @@ function command_spec(command) {
         get_server_capabilities: [ "diagnostics/runtime.uc", "get-server-capabilities", 0 ],
         get_ui_capabilities: [ "service/ui.uc", "get-ui-capabilities", 0 ],
         get_ui_state: [ "service/ui.uc", "get-ui-state", 0 ],
+        get_ui_prefs: [ "service/ui.uc", "get-ui-prefs", 0 ],
+        set_ui_prefs: [ "service/ui.uc", "set-ui-prefs", 1 ],
         get_lite_mode: [ "service/ui.uc", "get-lite-mode", 0 ],
         set_lite_mode: [ "service/ui.uc", "set-lite-mode", 1 ],
         service_action_async: [ "service/ui.uc", "service-action-async", 1 ],
@@ -389,9 +386,6 @@ function command_spec(command) {
         engine_reload: [ "service/engine_runtime.uc", "engine-reload", 1 ],
         engine_status: [ "service/engine_runtime.uc", "engine-status", 0 ],
         engine_apply: [ "service/engine_runtime.uc", "engine-apply", 1 ],
-        engine_generate: [ "service/engine_runtime.uc", "engine-generate", 1 ],
-        engine_diag: [ "service/engine_runtime.uc", "engine-diag", 0 ],
-        engine_explain: [ "service/engine_runtime.uc", "engine-explain", 1 ],
         snapshot_list: [ "service/snapshot.uc", "snapshot-list", 0 ],
         snapshot_save: [ "service/snapshot.uc", "snapshot-save", 1 ],
         snapshot_restore: [ "service/snapshot.uc", "snapshot-restore", 1 ],

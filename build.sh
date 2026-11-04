@@ -276,13 +276,9 @@ build_backend_root() {
   install -m 0755 "$ROOT_DIR/tachyon/files/etc/init.d/tachyon" "$output_root/etc/init.d/tachyon"
   install -m 0755 "$ROOT_DIR/tachyon/files/etc/init.d/tachyon-torrserver-direct" \
     "$output_root/etc/init.d/tachyon-torrserver-direct"
-  install -m 0755 "$ROOT_DIR/tachyon/files/etc/init.d/tachyon-steer-zapret" \
-    "$output_root/etc/init.d/tachyon-steer-zapret"
   install -m 0644 "$ROOT_DIR/tachyon/files/etc/config/tachyon" "$output_root/etc/config/tachyon"
   install -m 0644 "$ROOT_DIR/tachyon/files/lib/upgrade/keep.d/tachyon" "$output_root/lib/upgrade/keep.d/tachyon"
   install -m 0755 "$ROOT_DIR/tachyon/files/usr/bin/tachyon" "$output_root/usr/bin/tachyon"
-  install -m 0755 "$ROOT_DIR/tachyon/files/usr/sbin/steer-nfqws" \
-    "$output_root/usr/share/tachyon/steer-nfqws"
   install -m 0755 "$ROOT_DIR/tachyon/files/usr/bin/tachyon-read" "$output_root/usr/bin/tachyon-read"
   # The rpcd ACL for /usr/bin/tachyon and /usr/bin/tachyon-read ships here rather
   # than in luci-app-tachyon, so the backend and its policy update apart. That is
@@ -328,9 +324,8 @@ build_backend_root() {
   chmod 0755 "$output_root/etc/init.d/tachyon" "$output_root/usr/bin/tachyon" \
     "$output_root/usr/bin/tachyon-read" \
     "$output_root/etc/init.d/tachyon-torrserver-direct" \
-    "$output_root/etc/init.d/tachyon-steer-zapret" \
     "$output_root/etc/hotplug.d/iface/99-tachyon-wan-monitor" \
-    "$output_root/usr/share/tachyon/steer-nfqws" \
+    "$output_root/usr/lib/tachyon/bin/wget" \
     "$output_root/usr/lib/cgi-bin/tachyon-agent" \
     "$output_root/www/cgi-bin/tachyon-sub"
   # Contains the Telegram bot token placeholder and receives user secrets.

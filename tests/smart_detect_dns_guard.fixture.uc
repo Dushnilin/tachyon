@@ -103,12 +103,6 @@ setup([28,28],0);dns_index=1;smart_detect_process_pending();
 check(length(calls)==0,"fallback switch starts grace");
 test_clock=1030;confirm([28,28],0);
 check(length(added)==1,"stable fallback resumes detection after grace");
-// Switching engines changes the resolver signature, so the grace restarts once
-// more before the first probe is allowed.
-setup([28,28],0);test_engine="steer";smart_detect_observe_dns();test_clock=1030;confirm([28,28],0);
-check(length(added)==1,"Steer resumes without a sing-box process after resolver grace");
-setup([28,28],0);test_engine="steer-extended";in_transaction=true;smart_detect_observe_dns();test_clock=1030;confirm([28,28],0);
-check(length(added)==1,"Steer extended is not blocked by stale sing-box candidate files");
 setup([28,28],0);test_exclusions={smart_detect_exclude:["example.com"]};smart_detect_process_pending();
 check(length(calls)==0&&length(added)==0,"manual exclusion prevents actual detector probes");
 setup([28,28],0);test_exclusions={smart_detect_exclude_lists:["telegram"]};smart_detect_process_pending();

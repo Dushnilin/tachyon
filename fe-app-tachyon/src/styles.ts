@@ -481,6 +481,20 @@ body.dark .tachyon-wizard {
     }
 }
 
+/* LuCI & CBI dropdown menu viewport containment */
+[id^="cbi-${TACHYON_CBI_PREFIX}"] .cbi-dropdown[open] > ul,
+.tachyon-view .cbi-dropdown[open] > ul,
+#modal_overlay .cbi-dropdown[open] > ul,
+.cbi-modal .cbi-dropdown[open] > ul,
+.cbi-dropdown[open] > ul.dropdown,
+.cbi-dropdown[open] > ul,
+.cbi-dynlist .cbi-dropdown[open] > ul {
+    max-height: min(320px, 45vh) !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain !important;
+    -webkit-overflow-scrolling: touch;
+}
+
 /* Tachyon modal sizing by content type */
 
 /* General Tachyon modals: crisp compact width on desktop, full-width on mobile */

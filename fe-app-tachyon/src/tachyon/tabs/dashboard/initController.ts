@@ -716,10 +716,7 @@ async function connectToClashSockets(dataUpdatesId: number) {
     return;
   }
 
-  const activeEngine = store.get().activeEngine;
-  const isSteer = activeEngine === 'steer' || activeEngine === 'steer-extended';
-
-  if (isSteer || !canUseDirectClashApi()) {
+  if (!canUseDirectClashApi()) {
     directSocketsFailed = true;
     logger.info(
       '[DASHBOARD]',
@@ -4122,8 +4119,6 @@ function renderStoreWidget(
 }
 
 async function fetchConnections() {
-  const activeEngine = store.get().activeEngine;
-  const isSteer = activeEngine === 'steer' || activeEngine === 'steer-extended';
   const isLiteMode = Boolean(store.get().servicesInfoWidget.data?.liteMode);
 
   if (isLiteMode && !expandedSections.has('active_clients')) {
@@ -4140,7 +4135,7 @@ async function fetchConnections() {
   const shouldFetchHostnames =
     expandedSections.has('active_clients') || hasEnabledInbounds;
   const needsFallbackPolling =
-    directSocketsFailed || !canUseDirectClashApi() || isSteer || isLiteMode;
+    directSocketsFailed || !canUseDirectClashApi() || isLiteMode;
   if (!needsFallbackPolling && !shouldFetchHostnames) {
     return;
   }
@@ -6123,19 +6118,6 @@ async function onPageMount() {
   const mountId = dashboardMountId;
   const hasRuntimeSnapshot = Boolean(getCachedRuntimeUiState());
 
-  if (!hasRuntimeSnapshot) {
-    const uiState = await refreshRuntimeUiState({ force: true });
-
-    if (!dashboardMounted || mountId !== dashboardMountId) {
-      return;
-    }
-
-    if (!uiState) {
-      void fetchServicesInfo();
-      void fetchTailscalePeers();
-    }
-  }
-
   applyDashboardLayoutToDom();
   if (!layoutChangesUnsubscribe) {
     layoutChangesUnsubscribe = subscribeDashboardLayoutChanges(() => {
@@ -6167,9 +6149,15 @@ async function onPageMount() {
   syncDashboardServiceAvailability();
   void fetchTailscalePeers();
 
-  if (hasRuntimeSnapshot) {
-    void refreshRuntimeUiState({ force: true });
-  }
+  void refreshRuntimeUiState({ force: true }).then((uiState) => {
+    if (!dashboardMounted || mountId !== dashboardMountId) {
+      return;
+    }
+    if (!uiState && !hasRuntimeSnapshot) {
+      void fetchServicesInfo();
+      void fetchTailscalePeers();
+    }
+  });
 }
 
 function onPageUnmount() {

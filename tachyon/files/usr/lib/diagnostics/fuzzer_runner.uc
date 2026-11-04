@@ -18,12 +18,12 @@ function is_valid_hostname(host) {
 function is_valid_url(url) {
     url = trim(as_string(url));
     if (url == "" || length(url) > 1024) return false;
-    // URL must start with http:// or https://, no shell metacharacters. The path
+    // URL must start with http://, https://, or udp://, no shell metacharacters. The path
     // class is an explicit list: "\s" inside a character class is not whitespace in
     // this engine, it is the two characters "\" and "s", so "[^\s...]" also rejected
     // every path containing the letter s - /users, /status, /api/v9/users/@me all
     // came back invalid and a custom fuzzer target was refused for no stated reason.
-    return match(url, /^https?:\/\/[a-zA-Z0-9][-a-zA-Z0-9.]*(:[0-9]{1,5})?(\/[^ \t\r\n;`$&|<>'"\\]*)?$/) != null;
+    return match(url, /^(https?|udp):\/\/[a-zA-Z0-9][-a-zA-Z0-9.]*(:[0-9]{1,5})?(\/[^ \t\r\n;`$&|<>'"\\]*)?$/) != null;
 }
 
 function tokenize_strategy_args(raw_args) {
@@ -246,6 +246,42 @@ function parse_desync_outbound(args_val, tag_name) {
             let n = int(v);
             if (n < 1 || n > 128) return null;
             outbound.udp_fake_ttl = n;
+            recognized++;
+        } else if (k == "udplen") {
+            if (!match(v, /^[0-9]+$/)) return null;
+            let n = int(v);
+            if (n < 1 || n > 1472) return null;
+            outbound.udplen = n;
+            recognized++;
+        } else if (k == "seqovl" || k == "split_seqovl") {
+            if (!match(v, /^[0-9]+$/)) return null;
+            let n = int(v);
+            if (n < 1 || n > 1400) return null;
+            outbound.seqovl = n;
+            recognized++;
+        } else if (k == "wsize") {
+            if (!match(v, /^[0-9]+$/)) return null;
+            let n = int(v);
+            if (n < 1 || n > 65535) return null;
+            outbound.wsize = n;
+            recognized++;
+        } else if (k == "syndata") {
+            let lv = lc(v);
+            if (lv == "true" || lv == "1") outbound.syndata = true;
+            else if (lv == "false" || lv == "0") outbound.syndata = false;
+            else return null;
+            recognized++;
+        } else if (k == "ipfrag") {
+            let lv = lc(v);
+            if (lv == "true" || lv == "1") outbound.ipfrag = true;
+            else if (lv == "false" || lv == "0") outbound.ipfrag = false;
+            else return null;
+            recognized++;
+        } else if (k == "tlsrec_first") {
+            let lv = lc(v);
+            if (lv == "true" || lv == "1") outbound.tlsrec_first = true;
+            else if (lv == "false" || lv == "0") outbound.tlsrec_first = false;
+            else return null;
             recognized++;
         } else {
             return null;

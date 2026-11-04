@@ -33,27 +33,12 @@ describe('isWidgetAvailable', () => {
     expect(isWidgetAvailable('sing-box', 'clash_connections')).toBe(true);
     expect(isWidgetAvailable(undefined, 'clash_connections')).toBe(true);
   });
-
-  it('hides Clash and sing-box widgets on steer', () => {
-    expect(isWidgetAvailable('steer', 'clash_connections')).toBe(false);
-    expect(isWidgetAvailable('steer', 'clash_groups')).toBe(false);
-    expect(isWidgetAvailable('steer-extended', 'sing_box_inbounds')).toBe(
-      false,
-    );
-  });
-
-  it('keeps engine-agnostic widgets on steer', () => {
-    expect(isWidgetAvailable('steer', 'tachyon_status')).toBe(true);
-    expect(isWidgetAvailable('steer', 'dns_status')).toBe(true);
-  });
 });
 
 describe('engineLabel', () => {
   it('names each known engine', () => {
     expect(engineLabel('sing-box')).toBe('sing-box');
     expect(engineLabel('tachyon-core')).toBe('tachyon-core');
-    expect(engineLabel('steer')).toBe('steer');
-    expect(engineLabel('steer-extended')).toBe('steer-extended');
   });
 
   it('defaults to sing-box when the engine is unknown', () => {
@@ -69,11 +54,14 @@ describe('switchableEngines', () => {
       capabilities: [],
       engines: [
         { engine: 'sing-box', known: true, installed: true },
-        { engine: 'steer', known: true, installed: false },
+        { engine: 'tachyon-core', known: true, installed: true },
         { engine: 'bogus', known: false, installed: false },
       ],
     });
-    expect(engines.map((entry) => entry.engine)).toEqual(['sing-box', 'steer']);
+    expect(engines.map((entry) => entry.engine)).toEqual([
+      'sing-box',
+      'tachyon-core',
+    ]);
   });
 
   it('returns nothing without backend info', () => {
@@ -88,7 +76,7 @@ describe('parkedFeatures', () => {
         ok: true,
         reason: '',
         from_engine: 'sing-box',
-        to_engine: 'steer',
+        to_engine: 'tachyon-core',
         plan: { unsupported: ['sections.subscription'] },
       }),
     ).toEqual(['sections.subscription']);
@@ -100,7 +88,7 @@ describe('parkedFeatures', () => {
         ok: true,
         reason: '',
         from_engine: 'sing-box',
-        to_engine: 'steer',
+        to_engine: 'tachyon-core',
         plan: { unsupported: [] },
       }),
     ).toEqual([]);

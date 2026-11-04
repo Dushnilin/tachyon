@@ -30,8 +30,6 @@ describe('vpn:// import', () => {
       expect(supportsVpnUrl()).toBe(false);
       expect(validateProxyUrl(encode(conf)).valid).toBe(false);
     }
-    core('1.14.2-lx.11', 1, 'steer');
-    expect(validateProxyUrl(encode(conf)).valid).toBe(false);
     core('1.14.2-lx.11', 0);
     expect(supportsVpnUrl()).toBe(true);
     expect(validateProxyUrl(encode(conf)).valid).toBe(true);

@@ -78,7 +78,6 @@ export namespace Tachyon {
     CHECK_PROXY = 'check_proxy',
     CHECK_SING_BOX = 'check_sing_box',
     CHECK_SING_BOX_LOGS = 'check_sing_box_logs',
-    CHECK_STEER = 'check_steer',
     CHECK_TOR_RUNTIME = 'check_tor_runtime',
     CHECK_ZAPRET2_RUNTIME = 'check_zapret2_runtime',
     CHECK_ZAPRET_RUNTIME = 'check_zapret_runtime',
@@ -125,10 +124,7 @@ export namespace Tachyon {
     ENABLE = 'enable',
     // engine
     ENGINE_APPLY = 'engine_apply',
-    ENGINE_DIAG = 'engine_diag',
-    ENGINE_EXPLAIN = 'engine_explain',
     ENGINE_FEATURES = 'engine_features',
-    ENGINE_GENERATE = 'engine_generate',
     ENGINE_INFO = 'engine_info',
     ENGINE_PLAN = 'engine_plan',
     ENGINE_RELOAD = 'engine_reload',
@@ -188,6 +184,7 @@ export namespace Tachyon {
     GET_TAILSCALE_STATUS = 'get_tailscale_status',
     GET_TLS_CERTIFICATE_SHA256 = 'get_tls_certificate_sha256',
     GET_UI_CAPABILITIES = 'get_ui_capabilities',
+    GET_UI_PREFS = 'get_ui_prefs',
     GET_UI_STATE = 'get_ui_state',
     GET_WDTT_STATUS = 'get_wdtt_status',
     GET_ZAPRET2_STATUS = 'get_zapret2_status',
@@ -274,6 +271,7 @@ export namespace Tachyon {
     SERVICE_HEALTH_CHECK = 'service_health_check',
     // set
     SET_LITE_MODE = 'set_lite_mode',
+    SET_UI_PREFS = 'set_ui_prefs',
     // show
     SHOW_CONFIG = 'show_config',
     SHOW_SING_BOX_CONFIG = 'show_sing_box_config',
@@ -872,15 +870,6 @@ export namespace Tachyon {
     sing_box_tachyon_core?: 0 | 1;
   }
 
-  export interface SteerCheckResult {
-    steer_installed: 0 | 1;
-    steer_version: string;
-    steer_extended: 0 | 1;
-    steer_service_exist: 0 | 1;
-    steer_autostart_enabled: 0 | 1;
-    steer_process_running: 0 | 1;
-  }
-
   export interface InboundCheckItem {
     section: string;
     label: string;
@@ -1000,9 +989,6 @@ export namespace Tachyon {
       unsupported: string[];
     };
     installable?: boolean;
-    // Reported instead of switching when the requested engine is the one already
-    // running with the same binary - steer and steer-extended name a build, not
-    // a program, so switching between them would be a no-op.
     no_op?: boolean;
     build?: string;
     message?: string;
@@ -1031,11 +1017,6 @@ export namespace Tachyon {
     sing_box_tailscale: 0 | 1;
     sing_box_cert_pin?: 0 | 1;
     sing_box_repo_url?: string;
-    steer_version?: string;
-    steer_installed?: 0 | 1;
-    steer_extended?: 0 | 1;
-    steer_modules?: string[];
-    steer_repo_url?: string;
     active_engine?: string;
     zapret_version: string;
     zapret_installed: 0 | 1;
@@ -1177,8 +1158,6 @@ export namespace Tachyon {
     | 'sing-box-lx'
     | 'sing-box-extended'
     | 'sing-box-extended-compressed'
-    | 'steer'
-    | 'steer-extended'
     | 'zapret'
     | 'zapret2'
     | 'byedpi'
@@ -1477,6 +1456,8 @@ export namespace Tachyon {
     | 'youtube_web'
     | 'discord_suite'
     | 'discord'
+    | 'cs2_faceit_suite'
+    | 'gaming_udp_suite'
     | 'twitch_suite'
     | 'twitter_suite'
     | 'chatgpt_suite'
@@ -1487,7 +1468,8 @@ export namespace Tachyon {
     | 'telegram_suite'
     | 'telegram'
     | 'quic_http3'
-    | 'custom';
+    | 'custom'
+    | string;
 
   export type FuzzerMode = 'presets' | 'combinatorial' | 'adaptive' | 'custom';
 

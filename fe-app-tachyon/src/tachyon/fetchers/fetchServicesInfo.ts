@@ -34,12 +34,11 @@ export async function fetchServicesInfo() {
     return uiState;
   }
 
-  const [tachyonResult, singboxResult, watchdogResult, engineResult] =
+  const [tachyonResult, singboxResult, watchdogResult] =
     await Promise.allSettled([
       TachyonShellMethods.getStatus(),
       TachyonShellMethods.getSingBoxStatus(),
       TachyonShellMethods.getWatchdogStatus(),
-      TachyonShellMethods.getEngineStatus(),
     ]);
 
   if (requestId !== latestServicesInfoRequestId) {
@@ -52,22 +51,8 @@ export async function fetchServicesInfo() {
     'getWatchdogStatus',
     watchdogResult,
   );
-  const engineStatus = getSettledMethodResponse(
-    'getEngineStatus',
-    engineResult,
-  );
 
-  // On steer the sing-box service is intentionally stopped. Don't mark the
-  // dashboard as failed just because S99sing-box is absent, and report the
-  // active engine's own liveness in the singbox slot so the widget shows the
-  // routing engine that actually runs.
-  const activeEngine =
-    engineStatus.success &&
-    (engineStatus.data as Tachyon.GetEngineStatus).engine
-      ? (engineStatus.data as Tachyon.GetEngineStatus).engine
-      : 'sing-box';
-  const isSteer = activeEngine === 'steer' || activeEngine === 'steer-extended';
-  const singboxFailed = !singbox.success && !isSteer;
+  const singboxFailed = !singbox.success;
 
   const previousData = store.get().servicesInfoWidget.data;
 
@@ -76,11 +61,7 @@ export async function fetchServicesInfo() {
       loading: false,
       failed: !tachyon.success || singboxFailed,
       data: {
-        singbox: singbox.success
-          ? singbox.data.running
-          : isSteer && engineStatus.success
-            ? 1
-            : previousData.singbox,
+        singbox: singbox.success ? singbox.data.running : previousData.singbox,
         singboxMemoryMb: singbox.success
           ? singbox.data.memory_rss_mb
           : previousData.singboxMemoryMb,
@@ -141,7 +122,6 @@ export async function fetchServicesInfo() {
         dnsmasqUptimePretty: previousData.dnsmasqUptimePretty,
       },
     },
-    activeEngine,
   });
 
   return undefined;

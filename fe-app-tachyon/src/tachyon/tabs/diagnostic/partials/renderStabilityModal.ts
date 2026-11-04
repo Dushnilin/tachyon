@@ -100,8 +100,6 @@ export async function renderStabilityModal(): Promise<void> {
         return { title: 'Tachyon Core', subtitle: 'tachyon-core' };
       case 'sing-box':
         return { title: 'Sing-Box', subtitle: 'sing-box' };
-      case 'steer':
-        return { title: 'Steer', subtitle: 'steer' };
       case 'tachyon':
         return { title: 'Tachyon', subtitle: 'ucode helpers' };
       case 'watchdog':

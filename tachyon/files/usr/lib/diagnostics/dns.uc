@@ -11,8 +11,6 @@ let network_mod = require("diagnostics.network");
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || constants.TACHYON_CONFIG_NAME || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
 const SB_DNS_INBOUND_ADDRESS = getenv("SB_DNS_INBOUND_ADDRESS") || constants.SB_DNS_INBOUND_ADDRESS || "127.0.0.42";
-const STEER_DNS_ADDRESS = getenv("STEER_DNS_ADDRESS") || "127.0.0.1";
-const STEER_DNS_PORT = getenv("STEER_DNS_PORT") || "5300";
 const FAKEIP_TEST_DOMAIN = getenv("FAKEIP_TEST_DOMAIN") || constants.FAKEIP_TEST_DOMAIN || "fakeip.podkop.fyi";
 const DNS_APPLY_UC = LIB_DIR + "/dns/apply.uc";
 const SINGBOX_RUNTIME_UC = LIB_DIR + "/tachyon_core/runtime.uc";
@@ -49,11 +47,6 @@ function settings() {
 function active_engine_name() {
     let engine = uci_core.get(CONFIG_NAME, "settings", "engine");
     return (engine != null && engine != "") ? as_string(engine) : "sing-box";
-}
-
-function active_engine_is_steer() {
-    let name = active_engine_name();
-    return name == "steer" || name == "steer-extended";
 }
 
 function valid_ipv4(value) {
@@ -198,16 +191,11 @@ function check_dns_available() {
     let dhcp_config_status = 1;
 
     let active_dns_args = [ "dig" ];
-    if (active_engine_is_steer()) {
-        push(active_dns_args, "-p", STEER_DNS_PORT);
-        push(active_dns_args, "@" + STEER_DNS_ADDRESS);
-    } else {
-        if (runtime_dns.failover_enabled(cfg)) {
-            push(active_dns_args, "-p");
-            push(active_dns_args, as_string(runtime_dns.health_port("active", 0)));
-        }
-        push(active_dns_args, "@" + SB_DNS_INBOUND_ADDRESS);
+    if (runtime_dns.failover_enabled(cfg)) {
+        push(active_dns_args, "-p");
+        push(active_dns_args, as_string(runtime_dns.health_port("active", 0)));
     }
+    push(active_dns_args, "@" + SB_DNS_INBOUND_ADDRESS);
     push(active_dns_args, domain);
     push(active_dns_args, "A");
     push(active_dns_args, "+short");
@@ -246,13 +234,9 @@ function check_dns_available() {
         }
     }
 
-    if (active_engine_is_steer()) {
-        dhcp_config_status = 1;
-    } else {
-        let complete_rc = common.command_status(sprintf("ucode -L %s %s default-config-complete >/dev/null 2>&1", shell_quote(LIB_DIR), shell_quote(DNS_APPLY_UC)));
-        if (complete_rc != 0)
-            dhcp_config_status = 0;
-    }
+    let complete_rc = common.command_status(sprintf("ucode -L %s %s default-config-complete >/dev/null 2>&1", shell_quote(LIB_DIR), shell_quote(DNS_APPLY_UC)));
+    if (complete_rc != 0)
+        dhcp_config_status = 0;
 
     let status_mod = require("diagnostics.status_bridge");
     let display_dns_server = replace(status_mod.status_output([ "mask-dns-server", dns_server ], null), /[\r\n]+$/g, "");
@@ -274,28 +258,6 @@ function check_dns_available() {
 }
 
 function check_fakeip() {
-    if (active_engine_is_steer()) {
-        let fakeip_address = "";
-        let fakeip6_address = "";
-        for (let line in split(command_output_from_args([
-            "dig", "+short", "-p", STEER_DNS_PORT, "@" + STEER_DNS_ADDRESS,
-            FAKEIP_TEST_DOMAIN, "A", "+timeout=2", "+tries=1"
-        ]), "\n")) {
-            line = trim(as_string(line));
-            if (valid_ipv4(line)) {
-                fakeip_address = line;
-                break;
-            }
-        }
-        write_json({
-            fakeip: match(fakeip_address, /^198\.(18|19)\./) != null,
-            IP: fakeip_address,
-            IPv4: fakeip_address,
-            IPv6: fakeip6_address,
-            engine: active_engine_name()
-        });
-        return 0;
-    }
     let fakeip_address = "";
     let fakeip6_address = "";
     for (let line in split(command_output_from_args([

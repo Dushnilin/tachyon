@@ -63,10 +63,6 @@ export function getComponentCardTitle(
       return 'FPTN';
     case 'tailscale':
       return 'Tailscale';
-    case 'steer':
-      return 'Steer';
-    case 'steer-extended':
-      return 'Steer extended';
     case 'torrserver_direct':
       return _('TorrServer Direct');
     case 'engine':
@@ -103,9 +99,6 @@ export function getComponentCurrentVersion(
       return sys.fptn_version;
     case 'tailscale':
       return sys.tailscale_version;
-    case 'steer':
-    case 'steer-extended':
-      return sys.steer_version;
     case 'torrserver_direct':
       return sys.torrserver_version;
     default:
@@ -134,9 +127,6 @@ export function getComponentBackupVersion(
       return sys.fptn_backup_version || '';
     case 'tailscale':
       return sys.tailscale_backup_version || '';
-    case 'steer':
-    case 'steer-extended':
-      return sys.steer_backup_version || '';
     default:
       return '';
   }
@@ -166,9 +156,6 @@ export function getComponentInstallKey(
       return 'olcrtcInstall';
     case 'tailscale':
       return 'tailscaleInstall';
-    case 'steer':
-    case 'steer-extended':
-      return 'steerInstall';
     case 'torrserver_direct':
       return 'torrserverDirectInstall';
     case 'engine':
@@ -328,8 +315,6 @@ export const COMPONENT_REPO_URLS: Record<Tachyon.ComponentName, string> = {
   olcrtc: 'https://github.com/Dushnilin/openwrt-olcrtc',
   fptn: 'https://github.com/Dushnilin/fptn',
   tailscale: 'https://openwrt.org/packages/pkgdata/tailscale',
-  steer: 'https://github.com/xyzmean/steer',
-  'steer-extended': 'https://github.com/xyzmean/steer',
   direct_bypass: '',
   torrserver_direct: 'https://github.com/YouROK/TorrServer',
   engine: '',

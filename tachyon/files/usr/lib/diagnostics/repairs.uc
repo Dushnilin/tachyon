@@ -44,19 +44,7 @@ function doctor_fix_overused(code) {
     return (int(rec.count) >= 3 && int(rec.last) > one_hour_ago);
 }
 
-function active_engine_name() {
-    let engine = uci_core.get(CONFIG_NAME, "settings", "engine");
-    return (engine != null && engine != "") ? as_string(engine) : "sing-box";
-}
-
-function active_engine_is_steer() {
-    let name = active_engine_name();
-    return name == "steer" || name == "steer-extended";
-}
-
 function is_tachyon_core_active() {
-    if (active_engine_is_steer())
-        return false;
     let marker = trim(as_string(fs.readfile("/etc/tachyon/tachyon-core-variant") || fs.readfile("/etc/tachyon/sing-box-variant") || ""));
     return marker == "tachyon-core";
 }
@@ -119,16 +107,10 @@ function apply_quick_fix(codes_str) {
         let status = false;
         let msg = "";
 
-        if (c == "start_singbox" || c == "start_steer") {
-            if (active_engine_is_steer()) {
-                let rc = command_status("/etc/init.d/steer restart >/dev/null 2>&1");
-                status = (rc == 0);
-                msg = status ? "steer restarted" : "steer restart failed (exit " + rc + ")";
-            } else {
-                let rc = command_status("/usr/bin/tachyon restore_dnsmasq 2>/dev/null; /etc/init.d/tachyon-core restart >/dev/null 2>&1");
-                status = (rc == 0);
-                msg = status ? (core_label + " restarted") : (core_label + " restart failed (exit " + rc + ")");
-            }
+        if (c == "start_singbox") {
+            let rc = command_status("/usr/bin/tachyon restore_dnsmasq 2>/dev/null; /etc/init.d/tachyon-core restart >/dev/null 2>&1");
+            status = (rc == 0);
+            msg = status ? (core_label + " restarted") : (core_label + " restart failed (exit " + rc + ")");
         } else if (c == "rebuild_rules") {
             let rc = command_status("/etc/init.d/tachyon reload >/dev/null 2>&1");
             status = (rc == 0);
@@ -156,17 +138,10 @@ function apply_quick_fix(codes_str) {
             let rc = command_status("/etc/init.d/tachyon restart >/dev/null 2>&1");
             status = (rc == 0);
             msg = status ? "Watchdog started" : "Watchdog start failed (exit " + rc + ")";
-        } else if (c == "restart_singbox_dns" || c == "restart_steer_dns") {
-            if (active_engine_is_steer()) {
-                command_status("/etc/init.d/steer reload_dnsd >/dev/null 2>&1");
-                let rc = command_status("/etc/init.d/dnsmasq reload >/dev/null 2>&1");
-                status = (rc == 0);
-                msg = status ? "steer dnsd and dnsmasq reloaded" : "reload failed";
-            } else {
-                let rc = command_status("/etc/init.d/tachyon-core restart >/dev/null 2>&1");
-                status = (rc == 0);
-                msg = status ? (core_label + " DNS restarted") : (core_label + " DNS restart failed (exit " + rc + ")");
-            }
+        } else if (c == "restart_singbox_dns") {
+            let rc = command_status("/etc/init.d/tachyon-core restart >/dev/null 2>&1");
+            status = (rc == 0);
+            msg = status ? (core_label + " DNS restarted") : (core_label + " DNS restart failed (exit " + rc + ")");
         } else if (c == "fix_uci_config") {
             status = uci_backup_restore();
             if (!status) {

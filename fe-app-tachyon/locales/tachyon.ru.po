@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-03 13:33+0300\n"
-"PO-Revision-Date: 2026-11-03 13:33+0300\n"
+"POT-Creation-Date: 2026-11-04 10:24+0300\n"
+"PO-Revision-Date: 2026-11-04 10:24+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -421,6 +421,9 @@ msgstr "Добавить условие"
 
 msgid "Add a family profile"
 msgstr "Добавить семейный профиль"
+
+msgid "Add a randomized offset to automatic subscription updates (e.g. 15%, 25%, or 15m) so updates do not fire at fixed clock intervals."
+msgstr ""
 
 msgid "Add a schedule rule"
 msgstr "Добавить правило расписания"
@@ -1406,6 +1409,12 @@ msgstr "Нагрузка CPU"
 msgid "CPU Load & Temp"
 msgstr "Процессор (CPU)"
 
+msgid "CS2 / Faceit + Discord (Games + UDP)"
+msgstr ""
+
+msgid "CS2 / Faceit / Cybershoke (Web + API + UDP)"
+msgstr ""
+
 msgid "CUSTOM DNS → DIRECT"
 msgstr "ПОЛЬЗОВАТЕЛЬСКИЙ DNS → НАПРЯМУЮ"
 
@@ -1495,6 +1504,9 @@ msgstr "Проверить подключение"
 
 msgid "Check Interval"
 msgstr "Интервал проверки"
+
+msgid "Check Interval Randomization (Jitter)"
+msgstr ""
 
 msgid "Check Services"
 msgstr "Проверить сервисы"
@@ -2774,6 +2786,9 @@ msgstr "DisableCookies (AWG 3.1)"
 msgid "Disabled"
 msgstr "Отключено"
 
+msgid "Disabled (Exact interval)"
+msgstr ""
+
 msgid "Disabled (Keep full group/source pool)"
 msgstr "Отключён (использовать весь пул групп/источников)"
 
@@ -2792,8 +2807,8 @@ msgstr "Отключено (обычный сырой UDP)"
 msgid "Disabling interception is incompatible with action=zapret2 because Tachyon sends matched traffic through NFQUEUE."
 msgstr "Отключение перехвата несовместимо с action=zapret2, потому что Tachyon направляет совпавший трафик через NFQUEUE."
 
-msgid "Discord Suite (Gateway + Voice + CDN)"
-msgstr "Discord (шлюз + голос + CDN)"
+msgid "Discord (Gateway + Voice + CDN)"
+msgstr ""
 
 msgid "Disorder (Out-of-order TCP Split)"
 msgstr "Disorder (Отправка сегментов в обратном порядке)"
@@ -3202,9 +3217,6 @@ msgstr "Выход движка"
 
 msgid "Engine crashes:"
 msgstr "Сбоев движка:"
-
-msgid "Engine: Steer"
-msgstr "Ядро: Steer"
 
 msgid "Engine: Tachyon Core"
 msgstr "Ядро: Tachyon Core"
@@ -4015,6 +4027,9 @@ msgstr "Игры и сервисы РФ (Прямой)"
 
 msgid "Gaming"
 msgstr "Игры"
+
+msgid "Gaming & Voice UDP (STUN + Source)"
+msgstr ""
 
 msgid "General & Logic"
 msgstr "Основное и логика"
@@ -5777,9 +5792,6 @@ msgstr "Диапазон NFQUEUE пересекается с другим пра
 msgid "NFQWS Strategy"
 msgstr "Стратегия NFQWS"
 
-msgid "NFQWS Tachyon not ready (managed by Steer)"
-msgstr "NFQWS Tachyon не готов (управляется Steer)"
-
 msgid "NFQWS strategy cannot be empty"
 msgstr "Стратегия NFQWS не может быть пустой"
 
@@ -7154,6 +7166,9 @@ msgstr "Быстрые пакеты маршрутизации (tachyon-lists)"
 msgid "Quick Setup Wizard"
 msgstr "Быстрый мастер настройки"
 
+msgid "Quick combo:"
+msgstr ""
+
 msgid "Quick donation via Russian bank cards or SBP"
 msgstr "Быстрый перевод картами РФ или через СБП"
 
@@ -7192,6 +7207,9 @@ msgstr "Случайные трейлеры (Random Trailers)"
 
 msgid "RandomTrailers (AWG 3.1)"
 msgstr "RandomTrailers (AWG 3.1)"
+
+msgid "Randomize the URLTest interval across groups and reboots (e.g. 15%, 25%, or 30s) to avoid synchronized periodic probe bursts."
+msgstr ""
 
 msgid "Rank"
 msgstr "Место"
@@ -8828,18 +8846,6 @@ msgstr "Статус / Набор"
 msgid "Stealth TLS 1.3 REALITY inbound server without owning a domain name"
 msgstr "Невидимый для DPI сервер VLESS TLS 1.3 REALITY без необходимости покупать домен"
 
-msgid "Steer autostart enabled"
-msgstr "Автозапуск Steer включён"
-
-msgid "Steer installed"
-msgstr "Steer установлен"
-
-msgid "Steer process running"
-msgstr "Процесс Steer работает"
-
-msgid "Steer service exist"
-msgstr "Служба Steer существует"
-
 msgid "Step-by-Step Outbound Connection (Client / DPI)"
 msgstr "Исходящее подключение по шагам (Аутбаунд)"
 
@@ -9401,8 +9407,8 @@ msgstr "Целевая секция маршрутизации для всего
 msgid "Target Scope"
 msgstr "Область действия"
 
-msgid "Target Service / Suite"
-msgstr "Целевой сервис / Набор"
+msgid "Target Services / Suites (select one or multiple for unified strategy)"
+msgstr ""
 
 msgid "Target URL #1 priority"
 msgstr "Приоритет первого URL (#1)"
@@ -9422,6 +9428,9 @@ msgstr "Подросток"
 msgid "Telegram"
 msgstr "Telegram"
 
+msgid "Telegram (Web + Bot API)"
+msgstr ""
+
 msgid "Telegram Alerts"
 msgstr "Оповещения в Telegram"
 
@@ -9433,9 +9442,6 @@ msgstr "Токен Telegram-бота"
 
 msgid "Telegram Channel"
 msgstr "Telegram канал"
-
-msgid "Telegram Suite (Web + Bot API)"
-msgstr "Telegram (Web + Bot API)"
 
 msgid "Test Connection"
 msgstr "Проверить подключение"
@@ -9839,8 +9845,8 @@ msgstr "Туннели (WARP / FPTN / AWG)"
 msgid "Turkey (tr)"
 msgstr "Турция (tr)"
 
-msgid "Twitch Suite (Live Stream + HLS CDN)"
-msgstr "Twitch (прямые эфиры + HLS CDN)"
+msgid "Twitch (Live Stream + HLS CDN)"
+msgstr ""
 
 msgid "Two-letter ISO country code (e.g. RU, NL, DE) advertised as a flag emoji in client links and subscriptions."
 msgstr "Двухбуквенный ISO-код страны (например: RU, NL, DE), отображаемый в виде флага в клиентских ссылках и подписках."
@@ -10075,6 +10081,9 @@ msgstr "Обновить"
 
 msgid "Update Interval"
 msgstr "Интервал обновления"
+
+msgid "Update Interval Randomization (Jitter)"
+msgstr ""
 
 msgid "Update Lists Now"
 msgstr "Обновить списки сейчас"
@@ -10574,8 +10583,8 @@ msgstr "Только рабочие"
 msgid "Worst-case (Max latency across URLs — penalizes slow routes)"
 msgstr "Худший результат (максимальный пинг среди URL — штрафует медленные маршруты)"
 
-msgid "X / Twitter Suite (API + Media CDN)"
-msgstr "X / Twitter (API + медиа CDN)"
+msgid "X / Twitter (API + Media CDN)"
+msgstr ""
 
 msgid "XHTTP mode"
 msgstr "Режим XHTTP"
@@ -10595,8 +10604,14 @@ msgstr "Да (для всего трафика)"
 msgid "You can select Output Network Interface, by default autodetect"
 msgstr "Вы можете выбрать выходной сетевой интерфейс, по умолчанию автоопределение"
 
-msgid "YouTube Full Suite (Web + 4K Stream + CDN)"
-msgstr "YouTube (веб + поток 4K + CDN)"
+msgid "YouTube (Web + 4K Stream + CDN)"
+msgstr ""
+
+msgid "YouTube + Discord + CS2"
+msgstr ""
+
+msgid "YouTube Only"
+msgstr ""
 
 msgid "Zapret"
 msgstr "Zapret"
@@ -10934,9 +10949,6 @@ msgstr "серв."
 msgid "stability (3x)"
 msgstr "стабильность (3x)"
 
-msgid "standard"
-msgstr "базовая"
-
 msgid "strategy to section configured for"
 msgstr "стратегия настроена для секции с действием"
 
@@ -10978,6 +10990,18 @@ msgstr "Ключ vpn:// или содержимое файла .conf"
 
 msgid "working strategies"
 msgstr "рабочих стратегий"
+
+msgid "±15% (Recommended — spreads auto-update load)"
+msgstr ""
+
+msgid "±15% (Recommended — spreads probe intervals)"
+msgstr ""
+
+msgid "±25% (Medium randomization)"
+msgstr ""
+
+msgid "±40% (High randomization)"
+msgstr ""
 
 msgid "Авто"
 msgstr "Auto"
@@ -11131,6 +11155,45 @@ msgstr "● Высокий пинг"
 
 msgid "✓ No subscription needed for this preset — uses built-in Tachyon Core Desync"
 msgstr "✓ Для этого пресета подписка не требуется — используется встроенный Tachyon Core Desync"
+
+msgid "Discord Suite (Gateway + Voice + CDN)"
+msgstr "Discord (шлюз + голос + CDN)"
+
+msgid "Target Service / Suite"
+msgstr "Целевой сервис / Набор"
+
+msgid "Telegram Suite (Web + Bot API)"
+msgstr "Telegram (Web + Bot API)"
+
+msgid "Twitch Suite (Live Stream + HLS CDN)"
+msgstr "Twitch (прямые эфиры + HLS CDN)"
+
+msgid "X / Twitter Suite (API + Media CDN)"
+msgstr "X / Twitter (API + медиа CDN)"
+
+msgid "YouTube Full Suite (Web + 4K Stream + CDN)"
+msgstr "YouTube (веб + поток 4K + CDN)"
+
+msgid "Engine: Steer"
+msgstr "Ядро: Steer"
+
+msgid "NFQWS Tachyon not ready (managed by Steer)"
+msgstr "NFQWS Tachyon не готов (управляется Steer)"
+
+msgid "Steer autostart enabled"
+msgstr "Автозапуск Steer включён"
+
+msgid "Steer installed"
+msgstr "Steer установлен"
+
+msgid "Steer process running"
+msgstr "Процесс Steer работает"
+
+msgid "Steer service exist"
+msgstr "Служба Steer существует"
+
+msgid "standard"
+msgstr "базовая"
 
 msgid "-- Select server group --"
 msgstr ""

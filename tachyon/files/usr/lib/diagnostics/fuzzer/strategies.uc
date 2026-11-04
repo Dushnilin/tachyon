@@ -1127,6 +1127,34 @@ const STRATEGIES_DESYNC = [
         engine: "desync",
         args: "mode=fake_split split_pos=midsld fake_ttl=6 fake_sni=www.google.com repeats=4 udp_fake=true udp_repeats=8 udp_fake_ttl=6",
         description: "Combined TCP Fake+Split and 8x UDP STUN/QUIC fake burst for Discord & WebRTC."
+    },
+    {
+        id: "ds_cs2_faceit_udp_fake_6x",
+        name: "CS2 / Faceit / Cybershoke: TCP Fake+Split + UDP Fake (6x, TTL=5, udplen=64)",
+        engine: "desync",
+        args: "mode=fake_split split_pos=midsld fake_ttl=5 fake_sni=www.google.com repeats=6 udp_fake=true udp_repeats=6 udp_fake_ttl=5 udplen=64",
+        description: "Combined TCP SNI split and 6x UDP fake burst with 64-byte UDP padding for CS2, Faceit, and Cybershoke."
+    },
+    {
+        id: "ds_cs2_faceit_udp_fake_8x_ttl6",
+        name: "CS2 / Faceit / Cybershoke: TCP Fake+Split + UDP Fake (8x, TTL=6, udplen=128)",
+        engine: "desync",
+        args: "mode=fake_split split_pos=sni fake_ttl=6 fake_sni=max.ru repeats=6 udp_fake=true udp_repeats=8 udp_fake_ttl=6 udplen=128",
+        description: "High-intensity 8x UDP fake burst with 128-byte UDP padding and SNI boundary split for game servers."
+    },
+    {
+        id: "ds_cs2_faceit_syndata_udp",
+        name: "CS2 / Faceit / Cybershoke: SYN Data + Disorder + UDP Fake (6x, TTL=4)",
+        engine: "desync",
+        args: "mode=disorder split_pos=midsld fake_ttl=4 syndata=true udp_fake=true udp_repeats=6 udp_fake_ttl=4 udplen=64",
+        description: "TCP SYN payload injection with TTL=1 disorder and low-TTL UDP fake packets for stateful middleboxes."
+    },
+    {
+        id: "ds_gaming_udp_only_ttl5",
+        name: "Gaming & Voice UDP: Low-TTL UDP Fake Burst (8x, TTL=5, udplen=64)",
+        engine: "desync",
+        args: "mode=fake fake_ttl=5 repeats=4 udp_fake=true udp_repeats=8 udp_fake_ttl=5 udplen=64",
+        description: "Dedicated UDP fake packet injection with length padding without TCP stream splitting."
     }
 ];
 
@@ -1690,6 +1718,9 @@ function generate_combinatorial_desync() {
                         add(sprintf("%s (pos=%s, TTL=%d, sni=%s)", mode, pos, ttl, fsni),
                             sprintf("mode=%s split_pos=%s fake_ttl=%d fake_sni=%s repeats=6", mode, pos, ttl, fsni),
                             "Combinatorial native desync fake + split/disorder");
+                        add(sprintf("%s + UDP Fake (pos=%s, TTL=%d, sni=%s, udplen=64)", mode, pos, ttl, fsni),
+                            sprintf("mode=%s split_pos=%s fake_ttl=%d fake_sni=%s repeats=6 udp_fake=true udp_repeats=6 udp_fake_ttl=%d udplen=64", mode, pos, ttl, fsni, ttl),
+                            "Combinatorial native desync TCP + UDP game/voice fake burst");
                     }
                 }
             } else {
@@ -1719,6 +1750,7 @@ function generate_combinatorial_desync() {
 const TARGET_PORT_PROFILES = {
     discord: {
         key: "discord",
+        label: "Discord",
         match: [ "discord" ],
         udp_ports: "3478,5000-5020,19294-19344,50000-65535",
         tcp_ports: "2053,2083,2087,2096,8443",
@@ -1726,6 +1758,17 @@ const TARGET_PORT_PROFILES = {
         tcp_blob: "tls_google",
         tcp_seqovl: 681,
         hostfakesplit_host: "discord.media"
+    },
+    cs2_faceit: {
+        key: "cs2_faceit",
+        label: "CS2 / Faceit",
+        match: [ "cs2", "faceit", "cybershoke", "gaming_udp" ],
+        udp_ports: "3478-3481,27015-27050,50000-65535",
+        tcp_ports: "2053,2083,2087,2096,8443,27015-27050",
+        udp_blob: "stun_fake",
+        tcp_blob: "tls_google",
+        tcp_seqovl: 681,
+        hostfakesplit_host: "www.faceit.com"
     }
 };
 
@@ -1740,6 +1783,20 @@ function target_port_profile(target) {
     return null;
 }
 
+function target_port_profiles_list(target) {
+    let name = lc(as_string(target || ""));
+    let matched = [];
+    for (let id in TARGET_PORT_PROFILES) {
+        for (let needle in TARGET_PORT_PROFILES[id].match) {
+            if (index(name, needle) >= 0) {
+                push(matched, TARGET_PORT_PROFILES[id]);
+                break;
+            }
+        }
+    }
+    return matched;
+}
+
 /**
  * Strategies scoped to the ports a target actually uses. They are appended to the
  * generic list rather than replacing it: 443 still matters for the web portal.
@@ -1750,57 +1807,75 @@ function target_port_profile(target) {
  * hand, which is the only way to verify it today.
  */
 function target_port_strategies(engine, target) {
-    let profile = target_port_profile(target);
-    if (profile == null)
+    let profiles = target_port_profiles_list(target);
+    if (length(profiles) == 0)
         return [];
 
     let list = [];
     let seen = {};
-    let add = function(name, args, desc) {
-        args = trim(as_string(args));
-        if (args == "" || seen[args]) return;
-        let real_engine = engine == "all" ? "zapret2" : engine;
-        if (!fuzzer_runner.validate_strategy_args(real_engine, args)) return;
-        seen[args] = true;
-        push(list, {
-            id: sprintf("port_%s_%s_%d", real_engine, profile.key, length(list) + 1),
-            name: name,
-            engine: real_engine,
-            args: args,
-            description: desc,
-            rationale: "Ports this target really uses, in this engine's own syntax",
-            target_ports: true
-        });
-    };
+    for (let profile in profiles) {
+        let lbl = profile.label || "Discord";
+        let add = function(name, args, desc) {
+            args = trim(as_string(args));
+            if (args == "" || seen[args]) return;
+            let real_engine = engine == "all" ? "zapret2" : engine;
+            if (!fuzzer_runner.validate_strategy_args(real_engine, args)) return;
+            seen[args] = true;
+            push(list, {
+                id: sprintf("port_%s_%s_%d", real_engine, profile.key, length(list) + 1),
+                name: name,
+                engine: real_engine,
+                args: args,
+                description: desc,
+                rationale: "Ports this target really uses, in this engine's own syntax",
+                target_ports: true
+            });
+        };
 
-    if (engine == "zapret2" || engine == "all") {
-        add(sprintf("Discord Voice UDP (ports %s)", profile.udp_ports),
-            sprintf("--filter-udp=%s --filter-l7=discord,stun --payload=discord_ip_discovery,stun --lua-desync=fake:blob=%s:repeats=6",
-                profile.udp_ports, profile.udp_blob),
-            "STUN/RTP fake injection on the Discord voice ports");
-        add(sprintf("Discord Media TCP (ports %s)", profile.tcp_ports),
-            sprintf("--filter-tcp=%s --filter-l7=tls --payload=tls_client_hello --lua-desync=fake:blob=%s:repeats=6 --lua-desync=multisplit:pos=1:seqovl=%d:seqovl_pattern=%s",
-                profile.tcp_ports, profile.tcp_blob, profile.tcp_seqovl, profile.tcp_blob),
-            "Alternate Cloudflare edge ports Discord media uses");
-        add("Discord hostfakesplit (SNI-matched fake)",
-            sprintf("--filter-tcp=%s --filter-l7=tls --payload=tls_client_hello --lua-desync=hostfakesplit:host=%s:midhost=host-2:seqovl=726:fooling=badsum,tcp_seq=1000000",
-                profile.tcp_ports, profile.hostfakesplit_host),
-            "Fake ClientHello carrying the host the DPI expects to see");
-    }
+        if (engine == "zapret2" || engine == "all") {
+            add(sprintf("%s Voice/Game UDP (ports %s)", lbl, profile.udp_ports),
+                sprintf("--filter-udp=%s --filter-l7=discord,stun --payload=discord_ip_discovery,stun --lua-desync=fake:blob=%s:repeats=6",
+                    profile.udp_ports, profile.udp_blob),
+                "STUN/UDP fake injection on voice and game ports");
+            if (profile.key == "cs2_faceit") {
+                add(sprintf("%s Generic Game UDP payload=all (ports %s)", lbl, profile.udp_ports),
+                    sprintf("--filter-udp=%s --out-range=-d3 --lua-desync=fake:blob=%s:repeats=6:payload=all",
+                        profile.udp_ports, profile.udp_blob),
+                    "Generic UDP fake injection on Source/Matchmaking ports where payload is custom");
+            }
+            add(sprintf("%s Media/API TCP (ports %s)", lbl, profile.tcp_ports),
+                sprintf("--filter-tcp=%s --filter-l7=tls --payload=tls_client_hello --lua-desync=fake:blob=%s:repeats=6 --lua-desync=multisplit:pos=1:seqovl=%d:seqovl_pattern=%s",
+                    profile.tcp_ports, profile.tcp_blob, profile.tcp_seqovl, profile.tcp_blob),
+                "Alternate Cloudflare edge and game ports");
+            add(sprintf("%s hostfakesplit (SNI-matched fake)", lbl),
+                sprintf("--filter-tcp=%s --filter-l7=tls --payload=tls_client_hello --lua-desync=hostfakesplit:host=%s:midhost=host-2:seqovl=726:fooling=badsum,tcp_seq=1000000",
+                    profile.tcp_ports, profile.hostfakesplit_host),
+                "Fake ClientHello carrying the host the DPI expects to see");
+        }
 
-    if (engine == "zapret") {
-        add(sprintf("Discord Voice UDP (ports %s)", profile.udp_ports),
-            sprintf("--filter-udp=%s --filter-l7=discord,stun --dpi-desync=fake --dpi-desync-fake-stun=/opt/zapret/files/fake/stun.bin --dpi-desync-repeats=6",
-                profile.udp_ports),
-            "STUN fake injection on the Discord voice ports");
-        add(sprintf("Discord Media TCP (ports %s)", profile.tcp_ports),
-            sprintf("--filter-tcp=%s --dpi-desync=multisplit --dpi-desync-split-pos=2 --dpi-desync-split-seqovl=652 --dpi-desync-split-seqovl-pattern=/opt/zapret/files/fake/tls_clienthello_www_google_com.bin",
-                profile.tcp_ports),
-            "Alternate Cloudflare edge ports Discord media uses");
-        add("Discord hostfakesplit (SNI-matched fake)",
-            sprintf("--filter-tcp=%s --dpi-desync=hostfakesplit --dpi-desync-hostfakesplit-mod=host=%s --dpi-desync-hostfakesplit-midhost=host-2 --dpi-desync-split-seqovl=726 --dpi-desync-fooling=badsum,badseq --dpi-desync-badseq-increment=0",
-                profile.tcp_ports, profile.hostfakesplit_host),
-            "Fake ClientHello carrying the host the DPI expects to see");
+        if (engine == "zapret") {
+            add(sprintf("%s Voice/Game UDP (ports %s)", lbl, profile.udp_ports),
+                sprintf("--filter-udp=%s --filter-l7=discord,stun --dpi-desync=fake --dpi-desync-fake-stun=/opt/zapret/files/fake/stun.bin --dpi-desync-repeats=6",
+                    profile.udp_ports),
+                "STUN fake injection on voice and game ports");
+            add(sprintf("%s Media/API TCP (ports %s)", lbl, profile.tcp_ports),
+                sprintf("--filter-tcp=%s --dpi-desync=multisplit --dpi-desync-split-pos=2 --dpi-desync-split-seqovl=652 --dpi-desync-split-seqovl-pattern=/opt/zapret/files/fake/tls_clienthello_www_google_com.bin",
+                    profile.tcp_ports),
+                "Alternate Cloudflare edge and game ports");
+            add(sprintf("%s hostfakesplit (SNI-matched fake)", lbl),
+                sprintf("--filter-tcp=%s --dpi-desync=hostfakesplit --dpi-desync-hostfakesplit-mod=host=%s --dpi-desync-hostfakesplit-midhost=host-2 --dpi-desync-split-seqovl=726 --dpi-desync-fooling=badsum,badseq --dpi-desync-badseq-increment=0",
+                    profile.tcp_ports, profile.hostfakesplit_host),
+                "Fake ClientHello carrying the host the DPI expects to see");
+        }
+
+        if (engine == "desync") {
+            add(sprintf("%s TCP+UDP Fake Burst (TTL=5, UDP=6x, udplen=64)", lbl),
+                "mode=fake_split split_pos=midsld fake_ttl=5 fake_sni=www.google.com repeats=6 udp_fake=true udp_repeats=6 udp_fake_ttl=5 udplen=64",
+                "Combined TCP SNI split + UDP fake packet burst with 64B UDP padding");
+            add(sprintf("%s TCP+UDP Fake Burst (TTL=6, UDP=8x, udplen=128)", lbl),
+                "mode=fake_split split_pos=sni fake_ttl=6 fake_sni=max.ru repeats=6 udp_fake=true udp_repeats=8 udp_fake_ttl=6 udplen=128",
+                "Combined TCP SNI split + 8x UDP fake packet burst with 128B UDP padding");
+        }
     }
 
     // byedpi sits on a local redirect port and filters by nothing: it has no

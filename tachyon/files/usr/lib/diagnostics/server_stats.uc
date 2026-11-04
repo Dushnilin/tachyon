@@ -4,7 +4,7 @@
 //   1. Aggregates and tracks metrics (latency, success/failure rate, jitter,
 //      last checked time, last error) for all proxy servers across sections
 //      and subscriptions.
-//   2. Works seamlessly across both sing-box and steer engines.
+//   2. Works seamlessly across tachyon-core and sing-box engines.
 //   3. Provides best-candidate ranking for auto-tuning and routing failover.
 //   4. Persists collected statistics to bounded JSON runtime storage.
 //

@@ -4,7 +4,7 @@
 //
 // Generates, compares, and validates candidate configurations without activating them:
 //   - UCI schema, section, domain, IP, CIDR and port syntax validation
-//   - Candidate core engine generation (sing-box config / steer spec dry-run)
+//   - Candidate core engine generation (tachyon-core / sing-box config)
 //   - Direct binary preflight verification (sing-box check -c <candidate>)
 //   - Port collision detection against local listeners
 //   - DNS recursion loop & DoH deadlock prevention
@@ -461,6 +461,189 @@ function analyze_subsystem_impact(diff_result, active_uci, candidate_uci) {
     };
 }
 
+// ─── Routing & DNS Rule Overlap / Shadowing Analyzer (#331) ──────────────────
+
+function normalize_action_family(action) {
+    let a = lc(trim(as_string(action || "outbound")));
+    if (a == "direct" || a == "bypass") return "direct";
+    if (a == "block") return "block";
+    if (a == "zapret" || a == "zapret2" || a == "byedpi" || a == "desync") return "dpi:" + a;
+    return "proxy";
+}
+
+function normalize_domain_token(raw) {
+    let d = lc(trim(as_string(raw || "")));
+    if (substr(d, 0, 2) == "*.") d = substr(d, 2);
+    if (substr(d, 0, 1) == ".") d = substr(d, 1);
+    return d;
+}
+
+function domain_covers(parent_dom, child_dom) {
+    if (parent_dom == "" || child_dom == "") return false;
+    if (parent_dom == child_dom) return true;
+    let suffix = "." + parent_dom;
+    let plen = length(suffix);
+    let clen = length(child_dom);
+    if (clen > plen && substr(child_dom, clen - plen) == suffix)
+        return true;
+    return false;
+}
+
+function collect_section_domains(sec, conditions_map) {
+    let out = [];
+    for (let key in [ "domain", "domains", "fully_qualified_domain_names", "domain_ip_lists" ]) {
+        for (let item in words_list(sec[key])) {
+            let norm = normalize_domain_token(item);
+            if (norm != "" && index(norm, "/") < 0 && !core_ip.valid_ip_or_cidr(norm)) {
+                if (index(out, norm) < 0) push(out, norm);
+            }
+        }
+    }
+    if (type(conditions_map) == "object") {
+        for (let cref in words_list(sec.condition_refs)) {
+            let cond = conditions_map[cref];
+            if (type(cond) == "object") {
+                for (let item in words_list(cond.domains || cond.domain)) {
+                    let norm = normalize_domain_token(item);
+                    if (norm != "" && index(out, norm) < 0) push(out, norm);
+                }
+            }
+        }
+    }
+    return out;
+}
+
+function analyze_rule_conflicts(candidate_uci) {
+    let conflicts = [];
+    let duplicates = [];
+    let shadowed_sections = [];
+    let dns_route_warnings = [];
+    let warnings = [];
+
+    let sections_map = (candidate_uci && type(candidate_uci.sections) == "object") ? candidate_uci.sections : {};
+    let conditions_map = (candidate_uci && type(candidate_uci.conditions) == "object") ? candidate_uci.conditions : {};
+    let sec_names = keys(sections_map);
+
+    let entries = [];
+    for (let i = 0; i < length(sec_names); i++) {
+        let name = sec_names[i];
+        let sec = sections_map[name];
+        if (type(sec) != "object" || sec.enabled == "0") continue;
+        let action = as_string(sec.action || "outbound");
+        let family = normalize_action_family(action);
+        let domains = collect_section_domains(sec, conditions_map);
+        let lists = words_list(sec.community_lists);
+        let ips = words_list(sec.ip_cidr || sec.ip || sec.subnets || sec.local_subnet_lists);
+        let ports = words_list(sec.ports || sec.port || sec.ports_text);
+        let protos = words_list(sec.protocol);
+
+        if (family == "block" && (length(ports) > 0 || length(protos) > 0) && length(domains) > 0) {
+            let msg = sprintf("Section '%s' (action: block) restricts ports/protocol, so DNS-level blocking is skipped and only L3/L4 route rejection applies.", name);
+            push(dns_route_warnings, msg);
+            push(warnings, msg);
+        }
+
+        push(entries, {
+            name: name,
+            priority: i + 1,
+            action: action,
+            family: family,
+            domains: domains,
+            lists: lists,
+            ips: ips,
+            ports: ports
+        });
+    }
+
+    for (let j = 0; j < length(entries); j++) {
+        let later = entries[j];
+        let total_items = length(later.domains) + length(later.lists);
+        let covered_items = 0;
+
+        for (let d_later in later.domains) {
+            let covered_by_earlier = false;
+            for (let i = 0; i < j; i++) {
+                let earlier = entries[i];
+                for (let d_early in earlier.domains) {
+                    if (domain_covers(d_early, d_later)) {
+                        covered_by_earlier = true;
+                        if (earlier.family != later.family) {
+                            let block_override = (later.family == "block" && earlier.family != "block");
+                            let c_obj = {
+                                kind: block_override ? "block_overridden" : "domain_conflict",
+                                target: d_later,
+                                covered_by: d_early,
+                                winner_section: earlier.name,
+                                winner_action: earlier.action,
+                                winner_priority: earlier.priority,
+                                shadowed_section: later.name,
+                                shadowed_action: later.action,
+                                shadowed_priority: later.priority
+                            };
+                            push(conflicts, c_obj);
+                            let w_msg = block_override
+                                ? sprintf("Block rule in section '%s' for '%s' is overridden by earlier permissive section '%s' (%s, Matched by '%s').",
+                                    later.name, d_later, earlier.name, earlier.action, d_early)
+                                : sprintf("Domain '%s' in section '%s' (%s) is shadowed by earlier section '%s' (%s, matched by '%s').",
+                                    d_later, later.name, later.action, earlier.name, earlier.action, d_early);
+                            if (index(warnings, w_msg) < 0) push(warnings, w_msg);
+                        } else {
+                            push(duplicates, {
+                                target: d_later,
+                                first_section: earlier.name,
+                                second_section: later.name,
+                                action: earlier.action
+                            });
+                        }
+                        break;
+                    }
+                }
+                if (covered_by_earlier) break;
+            }
+            if (covered_by_earlier) covered_items++;
+        }
+
+        for (let l_later in later.lists) {
+            let list_covered = false;
+            for (let i = 0; i < j; i++) {
+                let earlier = entries[i];
+                if (index(earlier.lists, l_later) >= 0) {
+                    list_covered = true;
+                    if (earlier.family != later.family) {
+                        let w_msg = sprintf("Community list '%s' in section '%s' (%s) conflicts with earlier section '%s' (%s).",
+                            l_later, later.name, later.action, earlier.name, earlier.action);
+                        push(conflicts, {
+                            kind: "list_conflict",
+                            target: "list:" + l_later,
+                            winner_section: earlier.name,
+                            winner_action: earlier.action,
+                            shadowed_section: later.name,
+                            shadowed_action: later.action
+                        });
+                        if (index(warnings, w_msg) < 0) push(warnings, w_msg);
+                    }
+                    break;
+                }
+            }
+            if (list_covered) covered_items++;
+        }
+
+        if (total_items > 0 && covered_items == total_items && length(later.ips) == 0) {
+            push(shadowed_sections, later.name);
+            let s_msg = sprintf("Section '%s' (%s) is completely shadowed by earlier rules and will never match traffic.", later.name, later.action);
+            if (index(warnings, s_msg) < 0) push(warnings, s_msg);
+        }
+    }
+
+    return {
+        conflicts: conflicts,
+        duplicates: duplicates,
+        shadowed_sections: shadowed_sections,
+        dns_route_warnings: dns_route_warnings,
+        warnings: warnings
+    };
+}
+
 // ─── Candidate Syntax & Semantics Validator ───────────────────────────────────
 
 function validate_uci_semantics(candidate_uci) {
@@ -682,6 +865,13 @@ function plan(candidate_source, options) {
     for (let e in port_check.errors) push(all_errors, e);
     for (let w in port_check.warnings) push(all_warnings, w);
 
+    // 4b. Routing & DNS rule overlap / shadowing check (#331)
+    let rule_conflicts = analyze_rule_conflicts(candidate_uci);
+    for (let w in rule_conflicts.warnings) {
+        if (index(all_warnings, w) < 0)
+            push(all_warnings, w);
+    }
+
     // 5. Engine config dry-run check (if tachyon-core active and binary exists)
     let engine_check = { checked: false, status: "ok" };
     let cand_engine = candidate_uci.settings ? (candidate_uci.settings.engine || "tachyon-core") : "tachyon-core";
@@ -765,7 +955,8 @@ function plan(candidate_source, options) {
         validation: {
             uci_semantics: validation.status,
             ports: port_check.status,
-            engine_dry_run: engine_check.status
+            engine_dry_run: engine_check.status,
+            rule_conflicts: rule_conflicts
         },
         warnings: all_warnings,
         errors: all_errors,
@@ -914,6 +1105,20 @@ function selftest() {
     assert(index(text, "TACHYON CONFIGURATION PLAN") >= 0, "formatter includes header");
     assert(index(text, "ADD SECTION: [s2]") >= 0, "formatter lists added section");
 
+    // Test 8: Routing & DNS rule overlap / shadowing detection (#331)
+    let conflict_uci = {
+        settings: { engine: "tachyon-core" },
+        sections: {
+            "allow_parent": { ".name": "allow_parent", ".type": "section", action: "direct", domain: [ "example.com" ] },
+            "block_sub": { ".name": "block_sub", ".type": "section", action: "block", domain: [ "ads.example.com" ] }
+        },
+        servers: {},
+        all_by_name: {}
+    };
+    let rc = analyze_rule_conflicts(conflict_uci);
+    assert(length(rc.conflicts) == 1 && rc.conflicts[0].kind == "block_overridden", "analyze_rule_conflicts detects block overridden by earlier direct parent domain");
+    assert(length(rc.shadowed_sections) == 1 && rc.shadowed_sections[0] == "block_sub", "analyze_rule_conflicts detects completely shadowed section");
+
     print(sprintf("Config plan selftest: %d passed, %d failed\n", passed, failed));
     return failed == 0 ? 0 : 1;
 }
@@ -923,6 +1128,7 @@ function module_exports() {
         plan,
         compute_uci_diff,
         analyze_subsystem_impact,
+        analyze_rule_conflicts,
         validate_uci_semantics,
         load_candidate_uci,
         parse_uci_text_to_dict,

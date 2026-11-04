@@ -46,7 +46,6 @@ export async function runNftCheck() {
     throw new Error('Nftables checks returned invalid data');
   }
 
-  // Backend returns not_applicable when steer is the active engine
   if ((data as { not_applicable?: number }).not_applicable) {
     updateCheckStore({
       order,

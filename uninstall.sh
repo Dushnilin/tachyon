@@ -199,12 +199,6 @@ if [ -f "/etc/init.d/tachyon-core" ]; then
     tui_ok "Сервис tachyon-core остановлен и удален"
 fi
 
-if [ -f "/etc/init.d/tachyon-steer-zapret" ]; then
-    /etc/init.d/tachyon-steer-zapret stop >/dev/null 2>&1 || true
-    /etc/init.d/tachyon-steer-zapret disable >/dev/null 2>&1 || true
-    rm -f /etc/init.d/tachyon-steer-zapret /etc/rc.d/*tachyon-steer-zapret* 2>/dev/null || true
-fi
-
 # Stop and remove managed sing-box service if created by Tachyon
 if [ -f "/etc/init.d/sing-box" ]; then
     if grep -q "Tachyon managed sing-box" "/etc/init.d/sing-box" 2>/dev/null; then
@@ -421,7 +415,6 @@ rm -f /usr/bin/tachyon 2>/dev/null || true
 rm -f /usr/bin/tachyon-core 2>/dev/null || true
 rm -f /etc/init.d/tachyon 2>/dev/null || true
 rm -f /etc/init.d/tachyon-core 2>/dev/null || true
-rm -f /etc/init.d/tachyon-steer-zapret 2>/dev/null || true
 rm -f /etc/hotplug.d/iface/99-tachyon-wan-monitor 2>/dev/null || true
 rm -f /www/cgi-bin/tachyon-agent 2>/dev/null || true
 rm -f /www/cgi-bin/tachyon-sub 2>/dev/null || true
@@ -469,7 +462,7 @@ if [ -f "/etc/init.d/uhttpd" ]; then
     /etc/init.d/uhttpd restart >/dev/null 2>&1 || true
 fi
 
-# Check if parent Forkop / Podkop / NetShift / Steer services exist and restore them
+# Check if parent Forkop / Podkop / NetShift services exist and restore them
 if [ -f "/etc/init.d/forkop" ]; then
     /etc/init.d/forkop enable >/dev/null 2>&1 || true
     /etc/init.d/forkop restart >/dev/null 2>&1 || true
@@ -482,10 +475,6 @@ elif [ -f "/etc/init.d/netshift" ]; then
     /etc/init.d/netshift enable >/dev/null 2>&1 || true
     /etc/init.d/netshift restart >/dev/null 2>&1 || true
     tui_ok "Обнаружен родительский сервис NetShift — восстановлен и запущен"
-elif [ -f "/etc/init.d/steer" ]; then
-    /etc/init.d/steer enable >/dev/null 2>&1 || true
-    /etc/init.d/steer restart >/dev/null 2>&1 || true
-    tui_ok "Обнаружен оригинальный сервис Steer — восстановлен и запущен"
 fi
 
 tui_ok "Кэш LuCI очищен, файлы и остаточные фрагменты полностью удалены"

@@ -5,7 +5,7 @@
 // Provides robust, multi-phase transactional execution with automatic rollback
 // and compensation stacks for critical system operations:
 //   - Component installs/updates and Tachyon self-updates
-//   - Routing engine variant switches (sing-box <-> steer)
+//   - Core binary variant switches
 //   - Configuration changes and candidate state applications
 //   - Firewall and routing table modifications
 //

@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { svgEl } from '../../../helpers';
 import { tr } from '../../helpers/i18n';
+import { getRouterUiPrefs, setRouterUiPrefs } from '../../helpers/uiPrefs';
 import {
   renderBanIcon,
   renderBarChart2Icon,
@@ -810,20 +811,13 @@ export function getDashboardLayoutConfig(): DashboardLayoutConfig {
     };
   }
 
-  // 1. Try localStorage first for instant zero-latency UI
+  // 1. Try localStorage first for instant zero-latency UI (migrating v1..v4 if needed)
   try {
     if (typeof window !== 'undefined' && window.localStorage) {
-      LEGACY_STORAGE_KEYS.forEach((legacyKey) => {
-        try {
-          window.localStorage.removeItem(legacyKey);
-        } catch {
-          // ignore
-        }
-      });
       const saved = window.localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed && parsed.schemaVersion === LAYOUT_SCHEMA_VERSION) {
+        if (parsed && typeof parsed === 'object') {
           cachedLayoutConfig = normalizeDashboardLayoutConfig(parsed);
           return {
             preset: cachedLayoutConfig.preset,
@@ -834,22 +828,98 @@ export function getDashboardLayoutConfig(): DashboardLayoutConfig {
           };
         }
       }
+      for (let i = LEGACY_STORAGE_KEYS.length - 1; i >= 0; i -= 1) {
+        const legacyKey = LEGACY_STORAGE_KEYS[i];
+        const legacyRaw = window.localStorage.getItem(legacyKey);
+        if (!legacyRaw) continue;
+        try {
+          const parsedLegacy = JSON.parse(legacyRaw);
+          if (parsedLegacy && typeof parsedLegacy === 'object') {
+            const migrated = normalizeDashboardLayoutConfig(parsedLegacy);
+            cachedLayoutConfig = migrated;
+            const migratedPayload = {
+              ...migrated,
+              schemaVersion: LAYOUT_SCHEMA_VERSION,
+            };
+            window.localStorage.setItem(
+              STORAGE_KEY,
+              JSON.stringify(migratedPayload),
+            );
+            LEGACY_STORAGE_KEYS.forEach((k) => {
+              try {
+                window.localStorage.removeItem(k);
+              } catch {
+                // ignore
+              }
+            });
+            setRouterUiPrefs({ dashboard_layout: migratedPayload });
+            return {
+              preset: migrated.preset,
+              widgets: clonePlacements(migrated.widgets),
+              sectionTypes: cloneSectionTypeFilter(migrated.sectionTypes),
+            };
+          }
+        } catch {
+          // ignore invalid legacy entry
+        }
+      }
     }
   } catch {
     // ignore storage errors
   }
 
-  // 2. Fallback to UCI if loaded (only if saved with current schemaVersion)
+  // 2. Fallback to router UI prefs (/etc/tachyon/ui-prefs.json) or UCI settings
   try {
+    const routerPrefs = getRouterUiPrefs();
+    if (
+      routerPrefs.dashboard_layout &&
+      typeof routerPrefs.dashboard_layout === 'object'
+    ) {
+      cachedLayoutConfig = normalizeDashboardLayoutConfig(
+        routerPrefs.dashboard_layout,
+      );
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          window.localStorage.setItem(
+            STORAGE_KEY,
+            JSON.stringify({
+              ...cachedLayoutConfig,
+              schemaVersion: LAYOUT_SCHEMA_VERSION,
+            }),
+          );
+        }
+      } catch {
+        // ignore
+      }
+      return {
+        preset: cachedLayoutConfig.preset,
+        widgets: clonePlacements(cachedLayoutConfig.widgets),
+        sectionTypes: cloneSectionTypeFilter(cachedLayoutConfig.sectionTypes),
+      };
+    }
+
     const uciObj = (globalThis as any).uci;
     if (uciObj && typeof uciObj.get === 'function') {
       const uciJson =
-        uciObj.get('tachyon', 'main', 'dashboard_layout_json') ||
-        uciObj.get('tachyon', 'settings', 'dashboard_layout_json');
+        uciObj.get('tachyon', 'settings', 'dashboard_layout_json') ||
+        uciObj.get('tachyon', 'main', 'dashboard_layout_json');
       if (uciJson) {
         const parsed = JSON.parse(String(uciJson));
-        if (parsed && parsed.schemaVersion === LAYOUT_SCHEMA_VERSION) {
+        if (parsed && typeof parsed === 'object') {
           cachedLayoutConfig = normalizeDashboardLayoutConfig(parsed);
+          try {
+            if (typeof window !== 'undefined' && window.localStorage) {
+              window.localStorage.setItem(
+                STORAGE_KEY,
+                JSON.stringify({
+                  ...cachedLayoutConfig,
+                  schemaVersion: LAYOUT_SCHEMA_VERSION,
+                }),
+              );
+            }
+          } catch {
+            // ignore
+          }
           return {
             preset: cachedLayoutConfig.preset,
             widgets: clonePlacements(cachedLayoutConfig.widgets),
@@ -940,32 +1010,7 @@ export function saveDashboardLayoutConfig(
   }
 
   if (options?.syncUci !== false) {
-    try {
-      const uciObj = (globalThis as any).uci;
-      if (uciObj && typeof uciObj.set === 'function') {
-        const targetSec = options?.sectionId || 'main';
-        const prevPreset = uciObj.get('tachyon', targetSec, 'dashboard_preset');
-        if (prevPreset !== normalized.preset) {
-          uciObj.set(
-            'tachyon',
-            targetSec,
-            'dashboard_preset',
-            normalized.preset,
-          );
-        }
-        const serialized = JSON.stringify(payload);
-        const prevJson = uciObj.get(
-          'tachyon',
-          targetSec,
-          'dashboard_layout_json',
-        );
-        if (prevJson !== serialized) {
-          uciObj.set('tachyon', targetSec, 'dashboard_layout_json', serialized);
-        }
-      }
-    } catch {
-      // ignore uci error
-    }
+    setRouterUiPrefs({ dashboard_layout: payload });
   }
 
   if (!options?.silent) {

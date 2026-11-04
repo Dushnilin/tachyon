@@ -1,28 +1,18 @@
 #!/usr/bin/env ucode
 //
-// Engine runtime: process-level operations for the selected routing engine.
-//
-// core/engine.uc decides *what* the device should run and preserves config
-// across switches; this module is what actually starts, stops and inspects the
-// engine process. Only one engine may own the routing dataplane at a time, so
-// every entry point stops the previous engine before starting the new one.
+// Engine runtime: process-level operations for the routing engine (`tachyon-core`).
 //
 
-let fs = require("fs");
 let common = require("core.common");
 let uci_core = require("core.uci");
 let engine = require("core.engine");
 let engine_state = require("components.engine_state");
-let steer_generator = require("steer.generator");
 
 let as_string = common.as_string;
 let command_from_args = common.command_from_args;
-let command_output = common.command_output;
 let command_status = common.command_status;
-let command_success_from_args = common.command_success_from_args;
 let command_status_from_args = common.command_status_from_args;
 let file_exists = common.file_exists;
-let bool_option = common.bool_option;
 let option = common.option;
 let runtime_constants = require("tachyon_core.constants");
 
@@ -45,8 +35,6 @@ function run_init(engine_id, action) {
     return { ok: status == 0, status, engine: engine_id, action };
 }
 
-// Stop every engine except `keep`. Used before starting the active one so the
-// two never fight over nftables tables and policy routing rules.
 function stop_other_engines(keep) {
     let stopped = [];
     for (let engine_id in engine.known_engines()) {
@@ -54,19 +42,12 @@ function stop_other_engines(keep) {
             continue;
         if (!init_script_present(engine_id))
             continue;
-        // sing-box and steer-extended both own their init scripts; skip the
-        // duplicate steer id when the extended build is the one running.
-        if (engine_id == engine.ENGINE_STEER && keep == engine.ENGINE_STEER_EXTENDED)
-            continue;
-        if (engine_id == engine.ENGINE_STEER_EXTENDED && keep == engine.ENGINE_STEER)
-            continue;
         run_init(engine_id, "stop");
         push(stopped, engine_id);
     }
     return stopped;
 }
 
-// Start the active engine, stopping the others first.
 function start_active() {
     let active = engine.get_active();
     let info = engine.detect(active);
@@ -94,15 +75,11 @@ function reload_active(reason) {
     let active = engine.get_active();
     let result = run_init(active, "reload");
     if (!result.ok) {
-        // sing-box reload is reason-driven; fall back to restart on failure.
         result = run_init(active, "restart");
     }
     return { ok: result.ok, engine: active, status: result.status, reason: as_string(reason || "") };
 }
 
-// Restart the whole service through its init script, so the lifecycle handles
-// the dataplane cleanup and the per-engine start path. Declared before its
-// callers: ucode resolves call targets when the callee is defined.
 function restart_tachyon_service() {
     let init = "/etc/init.d/" + CONFIG_NAME;
     if (!file_exists(init))
@@ -111,22 +88,11 @@ function restart_tachyon_service() {
     return { ok: status == 0, status };
 }
 
-// Full switch: apply the config switch, then restart the service so the whole
-// lifecycle runs for the new engine. A restart (not an inline stop/start) is
-// deliberate: only the lifecycle cleans up the old engine's dataplane
-// (Tachyon nft table, ip rules, dnsmasq), generates the steer spec and starts
-// the provider runtimes. An inline stop/start leaves sing-box nft rules and
-// dnsmasq entries behind, and steer would start with a missing or stale spec.
-// Returns a JSON-serialisable result for the CLI/UI.
 function switch_engine(target, opts) {
     opts = type(opts) == "object" ? opts : {};
     let before = engine.get_active();
     let normalized = engine.normalize_engine(target);
 
-    // steer and steer-extended are the same binary and the same init script -
-    // they name a build, not a program. Switching between them changes one UCI
-    // string and restarts the service for nothing, while reporting success. Say
-    // so and stop, unless the caller asked to replace the build.
     if (normalized == before &&
         engine.engine_binary(normalized) == engine.engine_binary(before) &&
         engine.init_script_present(normalized) == engine.init_script_present(before) &&
@@ -139,22 +105,7 @@ function switch_engine(target, opts) {
             from_engine: before,
             to_engine: normalized,
             build: info.build,
-            message: "Already running on " + normalized + " (" + (info.build || "unknown build") + "); nothing to switch"
-        };
-    }
-
-    // Refuse to switch onto a build that predates the subcommands we drive.
-    // engine.uc grew steer_contract_ready() for exactly this and it was never
-    // called from anywhere, so the only way to find out was a failed apply much
-    // later. The check is cheap and steer 1.5.8 satisfies it.
-    if ((normalized == "steer" || normalized == "steer-extended" || normalized == "steer_extended") &&
-        engine.binary_present(engine.ENGINE_STEER) && !engine.steer_contract_ready()) {
-        return {
-            ok: false,
-            success: false,
-            error: "The installed steer build is older than this version of Tachyon requires " +
-                   "(missing subcommands). Update steer or switch back to sing-box.",
-            reason: "steer_contract_too_old"
+            message: "Already running on " + normalized + "; nothing to switch"
         };
     }
 
@@ -172,8 +123,6 @@ function switch_engine(target, opts) {
     let new_engine = engine.get_active();
     let restarted = restart_tachyon_service();
     if (!restarted.ok) {
-        // Roll the configuration back so the device keeps running the engine
-        // that still exists on disk, and bring the service back up with it.
         engine_state.apply_switch(before, {});
         restart_tachyon_service();
         return {
@@ -193,319 +142,6 @@ function switch_engine(target, opts) {
     };
 }
 
-// ============================================================================
-// steer contract pass-through
-// ============================================================================
-// steer spec generation
-// ============================================================================
-
-function read_sections() {
-    let sections = [];
-    let cursor = null;
-    try {
-        cursor = require("uci").cursor();
-    }
-    catch (e) {
-        cursor = null;
-    }
-    if (cursor == null)
-        return sections;
-    try {
-        cursor.foreach(CONFIG_NAME, "section", function(section) {
-            if (type(section) == "object")
-                push(sections, section);
-        });
-    }
-    catch (e) {
-    }
-    return sections;
-}
-
-// URLTest settings for one rule section, read straight from the UCI `urltest`
-// sections that name it in `option section`. connections.urltest_*(section, id)
-// is not usable here: those readers key off an urltest id, and a user-named
-// child ("Fastest", "SoftPortal") has to be found by its parent instead.
-function urltest_settings_for(section_name) {
-    if (section_name == "")
-        return [];
-    let found = [];
-    let cursor = null;
-    try {
-        cursor = require("uci").cursor();
-    }
-    catch (e) {
-        return found;
-    }
-    if (cursor == null)
-        return found;
-    try {
-        cursor.foreach(CONFIG_NAME, "urltest", function(child) {
-            if (type(child) != "object")
-                return;
-            if (as_string(child.section || "") != section_name)
-                return;
-            // push(array, value) rather than the JS method form on the array:
-            // ucode arrays have no methods, so the method form threw here, the
-            // catch below swallowed it, and this function reported "no
-            // settings" for every section that had some.
-            push(found, {
-                name: as_string(child.name || child.display_name || ""),
-                check_interval: as_string(child.check_interval || child.urltest_check_interval || "3m"),
-                tolerance: as_string(child.tolerance || child.urltest_tolerance || "50"),
-                testing_url: as_string(child.testing_url || child.urltest_testing_url ||
-                    "https://www.gstatic.com/generate_204"),
-                idle_timeout: as_string(child.idle_timeout || "")
-            });
-        });
-    }
-    catch (e) {
-    }
-    return found;
-}
-
-function build_steer_spec() {
-    let settings = uci_core.get_all(CONFIG_NAME, "settings") || {};
-    // steer cannot read sing-box rule-set JSON, so sections' lists are
-    // materialised as steer plain-text files via steer/lists.uc.
-    let steer_lists = require("steer.lists");
-    steer_generator.set_list_materializer(function(section, catalog) {
-        return steer_lists.materialize_section_lists(section, catalog);
-    });
-
-    // The section cache (links map the sub files are built from) is normally a
-    // side product of sing-box config generation, which never runs on steer.
-    // Rebuild it from the normalized subscription sources first; without this
-    // vless outputs lose their nodes. Non-fatal: an empty cache degrades to the
-    // previous sub file rather than aborting the switch.
-    try {
-        require("steer.section_cache").build_section_caches();
-    }
-    catch (e) {
-        command_status("logger -t tachyon '[warn] steer section cache rebuild failed: " +
-            replace(as_string(e), /'/g, "") + "'");
-    }
-
-    // Proxy sections backed by a subscription get a steer vless output pointing
-    // at sub.txt, written from the subscription cache. Without this the section
-    // would fall back to a direct output and its traffic would not be tunnelled.
-    let sections = read_sections();
-    for (let section in sections) {
-        if (type(section) != "object")
-            continue;
-        let sub_file = steer_lists.write_subscription_file(as_string(section[".name"] || ""));
-        if (sub_file != "")
-            section.steer_sub_file = sub_file;
-
-        // URLTest settings live in child `config urltest` sections, which the
-        // section list never contains. Spec v2 expresses the same idea as a
-        // `pick: latency` group with interval/tolerance/url/idle_timeout, so the
-        // settings have to reach the generator or the user's choice of interval
-        // and testing URL is silently ignored on steer. Attached to the section
-        // object rather than read inside the generator, which stays pure.
-        let urltests = urltest_settings_for(as_string(section[".name"] || ""));
-        if (length(urltests) > 0)
-            section.steer_urltest_settings = urltests;
-    }
-
-    // Spec v2 (a top-level `version: 2`). This is not a newer number of the
-    // contract-v1 format that used to be written here: v2 is a different
-    // document with lan / lists / outputs / rules / dns sections, and steer
-    // rejects a spec carrying both `version` and `schema`. Only steer 2.0 and
-    // newer understand it, so the version gate below has to run before this.
-    return steer_generator.build_spec_v2(sections, settings);
-}
-
-// steer reads spec v2 only from 2.0 on. Handing a v1-era kernel a v2 spec is a
-// hard rejection there, and the proxy would be down rather than degraded. This
-// asks for the version, not for the subcommand set: steer_contract_ready()
-// answers a different question and passes a 1.x build that would reject the
-// spec outright. It lives with the engine module, which owns the binary path.
-function steer_supports_spec_v2() {
-    return engine.steer_supports_spec_v2();
-}
-
-// Generate the spec and validate it with the engine itself before writing, so
-// a spec the installed steer cannot compile never reaches the disk.
-
-// ============================================================================
-//
-// The control layer must not keep a second data model of the engine's state.
-// These helpers run steer and return its output verbatim, so the UI and the
-// API always see exactly what the engine reports.
-
-function steer_command_available(subcommand) {
-    if (!engine.binary_present(engine.ENGINE_STEER))
-        return false;
-    return command_success_from_args([ engine.engine_binary(engine.ENGINE_STEER), "help", subcommand ]);
-}
-
-function steer_run(subcommand, args) {
-    let bin = engine.engine_binary(engine.ENGINE_STEER);
-    if (bin == "" || !file_exists(bin))
-        return { ok: false, reason: "engine_not_installed", output: "" };
-    if (!steer_command_available(subcommand))
-        return { ok: false, reason: "unsupported_subcommand", subcommand, output: "" };
-
-    let argv = [ bin, subcommand ];
-    for (let arg in (type(args) == "array" ? args : []))
-        push(argv, arg);
-    // One execution, not two. command_output() and command_status() each ran
-    // the command on its own, so `steer apply` applied twice and every status
-    // poll paid for two engine runs. command_capture() takes the output and
-    // the exit status from the same run, and keeps the same 2>&1 shape the
-    // output side had before.
-    let result = common.command_capture(common.command_from_args(argv) + " 2>&1");
-    return { ok: result.status == 0, status: result.status, subcommand, output: result.output };
-}
-
-function steer_apply(dry_run) {
-    let args = dry_run ? [ "--dry-run" ] : [];
-    return steer_run("apply", args);
-}
-
-function steer_status() {
-    return steer_run("status", []);
-}
-
-function steer_diag() {
-    return steer_run("diag", []);
-}
-
-function steer_explain(target) {
-    if (as_string(target) == "")
-        return { ok: false, reason: "missing_target", output: "" };
-    return steer_run("explain", [ target ]);
-}
-
-function sync_steer_firewall_zones(spec) {
-    if (type(spec) != "object" || type(spec.outputs) != "object")
-        return;
-
-    let devices = [];
-    for (let out_name, out in spec.outputs) {
-        if (type(out) != "object")
-            continue;
-        if (out.kind == "vless") {
-            let dev = as_string(out.device || out_name);
-            if (dev != "" && dev != "direct")
-                push(devices, dev);
-        }
-        else if (out.kind == "interface") {
-            if (type(out.devices) == "array") {
-                for (let d in out.devices) {
-                    let dev = as_string(d);
-                    if (dev != "") push(devices, dev);
-                }
-            }
-            else if (as_string(out.device) != "") {
-                push(devices, as_string(out.device));
-            }
-        }
-    }
-
-    if (length(devices) == 0)
-        return;
-
-    let dev_args = join(" ", devices);
-    let cmd = "sh -c '" +
-        "idx=\"\"; for z in $(uci show firewall 2>/dev/null | sed -n \"s/^firewall\\.\\([^.=]*\\)=zone$/\\1/p\"); do " +
-        "  if [ \"$(uci -q get firewall.$z.name)\" = \"steer_out\" ]; then idx=\"$z\"; break; fi; done; " +
-        "if [ -z \"$idx\" ]; then " +
-        "  uci -q add firewall zone >/dev/null; " +
-        "  uci -q set firewall.@zone[-1].name=\"steer_out\"; " +
-        "  uci -q set firewall.@zone[-1].input=\"REJECT\"; " +
-        "  uci -q set firewall.@zone[-1].output=\"ACCEPT\"; " +
-        "  uci -q set firewall.@zone[-1].forward=\"ACCEPT\"; " +
-        "  uci -q set firewall.@zone[-1].masq=\"1\"; " +
-        "  uci -q set firewall.@zone[-1].mtu_fix=\"1\"; " +
-        "  idx=\"@zone[-1]\"; " +
-        "  uci -q add firewall forwarding >/dev/null; " +
-        "  uci -q set firewall.@forwarding[-1].src=\"lan\"; " +
-        "  uci -q set firewall.@forwarding[-1].dest=\"steer_out\"; " +
-        "fi; " +
-        "for d in " + dev_args + "; do " +
-        "  uci -q add_list firewall.$idx.device=\"$d\"; " +
-        "done; " +
-        "uci -q commit firewall && /etc/init.d/firewall reload >/dev/null 2>&1 || true" +
-        "'";
-    command_status(cmd);
-}
-
-// ============================================================================
-// CLI
-// ============================================================================
-
-function generate_steer_spec(opts) {
-    opts = type(opts) == "object" ? opts : {};
-
-    // v2 is the only format written now. A kernel older than 2.0 rejects it
-    // outright, so refuse before anything touches the disk instead of leaving
-    // the router with a spec the engine cannot load.
-    if (!opts.dry_run && !steer_supports_spec_v2()) {
-        return {
-            ok: false,
-            reason: "steer_spec_v2_unsupported",
-            path: engine.STEER_SPEC_FILE,
-            error: "Tachyon writes steer spec v2, which needs steer 2.0 or newer. " +
-                   "Update steer, or switch back to sing-box."
-        };
-    }
-
-    let spec = build_steer_spec();
-    let text = steer_generator.serialize_spec(spec);
-    let path = engine.STEER_SPEC_FILE;
-
-    if (opts.dry_run)
-        return { ok: true, reason: "dry_run", path, spec, text };
-
-    let dir = replace(path, /\/[^\/]*$/, "");
-    if (dir != "")
-        common.ensure_dir(dir);
-
-    // A second spec file in the same directory is a hard rejection, so anything
-    // stale goes before the new spec lands.
-    let removed_stale = engine.remove_stale_steer_specs(dir);
-    // Identical content must not be rewritten. /etc is on the flash overlay, and
-    // the guard that normally protects this (content_unchanged, called from
-    // write_file) cannot help here: write_file is pointed at a fresh temp name
-    // that never exists yet, so it always sees a difference and always writes.
-    // The comparison has to happen against the real path, before any temp file
-    // exists, otherwise every apply - including a no-op restart - pushes a
-    // byte-identical copy of the spec through the flash.
-    if (common.content_unchanged(path, text))
-        return { ok: true, reason: "unchanged", path, spec, removed_stale };
-
-
-    let tmp = path + ".tachyon." + as_string(int(clock()[0])) + "." + as_string(int(clock()[1]));
-    if (!common.write_file(tmp, text))
-        return { ok: false, reason: "write_failed", path };
-    if (!fs.rename(tmp, path)) {
-        common.remove_file(tmp);
-        return { ok: false, reason: "rename_failed", path };
-    }
-
-    // Validate with the engine when it is present; a compile failure must not
-    // leave a broken spec active.
-    if (engine.binary_present(engine.ENGINE_STEER)) {
-        let check = steer_apply(true);
-        if (!check.ok) {
-            return { ok: false, reason: "spec_rejected", path, output: check.output };
-        }
-    }
-
-    sync_steer_firewall_zones(spec);
-
-    return { ok: true, reason: "", path, spec, removed_stale };
-}
-
-// The firewall zone the tun device needs.
-//
-// fw4 drops forwarded packets between zones it was not told about, so a tun0
-// that exists but has no zone silently blackholes every client the moment auto
-// route starts steering traffic into it - which looks exactly like "the proxy is
-// up and nothing goes through". Created only when the tun inbound is actually
-// being written, and left in place once created: removing it on disable would
-// tear down a zone the box may still have forwarding into.
 function sync_tun_firewall_zone(settings) {
     if (as_string(option(settings, "proxy_mode", "tproxy")) != "tun")
         return;
@@ -538,9 +174,6 @@ function sync_tun_firewall_zone(settings) {
         uci_core.set("firewall." + forward + ".dest", zone);
     }
 
-    // The device list is replaced rather than appended to, so changing the
-    // interface name in the settings does not leave the old one claimed by the
-    // zone and silently swallowing its traffic.
     uci_core.set("firewall." + index + ".device", interface_name);
 
     if (!uci_core.commit("firewall"))
@@ -627,79 +260,21 @@ function main() {
         return result.ok ? 0 : 1;
     }
 
-    if (mode == "engine-explain") {
-        let result = steer_explain(ARGV[1] || "");
-        print(result.output);
-        return result.ok ? 0 : 1;
-    }
-
-    if (mode == "engine-diag") {
-        let result = steer_diag();
-        if (!result.ok && result.output == "")
-            print_json(result);
-        else
-            print(result.output);
-        return result.ok ? 0 : 1;
-    }
-
     if (mode == "engine-status") {
         let active = engine.get_active();
-        if (active == engine.ENGINE_TACHYON_CORE) {
-            print_json({ engine: active, note: "sing-box status is exposed through get_sing_box_status" });
-            return 0;
-        }
-        let result = steer_status();
-        if (!result.ok && result.output == "")
-            print_json(result);
-        else
-            print(result.output);
-        return result.ok ? 0 : 1;
+        print_json({ engine: active, note: "tachyon-core status is exposed through get_sing_box_status" });
+        return 0;
     }
 
     if (mode == "engine-apply") {
-        let active = engine.get_active();
-        if (active == engine.ENGINE_TACHYON_CORE) {
-            // sing-box regeneration goes through the normal lifecycle reload.
-            print_json(reload_active("engine-apply"));
-            return 0;
-        }
-        let result = steer_apply(ARGV[1] == "--dry-run");
-        print(result.output);
-        return result.ok ? 0 : 1;
+        print_json(reload_active("engine-apply"));
+        return 0;
     }
 
-    if (mode == "engine-generate") {
-        let result = generate_steer_spec({ dry_run: ARGV[1] == "--dry-run" });
-        if (result.ok && ARGV[1] == "--dry-run")
-            print(result.text);
-        else
-            print_json({
-                ok: result.ok,
-                reason: result.reason,
-                path: result.path,
-                output: result.output || ""
-            });
-        return result.ok ? 0 : 1;
-    }
-
-    warn("Usage: service/engine_runtime.uc <engine-info|engine-features|engine-plan|engine-switch|engine-switch-back|engine-start|engine-stop|engine-reload|engine-status|engine-apply|engine-generate|engine-diag|engine-explain> ...\n");
+    warn("Usage: service/engine_runtime.uc <engine-info|engine-features|engine-plan|engine-switch|engine-switch-back|engine-start|engine-stop|engine-reload|engine-status|engine-apply> ...\n");
     return 2;
 }
 
-// A library module, with no CLI of its own.
-//
-// This used to be one file that both exported the functions and called
-// exit(main()), guarded by "was I required?". That guard cannot be written
-// correctly: sourcepath(1) is the *caller's* path and is null both when this
-// file is the program ucode runs and when it is imported from `ucode -e`, so
-// the two cases are indistinguishable. Components that require this module -
-// components/action.uc switching the engine, diagnostics/system_info.uc reading
-// status - ran main() with the ambient ARGV and then exited the interpreter out
-// from under the caller.
-//
-// So the split is structural instead: this file is requireable and never exits,
-// and service/engine_runtime.uc is the thin CLI that dispatches. Every existing
-// invocation keeps working because the CLI path is unchanged.
 function module_exports() {
     return {
         main,
@@ -712,14 +287,7 @@ function module_exports() {
         reload_active,
         switch_engine,
         restart_tachyon_service,
-        build_steer_spec,
-        generate_steer_spec,
-        urltest_settings_for,
-        steer_run,
-        steer_apply,
-        steer_status,
-        steer_diag,
-        steer_explain
+        sync_tun_firewall_zone
     };
 }
 

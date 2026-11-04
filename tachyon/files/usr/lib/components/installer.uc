@@ -193,6 +193,17 @@ function apk_can_install_files_offline(files) {
     return command_success_from_args(sim_args);
 }
 
+function pkg_proxy_env(proxy_address) {
+    if (as_string(proxy_address) == "")
+        return null;
+    let p = "http://" + proxy_address;
+    let env_vars = { http_proxy: p, https_proxy: p, HTTP_PROXY: p, HTTPS_PROXY: p };
+    let bin_dir = (helpers.LIB_DIR || "/usr/lib/tachyon") + "/bin";
+    if (file_exists(bin_dir + "/wget"))
+        env_vars.PATH = bin_dir + ":" + (getenv("PATH") || "/usr/sbin:/usr/bin:/sbin:/bin");
+    return env_vars;
+}
+
 function pkg_list_update_command(proxy_address) {
     if (proxy_address == null)
         proxy_address = service_proxy_address();
@@ -207,9 +218,9 @@ function pkg_list_update_command(proxy_address) {
     } else {
         direct_cmd = "opkg update </dev/null";
     }
-    if (as_string(proxy_address) != "") {
-        let p = "http://" + proxy_address;
-        let proxied_cmd = command_env({ http_proxy: p, https_proxy: p, HTTP_PROXY: p, HTTPS_PROXY: p }) + " " + direct_cmd;
+    let env_vars = pkg_proxy_env(proxy_address);
+    if (env_vars != null) {
+        let proxied_cmd = command_env(env_vars) + " " + direct_cmd;
         return "(" + proxied_cmd + " || " + direct_cmd + ")";
     }
     return direct_cmd;
@@ -229,9 +240,10 @@ function pkg_install_name_command(package_name, proxy_address) {
     } else {
         cmd = command_from_args([ "opkg", "install", package_name ]) + " </dev/null";
     }
-    if (as_string(proxy_address) != "") {
-        let p = "http://" + proxy_address;
-        cmd = command_env({ http_proxy: p, https_proxy: p, HTTP_PROXY: p, HTTPS_PROXY: p }) + " " + cmd;
+    let env_vars = pkg_proxy_env(proxy_address);
+    if (env_vars != null) {
+        let proxied_cmd = command_env(env_vars) + " " + cmd;
+        return "(" + proxied_cmd + " || " + cmd + ")";
     }
     return cmd;
 }

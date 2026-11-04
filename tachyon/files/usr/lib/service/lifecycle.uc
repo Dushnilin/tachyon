@@ -127,7 +127,6 @@ const PARENTAL_QUOTA_UC = LIB_DIR + "/service/parental_quota.uc";
 const PACKAGES_UC = LIB_DIR + "/core/packages.uc";
 const WATCHDOG_UC = LIB_DIR + "/service/watchdog.uc";
 const TELEGRAM_UC = LIB_DIR + "/service/telegram.uc";
-const STEER_DNS_UC = LIB_DIR + "/steer/dns.uc";
 
 let start_subscription_update_lock_held = false;
 let subscription_caches_prepared = getenv("TACHYON_SUBSCRIPTION_CACHES_PREPARED") || "0";
@@ -540,10 +539,6 @@ function dnsmasq_configure(force) {
     return dns_apply_status(args);
 }
 
-function dnsmasq_configure_steer() {
-    return dns_apply_status([ "configure-steer" ]);
-}
-
 function dnsmasq_restore(force) {
     let args = [ "restore" ];
     if (force)
@@ -593,20 +588,6 @@ function discover_awg_mtu() {
     return 0;
 }
 
-// Whether the active routing engine is steer or steer-extended. Used to skip
-// the sing-box-only start work (config validation, dnsmasq pointing at the
-// sing-box DNS inbound) that must never run on a steer device.
-function active_engine_is_steer() {
-    let active_engine = "tachyon-core";
-    try {
-        active_engine = require("core.engine").get_active();
-    }
-    catch (e) {
-        active_engine = "tachyon-core";
-    }
-    return active_engine != "tachyon-core";
-}
-
 function desired_core_component_name() {
     let variant = "";
     try {
@@ -625,8 +606,6 @@ function desired_core_component_name() {
 
 function ensure_core_binary_installed() {
     if (getenv("TACHYON_PACKAGE_TEST_MODE") != null || getenv("TACHYON_UCI_STATE_FILE") != null)
-        return true;
-    if (active_engine_is_steer())
         return true;
     if (command_success("command -v tachyon-core") || command_success("command -v sing-box"))
         return true;
@@ -1059,109 +1038,10 @@ function prepare_community_rulesets() {
             log_message("Smart Detect: exclusion preset " + name + " is unavailable; keeping the previous cache", "warn");
 }
 
-// Start the steer engine. Tachyon's job here is to make sure sing-box is not
-// running and holding the same dataplane, generate the spec from the current
-// configuration, and let the steer init script bring the engine up.
-function start_steer_main(active_engine) {
-    log_message("Starting Tachyon with the " + active_engine + " engine", "info");
-
-    // Make sure the sing-box service is not left running: two engines must not
-    // fight over nftables and policy routing.
-    if (fs.stat("/etc/init.d/tachyon-core") != null)
-        command_success_from_args([ "/etc/init.d/tachyon-core", "stop" ]);
-
-    let engine_runtime = require("service.engine_runtime");
-
-    // The subscription cache lives in /var/run (tmpfs) and is empty after a
-    // reboot. The steer spec embeds the vless sub files built from that cache,
-    // so without this step vless outputs lose their nodes after every reboot
-    // and fall back to direct. Not fatal on steer: the engine starts either
-    // way, and the subscription update cycle will retry later.
-    module_status(SUBSCRIPTION_CACHE_UC, [ "ensure-runtime-dirs" ]);
-    if (module_status(SUBSCRIPTION_CACHE_UC, [ "prepare-caches", "startup", "0", "0" ]) != 0)
-        log_message("Subscription caches are not ready; vless outputs may fall back to direct until the next subscription update", "warn");
-    prepare_community_rulesets();
-
-    let generated = engine_runtime.generate_steer_spec({});
-    if (!generated.ok) {
-        let detail = generated.output ? (": " + trim(as_string(generated.output))) : "";
-        log_message("Failed to generate the steer spec: " + as_string(generated.reason) + detail, "fatal");
-        return 1;
-    }
-
-    if (!engine_runtime.init_script_present(active_engine)) {
-        let action_uc = LIB_DIR + "/components/action.uc";
-        if (getenv("TACHYON_PACKAGE_TEST_MODE") == null && getenv("TACHYON_UCI_STATE_FILE") == null && fs.stat(action_uc) != null && fs.stat(RUNTIME_STATE_DIR + "/component-action.lock") == null) {
-            log_message("steer is missing (e.g. after sysupgrade); auto-installing " + active_engine + "...", "info");
-            module_status(action_uc, [ "component-action", active_engine, "install" ]);
-        }
-        if (!engine_runtime.init_script_present(active_engine)) {
-            log_message("steer is not installed; cannot start the " + active_engine + " engine", "fatal");
-            return 1;
-        }
-    }
-
-    // Start the DNS upstream resolver (smartdns) BEFORE steer dnsd so that
-    // steer init.d can read the upstream port from the port file and pass it
-    // as --upstream-port. If smartdns is not installed this is a safe no-op.
-    let dns_status = module_status(STEER_DNS_UC, [ "start-runtime" ]);
-    if (dns_status != 0)
-        log_message("steer DNS upstream start failed (non-fatal, steer dnsd will use port 53)", "warn");
-
-    let started = engine_runtime.run_init(active_engine, "start");
-    if (!started.ok) {
-        log_message("Failed to start the " + active_engine + " engine", "fatal");
-        return 1;
-    }
-
-    // Spawn the nfqws handlers for the engine's zapret outputs. Older steer
-    // init scripts (1.5.x) do not manage them — the engine builds the queue
-    // rules but nobody listens, so bypassed traffic goes out unprocessed. The
-    // service steps aside when the steer init handles zapret on its own.
-    if (fs.stat("/etc/init.d/tachyon-steer-zapret") != null) {
-        if (command_status_from_args([ "/etc/init.d/tachyon-steer-zapret", "start" ]) != 0)
-            log_message("steer zapret handler service failed to start (non-fatal)", "warn");
-    }
-
-    // The steer package ships its own /usr/sbin/steer-nfqws, which replaces our
-    // nfqws2-aware wrapper at every steer (re)install/upgrade. Without the
-    // wrapper's nfqws2 detection all zapret2 strategies die with "no
-    // /opt/zapret/nfq/nfqws" or run through the wrong binary. Restore our
-    // master copy when the packaged stub is back.
-    let nfqws_wrapper = fs.stat("/usr/share/tachyon/steer-nfqws") != null ? "/usr/share/tachyon/steer-nfqws" : (LIB_DIR + "/../../usr/sbin/steer-nfqws");
-    if (fs.stat(nfqws_wrapper) != null && fs.stat("/usr/sbin/steer-nfqws") != null) {
-        let current = fs.readfile("/usr/sbin/steer-nfqws", 256) || "";
-        if (index(current, "Tachyon") < 0 && index(current, "tachyon") < 0) {
-            fs.writefile("/usr/sbin/steer-nfqws", fs.readfile(nfqws_wrapper));
-            fs.chmod("/usr/sbin/steer-nfqws", 0755);
-        }
-    }
-
-    // On steer, zapret/zapret2 sections are handled directly by steer as
-    // kind: zapret outputs running steer-nfqws. Standalone runtimes on
-    // queues 4200/4300 would collide and hijack packets.
-    // Other optional runtimes (byedpi, wdtt, etc.) remain independent:
-    module_success(BYEDPI_UC, [ "start-runtime" ]);
-    module_success(WDTT_UC, [ "start-runtime" ]);
-    module_success(OLCRTC_UC, [ "start-runtime" ]);
-    module_success(FPTN_UC, [ "start-runtime" ]);
-    module_success(TAILSCALE_UC, [ "start-runtime" ]);
-
-    return 0;
-}
-
 function start_main() {
     let status;
 
     log_message("Starting Tachyon", "info");
-
-    // steer owns the dataplane through its own nftables table and policy
-    // routing. Tachyon's sing-box nft rules and sing-box itself must stay out
-    // of the way, so the steer branch never touches NFT_UC or sing-box. The
-    // engine check comes first: the sing-box config validator would abort the
-    // start on a steer-only device before the steer branch is ever reached.
-    if (active_engine_is_steer())
-        return start_steer_main(require("core.engine").get_active());
 
     status = validate_start_config();
     if (status != 0)
@@ -1218,7 +1098,7 @@ function start_main() {
     // down until someone ran tailscale_restart (#110).
     module_success(TAILSCALE_UC, [ "start-runtime" ]);
 
-    for (let comp_svc in [ "forkop", "podkop", "netshift", "steer" ]) {
+    for (let comp_svc in [ "forkop", "podkop", "netshift" ]) {
         if (fs.stat("/etc/init.d/" + comp_svc) != null) {
             command_status_from_args([ "/etc/init.d/" + comp_svc, "stop" ]);
         }
@@ -1314,15 +1194,7 @@ function start_impl() {
     if (status != 0)
         return status;
 
-    // On steer the sing-box DNS inbound does not run, so dnsmasq must not be
-    // pointed at it: configure dnsmasq for steer (noresolv=0, smartdns/bootstrap
-    // upstreams, no 127.0.0.42).
-    if (active_engine_is_steer()) {
-        status = dnsmasq_configure_steer();
-        if (status != 0)
-            return status;
-    }
-    else if (!setting_bool("dont_touch_dhcp", false)) {
+    if (!setting_bool("dont_touch_dhcp", false)) {
         status = dnsmasq_configure(true);
         if (status != 0)
             return status;
@@ -1349,12 +1221,10 @@ function start_impl() {
     if (status != 0)
         return status;
 
-    if (!active_engine_is_steer()) {
-        status = module_status(DNS_FAILOVER_UC, [ "start-runtime" ]);
-        if (status != 0) {
-            log_message("Failed to start DNS failover runtime", "fatal");
-            return status;
-        }
+    status = module_status(DNS_FAILOVER_UC, [ "start-runtime" ]);
+    if (status != 0) {
+        log_message("Failed to start DNS failover runtime", "fatal");
+        return status;
     }
 
     module_background(UI_UC, [ "get-ui-capabilities" ]);
@@ -1368,22 +1238,6 @@ function stop_main() {
     let status = 0;
 
     log_message("Stopping Tachyon", "info");
-
-    // Stop the steer engine if present; its init script removes its own
-    // nftables table and policy routing. Stopping it unconditionally ensures
-    // that switching steer -> sing-box cleanly shuts down steer before sing-box
-    // takes over the dataplane. The zapret handler service must go first: its
-    // processes hold the engine's nfqueue sockets.
-    if (fs.stat("/etc/init.d/tachyon-steer-zapret") != null)
-        command_success_from_args([ "/etc/init.d/tachyon-steer-zapret", "stop" ]);
-    if (fs.stat("/etc/init.d/steer") != null) {
-        command_success_from_args([ "/etc/init.d/steer", "stop" ]);
-    }
-
-    // Stop the steer DNS upstream (smartdns). Must happen after steer dnsd is
-    // gone (init stop above) so the port file removal is safe and no new queries
-    // arrive at the shutting-down smartdns instance.
-    module_success(STEER_DNS_UC, [ "stop-runtime" ]);
 
     if (!module_success(DNS_FAILOVER_UC, [ "stop-runtime" ]))
         log_message("DNS failover stop failed (non-fatal)", "warn");
@@ -1464,6 +1318,9 @@ function cleanup_failed_runtime() {
     if (mark_status != 0 && status == 0)
         status = mark_status;
 
+    if (fs.stat("/etc/rc.d/S99tachyon") != null)
+        module_status(WATCHDOG_UC, [ "start-runtime" ]);
+
     if (status != 0)
         log_message("Failed to fully clean up Tachyon runtime after start/reload failure", "warn");
 
@@ -1494,21 +1351,6 @@ function start() {
     }
 
     mark_pending_reload_if_config_changed(startup_config_fingerprint, "config_changed_during_start");
-
-    // The stable-start verification below is sing-box specific. When steer
-    // drives routing, its own init script already reported success, so asking
-    // for a stable sing-box would always fail and roll the start back.
-    let active_engine = "tachyon-core";
-    try {
-        active_engine = require("core.engine").get_active();
-    }
-    catch (e) {
-        active_engine = "tachyon-core";
-    }
-    if (active_engine != "tachyon-core") {
-        module_status(STATE_UC, [ "run-pending-reload-if-requested", PENDING_RELOAD_FILE, SERVICE_INIT ]);
-        return 0;
-    }
 
     status = module_status(STATE_UC, [
         "wait-tachyon-core-service-stable",
@@ -1580,12 +1422,6 @@ function restart_runtime_for_reload() {
     if (status != 0) {
         cleanup_failed_runtime();
         return status;
-    }
-
-    if (active_engine_is_steer()) {
-        restore_selector_state(selector_state);
-        remove_file(RELOAD_STATE_SNAPSHOT_FILE);
-        return 0;
     }
 
     status = module_status(STATE_UC, [
@@ -1748,52 +1584,6 @@ function dns_failover_apply(candidate_state_path) {
     return status;
 }
 
-// Reload the steer engine: regenerate the spec from the current configuration
-// and let steer reload itself. No sing-box config, DNS or nft work happens here.
-function reload_steer(active_engine, reason, initial_fingerprint) {
-    if (as_string(reason || "") != "force" && current_config_hash() == last_completed_reload_hash()) {
-        log_message("Reload skipped: configuration is unchanged", "info");
-        return 0;
-    }
-
-    // A config change can add or replace a subscription section; its cache does
-    // not exist yet, and the spec generator needs it to write the vless sub
-    // file. "runtime" phase refreshes only due/missing caches. Non-fatal: the
-    // previous spec keeps running if the refresh fails.
-    module_status(SUBSCRIPTION_CACHE_UC, [ "ensure-runtime-dirs" ]);
-    if (module_status(SUBSCRIPTION_CACHE_UC, [ "prepare-caches", "runtime", "0", "0" ]) != 0)
-        log_message("Subscription cache refresh failed on reload; keeping the previous node lists", "warn");
-
-    let engine_runtime = require("service.engine_runtime");
-    let generated = engine_runtime.generate_steer_spec({});
-    if (!generated.ok) {
-        let detail = generated.output ? (": " + trim(as_string(generated.output))) : "";
-        log_message("Failed to generate the steer spec: " + as_string(generated.reason) + detail, "error");
-        return finish_reload_status(1, initial_fingerprint);
-    }
-
-    let reloaded = engine_runtime.run_init(active_engine, "reload");
-    if (!reloaded.ok)
-        reloaded = engine_runtime.run_init(active_engine, "restart");
-    if (!reloaded.ok) {
-        log_message("Failed to reload the " + active_engine + " engine", "error");
-        return finish_reload_status(1, initial_fingerprint);
-    }
-
-    // The steer-nfqws wrapper re-reads the opts file only when its process
-    // starts, and the engine's init reload never touches those handlers: a
-    // strategy changed in the config would keep running with the old keys, and
-    // a zapret output added or removed would have no handler at all. Restarting
-    // the handler service re-enumerates the outputs from the current spec and
-    // re-reads every strategy in one step (tunnels and dnsd stay up).
-    if (fs.stat("/etc/init.d/tachyon-steer-zapret") != null) {
-        if (command_status_from_args([ "/etc/init.d/tachyon-steer-zapret", "restart" ]) != 0)
-            log_message("steer zapret handler service restart failed (non-fatal)", "warn");
-    }
-
-    return finish_reload_status(0, initial_fingerprint);
-}
-
 function reload(reason) {
     let status;
     let force_runtime_reload = as_string(reason || "") == "on_config_change" ? 0 : 1;
@@ -1804,18 +1594,6 @@ function reload(reason) {
     rule_condition_cache_enabled = force_runtime_reload;
 
     log_message("Reloading Tachyon", "info");
-
-    // steer reloads by regenerating its spec and reloading its own service;
-    // the sing-box reload pipeline below never runs while steer is active.
-    let active_engine = "tachyon-core";
-    try {
-        active_engine = require("core.engine").get_active();
-    }
-    catch (e) {
-        active_engine = "tachyon-core";
-    }
-    if (active_engine != "tachyon-core")
-        return reload_steer(active_engine, reason, reload_config_fingerprint);
 
     // Skip all work when config fingerprint is unchanged since the last reload.
     // Applies to user-triggered reloads as well as on_config_change; saves ~4
@@ -2028,7 +1806,7 @@ function reload(reason) {
     module_status(NFT_UC, [ "nft-sync-router-output-intercept", NFT_TABLE_NAME, NFT_LOCALV4_SET_NAME, NFT_OUTBOUND_MARK ]);
 
     if (plan.needs_dnsmasq_configure == 1) {
-        status = active_engine_is_steer() ? dnsmasq_configure_steer() : dnsmasq_configure(true);
+        status = dnsmasq_configure(true);
         if (status != 0)
             return abort_reload(status, true);
         module_success(STATE_UC, [ "capture-reload-state", RELOAD_STATE_SNAPSHOT_FILE, as_string(RELOAD_STATE_FORMAT) ]);
@@ -2091,11 +1869,6 @@ function restart() {
     if (status != 0) {
         cleanup_failed_runtime();
         return status;
-    }
-
-    if (active_engine_is_steer()) {
-        restore_selector_state(selector_state);
-        return 0;
     }
 
     status = module_status(STATE_UC, [

@@ -17,6 +17,20 @@ let command_from_args = common.command_from_args;
 let command_capture = common.command_capture;
 let command_output_from_args = common.command_output_from_args;
 
+function utf8_prefix(text, limit) {
+    text = as_string(text);
+    limit = int(limit || 0);
+    if (limit <= 0)
+        return "";
+    let len = length(text);
+    if (len <= limit)
+        return text;
+    let end = limit;
+    while (end > 0 && end < len && ord(text, end) >= 128 && ord(text, end) < 192)
+        end--;
+    return substr(text, 0, end);
+}
+
 function get_t() {
     let cfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
     return i18n.bind(cfg.language || "en");
@@ -492,8 +506,6 @@ function valid_updatable_component(name) {
         "tachyon-core": 1,
         sing_box: 1,
         "sing-box": 1,
-        steer: 1,
-        "steer-extended": 1,
         zapret: 1,
         zapret2: 1,
         byedpi: 1,
@@ -909,5 +921,6 @@ return {
     find_mac_block_rules,
     valid_updatable_component,
     component_display_title,
-    clean_release_notes
+    clean_release_notes,
+    utf8_prefix
 };

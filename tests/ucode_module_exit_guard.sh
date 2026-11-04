@@ -66,8 +66,8 @@ done <<< "$(grep -rl 'function module_exports' "$LIB_DIR" --include='*.uc')"
 # ─── and the crash itself must stay fixed ────────────────────────────────────
 # Driven with an argument on purpose: that is the combination that used to abort.
 cat >"$WORK_DIR/require.uc" <<'EOF'
-let g = require("steer.generator");
-print("exports=" + (type(g.build_spec_v2) == "function" ? "yes" : "no") + "\n");
+let g = require("core.engine");
+print("exports=" + (type(g.get_active) == "function" ? "yes" : "no") + "\n");
 EOF
 
 status=0
@@ -77,7 +77,7 @@ out="$(ucode -L "$LIB_DIR" "$WORK_DIR/require.uc" with-an-argument 2>&1)" || sta
 printf '%s' "$out" | grep -q '^exports=yes$' \
   || fail "require() returned no usable exports: $out"
 
-out="$(ucode -L "$LIB_DIR" -e 'let g = require("steer.generator"); print("inline=" + (type(g.build_spec_v2) == "function" ? "yes" : "no") + "\n");' with-an-argument 2>&1)" \
+out="$(ucode -L "$LIB_DIR" -e 'let g = require("core.engine"); print("inline=" + (type(g.get_active) == "function" ? "yes" : "no") + "\n");' with-an-argument 2>&1)" \
   || fail "inline require with an argument must not abort the interpreter: $out"
 printf '%s' "$out" | grep -q '^inline=yes$' \
   || fail "inline require returned no usable exports: $out"

@@ -58,11 +58,6 @@ grep -Fq "'sing-box-tiny'" <<<"$picker_block" ||
 grep -Fq 'if (pickerHonoursTag) {' <<<"$picker_block" ||
   fail "the engine card must not render the Versions button for the package variants"
 
-# The variants that do honour a tag keep their picker, and steer honours a tag
-# too (install_steer takes target_tag), so it must not be gated either.
-grep -Fq "selectedVariant.id !== 'steer'" <<<"$picker_block" &&
-  fail "steer honours a picked tag and must keep its picker"
-
 # The picker component still follows the selection, which is what fixed the
 # "versions of the active engine" report; the gate must not undo that.
 grep -Fq 'const pickerComponent = getVariantComponent(selectedVariant.id);' <<<"$picker_block" ||

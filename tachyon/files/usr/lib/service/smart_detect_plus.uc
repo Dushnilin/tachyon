@@ -261,8 +261,18 @@ function smart_detect_queue_order(pending, domains) {
 }
 
 
-function probe_kind(status) {
-    if (status == 0) return "ok";
+function probe_kind(status, http_code) {
+    if (type(status) == "object") {
+        http_code = int(status.http_code || 0);
+        status = int(status.status || 0);
+    } else {
+        status = int(status);
+        http_code = int(http_code || 0);
+    }
+    if (status == 0) {
+        if (http_code == 403 || http_code == 451) return "geoblock";
+        return "ok";
+    }
     if (status == 5 || status == 6) return "dns";
     if (index([7, 16, 18, 28, 35, 52, 55, 56, 92], status) >= 0) return "transport";
     return "local";
@@ -271,17 +281,17 @@ function probe_kind(status) {
 // Inject the runner in tests; production still uses argv and verified Direct flags.
 function probe(domain, item, proxy_addr, direct_flags, run) {
     let url = (item.scheme == "http" ? "http://" : "https://") + domain;
-    let argv = ["curl", "-s", "-o", "/dev/null", "--connect-timeout", "3", "--max-time", "8"];
+    let argv = ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "-L", "--max-redirs", "3", "--connect-timeout", "3", "--max-time", "8"];
     for (let flag in direct_flags) push(argv, flag);
     push(argv, url);
     let direct = probe_kind(run(argv));
     if (direct == "ok") return { act: false, seen: true, defer: false };
-    if (direct != "transport") return { act: false, seen: false, defer: true, dns_error: direct == "dns" };
+    if (direct != "transport" && direct != "geoblock") return { act: false, seen: false, defer: true, dns_error: direct == "dns" };
     direct = probe_kind(run(argv));
     if (direct == "ok") return { act: false, seen: true, defer: false };
-    if (direct != "transport") return { act: false, seen: false, defer: true, dns_error: direct == "dns" };
+    if (direct != "transport" && direct != "geoblock") return { act: false, seen: false, defer: true, dns_error: direct == "dns" };
     let proxy = probe_kind(run([
-        "curl", "-s", "-o", "/dev/null", "--connect-timeout", "5", "--max-time", "10",
+        "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "-L", "--max-redirs", "3", "--connect-timeout", "5", "--max-time", "10",
         "--proxy", "http://" + proxy_addr, url
     ]));
     return { act: proxy == "ok", seen: proxy == "ok", defer: proxy != "ok" };

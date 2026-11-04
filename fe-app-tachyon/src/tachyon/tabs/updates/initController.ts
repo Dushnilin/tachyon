@@ -70,11 +70,6 @@ import {
 } from './notifications';
 import { computeSystemInfoMutation } from './mutations';
 import {
-  normalizeSteerModules,
-  steerModulesUciArgs,
-  type SteerModule,
-} from './steerModules';
-import {
   COMPONENT_REPO_URLS,
   getCheckAction,
   getComponentBackupVersion as getComponentBackupVersionHelper,
@@ -2430,20 +2425,6 @@ async function refreshEngineInfo(): Promise<void> {
 }
 
 let selectedEngineOverride: string | null = null;
-const steerModulesOverride: SteerModule[] | null = null;
-
-export async function persistSteerModules(
-  selection: SteerModule[],
-): Promise<void> {
-  try {
-    for (const args of steerModulesUciArgs(selection)) {
-      await TachyonShellMethods.uciRunCommand(args);
-    }
-    await TachyonShellMethods.uciRunCommand(['commit', 'tachyon']);
-  } catch {
-    // Best effort
-  }
-}
 
 // One card for the routing engine: tachyon-core and sing-box variants in a
 // single place, with the active engine marked. Installing a variant also makes
@@ -2453,13 +2434,10 @@ function renderEngineCard(): Node {
   const systemInfo = normalizeSingBoxVariantFields(
     store.get().diagnosticsSystemInfo,
   );
-  void (
-    steerModulesOverride ?? normalizeSteerModules(systemInfo.steer_modules)
-  );
   const updatesActions = store.get().updatesActions;
   const anyActionLoading = isAnyActionLoading();
   const active = info?.active || 'tachyon-core';
-  const installing = steerBusy;
+  const installing = engineFlowBusy;
   const singBoxLoading = isSystemInfoLoading();
 
   // sing-box variant availability
@@ -2892,10 +2870,7 @@ function renderEngineCard(): Node {
     },
   });
 
-  const isSelectedSingBox = true;
-  const selectedCheckComponent: Tachyon.ComponentName = isSelectedSingBox
-    ? 'sing_box'
-    : 'steer';
+  const selectedCheckComponent: Tachyon.ComponentName = 'sing_box';
 
   // ── "Check update" button for selected/installed engine ────────────────────
   const checkUpdateAction: ComponentActionButton = {
@@ -2991,7 +2966,7 @@ function renderEngineCard(): Node {
       renderButton({
         text: isPickerOpen ? _('Hide versions') : _('Versions'),
         loading: isPickerOpen && versionPickerLoading,
-        disabled: singBoxLoading || anyActionLoading || steerBusy,
+        disabled: singBoxLoading || anyActionLoading || engineFlowBusy,
         onClick: () => void toggleVersionPicker(pickerComponent),
       }),
     );
@@ -3032,7 +3007,7 @@ function renderEngineCard(): Node {
   return E('div', { class: 'tachyon_updates-page__component' }, cardChildren);
 }
 
-let steerBusy = false;
+let engineFlowBusy = false;
 
 interface EngineFlowJob {
   component: Tachyon.ComponentName;
@@ -3058,7 +3033,7 @@ async function runEngineFlow(
     return;
   }
 
-  steerBusy = true;
+  engineFlowBusy = true;
   for (const job of jobs) {
     setActionLoading(job.key, true, true);
   }
@@ -3185,7 +3160,7 @@ async function runEngineFlow(
     for (const job of jobs) {
       setActionLoading(job.key, false);
     }
-    steerBusy = false;
+    engineFlowBusy = false;
     renderUpdatesComponents();
   }
 }
@@ -3198,22 +3173,10 @@ async function runComponentAction(
   _key: string,
   targetLabel?: string,
 ): Promise<void> {
-  const activeEngine = engineInfoCache?.active || 'tachyon-core';
-  const isSteerActive =
-    activeEngine === 'steer' || activeEngine === 'steer-extended';
-  const engineTarget = 'tachyon-core';
   const installKey =
     getComponentActionKey(component, action) ??
     getComponentInstallKey(component);
   const jobs: EngineFlowJob[] = [{ component, action, key: installKey }];
-  if (isSteerActive) {
-    jobs.push({
-      component: 'engine',
-      action: 'switch',
-      key: 'engineSwitch',
-      extra: engineTarget,
-    });
-  }
   const resolvedLabel =
     targetLabel ||
     (action === 'install_tachyon_core'

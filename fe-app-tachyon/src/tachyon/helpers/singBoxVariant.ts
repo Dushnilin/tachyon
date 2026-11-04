@@ -58,27 +58,6 @@ export function isNotInstalled(version?: string) {
   );
 }
 
-export type SteerVariantFields = {
-  steer_version?: string;
-  steer_extended?: number;
-  steer_installed?: number;
-};
-
-export function formatSteerVersion(value: SteerVariantFields) {
-  const version = String(value.steer_version || '');
-
-  if (!version || isNotInstalled(version) || value.steer_installed === 0) {
-    return _('Not installed');
-  }
-
-  if (isVersionPlaceholder(version)) {
-    return version;
-  }
-
-  const variant = value.steer_extended ? _('extended') : _('standard');
-  return variant ? `${version} (${variant})` : version;
-}
-
 export function formatSingBoxVersion(value: SingBoxVariantFields) {
   const version = String(value.sing_box_version || '');
 

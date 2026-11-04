@@ -26,9 +26,6 @@ const initialSystemInfo: StoreType['diagnosticsSystemInfo'] = {
   fptn_installed: 0,
   fptn_version: 'not installed',
   tailscale_version: 'not installed',
-  steer_installed: 0,
-  steer_version: 'not installed',
-  steer_extended: 0,
   direct_bypass_enabled: 0,
   torrserver_direct_enabled: 0,
   torrserver_direct_active: 0,
@@ -178,21 +175,5 @@ describe('computeSystemInfoMutation', () => {
     expect(nextSystemInfo.byedpi_installed).toBe(0);
     expect(nextSystemInfo.byedpi_version).toBe('not installed');
     expect(notifyActionProviders).toBe(true);
-  });
-
-  it('updates steer extended status', () => {
-    const { nextSystemInfo, notifyActionProviders } = computeSystemInfoMutation(
-      initialSystemInfo,
-      {
-        component: 'steer-extended',
-        action: 'install',
-        current_version: '1.5.7',
-      },
-    );
-
-    expect(nextSystemInfo.steer_installed).toBe(1);
-    expect(nextSystemInfo.steer_version).toBe('1.5.7');
-    expect(nextSystemInfo.steer_extended).toBe(1);
-    expect(notifyActionProviders).toBe(false);
   });
 });

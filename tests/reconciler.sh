@@ -65,7 +65,7 @@ function assert(cond, msg) {
 
 // Test A: Subsystems isolation (DNS drift does NOT require engine repair)
 let desired_sample = {
-    engine: { should_run: true, id: "sing-box", is_steer: false },
+    engine: { should_run: true, id: "tachyon-core" },
     dns: { manage_dnsmasq: true, smartdns_needed: false, expect_resolving: true },
     nftables: { table_needed: true, table_name: "TachyonTable", sets_needed: ["localv4"] },
     routing: { needed: true, table_name: "tachyon" },
@@ -73,7 +73,7 @@ let desired_sample = {
 };
 
 let actual_dns_drop = {
-    engine: { running: true, id: "sing-box" },
+    engine: { running: true, id: "tachyon-core" },
     dns: { dnsmasq_running: true, dnsmasq_managed: false, smartdns_running: false, resolving: false },
     nftables: { table_present: true, table_name: "TachyonTable", sets_present: ["localv4"], sets_missing: [], sets_empty: [] },
     routing: { rule4_present: true, rule6_present: true, route_present: true },
@@ -91,9 +91,9 @@ assert(subsystems_touched["engine"] == null, "Engine subsystem must NOT be flagg
 assert(subsystems_touched["nftables"] == null, "NFTables subsystem must NOT be flagged on DNS drop");
 assert(subsystems_touched["routing"] == null, "Routing subsystem must NOT be flagged on DNS drop");
 
-// Test B: Steer engine desired state verification
-let steer_desired = reconciler.get_desired_state();
-assert(steer_desired.timestamp > 0, "Desired state must have positive timestamp");
+// Test B: Desired state verification
+let desired = reconciler.get_desired_state();
+assert(desired.timestamp > 0, "Desired state must have positive timestamp");
 
 // Test C: Event mapping dispatch
 let ev_dns = reconciler.reconcile_event("dns.down", {});

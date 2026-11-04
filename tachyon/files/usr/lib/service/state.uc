@@ -2,19 +2,29 @@
 
 let fs = require("fs");
 let uci_core = require("core.uci");
-let rule_config = require("config.rule");
-let connections = require("config.connections");
-let zapret_validator = require("providers.zapret.validator");
-let zapret2_validator = require("providers.zapret2.validator");
-let byedpi_validator = require("providers.byedpi.validator");
+let rule_config = null;
+let connections = null;
+let zapret_validator = null;
+let zapret2_validator = null;
+let byedpi_validator = null;
 let common = require("core.common");
 let process_identity = require("core.process");
+
+function ensure_signature_deps() {
+    if (rule_config == null) rule_config = require("config.rule");
+    if (connections == null) connections = require("config.connections");
+    if (zapret_validator == null) zapret_validator = require("providers.zapret.validator");
+    if (zapret2_validator == null) zapret2_validator = require("providers.zapret2.validator");
+    if (byedpi_validator == null) byedpi_validator = require("providers.byedpi.validator");
+}
+
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
 const DEFAULT_PENDING_RELOAD_FILE = getenv("TACHYON_PENDING_RELOAD_FILE") || "/var/run/tachyon/reload.pending";
 const DEFAULT_SERVICE_INIT = getenv("TACHYON_SERVICE_INIT") || "/etc/init.d/tachyon";
 const RUNTIME_STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon";
 const RELOAD_PREVIEW_FILE = getenv("TACHYON_RELOAD_PREVIEW_FILE") || RUNTIME_STATE_DIR + "/reload-preview.json";
+const SING_BOX_PROVENANCE_FILE = getenv("TACHYON_SING_BOX_PROVENANCE_FILE") || "/var/run/tachyon/sing-box.provenance";
 const SB_VARIANT_STATE_FILE = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant";
 const CORE_LOG_PATH = getenv("TACHYON_CORE_LOG_PATH") || "/tmp/tachyon-core/sing-box.log";
 const ZAPRET_DEFAULT_NFQWS_OPT = getenv("ZAPRET_DEFAULT_NFQWS_OPT") || "";
@@ -462,6 +472,22 @@ function pid_is_sing_box(pid) {
     return process_identity.is_sing_box(pid);
 }
 
+function read_json_file_local(path) {
+    let data = fs.readfile(as_string(path));
+    if (data == null)
+        return null;
+    try {
+        return json(as_string(data));
+    }
+    catch (e) {
+        return null;
+    }
+}
+
+function read_provenance_file() {
+    return read_json_file_local(SING_BOX_PROVENANCE_FILE);
+}
+
 function sing_box_service_pid_runtime() {
     // new procd pid file first, the previous release's paths after it: an
     // upgraded router can still be running under the old service name until
@@ -470,6 +496,13 @@ function sing_box_service_pid_runtime() {
         let pid = int(trim(fs.readfile(path) || "0"));
         if (pid > 0 && pid_is_sing_box(pid))
             return pid;
+    }
+
+    if (getenv("SING_BOX_TEST_PID_FILE") == null) {
+        let prov = read_provenance_file();
+        let prov_pid = type(prov) == "object" ? int(prov.pid || 0) : 0;
+        if (prov_pid > 0 && pid_is_sing_box(prov_pid))
+            return prov_pid;
     }
 
     // procd registers the service under its init script name; an install that
@@ -895,20 +928,6 @@ function process_age_seconds(pid) {
     return process_identity.process_age_seconds(pid);
 }
 
-const SING_BOX_PROVENANCE_FILE = getenv("TACHYON_SING_BOX_PROVENANCE_FILE") || "/var/run/tachyon/sing-box.provenance";
-
-function read_json_file_local(path) {
-    let data = fs.readfile(as_string(path));
-    if (data == null)
-        return null;
-    try {
-        return json(as_string(data));
-    }
-    catch (e) {
-        return null;
-    }
-}
-
 function write_provenance_file(pid) {
     pid = as_string(pid);
     if (match(pid, /^[0-9]+$/) == null || int(pid) <= 0)
@@ -934,10 +953,6 @@ function write_provenance_file(pid) {
     }
     try { fs.unlink(tmp_path); } catch(e) {}
     return false;
-}
-
-function read_provenance_file() {
-    return read_json_file_local(SING_BOX_PROVENANCE_FILE);
 }
 
 function verify_provenance() {
@@ -1029,20 +1044,6 @@ function reload_sing_box_runtime(previous_pid, config_hash_before, config_hash_a
         return;
     }
 
-    if (has_active_mtproxy_inbound()) {
-        command_success_from_args([ "logger", "-t", "tachyon", "[info] MTProxy inbound active: terminating tachyon-core and performing full restart (issue #30)" ]);
-        let active_pid = sing_box_service_pid_runtime();
-        if (active_pid > 0 && pid_is_sing_box(active_pid)) {
-            command_success_from_args([ "kill", "-9", as_string(active_pid) ]);
-            command_success_from_args([ "sleep", "0.2" ]);
-        }
-        if (!command_success_from_args([ "/etc/init.d/tachyon-core", "restart" ])) {
-            command_success_from_args([ "logger", "-t", "tachyon", "[fatal] Failed to restart tachyon-core. Aborted." ]);
-            exit(1);
-        }
-        return;
-    }
-
     // Try graceful SIGHUP reload first when tachyon-core is running: it reloads
     // config in-place without terminating the process, preserving active sessions.
     let active_pid = sing_box_service_pid_runtime();
@@ -1058,6 +1059,20 @@ function reload_sing_box_runtime(previous_pid, config_hash_before, config_hash_a
             }
             command_success_from_args([ "logger", "-t", "tachyon", "[warn] tachyon-core SIGHUP reload failed; falling back to full restart" ]);
         }
+    }
+
+    if (has_active_mtproxy_inbound()) {
+        command_success_from_args([ "logger", "-t", "tachyon", "[info] MTProxy inbound active: terminating tachyon-core and performing full restart (issue #30)" ]);
+        let mt_pid = sing_box_service_pid_runtime();
+        if (mt_pid > 0 && pid_is_sing_box(mt_pid)) {
+            command_success_from_args([ "kill", "-9", as_string(mt_pid) ]);
+            command_success_from_args([ "sleep", "0.2" ]);
+        }
+        if (!command_success_from_args([ "/etc/init.d/tachyon-core", "restart" ])) {
+            command_success_from_args([ "logger", "-t", "tachyon", "[fatal] Failed to restart tachyon-core. Aborted." ]);
+            exit(1);
+        }
+        return;
     }
 
     command_success_from_args([ "logger", "-t", "tachyon", "[info] Restarting tachyon-core runtime" ]);
@@ -1089,6 +1104,40 @@ let network_check_cache = {
     result: false
 };
 
+function tproxy_route_rule_present_fast(rt_table, mark) {
+    rt_table = as_string(rt_table);
+    let route_out = command_output_from_args([ "ip", "route", "list", "table", rt_table ]);
+    let route_ok = false;
+    for (let line in split(route_out, "\n")) {
+        let trimmed = trim(line);
+        if (trimmed == "local default dev lo" || substr(trimmed, 0, 21) == "local default dev lo ") {
+            route_ok = true;
+            break;
+        }
+    }
+    if (!route_ok)
+        return false;
+
+    let expected_mark = common.parse_number(mark);
+    if (expected_mark == null)
+        return false;
+
+    let rule_out = command_output_from_args([ "ip", "rule", "list" ]);
+    for (let line in split(rule_out, "\n")) {
+        let text = trim(line);
+        if (text == "" || index(text, "lookup " + rt_table) < 0 || index(text, "fwmark ") < 0)
+            continue;
+        let parts = split(text, "fwmark ");
+        if (length(parts) < 2)
+            continue;
+        let mark_part = split(trim(parts[1]), /[ \t\/]/)[0];
+        let parsed = common.parse_number(mark_part);
+        if (parsed != null && parsed == expected_mark)
+            return true;
+    }
+    return false;
+}
+
 function tachyon_runtime_network_configured(rt_table, nft_table, mark) {
     let settings = object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
     let proxy_mode = lc(trim(as_string(settings.proxy_mode || "tproxy")));
@@ -1098,8 +1147,12 @@ function tachyon_runtime_network_configured(rt_table, nft_table, mark) {
         return true;
 
     let need_tproxy_route = proxy_mode != "tun" && proxy_mode != "socks";
-    let result = command_success_from_args([ "nft", "-t", "list", "table", "inet", nft_table ]) &&
-        (!need_tproxy_route || command_success_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/nft/apply.uc", "tproxy-route-rule-present", rt_table, mark ]));
+    let tproxy_ok = !need_tproxy_route || (
+        getenv("SING_BOX_TEST_PID_FILE") != null
+            ? command_success_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/nft/apply.uc", "tproxy-route-rule-present", rt_table, mark ])
+            : tproxy_route_rule_present_fast(rt_table, mark)
+    );
+    let result = command_success_from_args([ "nft", "-t", "list", "table", "inet", nft_table ]) && tproxy_ok;
 
     network_check_cache.key = key;
     network_check_cache.checked_at = now;
@@ -1751,20 +1804,20 @@ function priority_groups_signature(section) {
     let result = [];
     for (let group_id in connections.priority_groups(section)) {
         let levels = [];
-        for (let level_id in connections.priority_levels(group_id)) {
+        for (let level_id in connections.priority_levels(group_id, section)) {
             push(levels, {
                 id: level_id,
-                display_name: connections.priority_level_display_name(group_id, level_id),
-                order: connections.priority_level_order(group_id, level_id),
-                direct: connections.priority_level_direct(group_id, level_id) ? "1" : "0",
-                filter_mode: connections.priority_level_filter_mode(group_id, level_id),
-                detect_server_country: connections.priority_level_detect_server_country(group_id, level_id),
-                include_countries: connections.priority_level_include_countries(group_id, level_id),
-                include_outbounds: connections.priority_level_include_outbounds(group_id, level_id),
-                include_regex: connections.priority_level_include_regex(group_id, level_id),
-                exclude_countries: connections.priority_level_exclude_countries(group_id, level_id),
-                exclude_outbounds: connections.priority_level_exclude_outbounds(group_id, level_id),
-                exclude_regex: connections.priority_level_exclude_regex(group_id, level_id)
+                display_name: connections.priority_level_display_name(group_id, level_id, section),
+                order: connections.priority_level_order(group_id, level_id, section),
+                direct: connections.priority_level_direct(group_id, level_id, section) ? "1" : "0",
+                filter_mode: connections.priority_level_filter_mode(group_id, level_id, section),
+                detect_server_country: connections.priority_level_detect_server_country(group_id, level_id, section),
+                include_countries: connections.priority_level_include_countries(group_id, level_id, section),
+                include_outbounds: connections.priority_level_include_outbounds(group_id, level_id, section),
+                include_regex: connections.priority_level_include_regex(group_id, level_id, section),
+                exclude_countries: connections.priority_level_exclude_countries(group_id, level_id, section),
+                exclude_outbounds: connections.priority_level_exclude_outbounds(group_id, level_id, section),
+                exclude_regex: connections.priority_level_exclude_regex(group_id, level_id, section)
             });
         }
 
@@ -2901,6 +2954,47 @@ function fixture_reload_state_values(data, format) {
 }
 
 let mode = ARGV[0];
+
+const FAST_RUNTIME_MODES = {
+    "file-first-line": true,
+    "get": true,
+    "has-key": true,
+    "time-sync-needed": true,
+    "sync-time-if-needed": true,
+    "mark-pending-reload": true,
+    "consume-pending-reload": true,
+    "run-pending-reload-if-requested": true,
+    "acquire-runtime-dir-lock": true,
+    "acquire-runtime-dir-lock-wait": true,
+    "release-runtime-dir-lock": true,
+    "reload-core-runtime": true,
+    "sighup-core-runtime": true,
+    "hup-core-runtime": true,
+    "clear-reload-state": true,
+    "remove-file": true,
+    "write-reload-state": true,
+    "response-success": true,
+    "stdin-first-field": true,
+    "tachyon-core-service-pid": true,
+    "tachyon-core-service-runtime-pid": true,
+    "tachyon-core-service-pid-runtime": true,
+    "sing-box-service-running": true,
+    "tachyon-core-service-stable": true,
+    "process-age-seconds-fixture": true,
+    "sing-box-pid-replaced-fixture": true,
+    "sing-box-reload-previous-pid-fixture": true,
+    "sing-box-runtime-reload-needed-fixture": true,
+    "tachyon-running": true,
+    "tachyon-stably-running": true,
+    "wait-tachyon-stable-start": true,
+    "wait-tachyon-core-service-stable": true,
+    "write-provenance": true,
+    "verify-provenance": true,
+    "core-is-foreign": true,
+    "cleanup-provenance": true
+};
+if (mode != null && !FAST_RUNTIME_MODES[mode])
+    ensure_signature_deps();
 
 if (mode == "file-first-line")
     file_first_line(ARGV[1]);

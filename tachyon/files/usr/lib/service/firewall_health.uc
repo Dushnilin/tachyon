@@ -21,16 +21,12 @@ function interception_suppressed(settings) {
 }
 
 function inspect(settings) {
-    let active_engine = require("core.engine").get_active();
-    let steer = active_engine == "steer" || active_engine == "steer-extended";
-    let table = steer ? "steer" : (getenv("NFT_TABLE_NAME") || "TachyonTable");
+    let table = getenv("NFT_TABLE_NAME") || "TachyonTable";
     let result = common.command_capture(common.command_from_args([
         "nft", "list", "table", "inet", table
     ]) + " 2>/dev/null");
     let data = result.output || "";
     let table_present = result.status == 0 && index(data, "table inet " + table) >= 0;
-    if (steer)
-        return { nft_ok: table_present, qos_ok: true, steer: true };
 
     let mode = lc(trim(common.as_string(settings.proxy_mode || "tproxy")));
     let need_tproxy = mode != "tun" && mode != "socks";
@@ -42,7 +38,7 @@ function inspect(settings) {
         (table_present &&
          (index(data, "dscp set 0x2e") >= 0 || index(data, "dscp set ef") >= 0) &&
          (index(data, "dscp set 0x22") >= 0 || index(data, "dscp set af41") >= 0));
-    return { nft_ok: nft_ok, qos_ok: qos_ok, steer: false };
+    return { nft_ok: nft_ok, qos_ok: qos_ok };
 }
 
 function tproxy_listening(port) {

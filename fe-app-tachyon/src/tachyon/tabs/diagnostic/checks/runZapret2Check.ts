@@ -3,8 +3,6 @@ import { TachyonShellMethods } from '../../../methods';
 import { updateCheckStore } from './updateCheckStore';
 import { IDiagnosticsChecksItem } from '../../../services';
 import { getCheckItemsMeta } from './getCheckItemsMeta';
-import { store } from '../../../services';
-import { isSteerEngine } from '../diagnostic.store';
 
 export async function runZapret2Check() {
   const { order, title, code } = DIAGNOSTICS_CHECKS_MAP.ZAPRET2;
@@ -34,8 +32,6 @@ export async function runZapret2Check() {
   }
 
   const data = zapret2Status.data;
-  const activeEngine = store.get().activeEngine || 'sing-box';
-  const isSteer = isSteerEngine(activeEngine);
 
   const providerAvailable = Boolean(data.provider_available ?? data.installed);
   const packageInstalled = Boolean(data.package_installed);
@@ -58,15 +54,8 @@ export async function runZapret2Check() {
   const standaloneAutostartRisk =
     hasZapret2Rules && standaloneServiceEnabled && !standaloneServiceRunning;
 
-  // In steer mode, nfqws2 workers are managed by steer-nfqws, not Tachyon.
-  // Tachyon-managed runtime will always show 0/N — that is expected, not an error.
-  const nfqwsRuntimeState: IDiagnosticsChecksItem['state'] = isSteer
-    ? tachyonRuntimeReady
-      ? 'success'
-      : 'warning'
-    : unexpectedRuntime || !tachyonRuntimeReady
-      ? 'error'
-      : 'success';
+  const nfqwsRuntimeState: IDiagnosticsChecksItem['state'] =
+    unexpectedRuntime || !tachyonRuntimeReady ? 'error' : 'success';
 
   const items: Array<IDiagnosticsChecksItem> = [
     {
@@ -100,16 +89,13 @@ export async function runZapret2Check() {
     },
     {
       state: nfqwsRuntimeState,
-      key:
-        isSteer && hasZapret2Rules && !tachyonRuntimeReady
-          ? _('NFQWS Tachyon not ready (managed by Steer)')
-          : hasZapret2Rules
-            ? tachyonRuntimeReady
-              ? _('Tachyon-managed nfqws2 runtime is ready')
-              : _('Tachyon-managed nfqws2 runtime is not ready')
-            : unexpectedRuntime
-              ? _('Unexpected Tachyon-managed nfqws2 runtime is running')
-              : _('Tachyon-managed nfqws2 runtime is not running'),
+      key: hasZapret2Rules
+        ? tachyonRuntimeReady
+          ? _('Tachyon-managed nfqws2 runtime is ready')
+          : _('Tachyon-managed nfqws2 runtime is not ready')
+        : unexpectedRuntime
+          ? _('Unexpected Tachyon-managed nfqws2 runtime is running')
+          : _('Tachyon-managed nfqws2 runtime is not running'),
       value: hasZapret2Rules ? `${runningProcesses}/${expectedProcesses}` : '',
     },
     {

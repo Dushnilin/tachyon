@@ -701,6 +701,53 @@ function section_subscription_update_interval(section) {
     return result;
 }
 
+function section_subscription_update_jitter(section) {
+    if (type(connections.subscription_update_jitter) != "function")
+        return "";
+    for (let entry in connections.subscription_urls(section)) {
+        if (!connections.subscription_update_enabled(section, entry))
+            continue;
+        let jit = trim(as_string(connections.subscription_update_jitter(section, entry) || ""));
+        if (jit != "")
+            return jit;
+    }
+    return trim(as_string(connections.subscription_update_jitter(section, "") || ""));
+}
+
+function apply_subscription_jitter_seconds(base_seconds, jitter_spec, section_name_val, last_run_val) {
+    base_seconds = int(base_seconds || 0);
+    jitter_spec = trim(as_string(jitter_spec || ""));
+    if (base_seconds <= 1 || jitter_spec == "" || jitter_spec == "0" || lc(jitter_spec) == "disabled")
+        return base_seconds;
+    let max_delta = 0;
+    let pct_match = match(jitter_spec, /^([0-9]+)%$/);
+    if (pct_match != null) {
+        let pct = int(pct_match[1], 10);
+        if (pct > 80)
+            pct = 80;
+        if (pct > 0)
+            max_delta = int((base_seconds * pct) / 100.0 + 0.5);
+    } else {
+        let dur = duration_to_seconds_value(jitter_spec);
+        if (dur != null && dur > 0)
+            max_delta = dur > int(base_seconds * 0.8) ? int(base_seconds * 0.8) : dur;
+        else
+            max_delta = int(base_seconds * 0.15 + 0.5);
+    }
+    if (max_delta <= 0)
+        return base_seconds;
+    let seed = as_string(section_name_val || "") + ":" + as_string(last_run_val || "0");
+    let h = 2166136261;
+    for (let i = 0; i < length(seed); i++)
+        h = ((h ^ ord(seed, i)) * 16777619) & 0x7fffffff;
+    let span = max_delta * 2 + 1;
+    let offset = (h % span) - max_delta;
+    if (offset == 0)
+        offset = (h & 1) ? 1 : -1;
+    let eff = base_seconds + offset;
+    return eff < 60 ? 60 : eff;
+}
+
 function section_is_subscription_proxy(section) {
     return bool_option(section, "enabled", true) &&
         connections.is_connections_action(option(section, "action", "")) &&
@@ -766,6 +813,7 @@ function cron_refresh_plan_rows(settings, sections, bin, list_marker, subscripti
 
     let min_interval = 0;
     let subscription_source_count = 0;
+    let has_subscription_jitter = false;
     for (let section in sections) {
         section = object_or_empty(section);
         if (!section_is_subscription_proxy(section))
@@ -782,6 +830,9 @@ function cron_refresh_plan_rows(settings, sections, bin, list_marker, subscripti
             continue;
         }
 
+        if (section_subscription_update_jitter(section) != "")
+            has_subscription_jitter = true;
+
         if (min_interval == 0 || seconds < min_interval)
             min_interval = seconds;
     }
@@ -789,8 +840,10 @@ function cron_refresh_plan_rows(settings, sections, bin, list_marker, subscripti
     if (subscription_source_count > 0) {
         if (min_interval <= 0)
             status = 1;
-        else
-            push(rows, "subscription\t" + due_check_cron_schedule_text(min_interval) + " " + as_string(bin) + " subscription_update_if_due " + as_string(subscription_marker));
+        else {
+            let cron_seconds = (has_subscription_jitter && min_interval > 300) ? 300 : min_interval;
+            push(rows, "subscription\t" + due_check_cron_schedule_text(cron_seconds) + " " + as_string(bin) + " subscription_update_if_due " + as_string(subscription_marker));
+        }
     }
 
     let component_interval = settings_component_update_check_interval(settings);
@@ -1007,7 +1060,12 @@ function subscription_update_section_due_status(section, timestamp_path, now) {
         exit(2);
     }
 
-    exit(update_due_status(now, file_first_line_value(timestamp_path), seconds));
+    let last_run = file_first_line_value(timestamp_path);
+    let jitter = section_subscription_update_jitter(section);
+    if (jitter != "")
+        seconds = apply_subscription_jitter_seconds(seconds, jitter, section_name(section), last_run);
+
+    exit(update_due_status(now, last_run, seconds));
 }
 
 function stdin_first_ipv4_line() {
@@ -2825,10 +2883,8 @@ function import_community_srs_file(service, settings, skip_flash_persist) {
                 } else if (sz > 524288) {
                     remove_file(persistent_trs_file);
                 }
-                if (!fs.rename(tmpfile, cached_trs_file)) {
-                    common.copy_file_stream(tmpfile, cached_trs_file);
-                    remove_file(tmpfile);
-                }
+                copy_file(tmpfile, cached_trs_file);
+                remove_file(tmpfile);
                 remove_file(cached_file);
                 remove_file(persistent_file);
                 log_message("Successfully cached preset ruleset " + service + " (.trs) from " + trs_url, "info");
@@ -3814,6 +3870,23 @@ function config_has_local_rulesets(config_path) {
     return false;
 }
 
+let list_update_local_rulesets_fp_before = null;
+
+function local_rulesets_fingerprint(config_path) {
+    let cfg = common.read_json_file(config_path);
+    if (type(cfg) != "object" || type(cfg.route) != "object" || type(cfg.route.rule_set) != "array")
+        return "";
+    let fp = "";
+    for (let rs in cfg.route.rule_set) {
+        if (type(rs) != "object" || as_string(rs.type || "") != "local")
+            continue;
+        let path = trim(as_string(rs.path || ""));
+        if (path != "")
+            fp += path + ":" + file_md5(path) + "\n";
+    }
+    return fp;
+}
+
 function ruleset_api_tag(value) {
     let encoded = "";
     for (let i = 0; i < length(value); i++) {
@@ -3889,7 +3962,10 @@ function reload_singbox_after_list_update() {
         return false;
     let sing_box_config_hash_after = file_md5(sing_box_config_path);
     let has_local_rulesets = config_has_local_rulesets(sing_box_config_path);
-    if (sing_box_config_hash_before != sing_box_config_hash_after || has_local_rulesets) {
+    let local_rulesets_changed = list_update_local_rulesets_fp_before != null
+        ? (has_local_rulesets && local_rulesets_fingerprint(sing_box_config_path) != list_update_local_rulesets_fp_before)
+        : has_local_rulesets;
+    if (sing_box_config_hash_before != sing_box_config_hash_after || local_rulesets_changed) {
         if (sing_box_config_hash_before != sing_box_config_hash_after)
             log_message("Rulesets updated on disk; reloading sing-box with new configuration", "info");
         else
@@ -3915,39 +3991,6 @@ function reload_singbox_after_list_update() {
     return refresh_remote_rulesets(sing_box_config_path);
 }
 
-function list_update_steer_catalog(settings) {
-    // steer reads plain-text lists, not sing-box rule-sets. When steer is the
-    // active engine, refresh the plain-text catalog it points at.
-    let active = "tachyon-core";
-    try {
-        active = require("core.engine").get_active();
-    }
-    catch (e) {
-        active = "tachyon-core";
-    }
-    if (active == "tachyon-core")
-        return true;
-
-    let catalog;
-    try {
-        catalog = require("steer.lists");
-    }
-    catch (e) {
-        log_message("steer list catalog module unavailable: " + as_string(e), "warn");
-        return true;
-    }
-
-    let wanted_categories = list_option_values(settings, "steer_list_categories");
-    let wanted_domains = list_option_values(settings, "steer_list_domains");
-    let result = catalog.sync({ categories: wanted_categories, domains: wanted_domains });
-    if (!result.ok) {
-        log_message("steer list catalog refresh failed: " + as_string(result.reason), "warn");
-        return false;
-    }
-    log_message("steer list catalog refreshed (" + length(result.prefixes) + " prefix lists, " + length(result.domains) + " domain lists)", "info");
-    return true;
-}
-
 function list_update() {
     // When spawned by start_main() while start_impl() is still finalizing DNS,
     // reload-state, and system-info warmup, wait for startup to finish and
@@ -3969,6 +4012,8 @@ function list_update() {
     update_list_status(true, null, "starting", "Starting lists update");
 
     let settings = uci_settings();
+    let sing_box_config_path_initial = option(settings, "config_path", "") || "/etc/tachyon-core/config.json";
+    list_update_local_rulesets_fp_before = local_rulesets_fingerprint(sing_box_config_path_initial);
     let proxy_address = service_proxy_address(settings, "lists");
     if (!dns_probe_passed(proxy_address)) {
         update_list_status(false, false, "error", "DNS probe failed");
@@ -4017,11 +4062,6 @@ function list_update() {
     for (let section in sections)
         if (!update_remote_plain_rulesets_from_rule(section, settings))
             ok = false;
-
-    // steer needs its own plain-text list catalog; refresh it alongside the
-    // sing-box lists so a later engine switch has current files.
-    if (!list_update_steer_catalog(settings))
-        ok = false;
 
     // Фаза 2: применение к nft (захватываем лок reload, чтобы не конфликтовать
     // с reload-firewall, который пересоздаёт таблицы и сеты nftables)
