@@ -1333,7 +1333,7 @@
       "cli_command": "extract_ruleset",
       "category": "diagnostics",
       "acl": "read",
-      "description": "extract-ruleset (diagnostics/runtime.uc)",
+      "description": "extract-ruleset (diagnostics/ruleset_inspect.uc)",
       "async": false,
       "timeout_ms": 5000,
       "params": [
