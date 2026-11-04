@@ -933,6 +933,43 @@ function subscription_probe_command(sub_url) {
     return "curl " + common.command_from_args(args) + " 2>&1";
 }
 
+// When a community list has no local .trs/.srs file the generator emits a
+// *remote* rule-set instead (tachyon_core/generator_routes.uc: local tmp file,
+// then /etc copy, then a remote url) and sing-box downloads it on its own. Those
+// lists work fine without anything in TMP_RULESET_FOLDER, so the presence check
+// below used to report a healthy setup as "N missing" — and the repair loop kept
+// re-testing the same missing file, so `doctor --fix` could never clear it.
+// Collect the list names that the running config serves through a remote
+// rule-set and treat them as present.
+function remote_community_lists() {
+    let served = {};
+    let raw = fs.readfile(singbox_config_path());
+    if (raw == null || raw == "")
+        return served;
+
+    let config;
+    try {
+        config = json(raw);
+    } catch (e) {
+        return served;
+    }
+
+    let rule_sets = config != null && config.route != null ? config.route.rule_set : null;
+    let suffix = "-community-ruleset";
+    for (let rs in rule_sets || []) {
+        if (rs == null || as_string(rs.type) != "remote" || rs.tag == null)
+            continue;
+        let tag = as_string(rs.tag);
+        if (length(tag) <= length(suffix) ||
+            substr(tag, length(tag) - length(suffix)) != suffix)
+            continue;
+        let parts = split(substr(tag, 0, length(tag) - length(suffix)), "-");
+        if (length(parts) > 1)
+            served[parts[length(parts) - 1]] = true;
+    }
+    return served;
+}
+
 function run_doctor_checks_impl(repair) {
     DOCTOR_REPAIR_MODE = (repair == true);
     DOCTOR_PLANNED_FIXES = [];
@@ -1927,6 +1964,7 @@ function run_doctor_checks_impl(repair) {
     {
         let missing_lists = [];
         let all_required = [];
+        let remote_served = remote_community_lists();
 
         // Collect all unique community list names across enabled sections (and linked conditions)
         let all_sections = uci_core.section_objects(CONFIG_NAME, "section");
@@ -1953,7 +1991,7 @@ function run_doctor_checks_impl(repair) {
                 let srs_stat = fs.stat(srs_path);
                 let has_trs = trs_stat != null && trs_stat.size > 0;
                 let has_srs = srs_stat != null && srs_stat.size > 0;
-                if (!has_trs && !has_srs) {
+                if (!has_trs && !has_srs && remote_served[list_name] != true) {
                     push(missing_lists, list_name);
                 }
             }
@@ -1977,7 +2015,8 @@ function run_doctor_checks_impl(repair) {
                         let srs_path = TMP_RULESET_FOLDER + "/community-" + list_name + ".srs";
                         let trs_stat = fs.stat(trs_path);
                         let srs_stat = fs.stat(srs_path);
-                        if ((trs_stat == null || trs_stat.size == 0) && (srs_stat == null || srs_stat.size == 0)) {
+                        if ((trs_stat == null || trs_stat.size == 0) && (srs_stat == null || srs_stat.size == 0) &&
+                            remote_served[list_name] != true) {
                             push(still_missing, list_name);
                         }
                     }
@@ -2010,7 +2049,8 @@ function run_doctor_checks_impl(repair) {
                                 let srs_path = TMP_RULESET_FOLDER + "/community-" + list_name + ".srs";
                                 let trs_stat = fs.stat(trs_path);
                                 let srs_stat = fs.stat(srs_path);
-                                if ((trs_stat == null || trs_stat.size == 0) && (srs_stat == null || srs_stat.size == 0)) {
+                                if ((trs_stat == null || trs_stat.size == 0) && (srs_stat == null || srs_stat.size == 0) &&
+                                    remote_served[list_name] != true) {
                                     push(still_missing, list_name);
                                 }
                             }
