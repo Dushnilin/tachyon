@@ -826,13 +826,24 @@ function apply_strategy(engine, args_val, target_rule) {
             uci.set(CONFIG_NAME, sid, "byedpi_cmd_opts", args_val);
         else if (engine == "desync") {
             let parsed_ds = fuzzer_runner.parse_desync_outbound(args_val, "desync-out");
+            let clear_keys = [
+                "desync_mode", "desync_fooling", "desync_auto_tune", "desync_split_pos",
+                "desync_fake_ttl", "desync_fake_sni", "desync_repeats", "desync_split_delay_ms",
+                "desync_udp_fake", "desync_udp_repeats", "desync_udp_fake_ttl", "desync_seqovl",
+                "desync_syndata", "desync_wsize", "desync_ipfrag", "desync_udplen", "desync_tlsrec_first"
+            ];
+            for (let ck in clear_keys)
+                uci.delete(CONFIG_NAME, sid, ck);
             uci.set(CONFIG_NAME, sid, "desync_opts", args_val);
             if (parsed_ds) {
                 uci.set(CONFIG_NAME, sid, "desync_preset", parsed_ds.preset ? as_string(parsed_ds.preset) : "custom");
                 if (parsed_ds.mode) uci.set(CONFIG_NAME, sid, "desync_mode", as_string(parsed_ds.mode));
                 if (parsed_ds.fooling) uci.set(CONFIG_NAME, sid, "desync_fooling", as_string(parsed_ds.fooling));
                 if (parsed_ds.auto_tune != null) uci.set(CONFIG_NAME, sid, "desync_auto_tune", parsed_ds.auto_tune ? "1" : "0");
-                if (parsed_ds.split_pos != null) uci.set(CONFIG_NAME, sid, "desync_split_pos", as_string(parsed_ds.split_pos));
+                if (parsed_ds.split_pos != null) {
+                    let sp_str = type(parsed_ds.split_pos) == "array" ? join(",", parsed_ds.split_pos) : as_string(parsed_ds.split_pos);
+                    uci.set(CONFIG_NAME, sid, "desync_split_pos", sp_str);
+                }
                 if (parsed_ds.fake_ttl != null) uci.set(CONFIG_NAME, sid, "desync_fake_ttl", as_string(parsed_ds.fake_ttl));
                 if (parsed_ds.fake_sni) uci.set(CONFIG_NAME, sid, "desync_fake_sni", as_string(parsed_ds.fake_sni));
                 if (parsed_ds.repeats != null) uci.set(CONFIG_NAME, sid, "desync_repeats", as_string(parsed_ds.repeats));
@@ -843,7 +854,7 @@ function apply_strategy(engine, args_val, target_rule) {
                 if (parsed_ds.seqovl != null) uci.set(CONFIG_NAME, sid, "desync_seqovl", as_string(parsed_ds.seqovl));
                 if (parsed_ds.syndata != null) uci.set(CONFIG_NAME, sid, "desync_syndata", parsed_ds.syndata ? "1" : "0");
                 if (parsed_ds.wsize != null) uci.set(CONFIG_NAME, sid, "desync_wsize", as_string(parsed_ds.wsize));
-                if (parsed_ds.ipfrag != null) uci.set(CONFIG_NAME, sid, "desync_ipfrag", as_string(parsed_ds.ipfrag));
+                if (parsed_ds.ipfrag != null) uci.set(CONFIG_NAME, sid, "desync_ipfrag", parsed_ds.ipfrag ? "1" : "0");
                 if (parsed_ds.udplen != null) uci.set(CONFIG_NAME, sid, "desync_udplen", as_string(parsed_ds.udplen));
                 if (parsed_ds.tlsrec_first != null) uci.set(CONFIG_NAME, sid, "desync_tlsrec_first", parsed_ds.tlsrec_first ? "1" : "0");
             }

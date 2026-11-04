@@ -419,6 +419,18 @@ if (!bad_caught) {
 }
 
 print("Multi-URL custom targets resolution and validation checks passed.\n");
+
+// E. Verify Desync strategy parsing preserves multi_disorder, compound fooling, and symbolic/array split_pos
+let ds_md = runner.parse_desync_outbound("mode=multi_disorder split_pos=sni fake_ttl=5 fake_sni=rutube.ru repeats=6", "desync-out");
+if (!ds_md || ds_md.mode != "multi_disorder" || ds_md.split_pos != "sni" || ds_md.fake_ttl != 5) {
+    warn(sprintf("Failed: multi_disorder strategy was misparsed: %J\n", ds_md));
+    exit(1);
+}
+let ds_adv = runner.parse_desync_outbound("mode=multi_split split_pos=1,sni,midsld-2 fooling=md5_badack seqovl=8", "desync-out");
+if (!ds_adv || ds_adv.mode != "multi_split" || ds_adv.fooling != "md5_badack" || type(ds_adv.split_pos) != "array" || length(ds_adv.split_pos) != 3) {
+    warn(sprintf("Failed: advanced desync strategy was misparsed: %J\n", ds_adv));
+    exit(1);
+}
 '
 
 printf 'PASS: fuzzer_strategy_cli\n'

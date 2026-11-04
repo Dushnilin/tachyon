@@ -67,35 +67,50 @@ function tokenize_strategy_args(raw_args) {
 
 const DESYNC_PRESETS = [
     "auto", "adaptive", "smart",
-    "fake_split", "fakesplit", "fake_disorder", "fakedisorder", "multi_split", "multisplit",
+    "fake_split", "fakesplit", "fake_disorder", "fakedisorder",
+    "multi_disorder", "multidisorder", "multi+disorder",
+    "multi_split", "multisplit",
     "split", "disorder", "tlsrec", "tls_rec", "fake", "oob",
     // Legacy aliases mapped to valid tachyon-core presets/parameters
     "general", "general_alt", "general_alt2", "general_alt3", "general_alt4",
     "general_alt5", "general_alt6", "general_alt7", "general_alt8", "general_alt9",
     "general_alt10", "general_alt11", "general_fake_tls", "general_fake_tls_alt",
     "general_fake_tls_alt2", "general_fake_tls_alt3", "general_simple_fake",
-    "general_simple_fake_alt", "general_simple_fake_alt2",
+    "general_simple_fake_alt", "general_simple_fake_alt2", "general_multisplit",
     "youtube", "google_youtube", "discord", "cloudflare", "aggressive", "light"
 ];
 
 const DESYNC_MODES = [
     "auto", "adaptive", "smart",
-    "fake_split", "fakesplit", "fake_disorder", "fakedisorder", "multi_split", "multisplit",
+    "fake_split", "fakesplit", "fake_disorder", "fakedisorder",
+    "multi_disorder", "multidisorder", "multi+disorder",
+    "multi_split", "multisplit",
     "split", "disorder", "tlsrec", "tls_rec", "fake", "oob", "none",
     // Legacy aliases mapped to valid tachyon-core modes
-    "fake+split", "fake+disorder", "multi+split", "multidisorder",
-    "tlsrec_split", "fakedsplit", "fakeddisorder", "syndata"
+    "fake+split", "fake+disorder", "multi+split",
+    "tlsrec_split", "fakedsplit", "faked_split", "fakeddisorder", "faked_disorder",
+    "hostfakesplit", "host_fake_split", "syndata"
 ];
 
 const DESYNC_FOOLING = [
-    "md5", "autottl", "timestamp", "ts", "badseq", "badsum"
+    "md5", "tcp_md5", "wrong-md5", "wrong_md5", "md5sig", "tcp_md5sig",
+    "autottl", "auto_ttl", "ttl", "low-ttl", "low_ttl",
+    "timestamp", "ts", "tcp_ts", "wrong-timestamp", "wrong_timestamp",
+    "badseq", "seq", "wrong-sequence", "wrong_sequence",
+    "badack", "ack", "tcp_ack", "wrong-ack", "wrong_ack",
+    "badsum", "sum", "wrong-checksum", "wrong_checksum",
+    "hopbyhop", "ip6_hopbyhop", "hopbyhop2", "ip6_hopbyhop2", "destopt", "ip6_destopt",
+    "badseq_badack_badsum", "combo", "badsum_combo",
+    "md5_badack", "tcp_md5_badack", "md5+badack", "md5sig_badack", "md5sig+badack",
+    "datanoack", "data_no_ack", "noack"
 ];
 
 function normalize_desync_preset(lv, outbound) {
     if (lv == "auto" || lv == "adaptive" || lv == "smart") return "auto";
     if (lv == "fakesplit" || lv == "fake_split") return "fake_split";
     if (lv == "fakedisorder" || lv == "fake_disorder") return "fake_disorder";
-    if (lv == "multisplit" || lv == "multi_split") return "multi_split";
+    if (lv == "multi_disorder" || lv == "multidisorder" || lv == "multi+disorder") return "multi_disorder";
+    if (lv == "multisplit" || lv == "multi_split" || lv == "general_multisplit") return "multi_split";
     if (lv == "tls_rec" || lv == "tlsrec") return "tlsrec";
     if (lv == "split" || lv == "disorder" || lv == "fake" || lv == "oob") return lv;
     if (lv == "youtube" || lv == "google_youtube") {
@@ -133,10 +148,12 @@ function normalize_desync_preset(lv, outbound) {
 function normalize_desync_mode(lv) {
     if (lv == "auto" || lv == "adaptive" || lv == "smart")
         return "auto";
-    if (lv == "fake_split" || lv == "fakesplit" || lv == "fake+split" || lv == "fakedsplit")
+    if (lv == "fake_split" || lv == "fakesplit" || lv == "fake+split" || lv == "fakedsplit" || lv == "faked_split" || lv == "hostfakesplit" || lv == "host_fake_split")
         return "fake_split";
-    if (lv == "fake_disorder" || lv == "fakedisorder" || lv == "fake+disorder" || lv == "fakeddisorder" || lv == "multidisorder")
+    if (lv == "fake_disorder" || lv == "fakedisorder" || lv == "fake+disorder" || lv == "fakeddisorder" || lv == "faked_disorder")
         return "fake_disorder";
+    if (lv == "multi_disorder" || lv == "multidisorder" || lv == "multi+disorder")
+        return "multi_disorder";
     if (lv == "multi_split" || lv == "multisplit" || lv == "multi+split")
         return "multi_split";
     if (lv == "disorder")
@@ -148,6 +165,75 @@ function normalize_desync_mode(lv) {
     if (lv == "fake" || lv == "oob" || lv == "none")
         return lv;
     return "fake_split";
+}
+
+function normalize_desync_fooling(lv) {
+    if (lv == "md5" || lv == "tcp_md5" || lv == "wrong-md5" || lv == "wrong_md5" || lv == "md5sig" || lv == "tcp_md5sig")
+        return "md5";
+    if (lv == "ts" || lv == "tcp_ts" || lv == "timestamp" || lv == "wrong-timestamp" || lv == "wrong_timestamp")
+        return "timestamp";
+    if (lv == "badseq" || lv == "seq" || lv == "wrong-sequence" || lv == "wrong_sequence")
+        return "badseq";
+    if (lv == "badack" || lv == "ack" || lv == "tcp_ack" || lv == "wrong-ack" || lv == "wrong_ack")
+        return "badack";
+    if (lv == "badsum" || lv == "sum" || lv == "wrong-checksum" || lv == "wrong_checksum")
+        return "badsum";
+    if (lv == "autottl" || lv == "auto_ttl" || lv == "ttl" || lv == "low-ttl" || lv == "low_ttl")
+        return "autottl";
+    if (lv == "hopbyhop" || lv == "ip6_hopbyhop" || lv == "hopbyhop2" || lv == "ip6_hopbyhop2" || lv == "destopt" || lv == "ip6_destopt")
+        return "hopbyhop";
+    if (lv == "badseq_badack_badsum" || lv == "combo" || lv == "badsum_combo")
+        return "badseq_badack_badsum";
+    if (lv == "md5_badack" || lv == "tcp_md5_badack" || lv == "md5+badack" || lv == "md5sig_badack" || lv == "md5sig+badack")
+        return "md5_badack";
+    if (lv == "datanoack" || lv == "data_no_ack" || lv == "noack")
+        return "datanoack";
+    return null;
+}
+
+function parse_single_desync_split_pos(v) {
+    let lv = lc(trim(as_string(v)));
+    if (lv == "midsld" || lv == "sld" || lv == "host")
+        return "midsld";
+    if (lv == "midsld-2" || lv == "sld-2")
+        return "midsld-2";
+    if (lv == "midsld+2" || lv == "sld+2")
+        return "midsld+2";
+    if (lv == "sni" || lv == "sniext")
+        return "sni";
+    if (lv == "sniext+1" || lv == "sni+1")
+        return "sniext+1";
+    if (lv == "host+1")
+        return "host+1";
+    if (lv == "endhost-1" || lv == "endsld-1" || lv == "endhost")
+        return "endhost-1";
+    if (lv == "extlen")
+        return "extlen";
+    if (match(lv, /^[0-9]+$/)) {
+        let n = int(lv);
+        if (n >= 1 && n <= 1400)
+            return n;
+    }
+    return null;
+}
+
+function parse_desync_split_pos(v) {
+    let raw = trim(as_string(v));
+    if (raw == "")
+        return null;
+    if (index(raw, ",") >= 0) {
+        let arr = [];
+        for (let part in split(raw, ",")) {
+            let item = parse_single_desync_split_pos(part);
+            if (item == null)
+                return null;
+            push(arr, item);
+        }
+        if (length(arr) == 0)
+            return null;
+        return length(arr) == 1 ? arr[0] : arr;
+    }
+    return parse_single_desync_split_pos(raw);
 }
 
 function parse_desync_outbound(args_val, tag_name) {
@@ -183,18 +269,10 @@ function parse_desync_outbound(args_val, tag_name) {
             outbound.mode = normalize_desync_mode(lv);
             recognized++;
         } else if (k == "split_pos") {
-            let lv = lc(v);
-            if (lv == "midsld" || lv == "sld" || lv == "host") {
-                outbound.split_pos = "midsld";
-            } else if (lv == "sni" || lv == "sniext") {
-                outbound.split_pos = "sni";
-            } else if (match(v, /^[0-9]+$/)) {
-                let n = int(v);
-                if (n < 1 || n > 1400) return null;
-                outbound.split_pos = n;
-            } else {
+            let nsp = parse_desync_split_pos(v);
+            if (nsp == null)
                 return null;
-            }
+            outbound.split_pos = nsp;
             recognized++;
         } else if (k == "fake_ttl" || k == "ttl") {
             if (!match(v, /^[0-9]+$/)) return null;
@@ -233,7 +311,9 @@ function parse_desync_outbound(args_val, tag_name) {
         } else if (k == "fooling") {
             let lv = lc(v);
             if (index(DESYNC_FOOLING, lv) < 0) return null;
-            outbound.fooling = (lv == "ts") ? "timestamp" : lv;
+            let nf = normalize_desync_fooling(lv);
+            if (nf == null) return null;
+            outbound.fooling = nf;
             recognized++;
         } else if (k == "auto_tune") {
             let lv = lc(v);
