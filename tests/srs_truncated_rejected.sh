@@ -98,7 +98,7 @@ if ! grep -qE 'is_(adoptable|referenceable)_srs_file\(tmp_path\)' "$TACHYON_LIB/
   fail "lifecycle.uc trusts the /tmp copy without asking sing-box; a file downloaded before the fix stays broken forever"
 fi
 
-if ! grep -qE 'is_(usable|referenceable)_srs_file\(etc_path\)' "$TACHYON_LIB/service/lifecycle.uc"; then
+if ! grep -qE 'is_(usable|adoptable|referenceable)_srs_file\(etc_path\)' "$TACHYON_LIB/service/lifecycle.uc"; then
   fail "restore_rulesets_from_cache copies /etc .srs files into the ruleset sing-box reads without parsing them first"
 fi
 

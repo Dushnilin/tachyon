@@ -2682,12 +2682,12 @@ if (type(runtime_rulesets.is_referenceable_trs_file) == "function" && runtime_ru
         let etc_json = "/etc/tachyon/rulesets/" + tag_name + ".json";
 
         if (substr(reference, 0, 1) == "/") {
-            if (!helpers.file_is_usable(reference, 1))
+            if (fs.stat(reference)?.type != "file")
                 return null;
 
             let ref_st = fs.stat(reference);
             let srs_st = fs.stat(srs_path);
-            if (srs_st && runtime_rulesets.is_valid_srs_file(srs_path) && ref_st && srs_st.mtime >= ref_st.mtime && fs.stat(json_path) != null) {
+            if (srs_st && runtime_rulesets.is_adoptable_srs_file(srs_path) && ref_st && srs_st.mtime >= ref_st.mtime && fs.stat(json_path) != null) {
                 push(config.route.rule_set, {
                     type: "local",
                     tag: tag_name,
@@ -2707,7 +2707,7 @@ if (type(runtime_rulesets.is_referenceable_trs_file) == "function" && runtime_ru
             return { tag: tag_name, kind: res.kind || (res.has_domains ? "domains" : "unknown") };
         }
         else if (substr(reference, 0, 7) == "http://" || substr(reference, 0, 8) == "https://") {
-            if (runtime_rulesets.is_valid_srs_file(srs_path)) {
+            if (runtime_rulesets.is_adoptable_srs_file(srs_path)) {
                 push(config.route.rule_set, {
                     type: "local",
                     tag: tag_name,
@@ -2716,8 +2716,7 @@ if (type(runtime_rulesets.is_referenceable_trs_file) == "function" && runtime_ru
                 });
                 return { tag: tag_name, kind: plain_ruleset_kind(json_path, etc_json, srs_path, kind) };
             }
-            else if (runtime_rulesets.is_valid_srs_file(etc_srs)) {
-                common.copy_file(etc_srs, srs_path);
+            else if (runtime_rulesets.is_adoptable_srs_file(etc_srs) && common.copy_file(etc_srs, srs_path)) {
                 if (fs.stat(etc_json) != null)
                     common.copy_file(etc_json, json_path);
                 push(config.route.rule_set, {
@@ -2790,6 +2789,7 @@ if (type(runtime_rulesets.is_referenceable_trs_file) == "function" && runtime_ru
                 }
                 else {
                     fs.unlink(tmp_plain);
+                    fs.unlink(srs_path);
                     runtime_rulesets.ensure_empty_srs_stub(srs_path);
                     push(config.route.rule_set, {
                         type: "local",
