@@ -3231,13 +3231,15 @@ function push_section_dns_matcher_rule(config, section, rule, excluded_cidrs, do
         rule_a.action = "predefined";
         rule_a.rcode = "NOERROR";
         rule_a.query_type = [ "A" ];
-        rule_a.answer = [ is_tachyon_core ? { ttl: ttl_num, value: "0.0.0.0" } : "* " + ttl_str + " IN A 0.0.0.0" ];
+        // sing-box needs an absolute wildcard owner; it rewrites *. to the
+        // queried name when constructing the response, including subdomains.
+        rule_a.answer = [ is_tachyon_core ? { ttl: ttl_num, value: "0.0.0.0" } : "*. " + ttl_str + " IN A 0.0.0.0" ];
         push_dns_matcher_rule(config, apply_excluded_source_ips(rule_a, dns_excluded_cidrs));
 
         rule_aaaa.action = "predefined";
         rule_aaaa.rcode = "NOERROR";
         rule_aaaa.query_type = [ "AAAA" ];
-        rule_aaaa.answer = [ is_tachyon_core ? { ttl: ttl_num, value: "::" } : "* " + ttl_str + " IN AAAA ::" ];
+        rule_aaaa.answer = [ is_tachyon_core ? { ttl: ttl_num, value: "::" } : "*. " + ttl_str + " IN AAAA ::" ];
         push_dns_matcher_rule(config, apply_excluded_source_ips(rule_aaaa, dns_excluded_cidrs));
         return;
     }
