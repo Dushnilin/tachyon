@@ -73,4 +73,13 @@ describe('Viewport and Mobile Responsiveness Regressions', async () => {
     );
     expect(GlobalStyles).toMatch(/\[id\^="cbi-tachyon"\] \.cbi-section-table/);
   });
+
+  it('constrains LuCI and CBI dropdown lists to prevent full-screen viewport overflow', () => {
+    expect(GlobalStyles).toMatch(
+      /\.cbi-dropdown\[open\]\s*>\s*ul[^}]*max-height:\s*min\(320px,\s*45vh\)\s*!important/,
+    );
+    expect(GlobalStyles).toMatch(
+      /\.cbi-dropdown\[open\]\s*>\s*ul[^}]*overflow-y:\s*auto\s*!important/,
+    );
+  });
 });
