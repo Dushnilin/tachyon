@@ -1872,6 +1872,27 @@ function extract_proxy_links_from_text_and_list(list_items, text_value) {
     return result;
 }
 
+function priority_level_list_option(section, key) {
+    let value = object_or_empty(section)[key];
+    if (value == null)
+        return [];
+    if (type(value) == "array") {
+        let out = [];
+        for (let item in value) {
+            let s = trim(as_string(item));
+            if (s != "")
+                push(out, s);
+        }
+        return out;
+    }
+    let s = trim(as_string(value));
+    if (s == "")
+        return [];
+    if (substr(s, 0, 4) == "srv:")
+        return [ s ];
+    return list_option(section, key);
+}
+
 function cleanup_modular_entities_v1(ctx) {
     let awg_scalar_keys = [
         "awg_private_key", "awg_server_address", "awg_server_port",
@@ -2175,7 +2196,9 @@ function cleanup_modular_entities_v1(ctx) {
     }
 
     let prune_ref_list = function(obj, key, valid_map, keep_special) {
-        let cur = list_option(obj, key);
+        let cur = (keep_special == "direct")
+            ? priority_level_list_option(obj, key)
+            : list_option(obj, key);
         if (length(cur) == 0)
             return;
         let next = [];
@@ -2220,6 +2243,8 @@ function cleanup_modular_entities_v1(ctx) {
         valid_groups_and_sources[k] = v;
     for (let k, v in valid_sources)
         valid_groups_and_sources[k] = v;
+    for (let sec in (ctx.model.sections || []))
+        prune_ref_list(sec, "outbound_group_levels", valid_groups_and_sources, "direct");
     for (let bal in (ctx.model.balancer || [])) {
         let bid = section_name(bal);
         let bal_srcs = list_option(bal, "source_refs");
@@ -2853,27 +2878,6 @@ function migrate_modular_entities_v1(ctx) {
     }
 
     cleanup_modular_entities_v1(ctx);
-}
-
-function priority_level_list_option(section, key) {
-    let value = object_or_empty(section)[key];
-    if (value == null)
-        return [];
-    if (type(value) == "array") {
-        let out = [];
-        for (let item in value) {
-            let s = trim(as_string(item));
-            if (s != "")
-                push(out, s);
-        }
-        return out;
-    }
-    let s = trim(as_string(value));
-    if (s == "")
-        return [];
-    if (substr(s, 0, 4) == "srv:")
-        return [ s ];
-    return list_option(section, key);
 }
 
 function migrate_balancer_levels_to_sections(ctx) {

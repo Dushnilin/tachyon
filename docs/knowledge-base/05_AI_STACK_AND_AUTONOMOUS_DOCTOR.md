@@ -43,16 +43,16 @@ graph TD
 
 ## 3. Local Rule Doctor & 25 Quick Fix Codes
 
-`diagnostics/runtime.uc` delegates to `apply_quick_fix()` in `diagnostics/repairs.uc`. Aliases: `start_steer` runs the same branch as `start_singbox`, and `restart_steer_dns` runs the same branch as `restart_singbox_dns`.
+`diagnostics/runtime.uc` delegates to `apply_quick_fix()` in `diagnostics/repairs.uc`.
 
 | Code | Target Subsystem | Action Performed |
 |---|---|---|
-| `start_singbox` | Core / Steer | Runs `restore_dnsmasq` and restarts `/etc/init.d/tachyon-core`. On Steer, restarts `/etc/init.d/steer`. |
+| `start_singbox` | Core | Runs `restore_dnsmasq` and restarts `/etc/init.d/tachyon-core`. |
 | `rebuild_rules` | nftables | `/etc/init.d/tachyon reload`. |
 | `fix_dnsmasq` | dnsmasq | Restarts dnsmasq. |
 | `fix_resolv_symlink` | DNS | Points `/etc/resolv.conf` at an existing `resolv.conf.auto` (`/tmp/resolv.conf.d/resolv.conf.auto`, otherwise `/tmp/resolv.conf.auto`). |
 | `start_watchdog` | Watchdog | Restarts `/etc/init.d/tachyon`. |
-| `restart_singbox_dns` | Core DNS | Restarts `/etc/init.d/tachyon-core`. On Steer, reloads dnsd and dnsmasq. |
+| `restart_singbox_dns` | Core DNS | Restarts `/etc/init.d/tachyon-core` and reloads dnsmasq. |
 | `fix_uci_config` | UCI | Restores `/etc/backup/tachyon_config`, otherwise `/etc/config/tachyon.bak`. |
 | `fix_wan_interface` | Networking | `ubus call network.interface.wan up`, `ifup wan`, and a route-cache flush. |
 | `fix_gateway` | Networking | `/etc/init.d/network restart`. |

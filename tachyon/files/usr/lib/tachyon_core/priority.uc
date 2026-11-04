@@ -330,11 +330,6 @@ function module_capture(args) {
             push(curl_args, sprintf("%J", { name: proxy_tag }));
             let res = common.command_capture(command_from_args(curl_args));
             if (res.status == 0 && match(res.output, /(^|\n)(200|204)\s*$/) != null) {
-                let state_path = getenv("TACHYON_PERSISTENT_SELECTOR_STATE_FILE") || "/etc/tachyon/selector_state.json";
-                let sel_state = read_json_file(state_path);
-                if (type(sel_state) != "object") sel_state = {};
-                sel_state[group_tag] = proxy_tag;
-                common.write_json_file(state_path, sel_state, 2);
                 return { status: 0, output: res.output };
             }
             return { status: 1, output: res.output };
@@ -773,7 +768,7 @@ function set_group_proxy(group, tag_name) {
         }
         return true;
     }
-    let result = module_capture([ "set_group_proxy", group.tag, tag_name, "" ]);
+    let result = module_capture([ "set_group_proxy", group.tag, tag_name, "ephemeral" ]);
     return result.status == 0;
 }
 

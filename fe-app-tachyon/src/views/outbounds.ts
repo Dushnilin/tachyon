@@ -3661,13 +3661,15 @@ function createOutboundsContent(section) {
             [sectionId]: next,
           };
           setModalFieldValue(section, sectionId, 'amnezia_configs', next);
-          if (valid.length >= 1) {
+          if (next.length === 1 && valid.length === 1) {
             setModalFieldValue(
               section,
               sectionId,
               'amnezia_conf_text',
               valid[0].config,
             );
+          } else if (next.length > 1) {
+            setModalFieldValue(section, sectionId, 'amnezia_conf_text', '');
           }
           ui.addNotification(
             null,
@@ -3734,8 +3736,10 @@ function createOutboundsContent(section) {
   o.depends('source_type', 'amnezia_config');
   o.write = function (sectionId, value) {
     const trimmed = String(value || '').trim();
-    if (!trimmed) return;
-    uci.set(UCI_PACKAGE, sectionId, 'amnezia_conf_text', trimmed);
+    if (!trimmed) {
+      uci.unset(UCI_PACKAGE, sectionId, 'amnezia_conf_text');
+      return;
+    }
     const cur = asRawList(uci.get(UCI_PACKAGE, sectionId, 'amnezia_configs'));
     const name = uci.get(UCI_PACKAGE, sectionId, 'name') || sectionId;
     const serialized = JSON.stringify({ name, config: trimmed });
@@ -3750,6 +3754,11 @@ function createOutboundsContent(section) {
     });
     if (!alreadyExists) {
       uci.set(UCI_PACKAGE, sectionId, 'amnezia_configs', [...cur, serialized]);
+    }
+    if (cur.length > 1 || (alreadyExists && cur.length >= 1)) {
+      uci.unset(UCI_PACKAGE, sectionId, 'amnezia_conf_text');
+    } else {
+      uci.set(UCI_PACKAGE, sectionId, 'amnezia_conf_text', trimmed);
     }
   };
 
@@ -6164,6 +6173,67 @@ function createOutboundsContent(section) {
       }
     }
     return uci.get(UCI_PACKAGE, sectionId, 'bind_interface') || '';
+  };
+
+  // Per-Server Outbound Interface Overrides — Issue #339
+  o = section.taboption(
+    'advanced',
+    form.DynamicList,
+    'server_interfaces',
+    _('Per-Server Outbound Interface Overrides'),
+    _(
+      'Bind individual servers inside this subscription or share-link pool to specific network interfaces (format: ServerName=interface, e.g. NL-1=eth1 or DE=wg0). Overrides the default connection interface for matching nodes.',
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = 'ServerName=eth1';
+  o.depends('source_type', 'subscription');
+  o.depends('source_type', 'proxy_links');
+  o.load = function (sectionId) {
+    this.keylist = [];
+    this.vallist = [];
+    const ifaces: string[] = [];
+    const seenIfaces = new Set<string>(['', 'lo', 'loopback']);
+    (uci.sections('network', 'interface') || []).forEach((iface) => {
+      const name = String(iface['.name'] || '').trim();
+      const dev = String(iface.device || iface.ifname || '').trim();
+      const candidate = dev && !dev.startsWith('@') ? dev : name;
+      if (candidate && !seenIfaces.has(candidate)) {
+        seenIfaces.add(candidate);
+        ifaces.push(candidate);
+      }
+    });
+    for (const preset of ['eth0', 'eth1', 'wan', 'pppoe-wan', 'wg0', 'awg0']) {
+      if (!seenIfaces.has(preset)) {
+        seenIfaces.add(preset);
+        ifaces.push(preset);
+      }
+    }
+    const self = this;
+    return loadGlobalPoolChoices()
+      .then((pool) => {
+        const servers = (pool && pool.servers) || [];
+        const matched = servers.filter(
+          (srv) =>
+            srv &&
+            srv.rawName &&
+            (!srv.sourceIds ||
+              srv.sourceIds.size === 0 ||
+              srv.sourceIds.has(sectionId)),
+        );
+        const listToUse = matched.length > 0 ? matched : servers.slice(0, 30);
+        listToUse.slice(0, 40).forEach((srv) => {
+          const sname = String(srv.rawName || '').trim();
+          if (!sname) return;
+          ifaces.slice(0, 6).forEach((ifc) => {
+            const val = `${sname}=${ifc}`;
+            self.value(val, `${sname} → ${ifc}`);
+          });
+        });
+        return uci.get(UCI_PACKAGE, sectionId, 'server_interfaces') || [];
+      })
+      .catch(() => uci.get(UCI_PACKAGE, sectionId, 'server_interfaces') || []);
   };
 }
 

@@ -473,14 +473,42 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
             .forEach((l) => pushSourceLink(src, l));
         }
       } else if (stype === 'amnezia_config' || stype === 'awg') {
-        const awgCfgs = [
-          ...getRawListValues(
-            src.amnezia_configs || src.selector_amnezia_configs,
-          ),
-          ...(src.amnezia_conf_text && src.amnezia_conf_text.trim()
-            ? [src.amnezia_conf_text.trim()]
-            : []),
-        ];
+        const listCfgs = getRawListValues(
+          src.amnezia_configs || src.selector_amnezia_configs,
+        );
+        const seenBodies = new Set<string>();
+        const extractConfBody = (raw: string): string => {
+          const trimmed = String(raw || '').trim();
+          if (!trimmed) return '';
+          if (trimmed.startsWith('{')) {
+            try {
+              const parsed = JSON.parse(trimmed) as { config?: string };
+              if (parsed && typeof parsed.config === 'string') {
+                return parsed.config.trim();
+              }
+            } catch {
+              // ignore
+            }
+          }
+          return trimmed;
+        };
+        const awgCfgs: string[] = [];
+        listCfgs.forEach((entry) => {
+          const body = extractConfBody(entry);
+          if (body) {
+            if (seenBodies.has(body)) return;
+            seenBodies.add(body);
+          }
+          awgCfgs.push(entry);
+        });
+        const confText = (src.amnezia_conf_text || '').trim();
+        if (confText) {
+          const body = extractConfBody(confText);
+          if (!body || !seenBodies.has(body)) {
+            if (body) seenBodies.add(body);
+            awgCfgs.push(confText);
+          }
+        }
         const aname = (
           src.name ||
           src.label ||
@@ -801,9 +829,28 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
       next.priority_groups = priorityGroupItems.map((item) => item['.name']);
       priorityGroupItems.forEach((item) => {
         const groupId = item['.name'];
-        const groupRefs = getListValues(item.outbound_group_levels);
+        const legacyChildren = childSectionsByOwner(
+          priorityLevels,
+          'group',
+          groupId,
+        );
+        const secLevelRefs = getRawListValues(next.outbound_group_levels);
+        const itemLevelRefs = getRawListValues(item.outbound_group_levels);
+        const groupRefs =
+          secLevelRefs.length > 0
+            ? secLevelRefs
+            : itemLevelRefs.length > 0
+              ? itemLevelRefs
+              : legacyChildren.length === 0
+                ? [
+                    ...getListValues(next.outbound_group_refs),
+                    ...getListValues(next.outbound_source_refs),
+                  ]
+                : [];
         const levels: PriorityLevelConfig[] = groupRefs.length
-          ? groupRefs.flatMap((ref, idx): PriorityLevelConfig[] => {
+          ? groupRefs.flatMap((rawRef, idx): PriorityLevelConfig[] => {
+              const ref = rawRef.trim();
+              if (!ref) return [];
               const synthId = `${groupId}_lvl_${idx + 1}`;
               if (ref.toLowerCase() === 'direct') {
                 return [
@@ -824,26 +871,87 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
                 ];
               }
               const grp = groupById.get(ref);
-              if (!grp) return [];
+              if (grp) {
+                return [
+                  {
+                    id: synthId,
+                    displayName: grp.name || ref,
+                    order: idx + 1,
+                    direct: false,
+                    filterMode: grp.filter_mode || 'include',
+                    detectServerCountry:
+                      grp.detect_server_country || 'flag_emoji',
+                    country: getListValues(grp.include_countries),
+                    serverName: getRawListValues(grp.include_outbounds),
+                    regex: getListValues(grp.include_regex),
+                    excludeCountries: getListValues(grp.exclude_countries),
+                    excludeOutbounds: getRawListValues(grp.exclude_outbounds),
+                    excludeRegex: getListValues(grp.exclude_regex),
+                  },
+                ];
+              }
+              const src = sourceById.get(ref);
+              if (src) {
+                const stype = (src.source_type || 'subscription').toLowerCase();
+                let srcMarker = `source:${ref}`;
+                if (stype === 'subscription' || src.url) {
+                  const isSubUrl = (val: string) =>
+                    /^https?:\/\//i.test(val) ||
+                    /^(happ:\/\/)?crypt[2-5]?\//i.test(val);
+                  const rawSubName = (src.name || '').trim();
+                  const u = (
+                    src.url ||
+                    (stype === 'subscription' && isSubUrl(rawSubName)
+                      ? rawSubName
+                      : '') ||
+                    ''
+                  ).trim();
+                  const subIdx = subscriptionUrlItems.findIndex(
+                    (s) => (s.url || '').trim() === u,
+                  );
+                  if (subIdx >= 0) {
+                    srcMarker = `sub:${subIdx + 1}`;
+                  }
+                }
+                return [
+                  {
+                    id: synthId,
+                    displayName: src.name || ref,
+                    order: idx + 1,
+                    direct: false,
+                    filterMode: 'include',
+                    detectServerCountry: 'flag_emoji',
+                    country: [],
+                    serverName: [srcMarker, `source:${ref}`],
+                    regex: [],
+                    excludeCountries: [],
+                    excludeOutbounds: [],
+                    excludeRegex: [],
+                  },
+                ];
+              }
+              const srvName = ref.startsWith('srv:')
+                ? ref.slice(4).trim()
+                : ref;
+              if (!srvName) return [];
               return [
                 {
                   id: synthId,
-                  displayName: grp.name || ref,
+                  displayName: srvName,
                   order: idx + 1,
                   direct: false,
-                  filterMode: grp.filter_mode || 'include',
-                  detectServerCountry:
-                    grp.detect_server_country || 'flag_emoji',
-                  country: getListValues(grp.include_countries),
-                  serverName: getListValues(grp.include_outbounds),
-                  regex: getListValues(grp.include_regex),
-                  excludeCountries: getListValues(grp.exclude_countries),
-                  excludeOutbounds: getListValues(grp.exclude_outbounds),
-                  excludeRegex: getListValues(grp.exclude_regex),
+                  filterMode: 'include',
+                  detectServerCountry: 'flag_emoji',
+                  country: [],
+                  serverName: [srvName],
+                  regex: [],
+                  excludeCountries: [],
+                  excludeOutbounds: [],
+                  excludeRegex: [],
                 },
               ];
             })
-          : childSectionsByOwner(priorityLevels, 'group', groupId)
+          : legacyChildren
               .map(
                 (level, index): PriorityLevelConfig => ({
                   id: level['.name'],
@@ -1019,6 +1127,7 @@ function shouldHideNaServers(section: Tachyon.ConfigSection) {
 // distinct, meaningful state and stays visible.
 function isNaOutbound(outbound: Tachyon.Outbound) {
   if (outbound.runtimeAvailable === false) return true;
+  if (outbound.urlTestInfo || outbound.priorityInfo) return false;
   return !outbound.latency && outbound.latency !== -1;
 }
 

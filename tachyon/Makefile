@@ -82,6 +82,16 @@ ps 2>/dev/null | grep -F '/etc/init.d/tachyon' | awk '{print $$1}' | while read 
     kill -9 "$$_pid" 2>/dev/null
 done
 
+for legacy_svc in tachyon-steer-zapret steer; do
+	if [ -f "/etc/init.d/$${legacy_svc}" ]; then
+		"/etc/init.d/$${legacy_svc}" stop >/dev/null 2>&1 || true
+		"/etc/init.d/$${legacy_svc}" disable >/dev/null 2>&1 || true
+	fi
+done
+rm -f /etc/init.d/tachyon-steer-zapret /etc/init.d/steer /etc/rc.d/*steer* 2>/dev/null || true
+rm -rf /etc/steer /usr/lib/tachyon/steer /usr/sbin/steer /usr/bin/steer /var/run/tachyon/*steer* /tmp/*steer* 2>/dev/null || true
+nft delete table inet steer >/dev/null 2>&1 || true
+
 # Start via tachyon binary (lifecycle.uc) which registers with procd directly,
 # bypassing rc.common and its flock entirely.
 /usr/bin/tachyon start >/dev/null 2>&1 || true
@@ -107,20 +117,22 @@ define Package/tachyon/postinst
 
 [ -n "$${IPKG_INSTROOT}" ] && exit 0
 
-# Stop and disable legacy forkop / podkop / netshift services to prevent boot conflicts
-for legacy_svc in podkop forkop netshift podkop_plus forkop_plus; do
+# Stop and disable legacy forkop / podkop / netshift / steer services to prevent boot conflicts
+for legacy_svc in podkop forkop netshift podkop_plus forkop_plus tachyon-steer-zapret steer; do
 	if [ -f "/etc/init.d/$${legacy_svc}" ]; then
 		"/etc/init.d/$${legacy_svc}" stop >/dev/null 2>&1 || true
 		"/etc/init.d/$${legacy_svc}" disable >/dev/null 2>&1 || true
 	fi
 done
-rm -f /etc/rc.d/*podkop* /etc/rc.d/*forkop* /etc/rc.d/*netshift* 2>/dev/null || true
+rm -f /etc/init.d/tachyon-steer-zapret /etc/init.d/steer /etc/rc.d/*podkop* /etc/rc.d/*forkop* /etc/rc.d/*netshift* /etc/rc.d/*steer* 2>/dev/null || true
+rm -rf /etc/steer /usr/lib/tachyon/steer /usr/sbin/steer /usr/bin/steer /var/run/tachyon/*steer* /tmp/*steer* 2>/dev/null || true
 nft delete table inet podkop >/dev/null 2>&1 || true
 nft delete table inet PodkopTable >/dev/null 2>&1 || true
 nft delete table inet forkop >/dev/null 2>&1 || true
 nft delete table inet ForkopTable >/dev/null 2>&1 || true
 nft delete table inet netshift >/dev/null 2>&1 || true
 nft delete table inet NetShiftTable >/dev/null 2>&1 || true
+nft delete table inet steer >/dev/null 2>&1 || true
 
 # Clean up legacy package files
 rm -rf /usr/lib/lua/luci/i18n/forkop.* /www/luci-static/resources/i18n/forkop.* \

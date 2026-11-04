@@ -82,6 +82,10 @@ export {
   setSidebarCollapsed,
   getTopbarCollapsed,
   setTopbarCollapsed,
+  getSavedActiveNavKey,
+  saveActiveNavKey,
+  setShellRestoringTab,
+  setActiveShellNavKey,
 } from './tachyon/appShell';
 export { openConnectionWizardModal } from './tachyon/connectionWizard';
 export { detectOutboundCountry } from './tachyon/helpers/country';

@@ -331,7 +331,10 @@ export type CheckdnsleakParams = Record<string, never>;
 export type CheckdnsleakResult = Record<string, unknown>;
 
 /** check-fakeip (diagnostics/runtime.uc) */
-export type CheckfakeipParams = Record<string, never>;
+export interface CheckfakeipParams {
+  /** positional argument 1 of check_fakeip */
+  arg1?: string;
+}
 
 export type CheckfakeipResult = Record<string, unknown>;
 
@@ -2952,7 +2955,14 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
       description: 'check-fakeip (diagnostics/runtime.uc)',
       async: false,
       timeout_ms: 5000,
-      params: [],
+      params: [
+        {
+          name: 'arg1',
+          type: 'string',
+          required: false,
+          description: 'positional argument 1 of check_fakeip',
+        },
+      ],
     },
     check_inbounds: {
       name: 'check_inbounds',

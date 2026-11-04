@@ -748,10 +748,10 @@ function getQuickCreateTemplates(
         icon: () => renderCompassIcon(20),
         title: tr('Специальный DNS-маршрут', 'Custom DNS Route'),
         desc: tr(
-          'Разрешение выбранных доменов через выделенный DoH / DoT / UDP DNS-сервер',
-          'Resolve specific domains via a dedicated DoH / DoT / UDP DNS server',
+          'Разрешение выбранных доменов через выделенный DoH / DoT / UDP DNS-сервер или DNS провайдера с WAN-порта',
+          'Resolve specific domains via a dedicated DoH / DoT / UDP DNS server or ISP WAN DNS',
         ),
-        defaults: { enabled: '1', action: 'dns' },
+        defaults: { enabled: '1', action: 'dns', disable_fakeip: '1' },
       },
     ];
   }
@@ -1071,8 +1071,44 @@ function openStudioCreateModal(
     class: 'tachyon-studio-create__templates',
   });
 
+  const dnsUseWanCheckbox = E('input', {
+    type: 'checkbox',
+    class: 'cbi-input-checkbox',
+    style: 'margin-right: 8px;',
+  }) as HTMLInputElement;
+
+  const dnsOptionsWrap = E(
+    'div',
+    {
+      class: 'tachyon-studio-create__field',
+      style: 'display: none; margin-top: 8px;',
+    },
+    [
+      E(
+        'label',
+        {
+          style:
+            'display: flex; align-items: center; cursor: pointer; font-size: 13px; gap: 6px;',
+        },
+        [
+          dnsUseWanCheckbox,
+          E(
+            'span',
+            {},
+            tr(
+              'Брать DNS-серверы провайдера с WAN-порта (ISP DNS)',
+              'Use ISP DNS servers from WAN port',
+            ),
+          ),
+        ],
+      ),
+    ],
+  );
+
   const renderTemplateCards = () => {
     templateCardsWrap.innerHTML = '';
+    dnsOptionsWrap.style.display =
+      type === 'section' && selectedTemplate?.id === 'dns' ? 'block' : 'none';
     templates.forEach((tpl) => {
       const isSelected = tpl.id === selectedTemplate.id;
       const selectCard = () => {
@@ -1154,6 +1190,14 @@ function openStudioCreateModal(
       Object.entries(selectedTemplate.defaults || {}).forEach(([k, v]) => {
         uci.set(UCI_PACKAGE, uciId, k, v);
       });
+      if (
+        type === 'section' &&
+        selectedTemplate.id === 'dns' &&
+        dnsUseWanCheckbox.checked
+      ) {
+        uci.set(UCI_PACKAGE, uciId, 'dns_use_wan', '1');
+        uci.set(UCI_PACKAGE, uciId, 'dns_type', 'udp');
+      }
 
       if (type === 'section' || type === 'profile') {
         uci.set(UCI_PACKAGE, uciId, 'label', rawName);
@@ -1266,6 +1310,7 @@ function openStudioCreateModal(
               templateCardsWrap,
             ])
           : E('span'),
+        dnsOptionsWrap,
         E('div', { class: 'tachyon-studio-create__footer' }, [
           E(
             'button',

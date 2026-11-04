@@ -1984,20 +1984,21 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
 
     selector_outbounds = filtered_outbounds;
     selector_default = selector_outbounds[0];
-    let has_multiple_source_levels = length(source_level_entries) > 1 || has_dpi_source;
-    if (length(urltest_tags) > 0 || length(priority_tags) > 0) {
+    let has_explicit_balancers = length(urltest_tags) > 0 || length(priority_tags) > 0;
+    let use_section_failover = sel_mode != "default" && has_dpi_source;
+    if (has_explicit_balancers) {
         for (let tag in urltest_tags)
             push(selector_outbounds, tag);
         for (let tag in priority_tags)
             push(selector_outbounds, tag);
-        if (!first_is_dpi && (sel_mode != "priority_failover" || !has_multiple_source_levels))
+        if (!first_is_dpi)
             selector_default = length(urltest_tags) > 0 ? urltest_tags[0] : priority_tags[0];
     }
 
-    if ((sel_mode == "priority_failover" && has_multiple_source_levels) || (sel_mode != "default" && has_dpi_source)) {
+    if (use_section_failover) {
         let auto_levels = [];
         let lvl_order = 1;
-        let prefer_balancer_for_non_dpi = sel_mode != "priority_failover" && (length(urltest_tags) > 0 || length(priority_tags) > 0);
+        let prefer_balancer_for_non_dpi = has_explicit_balancers;
         let added_balancers = false;
         let append_balancer_levels = () => {
             if (added_balancers)
@@ -2092,10 +2093,15 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
     let saved_selector_state = read_json_file(persistent_selector_file);
     if (type(saved_selector_state) == "object" && as_string(saved_selector_state[selector_tag]) != "") {
         let saved_target = as_string(saved_selector_state[selector_tag]);
-        let auto_balancer_preferred = sel_mode != "default" && (sel_mode != "priority_failover" || !has_multiple_source_levels) && !first_is_dpi && (length(urltest_tags) > 0 || length(priority_tags) > 0);
+        let auto_balancer_preferred = sel_mode != "default" && !first_is_dpi && has_explicit_balancers;
         let saved_is_balancer = index(urltest_tags, saved_target) >= 0 || index(priority_tags, saved_target) >= 0;
-        if (index(selector_outbounds, saved_target) >= 0 && (!auto_balancer_preferred || saved_is_balancer))
+        if (index(selector_outbounds, saved_target) >= 0 && (!auto_balancer_preferred || saved_is_balancer)) {
             selector_default = saved_target;
+        }
+        else if (auto_balancer_preferred && !saved_is_balancer) {
+            delete saved_selector_state[selector_tag];
+            common.write_json_file(persistent_selector_file, saved_selector_state, 2);
+        }
     }
 
     push(config.outbounds, {
@@ -2829,12 +2835,37 @@ function dns_action_detour_tag(section) {
 }
 
 function section_dns_servers(section) {
+    let result = [];
+    let seen = {};
+    if (bool_option(section, "dns_use_wan", false)) {
+        for (let wan_ip in runtime_dns.get_wan_dns_servers()) {
+            wan_ip = trim(as_string(wan_ip));
+            if (wan_ip != "" && !seen[wan_ip]) {
+                seen[wan_ip] = true;
+                push(result, wan_ip);
+            }
+        }
+    }
     let servers = list_option(section, "dns_server");
     if (length(servers) == 0) {
-        let single = option(section, "dns_server", "");
-        servers = [single];
+        let single = trim(option(section, "dns_server", ""));
+        if (single != "")
+            servers = [single];
     }
-    return servers;
+    for (let srv in servers) {
+        srv = trim(as_string(srv));
+        if (srv != "" && !seen[srv]) {
+            seen[srv] = true;
+            push(result, srv);
+        }
+    }
+    if (length(result) == 0) {
+        if (bool_option(section, "dns_use_wan", false))
+            push(result, "77.88.8.8");
+        else
+            push(result, option(section, "dns_server", ""));
+    }
+    return result;
 }
 
 function add_dns_server_for_section(config, section) {
@@ -2843,15 +2874,21 @@ function add_dns_server_for_section(config, section) {
     let dns_type = option(section, "dns_type", "udp");
     let detour = dns_action_detour_tag(section);
     let server_tags = [];
+    let wan_set = {};
+    if (bool_option(section, "dns_use_wan", false)) {
+        for (let wip in runtime_dns.get_wan_dns_servers())
+            wan_set[trim(as_string(wip))] = true;
+    }
 
     for (let i = 0; i < length(servers); i++) {
         let s_val = servers[i];
         let tag_name = length(servers) <= 1
             ? dns_action_server_tag(section_name)
             : dns_action_server_tag(section_name, i + 1);
+        let eff_type = wan_set[s_val] ? "udp" : dns_type;
         let server = runtime_dns.server_from_options(
             tag_name,
-            dns_type,
+            eff_type,
             s_val,
             detour
         );
@@ -2875,7 +2912,7 @@ function add_source_dns_matchers(rule, source_ip_cidr) {
     rule.source_ip_cidr = single_or_array(core_ip.expand_ipv4_mapped_cidrs(source_ip_cidr));
 }
 
-function add_dns_action_rules_for_clause(config, section) {
+function add_dns_action_rules_for_clause(config, section, phase) {
     let domains = domain_conditions(section);
     let domain = domains.domain;
     let domain_suffix = domains.domain_suffix;
@@ -2886,40 +2923,48 @@ function add_dns_action_rules_for_clause(config, section) {
     let section_name = section[".name"];
     let source_ip_cidr = core_ip.normalize_to_cidrs(legacy_condition_values(section, "source_ip_cidr"));
     let fully_routed_ips = core_ip.normalize_to_cidrs(list_option(section, "fully_routed_ips"));
+    let force_pre_fakeip = bool_option(section, "disable_fakeip", false);
+    let emit_this_phase = (phase == null || phase == "" ||
+        (phase == "pre_fakeip" && force_pre_fakeip) ||
+        (phase == "post_fakeip" && !force_pre_fakeip));
+    let emit_inline = emit_this_phase;
+    let emit_rulesets = emit_this_phase;
 
-    for (let community in connections.community_lists(section)) {
-        let ensured = ensure_community_ruleset(config, section_name, as_string(community));
-        if (ensured.kind == "domains")
-            push(query_rule_set_tags, ensured.tag);
-        else if (ensured.kind == "subnets" || ensured.kind == "mixed")
+    if (emit_rulesets || phase == "post_fakeip") {
+        for (let community in connections.community_lists(section)) {
+            let ensured = ensure_community_ruleset(config, section_name, as_string(community));
+            if (ensured.kind == "domains")
+                push(query_rule_set_tags, ensured.tag);
+            else if (ensured.kind == "subnets" || ensured.kind == "mixed")
+                push(response_rule_set_tags, ensured.tag);
+            else
+                push(response_rule_set_tags, ensured.tag);
+        }
+        for (let reference in connections.rule_sets(section)) {
+            let ensured = ensure_custom_ruleset(config, as_string(reference));
+            if (ensured == null)
+                continue;
+            if (ensured.kind == "domains")
+                push(query_rule_set_tags, ensured.tag);
+            else
+                push(response_rule_set_tags, ensured.tag);
+        }
+        for (let reference in connections.rule_sets_with_subnets(section)) {
+            let ensured = ensure_custom_ruleset(config, as_string(reference));
+            if (ensured == null)
+                continue;
             push(response_rule_set_tags, ensured.tag);
-        else
-            push(response_rule_set_tags, ensured.tag);
+        }
+        add_domain_ip_list_ruleset(
+            config,
+            section_name,
+            [],
+            query_rule_set_tags,
+            response_rule_set_tags,
+            list_option(section, "domain_ip_lists"),
+            true
+        );
     }
-    for (let reference in connections.rule_sets(section)) {
-        let ensured = ensure_custom_ruleset(config, as_string(reference));
-        if (ensured == null)
-            continue;
-        if (ensured.kind == "domains")
-            push(query_rule_set_tags, ensured.tag);
-        else
-            push(response_rule_set_tags, ensured.tag);
-    }
-    for (let reference in connections.rule_sets_with_subnets(section)) {
-        let ensured = ensure_custom_ruleset(config, as_string(reference));
-        if (ensured == null)
-            continue;
-        push(response_rule_set_tags, ensured.tag);
-    }
-    add_domain_ip_list_ruleset(
-        config,
-        section_name,
-        [],
-        query_rule_set_tags,
-        response_rule_set_tags,
-        list_option(section, "domain_ip_lists"),
-        true
-    );
 
     let rewrite_ttl = int_option(ctx.runtime_settings(), "dns_rewrite_ttl", "15");
     let section_servers = section_dns_servers(section);
@@ -2934,7 +2979,7 @@ function add_dns_action_rules_for_clause(config, section) {
     let has_inline_domains = length(domain) > 0 || length(domain_suffix) > 0 ||
         length(domain_keyword) > 0 || length(domain_regex) > 0;
 
-    if (length(fully_routed_ips) > 0) {
+    if (emit_rulesets && length(fully_routed_ips) > 0) {
         let dns_rule = {
             action: "route",
             server: server_tag,
@@ -2943,7 +2988,7 @@ function add_dns_action_rules_for_clause(config, section) {
         add_source_dns_matchers(dns_rule, fully_routed_ips);
         push_dns_matcher_rule(config, dns_rule);
     }
-    if (has_inline_domains) {
+    if (emit_inline && has_inline_domains) {
         let domain_matchers = [
             [ "domain", domain ],
             [ "domain_suffix", domain_suffix ],
@@ -2966,63 +3011,66 @@ function add_dns_action_rules_for_clause(config, section) {
         }
     }
 
-    let is_1_14 = ctx.is_sb_1_14_plus && ctx.is_sb_1_14_plus();
-    if (is_1_14) {
-        if (length(query_rule_set_tags) > 0) {
-            let dns_rule = {
-                action: "route",
-                server: server_tag,
-                rewrite_ttl,
-                rule_set: single_or_array(query_rule_set_tags)
-            };
-            add_source_dns_matchers(dns_rule, source_ip_cidr);
-            push_dns_matcher_rule(config, dns_rule);
-        }
-        if (length(response_rule_set_tags) > 0) {
-            let eval_rule = {
-                action: "evaluate",
-                server: runtime_constants.DNS_SERVER_TAG
-            };
-            add_source_dns_matchers(eval_rule, source_ip_cidr);
-            push_dns_matcher_rule(config, eval_rule);
+    if (emit_rulesets) {
+        let is_1_14 = ctx.is_sb_1_14_plus && ctx.is_sb_1_14_plus();
+        if (is_1_14) {
+            if (length(query_rule_set_tags) > 0) {
+                let dns_rule = {
+                    action: "route",
+                    server: server_tag,
+                    rewrite_ttl,
+                    rule_set: single_or_array(query_rule_set_tags)
+                };
+                add_source_dns_matchers(dns_rule, source_ip_cidr);
+                push_dns_matcher_rule(config, dns_rule);
+            }
+            if (length(response_rule_set_tags) > 0) {
+                let eval_rule = {
+                    action: "evaluate",
+                    server: runtime_constants.DNS_SERVER_TAG
+                };
+                add_source_dns_matchers(eval_rule, source_ip_cidr);
+                push_dns_matcher_rule(config, eval_rule);
 
-            let dns_rule = {
-                action: "route",
-                server: server_tag,
-                rewrite_ttl,
-                rule_set: single_or_array(response_rule_set_tags),
-                match_response: true
-            };
-            add_source_dns_matchers(dns_rule, source_ip_cidr);
-            push_dns_matcher_rule(config, dns_rule);
+                let dns_rule = {
+                    action: "route",
+                    server: server_tag,
+                    rewrite_ttl,
+                    rule_set: single_or_array(response_rule_set_tags),
+                    match_response: true
+                };
+                add_source_dns_matchers(dns_rule, source_ip_cidr);
+                push_dns_matcher_rule(config, dns_rule);
+            }
+        }
+        else {
+            let all_rule_set_tags = [];
+            for (let tag in query_rule_set_tags)
+                push(all_rule_set_tags, tag);
+            for (let tag in response_rule_set_tags)
+                push(all_rule_set_tags, tag);
+
+            if (length(all_rule_set_tags) > 0) {
+                let dns_rule = {
+                    action: "route",
+                    server: server_tag,
+                    rewrite_ttl,
+                    rule_set: single_or_array(all_rule_set_tags)
+                };
+                add_source_dns_matchers(dns_rule, source_ip_cidr);
+                push_dns_matcher_rule(config, dns_rule);
+            }
         }
     }
-    else {
-        let all_rule_set_tags = [];
-        for (let tag in query_rule_set_tags)
-            push(all_rule_set_tags, tag);
-        for (let tag in response_rule_set_tags)
-            push(all_rule_set_tags, tag);
 
-        if (length(all_rule_set_tags) > 0) {
-            let dns_rule = {
-                action: "route",
-                server: server_tag,
-                rewrite_ttl,
-                rule_set: single_or_array(all_rule_set_tags)
-            };
-            add_source_dns_matchers(dns_rule, source_ip_cidr);
-            push_dns_matcher_rule(config, dns_rule);
-        }
-    }
-
-    if (!has_inline_domains && length(query_rule_set_tags) == 0 && length(response_rule_set_tags) == 0 && length(fully_routed_ips) == 0)
+    if ((phase == null || phase == "" || phase == "post_fakeip") &&
+        !has_inline_domains && length(query_rule_set_tags) == 0 && length(response_rule_set_tags) == 0 && length(fully_routed_ips) == 0)
         ctx.runtime_generate_unsupported("DNS action '" + section_name + "' has no domain matchers");
 }
 
-function add_dns_action_rules_for_section(config, section) {
+function add_dns_action_rules_for_section(config, section, phase) {
     for (let clause in connections.section_effective_clauses(section))
-        add_dns_action_rules_for_clause(config, clause);
+        add_dns_action_rules_for_clause(config, clause, phase);
 }
 
 function normalize_port_number_value(value) {
@@ -4196,7 +4244,6 @@ function add_combined_route_for_clause(config, section) {
                 server: runtime_constants.DNS_SERVER_TAG
             };
             add_source_dns_matchers(eval_rule, source_ip_cidr);
-            push_dns_matcher_rule(config, apply_excluded_source_ips(eval_rule, dns_excluded_cidrs));
 
             let dns_rule = {
                 action: "route",
@@ -4206,7 +4253,20 @@ function add_combined_route_for_clause(config, section) {
                 match_response: true
             };
             add_source_dns_matchers(dns_rule, source_ip_cidr);
-            push_section_dns_matcher_rule(config, section, dns_rule, excluded_cidrs);
+            if (config.__defer_dns_response_rules) {
+                if (type(config.__deferred_dns_response_rules) != "array")
+                    config.__deferred_dns_response_rules = [];
+                push(config.__deferred_dns_response_rules, {
+                    section_name: section[".name"],
+                    section: section,
+                    eval_rule: apply_excluded_source_ips(eval_rule, dns_excluded_cidrs),
+                    dns_rule: dns_rule,
+                    excluded_cidrs: excluded_cidrs
+                });
+            } else {
+                push_dns_matcher_rule(config, apply_excluded_source_ips(eval_rule, dns_excluded_cidrs));
+                push_section_dns_matcher_rule(config, section, dns_rule, excluded_cidrs);
+            }
         }
     }
     else {
@@ -4376,7 +4436,7 @@ function reserve_section_outbound_tags(sections, taken) {
     }
 }
 
-function add_route_for_section(config, section) {
+function add_route_for_section(config, section, phase) {
     if (ctx.quarantined_sections && ctx.quarantined_sections[section[".name"]])
         return;
     let override = section_fail_policy_override_target(section);
@@ -4384,7 +4444,7 @@ function add_route_for_section(config, section) {
         return;
     let action = option(section, "action", "");
     if (action == "dns")
-        add_dns_action_rules_for_section(config, section);
+        add_dns_action_rules_for_section(config, section, phase);
     else if (action == "hosts") {
         /* hosts-only action — entries are consumed globally via combined cache */
     }
@@ -4855,6 +4915,7 @@ return {
     domain_conditions,
     add_domain_array,
     push_dns_matcher_rule,
+    push_section_dns_matcher_rule,
     section_dns_server,
     add_dns_server_for_section,
     add_dns_action_rules_for_section,

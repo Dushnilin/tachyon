@@ -462,6 +462,7 @@ return {
     detour_tag,
     explicit_fallback_count,
     failover_enabled,
+    get_wan_dns_servers,
     health_port,
     is_explicit_fallback_index,
     is_wan_fallback_index,

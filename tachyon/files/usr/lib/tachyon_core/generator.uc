@@ -2322,6 +2322,16 @@ function generate_config(output_path, service_address, mwan3_active, supports_xh
         push(config.route.rules, r);
     for (let section in sections) {
         let act = option(section, "action", "");
+        if (act == "dns") {
+            ctx.current_section = section[".name"];
+            let snap = snapshot_config_counts(config);
+            add_route_for_section(config, section, "pre_fakeip");
+            record_owner_delta(config, owners, section[".name"], snap);
+        }
+    }
+    config.__defer_dns_response_rules = true;
+    for (let section in sections) {
+        let act = option(section, "action", "");
         if (act != "block" && act != "bypass" && act != "dns") {
             ctx.current_section = section[".name"];
             let snap = snapshot_config_counts(config);
@@ -2329,14 +2339,25 @@ function generate_config(output_path, service_address, mwan3_active, supports_xh
             record_owner_delta(config, owners, section[".name"], snap);
         }
     }
+    delete config.__defer_dns_response_rules;
     for (let section in sections) {
         let act = option(section, "action", "");
         if (act == "dns") {
             ctx.current_section = section[".name"];
             let snap = snapshot_config_counts(config);
-            add_route_for_section(config, section);
+            add_route_for_section(config, section, "post_fakeip");
             record_owner_delta(config, owners, section[".name"], snap);
         }
+    }
+    if (type(config.__deferred_dns_response_rules) == "array") {
+        for (let item in config.__deferred_dns_response_rules) {
+            ctx.current_section = item.section_name;
+            let snap = snapshot_config_counts(config);
+            generator_routes.push_dns_matcher_rule(config, item.eval_rule);
+            generator_routes.push_section_dns_matcher_rule(config, item.section, item.dns_rule, item.excluded_cidrs);
+            record_owner_delta(config, owners, item.section_name, snap);
+        }
+        delete config.__deferred_dns_response_rules;
     }
     ctx.current_section = null;
 

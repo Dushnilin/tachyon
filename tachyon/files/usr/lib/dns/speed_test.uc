@@ -47,6 +47,28 @@ function endpoint(value, proto) {
             resolve: null
         };
     }
+    if (proto == "dot" || proto == "doq") {
+        if (index(value, "://") >= 0 || index(value, "/") >= 0)
+            return null;
+        let host = url.host(value);
+        let port = url.port(value);
+        if (!ip.valid_ip(host) && !valid_domain(lc(host)))
+            return null;
+        if (port != "" && (match(port, /^[0-9]+$/) == null || int(port) < 1 || int(port) > 65535))
+            return null;
+        let server = dns.server_from_options("speed-test", proto, value, "");
+        if (!server || !server.server)
+            return null;
+        let default_port = proto == "doq" ? 784 : 853;
+        return {
+            value,
+            kind: proto,
+            address: server.server,
+            port: int(server.server_port || default_port),
+            sni: (server.tls && server.tls.server_name) ? server.tls.server_name : host,
+            resolve: null
+        };
+    }
     if (index(value, "://") >= 0 && substr(value, 0, 8) != "https://")
         return null;
     let host = url.host(value);
@@ -66,7 +88,8 @@ function endpoint(value, proto) {
 }
 
 function validate_request(request) {
-    if (type(request) != "object" || (request.protocol != "doh" && request.protocol != "udp") ||
+    if (type(request) != "object" ||
+        (request.protocol != "doh" && request.protocol != "udp" && request.protocol != "dot" && request.protocol != "doq") ||
         type(request.servers) != "array" || type(request.domains) != "array" ||
         (request.udp_servers != null && type(request.udp_servers) != "array") ||
         length(request.domains) < 1 || length(request.domains) > MAX_DOMAINS)
@@ -249,9 +272,78 @@ function measure_udp(server, domains) {
     return { server: server.value, samples, stats: summarize(samples) };
 }
 
+let _has_kdig = null;
+function has_kdig() {
+    if (_has_kdig == null)
+        _has_kdig = exec.command_success_from_args([ "command", "-v", "kdig" ]);
+    return _has_kdig;
+}
+
+function probe_dot_or_doq_domain(server, domain) {
+    let target = "@" + server.address;
+    let port = as_string(server.port || (server.kind == "doq" ? 784 : 853));
+    let proto_flag = server.kind == "doq" ? "+quic" : "+tls";
+
+    if (has_kdig()) {
+        let args = [ "kdig", target, "-p", port, proto_flag ];
+        if (server.sni && !ip.valid_ip(server.sni))
+            push(args, "+tls-host=" + server.sni);
+        push(args, domain, "A", "+time=2", "+retry=0", "+stats");
+        let res = exec.run({ argv: args, timeout: 3 });
+        let out = as_string(res.output);
+        if (res.status == 0 && match(out, /status: NOERROR/)) {
+            let m = match(out, /in ([0-9]+(\.[0-9]+)?) ms/);
+            if (m && m[1])
+                return { ok: true, ms: double(m[1]), error: null };
+        }
+    }
+
+    if (server.kind == "dot" && has_dig()) {
+        let res = exec.run({
+            argv: [ "dig", target, "-p", port, "+tls", domain, "A", "+time=2", "+tries=1", "+stats" ],
+            timeout: 3
+        });
+        let out = as_string(res.output);
+        if (res.status == 0 && match(out, /status: NOERROR/)) {
+            let m = match(out, /Query time: ([0-9]+) msec/);
+            if (m && m[1])
+                return { ok: true, ms: double(int(m[1])), error: null };
+        }
+    }
+
+    return probe_udp_domain({
+        value: server.value,
+        address: server.address,
+        port: 53
+    }, domain);
+}
+
+function measure_dot_or_doq(server, domains) {
+    let samples = [];
+    let consecutive_fails = 0;
+    let last_error = { kind: "transport", code: 28 };
+    for (let domain in domains) {
+        if (consecutive_fails >= 2) {
+            push(samples, { domain, ok: false, ms: null, error: last_error });
+            continue;
+        }
+        let p = probe_dot_or_doq_domain(server, domain);
+        if (!p.ok) {
+            consecutive_fails++;
+            if (p.error) last_error = p.error;
+        } else {
+            consecutive_fails = 0;
+        }
+        push(samples, { domain, ok: p.ok, ms: p.ms, error: p.error });
+    }
+    return { server: server.value, samples, stats: summarize(samples) };
+}
+
 function measure(server, domains) {
     if (server.kind == "udp")
         return measure_udp(server, domains);
+    if (server.kind == "dot" || server.kind == "doq")
+        return measure_dot_or_doq(server, domains);
     let count = length(domains);
     if (count > 0) {
         let probe_path = STATE_DIR + "/answer-probe";

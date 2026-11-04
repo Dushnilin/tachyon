@@ -1632,7 +1632,7 @@ function clash_api(action, arg1, arg2, arg3) {
         push(args, "--data-raw");
         push(args, payload);
         let result = status_capture([ "clash-set-group-proxy-result", target_group_tag, arg2 ], command_output(command_from_args(args)));
-        if (result.status == 0) {
+        if (result.status == 0 && as_string(arg3) != "ephemeral") {
             save_persistent_selector_choice(target_group_tag, arg2);
         }
         if (result.output != "")
@@ -1648,9 +1648,11 @@ function clash_api(action, arg1, arg2, arg3) {
         let proxies_res = clash_json_data([ "curl", "-s", base_url + "/proxies" ], auth);
         let proxies = object_or_empty(object_or_empty(proxies_res).proxies);
         for (let group, selected in state) {
+            if (index(as_string(group), "-priority-") >= 0)
+                continue;
             let grp = proxies[group];
             if (type(grp) == "object" && lc(as_string(grp.type || "")) == "selector" && index(grp.all, selected) >= 0 && as_string(grp.now || "") != selected) {
-                clash_api("set_group_proxy", group, selected);
+                clash_api("set_group_proxy", group, selected, "ephemeral");
             }
         }
         return 0;

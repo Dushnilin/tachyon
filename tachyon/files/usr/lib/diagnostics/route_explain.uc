@@ -22,6 +22,12 @@ let exec = require("core.exec");
 let core_ip = require("core.ip");
 let uci_core = require("core.uci");
 let connections = require("config.connections");
+let runtime_rulesets = null;
+function get_runtime_rulesets() {
+    if (runtime_rulesets == null)
+        runtime_rulesets = require("tachyon_core.rulesets");
+    return runtime_rulesets;
+}
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || constants.TACHYON_CONFIG_NAME || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
@@ -429,25 +435,200 @@ function find_local_community_ruleset_file(community_name) {
     return null;
 }
 
-function check_binary_ruleset_match(community_name, target_value) {
+function run_binary_ruleset_match_file(rs_path, target_value, is_ip) {
     if (getenv("TACHYON_PACKAGE_TEST_MODE") != null || getenv("TACHYON_UCI_STATE_FILE") != null)
         return false;
-    let rs_path = find_local_community_ruleset_file(community_name);
-    if (rs_path == null)
+    if (rs_path == null || rs_path == "")
+        return false;
+    let st = fs.stat(rs_path);
+    if (st == null || st.type != "file" || (st.size || 0) <= 0)
         return false;
     let is_trs = substr(rs_path, length(rs_path) - 4) == ".trs";
     let bins = is_trs
-        ? [ "/usr/bin/tachyon-core", "/usr/bin/sing-box" ]
-        : [ "/usr/bin/sing-box", "/usr/bin/tachyon-core" ];
+        ? [ "/usr/bin/tachyon-core", "/usr/sbin/tachyon-core", "/usr/bin/sing-box" ]
+        : [ "/usr/bin/tachyon-core", "/usr/bin/sing-box", "/usr/sbin/sing-box" ];
+    let flag = is_ip ? "--ip" : "--domain";
     for (let bin in bins) {
-        let st = fs.stat(bin);
-        if (st == null)
+        if (fs.stat(bin) == null)
             continue;
-        let out = exec.run_output([ bin, "rule-set", "match", rs_path, target_value ]);
-        if (out != null && out != "" && match(out, /\[[0-9]+\][ \t]+match/) != null)
+        let out = exec.run_output([ bin, "rule-set", "match", rs_path, flag, target_value ]);
+        if (out == null || out == "")
+            out = exec.run_output([ bin, "rule-set", "match", rs_path, target_value ]);
+        if (out != null && out != "" && (match(out, /\[[0-9]+\][ \t]*match/) != null || (index(out, "match") >= 0 && index(out, "no match") < 0)))
             return true;
     }
     return false;
+}
+
+function check_binary_ruleset_match(community_name, target_value) {
+    let rs_path = find_local_community_ruleset_file(community_name);
+    if (rs_path == null)
+        return false;
+    let is_ip = match(as_string(target_value), /^[0-9.]+$/) != null || index(as_string(target_value), ":") >= 0;
+    return run_binary_ruleset_match_file(rs_path, target_value, is_ip);
+}
+
+let _json_ruleset_cache = {};
+
+function load_cached_json_ruleset(path) {
+    path = as_string(path);
+    if (path == "")
+        return null;
+    if (_json_ruleset_cache[path] !== undefined)
+        return _json_ruleset_cache[path];
+    let parsed = common.read_json_file(path);
+    _json_ruleset_cache[path] = (type(parsed) == "object" && type(parsed.rules) == "array") ? parsed : null;
+    return _json_ruleset_cache[path];
+}
+
+function match_domain_in_json_ruleset(target_domain, path) {
+    let rs = load_cached_json_ruleset(path);
+    if (rs == null)
+        return null;
+    for (let rule in rs.rules) {
+        if (type(rule) != "object")
+            continue;
+        if (type(rule.domain) == "array") {
+            for (let d in rule.domain) {
+                if (domain_matches_exact(target_domain, d))
+                    return "domain:" + d;
+            }
+        }
+        if (type(rule.domain_suffix) == "array") {
+            for (let ds in rule.domain_suffix) {
+                if (domain_matches_suffix(target_domain, ds))
+                    return "domain_suffix:" + ds;
+            }
+        }
+        if (type(rule.domain_keyword) == "array") {
+            for (let dk in rule.domain_keyword) {
+                if (domain_matches_keyword(target_domain, dk))
+                    return "domain_keyword:" + dk;
+            }
+        }
+        if (type(rule.domain_regex) == "array") {
+            for (let dr in rule.domain_regex) {
+                if (domain_matches_regex(target_domain, dr))
+                    return "domain_regex:" + dr;
+            }
+        }
+    }
+    return null;
+}
+
+function match_ip_in_json_ruleset(target_ip, path) {
+    let rs = load_cached_json_ruleset(path);
+    if (rs == null)
+        return null;
+    for (let rule in rs.rules) {
+        if (type(rule) != "object" || type(rule.ip_cidr) != "array")
+            continue;
+        for (let cidr in rule.ip_cidr) {
+            if (ipv4_in_cidr(target_ip, cidr))
+                return cidr;
+        }
+    }
+    return null;
+}
+
+function match_plain_list_file(target_value, path, is_ip) {
+    let data = fs.readfile(path);
+    if (data == null)
+        return null;
+    for (let line in split(as_string(data), "\n")) {
+        let hash_pos = index(line, "#");
+        if (hash_pos >= 0)
+            line = substr(line, 0, hash_pos);
+        line = trim(replace(line, "\r", ""));
+        if (line == "")
+            continue;
+        if (is_ip) {
+            if (ipv4_in_cidr(target_value, line))
+                return line;
+        } else {
+            if (substr(line, 0, 5) == "full:") {
+                if (domain_matches_exact(target_value, substr(line, 5)))
+                    return line;
+            } else if (substr(line, 0, 7) == "domain:") {
+                if (domain_matches_suffix(target_value, substr(line, 7)))
+                    return line;
+            } else if (substr(line, 0, 8) == "keyword:") {
+                if (domain_matches_keyword(target_value, substr(line, 8)))
+                    return line;
+            } else if (substr(line, 0, 6) == "regex:") {
+                if (domain_matches_regex(target_value, substr(line, 6)))
+                    return line;
+            } else if (domain_matches_suffix(target_value, line)) {
+                return line;
+            }
+        }
+    }
+    return null;
+}
+
+function check_custom_reference_match(target_value, reference, is_ip) {
+    reference = trim(as_string(reference));
+    if (reference == "")
+        return false;
+    let folders = [
+        getenv("TMP_RULESET_FOLDER") || "/tmp/tachyon-core/rulesets",
+        "/etc/tachyon/rulesets",
+        "/usr/share/tachyon/rulesets",
+        "/tmp/sing-box/rulesets"
+    ];
+    let tag_name = "inline-custom-" + get_runtime_rulesets().hash12(reference) + "-ruleset";
+    for (let folder in folders) {
+        let json_path = folder + "/" + tag_name + ".json";
+        if (is_ip) {
+            if (match_ip_in_json_ruleset(target_value, json_path) != null)
+                return true;
+        } else {
+            if (match_domain_in_json_ruleset(target_value, json_path) != null)
+                return true;
+        }
+        let srs_path = folder + "/" + tag_name + ".srs";
+        if (run_binary_ruleset_match_file(srs_path, target_value, is_ip))
+            return true;
+    }
+    if (substr(reference, 0, 1) == "/") {
+        let ext = get_runtime_rulesets().file_extension(reference);
+        if (ext == "json") {
+            return is_ip
+                ? (match_ip_in_json_ruleset(target_value, reference) != null)
+                : (match_domain_in_json_ruleset(target_value, reference) != null);
+        }
+        if (ext == "srs" || ext == "trs")
+            return run_binary_ruleset_match_file(reference, target_value, is_ip);
+        if (match_plain_list_file(target_value, reference, is_ip) != null)
+            return true;
+    }
+    return false;
+}
+
+function check_section_compiled_lists_match(section_name, target_value, is_ip) {
+    section_name = trim(as_string(section_name));
+    if (section_name == "")
+        return null;
+    let folders = [
+        getenv("TMP_RULESET_FOLDER") || "/tmp/tachyon-core/rulesets",
+        "/etc/tachyon/rulesets",
+        "/usr/share/tachyon/rulesets",
+        "/tmp/sing-box/rulesets"
+    ];
+    let suffixes = is_ip
+        ? [ "-lists-ruleset.json", "-lists-ruleset-subnets.json", "-remote-subnet-ruleset.json" ]
+        : [ "-lists-ruleset.json", "-lists-ruleset-domains.json", "-remote-domain-ruleset.json" ];
+    for (let folder in folders) {
+        for (let sfx in suffixes) {
+            let path = folder + "/" + section_name + sfx;
+            let hit = is_ip
+                ? match_ip_in_json_ruleset(target_value, path)
+                : match_domain_in_json_ruleset(target_value, path);
+            if (hit != null)
+                return hit;
+        }
+    }
+    return null;
 }
 
 function check_community_domain_match(target_domain, community_name) {
@@ -610,8 +791,9 @@ function load_uci_tachyon_config() {
     };
     let c = uci_core.cursor();
     if (!c) return result;
+    if (!uci_core.load(CONFIG_NAME))
+        return result;
     try {
-        c.load(CONFIG_NAME);
         connections.set_item_sections_from_cursor(c, CONFIG_NAME);
     } catch (e) {
         return result;
@@ -699,7 +881,7 @@ function effective_section_for_match(section) {
     ];
 
     let c = uci_core.cursor();
-    try { c.load(CONFIG_NAME); } catch (e) {}
+    uci_core.load(CONFIG_NAME);
 
     for (let cid in cond_refs) {
         let cond = c ? c.get_all(CONFIG_NAME, cid) : null;
@@ -939,13 +1121,18 @@ function evaluate_atomic_clause_match(section, client_info, target_info, port, p
             }
         }
 
-        // Rule set references
-        let rule_sets = parse_combined_items(section, [ "rule_set", "rule_set_with_subnets", "domain_ip_lists" ]);
+        // Rule set & domain/IP list references
+        let rule_sets = parse_combined_items(section, [ "rule_set", "rule_set_with_subnets", "domain_ip_lists", "domain_lists", "custom_domain_lists" ]);
         for (let rs in rule_sets) {
-            if (check_community_domain_match(target_info.host, rs)) {
+            if (check_custom_reference_match(target_info.host, rs, false) || check_community_domain_match(target_info.host, rs)) {
                 if (check_geo_filter_pass())
                     return { rule_type: "rule_set", rule_value: rs };
             }
+        }
+        let sec_list_hit = check_section_compiled_lists_match(section[".name"], target_info.host, false);
+        if (sec_list_hit != null) {
+            if (check_geo_filter_pass())
+                return { rule_type: "domain_list", rule_value: sec_list_hit };
         }
     }
 
@@ -959,13 +1146,18 @@ function evaluate_atomic_clause_match(section, client_info, target_info, port, p
             }
         }
 
-        // Community subnets
-        let comm_subnets = parse_combined_items(section, [ "community_subnets", "community_lists", "community", "rule_set_with_subnets", "domain_ip_lists" ]);
+        // Community subnets & custom subnet lists
+        let comm_subnets = parse_combined_items(section, [ "community_subnets", "community_lists", "community", "rule_set", "rule_set_with_subnets", "domain_ip_lists" ]);
         for (let comm in comm_subnets) {
-            if (check_community_ip_match(target_info.host, comm)) {
+            if (check_custom_reference_match(target_info.host, comm, true) || check_community_ip_match(target_info.host, comm)) {
                 if (check_geo_filter_pass())
                     return { rule_type: "community_subnets", rule_value: comm };
             }
+        }
+        let sec_ip_hit = check_section_compiled_lists_match(section[".name"], target_info.host, true);
+        if (sec_ip_hit != null) {
+            if (check_geo_filter_pass())
+                return { rule_type: "subnet_list", rule_value: sec_ip_hit };
         }
     }
 
@@ -1008,6 +1200,8 @@ function evaluate_section_match(raw_section, client_info, target_info, port, pro
         clauses = [ effective_section_for_match(raw_section) ];
 
     for (let clause in clauses) {
+        if (!clause[".name"] && raw_section[".name"])
+            clause[".name"] = raw_section[".name"];
         if (type(clause.__inverted_conditions) == "array" && length(clause.__inverted_conditions) > 0) {
             let neg_hit = false;
             for (let neg_cond in clause.__inverted_conditions) {
@@ -1647,9 +1841,12 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
 
     if (action == "bypass" || action == "direct") {
         nft_intercepted = false;
-        nft_mark = "0x80000000";
-        nft_action = "meta mark set 0x80000000 accept";
-        nft_details = "Marked with bypass flag 0x80000000 and forwarded to WAN without proxy interception.";
+        nft_mark = "none";
+        let set_label = section_name ? ("@tachyon_rule_" + section_name + "_subnets") : "default direct";
+        nft_action = section_name ? ("ip daddr " + set_label + " counter accept") : "accept (no mark)";
+        nft_details = section_name
+            ? "Accepted directly in priority_rules (" + set_label + " counter accept) and forwarded to WAN without TProxy interception."
+            : "Unmarked packet passes through mangle chain and is forwarded directly to WAN.";
     } else if (action == "dns" || action == "hosts") {
         nft_intercepted = false;
         nft_mark = "none";

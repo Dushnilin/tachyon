@@ -343,6 +343,80 @@ describe('Tachyon App Shell & SVG Developer Duck Mascot', () => {
     expect(monitoringItem.className).toContain('is-active');
   });
 
+  it('preserves active tab and sub-tab across remounts even when defaultNavKey is dashboard', () => {
+    setUiMode('advanced');
+    const E = (globalThis as any).E;
+    const mapEl = E('div', { id: 'cbi-tachyon' }, [
+      E('ul', { class: 'cbi-tabmenu' }, [
+        E('li', { class: 'cbi-tab', 'data-tab': 'dashboard' }, [
+          E('a', { href: '#' }, 'Dashboard'),
+        ]),
+        E('li', { class: 'cbi-tab-disabled', 'data-tab': 'section' }, [
+          E('a', { href: '#' }, 'Sections'),
+        ]),
+        E('li', { class: 'cbi-tab-disabled', 'data-tab': 'settings' }, [
+          E('a', { href: '#' }, 'Settings'),
+        ]),
+      ]),
+      E('div', { id: 'cbi-tachyon-dashboard', class: 'cbi-section cbi-tab' }),
+      E('div', {
+        id: 'cbi-tachyon-section',
+        class: 'cbi-section cbi-tab-disabled',
+      }),
+      E(
+        'div',
+        { id: 'cbi-tachyon-settings', class: 'cbi-section cbi-tab-disabled' },
+        [
+          E('ul', { class: 'cbi-tabmenu' }, [
+            E('li', { class: 'cbi-tab', 'data-tab': 'dns' }, [
+              E('a', { href: '#' }, 'DNS'),
+            ]),
+            E('li', { class: 'cbi-tab-disabled', 'data-tab': 'network' }, [
+              E('a', { href: '#' }, 'Network'),
+            ]),
+          ]),
+        ],
+      ),
+    ]);
+    (globalThis as any).document.body.appendChild(mapEl);
+
+    let currentSubTab = 'sections';
+    mountTachyonAppShell({
+      mapEl,
+      defaultNavKey: 'dashboard',
+      onSelectSectionSubTab: (sub) => {
+        currentSubTab = sub;
+      },
+      getActiveSectionSubTab: () => currentSubTab,
+    });
+
+    // Click on "Узлы и подписки" (section:outbounds)
+    let subItems = mapEl.querySelectorAll('.tachyon-sidebar__subitem');
+    const outboundsItem = subItems.find(
+      (el: any) => el.getAttribute('data-nav-key') === 'section:outbounds',
+    );
+    expect(outboundsItem).toBeTruthy();
+    outboundsItem.click();
+    expect(currentSubTab).toBe('outbounds');
+
+    // Simulate LuCI Save / Save & Apply re-render where mountTachyonAppShell is called again with defaultNavKey: 'dashboard'
+    mountTachyonAppShell({
+      mapEl,
+      defaultNavKey: 'dashboard',
+      onSelectSectionSubTab: (sub) => {
+        currentSubTab = sub;
+      },
+      getActiveSectionSubTab: () => currentSubTab,
+    });
+
+    subItems = mapEl.querySelectorAll('.tachyon-sidebar__subitem');
+    const outboundsAfterSave = subItems.find(
+      (el: any) => el.getAttribute('data-nav-key') === 'section:outbounds',
+    );
+    expect(outboundsAfterSave.className).toContain('is-active');
+    expect(currentSubTab).toBe('outbounds');
+  });
+
   it('opens Connection Wizard modal and saves UCI entities via uci.save()', async () => {
     let modalRoot: any = null;
     const uciStore: Record<string, Record<string, any>> = {};

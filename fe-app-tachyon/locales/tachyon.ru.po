@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-04 10:24+0300\n"
-"PO-Revision-Date: 2026-11-04 10:24+0300\n"
+"POT-Creation-Date: 2026-11-04 23:48+0300\n"
+"PO-Revision-Date: 2026-11-04 23:48+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -64,6 +64,9 @@ msgstr "-- Выберите входящий сервер --"
 
 msgid "-- Select country --"
 msgstr "-- Выберите страну --"
+
+msgid "-- Select group, source, or server --"
+msgstr ""
 
 msgid "-- Select or type port/range --"
 msgstr "-- Выберите или введите порт/диапазон --"
@@ -1058,6 +1061,9 @@ msgstr "Автоматически зарегистрировать беспла
 msgid "Automatically register a free Cloudflare WARP account and fill all fields below."
 msgstr "Автоматически зарегистрировать бесплатный аккаунт Cloudflare WARP и заполнить все поля ниже."
 
+msgid "Automatically resolve domains in this section via the upstream DNS servers received on the WAN interface."
+msgstr ""
+
 msgid "Automatically rotate strategies on RST/cutoff/throttling (<20 KiB/s) and persist working profile per SNI in cache.db."
 msgstr "Автоматически переключает стратегии при RST, обрыве потока (16 КиБ) или шейпинге ТСПУ (<20 КиБ/с) и сохраняет рабочий профиль по SNI в cache.db."
 
@@ -1189,6 +1195,9 @@ msgstr "Лучший пинг + проверка целей (100% URL должн
 
 msgid "Bidirectional (default)"
 msgstr "Двунаправленный (по умолчанию)"
+
+msgid "Bind individual servers inside this subscription or share-link pool to specific network interfaces (format: ServerName=interface, e.g. NL-1=eth1 or DE=wg0). Overrides the default connection interface for matching nodes."
+msgstr ""
 
 msgid "BitTorrent / P2P"
 msgstr "BitTorrent / P2P"
@@ -1384,6 +1393,9 @@ msgstr "Обход активен"
 
 msgid "Bypass DPI throttling for YouTube, Discord, or Telegram without a proxy server"
 msgstr "Обход замедления YouTube, Discord и Telegram без внешнего прокси-сервера"
+
+msgid "Bypass FakeIP (resolve real IP addresses)"
+msgstr ""
 
 msgid "Bypasses UDP traffic for selected game consoles (PS5/Xbox) to achieve NAT Type 1 / 2 (Full Cone NAT) for P2P matchmaking, while keeping TCP (PSN/Auth) routed through the proxy."
 msgstr "Обходит UDP-трафик для выбранных игровых консолей (PS5/Xbox) для достижения NAT Type 1 / 2 (Full Cone NAT) для P2P-матчмейкинга, сохраняя TCP (PSN/Auth) через прокси."
@@ -3307,6 +3319,9 @@ msgstr "Ошибок"
 
 msgid "Estimated RAM usage (max):"
 msgstr "Ориентировочный объём RAM (макс.):"
+
+msgid "Evaluate this DNS section before FakeIP proxy rules so matched domains always resolve to real IP addresses."
+msgstr ""
 
 msgid "Event bus journal and syslog monitoring report clean operation."
 msgstr "Журнал шины событий и мониторинг syslog не сообщают о проблемах."
@@ -6479,6 +6494,12 @@ msgstr "Или вставьте содержимое файла hosts:"
 msgid "Orange"
 msgstr "Оранжевый"
 
+msgid "Ordered Failover Tiers (Groups / Sources / Servers)"
+msgstr ""
+
+msgid "Ordered list of Outbound Groups, Outbound Sources, individual Servers from subscriptions, or 'direct' for direct fallback. Tier 1 is tried first, then Tier 2, etc."
+msgstr ""
+
 msgid "Ordered list of Outbound Groups, Sources, individual Servers from subscriptions/pool, or 'direct' for direct fallback. Tier 1 is tried first, then Tier 2, etc."
 msgstr "Упорядоченный список групп серверов, источников, отдельных серверов из подписок/пула или «direct» для резервного прямого выхода. Сначала проверяется ступень 1, затем ступень 2 и т.д."
 
@@ -6667,6 +6688,9 @@ msgstr "Ожидает запуска"
 
 msgid "Pending..."
 msgstr "Ожидание..."
+
+msgid "Per-Server Outbound Interface Overrides"
+msgstr ""
 
 msgid "Periodically check the current level and switch to a faster server even when the current one works."
 msgstr "Периодически проверять текущий уровень и переключаться на более быстрый сервер, даже если текущий работает."
@@ -7439,8 +7463,8 @@ msgstr "Резолвить совпавшие домены через зашиф
 msgid "Resolve real IP for routing"
 msgstr "Разрешать реальный IP для маршрутизации"
 
-msgid "Resolve specific domains via a dedicated DoH / DoT / UDP DNS server"
-msgstr "Разрешение выбранных доменов через выделенный DoH / DoT / UDP DNS-сервер"
+msgid "Resolve specific domains via a dedicated DoH / DoT / UDP DNS server or ISP WAN DNS"
+msgstr "Разрешение выбранных доменов через выделенный DoH / DoT / UDP DNS-сервер или DNS провайдера с WAN-порта"
 
 msgid "Resolver DNS Server"
 msgstr "DNS-сервер резолвера"
@@ -9620,8 +9644,8 @@ msgstr "Этот роутер"
 msgid "This section uses direct or manual node selection (no URLTest / Priority balancers attached)."
 msgstr "В этой секции используется прямой или ручной выбор узла (без групп URLTest / Priority)."
 
-msgid "This speed test supports DoH and UDP DNS servers."
-msgstr "Этот тест скорости поддерживает DoH и UDP DNS-серверы."
+msgid "This speed test supports DoH, DoT, DoQ, and UDP DNS servers."
+msgstr ""
 
 msgid "This will erase all Tachyon settings and restore the factory defaults. The service will restart. This action cannot be undone."
 msgstr "Все настройки Tachyon будут удалены и восстановлены заводские значения. Сервис будет перезапущен. Это действие нельзя отменить."
@@ -10192,6 +10216,12 @@ msgstr "Использовать транспорт HTTP/3 QUIC вместо HTT
 
 msgid "Use HTTP/3 QUIC transport instead of HTTP/2 TLS"
 msgstr "Использовать HTTP/3 QUIC вместо HTTP/2 TLS"
+
+msgid "Use ISP DNS from WAN port"
+msgstr ""
+
+msgid "Use ISP DNS servers from WAN port"
+msgstr "Брать DNS-серверы провайдера с WAN-порта (ISP DNS)"
 
 msgid "Use QUIC (HTTP/3)"
 msgstr "Использовать QUIC (HTTP/3)"
@@ -11156,6 +11186,12 @@ msgstr "● Высокий пинг"
 msgid "✓ No subscription needed for this preset — uses built-in Tachyon Core Desync"
 msgstr "✓ Для этого пресета подписка не требуется — используется встроенный Tachyon Core Desync"
 
+msgid "Resolve specific domains via a dedicated DoH / DoT / UDP DNS server"
+msgstr "Разрешение выбранных доменов через выделенный DoH / DoT / UDP DNS-сервер"
+
+msgid "This speed test supports DoH and UDP DNS servers."
+msgstr "Этот тест скорости поддерживает DoH и UDP DNS-серверы."
+
 msgid "Discord Suite (Gateway + Voice + CDN)"
 msgstr "Discord (шлюз + голос + CDN)"
 
@@ -11173,24 +11209,6 @@ msgstr "X / Twitter (API + медиа CDN)"
 
 msgid "YouTube Full Suite (Web + 4K Stream + CDN)"
 msgstr "YouTube (веб + поток 4K + CDN)"
-
-msgid "Engine: Steer"
-msgstr "Ядро: Steer"
-
-msgid "NFQWS Tachyon not ready (managed by Steer)"
-msgstr "NFQWS Tachyon не готов (управляется Steer)"
-
-msgid "Steer autostart enabled"
-msgstr "Автозапуск Steer включён"
-
-msgid "Steer installed"
-msgstr "Steer установлен"
-
-msgid "Steer process running"
-msgstr "Процесс Steer работает"
-
-msgid "Steer service exist"
-msgstr "Служба Steer существует"
 
 msgid "standard"
 msgstr "базовая"
@@ -11656,9 +11674,6 @@ msgstr "Маршрут и автовыбор"
 
 msgid "Show widget"
 msgstr "Показать виджет"
-
-msgid "Steer"
-msgstr "Steer"
 
 msgid "Which traffic should route through this section?"
 msgstr "Какой трафик направлять через эту секцию?"
@@ -12211,9 +12226,6 @@ msgstr "Вернуться обратно"
 
 msgid "Switched back"
 msgstr "Возвращено обратно"
-
-msgid "Tachyon can drive sing-box or steer. Switching parks configuration the target engine cannot express, so you can switch back without losing settings."
-msgstr "Tachyon может использовать sing-box или steer. При переключении сохраняется конфигурация, которую целевой движок не умеет выразить, поэтому можно вернуться без потери настроек."
 
 msgid "Provider Global Default"
 msgstr "Глобальные настройки провайдера"

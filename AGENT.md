@@ -47,14 +47,14 @@ uci commit tachyon
 
 ### 1.3. Коды быстрого исправления (Quick Fix Codes — 25 кодов)
 
-Список совпадает с ветками `apply_quick_fix()` в `diagnostics/repairs.uc`. AI Doctor может вернуть один или несколько кодов через запятую. `start_steer` — алиас `start_singbox`, `restart_steer_dns` — алиас `restart_singbox_dns`.
+Список совпадает с ветками `apply_quick_fix()` в `diagnostics/repairs.uc`. AI Doctor может вернуть один или несколько кодов через запятую.
 
-1. `start_singbox` — `restore_dnsmasq` и перезапуск `/etc/init.d/tachyon-core`; для Steer — перезапуск `/etc/init.d/steer`
+1. `start_singbox` — `restore_dnsmasq` и перезапуск `/etc/init.d/tachyon-core`
 2. `rebuild_rules` — `/etc/init.d/tachyon reload`
 3. `fix_dnsmasq` — перезапуск dnsmasq
 4. `fix_resolv_symlink` — `ln -sf` на существующий `resolv.conf.auto` (`/tmp/resolv.conf.d/resolv.conf.auto`, иначе `/tmp/resolv.conf.auto`)
 5. `start_watchdog` — перезапуск `/etc/init.d/tachyon`
-6. `restart_singbox_dns` — перезапуск `/etc/init.d/tachyon-core`; для Steer — `reload_dnsd` и reload dnsmasq
+6. `restart_singbox_dns` — перезапуск `/etc/init.d/tachyon-core` и reload dnsmasq
 7. `fix_uci_config` — восстановление UCI из `/etc/backup/tachyon_config`, иначе из `/etc/config/tachyon.bak`
 8. `fix_wan_interface` — `ubus call network.interface.wan up`, `ifup wan`, сброс кэша маршрутов
 9. `fix_gateway` — `/etc/init.d/network restart`

@@ -2246,7 +2246,10 @@ function latency_boot_sweep() {
                 write_finished_action_state(path, true, "Boot latency sweep completed", 0);
         }
 
-        if (option(section, "action", "connection") == "connection" && persistent_choices[section_name + "-out"] == null) {
+        if (option(section, "action", "connection") == "connection" &&
+            length(ut_list) == 0 &&
+            length(connections.priority_groups(section)) == 0 &&
+            persistent_choices[section_name + "-out"] == null) {
             let selector_tag = section_name + "-out";
             let sel_id = "boot-sweep-" + section_name + "-selector";
             let sel_path = job_state_path_value(LATENCY_ACTION_DIR, sel_id);
@@ -2271,7 +2274,7 @@ function latency_boot_sweep() {
                                 }
                             }
                             if (fallback_tag != "" && fallback_tag != first_tag) {
-                                command_status(command_from_args([ BIN_PATH, "clash_api", "set_group_proxy", selector_tag, fallback_tag ]) + " >/dev/null 2>&1");
+                                command_status(command_from_args([ BIN_PATH, "clash_api", "set_group_proxy", selector_tag, fallback_tag, "ephemeral" ]) + " >/dev/null 2>&1");
                             }
                         }
                     }

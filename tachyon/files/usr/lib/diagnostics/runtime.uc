@@ -135,7 +135,7 @@ function check_inbounds() { return routing_mod().check_inbounds(); }
 function check_logs() { return sysinfo_mod().check_logs(); }
 function check_sing_box_logs() { return sysinfo_mod().check_sing_box_logs(); }
 function tachyon_logs_fixture() { return sysinfo_mod().tachyon_logs_fixture(); }
-function check_fakeip() { return dns_mod().check_fakeip(); }
+function check_fakeip(dom) { return dns_mod().check_fakeip(dom); }
 function neutralize_zapret_defaults() { return repairs_mod().neutralize_zapret_defaults(); }
 function clash_api(a1, a2, a3, a4) { return routing_mod().clash_api(a1, a2, a3, a4); }
 function show_config(v) { return sysinfo_mod().show_config(v); }
@@ -211,7 +211,7 @@ else if (mode == "check-sing-box-logs")
 else if (mode == "tachyon-logs-fixture")
     exit(tachyon_logs_fixture());
 else if (mode == "check-fakeip")
-    exit(check_fakeip());
+    exit(check_fakeip(ARGV[1] || ""));
 else if (mode == "check-zapret-runtime")
     exit(module_passthrough(ZAPRET_RUNTIME_UC, [ "check" ]));
 else if (mode == "check-zapret2-runtime")

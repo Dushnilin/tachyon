@@ -302,6 +302,24 @@ function asArray(val) {
     .filter(Boolean);
 }
 
+function parsePriorityLevelsList(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw))
+    return raw.map((v) => String(v || '').trim()).filter(Boolean);
+  const str = String(raw || '').trim();
+  if (!str) return [];
+  if (str.startsWith('srv:')) return [str];
+  return asArray(str);
+}
+
+function asServerList(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw))
+    return raw.map((v) => String(v || '').trim()).filter(Boolean);
+  const str = String(raw || '').trim();
+  return str ? [str] : [];
+}
+
 function sectionsUsingRef(refKey, targetId) {
   const result = [];
   (uci.sections(UCI_PACKAGE, 'section') || []).forEach((s) => {
@@ -345,28 +363,19 @@ function summarizeBalancer(sectionId) {
     );
   };
   if (btype === 'priority') {
-    const parseLevels = (raw) =>
-      Array.isArray(raw)
-        ? raw.map((v) => String(v).trim()).filter(Boolean)
-        : String(raw || '')
-              .trim()
-              .startsWith('srv:')
-          ? [String(raw).trim()]
-          : asArray(raw);
-    let levelList = [];
-    for (const sid of sectionsUsingRef('balancer_refs', sectionId)) {
-      const secLevels = parseLevels(
-        uci.get(UCI_PACKAGE, sid, 'outbound_group_levels'),
-      );
-      if (secLevels.length) {
-        levelList = secLevels;
-        break;
-      }
-    }
+    let levelList = parsePriorityLevelsList(
+      uci.get(UCI_PACKAGE, sectionId, 'outbound_group_levels'),
+    );
     if (!levelList.length) {
-      levelList = parseLevels(
-        uci.get(UCI_PACKAGE, sectionId, 'outbound_group_levels'),
-      );
+      for (const sid of sectionsUsingRef('balancer_refs', sectionId)) {
+        const secLevels = parsePriorityLevelsList(
+          uci.get(UCI_PACKAGE, sid, 'outbound_group_levels'),
+        );
+        if (secLevels.length) {
+          levelList = secLevels;
+          break;
+        }
+      }
     }
     const levels = levelList.map(resolveEntityName);
     const interval =
@@ -400,8 +409,12 @@ function summarizeBalancer(sectionId) {
   if (fmode !== 'disabled') {
     const incC = asArray(uci.get(UCI_PACKAGE, sectionId, 'include_countries'));
     const excC = asArray(uci.get(UCI_PACKAGE, sectionId, 'exclude_countries'));
-    const incO = asArray(uci.get(UCI_PACKAGE, sectionId, 'include_outbounds'));
-    const excO = asArray(uci.get(UCI_PACKAGE, sectionId, 'exclude_outbounds'));
+    const incO = asServerList(
+      uci.get(UCI_PACKAGE, sectionId, 'include_outbounds'),
+    );
+    const excO = asServerList(
+      uci.get(UCI_PACKAGE, sectionId, 'exclude_outbounds'),
+    );
     const incR = asArray(uci.get(UCI_PACKAGE, sectionId, 'include_regex'));
     const excR = asArray(uci.get(UCI_PACKAGE, sectionId, 'exclude_regex'));
     if (incC.length) parts.push(`+${incC.join(',')}`);
@@ -573,6 +586,91 @@ function createBalancersContent(section) {
   };
   o.textvalue = function (sectionId) {
     return this.cfgvalue(sectionId);
+  };
+
+  o = section.taboption(
+    'general',
+    form.DynamicList,
+    'outbound_group_levels',
+    _('Ordered Failover Tiers (Groups / Sources / Servers)'),
+    _(
+      "Ordered list of Outbound Groups, Outbound Sources, individual Servers from subscriptions, or 'direct' for direct fallback. Tier 1 is tried first, then Tier 2, etc.",
+    ),
+  );
+  o.modalonly = true;
+  o.depends('balancer_type', 'priority');
+  o.placeholder = _('-- Select group, source, or server --');
+  o.cfgvalue = function (sectionId) {
+    const own = parsePriorityLevelsList(
+      uci.get(UCI_PACKAGE, sectionId, 'outbound_group_levels'),
+    );
+    if (own.length > 0) return own;
+    for (const sid of sectionsUsingRef('balancer_refs', sectionId)) {
+      const secLevels = parsePriorityLevelsList(
+        uci.get(UCI_PACKAGE, sid, 'outbound_group_levels'),
+      );
+      if (secLevels.length > 0) return secLevels;
+    }
+    return [];
+  };
+  o.load = function (sectionId) {
+    return loadGlobalPoolChoices().then((pool) => {
+      this.keylist = [];
+      this.vallist = [];
+      const seen = new Set();
+      const addChoice = (val, label) => {
+        if (!val || seen.has(val)) return;
+        seen.add(val);
+        this.value(val, label);
+      };
+      (uci.sections(UCI_PACKAGE, 'outbound_group') || []).forEach((grp) => {
+        const gid = grp['.name'];
+        if (!gid || grp.enabled === '0') return;
+        addChoice(gid, `📦 ${_('Group')}: ${grp.name || gid}`);
+      });
+      (uci.sections(UCI_PACKAGE, 'outbound_source') || []).forEach((src) => {
+        const sid = src['.name'];
+        if (!sid || src.enabled === '0') return;
+        const stype = String(src.source_type || 'subscription').toUpperCase();
+        addChoice(sid, `📡 ${_('Source')}: ${src.name || sid} [${stype}]`);
+      });
+      (pool.servers || []).forEach((s) => {
+        addChoice(`srv:${s.value}`, `🎯 ${_('Server')}: ${s.label}`);
+      });
+      addChoice('direct', `🌐 ${_('Direct Connection (Fallback)')}`);
+
+      const currentVals = this.cfgvalue(sectionId);
+      currentVals.forEach((v) => {
+        if (seen.has(v)) return;
+        if (String(v).startsWith('srv:')) {
+          addChoice(v, `🎯 ${_('Server')}: ${String(v).slice(4)}`);
+        } else {
+          addChoice(v, v);
+        }
+      });
+      return currentVals;
+    });
+  };
+  o.write = function (sectionId, value) {
+    const levels = parsePriorityLevelsList(value);
+    if (levels.length) {
+      uci.set(UCI_PACKAGE, sectionId, 'outbound_group_levels', levels);
+    } else {
+      uci.unset(UCI_PACKAGE, sectionId, 'outbound_group_levels');
+    }
+    for (const sid of sectionsUsingRef('balancer_refs', sectionId)) {
+      if (levels.length) {
+        uci.set(UCI_PACKAGE, sid, 'outbound_group_levels', levels);
+      } else {
+        uci.unset(UCI_PACKAGE, sid, 'outbound_group_levels');
+      }
+    }
+  };
+  o.remove = function (sectionId) {
+    uci.unset(UCI_PACKAGE, sectionId, 'outbound_group_levels');
+    for (const sid of sectionsUsingRef('balancer_refs', sectionId)) {
+      uci.unset(UCI_PACKAGE, sid, 'outbound_group_levels');
+    }
   };
 
   // URLTest & Priority URL fields
@@ -955,12 +1053,26 @@ function createBalancersContent(section) {
   o.placeholder = _('-- Select server --');
   o.depends({ balancer_type: 'urltest', filter_mode: 'include' });
   o.depends({ balancer_type: 'urltest', filter_mode: 'mixed' });
+  o.cfgvalue = function (sectionId) {
+    return asServerList(uci.get(UCI_PACKAGE, sectionId, 'include_outbounds'));
+  };
   o.load = function (sectionId) {
     return loadGlobalPoolChoices().then((pool) => {
       this.keylist = [];
       this.vallist = [];
-      pool.servers.forEach((s) => this.value(s.value, s.label));
-      return form.DynamicList.prototype.load.call(this, sectionId);
+      const seen = new Set();
+      pool.servers.forEach((s) => {
+        seen.add(s.value);
+        this.value(s.value, s.label);
+      });
+      const current = this.cfgvalue(sectionId);
+      current.forEach((v) => {
+        if (!seen.has(v)) {
+          seen.add(v);
+          this.value(v, v);
+        }
+      });
+      return current;
     });
   };
 
@@ -977,12 +1089,26 @@ function createBalancersContent(section) {
   o.placeholder = _('-- Select server --');
   o.depends({ balancer_type: 'urltest', filter_mode: 'exclude' });
   o.depends({ balancer_type: 'urltest', filter_mode: 'mixed' });
+  o.cfgvalue = function (sectionId) {
+    return asServerList(uci.get(UCI_PACKAGE, sectionId, 'exclude_outbounds'));
+  };
   o.load = function (sectionId) {
     return loadGlobalPoolChoices().then((pool) => {
       this.keylist = [];
       this.vallist = [];
-      pool.servers.forEach((s) => this.value(s.value, s.label));
-      return form.DynamicList.prototype.load.call(this, sectionId);
+      const seen = new Set();
+      pool.servers.forEach((s) => {
+        seen.add(s.value);
+        this.value(s.value, s.label);
+      });
+      const current = this.cfgvalue(sectionId);
+      current.forEach((v) => {
+        if (!seen.has(v)) {
+          seen.add(v);
+          this.value(v, v);
+        }
+      });
+      return current;
     });
   };
 

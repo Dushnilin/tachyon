@@ -857,25 +857,53 @@ function synthesize_awg_conf_from_source(src) {
     return sprintf("%J", { name: nm != "" ? nm : "AmneziaWG", config: join("\n", lines) });
 }
 
+function amnezia_config_entry_body(raw_val) {
+    let val = trim(as_string(raw_val));
+    if (val == "")
+        return "";
+    if (substr(val, 0, 1) == "{") {
+        let parsed = null;
+        try { parsed = json(val); } catch (e) {}
+        if (type(parsed) == "object" && type(parsed.config) == "string")
+            return trim(parsed.config);
+    }
+    return val;
+}
+
+function push_unique_amnezia_cfg(arr, seen, seen_bodies, val) {
+    val = as_string(val);
+    if (val == "" || seen[val])
+        return;
+    let body = amnezia_config_entry_body(val);
+    if (body != "" && seen_bodies[body])
+        return;
+    seen[val] = true;
+    if (body != "")
+        seen_bodies[body] = true;
+    push(arr, val);
+}
+
 function raw_amnezia_configs_from_obj(obj) {
     let configs = raw_option(obj, "selector_amnezia_configs");
     if (configs == null || configs == "")
         configs = raw_option(obj, "amnezia_configs");
     let result = [];
+    let seen = {};
+    let seen_bodies = {};
     let fallback_name = option(obj, "name", section_name(obj) || "AmneziaWG");
     if (configs != null && configs != "") {
         let arr = type(configs) == "array" ? configs : [configs];
         for (let c in arr) {
             let norm = normalize_amnezia_config_entry(c, fallback_name);
             if (norm != "")
-                push(result, norm);
+                push_unique_amnezia_cfg(result, seen, seen_bodies, norm);
         }
     }
     let raw_conf_text = trim(option(obj, "amnezia_conf_text", ""));
     if (raw_conf_text != "") {
         let norm_text = normalize_amnezia_config_entry(raw_conf_text, fallback_name);
         if (norm_text != "")
-            push(result, norm_text);
+            push_unique_amnezia_cfg(result, seen, seen_bodies, norm_text);
     }
     return result;
 }
@@ -883,6 +911,7 @@ function raw_amnezia_configs_from_obj(obj) {
 function amnezia_configs(section) {
     let result = [];
     let seen = {};
+    let seen_bodies = {};
     let is_awg_action = lc(trim(option(section, "action", ""))) == "awg";
     let raw_list = [];
     for (let src in section_effective_outbound_sources(section)) {
@@ -907,23 +936,23 @@ function amnezia_configs(section) {
         let stype = lc(option(src, "source_type", "subscription"));
         if (stype == "amnezia_config" || stype == "awg" || raw_option(src, "amnezia_configs") != null || raw_option(src, "selector_amnezia_configs") != null || raw_option(src, "amnezia_conf_text") != null) {
             for (let c in raw_amnezia_configs_from_obj(src))
-                push_unique_str(result, seen, c);
+                push_unique_amnezia_cfg(result, seen, seen_bodies, c);
         }
         if (include_synthesized && stype == "awg") {
             let synth = synthesize_awg_conf_from_source(src);
             if (synth != "") {
                 has_awg_source = true;
-                push_unique_str(result, seen, synth);
+                push_unique_amnezia_cfg(result, seen, seen_bodies, synth);
             }
         }
     }
     if (include_synthesized && !has_awg_source) {
         let sec_synth = synthesize_awg_conf_from_source(section);
         if (sec_synth != "")
-            push_unique_str(result, seen, sec_synth);
+            push_unique_amnezia_cfg(result, seen, seen_bodies, sec_synth);
     }
     for (let c in raw_amnezia_configs_from_obj(section))
-        push_unique_str(result, seen, c);
+        push_unique_amnezia_cfg(result, seen, seen_bodies, c);
     return result;
 }
 
@@ -1960,7 +1989,7 @@ function urltests(section) {
     if (option(section, "action", "") == "group")
         return [ "urltest" ];
 
-    return (length(balancer_sections()) == 0 && bool_option(section, "urltest_enabled", false)) ? [ "urltest" ] : [];
+    return (length(section_balancer_refs(section)) == 0 && bool_option(section, "urltest_enabled", false)) ? [ "urltest" ] : [];
 }
 
 function priority_groups(section) {
@@ -2223,6 +2252,54 @@ function section_combined_pool_tier_refs(owner_sec) {
     return combined;
 }
 
+function strip_server_filter_type_suffix(name) {
+    name = trim(as_string(name));
+    if (name == "")
+        return "";
+    let m_idx = match(name, /^(.*)\s+\(#([0-9]+)\)$/);
+    if (m_idx != null && m_idx[1] != null)
+        name = trim(m_idx[1]);
+    let m_type = match(name, /^(.*)\s+\[([A-Za-z0-9_+() /.-]+)\]$/);
+    if (m_type != null && m_type[1] != null) {
+        let candidate_proto = lc(trim(m_type[2]));
+        if (index(candidate_proto, "vless") >= 0 || index(candidate_proto, "vmess") >= 0 ||
+            index(candidate_proto, "trojan") >= 0 || index(candidate_proto, "shadowsocks") >= 0 ||
+            index(candidate_proto, "hysteria") >= 0 || index(candidate_proto, "tuic") >= 0 ||
+            index(candidate_proto, "wireguard") >= 0 || index(candidate_proto, "amnezia") >= 0 ||
+            index(candidate_proto, "awg") >= 0 || index(candidate_proto, "fptn") >= 0 ||
+            index(candidate_proto, "anytls") >= 0 || index(candidate_proto, "naive") >= 0 ||
+            index(candidate_proto, "mieru") >= 0 || index(candidate_proto, "snell") >= 0 ||
+            index(candidate_proto, "sudoku") >= 0 || index(candidate_proto, "masque") >= 0 ||
+            index(candidate_proto, "trusttunnel") >= 0 || index(candidate_proto, "tewfai") >= 0 ||
+            index(candidate_proto, "openconnect") >= 0 || index(candidate_proto, "openvpn") >= 0 ||
+            index(candidate_proto, "shadowtls") >= 0 || index(candidate_proto, "socks") >= 0 ||
+            index(candidate_proto, "http") >= 0 || index(candidate_proto, "warp") >= 0 ||
+            index(candidate_proto, "ssh") >= 0 || index(candidate_proto, "mtproto") >= 0) {
+            name = trim(m_type[1]);
+        }
+    }
+    return name;
+}
+
+function expand_server_name_filter_candidates(srv_name) {
+    srv_name = trim(as_string(srv_name));
+    if (srv_name == "")
+        return [];
+    let out = [ srv_name ];
+    let stripped = strip_server_filter_type_suffix(srv_name);
+    if (stripped != "" && stripped != srv_name && index(out, stripped) < 0)
+        push(out, stripped);
+    if (substr(stripped, 0, 1) == "[") {
+        let close_idx = index(stripped, "]");
+        if (close_idx > 1) {
+            let unprefixed = trim(substr(stripped, close_idx + 1));
+            if (unprefixed != "" && index(out, unprefixed) < 0)
+                push(out, unprefixed);
+        }
+    }
+    return out;
+}
+
 function synthesized_priority_levels_for_balancer(group_id, section, force_from_section_pool) {
     let bal = balancer_section(group_id);
     if (bal == null || lc(option(bal, "balancer_type", "urltest")) != "priority")
@@ -2327,7 +2404,7 @@ function synthesized_priority_levels_for_balancer(group_id, section, force_from_
                         filter_mode: "include",
                         detect_server_country: "flag_emoji",
                         include_countries: [],
-                        include_outbounds: [ srv_name ],
+                        include_outbounds: expand_server_name_filter_candidates(srv_name),
                         include_regex: [],
                         include_prefixes: [],
                         include_proxy_parameters: "0",
@@ -4856,9 +4933,223 @@ function extract_atomic_matchers(obj) {
     };
 }
 
-function evaluate_atomic_condition_match(obj, query) {
+let _trace_json_cache = {};
+
+function trace_load_json_ruleset(path) {
+    path = as_string(path);
+    if (path == "")
+        return null;
+    if (_trace_json_cache[path] !== undefined)
+        return _trace_json_cache[path];
+    let parsed = common.read_json_file(path);
+    _trace_json_cache[path] = (type(parsed) == "object" && type(parsed.rules) == "array") ? parsed : null;
+    return _trace_json_cache[path];
+}
+
+function trace_hash12(value) {
+    value = as_string(value);
+    let first = 2166136261;
+    let second = 16777619;
+    for (let i = 0; i < length(value); i++) {
+        let code = ord(substr(value, i, 1));
+        first = (first * 33 + code) % 4294967296;
+        second = (second * 131 + code) % 4294967296;
+    }
+    return sprintf("%06x%06x", first % 16777216, second % 16777216);
+}
+
+function trace_domain_matches_suffix(target_domain, sfx) {
+    target_domain = lc(trim(as_string(target_domain)));
+    sfx = lc(replace(trim(as_string(sfx)), /^\.+/, ""));
+    if (target_domain == "" || sfx == "")
+        return false;
+    return target_domain == sfx ||
+        (length(target_domain) > length(sfx) && substr(target_domain, length(target_domain) - length(sfx) - 1) == "." + sfx);
+}
+
+function trace_match_domain_in_json_ruleset(target_domain, path) {
+    let rs = trace_load_json_ruleset(path);
+    if (rs == null)
+        return null;
+    target_domain = lc(trim(as_string(target_domain)));
+    if (target_domain == "")
+        return null;
+    for (let rule in rs.rules) {
+        if (type(rule) != "object")
+            continue;
+        if (type(rule.domain) == "array") {
+            for (let d in rule.domain) {
+                if (lc(trim(as_string(d))) == target_domain)
+                    return "domain:" + d;
+            }
+        }
+        if (type(rule.domain_suffix) == "array") {
+            for (let ds in rule.domain_suffix) {
+                if (trace_domain_matches_suffix(target_domain, ds))
+                    return "domain_suffix:" + ds;
+            }
+        }
+        if (type(rule.domain_keyword) == "array") {
+            for (let dk in rule.domain_keyword) {
+                let dkl = lc(trim(as_string(dk)));
+                if (dkl != "" && index(target_domain, dkl) >= 0)
+                    return "domain_keyword:" + dk;
+            }
+        }
+        if (type(rule.domain_regex) == "array") {
+            for (let dr in rule.domain_regex) {
+                try {
+                    if (match(target_domain, regexp(as_string(dr))) != null)
+                        return "domain_regex:" + dr;
+                } catch (e) {}
+            }
+        }
+    }
+    return null;
+}
+
+function trace_match_ip_in_json_ruleset(target_ip, path) {
+    let rs = trace_load_json_ruleset(path);
+    if (rs == null)
+        return null;
+    for (let rule in rs.rules) {
+        if (type(rule) != "object" || type(rule.ip_cidr) != "array")
+            continue;
+        for (let cidr in rule.ip_cidr) {
+            if (ip_matches_cidr_or_exact(target_ip, cidr))
+                return cidr;
+        }
+    }
+    return null;
+}
+
+function trace_match_plain_file(target_val, path, is_ip) {
+    let data = fs.readfile(path);
+    if (data == null)
+        return null;
+    for (let line in split(as_string(data), "\n")) {
+        let hash_pos = index(line, "#");
+        if (hash_pos >= 0)
+            line = substr(line, 0, hash_pos);
+        line = trim(replace(line, "\r", ""));
+        if (line == "")
+            continue;
+        if (is_ip) {
+            if (ip_matches_cidr_or_exact(target_val, line))
+                return line;
+        } else {
+            if (substr(line, 0, 5) == "full:") {
+                if (lc(trim(substr(line, 5))) == lc(target_val))
+                    return line;
+            } else if (substr(line, 0, 7) == "domain:") {
+                if (trace_domain_matches_suffix(target_val, substr(line, 7)))
+                    return line;
+            } else if (substr(line, 0, 8) == "keyword:") {
+                let kw = lc(trim(substr(line, 8)));
+                if (kw != "" && index(lc(target_val), kw) >= 0)
+                    return line;
+            } else if (trace_domain_matches_suffix(target_val, line)) {
+                return line;
+            }
+        }
+    }
+    return null;
+}
+
+function trace_match_binary_ruleset_file(rs_path, target_val, is_ip) {
+    if (getenv("TACHYON_PACKAGE_TEST_MODE") != null || getenv("TACHYON_UCI_STATE_FILE") != null)
+        return false;
+    let st = fs.stat(rs_path);
+    if (st == null || st.type != "file" || (st.size || 0) <= 0)
+        return false;
+    let flag = is_ip ? "--ip" : "--domain";
+    for (let bin in [ "/usr/bin/tachyon-core", "/usr/sbin/tachyon-core", "/usr/bin/sing-box", "/usr/sbin/sing-box" ]) {
+        if (fs.stat(bin) == null)
+            continue;
+        let out = common.command_output_from_args([ bin, "rule-set", "match", rs_path, flag, target_val ]);
+        if (out == null || out == "")
+            out = common.command_output_from_args([ bin, "rule-set", "match", rs_path, target_val ]);
+        if (out != null && out != "" && (match(out, /\[[0-9]+\][ \t]*match/) != null || (index(out, "match") >= 0 && index(out, "no match") < 0)))
+            return true;
+    }
+    return false;
+}
+
+function trace_check_list_reference(reference, target_val, is_ip, owner_sec_id) {
+    reference = trim(as_string(reference));
+    if (reference == "" || target_val == "")
+        return null;
+    let folders = [
+        getenv("TMP_RULESET_FOLDER") || "/tmp/tachyon-core/rulesets",
+        "/etc/tachyon/rulesets",
+        "/usr/share/tachyon/rulesets",
+        "/tmp/sing-box/rulesets"
+    ];
+    let tag_name = "inline-custom-" + trace_hash12(reference) + "-ruleset";
+    for (let folder in folders) {
+        let json_path = folder + "/" + tag_name + ".json";
+        let hit = is_ip
+            ? trace_match_ip_in_json_ruleset(target_val, json_path)
+            : trace_match_domain_in_json_ruleset(target_val, json_path);
+        if (hit != null)
+            return hit;
+        let srs_path = folder + "/" + tag_name + ".srs";
+        if (trace_match_binary_ruleset_file(srs_path, target_val, is_ip))
+            return reference;
+    }
+    if (substr(reference, 0, 1) == "/") {
+        if (substr(reference, -5) == ".json") {
+            let hit = is_ip
+                ? trace_match_ip_in_json_ruleset(target_val, reference)
+                : trace_match_domain_in_json_ruleset(target_val, reference);
+            if (hit != null)
+                return hit;
+        } else if (substr(reference, -4) == ".srs" || substr(reference, -4) == ".trs") {
+            if (trace_match_binary_ruleset_file(reference, target_val, is_ip))
+                return reference;
+        } else {
+            let hit = trace_match_plain_file(target_val, reference, is_ip);
+            if (hit != null)
+                return hit;
+        }
+    }
+    if (substr(reference, 0, 7) != "http://" && substr(reference, 0, 8) != "https://" && substr(reference, 0, 1) != "/") {
+        let comm = lc(reference);
+        for (let folder in folders) {
+            if (is_ip) {
+                let lst_hit = trace_match_plain_file(target_val, folder + "/community-subnets-" + comm + ".lst", true);
+                if (lst_hit != null)
+                    return lst_hit;
+            }
+            for (let ext in [ ".trs", ".srs" ]) {
+                if (trace_match_binary_ruleset_file(folder + "/community-" + comm + ext, target_val, is_ip))
+                    return comm;
+            }
+        }
+    }
+    if (owner_sec_id != null && owner_sec_id != "") {
+        let suffixes = is_ip
+            ? [ "-lists-ruleset.json", "-lists-ruleset-subnets.json", "-remote-subnet-ruleset.json" ]
+            : [ "-lists-ruleset.json", "-lists-ruleset-domains.json", "-remote-domain-ruleset.json" ];
+        for (let folder in folders) {
+            for (let sfx in suffixes) {
+                let path = folder + "/" + owner_sec_id + sfx;
+                let hit = is_ip
+                    ? trace_match_ip_in_json_ruleset(target_val, path)
+                    : trace_match_domain_in_json_ruleset(target_val, path);
+                if (hit != null)
+                    return hit;
+            }
+        }
+    }
+    return null;
+}
+
+function evaluate_atomic_condition_match(obj, query, owner_sec_id) {
     let m = extract_atomic_matchers(obj);
     let core_ip = require("core.ip");
+    if (owner_sec_id == null || owner_sec_id == "")
+        owner_sec_id = section_name(obj);
 
     let q_search = lc(trim(as_string(query.search || query.argument || "")));
     let q_domain = lc(trim(as_string(query.domain || "")));
@@ -4932,6 +5223,21 @@ function evaluate_atomic_condition_match(obj, query) {
                 if (ll == list_probe || index(ll, list_probe) >= 0 || index(list_probe, ll) >= 0) {
                     cat_matched = true;
                     push(presence_hits, "list:" + lst);
+                } else if (q_domain != "") {
+                    let dom_hit = trace_check_list_reference(lst, q_domain, false, owner_sec_id);
+                    if (dom_hit != null) {
+                        cat_matched = true;
+                        push(presence_hits, "list:" + lst + " (" + dom_hit + ")");
+                    }
+                }
+            }
+        }
+        if (!cat_matched && q_dest_ip != "" && length(m.lists) > 0) {
+            for (let lst in m.lists) {
+                let ip_hit = trace_check_list_reference(lst, q_dest_ip, true, owner_sec_id);
+                if (ip_hit != null) {
+                    cat_matched = true;
+                    push(presence_hits, "list:" + lst + " (" + ip_hit + ")");
                 }
             }
         }
@@ -5106,11 +5412,13 @@ function trace_rules(query, sections_list) {
     }
 
     let eval_ast = null;
-    eval_ast = function(node) {
+    eval_ast = function(node, owner_sec_id) {
         if (node == null)
             return { presence: false, exact: false, hits: [], matched_leaves: [], unmatched_leaves: [] };
         if (node.type == "leaf") {
-            let ev = leaf_eval_cache[node.id] || evaluate_atomic_condition_match(node.section, query);
+            let ev = (owner_sec_id != null && owner_sec_id != "")
+                ? evaluate_atomic_condition_match(node.section, query, owner_sec_id)
+                : (leaf_eval_cache[node.id] || evaluate_atomic_condition_match(node.section, query));
             return {
                 presence: ev.has_presence,
                 exact: ev.exact_match,
@@ -5120,7 +5428,7 @@ function trace_rules(query, sections_list) {
             };
         }
         if (node.type == "not") {
-            let sub = eval_ast(node.child);
+            let sub = eval_ast(node.child, owner_sec_id);
             return {
                 presence: sub.presence,
                 exact: !sub.exact,
@@ -5139,7 +5447,7 @@ function trace_rules(query, sections_list) {
         let seen_m = {};
         let seen_u = {};
         for (let ch in (node.children || [])) {
-            let r = eval_ast(ch);
+            let r = eval_ast(ch, owner_sec_id);
             if (r.presence)
                 any_presence = true;
             if (is_and)
@@ -5196,9 +5504,9 @@ function trace_rules(query, sections_list) {
         let sid = section_name(sec);
         if (sid == "" || !bool_option(sec, "enabled", true))
             continue;
-        let inline_eval = evaluate_atomic_condition_match(sec, query);
+        let inline_eval = evaluate_atomic_condition_match(sec, query, sid);
         let ast = section_condition_ast(sec);
-        let ast_eval = ast != null ? eval_ast(ast) : null;
+        let ast_eval = ast != null ? eval_ast(ast, sid) : null;
 
         let presence_match = inline_eval.has_presence || (ast_eval != null && ast_eval.presence);
         let exact_match = false;

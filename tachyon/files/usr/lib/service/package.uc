@@ -229,9 +229,30 @@ function prerm_cleanup(action) {
     return true;
 }
 
+function purge_legacy_steer() {
+    for (let svc in [ "/etc/init.d/tachyon-steer-zapret", "/etc/init.d/steer" ]) {
+        if (path_exists(svc)) {
+            bounded_command_success_from_args([ svc, "stop" ]);
+            bounded_command_success_from_args([ svc, "disable" ]);
+            unlink_if_exists(svc);
+        }
+    }
+    for (let path in (fs.glob("/etc/rc.d/*steer*") || []))
+        unlink_if_exists(path);
+    for (let bin in [ "/usr/sbin/steer", "/usr/bin/steer" ])
+        unlink_if_exists(bin);
+    command_success_from_args([ "rm", "-rf", "/etc/steer", "/usr/lib/tachyon/steer" ]);
+    for (let st in (fs.glob(RUNTIME_STATE_DIR + "/*steer*") || []))
+        unlink_if_exists(st);
+    command_success_from_args([ "nft", "delete", "table", "inet", "steer" ]);
+}
+
 function postinst_restore() {
     if (env("IPKG_INSTROOT", "") != "")
         return true;
+
+    if (!PACKAGE_TEST_MODE)
+        purge_legacy_steer();
 
     let should_restore = path_exists(PACKAGE_UPGRADE_STATE);
     unlink_if_exists(PACKAGE_UPGRADE_STATE);

@@ -370,6 +370,8 @@ function selector_state_from_proxies_payload(payload) {
     let proxies = object_or_empty(object_or_empty(payload).proxies);
 
     for (let tag, proxy in proxies) {
+        if (index(as_string(tag), "-priority-") >= 0)
+            continue;
         proxy = object_or_empty(proxy);
         let proxy_type = lc(as_string(proxy.type || ""));
         let selected = as_string(proxy.now || "");
@@ -390,7 +392,7 @@ function selector_restore_pairs(snapshot, payload) {
         group = as_string(group);
         selected = as_string(selected);
 
-        if (group == "" || selected == "")
+        if (group == "" || selected == "" || index(group, "-priority-") >= 0)
             continue;
 
         let proxy = object_or_empty(proxies[group]);
@@ -426,37 +428,6 @@ function clash_api_json(action, arg1, arg2, arg3) {
     }
 }
 
-function capture_selector_state() {
-    let state = selector_state_from_proxies_payload(clash_api_json("get_proxies"));
-    if (type(state) == "object" && length(keys(state)) > 0) {
-        let persistent_path = getenv("TACHYON_PERSISTENT_SELECTOR_STATE_FILE") || "/etc/tachyon/selector_state.json";
-        let disk_state = common.read_json_file(persistent_path);
-        if (type(disk_state) != "object")
-            disk_state = {};
-        for (let k, v in state)
-            disk_state[k] = v;
-        common.write_json_file(persistent_path, disk_state, 2);
-    }
-    return state;
-}
-
-function restore_selector_state(snapshot) {
-    if (snapshot == null || (type(snapshot) == "object" && length(keys(snapshot)) == 0)) {
-        let persistent_path = getenv("TACHYON_PERSISTENT_SELECTOR_STATE_FILE") || "/etc/tachyon/selector_state.json";
-        let disk_state = common.read_json_file(persistent_path);
-        if (type(disk_state) == "object" && length(keys(disk_state)) > 0)
-            snapshot = disk_state;
-    }
-    let pairs = selector_restore_pairs(snapshot, clash_api_json("get_proxies"));
-
-    for (let pair in pairs)
-        module_success(DIAGNOSTICS_UC, [ "clash-api", "set_group_proxy", pair.group, pair.proxy, "" ]);
-}
-
-function module_background(module_path, args) {
-    return command_status(common.background_command(module_command(module_path, args))) == 0;
-}
-
 function config_get(path, fallback) {
     path = as_string(path);
     if (!uci_core.exists(path))
@@ -466,6 +437,101 @@ function config_get(path, fallback) {
 
 function config_set(path, value) {
     return uci_core.set(path, value);
+}
+
+function capture_selector_state() {
+    return selector_state_from_proxies_payload(clash_api_json("get_proxies"));
+}
+
+function selector_tag_has_balancer(proxy_entry) {
+    proxy_entry = object_or_empty(proxy_entry);
+    let all_list = proxy_entry.all;
+    if (type(all_list) != "array")
+        return false;
+    for (let item in all_list) {
+        let t = as_string(item);
+        if (index(t, "-urltest-") >= 0 || index(t, "-priority-") >= 0)
+            return true;
+    }
+    return false;
+}
+
+function sync_selector_defaults_after_reload(proxies_payload) {
+    let persistent_path = getenv("TACHYON_PERSISTENT_SELECTOR_STATE_FILE") || "/etc/tachyon/selector_state.json";
+    let disk_state = object_or_empty(common.read_json_file(persistent_path));
+    let sing_box_config_path = config_get(CONFIG_NAME + ".settings.config_path", "/etc/tachyon-core/config.json");
+    if (sing_box_config_path == "")
+        sing_box_config_path = "/etc/tachyon-core/config.json";
+    let cfg = object_or_empty(common.read_json_file(sing_box_config_path));
+    let outbounds = type(cfg.outbounds) == "array" ? cfg.outbounds : [];
+    if (length(outbounds) == 0)
+        return;
+
+    let payload = proxies_payload != null ? proxies_payload : clash_api_json("get_proxies");
+    let proxies = object_or_empty(object_or_empty(payload).proxies);
+
+    for (let ob in outbounds) {
+        ob = object_or_empty(ob);
+        if (lc(as_string(ob.type || "")) != "selector")
+            continue;
+        let tag = as_string(ob.tag || "");
+        let def_target = as_string(ob.default || "");
+        if (tag == "" || def_target == "" || index(tag, "-priority-") >= 0)
+            continue;
+        let desired = as_string(disk_state[tag] || "");
+        if (desired == "") {
+            let def_is_balancer = index(def_target, "-urltest-") >= 0 || index(def_target, "-priority-") >= 0;
+            if (!def_is_balancer)
+                continue;
+            desired = def_target;
+        }
+        let proxy = object_or_empty(proxies[tag]);
+        if (lc(as_string(proxy.type || "")) != "selector")
+            continue;
+        if (!string_array_contains(proxy.all, desired))
+            continue;
+        if (as_string(proxy.now || "") != desired)
+            module_success(DIAGNOSTICS_UC, [ "clash-api", "set_group_proxy", tag, desired, "ephemeral" ]);
+    }
+}
+
+function restore_selector_state(snapshot) {
+    let persistent_path = getenv("TACHYON_PERSISTENT_SELECTOR_STATE_FILE") || "/etc/tachyon/selector_state.json";
+    let disk_state = object_or_empty(common.read_json_file(persistent_path));
+    let payload = clash_api_json("get_proxies");
+    let proxies = object_or_empty(object_or_empty(payload).proxies);
+
+    let effective_snapshot = {};
+    if (type(snapshot) == "object") {
+        for (let k, v in snapshot) {
+            let group = as_string(k);
+            let target = as_string(v);
+            if (group == "" || target == "")
+                continue;
+            if (as_string(disk_state[group] || "") != "") {
+                effective_snapshot[group] = as_string(disk_state[group]);
+            }
+            else if (!selector_tag_has_balancer(proxies[group])) {
+                effective_snapshot[group] = target;
+            }
+        }
+    }
+    for (let k, v in disk_state) {
+        let group = as_string(k);
+        let target = as_string(v);
+        if (group != "" && target != "" && effective_snapshot[group] == null)
+            effective_snapshot[group] = target;
+    }
+
+    let pairs = selector_restore_pairs(effective_snapshot, payload);
+    for (let pair in pairs)
+        module_success(DIAGNOSTICS_UC, [ "clash-api", "set_group_proxy", pair.group, pair.proxy, "ephemeral" ]);
+
+    sync_selector_defaults_after_reload(payload);
+}
+
+function module_background(module_path, args) {
+    return command_status(common.background_command(module_command(module_path, args))) == 0;
 }
 
 
@@ -1166,9 +1232,28 @@ function start_main() {
     return 0;
 }
 
+function purge_legacy_steer_runtime() {
+    for (let svc in [ "/etc/init.d/tachyon-steer-zapret", "/etc/init.d/steer" ]) {
+        if (fs.stat(svc) != null) {
+            command_success_from_args([ svc, "stop" ]);
+            command_success_from_args([ svc, "disable" ]);
+            remove_file(svc);
+        }
+    }
+    for (let rc in (fs.glob("/etc/rc.d/*steer*") || []))
+        remove_file(rc);
+    for (let bin in [ "/usr/sbin/steer", "/usr/bin/steer" ])
+        remove_file(bin);
+    if (fs.stat("/etc/steer") != null || fs.stat("/usr/lib/tachyon/steer") != null)
+        command_success_from_args([ "rm", "-rf", "/etc/steer", "/usr/lib/tachyon/steer" ]);
+    if (command_success_from_args([ "nft", "list", "table", "inet", "steer" ]))
+        command_success_from_args([ "nft", "delete", "table", "inet", "steer" ]);
+}
+
 function start_impl() {
     fs.writefile("/var/run/tachyon/starting", as_string(time()));
     try { fs.unlink("/var/run/tachyon/section-fail-state.json"); } catch (e) {}
+    purge_legacy_steer_runtime();
     // (e.g. config generator killed during restart). 30-min threshold is safe since
     // all tachyon temp files are created and deleted within seconds under normal operation.
     command_status("find /tmp -maxdepth 1 -name 'tachyon-*' -mmin +30 -delete 2>/dev/null; true");
@@ -1764,6 +1849,8 @@ function reload(reason) {
         if (match(reload_sb_pid, /^[0-9]+$/) != null)
             module_success(STATE_UC, [ "write-provenance", reload_sb_pid ]);
         common.write_file(RUNTIME_STATE_DIR + "/sing-box-reload.timestamp", as_string(time()) + "\n");
+
+        sync_selector_defaults_after_reload(null);
 
         status = module_status(PRIORITY_UC, [ "start-runtime" ]);
         if (status != 0) {

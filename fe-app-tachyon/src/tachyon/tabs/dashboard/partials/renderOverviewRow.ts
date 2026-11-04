@@ -1060,34 +1060,32 @@ function toStringArray(val: unknown): string[] {
   return out;
 }
 
+const SAFE_FAVICON_DOMAIN_RE =
+  /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/i;
+
 function normalizeFaviconDomainInput(raw: string): string {
   const trimmed = String(raw || '').trim();
   if (!trimmed) return '';
   if (trimmed.toLowerCase() === 'svg' || trimmed.toLowerCase() === 'none') {
     return 'svg';
   }
-  if (/^https?:\/\/.+\.(ico|png|svg|jpg|jpeg|webp)(\?.*)?$/i.test(trimmed)) {
-    return trimmed;
-  }
   const host = trimmed
     .replace(/^https?:\/\//i, '')
-    .split(/[/?#]/)[0]
+    .split(/[/?#:]/)[0]
     .trim()
     .toLowerCase();
+  if (!SAFE_FAVICON_DOMAIN_RE.test(host)) return '';
   return host;
 }
 
 function buildFaviconCandidateUrls(domainOrUrl: string): string[] {
   const norm = normalizeFaviconDomainInput(domainOrUrl);
-  if (!norm || norm === 'svg') return [];
-  if (/^https?:\/\//i.test(norm)) {
-    return [norm];
-  }
-  if (!norm.includes('.')) return [];
+  if (!norm || norm === 'svg' || !SAFE_FAVICON_DOMAIN_RE.test(norm)) return [];
+  const encoded = encodeURIComponent(norm);
   return [
-    `https://www.google.com/s2/favicons?domain=${encodeURIComponent(norm)}&sz=64`,
-    `https://icons.duckduckgo.com/ip3/${encodeURIComponent(norm)}.ico`,
-    `https://${norm}/favicon.ico`,
+    `https://www.google.com/s2/favicons?domain=${encoded}&sz=64`,
+    `https://icons.duckduckgo.com/ip3/${encoded}.ico`,
+    `https://${encoded}/favicon.ico`,
   ];
 }
 
@@ -1221,9 +1219,23 @@ function createSectionIconContent(
   }
 
   let urlIndex = 0;
+  const toSafeHttpsUrl = (rawUrl: string): string | null => {
+    try {
+      const parsed = new URL(rawUrl);
+      return parsed.protocol === 'https:' ? parsed.href : null;
+    } catch {
+      return null;
+    }
+  };
+  const initialSrc = toSafeHttpsUrl(urls[0]);
+  if (!initialSrc) {
+    return E('span', { class: 'tachyon-routing-row__icon-inner' }, [
+      svgFallback,
+    ]);
+  }
   const imgEl = E('img', {
     class: 'tachyon-routing-row__favicon',
-    src: urls[0],
+    src: initialSrc,
     alt: domain || '',
     loading: 'lazy',
     referrerPolicy: 'no-referrer',
@@ -1231,8 +1243,10 @@ function createSectionIconContent(
 
   imgEl.addEventListener('error', () => {
     urlIndex += 1;
-    if (urlIndex < urls.length) {
-      imgEl.src = urls[urlIndex];
+    const nextSrc =
+      urlIndex < urls.length ? toSafeHttpsUrl(urls[urlIndex]) : null;
+    if (nextSrc) {
+      imgEl.setAttribute('src', nextSrc);
     } else {
       imgEl.style.display = 'none';
       svgFallback.style.display = '';

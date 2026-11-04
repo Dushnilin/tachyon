@@ -1208,6 +1208,15 @@ prepare_transaction() {
         _t1="$(date +%s 2>/dev/null || echo 0)"
         ok "Tachyon services stopped in $((_t1 - _t0))s"
     fi
+    for _legacy_steer in /etc/init.d/tachyon-steer-zapret /etc/init.d/steer; do
+        if [ -f "$_legacy_steer" ]; then
+            "$_legacy_steer" stop >/dev/null 2>&1 || true
+            "$_legacy_steer" disable >/dev/null 2>&1 || true
+            rm -f "$_legacy_steer" 2>/dev/null || true
+        fi
+    done
+    rm -rf /etc/rc.d/*steer* /etc/steer /usr/lib/tachyon/steer /usr/sbin/steer /usr/bin/steer /var/run/tachyon/*steer* /tmp/*steer* 2>/dev/null || true
+    nft delete table inet steer >/dev/null 2>&1 || true
     release_tachyon_init_lock
 }
 

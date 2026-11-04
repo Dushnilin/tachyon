@@ -166,7 +166,14 @@
       "description": "check-fakeip (diagnostics/runtime.uc)",
       "async": false,
       "timeout_ms": 5000,
-      "params": [],
+      "params": [
+        {
+          "name": "arg1",
+          "type": "string",
+          "required": false,
+          "description": "positional argument 1 of check_fakeip"
+        }
+      ],
       "returns": {
         "type": "object",
         "description": "command output"

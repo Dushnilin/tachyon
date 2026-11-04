@@ -28,15 +28,11 @@ Reconciler разделяет вопрос на три:
 
 | Подсистема | Источник ожиданий |
 |---|---|
-| `engine` | `settings.engine` (sing-box / steer / steer-extended) |
+| `engine` | `settings.engine` (`sing-box` / `tachyon-core`) |
 | `dns` | `settings.dns_*`, `nft`-перехват |
 | `nftables` | сеты Tachyon, tproxy-правила, приоритетные цепочки |
 | `routing` | `ip rule` / `ip route`, таблица `tachyon` |
 | `daemons` | активные секции действий |
-
-Учитывается **активный движок**: часть ожиданий для sing-box неприменима к
-steer и наоборот, и попытка «починить» чужую подсистему создала бы расхождение
-заново.
 
 ---
 
@@ -44,14 +40,14 @@ steer и наоборот, и попытка «починить» чужую п�
 
 `get_actual_state()` — опрос реальной системы:
 
-- детект ядра (`sing-box` / `steer`) **с защитой от PID recycling** через
+- детект ядра (`tachyon-core` / `sing-box`) **с защитой от PID recycling** через
   `core/process.uc`;
-- dnsmasq, перехват DNS Tachyon, upstream SmartDNS, локальный резолвинг;
-- наличие nft-таблиц (`TachyonTable` / `inet steer`) и заполненность базовых
+- dnsmasq, перехват DNS Tachyon, локальный резолвинг;
+- наличие nft-таблицы `TachyonTable` и заполненность базовых
   сетов (`localv4`, `localv6`, `tachyon_subnets`, `tachyon_ports`,
   `tachyon_ip_ports`);
 - `ip rule` по fwmark и маршруты;
-- запущенность помощников (`nfqws`, `nfqws2`, `ciadpi`, `fptn`, `steer-zapret`).
+- запущенность помощников (`nfqws`, `nfqws2`, `ciadpi`, `fptn`).
 
 ---
 
@@ -71,7 +67,7 @@ steer и наоборот, и попытка «починить» чужую п�
 
 | Действие | Что делает | Рвёт соединения? |
 |---|---|---|
-| `repair_dns` | перезапуск dnsmasq при падении, повторное применение редиректа, SIGHUP кэша, smartdns для steer | нет |
+| `repair_dns` | перезапуск dnsmasq при падении, повторное применение редиректа, SIGHUP кэша | нет |
 | `repair_nftables` | точечное пересоздание таблицы при сдутом fw4, дозаполнение сетов | нет |
 | `repair_routing` | восстановление недостающих `ip rule` и маршрутов | нет |
 | `repair_daemons` | изолированный перезапуск одного упавшего демона | нет |

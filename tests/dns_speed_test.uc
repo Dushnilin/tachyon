@@ -9,6 +9,10 @@ check(speed.validate_request(request) != null, "valid selected servers and hosts
 check(speed.validate_request({ ...request, udp_servers: [ "77.88.8.8", "1.0.0.1" ] }) != null, "valid DoH with Bootstrap/Fallback UDP servers");
 check(speed.validate_request({ protocol: "udp", servers: [ "77.88.8.8", "1.1.1.1" ], udp_servers: [ "8.8.8.8" ], domains: [ "example.com" ] }) != null, "valid UDP protocol with Bootstrap/Fallback UDP servers");
 check(speed.validate_request({ ...request, protocol: "doq" }) == null, "do not measure DoH for another selected protocol");
+let dot_req = speed.validate_request({ protocol: "dot", servers: [ "1.1.1.1", "dns.quad9.net" ], udp_servers: [ "8.8.8.8" ], domains: [ "example.com" ] });
+check(dot_req != null && length(dot_req.servers) == 3 && dot_req.servers[0].kind == "dot" && dot_req.servers[0].port == 853 && dot_req.servers[2].kind == "udp", "valid DoT protocol with Bootstrap/Fallback UDP servers");
+let doq_req = speed.validate_request({ protocol: "doq", servers: [ "dns.adguard-dns.com:853", "94.140.14.14" ], udp_servers: [], domains: [ "example.com" ] });
+check(doq_req != null && length(doq_req.servers) == 2 && doq_req.servers[0].kind == "doq" && doq_req.servers[0].port == 853, "valid DoQ protocol");
 check(speed.validate_request({ ...request, servers: [ "http://dns.example/dns-query" ] }) == null, "HTTPS only");
 check(speed.validate_request({ ...request, udp_servers: [ "https://dns.example/dns-query" ] }) == null, "reject DoH URL in udp_servers");
 check(speed.validate_request({ ...request, servers: [ "https://user:pass@dns.example/dns-query" ] }) == null, "reject URL credentials");

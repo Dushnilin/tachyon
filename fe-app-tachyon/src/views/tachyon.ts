@@ -1882,7 +1882,20 @@ const EntryPoint = {
       return uci.get(UCI_PACKAGE, 'settings', 'show_tab_' + id) !== '0';
     };
 
-    let activeSectionSubTab = 'sections';
+    let activeSectionSubTab = (() => {
+      if (typeof main.getSavedActiveNavKey === 'function') {
+        const saved = main.getSavedActiveNavKey();
+        if (saved && saved.startsWith('section:')) {
+          const sub = saved.slice('section:'.length);
+          if (
+            ['sections', 'conditions', 'outbounds', 'balancers'].includes(sub)
+          ) {
+            return sub;
+          }
+        }
+      }
+      return 'sections';
+    })();
     let selectSectionSubTabFn = null;
     const gridSectionRegistry = {};
 
@@ -2213,8 +2226,11 @@ const EntryPoint = {
       };
 
       const tabItems = {};
-      const selectSubTab = (targetKey) => {
+      const selectSubTab = (targetKey, persistNav = false) => {
         activeSectionSubTab = targetKey;
+        if (persistNav && typeof main.setActiveShellNavKey === 'function') {
+          main.setActiveShellNavKey(`section:${targetKey}`);
+        }
         subTabsDef.forEach(({ key }) => {
           const li = tabItems[key];
           const pane = panesByKey[key];
@@ -2250,7 +2266,7 @@ const EntryPoint = {
                   click: (ev) => {
                     ev.preventDefault();
                     ev.stopPropagation();
-                    selectSubTab(key);
+                    selectSubTab(key, true);
                   },
                 },
                 label,
@@ -2269,7 +2285,7 @@ const EntryPoint = {
       secEl.appendChild(paneBalancers);
 
       selectSectionSubTabFn = selectSubTab;
-      selectSubTab(activeSectionSubTab);
+      selectSubTab(activeSectionSubTab, false);
     };
 
     const origMapRender = tachyonMap.render;
@@ -2285,29 +2301,22 @@ const EntryPoint = {
     if (typeof tachyonMap.renderContents === 'function') {
       const origRenderContents = tachyonMap.renderContents;
       tachyonMap.renderContents = function () {
-        const prevSecEl =
-          typeof document !== 'undefined'
-            ? document.querySelector('#cbi-tachyon-section')
-            : null;
-        const wasInSectionTab = Boolean(
-          prevSecEl && !prevSecEl.classList.contains('cbi-tab-disabled'),
-        );
-        return origRenderContents.apply(this, arguments).then((mapEl) => {
-          mountSectionSubTabs(mapEl);
-          mountAllStudioDecks(mapEl);
-          mountShellOnMap(mapEl);
-          if (wasInSectionTab && typeof document !== 'undefined') {
-            const root = mapEl || document;
-            const secTabLi = root.querySelector(
-              '.cbi-tabmenu > li[data-tab="cbi-tachyon-section"], .cbi-tabmenu > li[data-tab="section"]',
-            );
-            const secTabLink = secTabLi ? secTabLi.querySelector('a') : null;
-            if (secTabLink) {
-              secTabLink.click();
+        if (typeof main.setShellRestoringTab === 'function') {
+          main.setShellRestoringTab(true);
+        }
+        return origRenderContents
+          .apply(this, arguments)
+          .then((mapEl) => {
+            mountSectionSubTabs(mapEl);
+            mountAllStudioDecks(mapEl);
+            mountShellOnMap(mapEl);
+            return mapEl;
+          })
+          .finally(() => {
+            if (typeof main.setShellRestoringTab === 'function') {
+              main.setShellRestoringTab(false);
             }
-          }
-          return mapEl;
-        });
+          });
       };
     }
 
@@ -2586,7 +2595,10 @@ const EntryPoint = {
       logWatcherStartDelayMs: 5000,
     });
 
-    if (!window.location.hash || window.location.hash === '#') {
+    if (
+      (!window.location.hash || window.location.hash === '#') &&
+      typeof main.mountTachyonAppShell !== 'function'
+    ) {
       const targetTabKey = defaultTab;
       window.requestAnimationFrame(() => {
         const tabLink = document.querySelector(

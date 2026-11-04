@@ -168,9 +168,10 @@ describe('routing section tracer community caches', () => {
         const reads = tracer.fs.read.mock.calls.filter(([path]) =>
           path.endsWith(`/${file}`),
         );
-        expect(reads).toHaveLength(2);
+        expect(reads).toHaveLength(3);
         expect(reads.map(([path]) => path)).toEqual([
           `/tmp/tachyon-core/rulesets/${file}`,
+          `/etc/tachyon/rulesets/${file}`,
           `/tmp/sing-box/rulesets/${file}`,
         ]);
       }

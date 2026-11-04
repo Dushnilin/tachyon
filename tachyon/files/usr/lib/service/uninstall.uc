@@ -157,6 +157,7 @@ function restore_dhcp_dns() {
 function clean_firewall_and_routing() {
     run_cmd(["nft", "delete", "table", "inet", "TachyonTable"]);
     run_cmd(["nft", "delete", "table", "inet", "tachyon"]);
+    run_cmd(["nft", "delete", "table", "inet", "steer"]);
     run_cmd(["nft", "delete", "table", "ip", "tachyon"]);
     run_cmd(["nft", "delete", "table", "ip6", "tachyon"]);
     remove_file("/usr/share/nftables.d/chain-pre/input/10-tachyon.nft");
@@ -194,8 +195,17 @@ function uninstall_tachyon(purge_config, keep_binaries) {
 
     clean_managed_sing_box(keep_binaries);
 
+    for (let svc in [ "/etc/init.d/tachyon-steer-zapret", "/etc/init.d/steer" ]) {
+        if (fs.stat(svc) != null) {
+            run_cmd([ svc, "stop" ]);
+            run_cmd([ svc, "disable" ]);
+            remove_file(svc);
+        }
+    }
+    run_shell("rm -rf /etc/rc.d/*steer* /etc/steer /usr/lib/tachyon/steer /usr/sbin/steer /usr/bin/steer 2>/dev/null || true");
+
     // Stop proxy and desync processes
-    run_shell("killall sing-box nfqws nfqws2 ciadpi 2>/dev/null || true");
+    run_shell("killall sing-box steer nfqws nfqws2 ciadpi 2>/dev/null || true");
     // Stop background daemons safely (excluding self PID)
     run_shell("ps 2>/dev/null | grep -E 'dns_failover|watchdog|telegram' | grep -v grep | awk '{print $1}' | while read _pid; do [ \"$_pid\" != \"$$\" ] && kill -9 \"$_pid\" 2>/dev/null; done; true");
 

@@ -27,6 +27,30 @@ const SIDEBAR_POS_STORAGE_KEY = 'tachyon_sidebar_pos_v1';
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'tachyon_sidebar_collapsed_v1';
 const TOPBAR_COLLAPSED_STORAGE_KEY = 'tachyon_topbar_collapsed_v1';
 const SIDEBAR_EXPANDED_MENUS_KEY = 'tachyon_sidebar_menus_v1';
+const ACTIVE_NAV_STORAGE_KEY = 'tachyon_active_nav_key_v1';
+
+export function getSavedActiveNavKey(): string | null {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const val = localStorage.getItem(ACTIVE_NAV_STORAGE_KEY);
+      if (val && typeof val === 'string') return val.trim() || null;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+export function saveActiveNavKey(key: string): void {
+  if (!key) return;
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(ACTIVE_NAV_STORAGE_KEY, key);
+    }
+  } catch {
+    // ignore
+  }
+}
 
 export function getUiMode(): TachyonUiMode {
   try {
@@ -833,13 +857,25 @@ const activeShellState: {
   activeNavKey: string;
   initialized?: boolean;
   restoringTab?: boolean;
+  mountedMapEl?: HTMLElement | null;
   options?: MountAppShellOptions;
   renderFn?: () => void;
 } = {
   activeNavKey: 'dashboard',
   initialized: false,
   restoringTab: false,
+  mountedMapEl: null,
 };
+
+export function setShellRestoringTab(restoring: boolean): void {
+  activeShellState.restoringTab = Boolean(restoring);
+}
+
+export function setActiveShellNavKey(key: string): void {
+  if (!key) return;
+  activeShellState.activeNavKey = key;
+  saveActiveNavKey(key);
+}
 
 export function refreshTachyonAppShell(): void {
   if (typeof activeShellState.renderFn === 'function') {
@@ -1291,11 +1327,37 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
     return found ? found.key : 'dashboard';
   };
 
-  const wasInitialized = Boolean(activeShellState.initialized);
+  const wasSameMapEl = activeShellState.mountedMapEl === mapEl;
+  activeShellState.mountedMapEl = mapEl;
+  const savedNavKey = getSavedActiveNavKey();
   const hasExplicitHash =
     typeof window !== 'undefined' &&
     Boolean(window.location?.hash && window.location.hash !== '#');
-  if (!hasExplicitHash && options.defaultNavKey) {
+  if (hasExplicitHash) {
+    activeShellState.activeNavKey = detectCurrentNavKey();
+    saveActiveNavKey(activeShellState.activeNavKey);
+    activeShellState.initialized = true;
+  } else if (wasSameMapEl && activeShellState.activeNavKey) {
+    const resolvedCurrent = resolveDefaultNavKey(
+      savedNavKey || activeShellState.activeNavKey,
+    );
+    activeShellState.activeNavKey = resolvedCurrent;
+    const targetItem = NAV_ITEMS.find((i) => i.key === resolvedCurrent);
+    if (targetItem?.parentMenu) {
+      expandedMenus.add(targetItem.parentMenu);
+      saveExpandedMenus(expandedMenus);
+    }
+    activeShellState.initialized = true;
+  } else if (savedNavKey) {
+    const targetNavKey = resolveDefaultNavKey(savedNavKey);
+    activeShellState.activeNavKey = targetNavKey;
+    const targetItem = NAV_ITEMS.find((i) => i.key === targetNavKey);
+    if (targetItem?.parentMenu) {
+      expandedMenus.add(targetItem.parentMenu);
+      saveExpandedMenus(expandedMenus);
+    }
+    activeShellState.initialized = true;
+  } else if (options.defaultNavKey) {
     const targetNavKey = resolveDefaultNavKey(options.defaultNavKey);
     activeShellState.activeNavKey = targetNavKey;
     const targetItem = NAV_ITEMS.find((i) => i.key === targetNavKey);
@@ -1304,19 +1366,15 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
     }
     saveExpandedMenus(expandedMenus);
     activeShellState.initialized = true;
-  } else if (!wasInitialized || !activeShellState.activeNavKey) {
-    if (!hasExplicitHash) {
-      const targetNavKey = resolveDefaultNavKey(options.defaultNavKey);
-      activeShellState.activeNavKey = targetNavKey;
-      expandedMenus.clear();
-      const targetItem = NAV_ITEMS.find((i) => i.key === targetNavKey);
-      if (targetItem?.parentMenu) {
-        expandedMenus.add(targetItem.parentMenu);
-      }
-      saveExpandedMenus(expandedMenus);
-    } else {
-      activeShellState.activeNavKey = detectCurrentNavKey();
+  } else if (!activeShellState.initialized || !activeShellState.activeNavKey) {
+    const targetNavKey = resolveDefaultNavKey(options.defaultNavKey);
+    activeShellState.activeNavKey = targetNavKey;
+    expandedMenus.clear();
+    const targetItem = NAV_ITEMS.find((i) => i.key === targetNavKey);
+    if (targetItem?.parentMenu) {
+      expandedMenus.add(targetItem.parentMenu);
     }
+    saveExpandedMenus(expandedMenus);
     activeShellState.initialized = true;
   }
   const initialItem = NAV_ITEMS.find(
@@ -1352,6 +1410,7 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
 
   const activateNavItem = (item: NavItemDef) => {
     activeShellState.activeNavKey = item.key;
+    saveActiveNavKey(item.key);
     sidebarEl.classList.remove('is-mobile-open');
     if (item.parentMenu) {
       expandedMenus.add(item.parentMenu);
@@ -1430,6 +1489,7 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
         const tabName = targetSec.id.replace(/^cbi-tachyon-/, '');
         syncTopLevelTabsDom(tabName);
         activeShellState.activeNavKey = detectCurrentNavKey();
+        saveActiveNavKey(activeShellState.activeNavKey);
         renderSidebarAndTopbar();
       } else if (
         targetSec &&
@@ -1442,6 +1502,7 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
         );
         if (matched && activeShellState.activeNavKey !== matched.key) {
           activeShellState.activeNavKey = matched.key;
+          saveActiveNavKey(matched.key);
           renderSidebarAndTopbar();
         }
       }
@@ -2175,7 +2236,10 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
   const targetItem =
     NAV_ITEMS.find((i) => i.key === activeShellState.activeNavKey) ||
     NAV_ITEMS[0];
-  if (targetItem && (wasInitialized || !hasExplicitHash)) {
+  if (
+    targetItem &&
+    (wasSameMapEl || Boolean(savedNavKey) || !hasExplicitHash)
+  ) {
     activeShellState.restoringTab = true;
     activateNavItem(targetItem);
     if (

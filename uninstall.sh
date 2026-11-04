@@ -213,9 +213,20 @@ if [ -f "/etc/init.d/sing-box" ]; then
     fi
 fi
 
+# Stop and remove legacy steer / tachyon-steer-zapret services if present
+for _steer_svc in /etc/init.d/tachyon-steer-zapret /etc/init.d/steer; do
+    if [ -f "$_steer_svc" ]; then
+        "$_steer_svc" stop >/dev/null 2>&1 || true
+        "$_steer_svc" disable >/dev/null 2>&1 || true
+        rm -f "$_steer_svc" 2>/dev/null || true
+    fi
+done
+rm -rf /etc/rc.d/*steer* /etc/steer /usr/lib/tachyon/steer /usr/sbin/steer /usr/bin/steer 2>/dev/null || true
+
 # Terminate running DPI and proxy processes if any
 killall -9 tachyon-core >/dev/null 2>&1 || true
 killall -9 sing-box >/dev/null 2>&1 || true
+killall -9 steer >/dev/null 2>&1 || true
 killall -9 nfqws >/dev/null 2>&1 || true
 killall -9 nfqws2 >/dev/null 2>&1 || true
 killall -9 ciadpi >/dev/null 2>&1 || true
@@ -240,6 +251,7 @@ tui_step "$CURRENT_STEP" "$TOTAL_STEPS" "Очистка сетевых табл�
 if command -v nft >/dev/null 2>&1; then
     nft delete table inet TachyonTable >/dev/null 2>&1 || true
     nft delete table inet tachyon >/dev/null 2>&1 || true
+    nft delete table inet steer >/dev/null 2>&1 || true
     nft delete table ip tachyon >/dev/null 2>&1 || true
     nft delete table ip6 tachyon >/dev/null 2>&1 || true
     rm -f /usr/share/nftables.d/chain-pre/input/10-tachyon.nft 2>/dev/null || true

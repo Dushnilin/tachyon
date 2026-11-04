@@ -1724,7 +1724,8 @@ function validate_dns_action(section, sections, context) {
     if (!contains([ "udp", "dot", "doh", "doq" ], dns_type))
         fail_validation("DNS rule '" + name + "' uses unsupported protocol '" + dns_type + "'. Use udp, dot, doh, or doq. Aborted.");
     let dns_servers = list_option(section, "dns_server");
-    if (length(dns_servers) == 0)
+    let use_wan = bool_option(section, "dns_use_wan", false);
+    if (length(dns_servers) == 0 && !use_wan)
         fail_validation("DNS rule '" + name + "' has no DNS server specified. Aborted.");
     for (let dns_server in dns_servers) {
         if (!dns_server_value_valid(dns_server))

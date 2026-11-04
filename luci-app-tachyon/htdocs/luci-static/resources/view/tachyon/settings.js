@@ -2435,7 +2435,10 @@ function createSettingsContent(section, capabilities) {
         settingsDnsDynamicState.dnsType ||
         "udp";
       const mainServers =
-        protocol === "doh" || protocol === "udp"
+        protocol === "doh" ||
+        protocol === "udp" ||
+        protocol === "dot" ||
+        protocol === "doq"
           ? optionListValues(dnsOption, section_id)
           : [];
       const udpServers = [

@@ -223,7 +223,12 @@ function createController() {
   }
 
   function isSupportedProtocol(protocol) {
-    return protocol === "doh" || protocol === "udp";
+    return (
+      protocol === "doh" ||
+      protocol === "udp" ||
+      protocol === "dot" ||
+      protocol === "doq"
+    );
   }
 
   function updateControls() {
@@ -238,7 +243,7 @@ function createController() {
     progress.textContent = running
       ? _("Testing selected DNS…")
       : !canRun
-        ? _("This speed test supports DoH and UDP DNS servers.")
+        ? _("This speed test supports DoH, DoT, DoQ, and UDP DNS servers.")
         : "";
     listEntries.forEach(({ node, alwaysEnabled }) => {
       if (!node) return;

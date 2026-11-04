@@ -34,7 +34,7 @@ let commands = {
     check_inbounds: [ "diagnostics/runtime.uc", "check-inbounds", 0 ],
     check_logs: [ "diagnostics/runtime.uc", "check-logs", 0 ],
     check_sing_box_logs: [ "diagnostics/runtime.uc", "check-sing-box-logs", 0 ],
-    check_fakeip: [ "diagnostics/runtime.uc", "check-fakeip", 0 ],
+    check_fakeip: [ "diagnostics/runtime.uc", "check-fakeip", 1 ],
     check_zapret_runtime: [ "diagnostics/runtime.uc", "check-zapret-runtime", 0 ],
     check_zapret2_runtime: [ "diagnostics/runtime.uc", "check-zapret2-runtime", 0 ],
     check_byedpi_runtime: [ "diagnostics/runtime.uc", "check-byedpi-runtime", 0 ],

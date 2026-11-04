@@ -4809,7 +4809,9 @@ function addUrlTestItemOptions(itemSection, options = {}) {
     if (key.endsWith("_outbounds")) {
       list.load = function (itemId) {
         const sectionId = parentSectionForItem(itemId) || "Main";
-        const values = normalizeOptionValues(optionMapValue(this, itemId, key));
+        const values = normalizeDynamicListItems(
+          optionMapValue(this, itemId, key),
+        );
 
         return loadOutboundNameChoices(sectionId).then(() => {
           refreshOptionChoices(
@@ -5041,7 +5043,9 @@ function addPriorityLevelItemOptions(itemSection, options = {}) {
     if (key === "server_name" || key.endsWith("_outbounds")) {
       list.load = function (itemId) {
         const sectionId = parentSectionForItem(itemId) || "Main";
-        const values = normalizeOptionValues(optionMapValue(this, itemId, key));
+        const values = normalizeDynamicListItems(
+          optionMapValue(this, itemId, key),
+        );
 
         return loadOutboundNameChoices(sectionId).then(() => {
           refreshOptionChoices(
@@ -11268,6 +11272,34 @@ function createSectionContent(section) {
   o = section.taboption(
     "settings",
     form.Flag,
+    "dns_use_wan",
+    _("Use ISP DNS from WAN port"),
+    _(
+      "Automatically resolve domains in this section via the upstream DNS servers received on the WAN interface.",
+    ),
+  );
+  o.depends("action", "dns");
+  o.default = "0";
+  o.rmempty = false;
+  o.modalonly = true;
+
+  o = section.taboption(
+    "settings",
+    form.Flag,
+    "disable_fakeip",
+    _("Bypass FakeIP (resolve real IP addresses)"),
+    _(
+      "Evaluate this DNS section before FakeIP proxy rules so matched domains always resolve to real IP addresses.",
+    ),
+  );
+  o.depends("action", "dns");
+  o.default = "0";
+  o.rmempty = false;
+  o.modalonly = true;
+
+  o = section.taboption(
+    "settings",
+    form.Flag,
     "dns_detour_enabled",
     _("DNS through section"),
     _("Route requests to this DNS server through another section."),
@@ -15253,7 +15285,26 @@ function createSectionContent(section) {
           uci.set(UCI_PACKAGE, sid, "outbound_group_levels", legacy);
         }
       });
-      unsetIfPresent(balId, "outbound_group_levels");
+    }
+  };
+
+  const syncSinglePriorityBalancerLevels = (sectionId, levels) => {
+    const balRefs = normalizeOptionValues(
+      uci.get(UCI_PACKAGE, sectionId, "balancer_refs"),
+    );
+    const prioBalIds = balRefs.filter((balId) => {
+      const btype = String(
+        uci.get(UCI_PACKAGE, balId, "balancer_type") || "urltest",
+      ).toLowerCase();
+      return btype === "priority";
+    });
+    if (prioBalIds.length === 1) {
+      const balId = prioBalIds[0];
+      if (levels.length) {
+        uci.set(UCI_PACKAGE, balId, "outbound_group_levels", levels);
+      } else {
+        unsetIfPresent(balId, "outbound_group_levels");
+      }
     }
   };
 
@@ -15297,10 +15348,12 @@ function createSectionContent(section) {
     if (levels.length)
       uci.set(UCI_PACKAGE, sectionId, "outbound_group_levels", levels);
     else unsetIfPresent(sectionId, "outbound_group_levels");
+    syncSinglePriorityBalancerLevels(sectionId, levels);
   };
   o.remove = function (sectionId) {
     migrateLegacyBalancerLevels(sectionId);
     unsetIfPresent(sectionId, "outbound_group_levels");
+    syncSinglePriorityBalancerLevels(sectionId, []);
   };
   configureLiveDynamicListChoices(o, currentSectionPriorityTierChoices);
 
@@ -17632,7 +17685,13 @@ async function readRulesetFile(path, snapshots) {
       candidates.unshift(
         path.replace("/tmp/sing-box/rulesets/", "/tmp/tachyon-core/rulesets/"),
       );
+      candidates.push(
+        path.replace("/tmp/sing-box/rulesets/", "/etc/tachyon/rulesets/"),
+      );
     } else if (path.startsWith("/tmp/tachyon-core/rulesets/")) {
+      candidates.push(
+        path.replace("/tmp/tachyon-core/rulesets/", "/etc/tachyon/rulesets/"),
+      );
       candidates.push(
         path.replace("/tmp/tachyon-core/rulesets/", "/tmp/sing-box/rulesets/"),
       );
@@ -17792,15 +17851,38 @@ async function matchConfiguredRulesets(secName, query, type, snapshots) {
       if (result.stderr?.trim()) snapshots.warnings.push(result.stderr.trim());
       snapshots.set(reference, path);
     }
+    const snapshotPath = snapshots.get(reference);
+    if (snapshotPath && snapshotPath.endsWith(".json")) {
+      const jsonRuleset = await readRulesetFile(snapshotPath, snapshots);
+      if (jsonRuleset) {
+        const hit =
+          type === "ip"
+            ? matchIpInRuleset(query, jsonRuleset)
+            : matchDomainInRuleset(query.toLowerCase(), jsonRuleset);
+        if (hit) return reference;
+        continue;
+      }
+    } else if (snapshotPath && snapshotPath.endsWith(".srs")) {
+      const siblingJson = snapshotPath.replace(/\.srs$/, ".json");
+      const jsonRuleset = await readRulesetFile(siblingJson, snapshots);
+      if (jsonRuleset) {
+        const hit =
+          type === "ip"
+            ? matchIpInRuleset(query, jsonRuleset)
+            : matchDomainInRuleset(query.toLowerCase(), jsonRuleset);
+        if (hit) return reference;
+      }
+    }
     const args = [
       "rule-set",
       "match",
-      snapshots.get(reference),
+      snapshotPath,
       ...(type === "ip" ? ["--ip", query] : ["--domain", query.toLowerCase()]),
     ];
     let checked = false;
     for (const bin of [
       "/usr/bin/tachyon-core",
+      "/usr/sbin/tachyon-core",
       "/usr/bin/sing-box",
       "/usr/sbin/sing-box",
     ]) {
@@ -18224,10 +18306,15 @@ async function performTraceRules(query, rulesetSnapshots) {
         };
       }
 
-      const listsRuleset = await readRulesetFile(
-        `/tmp/tachyon-core/rulesets/${secName}-lists-ruleset.json`,
-        rulesetSnapshots,
-      );
+      const listsRuleset =
+        (await readRulesetFile(
+          `/tmp/tachyon-core/rulesets/${secName}-lists-ruleset.json`,
+          rulesetSnapshots,
+        )) ||
+        (await readRulesetFile(
+          `/tmp/tachyon-core/rulesets/${secName}-lists-ruleset-subnets.json`,
+          rulesetSnapshots,
+        ));
       const matchedListIp = matchIpInRuleset(queryForMatching, listsRuleset);
       if (matchedListIp) {
         const domainIpLists = getSectionEffectiveOptionValues(
@@ -18439,10 +18526,15 @@ async function performTraceRules(query, rulesetSnapshots) {
         };
       }
 
-      const listsRuleset = await readRulesetFile(
-        `/tmp/tachyon-core/rulesets/${secName}-lists-ruleset.json`,
-        rulesetSnapshots,
-      );
+      const listsRuleset =
+        (await readRulesetFile(
+          `/tmp/tachyon-core/rulesets/${secName}-lists-ruleset.json`,
+          rulesetSnapshots,
+        )) ||
+        (await readRulesetFile(
+          `/tmp/tachyon-core/rulesets/${secName}-lists-ruleset-domains.json`,
+          rulesetSnapshots,
+        ));
       if (listsRuleset) {
         const matchedListDomain = matchDomainInRuleset(
           queryForMatching,
@@ -18560,10 +18652,15 @@ async function performTraceRules(query, rulesetSnapshots) {
 
       if (resolvedIps && resolvedIps.length > 0) {
         const ipCidr = getSectionEffectiveOptionValues(secName, "ip_cidr");
-        const listsRuleset = await readRulesetFile(
-          `/tmp/tachyon-core/rulesets/${secName}-lists-ruleset.json`,
-          rulesetSnapshots,
-        );
+        const listsRuleset =
+          (await readRulesetFile(
+            `/tmp/tachyon-core/rulesets/${secName}-lists-ruleset.json`,
+            rulesetSnapshots,
+          )) ||
+          (await readRulesetFile(
+            `/tmp/tachyon-core/rulesets/${secName}-lists-ruleset-subnets.json`,
+            rulesetSnapshots,
+          ));
         const remoteSubnetRuleset = await readRulesetFile(
           `/tmp/tachyon-core/rulesets/${secName}-remote-subnet-ruleset.json`,
           rulesetSnapshots,
@@ -18620,8 +18717,9 @@ async function performTraceRules(query, rulesetSnapshots) {
           if (listsRuleset) {
             const matchedListIp = matchIpInRuleset(ip, listsRuleset);
             if (matchedListIp) {
-              const domainIpLists = normalizeOptionValues(
-                uci.get(UCI_PACKAGE, secName, "domain_ip_lists"),
+              const domainIpLists = getSectionEffectiveOptionValues(
+                secName,
+                "domain_ip_lists",
               );
               return {
                 matched: true,
@@ -18644,8 +18742,9 @@ async function performTraceRules(query, rulesetSnapshots) {
           if (remoteSubnetRuleset) {
             const matchedRemoteIp = matchIpInRuleset(ip, remoteSubnetRuleset);
             if (matchedRemoteIp) {
-              const domainIpLists = normalizeOptionValues(
-                uci.get(UCI_PACKAGE, secName, "domain_ip_lists"),
+              const domainIpLists = getSectionEffectiveOptionValues(
+                secName,
+                "domain_ip_lists",
               );
               return {
                 matched: true,

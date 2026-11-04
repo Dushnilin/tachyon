@@ -257,11 +257,14 @@ function check_dns_available() {
     return 0;
 }
 
-function check_fakeip() {
+function check_fakeip(target_domain) {
+    let query_domain = trim(as_string(target_domain || ""));
+    if (query_domain == "")
+        query_domain = FAKEIP_TEST_DOMAIN;
     let fakeip_address = "";
     let fakeip6_address = "";
     for (let line in split(command_output_from_args([
-        "dig", "+short", "@" + SB_DNS_INBOUND_ADDRESS, FAKEIP_TEST_DOMAIN, "A", "+timeout=2", "+tries=1"
+        "dig", "+short", "@" + SB_DNS_INBOUND_ADDRESS, query_domain, "A", "+timeout=2", "+tries=1"
     ]), "\n")) {
         line = trim(as_string(line));
         if (valid_ipv4(line)) {
@@ -270,7 +273,7 @@ function check_fakeip() {
         }
     }
     for (let line in split(command_output_from_args([
-        "dig", "+short", "@" + SB_DNS_INBOUND_ADDRESS, FAKEIP_TEST_DOMAIN, "AAAA", "+timeout=2", "+tries=1"
+        "dig", "+short", "@" + SB_DNS_INBOUND_ADDRESS, query_domain, "AAAA", "+timeout=2", "+tries=1"
     ]), "\n")) {
         line = lc(trim(as_string(line)));
         if (core_ip.valid_ipv6(line)) {
@@ -279,6 +282,7 @@ function check_fakeip() {
         }
     }
     write_json({
+        domain: query_domain,
         fakeip: match(fakeip_address, /^198\.(18|19)\./) != null || match(fakeip6_address, /^fc[0-3][0-9a-f]:/) != null,
         IP: fakeip_address != "" ? fakeip_address : fakeip6_address,
         IPv4: fakeip_address,

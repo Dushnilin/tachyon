@@ -1583,12 +1583,15 @@ function process_hysteria2(raw, url) {
     if (fm_raw != "") {
         let fm_val = json_decode_text(fm_raw);
         if (type(fm_val) == "object") {
-            let udp_val = fm_val.udp != null ? fm_val.udp : fm_val;
+            let has_udp_key = fm_val.udp != null;
+            let udp_val = has_udp_key ? fm_val.udp : fm_val;
             let udp_items = type(udp_val) == "array" ? udp_val : (type(udp_val) == "object" ? [ udp_val ] : []);
             for (let u_obj in udp_items) {
                 if (type(u_obj) != "object")
                     continue;
-                let utype = lc(as_string(u_obj.type || "salamander"));
+                // A bare finalmask object without "udp" or "type" (e.g. {"quicParams":{...}})
+                // carries no obfuscation; defaulting it to salamander yields an obfs without password.
+                let utype = lc(as_string(u_obj.type || (has_udp_key ? "salamander" : "")));
                 let u_set = object_or_empty(u_obj.settings);
                 if (utype == "salamander" || utype == "gecko") {
                     has_obfs = true;

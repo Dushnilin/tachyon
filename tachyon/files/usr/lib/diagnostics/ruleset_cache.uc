@@ -4,6 +4,7 @@
 let fs = require("fs");
 let common = require("core.common");
 let exec = require("core.exec");
+let runtime_rulesets = require("tachyon_core.rulesets");
 
 function iso_timestamp(value) {
     let parts = match(value || "", /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.[0-9]+)?Z$/);
@@ -248,18 +249,41 @@ function cached_payload(path, tag) {
 function extract(reference) {
     let config = common.read_json_file(common.singbox_config_path());
     let selected = null;
+    let hash_tag = "inline-custom-" + runtime_rulesets.hash12(reference) + "-ruleset";
+    let hash_prefix = "inline-custom-" + runtime_rulesets.hash12(reference) + "-r";
     for (let item in common.array_or_empty(config?.route?.rule_set)) {
-        if (item.tag == reference || item.url == reference || item.path == reference) {
+        if (item.tag == reference || item.url == reference || item.path == reference ||
+            item.tag == hash_tag || (substr(item.tag || "", 0, length(hash_prefix)) == hash_prefix && substr(item.tag || "", -8) == "-ruleset")) {
             selected = item;
             break;
+        }
+    }
+    if (selected == null) {
+        for (let folder in [ getenv("TMP_RULESET_FOLDER") || "/tmp/tachyon-core/rulesets", "/etc/tachyon/rulesets", "/usr/share/tachyon/rulesets" ]) {
+            for (let ext in [ ".srs", ".json" ]) {
+                let candidate = folder + "/" + hash_tag + ext;
+                if (fs.stat(candidate)?.type == "file")
+                    return candidate;
+            }
         }
     }
     if (selected == null || !match(selected.tag || "", /^[A-Za-z0-9_-]+$/))
         die("rule-set is not in the generated core configuration");
     if (selected.type == "local") {
-        if (fs.stat(selected.path)?.type != "file")
-            die("configured rule-set file is unavailable");
-        return selected.path;
+        if (fs.stat(selected.path)?.type == "file")
+            return selected.path;
+        let alt_json = replace(selected.path || "", /\.srs$/, ".json");
+        if (alt_json != selected.path && fs.stat(alt_json)?.type == "file")
+            return alt_json;
+        let base_idx = rindex(selected.path || "", "/");
+        if (base_idx >= 0) {
+            let fname = substr(selected.path, base_idx + 1);
+            for (let dir in [ "/etc/tachyon/rulesets", "/tmp/tachyon-core/rulesets", "/usr/share/tachyon/rulesets" ]) {
+                if (fs.stat(dir + "/" + fname)?.type == "file")
+                    return dir + "/" + fname;
+            }
+        }
+        die("configured rule-set file is unavailable");
     }
     if (selected.type != "remote")
         die("unsupported rule-set type");

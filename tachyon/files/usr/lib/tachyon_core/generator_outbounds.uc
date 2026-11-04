@@ -1407,6 +1407,85 @@ function add_fptn_manual_members(config, state, section_name, tag_name, link, ta
     return true;
 }
 
+function subscription_keyword_fold(value) {
+    value = as_string(value);
+    let bytes = [];
+    let i = 0;
+    while (i < length(value)) {
+        let b = ord(substr(value, i, 1));
+        if (b >= 65 && b <= 90) {
+            push(bytes, b + 32);
+            i += 1;
+        }
+        else if (b == 0xD0 && i + 1 < length(value)) {
+            let b2 = ord(substr(value, i + 1, 1));
+            if (b2 >= 0x90 && b2 <= 0x9F)
+                push(bytes, 0xD0, b2 + 0x20);
+            else if (b2 >= 0xA0 && b2 <= 0xAF)
+                push(bytes, 0xD1, b2 - 0x20);
+            else if (b2 == 0x81)
+                push(bytes, 0xD1, 0x91);
+            else
+                push(bytes, b, b2);
+            i += 2;
+        }
+        else {
+            push(bytes, b);
+            i += 1;
+        }
+    }
+
+    let result = "";
+    for (let byte in bytes)
+        result += chr(byte);
+    return result;
+}
+
+function parse_server_interface_overrides(obj_list) {
+    let exact = {};
+    let substr_rules = [];
+    for (let obj in array_or_empty(obj_list)) {
+        if (type(obj) != "object") continue;
+        let raw_list = obj.server_interfaces;
+        let entries = type(raw_list) == "array" ? raw_list : (raw_list != null && as_string(raw_list) != "" ? split(as_string(raw_list), "\n") : []);
+        for (let entry in entries) {
+            entry = trim(as_string(entry));
+            if (entry == "" || substr(entry, 0, 1) == "#") continue;
+            let eq = rindex(entry, "=");
+            if (eq <= 0) eq = rindex(entry, ":");
+            if (eq <= 0) continue;
+            let pat = trim(substr(entry, 0, eq));
+            let iface = trim(substr(entry, eq + 1));
+            if (substr(pat, 0, 4) == "srv:") pat = trim(substr(pat, 4));
+            if (pat == "" || iface == "") continue;
+            exact[lc(pat)] = iface;
+            push(substr_rules, { pattern: subscription_keyword_fold(pat), iface: iface });
+        }
+    }
+    return { exact, substr_rules };
+}
+
+function match_server_interface_override(overrides, candidates) {
+    if (type(overrides) != "object") return "";
+    let exact = object_or_empty(overrides.exact);
+    let substr_rules = array_or_empty(overrides.substr_rules);
+    if (length(keys(exact)) == 0 && length(substr_rules) == 0) return "";
+    for (let c in array_or_empty(candidates)) {
+        let k = lc(trim(as_string(c)));
+        if (k != "" && exact[k] != null)
+            return exact[k];
+    }
+    for (let c in array_or_empty(candidates)) {
+        let folded = subscription_keyword_fold(as_string(c));
+        if (folded == "") continue;
+        for (let rule in substr_rules) {
+            if (rule.pattern != "" && index(folded, rule.pattern) >= 0)
+                return rule.iface;
+        }
+    }
+    return "";
+}
+
 function add_manual_proxy_link(config, state, section_name, manual_index, link, taken, selector_tags, urltest_candidate_tags, source_id) {
     let tag_name = outbound_tag(section_name + "-" + manual_index);
     if (taken[tag_name])
@@ -1424,6 +1503,7 @@ function add_manual_proxy_link(config, state, section_name, manual_index, link, 
         ? trim(option(src_obj, "node_prefix", ""))
         : "";
     let src_bind_iface = src_obj != null ? trim(option(src_obj, "bind_interface", "")) : "";
+    let src_srv_overrides = parse_server_interface_overrides([ src_obj ]);
 
     let display_info = {};
     let outbound = manual_link_outbound(link, tag_name, display_info);
@@ -1431,8 +1511,18 @@ function add_manual_proxy_link(config, state, section_name, manual_index, link, 
     if (display_name == "")
         display_name = as_string(display_info.name || tag_name);
     ensure_explicit_outbound_supported(outbound, "manual outbound", display_name);
-    if (src_bind_iface != "" && as_string(outbound.detour || "") == "" && as_string(outbound.bind_interface || "") == "")
+    let manual_override_iface = match_server_interface_override(src_srv_overrides, [
+        tag_name,
+        display_name,
+        as_string(outbound.server || "")
+    ]);
+    if (manual_override_iface != "") {
+        outbound.bind_interface = manual_override_iface;
+        outbound.__tachyon_explicit_bind_interface = true;
+        delete outbound.detour;
+    } else if (src_bind_iface != "" && as_string(outbound.detour || "") == "" && as_string(outbound.bind_interface || "") == "") {
         outbound.bind_interface = src_bind_iface;
+    }
     if (outbound.type == "wireguard")
         add_imported_wireguard_endpoint(config, outbound);
     else if (outbound.type == "shadowtls") {
@@ -1557,40 +1647,6 @@ function add_connection_text_urltest(config, state, section, taken, selector_tag
     });
     push(config.outbounds, outbound);
     return urltest_tag;
-}
-
-function subscription_keyword_fold(value) {
-    value = as_string(value);
-    let bytes = [];
-    let i = 0;
-    while (i < length(value)) {
-        let b = ord(substr(value, i, 1));
-        if (b >= 65 && b <= 90) {
-            push(bytes, b + 32);
-            i += 1;
-        }
-        else if (b == 0xD0 && i + 1 < length(value)) {
-            let b2 = ord(substr(value, i + 1, 1));
-            if (b2 >= 0x90 && b2 <= 0x9F)
-                push(bytes, 0xD0, b2 + 0x20);
-            else if (b2 >= 0xA0 && b2 <= 0xAF)
-                push(bytes, 0xD1, b2 - 0x20);
-            else if (b2 == 0x81)
-                push(bytes, 0xD1, 0x91);
-            else
-                push(bytes, b, b2);
-            i += 2;
-        }
-        else {
-            push(bytes, b);
-            i += 1;
-        }
-    }
-
-    let result = "";
-    for (let byte in bytes)
-        result += chr(byte);
-    return result;
 }
 
 function subscription_keyword_filter(section, source_entry) {
@@ -1771,6 +1827,10 @@ function add_subscription_source_with_state(config, section, source_index, sourc
         ? connections.outbound_source_section(sub_src_id_for_bind)
         : null;
     let sub_bind_iface = sub_src_obj != null ? trim(option(sub_src_obj, "bind_interface", "")) : "";
+    let sub_url_cfg = (connections && connections.subscription_url_settings)
+        ? connections.subscription_url_settings(section, source_entry)
+        : null;
+    let srv_iface_overrides = parse_server_interface_overrides([ section, sub_url_cfg, sub_src_obj ]);
     let prepared = [];
     let display_names = [];
     let source_links = [];
@@ -1816,7 +1876,20 @@ function add_subscription_source_with_state(config, section, source_index, sourc
         if (as_string(outbound.remark || "") != "")
             tag_map[as_string(outbound.remark)] = new_tag;
         let copied_outbound = copy_subscription_outbound(outbound, new_tag);
-        if (sub_bind_iface != "" && !subscription_group_outbound(outbound) &&
+        let node_bind_iface = !subscription_group_outbound(outbound)
+            ? match_server_interface_override(srv_iface_overrides, [
+                new_tag,
+                display_name,
+                as_string(outbound.remark || ""),
+                as_string(outbound.tag || ""),
+                as_string(outbound.server || "")
+            ])
+            : "";
+        if (node_bind_iface != "") {
+            copied_outbound.bind_interface = node_bind_iface;
+            copied_outbound.__tachyon_explicit_bind_interface = true;
+            delete copied_outbound.detour;
+        } else if (sub_bind_iface != "" && !subscription_group_outbound(outbound) &&
             as_string(copied_outbound.detour || "") == "" && as_string(copied_outbound.bind_interface || "") == "") {
             copied_outbound.bind_interface = sub_bind_iface;
         }
@@ -2308,13 +2381,16 @@ function outbound_detour_tag_for_section(section) {
 }
 
 function apply_section_detour_to_connection_outbounds(config, start_index, detour_tag) {
-    if (detour_tag == "")
-        return;
-
     let outbounds = array_or_empty(config.outbounds);
     for (let i = int(start_index || 0); i < length(outbounds); i++) {
         let outbound = outbounds[i];
         if (type(outbound) != "object")
+            continue;
+        if (outbound.__tachyon_explicit_bind_interface) {
+            delete outbound.__tachyon_explicit_bind_interface;
+            continue;
+        }
+        if (detour_tag == "")
             continue;
 
         let outbound_type = lc(as_string(outbound.type || ""));
@@ -2332,9 +2408,12 @@ function apply_section_detour_to_connection_outbounds(config, start_index, detou
     }
 }
 
-function apply_section_bind_interface_to_connection_outbounds(config, start_index, bind_iface) {
+function apply_section_bind_interface_to_connection_outbounds(config, start_index, bind_iface, section) {
     bind_iface = trim(as_string(bind_iface || ""));
-    if (bind_iface == "")
+    let sec_overrides = section != null ? parse_server_interface_overrides([ section ]) : null;
+    let has_sec_overrides = sec_overrides != null &&
+        (length(keys(object_or_empty(sec_overrides.exact))) > 0 || length(array_or_empty(sec_overrides.substr_rules)) > 0);
+    if (bind_iface == "" && !has_sec_overrides)
         return;
 
     let outbounds = array_or_empty(config.outbounds);
@@ -2342,6 +2421,7 @@ function apply_section_bind_interface_to_connection_outbounds(config, start_inde
         let outbound = outbounds[i];
         if (type(outbound) != "object")
             continue;
+        delete outbound.__tachyon_explicit_bind_interface;
 
         let outbound_type = lc(as_string(outbound.type || ""));
         if (outbound_type == "" ||
@@ -2351,7 +2431,19 @@ function apply_section_bind_interface_to_connection_outbounds(config, start_inde
             outbound_type == "desync")
             continue;
 
-        if (as_string(outbound.detour || "") == "" && as_string(outbound.bind_interface || "") == "")
+        if (has_sec_overrides) {
+            let override_iface = match_server_interface_override(sec_overrides, [
+                as_string(outbound.tag || ""),
+                as_string(outbound.server || "")
+            ]);
+            if (override_iface != "") {
+                outbound.bind_interface = override_iface;
+                delete outbound.detour;
+                continue;
+            }
+        }
+
+        if (bind_iface != "" && as_string(outbound.detour || "") == "" && as_string(outbound.bind_interface || "") == "")
             outbound.bind_interface = bind_iface;
     }
 }
@@ -2668,7 +2760,8 @@ function add_connections_outbound(config, section, taken) {
     apply_section_bind_interface_to_connection_outbounds(
         config,
         cascade_start,
-        option(section, "bind_interface", "")
+        option(section, "bind_interface", ""),
+        section
     );
     apply_section_packet_encoding_to_connection_outbounds(
         config,

@@ -64,7 +64,6 @@ LKG. Без этого два отказа подряд превращались
 | `dns-failover.json` | позиция резолвера | сброс на основной DNS |
 | `selector_state.json` | выбранный узел в группе | сброс на первый рабочий |
 | `emergency_state.json` (+ `/tmp`) | аварийный режим | сброс флага |
-| `steer-dns-upstream-port` | порт smartdns для steer | пересоздастся при старте |
 | `tx/<tx_id>/` | снапшоты незавершённых транзакций | откат придётся делать вручную |
 
 ### Почему tmpfs
@@ -131,7 +130,7 @@ watchdog-воркер, Telegram-бот). Отсюда два правила:
 |---|---|---|
 | `observation_state.json` | watchdog | watchdog, UI |
 | `known_good/manifest.json` | `known_good.uc` | reconciler, watchdog, UI, AI Doctor |
-| `section-cache/` | `singbox/generator_outbounds.uc`, `steer/section_cache.uc` | UI-дашборд, steer-спека |
+| `section-cache/` | `tachyon_core/generator_outbounds.uc` | UI-дашборд, генератор |
 | `smart_detect_seen.json` | watchdog | watchdog |
 | `selector_state.json` | UI, Telegram | генераторы, Clash-эмуляция |
 | `dns-failover.json` | `singbox/dns_failover.uc` | watchdog, UI |

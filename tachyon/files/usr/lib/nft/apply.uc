@@ -905,6 +905,8 @@ function section_has_subnet_update_sources(section) {
 }
 
 function section_has_nft_ip_matchers(section) {
+    if (section_priority_action(section) == "bypass" && section_has_destination_matchers(section))
+        return true;
     return section_rule_condition_csv(section, "ip_cidr", "subnets") != "" ||
         section_has_subnet_update_sources(section);
 }
@@ -1930,11 +1932,11 @@ function collect_firewall_dnat_forwards() {
         for (let line in split(fw4_upnp, /\r?\n/)) {
             if (index(line, "dnat") < 0)
                 continue;
-            let m = match(line, /\b(tcp|udp)\b.*\bdnat\s+(?:ip\s+|ip6\s+)?to\s+([0-9a-fA-F.:]+):([0-9]+(?:-[0-9]+)?)/);
+            let m = match(line, /(^|[[:space:]])(tcp|udp)[[:space:]].*[[:space:]]dnat[[:space:]]+(ip[[:space:]]+|ip6[[:space:]]+)?to[[:space:]]+([0-9a-fA-F.:]+):([0-9]+(-[0-9]+)?)/);
             if (m != null) {
-                let proto_m = lc(as_string(m[1]));
-                let ip_m = as_string(m[2]);
-                let port_m = as_string(m[3]);
+                let proto_m = lc(as_string(m[2]));
+                let ip_m = as_string(m[4]);
+                let port_m = as_string(m[5]);
                 let fam_m = core_ip.ip_family(ip_m);
                 if (fam_m == 4 || fam_m == 6)
                     add_dnat_entry(fam_m, proto_m == "tcp", proto_m == "udp", ip_m, port_m);
@@ -4073,6 +4075,121 @@ function nft_populate_runtime_set_for_section(section, deferred_sections, table,
                         }
                     }
                     break;
+                }
+            }
+        }
+
+        // For bypass sections with domain matchers, resolve up to 64 configured domains
+        // (and high-bandwidth sub-hosts such as speed.<domain> when an apex domain like
+        // cloudflare.com is in the bypass list) into the section's priority nftables set.
+        // Because bypass sections do not use FakeIP, resolving these domains into the
+        // priority set lets their traffic accept directly in the kernel without traversing
+        // userspace TProxy when a lower-priority section includes overlapping IP ranges
+        // (e.g. community_subnets for cloudflare; Issue #341).
+        if (section_priority_action(section) == "bypass") {
+            let bypass_domains = [];
+            let seen_bypass_doms = {};
+            let add_bypass_dom = function(raw_d) {
+                let d = lc(trim(as_string(raw_d)));
+                if (substr(d, 0, 5) == "full:") d = trim(substr(d, 5));
+                else if (substr(d, 0, 7) == "domain:") d = trim(substr(d, 7));
+                while (substr(d, 0, 1) == "." || substr(d, 0, 1) == "*") d = substr(d, 1);
+                if (d == "" || index(d, ".") < 0 || match(d, /^[a-z0-9.-]+$/) == null) return;
+                if (!seen_bypass_doms[d] && length(bypass_domains) < 64) {
+                    seen_bypass_doms[d] = true;
+                    push(bypass_domains, d);
+                }
+                if (d == "cloudflare.com" && !seen_bypass_doms["speed.cloudflare.com"] && length(bypass_domains) < 64) {
+                    seen_bypass_doms["speed.cloudflare.com"] = true;
+                    push(bypass_domains, "speed.cloudflare.com");
+                }
+            };
+            for (let d in nft_csv_values(section_rule_condition_csv(section, "domain", "domains")))
+                add_bypass_dom(d);
+            for (let d in nft_csv_values(section_rule_condition_csv(section, "domain_suffix", "domains")))
+                add_bypass_dom(d);
+            for (let d in section_leaf_list_option(section, "user_domains"))
+                add_bypass_dom(d);
+            for (let ref in section_leaf_list_option(section, "domain_ip_lists")) {
+                if (length(bypass_domains) >= 64) break;
+                ref = as_string(ref);
+                if (ref != "" && substr(ref, 0, 1) == "/" && helpers.file_is_usable(ref, 0)) {
+                    let fdata = fs.readfile(ref);
+                    if (fdata != null && fdata != "") {
+                        for (let val in domain_subnet_line_values(fdata)) {
+                            if (length(bypass_domains) >= 64) break;
+                            if (!core_ip.valid_ip_or_cidr(val)) add_bypass_dom(val);
+                        }
+                    }
+                }
+            }
+            for (let ref in subnet_refs) {
+                if (length(bypass_domains) >= 64) break;
+                ref = as_string(ref);
+                if (ref == "") continue;
+                let ref_hash = singbox_rulesets.hash12(ref);
+                let dom_check_paths = (substr(ref, 0, 1) == "/") ? [
+                    ref,
+                    "/tmp/tachyon-core/rulesets/inline-custom-" + ref_hash + "-ruleset.json",
+                    "/etc/tachyon/rulesets/inline-custom-" + ref_hash + "-ruleset.json"
+                ] : [
+                    "/tmp/tachyon-core/rulesets/inline-custom-" + ref_hash + "-ruleset.json",
+                    "/etc/tachyon/rulesets/inline-custom-" + ref_hash + "-ruleset.json",
+                    "/tmp/tachyon-core/rulesets/" + sec_name + "-lists-ruleset.json",
+                    "/etc/tachyon/rulesets/" + sec_name + "-lists-ruleset.json"
+                ];
+                for (let dpath in dom_check_paths) {
+                    if (!helpers.file_is_usable(dpath, 0)) continue;
+                    let ddata = fs.readfile(dpath);
+                    if (ddata == null || ddata == "") continue;
+                    if (match(dpath, /\.json$/) != null) {
+                        let dobj = null;
+                        try { dobj = json(ddata); } catch (e) {}
+                        if (type(dobj) == "object" && type(dobj.rules) == "array") {
+                            for (let r in dobj.rules) {
+                                if (type(r) != "object") continue;
+                                for (let d in array_or_empty(r.domain)) add_bypass_dom(d);
+                                for (let d in array_or_empty(r.domain_suffix)) add_bypass_dom(d);
+                            }
+                        }
+                    } else if (match(dpath, /\.(lst|txt)$/) != null) {
+                        for (let val in domain_subnet_line_values(ddata)) {
+                            if (length(bypass_domains) >= 64) break;
+                            if (!core_ip.valid_ip_or_cidr(val)) add_bypass_dom(val);
+                        }
+                    }
+                    break;
+                }
+            }
+            if (length(bypass_domains) > 0 && getenv("TACHYON_SKIP_BYPASS_DNS_RESOLVE") != "1") {
+                let resolved_ips = [];
+                let seen_res_ip = {};
+                for (let bdom in bypass_domains) {
+                    let ns_out = command_output_quiet_from_args([ "nslookup", bdom, "127.0.0.1" ]);
+                    if (ns_out == "")
+                        ns_out = command_output_quiet_from_args([ "nslookup", bdom ]);
+                    if (ns_out != "") {
+                        let past_header = false;
+                        for (let line in split(ns_out, "\n")) {
+                            line = trim(line);
+                            if (index(line, "Name:") == 0 || index(line, "Non-authoritative") >= 0)
+                                past_header = true;
+                            if (!past_header) continue;
+                            let m4 = match(line, /([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})/);
+                            if (m4 && m4[1] && valid_ipv4(m4[1]) && substr(m4[1], 0, 7) != "127.0.0" && substr(m4[1], 0, 7) != "198.18." && substr(m4[1], 0, 7) != "198.19.") {
+                                if (!seen_res_ip[m4[1]]) {
+                                    seen_res_ip[m4[1]] = true;
+                                    push(resolved_ips, m4[1]);
+                                }
+                            }
+                        }
+                    }
+                }
+                if (length(resolved_ips) > 0) {
+                    if (ports != "")
+                        nft_add_values_to_section_port_sets(resolved_ips, table, sets, ports, "5000");
+                    else
+                        nft_add_values_to_family_sets(resolved_ips, table, sets.subnets, sets.subnets6, "ips", "", "5000");
                 }
             }
         }
