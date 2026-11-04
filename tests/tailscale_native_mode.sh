@@ -132,4 +132,18 @@ grep -Fq '"ip", "daddr", "!=", fakeip_range, "meta", "mark", "&", TAILSCALE_TUNN
 grep -Fq '"198.18.0.0/15"' "$RUNTIME_UC" ||
   fail "providers/tailscale/runtime.uc must exclude FakeIP 198.18.0.0/15 from exit-node marking (#318)"
 
+# Exit node & inbound source interface routing: when tailscale0 is in
+# source_network_interfaces, mangle and mangle_forward must not early-return
+# non-FakeIP traffic, so Telegram, detour, Zapret and community lists can route.
+grep -Fq 'is_tailscale_source' "$NFT_APPLY_UC" ||
+  fail "nft/apply.uc must detect if tailscale0 is in source_network_interfaces"
+grep -Fq '!is_tailscale_source' "$NFT_APPLY_UC" ||
+  fail "nft/apply.uc must guard tailscale0 mangle/forward bypasses behind !is_tailscale_source"
+
+# Tailscale DNS: MagicDNS setup must ensure dnsmasq localservice is disabled
+# so tailnet peers in 100.64.0.0/10 can resolve DNS through the exit node.
+grep -Fq 'configure_dnsmasq_localservice' "$RUNTIME_UC" ||
+  fail "providers/tailscale/runtime.uc must configure dnsmasq localservice=0"
+
 printf 'config tailscale native mode checks passed\n'
+

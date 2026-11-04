@@ -2161,6 +2161,12 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
         !nft_add_rule(table, "dns_redirect", [ "iifname", "@" + as_string(interface_set), "ip6", "saddr", "@" + DNS_SOURCE6_SET, "udp", "dport", "53", "counter", "redirect", "to", ":" + as_string(runtime_constants.SOURCE_DNS_INBOUND_PORT) ]))
         return false;
 
+    let is_tailscale_source = false;
+    for (let interface in whitespace_values(source_interfaces)) {
+        if (interface == "tailscale0")
+            is_tailscale_source = true;
+    }
+
     // Native / standalone Tailscale: tailnet-bound traffic and anything already
     // marked for exit-node / tunnel forwarding (TAILSCALE_TUNNEL_BYPASS_MARK_MASK,
     // subset of 0x00ff0000 excluding standalone tailscaled's 0x00080000 non-tailnet
@@ -2168,10 +2174,14 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
     // Tachyon's FakeIP range, which only sing-box can terminate (#318).
     if (tailscale_bypass_active()) {
         if (!nft_add_rule(table, "mangle", [ "ip", "daddr", "!=", fakeip_range, "meta", "mark", "&", TAILSCALE_TUNNEL_BYPASS_MARK_MASK, "!=", "0", "return" ]) ||
-            !nft_add_rule(table, "mangle", [ "ip6", "daddr", "!=", fakeip6_range, "meta", "mark", "&", TAILSCALE_TUNNEL_BYPASS_MARK_MASK, "!=", "0", "return" ]) ||
-            !nft_add_rule(table, "mangle", [ "iifname", "tailscale0", "ip", "daddr", "!=", fakeip_range, "return" ]) ||
-            !nft_add_rule(table, "mangle", [ "iifname", "tailscale0", "ip6", "daddr", "!=", fakeip6_range, "return" ]) ||
-            !nft_add_rule(table, "mangle", [ "ip", "daddr", "100.64.0.0/10", "return" ]) ||
+            !nft_add_rule(table, "mangle", [ "ip6", "daddr", "!=", fakeip6_range, "meta", "mark", "&", TAILSCALE_TUNNEL_BYPASS_MARK_MASK, "!=", "0", "return" ]))
+            return false;
+        if (!is_tailscale_source) {
+            if (!nft_add_rule(table, "mangle", [ "iifname", "tailscale0", "ip", "daddr", "!=", fakeip_range, "return" ]) ||
+                !nft_add_rule(table, "mangle", [ "iifname", "tailscale0", "ip6", "daddr", "!=", fakeip6_range, "return" ]))
+                return false;
+        }
+        if (!nft_add_rule(table, "mangle", [ "ip", "daddr", "100.64.0.0/10", "return" ]) ||
             !nft_add_rule(table, "mangle", [ "ip6", "daddr", "fd7a:115c:a1e0::/48", "return" ]))
             return false;
         log_debug("Native Tailscale bypass rules added to mangle chain");
@@ -2308,7 +2318,7 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
 
     if (tailscale_bypass_active()) {
         if (!nft_add_rule(table, "mangle_forward", [ "meta", "mark", "&", TAILSCALE_TUNNEL_BYPASS_MARK_MASK, "!=", "0", "return" ]) ||
-            !nft_add_rule(table, "mangle_forward", [ "iifname", "tailscale0", "return" ]) ||
+            (!is_tailscale_source && !nft_add_rule(table, "mangle_forward", [ "iifname", "tailscale0", "return" ])) ||
             !nft_add_rule(table, "mangle_forward", [ "oifname", "tailscale0", "return" ]) ||
             !nft_add_rule(table, "mangle_forward", [ "ip", "daddr", "100.64.0.0/10", "return" ]) ||
             !nft_add_rule(table, "mangle_forward", [ "ip6", "daddr", "fd7a:115c:a1e0::/48", "return" ]))
