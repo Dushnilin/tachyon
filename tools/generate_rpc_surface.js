@@ -113,6 +113,7 @@ const CATEGORY_BY_MODULE_PREFIX = [
   ['diagnostics/dns', 'dns'],
   ['diagnostics/stability', 'stability'],
   ['diagnostics/runtime', 'diagnostics'],
+  ['diagnostics/ruleset_inspect', 'diagnostics'],
   ['diagnostics/leak_check', 'diagnostics'],
   ['diagnostics/doctor', 'diagnostics'],
   ['config/connections', 'system'],

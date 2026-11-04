@@ -82,23 +82,30 @@ class CacheTest(unittest.TestCase):
             data[n * page_size:n * page_size + 80] = header + meta + struct.pack('<Q', checksum)
         self.db.write_bytes(data)
 
-    def extract(self, reference=None, success=True):
+    def extract(self, reference=None, success=True, cli=False):
         self.config.write_text(json.dumps(self.settings))
         env = dict(os.environ, TACHYON_SINGBOX_CONFIG=str(self.config),
                    TMP_RULESET_FOLDER=str(self.root / 'snapshots'))
         library = Path(__file__).resolve().parents[1] / 'tachyon/files/usr/lib'
-        result = subprocess.run(['ucode', '-L', str(library), '-e',
-            'let c=require("diagnostics.ruleset_cache"); print(c.extract(ARGV[0]));',
+        entrypoint = ([str(library / 'diagnostics/ruleset_inspect.uc'), 'extract-ruleset']
+                      if cli else ['-e', 'let c=require("diagnostics.ruleset_cache"); print(c.extract(ARGV[0]));'])
+        result = subprocess.run(['ucode', '-L', str(library), *entrypoint,
             reference or self.url], env=env, capture_output=True, text=True)
         if success:
             self.assertEqual(result.returncode, 0, result.stderr)
-            return Path(result.stdout).read_bytes()
+            return Path(result.stdout.strip()).read_bytes()
         self.assertNotEqual(result.returncode, 0)
         return result.stderr
 
     def test_live_tree_ignores_obsolete_duplicate_and_uses_configured_path(self):
         self.database()
         self.assertEqual(self.extract(), self.payload)
+
+    def test_lightweight_cli_preserves_snapshot_and_rejects_unconfigured_reference(self):
+        self.database()
+        self.assertEqual(self.extract(cli=True), self.payload)
+        self.assertIn('Cannot inspect configured rule-set:',
+                      self.extract('https://attacker.test/list.srs', success=False, cli=True))
 
     def test_branch_and_overflow_pages(self):
         self.database(branch=True, page_size=1024)

@@ -70,7 +70,7 @@ let commands = {
     component_action_status: [ "components/updates.uc", "component-action-status", 1 ],
     component_action_log: [ "components/updates.uc", "component-action-log", 2 ],
     hosts_list_status: [ "components/hosts.uc", "list-status", 0 ],
-    extract_ruleset: [ "diagnostics/runtime.uc", "extract-ruleset", 1 ],
+    extract_ruleset: [ "diagnostics/ruleset_inspect.uc", "extract-ruleset", 1 ],
     check_dns_available: [ "diagnostics/runtime.uc", "check-dns-available", 0 ],
     global_check: [ "diagnostics/runtime.uc", "global-check", 2 ],
     service_health_check: [ "diagnostics/runtime.uc", "service-health-check", 2 ],

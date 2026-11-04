@@ -758,7 +758,7 @@ export type EventtailParams = Record<string, never>;
 
 export type EventtailResult = Record<string, unknown>;
 
-/** extract-ruleset (diagnostics/runtime.uc) */
+/** extract-ruleset (diagnostics/ruleset_inspect.uc) */
 export interface ExtractrulesetParams {
   /** positional argument 1 of extract_ruleset */
   arg1?: string;
@@ -3855,7 +3855,7 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
       cli_command: 'extract_ruleset',
       category: 'diagnostics',
       acl: 'read',
-      description: 'extract-ruleset (diagnostics/runtime.uc)',
+      description: 'extract-ruleset (diagnostics/ruleset_inspect.uc)',
       async: false,
       timeout_ms: 5000,
       params: [
