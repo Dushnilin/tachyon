@@ -897,6 +897,7 @@ function renderValue(value: string, className = '', customTitle?: string) {
 
 function renderSourceValue(source: ReturnType<typeof getSourceCellParts>) {
   const fullText = source.copyValue || source.primary || '-';
+  const title = [fullText, source.inbound].filter(Boolean).join('\n');
 
   if (!source.ip) {
     const element = E(
@@ -904,7 +905,7 @@ function renderSourceValue(source: ReturnType<typeof getSourceCellParts>) {
       {
         class:
           'tachyon_monitoring-page__value tachyon_monitoring-page__source-value tachyon_monitoring-page__source-value--ip-only',
-        title: fullText,
+        title,
       },
       source.primary || '-',
     );
@@ -919,7 +920,7 @@ function renderSourceValue(source: ReturnType<typeof getSourceCellParts>) {
     {
       class:
         'tachyon_monitoring-page__value tachyon_monitoring-page__source-value',
-      title: fullText,
+      title,
     },
     [
       E(
@@ -1166,6 +1167,7 @@ function getConnectionRowSignature(connection: MonitoredConnection): string {
     formatMatchedRuleSummary(connection),
     source.primary,
     source.ip,
+    source.inbound,
     closingConnectionIds.has(connection.id) ? 'closing' : 'open',
   ].join('|');
 }
