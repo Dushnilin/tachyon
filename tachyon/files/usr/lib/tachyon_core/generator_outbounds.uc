@@ -1982,7 +1982,7 @@ function add_subscription_source_with_state(config, section, source_index, sourc
     }
 
     if (keyword_filter != null && length(prepared) == 0)
-        ctx.runtime_generate_unsupported("subscription keyword filter removed all nodes for rule '" + section_name + "'");
+        return 0;
 
     if (length(keys(skipped)) > 0)
         warn("skipped unsupported subscription outbounds for rule '", section_name, "': ", subscription_skip_summary(skipped), "\n");
@@ -2072,8 +2072,8 @@ function add_subscription_source_with_state(config, section, source_index, sourc
             state.hiddenOutboundTags[outbound.tag] = true;
         }
     }
-    if (keyword_filter != null && added == 0)
-        ctx.runtime_generate_unsupported("subscription keyword filter removed all nodes for rule '" + section_name + "'");
+    // One source may have no keyword matches. The connection section checks the
+    // combined selector after all subscriptions and manual nodes are processed.
     return added;
 }
 
