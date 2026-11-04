@@ -51,16 +51,20 @@ render_init() {
 for variant in "" reset-log; do
   script="$(render_init $variant)"
   [ -n "$script" ] || fail "init-script renderer returned an empty script ($variant)"
-  if printf '%s\n' "$script" | grep -Fq 'killall'; then
+  # grep -q can close a pipe before printf finishes writing the script. With
+  # pipefail, that SIGPIPE turns a successful match into an intermittent failure.
+  rendered="$WORK_DIR/init-${variant:-plain}.sh"
+  printf '%s\n' "$script" >"$rendered"
+  if grep -Fq 'killall' "$rendered"; then
     fail "generated init script contains killall ($variant), which kills /etc/init.d/tachyon-core itself"
   fi
-  printf '%s\n' "$script" | grep -Fq '_kill_daemon_instances()' ||
+  grep -Fq '_kill_daemon_instances()' "$rendered" ||
     fail "generated init script must define _kill_daemon_instances() ($variant)"
-  printf '%s\n' "$script" | grep -Fq '_has_running_daemon()' ||
+  grep -Fq '_has_running_daemon()' "$rendered" ||
     fail "generated init script must define _has_running_daemon() ($variant)"
-  printf '%s\n' "$script" | grep -Fq '[ "$p" != "$$" ]' ||
+  grep -Fq '[ "$p" != "$$" ]' "$rendered" ||
     fail "generated init script must skip its own pid ($variant)"
-  printf '%s\n' "$script" | grep -Fq '*/tachyon-core|*/sing-box' ||
+  grep -Fq '*/tachyon-core|*/sing-box' "$rendered" ||
     fail "generated init script must kill only the core executable ($variant)"
   bad="$WORK_DIR/selfkill.sh"
   printf '%s\nkillall -q -9 tachyon-core\n' "$script" >"$bad"
@@ -72,11 +76,9 @@ for variant in "" reset-log; do
   fi
 done
 
-plain="$(render_init)"
-logged="$(render_init reset-log)"
-printf '%s\n' "$logged" | grep -Fq '/tmp/tachyon-core/sing-box.log' ||
+grep -Fq '/tmp/tachyon-core/sing-box.log' "$WORK_DIR/init-reset-log.sh" ||
   fail "reset-log variant must truncate the core log"
-if printf '%s\n' "$plain" | grep -Fq '/tmp/tachyon-core/sing-box.log'; then
+if grep -Fq '/tmp/tachyon-core/sing-box.log' "$WORK_DIR/init-plain.sh"; then
   fail "plain variant must leave the core log alone"
 fi
 
