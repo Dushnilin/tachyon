@@ -65,7 +65,7 @@ function probe_single_target_dpi(target_item, dns_flags) {
 
     // Also check for DNS-level blocking
     let domain = target_url;
-    let dm = match(domain, /^(?:https?|udp):\/\/([^/:]+)/);
+    let dm = match(domain, /^[a-z]+:\/\/([^/:]+)/);
     if (dm && dm[1]) domain = dm[1];
 
     let dns_cmd = binaries.wrap_probe_cmd(sprintf("nslookup %s 77.88.8.8 2>&1 || nslookup %s 2>&1", shell_quote(domain), shell_quote(domain)), 4);
