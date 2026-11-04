@@ -2,7 +2,8 @@
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
-TG="$TACHYON_LIB/service/telegram.uc"
+TG="$WORK_DIR/telegram-modules.uc"
+cat "$TACHYON_LIB/service/telegram.uc" "$TACHYON_LIB/service/telegram/"*.uc >"$TG"
 
 [ -f "$TG" ] || fail "telegram.uc not found"
 
@@ -25,10 +26,8 @@ grep -Fq 'res = tg_request_via(token, method, payload, []);' "$TG" ||
   fail "tg_request must retry over the direct route when the proxy fails"
 
 # 3. One-shot admin alert per failure episode after repeated poll failures.
-grep -Fq 'route_alert_sent = true;' "$TG" ||
-  fail "worker loop must raise a one-shot route failure alert"
-grep -Fq 'alert_route_failure(consecutive_failures, mixed_port_alive());' "$TG" ||
-  fail "worker loop must call alert_route_failure with the port state"
+grep -Fq 'route_alert_sent = alert_route_failure(consecutive_failures, mixed_port_alive()) === true;' "$TG" ||
+  fail "worker must mark the route alert only after queue acceptance"
 grep -Fq 'route_alert_sent = false;' "$TG" ||
   fail "worker loop must re-arm the alert after recovery"
 

@@ -355,7 +355,7 @@ function alert_route_failure(attempt, proxy_alive) {
         t("route_reason") + " " + hint + ".\n" +
         t("route_fallback_hint") + "\n" +
         t("route_heal_hint");
-    send_message(token, chat_id, text, "HTML", null);
+    return require("service.telegram.notifications").submit(token, chat_id, text, "HTML", null);
 }
 
 function edit_message(token, chat_id, message_id, text, parse_mode, keyboard) {

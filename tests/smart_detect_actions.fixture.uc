@@ -95,7 +95,7 @@ let messages = [];
 let quiet = false;
 let reload_ok = true;
 let reloads = 0;
-let botcfg = { enabled: "1", bot_token: "fixture", admin_ids: "42", language: "ru" };
+let botcfg = { enabled: "1", bot_token: "123:fixture", admin_ids: "42", language: "ru" };
 function settings() { return botcfg; }
 function in_quiet_hours() { return quiet; }
 function is_admin(id, admins) { return index(split(admins,","),""+id) >= 0; }
@@ -117,11 +117,14 @@ function command_success_from_args(args) {
 }
 function dispatch_command() { die("Smart Detect callback escaped its handler\n"); }
 let fixture_actions = actions;
+let fixture_transport = { send_message, get_t: function() { return t; } };
 /* RUNTIME */
 reset("1");
 let section = saved.vpn;
 let entries = [{section:"vpn",domain:"site.co.uk",source_domain:"api.site.co.uk",snapshot:sprintf("%J",[section.user_domains,section.user_domains_text])}];
-check(send_api("🔍 Smart Detect fixture",entries) == 0 && length(messages) == 1, "notification delivered once");
+check(send_api("🔍 Smart Detect fixture",entries) == 0 && length(messages) == 0, "notification accepted before delivery");
+notifications.drain(botcfg.bot_token);
+check(length(messages) == 1, "notification delivered once");
 check(messages[0].keyboard[0][0].text == "В исключение" && messages[0].keyboard[0][1].text == "Отменить", "localized buttons attached by send_api");
 let callback = messages[0].keyboard[0][0].callback_data;
 let update_seq = 100;
@@ -147,11 +150,13 @@ send_api("fixture",entries);
 check(length(messages) == sent, "quiet hours preserved");
 quiet = false;
 send_api("ordinary notification");
+notifications.drain(botcfg.bot_token);
 check(messages[length(messages)-1].keyboard == null, "ordinary notifications unchanged");
 reset("0");
 section = saved.vpn;
 entries[0].snapshot = sprintf("%J",[section.user_domains,section.user_domains_text]);
 send_api("reload failure fixture",entries);
+notifications.drain(botcfg.bot_token);
 callback = messages[length(messages)-1].keyboard[0][1].callback_data;
 reload_ok = false;
 poll(42,42,7,callback);
