@@ -620,10 +620,10 @@ function dnsmasq_has_tachyon_managed_state() {
 }
 
 function discover_awg_mtu() {
-    let sections = uci_core.get_all(CONFIG_NAME, "outbound") || {};
+    let sections = uci_core.section_objects(CONFIG_NAME, "section");
     let changed = false;
     for (let section in sections) {
-        if (section.action == "awg" && (section.awg_mtu == "" || section.awg_mtu == "0" || section.awg_mtu == null)) {
+        if (section.enabled != "0" && section.action == "awg" && (section.awg_mtu == "" || section.awg_mtu == "0" || section.awg_mtu == null)) {
             let endpoint = section.awg_server_address;
             if (endpoint) {
                 log_message("Auto-discovering optimal MTU for AWG section '" + section[".name"] + "'...", "info");
@@ -962,9 +962,9 @@ function prepare_community_rulesets() {
             }
         }
     };
-    let sections = uci_core.get_all(CONFIG_NAME, "section") || {};
-    for (let name, section in sections) {
-        if (!section || !section.enabled || section.enabled == "0")
+    let sections = uci_core.section_objects(CONFIG_NAME, "section");
+    for (let section in sections) {
+        if (section.enabled == "0")
             continue;
         add_needed_list_items(section.community_lists);
         add_needed_list_items(connections.community_lists(section));
@@ -986,9 +986,9 @@ function prepare_community_rulesets() {
                 needed["geosite_ru"] = true;
         }
     }
-    let conditions_all = uci_core.get_all(CONFIG_NAME, "condition") || {};
-    for (let cname, cond in conditions_all) {
-        if (!cond || cond.enabled == "0")
+    let conditions_all = uci_core.section_objects(CONFIG_NAME, "condition");
+    for (let cond in conditions_all) {
+        if (cond.enabled == "0")
             continue;
         add_needed_list_items(cond.community_lists);
         add_needed_list_items(cond.rule_set);
