@@ -401,8 +401,9 @@ function configure_dnsmasq_localservice() {
     let sections = uci_core.sections("dhcp", "dnsmasq");
     if (type(sections) == "array" && length(sections) > 0) {
         for (let s in sections) {
-            let sname = as_string(s[".name"] || "");
-            if (sname != "" && as_string(s.localservice) != "0") {
+            let sname = type(s) == "object" ? as_string(s[".name"] || "") : as_string(s);
+            let val = type(s) == "object" ? as_string(s.localservice) : as_string(uci_core.get("dhcp", sname, "localservice"));
+            if (sname != "" && val != "0") {
                 uci_core.set("dhcp." + sname + ".localservice", "0");
                 changed = true;
             }

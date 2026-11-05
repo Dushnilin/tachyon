@@ -12,6 +12,7 @@ let i18n = require("service.i18n");
 
 let rendering = require("service.telegram.rendering");
 let transport = require("service.telegram.transport");
+let update_jobs = require("service.telegram.update_jobs");
 let _commands = null;
 function get_commands() {
     if (_commands == null) _commands = require("service.telegram.commands");
@@ -893,6 +894,7 @@ function worker() {
     let last_update_check = 0;
     let last_update_check_mtime = 0;
     let last_blocked_check = 0;
+    let last_job_check = 0;
     let consecutive_failures = 0;
     let route_alert_sent = false;
     let last_log_check = 0;
@@ -952,6 +954,14 @@ function worker() {
             if (now - last_blocked_check > BLOCKED_POLL_INTERVAL) {
                 check_blocked_activity(cfg);
                 last_blocked_check = now;
+            }
+
+            // Background component updates: report the outcome to the chat that
+            // started them. Polled often: the job finishes within a couple of
+            // minutes and the user is waiting for the result.
+            if (now - last_job_check >= 5) {
+                update_jobs.poll(cfg.bot_token, cfg.language);
+                last_job_check = now;
             }
 
             if (now - last_log_check > 3600) {
