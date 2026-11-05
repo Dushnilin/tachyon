@@ -322,9 +322,11 @@ function system_info_cache_is_valid() {
     let generated_at = arg_number(cache.generated_at || 0);
     if (now > 0 && generated_at > 0 && SYSTEM_INFO_CACHE_TTL > 0 && now - generated_at >= SYSTEM_INFO_CACHE_TTL)
         return false;
-    let cfg_st = fs.stat(TACHYON_CONFIG);
-    if (cfg_st && cfg_st.mtime > generated_at)
-        return false;
+    for (let watched_path in [ TACHYON_CONFIG, SING_BOX_BIN_PATH, SING_BOX_LEGACY_BIN_PATH, "/etc/tachyon/tachyon-core-version", SB_VARIANT_STATE_FILE ]) {
+        let st = fs.stat(watched_path);
+        if (st && st.mtime > generated_at)
+            return false;
+    }
     return cache.tachyon_version == TACHYON_VERSION && cache.luci_app_version == get_luci_app_version();
 }
 
