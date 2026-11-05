@@ -1529,6 +1529,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
       webPageUrl?: string;
       supportUrl?: string;
       announce?: string;
+      updatedAt?: number;
     };
   }
 
@@ -1603,13 +1604,11 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
         const subUrl = String(
           src.url || (/^https?:\/\//i.test(rawSubName) ? rawSubName : ''),
         ).trim();
-        if (
-          srcStype === 'subscription' &&
-          subUrl &&
-          (subCacheByUrl.get(subUrl)?.servers.length || 0) > 0
-        ) {
-          return;
-        }
+        const existingByUrl =
+          srcStype === 'subscription' && subUrl
+            ? subCacheByUrl.get(subUrl)
+            : undefined;
+        const alreadyHasServers = (existingByUrl?.servers.length || 0) > 0;
         const prefix =
           src.prefix_nodes !== '0' && src.node_prefix
             ? String(src.node_prefix).trim()
@@ -1617,6 +1616,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
         const srcTitle = String(src.name || src.label || sid).trim();
         const serverMap = new Map<string, SubCacheServerItem>();
         let foundMeta: SubCacheEntryInfo['metadata'] = undefined;
+        let foundUpdatedAt = 0;
 
         validCaches.forEach((c: any) => {
           const meta =
@@ -1668,21 +1668,32 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
           subInfos.forEach((si: any) => {
             if (!si || typeof si !== 'object') return;
             const siTitle = String(si.title || '').trim();
+            const siSec = String(
+              si.sourceSection || si.source_section || '',
+            ).trim();
             if (
               singleSub ||
+              (sid &&
+                (siSec === `${sid}-subscription-1` ||
+                  siSec === `Pool_${sid}-subscription-1`)) ||
               (prefix && siTitle.toLowerCase() === prefix.toLowerCase()) ||
               (srcTitle && siTitle.toLowerCase() === srcTitle.toLowerCase())
             ) {
+              const siUpd = Number(si.updatedAt || 0);
+              if (siUpd > foundUpdatedAt) foundUpdatedAt = siUpd;
               foundMeta = {
-                title: siTitle || undefined,
-                traffic: si.traffic,
-                expire: si.expire,
-                webPageUrl: si.webPageUrl,
-                supportUrl: si.supportUrl,
-                announce: si.announce,
+                title: siTitle || foundMeta?.title || undefined,
+                traffic: si.traffic ?? foundMeta?.traffic,
+                expire: si.expire ?? foundMeta?.expire,
+                webPageUrl: si.webPageUrl || foundMeta?.webPageUrl,
+                supportUrl: si.supportUrl || foundMeta?.supportUrl,
+                announce: si.announce || foundMeta?.announce,
+                updatedAt: siUpd > 0 ? siUpd : foundMeta?.updatedAt,
               };
             }
           });
+
+          if (alreadyHasServers) return;
 
           outboundsArr.forEach((code: string) => {
             const cStr = String(code || '');
@@ -1766,12 +1777,41 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
           });
         });
 
+        if (alreadyHasServers && existingByUrl) {
+          if (foundUpdatedAt > (existingByUrl.mtime || 0)) {
+            existingByUrl.mtime = foundUpdatedAt;
+          }
+          const metaFound = foundMeta as
+            | NonNullable<SubCacheEntryInfo['metadata']>
+            | undefined;
+          if (metaFound) {
+            existingByUrl.metadata = {
+              ...(existingByUrl.metadata || {}),
+              title: existingByUrl.metadata?.title || metaFound.title,
+              traffic: metaFound.traffic ?? existingByUrl.metadata?.traffic,
+              expire: metaFound.expire ?? existingByUrl.metadata?.expire,
+              webPageUrl:
+                metaFound.webPageUrl || existingByUrl.metadata?.webPageUrl,
+              supportUrl:
+                metaFound.supportUrl || existingByUrl.metadata?.supportUrl,
+              announce: metaFound.announce || existingByUrl.metadata?.announce,
+              updatedAt: Math.max(
+                Number(existingByUrl.metadata?.updatedAt || 0),
+                Number(metaFound.updatedAt || 0),
+              ),
+            };
+          }
+          subCacheBySid.set(sid, existingByUrl);
+          return;
+        }
+
         const servers = Array.from(serverMap.values());
         if (servers.length > 0 || foundMeta) {
-          const existingMtime =
-            (subUrl ? subCacheByUrl.get(subUrl)?.mtime : 0) ||
-            subCacheBySid.get(sid)?.mtime ||
-            0;
+          const existingMtime = Math.max(
+            (subUrl ? subCacheByUrl.get(subUrl)?.mtime : 0) || 0,
+            subCacheBySid.get(sid)?.mtime || 0,
+            foundUpdatedAt,
+          );
           const entry: SubCacheEntryInfo = {
             mtime: existingMtime,
             servers,
@@ -1795,14 +1835,22 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
       return Promise.resolve();
     }
     const dir = '/etc/tachyon/subscription-cache';
-    return fs
-      .list(dir)
-      .catch(() => [])
-      .then((entries: any[]) => {
+    const runtimeDir = '/tmp/tachyon-core/subscriptions';
+    const tsDir = '/var/run/tachyon/subscription-update';
+    return Promise.all([
+      fs.list(dir).catch(() => []),
+      fs.list(runtimeDir).catch(() => []),
+      fs.list(tsDir).catch(() => []),
+    ])
+      .then(([entries, runtimeEntries, tsEntries]: any[][]) => {
         const list = Array.isArray(entries) ? entries : [];
+        const rtList = Array.isArray(runtimeEntries) ? runtimeEntries : [];
+        const tsList = Array.isArray(tsEntries) ? tsEntries : [];
         const jsonBases: string[] = [];
         const urlSet = new Set<string>();
         const metaSet = new Set<string>();
+        const rtMetaSet = new Set<string>();
+        const tsSet = new Set<string>();
         const linksSet = new Set<string>();
         const mtimeMap = new Map<string, number>();
 
@@ -1821,6 +1869,32 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
             const base = fname.slice(0, -5);
             jsonBases.push(base);
             mtimeMap.set(base, Number(ent.mtime || 0));
+          }
+        });
+
+        rtList.forEach((ent: any) => {
+          const fname = String((ent && ent.name) || '');
+          const mtime = Number(ent?.mtime || 0);
+          if (fname.endsWith('.metadata.json')) {
+            const base = fname.slice(0, -14);
+            rtMetaSet.add(base);
+            if (mtime > (mtimeMap.get(base) || 0)) mtimeMap.set(base, mtime);
+          } else if (
+            fname.endsWith('.json') &&
+            fname.includes('-subscription-')
+          ) {
+            const base = fname.slice(0, -5);
+            if (mtime > (mtimeMap.get(base) || 0)) mtimeMap.set(base, mtime);
+          }
+        });
+
+        tsList.forEach((ent: any) => {
+          const fname = String((ent && ent.name) || '');
+          if (fname.endsWith('.timestamp')) {
+            const base = fname.slice(0, -10);
+            tsSet.add(base);
+            const mtime = Number(ent?.mtime || 0);
+            if (mtime > (mtimeMap.get(base) || 0)) mtimeMap.set(base, mtime);
           }
         });
 
@@ -1855,12 +1929,19 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                 metaSet.has(inf.base)
                   ? readFsText(`${dir}/${inf.base}.metadata.json`)
                   : Promise.resolve(''),
+                rtMetaSet.has(inf.base)
+                  ? readFsText(`${runtimeDir}/${inf.base}.metadata.json`)
+                  : Promise.resolve(''),
+                tsSet.has(inf.base)
+                  ? readFsText(`${tsDir}/${inf.base}.timestamp`)
+                  : Promise.resolve(''),
                 linksSet.has(inf.base)
                   ? readFsText(`${dir}/${inf.base}.links`)
                   : Promise.resolve(''),
-              ]).then(([rawJson, rawMeta, rawLinks]) => {
+              ]).then(([rawJson, rawMeta, rawRtMeta, rawTs, rawLinks]) => {
                 let parsedJson: any = {};
                 let parsedMeta: any = undefined;
+                let parsedRtMeta: any = undefined;
                 try {
                   parsedJson = rawJson ? JSON.parse(rawJson) : {};
                 } catch (_e) {
@@ -1871,6 +1952,17 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                 } catch (_e) {
                   parsedMeta = undefined;
                 }
+                try {
+                  parsedRtMeta = rawRtMeta ? JSON.parse(rawRtMeta) : undefined;
+                } catch (_e) {
+                  parsedRtMeta = undefined;
+                }
+                if (parsedRtMeta && typeof parsedRtMeta === 'object') {
+                  parsedMeta = { ...(parsedMeta || {}), ...parsedRtMeta };
+                }
+                const tsNum = Number(String(rawTs || '').trim()) || 0;
+                const metaUpd = Number(parsedMeta?.updatedAt || 0);
+                const bestMtime = Math.max(inf.mtime || 0, tsNum, metaUpd);
 
                 const linkLines = String(rawLinks || '')
                   .split(/\r?\n/)
@@ -1931,7 +2023,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                 });
 
                 subCacheByUrl.set(inf.url, {
-                  mtime: inf.mtime,
+                  mtime: bestMtime,
                   servers,
                   metadata: parsedMeta,
                 });
@@ -3293,9 +3385,14 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
           u.length > 52
             ? `${u.slice(0, 34)}…${u.slice(-12)}`
             : u || tr('URL не указан', 'No URL configured');
-        const updStr = subCache?.mtime
-          ? ` • ${tr('Обновлено', 'Updated')}: ${formatUpdatedTime(subCache.mtime)}`
-          : '';
+        const effectiveMtime = Math.max(
+          Number(subCache?.mtime || 0),
+          Number(subCache?.metadata?.updatedAt || 0),
+        );
+        const updStr =
+          effectiveMtime > 0
+            ? ` • ${tr('Обновлено', 'Updated')}: ${formatUpdatedTime(effectiveMtime)}`
+            : '';
         paramSummary = `${shortU}${updStr}`;
       } else if (stype === 'proxy_links') {
         paramSummary = `${tr('Узлов', 'Nodes')}: ${links.length}${parsedLinks.protocols.length ? ` (${parsedLinks.protocols.join(', ')})` : ''}`;

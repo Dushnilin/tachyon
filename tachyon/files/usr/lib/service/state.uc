@@ -26,7 +26,8 @@ const RUNTIME_STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachy
 const RELOAD_PREVIEW_FILE = getenv("TACHYON_RELOAD_PREVIEW_FILE") || RUNTIME_STATE_DIR + "/reload-preview.json";
 const SING_BOX_PROVENANCE_FILE = getenv("TACHYON_SING_BOX_PROVENANCE_FILE") || "/var/run/tachyon/sing-box.provenance";
 const SB_VARIANT_STATE_FILE = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant";
-const CORE_LOG_PATH = getenv("TACHYON_CORE_LOG_PATH") || "/tmp/tachyon-core/sing-box.log";
+const CORE_LOG_PATH = getenv("TACHYON_CORE_LOG_PATH") || "/tmp/tachyon-core/tachyon-core.log";
+const LEGACY_CORE_LOG_PATH = "/tmp/tachyon-core/sing-box.log";
 const ZAPRET_DEFAULT_NFQWS_OPT = getenv("ZAPRET_DEFAULT_NFQWS_OPT") || "";
 const ZAPRET2_DEFAULT_NFQWS2_OPT = getenv("ZAPRET2_DEFAULT_NFQWS2_OPT") || "";
 const BYEDPI_DEFAULT_CMD_OPTS = getenv("BYEDPI_DEFAULT_CMD_OPTS") || "";
@@ -691,8 +692,16 @@ function text_has_reload_failure(text) {
         index(text, "start error") >= 0;
 }
 
-function core_log_reload_failed(since_offset, logread_before) {
-    let data = fs.readfile(CORE_LOG_PATH);
+function active_core_log_path() {
+    if (getenv("TACHYON_CORE_LOG_PATH") != null || fs.stat(CORE_LOG_PATH) != null)
+        return CORE_LOG_PATH;
+    if (fs.stat(LEGACY_CORE_LOG_PATH) != null)
+        return LEGACY_CORE_LOG_PATH;
+    return CORE_LOG_PATH;
+}
+
+function core_log_reload_failed(since_offset, logread_before, log_path) {
+    let data = fs.readfile(log_path || active_core_log_path());
     if (data != null) {
         data = as_string(data);
         if (length(data) > since_offset) {
@@ -862,8 +871,9 @@ function try_sighup_reload(pid, preview) {
 
     let clash_info = core_clash_api_info();
     let before_state = fetch_tachyon_config_state(clash_info);
+    let log_path = active_core_log_path();
     let log_offset = 0;
-    let log_stat = fs.stat(CORE_LOG_PATH);
+    let log_stat = fs.stat(log_path);
     if (log_stat != null)
         log_offset = int(log_stat.size || 0);
     let logread_before = core_logread_tail();
@@ -879,7 +889,7 @@ function try_sighup_reload(pid, preview) {
             return false;   // process died — caller must restart
         let process_ok = current_pid == pid || pid_is_tachyon_core(current_pid);
         if (process_ok && sing_box_mixed_ports_listening(ports)) {
-            if (core_log_reload_failed(log_offset, logread_before))
+            if (core_log_reload_failed(log_offset, logread_before, log_path))
                 return false;
             if (!config_state_reload_confirmed(clash_info, before_state, preview))
                 continue;
@@ -892,7 +902,7 @@ function try_sighup_reload(pid, preview) {
     let final_pid = sing_box_service_pid_runtime();
     if (final_pid <= 0 || !pid_is_tachyon_core(final_pid))
         return false;
-    if (core_log_reload_failed(log_offset, logread_before))
+    if (core_log_reload_failed(log_offset, logread_before, log_path))
         return false;
     if (sing_box_mixed_ports_listening(ports) && config_state_reload_confirmed(clash_info, before_state, preview))
         return finalize_sighup_success(clash_info, before_state != null);
@@ -907,7 +917,7 @@ function hup_sing_box_runtime() {
     // and fall back to a restart only when the process does not survive it.
     let active_pid = sing_box_service_pid_runtime();
     if (active_pid > 0 && try_sighup_reload(active_pid)) {
-        command_success_from_args([ "logger", "-t", "tachyon", "[info] Applying DNS failover via sing-box SIGHUP (graceful)" ]);
+        command_success_from_args([ "logger", "-t", "tachyon", "[info] Applying DNS failover via tachyon-core SIGHUP (graceful)" ]);
         return;
     }
 

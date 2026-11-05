@@ -1659,7 +1659,7 @@ function render_matching_log_tail(needle, max_lines) {
         {
             if ((needle == "tachyon-core" || needle == "sing-box") && is_udp_unsupported_outbound_log(line)) {
                 if (!udp_http_notice_emitted) {
-                    push(filtered, "UDP traffic through HTTP outbounds is not supported by sing-box; repeated UDP warnings for HTTP outbounds are hidden by Tachyon.");
+                    push(filtered, "UDP traffic through HTTP outbounds is not supported by tachyon-core; repeated UDP warnings for HTTP outbounds are hidden by Tachyon.");
                     udp_http_notice_emitted = true;
                 }
                 continue;
@@ -1691,9 +1691,9 @@ function render_tachyon_logs() {
         if (!line_contains(line, "tachyon") && !line_contains(line, "sing-box"))
             continue;
 
-        if (line_contains(line, "sing-box") && is_udp_unsupported_outbound_log(line)) {
+        if ((line_contains(line, "tachyon-core") || line_contains(line, "sing-box")) && is_udp_unsupported_outbound_log(line)) {
             if (!udp_http_notice_emitted) {
-                push(filtered, "UDP traffic through HTTP outbounds is not supported by sing-box; repeated UDP warnings for HTTP outbounds are hidden by Tachyon.");
+                push(filtered, "UDP traffic through HTTP outbounds is not supported by tachyon-core; repeated UDP warnings for HTTP outbounds are hidden by Tachyon.");
                 udp_http_notice_emitted = true;
             }
             continue;

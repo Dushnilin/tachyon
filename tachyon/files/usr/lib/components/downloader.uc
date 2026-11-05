@@ -57,10 +57,21 @@ function read_github_cache(url, max_age_s) {
 }
 
 function write_github_cache(url, body) {
-    if (!github_cache_enabled() || as_string(body) == "")
+    body = as_string(body);
+    if (!github_cache_enabled() || body == "" || length(body) > 262144)
         return;
     helpers.ensure_dir(GITHUB_CACHE_DIR);
-    write_file(github_cache_file_for_url(url), as_string(body));
+    let now = time();
+    let entries = fs.lsdir(GITHUB_CACHE_DIR);
+    if (type(entries) == "array") {
+        for (let ent in entries) {
+            let p = GITHUB_CACHE_DIR + "/" + as_string(ent);
+            let st = fs.stat(p);
+            if (st && st.type == "file" && (now - int(st.mtime || 0) > GITHUB_CACHE_TTL_S * 2 || int(st.size || 0) > 262144))
+                remove_file(p);
+        }
+    }
+    write_file(github_cache_file_for_url(url), body);
 }
 
 function is_github_rate_limited() {

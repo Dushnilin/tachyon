@@ -82,7 +82,7 @@ sighup_line="$(grep -n '^function try_sighup_reload' "$STATE" | cut -d: -f1)"
   fail "hup_sing_box_runtime() calls try_sighup_reload(), so it must be declared after it: ucode resolves a module-level function where the caller is defined, and a forward reference becomes 'left-hand side is not a function' at runtime"
 ok
 
-grep -q 'Applying DNS failover via sing-box SIGHUP' "$STATE" ||
+grep -q 'Applying DNS failover via tachyon-core SIGHUP' "$STATE" ||
   fail "hup_sing_box_runtime() must log the graceful SIGHUP path it now takes"
 ok
 

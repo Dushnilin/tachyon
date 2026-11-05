@@ -201,7 +201,8 @@ function core_contract() {
         comm_names: CORE_PROCESS_NAMES,
         workdir: "/usr/share/tachyon-core",
         config_file: "/etc/tachyon-core/config.json",
-        log_file: "/tmp/tachyon-core/sing-box.log"
+        log_file: "/tmp/tachyon-core/tachyon-core.log",
+        legacy_log_file: "/tmp/tachyon-core/sing-box.log"
     };
 }
 

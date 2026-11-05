@@ -151,4 +151,53 @@ if ! grep -Fq '"tag": "🇷🇺 Россия · XHTTP"' "$flat_vless_output"; th
   fail "Xray flat VLESS settings must use remarks as tag when outbound tag is generic"
 fi
 
+# Xray finalmask.tcp with type=fragment must normalize to tls.fragment = true
+tcp_frag_input="$WORK_DIR/xray-tcp-finalmask.json"
+tcp_frag_output="$WORK_DIR/xray-tcp-finalmask-normalized.json"
+cat >"$tcp_frag_input" <<'JSON'
+[
+  {
+    "remarks": "🇮🇳 India",
+    "inbounds": [],
+    "outbounds": [
+      {
+        "tag": "proxy",
+        "protocol": "vless",
+        "settings": {
+          "address": "in.example.com",
+          "port": 443,
+          "id": "e3e1a852-b8ed-bc84-a451-577ba0a45ec1",
+          "encryption": "none",
+          "flow": "xtls-rprx-vision"
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "reality",
+          "realitySettings": {
+            "serverName": "in.convexia.net",
+            "publicKey": "jNXHt1yRo0vDuchQlIP6Z0ZvjT3KtzVI-T4E7RoLJS0",
+            "shortId": "411d1ef7e14494cc",
+            "fingerprint": "firefox"
+          },
+          "finalmask": {
+            "tcp": [
+              {
+                "type": "fragment",
+                "settings": { "packets": "tlshello", "length": "10-20", "delay": "10-20" }
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+]
+JSON
+normalize "$tcp_frag_input" "$tcp_frag_output"
+
+if ! grep -Fq '"fragment": true' "$tcp_frag_output"; then
+  cat "$tcp_frag_output" >&2
+  fail "Xray finalmask.tcp fragment must normalize to tls.fragment = true"
+fi
+
 printf 'subscription Xray finalmask checks passed\n'

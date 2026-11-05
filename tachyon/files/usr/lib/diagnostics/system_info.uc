@@ -213,6 +213,18 @@ function is_tachyon_core_selected() {
 }
 
 function check_sing_box_logs() {
+    for (let log_path in [ TMP_SING_BOX_FOLDER + "/tachyon-core.log", TMP_SING_BOX_FOLDER + "/sing-box.log" ]) {
+        let st = fs.stat(log_path);
+        if (st != null && int(st.size || 0) > 0) {
+            let tail_out = command_output_from_args([ "tail", "-n", "100", log_path ]);
+            if (tail_out != "") {
+                print(tail_out);
+                if (substr(tail_out, length(tail_out) - 1, 1) != "\n")
+                    print("\n");
+                return 0;
+            }
+        }
+    }
     if (!command_exists("logread")) {
         nolog("Error: logread command not found");
         return 1;
@@ -223,8 +235,12 @@ function check_sing_box_logs() {
     let cmd = common.bounded_command("logread -l " + LOGREAD_LINE_LIMIT + " 2>/dev/null", "5");
     let raw_logs = command_output(cmd);
     let rendered = status_capture([ "matching-log-tail", needle, "100" ], raw_logs);
-    if (rendered.output == "" && is_core)
-        rendered = status_capture([ "matching-log-tail", "sing-box", "100" ], raw_logs);
+    let has_matches = rendered.output != "" && index(rendered.output, "No matching logs found") != 0;
+    if (!has_matches && is_core) {
+        let fallback_rendered = status_capture([ "matching-log-tail", "sing-box", "100" ], raw_logs);
+        if (fallback_rendered.output != "" && index(fallback_rendered.output, "No matching logs found") != 0)
+            rendered = fallback_rendered;
+    }
     if (rendered.output != "")
         print(rendered.output);
     else

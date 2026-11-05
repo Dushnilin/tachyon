@@ -14,6 +14,7 @@ let object_key_count = common.object_key_count;
 
 const TMP_SUBSCRIPTION_FOLDER = getenv("TMP_SUBSCRIPTION_FOLDER") || "/tmp/tachyon-core/subscriptions";
 const TACHYON_RUNTIME_STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon";
+const TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR = getenv("TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR") || TACHYON_RUNTIME_STATE_DIR + "/subscription-update";
 const TACHYON_SECTION_CACHE_DIR = getenv("TACHYON_SECTION_CACHE_DIR") || TACHYON_RUNTIME_STATE_DIR + "/section-cache";
 const TACHYON_SUBSCRIPTION_METADATA_DIR = getenv("TACHYON_SUBSCRIPTION_METADATA_DIR") || TACHYON_RUNTIME_STATE_DIR + "/subscription-metadata";
 const TACHYON_RUNTIME_CACHE_FORMAT = int(getenv("TACHYON_RUNTIME_CACHE_FORMAT") || "9");
@@ -130,11 +131,11 @@ function persistent_source_matches_entry(source_section, source_entry) {
     let cached_url = file_first_line(persistent_source_path(source_section, ".url"));
     let cached_user_agent = file_first_line(persistent_source_path(source_section, ".user_agent"));
 
-    if (cached_url != parsed.url)
+    if (cached_url == "" || cached_url != parsed.url)
         return false;
-    if (parsed.user_agent != "" && cached_user_agent != parsed.user_agent)
+    if (parsed.user_agent != "" && cached_user_agent != "" && cached_user_agent != parsed.user_agent)
         return false;
-    return cached_user_agent != "";
+    return true;
 }
 
 function read_persistent_source_metadata(source_section, source_entry) {
@@ -174,18 +175,46 @@ function source_json_path(source_section) {
 }
 
 function read_source_metadata(section_name, source_section, source_index, source_entry, fallback_title) {
-    let metadata = read_section_metadata(section_name, source_section, source_index);
-    if (length(metadata) == 0)
-        metadata = read_persistent_source_metadata(source_section, source_entry);
+    let sec_metadata = read_section_metadata(section_name, source_section, source_index);
+    let rt_metadata = metadata_items_from_value(read_json_file(TMP_SUBSCRIPTION_FOLDER + "/" + source_section + ".metadata.json"));
+    let pers_metadata = read_persistent_source_metadata(source_section, source_entry);
+
+    let metadata = length(sec_metadata) > 0 ? sec_metadata :
+        (length(rt_metadata) > 0 ? rt_metadata : pers_metadata);
+
+    if (length(metadata) > 0) {
+        for (let donor_list in [ rt_metadata, pers_metadata ]) {
+            if (length(donor_list) == 0)
+                continue;
+            let donor = donor_list[0];
+            for (let item in metadata) {
+                for (let k in [ "title", "announce", "traffic", "expire", "webPageUrl", "supportUrl", "updatedAt" ]) {
+                    if ((item[k] == null || item[k] == "") && donor[k] != null && donor[k] != "")
+                        item[k] = donor[k];
+                }
+            }
+        }
+    }
 
     let updated_at = 0;
-    let st_tmp = fs.stat(source_json_path(source_section));
-    if (st_tmp != null && int(st_tmp.mtime || 0) > 0)
-        updated_at = int(st_tmp.mtime);
-    else {
-        let st_pers = fs.stat(persistent_source_path(source_section, ".json"));
-        if (st_pers != null && int(st_pers.mtime || 0) > 0)
-            updated_at = int(st_pers.mtime);
+    for (let st in [
+        fs.stat(source_json_path(source_section)),
+        fs.stat(TMP_SUBSCRIPTION_FOLDER + "/" + source_section + ".metadata.json"),
+        fs.stat(persistent_source_path(source_section, ".json"))
+    ]) {
+        if (st != null && int(st.mtime || 0) > updated_at)
+            updated_at = int(st.mtime);
+    }
+    for (let ts_path in [
+        TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR + "/" + source_section + ".timestamp",
+        TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR + "/" + section_name + ".timestamp"
+    ]) {
+        let raw_ts = file_first_line(ts_path);
+        if (raw_ts != "" && match(raw_ts, /^[0-9]+$/) != null) {
+            let n_ts = int(raw_ts, 10);
+            if (n_ts > updated_at)
+                updated_at = n_ts;
+        }
     }
 
     fallback_title = trim(as_string(fallback_title || ""));
@@ -196,7 +225,7 @@ function read_source_metadata(section_name, source_section, source_index, source
     for (let item in metadata) {
         item.sourceIndex = source_index;
         item.sourceSection = source_section;
-        if (updated_at > 0 && item.updatedAt == null)
+        if (updated_at > 0 && (item.updatedAt == null || int(item.updatedAt || 0) < updated_at))
             item.updatedAt = updated_at;
         if (fallback_title != "" && trim(as_string(item.title || "")) == "")
             item.title = fallback_title;

@@ -178,10 +178,21 @@ function outbound_has_port_ranges(outbound) {
     return false;
 }
 
+function normalize_vless_flow_value(value) {
+    let flow = lc(trim(as_string(value)));
+    if (flow == "" || flow == "none")
+        return "";
+    if (flow == "xtls-rprx-vision" || flow == "xtls-rprx-vision-udp443")
+        return "xtls-rprx-vision";
+    return null;
+}
+
 function supported_subscription_outbound(outbound) {
     if (type(outbound) != "object")
         return false;
     let t = as_string(outbound.type);
+    if (t == "vless" && outbound.flow != null && normalize_vless_flow_value(outbound.flow) == null)
+        return false;
     if (t == "wireguard") {
         let peer = array_or_empty(outbound.peers)[0];
         return type(peer) == "object" && !is_dummy_outbound_server(peer.address, peer.port) &&
@@ -307,6 +318,13 @@ function copy_subscription_outbound(outbound, new_tag) {
         if (key != "tag" && key != "remark" && key != "share_link" &&
             key != "__tachyon_hidden" && key != "__tachyon_allow_group")
             copy[key] = value;
+    }
+    if (as_string(copy.type || "") == "vless" && copy.flow != null) {
+        let norm_flow = normalize_vless_flow_value(copy.flow);
+        if (norm_flow == "" || norm_flow == null)
+            delete copy.flow;
+        else
+            copy.flow = norm_flow;
     }
     if (as_string(copy.type || "") == "hysteria2" &&
         type(copy.tls) == "object" &&
@@ -865,7 +883,9 @@ function manual_vless_outbound(link, tag_name) {
         server_port: port,
         uuid
     };
-    let flow = as_string(query.flow || "");
+    let flow = normalize_vless_flow_value(query.flow || "");
+    if (flow == null)
+        ctx.runtime_generate_unsupported("manual VLESS proxy link flow '" + as_string(query.flow || "") + "' is not supported");
     if (flow != "")
         outbound.flow = flow;
     let encryption = as_string(query.encryption || "");
@@ -2350,8 +2370,8 @@ function add_connection_inline_uci_outbound(config, state, section, taken, selec
     }
     else if (raw_type == "vless" || raw_type == "vmess") {
         outbound.uuid = option(section, "uuid", option(section, "id", ""));
-        let flow = option(section, "flow", "");
-        if (flow != "" && raw_type == "vless")
+        let flow = normalize_vless_flow_value(option(section, "flow", ""));
+        if (flow != null && flow != "" && raw_type == "vless")
             outbound.flow = flow;
     }
     else if (raw_type == "trojan" || raw_type == "hysteria2" || raw_type == "tuic") {

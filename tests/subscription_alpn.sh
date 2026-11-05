@@ -75,6 +75,11 @@ assert_contains "$ws_output" '"alpn": [ "http/1.1" ]' "vless-ws"
 assert_not_contains "$ws_output" '"alpn": [ "h2", "http/1.1" ]' "vless-ws"
 
 assert_alpn \
+  "vless-ws-default" \
+  "vless://$UUID@example.com:443?type=ws&encryption=none&security=tls&fp=firefox&sni=example.com&path=%2Fws#vless-ws-default" \
+  '"alpn": [ "http/1.1" ]'
+
+assert_alpn \
   "vless-httpupgrade" \
   "vless://$UUID@example.com:443?type=httpupgrade&$BASE_QUERY&path=%2Fupgrade#vless-httpupgrade" \
   '"alpn": [ "http/1.1" ]'

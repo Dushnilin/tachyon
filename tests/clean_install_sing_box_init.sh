@@ -76,9 +76,9 @@ for variant in "" reset-log; do
   fi
 done
 
-grep -Fq '/tmp/tachyon-core/sing-box.log' "$WORK_DIR/init-reset-log.sh" ||
+grep -Fq '/tmp/tachyon-core/tachyon-core.log' "$WORK_DIR/init-reset-log.sh" ||
   fail "reset-log variant must truncate the core log"
-if grep -Fq '/tmp/tachyon-core/sing-box.log' "$WORK_DIR/init-plain.sh"; then
+if grep -Fq '/tmp/tachyon-core/tachyon-core.log' "$WORK_DIR/init-plain.sh"; then
   fail "plain variant must leave the core log alone"
 fi
 

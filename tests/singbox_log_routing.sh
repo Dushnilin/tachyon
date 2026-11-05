@@ -75,7 +75,7 @@ done
 # The verbose file lives on tmpfs: /etc and /usr are the overlay on the flash
 # that actually wears out, and a per-connection log would be written constantly.
 for level in info debug trace; do
-  grep -Fq '"output": "/tmp/tachyon-core/sing-box.log"' "$WORK_DIR/$level.out" ||
+  grep -Fq '"output": "/tmp/tachyon-core/tachyon-core.log"' "$WORK_DIR/$level.out" ||
     fail "log_level=$level must point the verbose log at tmpfs, not the flash overlay"
 done
 

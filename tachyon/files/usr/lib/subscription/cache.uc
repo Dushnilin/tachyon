@@ -1381,33 +1381,6 @@ function metadata_array_from_file(metadata_path) {
     return result;
 }
 
-function write_subscription_metadata(cache_dir, format_version, section, metadata_path) {
-    let cache = load_cache(cache_dir, section);
-    cache.subscriptionMetadata = metadata_array_from_file(metadata_path);
-    save_cache(cache_dir, section, format_version, cache);
-}
-
-function read_metadata_items_from_cache(cache_dir, section, legacy_path) {
-    let cache = load_cache(cache_dir, section);
-    let metadata = cache.subscriptionMetadata;
-
-    if (type(metadata) != "array")
-        metadata = read_json(legacy_path);
-
-    let result = [];
-    if (is_array(metadata)) {
-        for (let item in metadata) {
-            if (valid_metadata_object(item))
-                push(result, item);
-        }
-    }
-    else if (valid_metadata_object(metadata)) {
-        push(result, metadata);
-    }
-
-    return result;
-}
-
 function metadata_source_index(item) {
     if (type(item) != "object")
         return null;
@@ -1439,6 +1412,63 @@ function metadata_matches_source(item, source_index, source_section, has_source_
     let item_index = metadata_source_index(item);
     return (item_section != "" && item_section == source_section) ||
         (item_section == "" && item_index == source_index);
+}
+
+function merge_previous_metadata_fields(target_item, prev_item) {
+    if (type(target_item) != "object" || type(prev_item) != "object")
+        return target_item;
+    for (let k in [ "title", "announce", "traffic", "expire", "webPageUrl", "supportUrl", "updatedAt" ]) {
+        if ((target_item[k] == null || target_item[k] == "") && prev_item[k] != null && prev_item[k] != "")
+            target_item[k] = prev_item[k];
+    }
+    return target_item;
+}
+
+function write_subscription_metadata(cache_dir, format_version, section, metadata_path) {
+    let cache = load_cache(cache_dir, section);
+    let prev_items = array_or_empty(cache.subscriptionMetadata);
+    let next_items = metadata_array_from_file(metadata_path);
+    if (length(next_items) == 0 && (metadata_path == null || metadata_path == "") && length(prev_items) > 0) {
+        save_cache(cache_dir, section, format_version, cache);
+        return;
+    }
+    let has_prev_markers = metadata_items_have_source_markers(prev_items);
+    for (let idx, item in next_items) {
+        let s_idx = metadata_source_index(item) || (idx + 1);
+        let s_sec = metadata_source_section(item);
+        for (let p_idx, p_item in prev_items) {
+            let matched = has_prev_markers ?
+                metadata_matches_source(p_item, s_idx, s_sec, true) :
+                ((p_idx + 1) == s_idx);
+            if (matched) {
+                merge_previous_metadata_fields(item, p_item);
+                break;
+            }
+        }
+    }
+    cache.subscriptionMetadata = next_items;
+    save_cache(cache_dir, section, format_version, cache);
+}
+
+function read_metadata_items_from_cache(cache_dir, section, legacy_path) {
+    let cache = load_cache(cache_dir, section);
+    let metadata = cache.subscriptionMetadata;
+
+    if (type(metadata) != "array")
+        metadata = read_json(legacy_path);
+
+    let result = [];
+    if (is_array(metadata)) {
+        for (let item in metadata) {
+            if (valid_metadata_object(item))
+                push(result, item);
+        }
+    }
+    else if (valid_metadata_object(metadata)) {
+        push(result, metadata);
+    }
+
+    return result;
 }
 
 function attach_source_metadata(item, source_index, source_section) {
@@ -1497,6 +1527,7 @@ function write_source_metadata(cache_dir, format_version, section, source_index,
     let cache = load_cache(cache_dir, section);
     let items = read_metadata_items_from_cache(cache_dir, section, legacy_path);
     let kept = [];
+    let previous_match = null;
     let has_source_markers = metadata_items_have_source_markers(items);
     source_index = int(source_index || 0);
     source_section = as_string(source_section);
@@ -1507,11 +1538,19 @@ function write_source_metadata(cache_dir, format_version, section, source_index,
             (index + 1) != source_index;
         if (keep && valid_metadata_object(item))
             push(kept, item);
+        else if (!keep && valid_metadata_object(item) && previous_match == null)
+            previous_match = item;
     }
 
     let metadata = read_json(metadata_path);
-    if (valid_metadata_object(metadata))
+    if (valid_metadata_object(metadata)) {
+        if (previous_match != null)
+            merge_previous_metadata_fields(metadata, previous_match);
         push(kept, attach_source_metadata(metadata, source_index, source_section));
+    }
+    else if (previous_match != null) {
+        push(kept, attach_source_metadata(previous_match, source_index, source_section));
+    }
 
     sort(kept, function(first, second) {
         let first_index = metadata_source_index(first) || 999999;
@@ -1946,6 +1985,24 @@ function download_subscription(url, filepath, http_proxy_address, headers_filepa
     return resolution_failed ? 6 : 1;
 }
 
+function subscription_update_timestamp_path(section_name_value) {
+    return TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR + "/" + as_string(section_name_value) + ".timestamp";
+}
+
+function current_timestamp_value() {
+    let value = trim(command_output_from_args([ "date", "+%s" ]));
+    return unsigned_number(value) == null ? "" : value;
+}
+
+function write_subscription_update_timestamp(section_name_value) {
+    let timestamp = current_timestamp_value();
+    if (timestamp == "")
+        return;
+
+    ensure_dir(TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR);
+    write_file(subscription_update_timestamp_path(section_name_value), timestamp + "\n");
+}
+
 function copy_valid_metadata_output(metadata_tmpfile, metadata_output_path) {
     if (metadata_output_path == null || metadata_output_path == "")
         return;
@@ -1965,6 +2022,34 @@ function copy_persistent_metadata_output(source_section, metadata_output_path) {
         metadata_path = persistent_metadata_path(source_section);
     if (file_nonempty(metadata_path) && object_has_extra_keys(metadata_path))
         copy_file(metadata_path, metadata_output_path) || unlink_path(metadata_output_path);
+}
+
+function stamp_runtime_metadata_output(source_section, metadata_output_path) {
+    write_subscription_update_timestamp(source_section);
+    let now_str = current_timestamp_value();
+    let now_ts = now_str != "" ? int(now_str) : int(time() || 0);
+    if (now_ts <= 0)
+        return;
+    let runtime_meta = runtime_metadata_path(source_section);
+    let persistent_meta = persistent_metadata_path(source_section);
+    let obj = {};
+    for (let candidate_path in [ persistent_meta, runtime_meta, metadata_output_path ]) {
+        if (candidate_path == null || candidate_path == "" || !file_nonempty(candidate_path))
+            continue;
+        let parsed = read_json(candidate_path);
+        if (type(parsed) == "object") {
+            for (let k, v in parsed) {
+                if (v != null && v != "")
+                    obj[k] = v;
+            }
+        }
+    }
+    obj.version = 1;
+    obj.updatedAt = now_ts;
+    if (ensure_dir(TMP_SUBSCRIPTION_FOLDER))
+        write_json(runtime_meta, obj);
+    if (metadata_output_path != null && metadata_output_path != "")
+        write_json(metadata_output_path, obj);
 }
 
 function subscription_config_is_current(section_name_value, subscription_url, subscription_user_agent, subscription_hwid, sections, subscription_device_headers_signature) {
@@ -2069,6 +2154,7 @@ function finalize_downloaded_subscription_cache(
             log_message("Failed to persist last working subscription cache for source '" + cache_section + "'", "warn");
         if (!file_nonempty(metadata_output_path))
             copy_persistent_metadata_output(cache_section, metadata_output_path);
+        stamp_runtime_metadata_output(cache_section, metadata_output_path);
         unlink_path(raw_tmpfile);
         unlink_path(headers_tmpfile);
         unlink_path(normalized_tmpfile);
@@ -2091,6 +2177,7 @@ function finalize_downloaded_subscription_cache(
             log_message("Failed to persist last working subscription cache for source '" + cache_section + "'", "warn");
         if (!file_nonempty(metadata_output_path))
             copy_persistent_metadata_output(cache_section, metadata_output_path);
+        stamp_runtime_metadata_output(cache_section, metadata_output_path);
         unlink_path(raw_tmpfile);
         unlink_path(headers_tmpfile);
         unlink_path(metadata_tmpfile);
@@ -2116,6 +2203,7 @@ function finalize_downloaded_subscription_cache(
         if (metadata_output_path != "")
             unlink_path(metadata_output_path);
         copy_persistent_metadata_output(cache_section, metadata_output_path);
+        stamp_runtime_metadata_output(cache_section, metadata_output_path);
         unlink_path(raw_tmpfile);
         unlink_path(headers_tmpfile);
         unlink_path(normalized_tmpfile);
@@ -2141,6 +2229,7 @@ function finalize_downloaded_subscription_cache(
         log_message("Failed to persist last working subscription cache for source '" + cache_section + "'", "warn");
     if (!file_nonempty(metadata_output_path))
         copy_persistent_metadata_output(cache_section, metadata_output_path);
+    stamp_runtime_metadata_output(cache_section, metadata_output_path);
     unlink_path(raw_tmpfile);
     unlink_path(headers_tmpfile);
     unlink_path(metadata_tmpfile);
@@ -2212,7 +2301,8 @@ function try_fetch_subscription_with_core(
     if (type(full_obj.user_info) == "object") {
         let ui = full_obj.user_info;
         let parts = [];
-        let up = ui.Upload != null ? ui.Upload : ui.upload;
+        let up = ui.Upload != null ? ui.Upload : ui.Upload;
+        up = ui.Upload != null ? ui.Upload : ui.upload;
         let dl = ui.Download != null ? ui.Download : ui.download;
         let tot = ui.Total != null ? ui.Total : ui.total;
         let exp = ui.Expire != null ? ui.Expire : ui.expire;
@@ -2225,16 +2315,18 @@ function try_fetch_subscription_with_core(
     }
     if (type(full_obj.metadata) == "object") {
         let md = full_obj.metadata;
-        if (as_string(md.profile_title || "") != "")
-            push(header_lines, "Profile-Title: " + as_string(md.profile_title));
+        let clean_title = trim(replace(as_string(md.profile_title || ""), /[\r\n]+/g, " "));
+        let clean_announce = trim(replace(as_string(md.announce || ""), /[\r\n]+/g, " "));
+        if (clean_title != "")
+            push(header_lines, "Profile-Title: " + clean_title);
         if (md.update_interval_hours != null && as_string(md.update_interval_hours) != "")
             push(header_lines, "Profile-Update-Interval: " + as_string(md.update_interval_hours));
         if (as_string(md.support_url || "") != "")
             push(header_lines, "Support-Url: " + as_string(md.support_url));
         if (as_string(md.web_page_url || "") != "")
             push(header_lines, "Profile-Web-Page-Url: " + as_string(md.web_page_url));
-        if (as_string(md.announce || "") != "")
-            push(header_lines, "Announce: " + as_string(md.announce));
+        if (clean_announce != "")
+            push(header_lines, "Announce: " + clean_announce);
     }
     write_file(headers_tmpfile, length(header_lines) > 0 ? (join("\r\n", header_lines) + "\r\n") : "");
 
@@ -2536,24 +2628,6 @@ function update_subscription_source(section_name_value, index_value, entry, phas
         parsed.insecure,
         parsed.subscription_engine
     );
-}
-
-function subscription_update_timestamp_path(section_name_value) {
-    return TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR + "/" + as_string(section_name_value) + ".timestamp";
-}
-
-function current_timestamp_value() {
-    let value = trim(command_output_from_args([ "date", "+%s" ]));
-    return unsigned_number(value) == null ? "" : value;
-}
-
-function write_subscription_update_timestamp(section_name_value) {
-    let timestamp = current_timestamp_value();
-    if (timestamp == "")
-        return;
-
-    ensure_dir(TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR);
-    write_file(subscription_update_timestamp_path(section_name_value), timestamp + "\n");
 }
 
 function subscription_update_due_result(section) {

@@ -719,7 +719,7 @@ function check_proxy() {
     let sing_box_config_path = option(settings(), "config_path", "");
     let bin = command_exists("tachyon-core") ? "tachyon-core" : (command_exists("sing-box") ? "sing-box" : "");
     if (bin == "") {
-        nolog("sing-box is not installed");
+        nolog("tachyon-core is not installed");
         return 1;
     }
     if (!file_exists(sing_box_config_path)) {
@@ -727,7 +727,7 @@ function check_proxy() {
         return 1;
     }
 
-    nolog("Checking sing-box configuration...");
+    nolog("Checking " + bin + " configuration...");
     if (!command_success_from_args([ bin, "-c", sing_box_config_path, "check" ])) {
         nolog("Invalid configuration");
         return 1;

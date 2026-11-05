@@ -1557,7 +1557,7 @@ function custom_check(host, port, mode, client_ip) {
         through_sing_box = false;
         route_status = "direct";
         evidence = "backend_stopped";
-        route_message = ctx.backend_name + " остановлен: соединение не проходит через sing-box.";
+        route_message = ctx.backend_name + " остановлен: соединение не проходит через " + ctx.backend_name + ".";
     }
     else if (live_route.seen) {
         through_sing_box = true;
@@ -1565,20 +1565,20 @@ function custom_check(host, port, mode, client_ip) {
         evidence = "clash_api";
         item.outbound = live_route.outbound;
         route_message = live_route.outbound != ""
-            ? "Соединение найдено в sing-box; outbound: " + live_route.outbound
-            : "Соединение найдено среди активных соединений sing-box.";
+            ? "Соединение найдено в " + ctx.backend_name + "; outbound: " + live_route.outbound
+            : "Соединение найдено среди активных соединений " + ctx.backend_name + ".";
     }
     else if (item.dns_fakeip) {
         through_sing_box = true;
         route_status = "tachyon-core";
         evidence = "fakeip";
-        route_message = "Домен получил FakeIP, который обслуживается sing-box.";
+        route_message = "Домен получил FakeIP, который обслуживается " + ctx.backend_name + ".";
     }
     else if (live_route.attempted && item.state != "error" && item.state != "skipped") {
         through_sing_box = false;
         route_status = "direct";
         evidence = "clash_api_absent";
-        route_message = "Соединение доступно, но за время теста не появилось в Clash API: маршрут идёт мимо sing-box.";
+        route_message = "Соединение доступно, но за время теста не появилось в Clash API: маршрут идёт мимо " + ctx.backend_name + ".";
     }
     else if (item.state == "error") {
         route_message = "Соединение не установлено, поэтому определить маршрут нельзя.";

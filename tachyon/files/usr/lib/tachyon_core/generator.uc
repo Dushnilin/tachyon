@@ -926,7 +926,7 @@ function is_certificate_sha256_supported(sb_version_val) {
     return certificate_pin_field(sb_version_val) != "";
 }
 
-const VERBOSE_LOG_PATH = "/tmp/tachyon-core/sing-box.log";
+const VERBOSE_LOG_PATH = "/tmp/tachyon-core/tachyon-core.log";
 
 function singbox_log_section(log_level, sb_version_val) {
     if (log_level == "panic" && is_tachyon_core_detected(sb_version_val))

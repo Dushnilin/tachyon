@@ -3083,7 +3083,7 @@ function import_remote_lists_from_all_sections(settings) {
         for (let url in domain_refs) {
             let extension = singbox_rulesets_module().file_extension(url);
             if (extension == "json" || extension == "srs") {
-                log_message("Skipping " + extension + " remote domain list (sing-box manages it): " + as_string(url), "debug");
+                log_message("Skipping " + extension + " remote domain list (tachyon-core manages it): " + as_string(url), "debug");
                 continue;
             }
             if (!import_domains_from_remote_plain_file(url, section, settings))
@@ -3608,7 +3608,7 @@ function import_domains_from_remote_domain_lists(section, settings) {
         let extension = singbox_rulesets_module().file_extension(url);
         log_message("Detected file extension: '" + extension + "'", "debug");
         if (extension == "json" || extension == "srs") {
-            log_message("No update needed - sing-box manages updates automatically.", "info");
+            log_message("No update needed - tachyon-core manages updates automatically.", "info");
             continue;
         }
         log_message("Import domains from a remote plain-text list", "info");
@@ -3846,7 +3846,7 @@ function singbox_runtime_success(args) {
 
     let result = module_env_capture(subscription_cache_env(), command_args);
     if (result.output != "")
-        log_file_lines_from_text(result.output, "debug", "sing-box runtime: ");
+        log_file_lines_from_text(result.output, "debug", "tachyon-core runtime: ");
     return result.status == 0;
 }
 
@@ -3967,7 +3967,7 @@ function reload_singbox_after_list_update() {
         : has_local_rulesets;
     if (sing_box_config_hash_before != sing_box_config_hash_after || local_rulesets_changed) {
         if (sing_box_config_hash_before != sing_box_config_hash_after)
-            log_message("Rulesets updated on disk; reloading sing-box with new configuration", "info");
+            log_message("Rulesets updated on disk; reloading tachyon-core with new configuration", "info");
         else
             log_message("Local rulesets refreshed on disk; reloading core runtime to apply updated rules", "info");
         module_success([ DNS_FAILOVER_UC, "stop-runtime" ]);
@@ -4243,7 +4243,7 @@ function run_pending_reload_if_requested() {
 // both helper workers and restarts them again, which is exactly the churn that
 // dropped live connections after a subscription update.
 function subscription_runtime_apply_changed(context) {
-    log_message("Reloading sing-box to apply " + context, "info");
+    log_message("Reloading tachyon-core to apply " + context, "info");
     if (!module_success([ LIB_DIR + "/server/service.uc", "prepare-all-defaults" ]))
         return false;
     if (!module_success([ LIB_DIR + "/config/validator.uc", "validate-runtime" ])) {
@@ -4257,7 +4257,7 @@ function subscription_runtime_apply_changed(context) {
     let sing_box_config_hash_before = file_md5(sing_box_config_path);
     let sing_box_pid_before = trim(module_output([ LIB_DIR + "/service/state.uc", "tachyon-core-service-runtime-pid" ]));
     if (!singbox_runtime_success([ "init-config", "0", "1", "1" ])) {
-        log_message("Failed to rebuild sing-box configuration after " + context, "error");
+        log_message("Failed to rebuild tachyon-core configuration after " + context, "error");
         return false;
     }
 
@@ -4267,7 +4267,7 @@ function subscription_runtime_apply_changed(context) {
     // restart, and only there do the helper workers have to stand down.
     let sighup_ok = service_state_success([ "sighup-core-runtime", sing_box_pid_before ]);
     if (!sighup_ok) {
-        log_message("SIGHUP reload failed; falling back to full sing-box restart", "warn");
+        log_message("SIGHUP reload failed; falling back to full tachyon-core restart", "warn");
         module_success([ PRIORITY_UC, "stop-runtime" ]);
         module_success([ DNS_FAILOVER_UC, "stop-runtime" ]);
         if (!service_state_success([

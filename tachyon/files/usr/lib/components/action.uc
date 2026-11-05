@@ -400,7 +400,7 @@ function fallback_managed_core_init_script(marker, reset_log) {
     let log_prep = "";
     if (reset_log)
         log_prep = "    mkdir -p /tmp/tachyon-core 2>/dev/null\n" +
-            "    : > /tmp/tachyon-core/sing-box.log 2>/dev/null\n";
+            "    : > /tmp/tachyon-core/tachyon-core.log 2>/dev/null\n";
     return "#!/bin/sh /etc/rc.common\n" +
         "# " + marker + "\n\n" +
         "USE_PROCD=1\n" +
@@ -813,6 +813,20 @@ function cleanup_sing_box_cache_backup() {
         if (file_exists(p + ".rollback-bak")) {
             remove_file(p + ".rollback-bak");
             cleaned++;
+        }
+        if (file_exists(p + ".tmp")) {
+            remove_file(p + ".tmp");
+            cleaned++;
+        }
+    }
+    let bin_entries = fs.lsdir("/usr/bin");
+    if (type(bin_entries) == "array") {
+        for (let ent in bin_entries) {
+            ent = as_string(ent);
+            if (index(ent, "sing-box.bak") == 0 || index(ent, "tachyon-core.bak") == 0) {
+                remove_file("/usr/bin/" + ent);
+                cleaned++;
+            }
         }
     }
     return cleaned;
@@ -2504,6 +2518,7 @@ function install_tachyon_core(action, target_tag) {
         install_managed_sing_box_service_script();
         clear_sing_box_cache_if_needed(current_variant, label);
         let restart_ok = restart_tachyon_after_successful_change();
+        cleanup_sing_box_cache_backup();
         remove_file(backup_binary);
         clear_version_caches();
         updates_log("Installed " + label + " " + (new_version != "" ? new_version : "unknown"));
@@ -2598,6 +2613,7 @@ function install_tachyon_core(action, target_tag) {
     install_managed_sing_box_service_script();
     clear_sing_box_cache_if_needed(current_variant, label);
     restart_tachyon_after_successful_change();
+    cleanup_sing_box_cache_backup();
     remove_file(backup_binary);
     clear_version_caches();
     updates_log("Installed " + label + " " + (new_version != "" ? new_version : "unknown"));

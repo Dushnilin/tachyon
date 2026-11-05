@@ -433,6 +433,11 @@ function stage_bundle(stage_dir) {
     let logread_lines = command_output("logread | tail -n 500");
     write_file_safe(stage_dir + "/diagnostics_and_logs/system_logread.txt", redact_string(logread_lines));
 
+    let core_log = read_file_safe("/tmp/tachyon-core/tachyon-core.log");
+    if (core_log == null) core_log = read_file_safe("/tmp/tachyon-core/sing-box.log");
+    if (core_log != null && core_log != "")
+        write_file_safe(stage_dir + "/diagnostics_and_logs/tachyon-core.log", redact_string(core_log));
+
     // 6. Events and AI Doctor
     write_json_safe(stage_dir + "/events_and_jobs/events_and_doctor.json", collect_events_and_jobs());
 

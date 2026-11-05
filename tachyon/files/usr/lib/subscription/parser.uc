@@ -72,7 +72,7 @@ function tls_alpn_for_transport(alpn, transport) {
     transport = lc(as_string(transport));
     if (transport == "xhttp" && length(alpn) == 0)
         return ["h2", "http/1.1"];
-    if ((transport == "ws" || transport == "httpupgrade") && length(alpn) > 0)
+    if (transport == "ws" || transport == "httpupgrade")
         return ["http/1.1"];
     return alpn;
 }
@@ -842,12 +842,25 @@ function normalize_utls_fingerprint(value) {
     return "chrome";
 }
 
+function finalmask_has_tcp_fragment(fm_val) {
+    if (type(fm_val) != "object")
+        return false;
+    let tcp_val = fm_val.tcp != null ? fm_val.tcp : fm_val;
+    let items = type(tcp_val) == "array" ? tcp_val : (type(tcp_val) == "object" ? [ tcp_val ] : []);
+    for (let item in items) {
+        if (type(item) == "object" && lc(as_string(item.type || "")) == "fragment")
+            return true;
+    }
+    return false;
+}
+
 function add_tls(url, security, default_tls) {
     let query = object_or_empty(url.query);
     let sni = query.sni || query.peer || "";
     let insecure = query.allowInsecure || query.insecure || "";
     let transport = query.type || "";
-    let alpn = tls_alpn_for_transport(split_csv(query.alpn || ""), transport);
+    let raw_alpn = split_csv(query.alpn || "");
+    let alpn = tls_alpn_for_transport(raw_alpn, transport);
 
     let fingerprint = normalize_utls_fingerprint(query.fp || "");
     let public_key = query.pbk || "";
@@ -870,7 +883,7 @@ function add_tls(url, security, default_tls) {
         }
     }
     else if (security == null || security == "")
-        tls_enabled = default_tls || (int(url.port) == 443) || sni != "" || length(alpn) > 0 || fingerprint != "" || public_key != "" || certificate_pin != "";
+        tls_enabled = default_tls || (int(url.port) == 443) || sni != "" || length(raw_alpn) > 0 || fingerprint != "" || public_key != "" || certificate_pin != "";
 
     if (!tls_enabled)
         return [null, true];
@@ -925,6 +938,10 @@ function add_tls(url, security, default_tls) {
     }
     if (certificate_pin != "")
         tls.certificate_sha256 = [ certificate_pin ];
+    let fm_raw = as_string(query.fm || query.finalmask || "");
+    if (is_true(query.fragment || query.tls_fragment) ||
+        (fm_raw != "" && finalmask_has_tcp_fragment(json_decode_text(fm_raw))))
+        tls.fragment = true;
 
     return [tls, true];
 }
@@ -1070,12 +1087,21 @@ function normalize_packet_encoding(value) {
     return value == "xudp" || value == "packetaddr" ? value : "";
 }
 
+function normalize_vless_flow(value) {
+    let flow = lc(trim(as_string(value)));
+    if (flow == "" || flow == "none")
+        return "";
+    if (flow == "xtls-rprx-vision" || flow == "xtls-rprx-vision-udp443")
+        return "xtls-rprx-vision";
+    return null;
+}
+
 function process_vless(raw, url) {
     if (url.host == "" || is_dummy_server(url.host, url.port) || !valid_port(url.port) || url.userinfo == "")
         return null;
 
-    let flow = url.query.flow || "";
-    if (flow != "" && flow != "xtls-rprx-vision")
+    let flow = normalize_vless_flow(url.query.flow || "");
+    if (flow == null)
         return null;
 
     let packet_encoding = normalize_packet_encoding(url.query.packetEncoding || url.query.packet_encoding || url.query["packet-encoding"] || url.query.packetencoding || "");
@@ -2597,7 +2623,7 @@ function clash_yaml_records(input_file) {
 }
 
 function clash_vless_flow_supported(flow) {
-    return flow == null || flow == "" || flow == "xtls-rprx-vision";
+    return normalize_vless_flow(flow) != null;
 }
 
 function normalized_clash_alpn(value) {
@@ -2605,8 +2631,9 @@ function normalized_clash_alpn(value) {
 }
 
 function add_clash_tls(outbound, options) {
+    let raw_alpn = split_csv(options.alpn);
     let enabled = options.always || is_true(options.tls) || options.sni != "" ||
-        length(tls_alpn_for_transport(split_csv(options.alpn), options.network)) > 0 ||
+        length(raw_alpn) > 0 ||
         options.fingerprint != "" || options.reality_public_key != "";
     if (!enabled)
         return;
@@ -2616,7 +2643,7 @@ function add_clash_tls(outbound, options) {
         tls.server_name = options.sni;
     if (is_true(options.skip_verify))
         tls.insecure = true;
-    let alpn = tls_alpn_for_transport(split_csv(options.alpn), options.network);
+    let alpn = tls_alpn_for_transport(raw_alpn, options.network);
     if (length(alpn) > 0)
         tls.alpn = alpn;
 
@@ -2714,10 +2741,10 @@ function parse_clash_record(record) {
     }
     if (proxy_type == "vless") {
         let uuid = as_string(record.uuid);
-        let flow = as_string(record.flow);
+        let flow = normalize_vless_flow(record.flow);
         let packet_encoding = normalize_packet_encoding(record["packet-encoding"] || record.packetEncoding || record.packet_encoding || record.packetencoding || "");
         let encryption = normalize_vless_encryption(record.encryption || "");
-        if (uuid == "" || !clash_vless_flow_supported(flow))
+        if (uuid == "" || flow == null)
             return null;
         let outbound = { type: "vless", tag: name, server: server, server_port: port, uuid: uuid };
         if (encryption != "")
@@ -3701,6 +3728,9 @@ function xray_tls_from_stream(stream, network) {
         if (!tls.utls)
             tls.utls = { enabled: true, fingerprint: "chrome" };
     }
+    if (is_true(settings.fragment || settings.tls_fragment) ||
+        finalmask_has_tcp_fragment(stream.finalmask))
+        tls.fragment = true;
 
     return tls;
 }
@@ -3860,7 +3890,9 @@ function convert_xray_vless(outbound, tag) {
         uuid: uuid
     };
 
-    let flow = as_string(user.flow || outbound.flow || settings.flow || "");
+    let flow = normalize_vless_flow(user.flow || outbound.flow || settings.flow || "");
+    if (flow == null)
+        return null;
     if (flow != "")
         result.flow = flow;
     let encryption = normalize_vless_encryption(user.encryption || outbound.encryption || settings.encryption || "");
@@ -4946,6 +4978,15 @@ function normalize_sing_box_json_outbounds(candidates, fallback_peer) {
         outbound = normalize_sing_box_wireguard_outbound(outbound);
         if (outbound.type == "wireguard" && (type(outbound.peers) != "array" || length(outbound.peers) == 0))
             continue;
+        if (lc(as_string(outbound.type || "")) == "vless" && outbound.flow != null) {
+            let norm_flow = normalize_vless_flow(outbound.flow);
+            if (norm_flow == null)
+                continue;
+            if (norm_flow == "")
+                delete outbound.flow;
+            else
+                outbound.flow = norm_flow;
+        }
         outbound = normalize_sing_box_hysteria2_outbound(outbound);
         outbound = normalize_sing_box_tuic_outbound(outbound);
         push(outbounds, normalize_sing_box_xhttp_transport(outbound));

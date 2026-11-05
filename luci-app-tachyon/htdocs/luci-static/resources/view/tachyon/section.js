@@ -6128,10 +6128,26 @@ function validateAmneziaConfig(name, config) {
     "persistentkeepalive",
     "persistentkeepaliveinterval",
   ];
-  for (const key of ["jc", "jmin", "jmax", "s1", "s2", "s3", "s4", ...ranges]) {
-    if (fields[key] == null || (ranges.includes(key) && fields[key] === ""))
+  for (const key of [
+    "jc",
+    "jmin",
+    "jmax",
+    "s1",
+    "s2",
+    "s3",
+    "s4",
+    "itime",
+    ...ranges,
+  ]) {
+    if (fields[key] == null || fields[key] === "") continue;
+    if (
+      ["h1", "h2", "h3", "h4"].includes(key) &&
+      /^-\d+$/.test(fields[key]) &&
+      Number(fields[key]) >= -2147483648 &&
+      Number(fields[key]) < 0
+    )
       continue;
-    const range = fields[key].match(/^(\d+)(?:-(\d+))?$/);
+    const range = fields[key].match(/^(\d+)\s*(?:-\s*(\d+))?$/);
     if (
       !range ||
       (!ranges.includes(key) && range[2] != null) ||
@@ -6142,6 +6158,8 @@ function validateAmneziaConfig(name, config) {
   }
   if (
     fields.mtu != null &&
+    fields.mtu !== "" &&
+    fields.mtu !== "0" &&
     (!/^\d+$/.test(fields.mtu) ||
       Number(fields.mtu) < 576 ||
       Number(fields.mtu) > 65535)
@@ -6156,6 +6174,7 @@ function validateAmneziaConfig(name, config) {
   for (const key of ["randomtrailers", "disablecookies"]) {
     if (
       fields[key] != null &&
+      fields[key] !== "" &&
       !/^(1|true|on|yes|0|false|off|no)$/i.test(fields[key])
     )
       return _("Invalid Amnezia .conf file");

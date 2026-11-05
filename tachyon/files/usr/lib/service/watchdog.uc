@@ -3568,7 +3568,7 @@ function trim_tmpfs_log(path) {
 
 function trim_runtime_logs() {
     let trimmed = 0;
-    let paths = [ "/tmp/tachyon-core/sing-box.log" ];
+    let paths = [ "/tmp/tachyon-core/tachyon-core.log", "/tmp/tachyon-core/sing-box.log" ];
     for (let dir in TMPFS_LOG_PROVIDER_DIRS)
         for (let path in (fs.glob("/var/run/tachyon/" + dir + "/*.log") || []))
             push(paths, path);

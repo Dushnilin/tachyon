@@ -1523,14 +1523,15 @@ function ensure_local_rulesets_exist(temp_config) {
 function repair_outbound_field(temp_config, reason) {
     if (!verifier.repair_unknown_outbound_field(temp_config, reason))
         return false;
+    let core_name = sing_box_version_is_tachyon_core("") ? "tachyon-core" : "sing-box";
     let m = match(as_string(reason), /outbounds\[(\d+)\]\.(\w+): json: unknown field/);
     if (m) {
         let bad_index = int(m[1]);
-        log_message("Installed sing-box does not support outbound field '" + m[2] +
+        log_message("Installed " + core_name + " does not support outbound field '" + m[2] +
             "' on outbound " + (bad_index >= 0 ? sprintf("%d", bad_index) : "?") +
             "; retrying without it there only", "warn");
     } else {
-        log_message("Installed sing-box does not support field reported in '" + reason + "'; retrying without it", "warn");
+        log_message("Installed " + core_name + " does not support field reported in '" + reason + "'; retrying without it", "warn");
     }
     return true;
 }
@@ -1896,6 +1897,7 @@ function repair_or_find_dangling_outbound_dependency(temp_config) {
 // loop can call it once per attempt without re-running the repairs inline.
 function check_with_field_repairs(temp_config, runtime_log) {
     ensure_local_rulesets_exist(temp_config);
+    let core_name = sing_box_version_is_tachyon_core("") ? "tachyon-core" : "sing-box";
     let check_result = sing_box_check(temp_config, runtime_log);
     while (check_result.status != 0) {
         // Graceful degradation: if the installed sing-box does not support an inbound
@@ -1908,7 +1910,7 @@ function check_with_field_repairs(temp_config, runtime_log) {
         let field_m = match(check_result.reason, /inbounds\[\d+\]\.(\w+): json: unknown field/);
         let stripped = false;
         if (cert_pin_m) {
-            log_message("Installed sing-box rejected tls.certificate_sha256 (the field was added in sing-box 1.15.0; this build predates it); stripping certificate pins and retrying", "warn");
+            log_message("Installed " + core_name + " rejected tls.certificate_sha256 (the field was added in sing-box 1.15.0; this build predates it); stripping certificate pins and retrying", "warn");
             let cfg_text = as_string(fs.readfile(temp_config) || "");
             let cfg = length(cfg_text) > 0 ? json(cfg_text) : null;
             let found = false;
@@ -1931,7 +1933,7 @@ function check_with_field_repairs(temp_config, runtime_log) {
         }
         else if (user_field_m) {
             let unknown_field = user_field_m[1];
-            log_message("Installed sing-box does not support inbound user field '" + unknown_field + "'; retrying without it", "warn");
+            log_message("Installed " + core_name + " does not support inbound user field '" + unknown_field + "'; retrying without it", "warn");
             let cfg_text = as_string(fs.readfile(temp_config) || "");
             let cfg = length(cfg_text) > 0 ? json(cfg_text) : null;
             if (type(cfg) == "object" && type(cfg.inbounds) == "array") {
@@ -1949,7 +1951,7 @@ function check_with_field_repairs(temp_config, runtime_log) {
         }
         else if (field_m) {
             let unknown_field = field_m[1];
-            log_message("Installed sing-box does not support inbound field '" + unknown_field + "'; retrying without it", "warn");
+            log_message("Installed " + core_name + " does not support inbound field '" + unknown_field + "'; retrying without it", "warn");
             let cfg_text = as_string(fs.readfile(temp_config) || "");
             let cfg = length(cfg_text) > 0 ? json(cfg_text) : null;
             if (type(cfg) == "object" && type(cfg.inbounds) == "array") {
@@ -1974,7 +1976,7 @@ function check_with_field_repairs(temp_config, runtime_log) {
             if (tls_field_m) {
                 let container = tls_field_m[2];
                 let unknown_field = tls_field_m[3];
-                log_message("Installed sing-box does not support tls." + container + "." + unknown_field + " (added in a later release); dropping it and retrying", "warn");
+                log_message("Installed " + core_name + " does not support tls." + container + "." + unknown_field + " (added in a later release); dropping it and retrying", "warn");
                 let cfg_text = as_string(fs.readfile(temp_config) || "");
                 let cfg = length(cfg_text) > 0 ? json(cfg_text) : null;
                 if (type(cfg) == "object") {
@@ -1996,7 +1998,7 @@ function check_with_field_repairs(temp_config, runtime_log) {
             let out_field_m = match(check_result.reason, /outbounds\[(\d+)\]\.(\w+): json: unknown field/);
             if (ep_field_m) {
                 let unknown_field = ep_field_m[1];
-                log_message("Installed sing-box does not support endpoint field '" + unknown_field + "'; adjusting configuration", "warn");
+                log_message("Installed " + core_name + " does not support endpoint field '" + unknown_field + "'; adjusting configuration", "warn");
                 let cfg_text = as_string(fs.readfile(temp_config) || "");
                 let cfg = length(cfg_text) > 0 ? json(cfg_text) : null;
                 if (type(cfg) == "object" && type(cfg.endpoints) == "array") {
@@ -2028,7 +2030,7 @@ function check_with_field_repairs(temp_config, runtime_log) {
                     stripped = true;
             }
             else if (match(check_result.reason, /experimental\.cache_file\.store_dns/)) {
-                log_message("Installed sing-box rejected store_dns: " + check_result.reason + "; switching to store_rdrc and retrying", "warn");
+                log_message("Installed " + core_name + " rejected store_dns: " + check_result.reason + "; switching to store_rdrc and retrying", "warn");
                 let cfg_text = as_string(fs.readfile(temp_config) || "");
                 let cfg = length(cfg_text) > 0 ? json(cfg_text) : null;
                 if (type(cfg) == "object" && type(cfg.experimental) == "object" && type(cfg.experimental.cache_file) == "object") {
@@ -2042,7 +2044,7 @@ function check_with_field_repairs(temp_config, runtime_log) {
             // option path, so matching only "experimental.cache_file.store_rdrc" missed
             // it and the whole start died on [fatal] instead of retrying with store_dns.
             else if (match(check_result.reason, /store_rdrc cache file option is deprecated/)) {
-                log_message("Installed sing-box rejected store_rdrc: " + check_result.reason + "; switching to store_dns and retrying", "warn");
+                log_message("Installed " + core_name + " rejected store_rdrc: " + check_result.reason + "; switching to store_dns and retrying", "warn");
                 let cfg_text = as_string(fs.readfile(temp_config) || "");
                 let cfg = length(cfg_text) > 0 ? json(cfg_text) : null;
                 if (type(cfg) == "object" && type(cfg.experimental) == "object" && type(cfg.experimental.cache_file) == "object") {
@@ -2053,7 +2055,7 @@ function check_with_field_repairs(temp_config, runtime_log) {
                 }
             }
             else if (match(check_result.reason, /experimental\.cache_file\.store_rdrc/)) {
-                log_message("Installed sing-box rejected store_rdrc: " + check_result.reason + "; switching to store_dns and retrying", "warn");
+                log_message("Installed " + core_name + " rejected store_rdrc: " + check_result.reason + "; switching to store_dns and retrying", "warn");
                 let cfg_text = as_string(fs.readfile(temp_config) || "");
                 let cfg = length(cfg_text) > 0 ? json(cfg_text) : null;
                 if (type(cfg) == "object" && type(cfg.experimental) == "object" && type(cfg.experimental.cache_file) == "object") {
@@ -2066,7 +2068,7 @@ function check_with_field_repairs(temp_config, runtime_log) {
             else if (match(check_result.reason, /experimental\.cache_file\.(\w+): json: unknown field/)) {
                 let cf_m = match(check_result.reason, /experimental\.cache_file\.(\w+): json: unknown field/);
                 let unknown_field = cf_m[1];
-                log_message("Installed sing-box does not support cache_file field '" + unknown_field + "'; stripping and retrying", "warn");
+                log_message("Installed " + core_name + " does not support cache_file field '" + unknown_field + "'; stripping and retrying", "warn");
                 let cfg_text = as_string(fs.readfile(temp_config) || "");
                 let cfg = length(cfg_text) > 0 ? json(cfg_text) : null;
                 if (type(cfg) == "object" && type(cfg.experimental) == "object" && type(cfg.experimental.cache_file) == "object") {
@@ -2080,7 +2082,7 @@ function check_with_field_repairs(temp_config, runtime_log) {
                 let bad_transport = tr_m[1];
                 let out_idx_m = match(check_result.reason, /outbounds\[(\d+)\]/);
                 let out_idx = out_idx_m ? int(out_idx_m[1]) : -1;
-                log_message("Installed sing-box does not support transport '" + bad_transport + "' on outbound index " + out_idx + "; stripping outbound and retrying", "warn");
+                log_message("Installed " + core_name + " does not support transport '" + bad_transport + "' on outbound index " + out_idx + "; stripping outbound and retrying", "warn");
                 let cfg_text = as_string(fs.readfile(temp_config) || "");
                 let cfg = length(cfg_text) > 0 ? json(cfg_text) : null;
                 if (type(cfg) == "object" && type(cfg.outbounds) == "array" && out_idx >= 0 && out_idx < length(cfg.outbounds)) {
@@ -2112,7 +2114,7 @@ function check_with_field_repairs(temp_config, runtime_log) {
                 }
             }
             else if (match(check_result.reason, /certificate is unavailable in reality/)) {
-                log_message("Installed sing-box rejected certificate on reality inbound; stripping certificate/key from reality inbounds and retrying", "warn");
+                log_message("Installed " + core_name + " rejected certificate on reality inbound; stripping certificate/key from reality inbounds and retrying", "warn");
                 let cfg_text = as_string(fs.readfile(temp_config) || "");
                 let cfg = length(cfg_text) > 0 ? json(cfg_text) : null;
                 let found = false;
@@ -2214,7 +2216,7 @@ function check_with_field_repairs(temp_config, runtime_log) {
                         }
                     }
                     if (fixed_owner || stripped_ans) {
-                        log_message("Installed sing-box rejected DNS predefined answer (" + check_result.reason + "); repaired and retrying", "warn");
+                        log_message("Installed " + core_name + " rejected DNS predefined answer (" + check_result.reason + "); repaired and retrying", "warn");
                         write_file(temp_config, sprintf("%J", cfg));
                         stripped = true;
                     }
