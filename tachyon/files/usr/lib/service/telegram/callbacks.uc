@@ -23,6 +23,7 @@ let i18n = require("service.i18n");
 let rendering = require("service.telegram.rendering");
 let transport = require("service.telegram.transport");
 let commands = require("service.telegram.commands");
+let update_jobs = require("service.telegram.update_jobs");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 
@@ -969,6 +970,10 @@ function dispatch_command(token, chat_id, text, msg_id) {
             try { parsed = json(res.output); } catch (e) {}
         }
         if (res && res.status == 0 && parsed && parsed.success === true) {
+            // The job runs in the background; remember it so the worker loop can
+            // report the final version (or the error) to this chat.
+            if (parsed.job_id != null && as_string(parsed.job_id) != "")
+                update_jobs.register(parsed.job_id, comp, chat_id, msg_id);
             let ok_text = "⏳ <b>" + t("update_component_title") + " " + escape_html(comp_title) + "...</b>\n" + t("update_bg_hint");
             if (msg_id) edit_message(token, chat_id, msg_id, ok_text, "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
             else send_message(token, chat_id, ok_text, "HTML", [[{text:"⬅️ " + t("nav_menu"), callback_data:"/menu"}]]);
