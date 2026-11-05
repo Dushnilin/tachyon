@@ -1291,14 +1291,14 @@ function clash_api(action, arg1, arg2, arg3) {
             }
             else {
                 let batch_supported = false;
-                let probe_chunk_size = 12;
+                let probe_chunk_size = 48;
                 let parallel_chunks = 1;
                 let retry_failed_batch = function(failed_tags, wave_results, wave_id) {
                     if (length(failed_tags) == 0)
                         return;
                     let r_req = tmp_dir + "/retry_req_" + wave_id + ".json";
                     let r_res = tmp_dir + "/retry_res_" + wave_id + ".json";
-                    let retry_timeout = int(timeout_ms) + 1500;
+                    let retry_timeout = 2000;
                     common.write_json_file(r_req, {
                         names: failed_tags,
                         url: test_url,
@@ -1358,13 +1358,16 @@ function clash_api(action, arg1, arg2, arg3) {
                         if (wave_valid) {
                             batch_supported = true;
                             let retry_tags = [];
+                            let any_ok = false;
                             for (let t in wave_tags) {
                                 let entry = wave_results[t];
                                 let is_ok = (type(entry) == "object" && entry.message == null && entry.error == null && int(entry.delay || 0) > 0);
-                                if (!is_ok && lc(as_string(proxy_types[t])) != "urltest")
+                                if (is_ok)
+                                    any_ok = true;
+                                else if (lc(as_string(proxy_types[t])) != "urltest")
                                     push(retry_tags, t);
                             }
-                            if (length(retry_tags) > 0)
+                            if (!any_ok && length(retry_tags) > 0)
                                 retry_failed_batch(retry_tags, wave_results, 0);
                             for (let t in wave_tags) {
                                 let entry = wave_results[t];
@@ -1415,13 +1418,16 @@ function clash_api(action, arg1, arg2, arg3) {
                                 }
                             }
                             let retry_tags = [];
+                            let any_ok = false;
                             for (let t in w_tags) {
                                 let entry = wave_results[t];
                                 let is_ok = (type(entry) == "object" && entry.message == null && entry.error == null && int(entry.delay || 0) > 0);
-                                if (!is_ok && lc(as_string(proxy_types[t])) != "urltest")
+                                if (is_ok)
+                                    any_ok = true;
+                                else if (lc(as_string(proxy_types[t])) != "urltest")
                                     push(retry_tags, t);
                             }
-                            if (length(retry_tags) > 0)
+                            if (!any_ok && length(retry_tags) > 0)
                                 retry_failed_batch(retry_tags, wave_results, w);
                             for (let t in w_tags) {
                                 let entry = wave_results[t];
@@ -1504,14 +1510,14 @@ function clash_api(action, arg1, arg2, arg3) {
                             push(probe_tags, mt);
                     }
                     push(probe_tags, group_tag);
-                    let probe_chunk_size = 12;
+                    let probe_chunk_size = 48;
                     let parallel_chunks = 1;
                     let retry_failed_group_batch = function(failed_tags, target_out_map, wave_id) {
                         if (length(failed_tags) == 0)
                             return;
                         let r_req = tmp_dir + "/gretry_req_" + wave_id + ".json";
                         let r_res = tmp_dir + "/gretry_res_" + wave_id + ".json";
-                        let retry_timeout = int(timeout_ms) + 1500;
+                        let retry_timeout = 2000;
                         common.write_json_file(r_req, {
                             names: failed_tags,
                             url: test_url,
@@ -1581,15 +1587,18 @@ function clash_api(action, arg1, arg2, arg3) {
                             }
                             if (batch_ok) {
                                 let retry_tags = [];
+                                let any_ok = false;
                                 for (let t in w_tags) {
                                     let entry = wave_results[t];
                                     let is_ok = (type(entry) == "object" && entry.message == null && entry.error == null && int(entry.delay || 0) > 0);
-                                    if (is_ok)
+                                    if (is_ok) {
+                                        any_ok = true;
                                         out_map[t] = int(entry.delay);
-                                    else
+                                    } else {
                                         push(retry_tags, t);
+                                    }
                                 }
-                                if (length(retry_tags) > 0)
+                                if (!any_ok && length(retry_tags) > 0)
                                     retry_failed_group_batch(retry_tags, out_map, w);
                                 for (let t in w_tags) {
                                     count++;

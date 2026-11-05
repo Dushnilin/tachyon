@@ -2047,10 +2047,10 @@ function service_action_status(job_id_value) {
 function latency_clash_method(latency_type) {
     latency_type = as_string(latency_type);
     if (latency_type == "group")
-        return { method: "get_group_latency", timeout: "5000" };
+        return { method: "get_group_latency", timeout: "3000" };
     if (latency_type == "proxy_list")
         return { method: "get_proxy_latencies", timeout: "2500" };
-    return { method: "get_proxy_latency", timeout: "3000" };
+    return { method: "get_proxy_latency", timeout: "2500" };
 }
 
 function latency_worker(path, latency_type, tag, timeout) {

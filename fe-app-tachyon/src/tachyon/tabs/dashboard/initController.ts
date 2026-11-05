@@ -1282,6 +1282,7 @@ async function handleTestAllSections() {
 
   try {
     const sectionsWidget = store.get().sectionsWidget;
+    const tasks: Promise<void>[] = [];
     for (const section of sectionsWidget.data) {
       if (!section.outbounds || section.outbounds.length === 0) {
         continue;
@@ -1308,28 +1309,37 @@ async function handleTestAllSections() {
             tag.length > 40
               ? `@section:${section.sectionName}`
               : JSON.stringify(tag);
-          await handleTestLatency(
-            'proxy_list',
-            section.sectionName,
-            serializedTag,
-            section.latencyTestTimeout,
+          tasks.push(
+            handleTestLatency(
+              'proxy_list',
+              section.sectionName,
+              serializedTag,
+              section.latencyTestTimeout,
+            ),
           );
         } else {
-          await handleTestLatency(
-            'group',
-            section.sectionName,
-            tag,
-            section.latencyTestTimeout,
+          tasks.push(
+            handleTestLatency(
+              'group',
+              section.sectionName,
+              tag,
+              section.latencyTestTimeout,
+            ),
           );
         }
       } else {
-        await handleTestLatency(
-          'proxy',
-          section.sectionName,
-          testable[0].code,
-          section.latencyTestTimeout,
+        tasks.push(
+          handleTestLatency(
+            'proxy',
+            section.sectionName,
+            testable[0].code,
+            section.latencyTestTimeout,
+          ),
         );
       }
+    }
+    if (tasks.length > 0) {
+      await Promise.all(tasks);
     }
   } finally {
     isTestingAllSections = false;
@@ -3441,10 +3451,14 @@ function renderSectionInspectorModalContent(
             },
             onTestLatency: (tag: string | string[]) => {
               if (Array.isArray(tag)) {
+                const serializedTag =
+                  tag.length > 40
+                    ? `@section:${section.sectionName}`
+                    : JSON.stringify(tag);
                 void handleTestLatency(
                   'proxy_list',
                   section.sectionName,
-                  JSON.stringify(tag),
+                  serializedTag,
                   section.latencyTestTimeout,
                 );
                 return;
@@ -3874,10 +3888,14 @@ function renderSectionAccordionBody(
             },
             onTestLatency: (tag: string | string[]) => {
               if (Array.isArray(tag)) {
+                const serializedTag =
+                  tag.length > 40
+                    ? `@section:${section.sectionName}`
+                    : JSON.stringify(tag);
                 void handleTestLatency(
                   'proxy_list',
                   section.sectionName,
-                  JSON.stringify(tag),
+                  serializedTag,
                   section.latencyTestTimeout,
                 );
                 return;

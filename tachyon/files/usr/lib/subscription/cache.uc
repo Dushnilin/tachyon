@@ -1846,8 +1846,8 @@ function download_subscription(url, filepath, http_proxy_address, headers_filepa
         return 1;
 
     let retries = 3;
-    let wait_seconds = 2;
-    let timeout = 15;
+    let wait_seconds = 1;
+    let timeout = 8;
     let stamp = clock();
     let suffix = sprintf(".part.%d.%d", stamp[0], stamp[1]);
     let tmpfile = filepath + suffix;
@@ -1869,7 +1869,7 @@ function download_subscription(url, filepath, http_proxy_address, headers_filepa
             let args = [
                 "curl", "-fL", "-sS",
                 "--connect-timeout", timeout,
-                "--max-time", "30",
+                "--max-time", "15",
                 "--speed-time", timeout,
                 "--speed-limit", "1",
                 "--max-redirs", "5",
@@ -2267,10 +2267,14 @@ function try_fetch_subscription_with_core(
     let core_bin = as_string(getenv("TACHYON_CORE_BIN") || "/usr/bin/tachyon-core");
     let full_tmpfile = temp_path(TMP_SUBSCRIPTION_FOLDER, cache_section, "core-full");
     let effective_hwid = get_subscription_hwid(subscription_hwid);
+    let cached_ua = trim(as_string(read_text(subscription_user_agent_cache_path)));
     let args = [ core_bin, "subscription", "fetch", subscription_url, "--format", "full", "-o", full_tmpfile ];
     if (subscription_user_agent != "") {
         push(args, "--ua");
         push(args, get_subscription_user_agent(subscription_user_agent));
+    } else if (cached_ua != "") {
+        push(args, "--ua");
+        push(args, cached_ua);
     }
     if (effective_hwid != "") {
         push(args, "--hwid");
