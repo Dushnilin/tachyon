@@ -2655,8 +2655,14 @@ function cleanup_empty_ruleset(path, empty_is_valid) {
     let persistent_path = PERSISTENT_RULESET_DIR + "/" + filename;
     if (empty_is_valid || routing_rulesets_module().has_rules(path)) {
         if (filename != "") {
-            ensure_dir(PERSISTENT_RULESET_DIR);
-            return copy_file(path, persistent_path);
+            let st_p = fs.stat(path);
+            let sz_p = st_p != null ? int(st_p.size || 0) : 0;
+            if (sz_p > 0 && sz_p <= 524288) {
+                ensure_dir(PERSISTENT_RULESET_DIR);
+                return copy_file(path, persistent_path);
+            }
+            if (sz_p > 524288)
+                remove_file(persistent_path);
         }
         return true;
     }
@@ -3363,11 +3369,15 @@ function import_builtin_subnets_from_rule(section, settings) {
             // not worth waking the core for: that content is already loaded, and
             // every reload costs a config regeneration plus a core restart.
             let changed = !common.content_unchanged(cached_file, data) ||
-                !common.content_unchanged(persistent_file, data);
+                (length(data) <= 524288 && !common.content_unchanged(persistent_file, data));
             ensure_dir(TMP_RULESET_FOLDER);
             write_file(cached_file, data);
-            ensure_dir("/etc/tachyon/rulesets");
-            write_file(persistent_file, data);
+            if (length(data) <= 524288) {
+                ensure_dir("/etc/tachyon/rulesets");
+                write_file(persistent_file, data);
+            } else {
+                remove_file(persistent_file);
+            }
             if (type(list_update_seen_builtin_subnets) == "object")
                 list_update_seen_builtin_subnets[service] = true;
             if (changed)
@@ -3466,10 +3476,31 @@ function cache_refreshed_plain_ruleset(reference, plain_path) {
         result.path = json_path;
     }
     if (result.format == "binary") {
-        if (!copy_file(srs_path, etc_srs)) return null;
-        if (file_exists_value(json_path) && !copy_file(json_path, etc_json)) return null;
+        let st_s = fs.stat(srs_path);
+        let sz_s = st_s != null ? int(st_s.size || 0) : 0;
+        if (sz_s > 0 && sz_s <= 524288) {
+            if (!copy_file(srs_path, etc_srs)) return null;
+        } else if (sz_s > 524288) {
+            remove_file(etc_srs);
+        }
+        if (file_exists_value(json_path)) {
+            let st_j = fs.stat(json_path);
+            let sz_j = st_j != null ? int(st_j.size || 0) : 0;
+            if (sz_j > 0 && sz_j <= 524288) {
+                if (!copy_file(json_path, etc_json)) return null;
+            } else if (sz_j > 524288) {
+                remove_file(etc_json);
+                remove_file(json_path);
+            }
+        }
     } else {
-        if (!copy_file(json_path, etc_json)) return null;
+        let st_j = fs.stat(json_path);
+        let sz_j = st_j != null ? int(st_j.size || 0) : 0;
+        if (sz_j > 0 && sz_j <= 524288) {
+            if (!copy_file(json_path, etc_json)) return null;
+        } else if (sz_j > 524288) {
+            remove_file(etc_json);
+        }
         // An older binary takes precedence over fresh JSON in cache lookup.
         remove_files([ srs_path, etc_srs ]);
         if (file_exists_value(srs_path) || file_exists_value(etc_srs)) return null;

@@ -884,6 +884,7 @@ function restore_rulesets_from_cache() {
         if (!match(entry, /\.(trs|srs|lst|json)$/)) continue;
         if (use_trs && match(entry, /^community-.*\.srs$/)) {
             remove_file(tmp_dir + "/" + entry);
+            remove_file(etc_dir + "/" + entry);
             continue;
         }
         let tmp_path = tmp_dir + "/" + entry;
@@ -891,6 +892,15 @@ function restore_rulesets_from_cache() {
         let tmp_st = fs.stat(tmp_path);
         let etc_st = fs.stat(etc_path);
         if (!etc_st || etc_st.size <= 0) continue;
+        if (etc_st.size > 524288) {
+            if (!match(entry, /\.json$/) && (!tmp_st || tmp_st.size == 0)) {
+                common.copy_file_stream(etc_path, tmp_path);
+                if (match(entry, /\.srs$/) && runtime_rulesets_mod.is_populated_srs_file(tmp_path))
+                    runtime_rulesets_mod.remember_srs_file_verified(tmp_path);
+            }
+            remove_file(etc_path);
+            continue;
+        }
         if (match(entry, /\.trs$/) && type(runtime_rulesets_mod.is_referenceable_trs_file) == "function" &&
             !runtime_rulesets_mod.is_referenceable_trs_file(etc_path))
             continue;
@@ -901,9 +911,7 @@ function restore_rulesets_from_cache() {
         if (match(entry, /\.srs$/) && !runtime_rulesets_mod.is_referenceable_srs_file(etc_path))
             continue;
         if (!tmp_st || tmp_st.size == 0) {
-            let content = fs.readfile(etc_path);
-            if (content) {
-                write_file(tmp_path, content);
+            if (common.copy_file_stream(etc_path, tmp_path)) {
                 if (match(entry, /\.srs$/) && runtime_rulesets_mod.is_populated_srs_file(tmp_path))
                     runtime_rulesets_mod.remember_srs_file_verified(tmp_path);
             }

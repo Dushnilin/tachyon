@@ -2271,21 +2271,35 @@ function plain_ruleset_kind(json_path, etc_json, srs_path, fallback_kind) {
         if (!dec_ok)
             dec_ok = common.command_success_from_args([ "sing-box", "rule-set", "decompile", srs_path, "-o", json_path ]);
         if (dec_ok && fs.stat(json_path) != null && etc_json != null && etc_json != "") {
-            common.ensure_dir("/etc/tachyon/rulesets");
-            common.copy_file(json_path, etc_json);
+            let st_j = fs.stat(json_path);
+            let sz_j = st_j != null ? int(st_j.size || 0) : 0;
+            if (sz_j > 0 && sz_j <= 524288) {
+                common.ensure_dir("/etc/tachyon/rulesets");
+                common.copy_file(json_path, etc_json);
+            } else if (sz_j > 524288) {
+                fs.unlink(etc_json);
+            }
         }
     }
     let inspect_path = fs.stat(json_path) != null ? json_path : (fs.stat(etc_json) != null ? etc_json : "");
+    let detected = null;
     if (inspect_path != "") {
         let has_doms = source_rulesets.has_domain_matchers(inspect_path);
         let has_ips = source_rulesets.has_ip_matchers(inspect_path);
         if (has_doms && has_ips)
-            return "mixed";
-        if (has_ips)
-            return "subnets";
-        if (has_doms)
-            return "domains";
+            detected = "mixed";
+        else if (has_ips)
+            detected = "subnets";
+        else if (has_doms)
+            detected = "domains";
     }
+    if (srs_path != null && srs_path != "" && fs.stat(srs_path) != null && fs.stat(json_path) != null) {
+        let st_tmp_j = fs.stat(json_path);
+        if (st_tmp_j != null && int(st_tmp_j.size || 0) > 524288)
+            fs.unlink(json_path);
+    }
+    if (detected != null)
+        return detected;
     return (fallback_kind != null && fallback_kind != "" && fallback_kind != "unknown") ? fallback_kind : "domains";
 }
 
@@ -2483,12 +2497,29 @@ if (type(runtime_rulesets.is_referenceable_trs_file) == "function" && runtime_ru
                     dl_ok = common.command_success_from_args([ "wget", "-q", "-T", "10", "-O", tmp_plain, reference ]);
 
                 if (dl_ok && helpers.file_is_usable(tmp_plain, 1)) {
-                    common.ensure_dir("/etc/tachyon/rulesets");
                     let res = source_rulesets.compile_plain_list(tmp_plain, srs_path, json_path);
-                    if (res.format == "binary")
-                        common.copy_file(srs_path, etc_srs);
-                    if (fs.stat(json_path) != null)
-                        common.copy_file(json_path, etc_json);
+                    if (res.format == "binary") {
+                        let st_s = fs.stat(srs_path);
+                        let sz_s = st_s != null ? int(st_s.size || 0) : 0;
+                        if (sz_s > 0 && sz_s <= 524288) {
+                            common.ensure_dir("/etc/tachyon/rulesets");
+                            common.copy_file(srs_path, etc_srs);
+                        } else if (sz_s > 524288) {
+                            fs.unlink(etc_srs);
+                        }
+                    }
+                    if (fs.stat(json_path) != null) {
+                        let st_j = fs.stat(json_path);
+                        let sz_j = st_j != null ? int(st_j.size || 0) : 0;
+                        if (sz_j > 0 && sz_j <= 524288) {
+                            common.ensure_dir("/etc/tachyon/rulesets");
+                            common.copy_file(json_path, etc_json);
+                        } else if (sz_j > 524288) {
+                            fs.unlink(etc_json);
+                            if (res.format == "binary")
+                                fs.unlink(json_path);
+                        }
+                    }
                     fs.unlink(tmp_plain);
                     push(config.route.rule_set, {
                         type: "local",
@@ -2592,11 +2623,16 @@ if (type(runtime_rulesets.is_referenceable_trs_file) == "function" && runtime_ru
             });
         }
         else {
+            let use_trs = type(runtime_rulesets.supports_trs) == "function" &&
+                runtime_rulesets.supports_trs() &&
+                type(runtime_rulesets.community_trs_url) == "function";
             let rule_set = {
                 type: "remote",
                 tag: tag_name,
                 format: "binary",
-                url: runtime_rulesets.community_url(community),
+                url: use_trs
+                    ? runtime_rulesets.community_trs_url(community)
+                    : runtime_rulesets.community_url(community),
                 update_interval: remote_ruleset_update_interval()
             };
             let detour = resolve_ruleset_download_detour(config, section_name);
@@ -2690,8 +2726,14 @@ function rebuild_local_domain_ip_list_ruleset(section_name, references, domains_
     }
 
     if (need_remote_fetch && source_rulesets.has_rules(ruleset_path)) {
-        common.ensure_dir("/etc/tachyon/rulesets");
-        common.copy_file(ruleset_path, etc_path);
+        let st_r = fs.stat(ruleset_path);
+        let sz_r = st_r != null ? int(st_r.size || 0) : 0;
+        if (sz_r > 0 && sz_r <= 524288) {
+            common.ensure_dir("/etc/tachyon/rulesets");
+            common.copy_file(ruleset_path, etc_path);
+        } else if (sz_r > 524288) {
+            fs.unlink(etc_path);
+        }
     }
 }
 

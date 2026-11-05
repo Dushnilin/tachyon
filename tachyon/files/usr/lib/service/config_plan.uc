@@ -615,6 +615,24 @@ function domain_covers(parent_dom, child_dom) {
     return false;
 }
 
+const MAX_ANALYZED_LIST_FILE_BYTES = 262144;
+const MAX_ANALYZED_LIST_ENTRIES = 2048;
+const MAX_OVERLAP_SAMPLE_TARGETS = 32;
+
+function domain_covers_in_set(parent_set, child_dom) {
+    if (type(parent_set) != "object" || child_dom == "") return "";
+    if (parent_set[child_dom]) return child_dom;
+    let cur = child_dom;
+    while (true) {
+        let dot = index(cur, ".");
+        if (dot < 0) break;
+        cur = substr(cur, dot + 1);
+        if (cur == "") break;
+        if (parent_set[cur]) return cur;
+    }
+    return "";
+}
+
 function ipv4_to_u32(ip) {
     let parts = split(trim(as_string(ip)), ".");
     if (length(parts) != 4) return -1;
@@ -656,48 +674,74 @@ function cidr_covers(parent_raw, child_raw) {
     return p.start <= c.start && p.end >= c.end;
 }
 
-function parse_plain_list_entries(content, domains_out, cidrs_out) {
+function parse_plain_list_entries(content, domains_out, cidrs_out, seen_domains, seen_cidrs) {
     if (content == null || content == "") return;
+    seen_domains = seen_domains || {};
+    seen_cidrs = seen_cidrs || {};
     for (let line in split(as_string(content), "\n")) {
+        if (length(domains_out) >= MAX_ANALYZED_LIST_ENTRIES && length(cidrs_out) >= MAX_ANALYZED_LIST_ENTRIES)
+            break;
         let hash = index(line, "#");
         if (hash >= 0) line = substr(line, 0, hash);
         line = trim(replace(line, "\r", ""));
         if (line == "" || substr(line, 0, 2) == "//") continue;
         if (substr(line, 0, 8) == "keyword:" || substr(line, 0, 6) == "regex:") continue;
         if (core_ip.valid_ip_or_cidr(line)) {
-            if (index(cidrs_out, line) < 0) push(cidrs_out, line);
+            if (length(cidrs_out) < MAX_ANALYZED_LIST_ENTRIES && !seen_cidrs[line]) {
+                seen_cidrs[line] = true;
+                push(cidrs_out, line);
+            }
         } else {
             let norm = normalize_domain_token(line);
-            if (norm != "" && index(norm, "/") < 0 && index(domains_out, norm) < 0) {
+            if (norm != "" && index(norm, "/") < 0 && length(domains_out) < MAX_ANALYZED_LIST_ENTRIES && !seen_domains[norm]) {
+                seen_domains[norm] = true;
                 push(domains_out, norm);
             }
         }
     }
 }
 
-function parse_json_ruleset_entries(parsed, domains_out, cidrs_out) {
+function parse_json_ruleset_entries(parsed, domains_out, cidrs_out, seen_domains, seen_cidrs) {
     if (type(parsed) != "object" || type(parsed.rules) != "array") return;
+    seen_domains = seen_domains || {};
+    seen_cidrs = seen_cidrs || {};
     for (let r in parsed.rules) {
         if (type(r) != "object") continue;
+        if (length(domains_out) >= MAX_ANALYZED_LIST_ENTRIES && length(cidrs_out) >= MAX_ANALYZED_LIST_ENTRIES)
+            break;
         for (let dkey in [ "domain", "domain_suffix" ]) {
             if (type(r[dkey]) == "array") {
                 for (let d in r[dkey]) {
+                    if (length(domains_out) >= MAX_ANALYZED_LIST_ENTRIES) break;
                     let norm = normalize_domain_token(d);
-                    if (norm != "" && index(domains_out, norm) < 0) push(domains_out, norm);
+                    if (norm != "" && !seen_domains[norm]) {
+                        seen_domains[norm] = true;
+                        push(domains_out, norm);
+                    }
                 }
             } else if (type(r[dkey]) == "string") {
                 let norm = normalize_domain_token(r[dkey]);
-                if (norm != "" && index(domains_out, norm) < 0) push(domains_out, norm);
+                if (norm != "" && length(domains_out) < MAX_ANALYZED_LIST_ENTRIES && !seen_domains[norm]) {
+                    seen_domains[norm] = true;
+                    push(domains_out, norm);
+                }
             }
         }
         if (type(r.ip_cidr) == "array") {
             for (let cidr in r.ip_cidr) {
+                if (length(cidrs_out) >= MAX_ANALYZED_LIST_ENTRIES) break;
                 let c = trim(as_string(cidr));
-                if (c != "" && index(cidrs_out, c) < 0) push(cidrs_out, c);
+                if (c != "" && !seen_cidrs[c]) {
+                    seen_cidrs[c] = true;
+                    push(cidrs_out, c);
+                }
             }
         } else if (type(r.ip_cidr) == "string") {
             let c = trim(as_string(r.ip_cidr));
-            if (c != "" && index(cidrs_out, c) < 0) push(cidrs_out, c);
+            if (c != "" && length(cidrs_out) < MAX_ANALYZED_LIST_ENTRIES && !seen_cidrs[c]) {
+                seen_cidrs[c] = true;
+                push(cidrs_out, c);
+            }
         }
     }
 }
@@ -707,6 +751,8 @@ function resolve_list_contents(list_name, options) {
     let norm_name = lc(raw_name);
     let domains = [];
     let cidrs = [];
+    let seen_domains = {};
+    let seen_cidrs = {};
     let source = "unverified";
     let found_path = "";
     let mtime = 0;
@@ -717,11 +763,17 @@ function resolve_list_contents(list_name, options) {
         if (type(ov) == "object") {
             for (let d in (type(ov.domains) == "array" ? ov.domains : words_list(ov.domains))) {
                 let nd = normalize_domain_token(d);
-                if (nd != "" && index(domains, nd) < 0) push(domains, nd);
+                if (nd != "" && !seen_domains[nd] && length(domains) < MAX_ANALYZED_LIST_ENTRIES) {
+                    seen_domains[nd] = true;
+                    push(domains, nd);
+                }
             }
             for (let c in (type(ov.cidrs) == "array" ? ov.cidrs : words_list(ov.cidrs || ov.ips))) {
                 let nc = trim(as_string(c));
-                if (nc != "" && index(cidrs, nc) < 0) push(cidrs, nc);
+                if (nc != "" && !seen_cidrs[nc] && length(cidrs) < MAX_ANALYZED_LIST_ENTRIES) {
+                    seen_cidrs[nc] = true;
+                    push(cidrs, nc);
+                }
             }
             source = as_string(ov.source || "local_override");
             found_path = as_string(ov.path || "");
@@ -751,11 +803,13 @@ function resolve_list_contents(list_name, options) {
         for (let jp in json_candidates) {
             let st = fs.stat(jp);
             if (st != null && st.type == "file" && (st.size || 0) > 0) {
-                let parsed = common.read_json_file(jp);
-                parse_json_ruleset_entries(parsed, domains, cidrs);
                 if (found_path == "") found_path = jp;
                 if ((st.mtime || 0) > mtime) mtime = int(st.mtime || 0);
-                source = "local_file";
+                if ((st.size || 0) <= MAX_ANALYZED_LIST_FILE_BYTES) {
+                    let parsed = common.read_json_file(jp);
+                    parse_json_ruleset_entries(parsed, domains, cidrs, seen_domains, seen_cidrs);
+                    source = "local_file";
+                }
             }
         }
 
@@ -770,10 +824,12 @@ function resolve_list_contents(list_name, options) {
         for (let lp in lst_candidates) {
             let st = fs.stat(lp);
             if (st != null && st.type == "file" && (st.size || 0) > 0) {
-                parse_plain_list_entries(fs.readfile(lp), domains, cidrs);
                 if (found_path == "") found_path = lp;
                 if ((st.mtime || 0) > mtime) mtime = int(st.mtime || 0);
-                source = "local_file";
+                if ((st.size || 0) <= MAX_ANALYZED_LIST_FILE_BYTES) {
+                    parse_plain_list_entries(fs.readfile(lp), domains, cidrs, seen_domains, seen_cidrs);
+                    source = "local_file";
+                }
             }
         }
 
@@ -791,7 +847,10 @@ function resolve_list_contents(list_name, options) {
     if (type(cat_domains) == "array") {
         for (let cd in cat_domains) {
             let nd = normalize_domain_token(cd);
-            if (nd != "" && index(domains, nd) < 0) push(domains, nd);
+            if (nd != "" && !seen_domains[nd]) {
+                seen_domains[nd] = true;
+                push(domains, nd);
+            }
         }
         if (source == "unverified") source = found_path != "" ? "local_binary+catalog" : "builtin_catalog";
     }
@@ -800,7 +859,10 @@ function resolve_list_contents(list_name, options) {
     if (type(cat_subnets) == "array") {
         for (let cs in cat_subnets) {
             let nc = trim(as_string(cs));
-            if (nc != "" && index(cidrs, nc) < 0) push(cidrs, nc);
+            if (nc != "" && !seen_cidrs[nc]) {
+                seen_cidrs[nc] = true;
+                push(cidrs, nc);
+            }
         }
         if (source == "unverified") source = found_path != "" ? "local_binary+catalog" : "builtin_catalog";
     }
@@ -813,6 +875,7 @@ function resolve_list_contents(list_name, options) {
         mtime: mtime,
         version: version,
         domains: domains,
+        domain_set: seen_domains,
         cidrs: cidrs,
         domains_count: length(domains),
         cidrs_count: length(cidrs),
@@ -1333,15 +1396,13 @@ function analyze_rule_conflicts(candidate_uci, options) {
                     for (let l_early in earlier.lists) {
                         let lmeta = earlier.list_meta[l_early];
                         if (lmeta != null) {
-                            for (let ld in lmeta.domains) {
-                                if (domain_covers(ld, d_later)) {
-                                    matched_early = ld;
-                                    early_source = "list:" + l_early;
-                                    break;
-                                }
+                            let hit = domain_covers_in_set(lmeta.domain_set, d_later);
+                            if (hit != "") {
+                                matched_early = hit;
+                                early_source = "list:" + l_early;
+                                break;
                             }
                         }
-                        if (matched_early != "") break;
                     }
                 }
 
@@ -1492,13 +1553,11 @@ function analyze_rule_conflicts(candidate_uci, options) {
                     for (let dl in l_later_meta.domains) {
                         let d_rel = evaluate_condition_relation(earlier.conditions, later.conditions, dl, null);
                         if (d_rel.excluded) continue;
-                        for (let de in l_early_meta.domains) {
-                            if (domain_covers(de, dl)) {
-                                if (index(shared_domains, dl) < 0) push(shared_domains, dl);
-                                parent_map[dl] = de;
-                                covered_later_dom_count++;
-                                break;
-                            }
+                        let de = domain_covers_in_set(l_early_meta.domain_set, dl);
+                        if (de != "") {
+                            push(shared_domains, dl);
+                            parent_map[dl] = de;
+                            covered_later_dom_count++;
                         }
                     }
 
@@ -1508,7 +1567,7 @@ function analyze_rule_conflicts(candidate_uci, options) {
                         if (c_rel.excluded) continue;
                         for (let ce in l_early_meta.cidrs) {
                             if (cidr_covers(ce, cl)) {
-                                if (index(shared_cidrs, cl) < 0) push(shared_cidrs, cl);
+                                push(shared_cidrs, cl);
                                 parent_map[cl] = ce;
                                 break;
                             }
@@ -1528,8 +1587,14 @@ function analyze_rule_conflicts(candidate_uci, options) {
                         let sample_target = length(shared_domains) > 0 ? shared_domains[0] : shared_cidrs[0];
                         let sample_parent = parent_map[sample_target] || sample_target;
                         let all_targets = [];
-                        for (let sd in shared_domains) push(all_targets, sd);
-                        for (let sc in shared_cidrs) push(all_targets, sc);
+                        for (let sd in shared_domains) {
+                            if (length(all_targets) >= MAX_OVERLAP_SAMPLE_TARGETS) break;
+                            push(all_targets, sd);
+                        }
+                        for (let sc in shared_cidrs) {
+                            if (length(all_targets) >= MAX_OVERLAP_SAMPLE_TARGETS) break;
+                            push(all_targets, sc);
+                        }
 
                         let scope = (all_later_doms_covered && rel.covers_all) ? "full" : "conditional";
                         let decisions = build_dns_and_route_decisions(earlier, later, sample_target, "list:" + l_early, "list:" + l_later, rel);
@@ -1568,7 +1633,7 @@ function analyze_rule_conflicts(candidate_uci, options) {
                                 for (let k = 0; k < length(all_targets) && k < 4; k++) {
                                     push(preview_items, all_targets[k]);
                                 }
-                                let preview_str = join(", ", preview_items) + (length(all_targets) > 4 ? sprintf(" (+%d more)", length(all_targets) - 4) : "");
+                                let preview_str = join(", ", preview_items) + (overlaps_total > 4 ? sprintf(" (+%d more)", overlaps_total - 4) : "");
                                 let w_msg = block_override
                                     ? sprintf("Block list '%s' in section '%s' (#%d) is overridden on [%s] by earlier list '%s' in section '%s' (#%d, %s; matched by '%s') (DNS: %s via '%s' #%d; Route: %s via '%s' #%d).",
                                         l_later, later.name, later.priority, preview_str, l_early, earlier.name, earlier.priority, earlier.action, sample_parent,
@@ -1590,20 +1655,22 @@ function analyze_rule_conflicts(candidate_uci, options) {
                 // 2c. Earlier manual domains covering domains inside later list
                 if (length(earlier.domains) > 0 && !rel.l4_disjoint) {
                     let manual_hits = [];
+                    let manual_hit_count = 0;
                     let manual_parent = "";
                     for (let dl in l_later_meta.domains) {
                         let d_rel = evaluate_condition_relation(earlier.conditions, later.conditions, dl, null);
                         if (d_rel.excluded) continue;
                         for (let de in earlier.domains) {
                             if (domain_covers(de, dl)) {
-                                if (index(manual_hits, dl) < 0) push(manual_hits, dl);
+                                manual_hit_count++;
+                                if (length(manual_hits) < MAX_OVERLAP_SAMPLE_TARGETS) push(manual_hits, dl);
                                 if (manual_parent == "") manual_parent = de;
                                 break;
                             }
                         }
                     }
-                    if (length(manual_hits) > 0 && earlier.family != later.family) {
-                        if (length(manual_hits) == length(l_later_meta.domains) && length(l_later_meta.cidrs) == 0 && rel.covers_all) {
+                    if (manual_hit_count > 0 && earlier.family != later.family) {
+                        if (manual_hit_count == length(l_later_meta.domains) && length(l_later_meta.cidrs) == 0 && rel.covers_all) {
                             list_fully_covered = true;
                         }
                         let sample_t = manual_hits[0];
@@ -1614,7 +1681,7 @@ function analyze_rule_conflicts(candidate_uci, options) {
                             kind: block_override ? "block_overridden" : "list_overlap",
                             target: sample_t,
                             overlapping_targets: manual_hits,
-                            overlap_count: length(manual_hits),
+                            overlap_count: manual_hit_count,
                             covered_by: manual_parent,
                             winner_source: "domain:" + manual_parent,
                             shadowed_source: "list:" + l_later,

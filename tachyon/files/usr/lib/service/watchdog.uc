@@ -1634,18 +1634,25 @@ function ai_heal_subnet_cache() {
     let restored = [];
     let entry;
     while ((entry = dir.read()) != null) {
-        if (!match(entry, /\.(srs|lst|json)$/)) continue;
+        if (!match(entry, /\.(trs|srs|lst|json)$/)) continue;
         let tmp_path = tmp_dir + "/" + entry;
         let etc_path = etc_dir + "/" + entry;
-        let tmp_st = fs.stat(tmp_path);
         let etc_st = fs.stat(etc_path);
+        if (!etc_st || etc_st.size <= 0) continue;
+        if (etc_st.size > 524288) {
+            if (!match(entry, /\.json$/) && !helpers.file_is_usable(tmp_path, 50)) {
+                command_success_from_args(["mkdir", "-p", tmp_dir]);
+                if (common.copy_file_stream(etc_path, tmp_path))
+                    push(restored, entry);
+            }
+            fs.unlink(etc_path);
+            continue;
+        }
         if (!helpers.file_is_usable(etc_path, 50)) continue;
         if (helpers.file_is_usable(tmp_path, 50)) continue;
         // /tmp file missing or empty, restore from persistent storage
-        let content = fs.readfile(etc_path);
-        if (content == null || content == "") continue;
         command_success_from_args(["mkdir", "-p", tmp_dir]);
-        if (fs.writefile(tmp_path, content) != null) {
+        if (common.copy_file_stream(etc_path, tmp_path)) {
             push(restored, entry);
         }
     }
