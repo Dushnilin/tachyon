@@ -60,16 +60,17 @@ function is_tachyon_core() {
     return match(version, /^v?0\.[0-9]+\.[0-9]+/) != null;
 }
 
-function supports_native_balancer() {
-    if (is_tachyon_core())
-        return true;
+function supports_native_balancer(live_version) {
+    let version = trim(live_version || "");
+    if (version == "")
+        version = read_version_state();
+    if (version == "")
+        version = trim(getenv("SB_VERSION_OVERRIDE") || "");
     let marker = read_variant_marker();
-    let version = read_version_state();
+    if (marker == "" && match(version, /^v?0\.[0-9]+\.[0-9]+/) != null)
+        marker = "tachyon-core";
     if (marker != "" || version != "")
-        return core_profile.supports_native_balancer(version, marker);
-    let override = trim(getenv("SB_VERSION_OVERRIDE") || "");
-    if (override != "" && match(override, /^[vV]?[1-9]\.[0-9]+/) != null && index(override, "-tachyon.") < 0)
-        return false;
+        return core_profile.supports_native_balancer(version, marker) === true;
     return true;
 }
 

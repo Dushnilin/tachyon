@@ -1383,7 +1383,7 @@ function add_urltest_outbound(config, section, urltest_id, urltest_candidate_tag
     if (idle_timeout != "")
         urltest_outbound.idle_timeout = idle_timeout;
 
-    if (variant_state.supports_native_balancer()) {
+    if (variant_state.supports_native_balancer(ctx.detect_sing_box_version ? ctx.detect_sing_box_version() : null)) {
         let ut_mode = connections.urltest_mode(section, urltest_id);
         if (ut_mode != "" && ut_mode != "least_test")
             urltest_outbound.mode = ut_mode;

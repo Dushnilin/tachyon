@@ -111,7 +111,9 @@ const CORE_PROFILES = {
         // not a flat yes.
         desync: FROM_VERSION_PREFIX + "0.1.7",
         unified_delay: "no",
-        native_balancer: "yes"
+        // Native URLTest balancers (stability, sticky, least_load, weighted,
+        // passive, priority, hedged, throughput, quota) landed in 0.3.9.
+        native_balancer: FROM_VERSION_PREFIX + "0.3.9"
     }
 };
 
