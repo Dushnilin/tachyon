@@ -3,6 +3,7 @@
 let fs = require("fs");
 let common = require("core.common");
 let core_profile = require("tachyon_core.core_profile");
+let variant_state = require("tachyon_core.variant_state");
 let core_ip = require("core.ip");
 let uci_core = require("core.uci");
 let runtime_constants = require("tachyon_core.constants");
@@ -553,11 +554,16 @@ let cached_sb_version_banner = null;
 // and lx needs a runtime that may be absent. Everyone else is asked directly, and
 // the file is refreshed from the answer so it stops being stale.
 function sing_box_live_version_probe_disabled() {
-    let marker_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant";
-    let marker = trim(fs.readfile(marker_file) || "");
-    if (marker == "" && getenv("SB_VARIANT_STATE_FILE") == null)
-        marker = trim(fs.readfile("/etc/tachyon/sing-box-variant") || "");
+    let marker = variant_state.read_variant_marker();
     return marker == "extended-compressed" || marker == "lx";
+}
+
+function core_binary_probe_bases() {
+    let marker = variant_state.read_variant_marker();
+    let prefer_sing_box = (marker == "extended" || marker == "extended-compressed" || marker == "lx" || marker == "tiny" || marker == "stable");
+    return prefer_sing_box
+        ? [ "sing-box", "tachyon-core", "/usr/bin/tachyon-core" ]
+        : [ "tachyon-core", "/usr/bin/tachyon-core", "sing-box" ];
 }
 
 function detect_sing_box_version() {
@@ -573,9 +579,7 @@ function detect_sing_box_version() {
     let state_file = getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/tachyon-core-version";
 
     if (sing_box_live_version_probe_disabled()) {
-        let recorded = trim(fs.readfile(state_file) || "");
-        if (recorded == "" && getenv("SB_VERSION_STATE_FILE") == null)
-            recorded = trim(fs.readfile("/etc/tachyon/sing-box-version") || "");
+        let recorded = variant_state.read_version_state();
         if (recorded != "") {
             cached_sb_version = recorded;
             return recorded;
@@ -592,7 +596,7 @@ function detect_sing_box_version() {
 // router is not left waiting. Two prefixes are tried because an earlier one may be
 // absent from PATH.
 try {
-    let bases = [ "sing-box", "/usr/bin/tachyon-core" ];
+    let bases = core_binary_probe_bases();
     let preflight = getenv("SB_PREFLIGHT_BINARY");
     if (preflight && preflight != "")
         unshift(bases, preflight);
@@ -621,9 +625,7 @@ try {
         }
     } catch (e) {}
 
-    let sb_version_val = trim(fs.readfile(state_file) || "");
-    if (sb_version_val == "" && getenv("SB_VERSION_STATE_FILE") == null)
-        sb_version_val = trim(fs.readfile("/etc/tachyon/sing-box-version") || "");
+    let sb_version_val = variant_state.read_version_state();
     if (sb_version_val == "") {
         let sb_ui_cache = getenv("TACHYON_UI_SING_BOX_VERSION_CACHE_FILE") || "/var/run/tachyon/ui-state/sing-box-version";
         sb_version_val = trim(fs.readfile(sb_ui_cache) || "");
@@ -666,7 +668,7 @@ function sing_box_banner_names_tachyon_core() {
     }
     if (cached_sb_version_banner == null) {
         let banner = "";
-        for (let base in [ "sing-box", "/usr/bin/tachyon-core" ]) {
+        for (let base in core_binary_probe_bases()) {
             let pipe = fs.popen(common.bounded_command(base + " version 2>/dev/null", "6"), "r");
             if (pipe) {
                 banner = as_string(pipe.read("all"));
@@ -784,10 +786,7 @@ function is_tachyon_core_version(sb_version_val) {
     // A recorded variant in state file (including SB_VARIANT_STATE_FILE during pre-flight)
     // is explicit evidence: if set to anything other than tachyon-core (e.g. lx, extended),
     // this is not tachyon-core.
-    let sb_variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant";
-    let recorded_variant = trim(as_string(fs.readfile(sb_variant_file) || ""));
-    if (recorded_variant == "" && getenv("SB_VARIANT_STATE_FILE") == null)
-        recorded_variant = trim(as_string(fs.readfile("/etc/tachyon/sing-box-variant") || ""));
+    let recorded_variant = variant_state.read_variant_marker();
     if (recorded_variant != "")
         return recorded_variant == "tachyon-core";
 
@@ -859,10 +858,7 @@ function is_sing_box_lx_detected(sb_version_val) {
     let s = as_string(sb_version_val);
     if (s == "lx" || s == "sing-box-lx" || index(s, "-lx") >= 0)
         return true;
-    let sb_variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant";
-    let sb_variant_val = trim(fs.readfile(sb_variant_file) || "");
-    if (sb_variant_val == "" && getenv("SB_VARIANT_STATE_FILE") == null)
-        sb_variant_val = trim(fs.readfile("/etc/tachyon/sing-box-variant") || "");
+    let sb_variant_val = variant_state.read_variant_marker();
     return sb_variant_val == "lx" || sb_variant_val == "sing-box-lx";
 }
 
@@ -870,10 +866,7 @@ function is_sing_box_extended_detected(sb_version_val) {
     if (sb_version_val == null || sb_version_val == "")
         sb_version_val = detect_sing_box_version();
     let s = as_string(sb_version_val);
-    let sb_variant_file = getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant";
-    let sb_variant_val = trim(fs.readfile(sb_variant_file) || "");
-    if (sb_variant_val == "" && getenv("SB_VARIANT_STATE_FILE") == null)
-        sb_variant_val = trim(fs.readfile("/etc/tachyon/sing-box-variant") || "");
+    let sb_variant_val = variant_state.read_variant_marker();
     return core_profile.supports_unified_delay(s, sb_variant_val);
 }
 

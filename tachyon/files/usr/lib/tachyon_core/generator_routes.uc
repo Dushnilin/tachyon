@@ -1365,14 +1365,6 @@ function group_member_leaf_tags(members, config) {
     return unique_string_array(tags);
 }
 
-function is_extended_variant_detected() {
-    let sb_variant_val = variant_state.read_variant_marker();
-    if (sb_variant_val == "extended" || sb_variant_val == "extended-compressed")
-        return true;
-    let sb_version_val = variant_state.read_version_state();
-    return index(sb_version_val, "extended") >= 0;
-}
-
 function add_urltest_outbound(config, section, urltest_id, urltest_candidate_tags, state) {
     let section_name = section[".name"];
     let urltest_outbounds = urltest_filtered_outbounds(section, urltest_id, urltest_candidate_tags, state);
@@ -1390,6 +1382,34 @@ function add_urltest_outbound(config, section, urltest_id, urltest_candidate_tag
     let idle_timeout = urltest_idle_timeout(section, urltest_id);
     if (idle_timeout != "")
         urltest_outbound.idle_timeout = idle_timeout;
+
+    if (variant_state.supports_native_balancer()) {
+        let ut_mode = connections.urltest_mode(section, urltest_id);
+        if (ut_mode != "" && ut_mode != "least_test")
+            urltest_outbound.mode = ut_mode;
+
+        if (ut_mode == "round_robin" || ut_mode == "sticky" || ut_mode == "stability" ||
+            ut_mode == "least_load" || ut_mode == "weighted" || ut_mode == "passive" ||
+            ut_mode == "priority" || ut_mode == "hedged" || ut_mode == "throughput" ||
+            ut_mode == "quota") {
+            let bal_pool = connections.urltest_balancer_pool(section, urltest_id);
+            let bal_tol = connections.urltest_balancer_pool_tolerance(section, urltest_id);
+            let bal_sticky = connections.urltest_sticky_hash(section, urltest_id);
+            let bal_quota = connections.urltest_balancer_quota_mib(section, urltest_id);
+            if (bal_pool > 0 || bal_tol > 0 || length(bal_sticky) > 0 || bal_quota > 0) {
+                let bal_obj = {};
+                if (bal_pool > 0)
+                    bal_obj.pool = bal_pool;
+                if (bal_tol > 0)
+                    bal_obj.pool_tolerance = bal_tol;
+                if (length(bal_sticky) > 0)
+                    bal_obj.sticky_hash = bal_sticky;
+                if (bal_quota > 0)
+                    bal_obj.quota_mib = bal_quota;
+                urltest_outbound.balancer = bal_obj;
+            }
+        }
+    }
 
     let active_check_interval = connections.urltest_active_check_interval(section, urltest_id);
     let testing_urls = connections.urltest_testing_urls(section, urltest_id);
@@ -2117,9 +2137,13 @@ function plain_ruleset_kind(json_path, etc_json, srs_path, fallback_kind) {
     if (fs.stat(json_path) == null && fs.stat(etc_json) != null)
         common.copy_file(etc_json, json_path);
     if (fs.stat(json_path) == null && srs_path != null && srs_path != "" && runtime_rulesets.is_referenceable_srs_file(srs_path)) {
-        let dec_ok = common.command_success_from_args([ "sing-box", "rule-set", "decompile", srs_path, "-o", json_path ]);
-        if (!dec_ok && fs.stat("/usr/bin/tachyon-core") != null)
+        let dec_ok = false;
+        if (fs.stat("/usr/bin/tachyon-core") != null)
             dec_ok = common.command_success_from_args([ "/usr/bin/tachyon-core", "rule-set", "decompile", srs_path, "-o", json_path ]);
+        if (!dec_ok)
+            dec_ok = common.command_success_from_args([ "tachyon-core", "rule-set", "decompile", srs_path, "-o", json_path ]);
+        if (!dec_ok)
+            dec_ok = common.command_success_from_args([ "sing-box", "rule-set", "decompile", srs_path, "-o", json_path ]);
         if (dec_ok && fs.stat(json_path) != null && etc_json != null && etc_json != "") {
             common.ensure_dir("/etc/tachyon/rulesets");
             common.copy_file(json_path, etc_json);

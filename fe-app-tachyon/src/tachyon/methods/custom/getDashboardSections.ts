@@ -2056,6 +2056,7 @@ function buildUrlTestInfo({
           country: showDetectedCountries
             ? outboundMetadata?.countries?.[childCode]
             : undefined,
+          telemetry: entry?.value.telemetry?.[childCode],
         },
       ];
     }),
@@ -2092,6 +2093,10 @@ function buildUrlTestInfo({
     selectedCode: selectedCode || undefined,
     selectedName: selectedName || undefined,
     isManualSelection,
+    mode:
+      entry?.value.mode ||
+      itemSettingString(cfgSettings, 'mode', '') ||
+      undefined,
     url: primaryUrl || allUrls[0],
     urls: allUrls.length > 0 ? allUrls : undefined,
     multiUrlStrategy,

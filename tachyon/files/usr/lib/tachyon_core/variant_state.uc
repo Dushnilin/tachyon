@@ -60,10 +60,24 @@ function is_tachyon_core() {
     return match(version, /^v?0\.[0-9]+\.[0-9]+/) != null;
 }
 
+function supports_native_balancer() {
+    if (is_tachyon_core())
+        return true;
+    let marker = read_variant_marker();
+    let version = read_version_state();
+    if (marker != "" || version != "")
+        return core_profile.supports_native_balancer(version, marker);
+    let override = trim(getenv("SB_VERSION_OVERRIDE") || "");
+    if (override != "" && match(override, /^[vV]?[1-9]\.[0-9]+/) != null && index(override, "-tachyon.") < 0)
+        return false;
+    return true;
+}
+
 return {
     read_variant_marker,
     read_version_state,
     current_profile,
     awg_endpoint_schema,
-    is_tachyon_core
+    is_tachyon_core,
+    supports_native_balancer
 };

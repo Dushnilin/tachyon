@@ -407,13 +407,7 @@ function is_fptn_action(action) {
 // The explicit choice exists only so the two tunnels cannot fight when both
 // are possible.
 function fptn_transport_mode() {
-    let variant = trim(as_string(fs.readfile(getenv("SB_VARIANT_STATE_FILE") || "/etc/tachyon/tachyon-core-variant") || ""));
-    if (variant == "" && getenv("SB_VARIANT_STATE_FILE") == null)
-        variant = trim(as_string(fs.readfile("/etc/tachyon/sing-box-variant") || ""));
-    let version = trim(as_string(fs.readfile(getenv("SB_VERSION_STATE_FILE") || "/etc/tachyon/tachyon-core-version") || ""));
-    if (version == "" && getenv("SB_VERSION_STATE_FILE") == null)
-        version = trim(as_string(fs.readfile("/etc/tachyon/sing-box-version") || ""));
-    if (variant != "tachyon-core" && match(version, /-tachyon\./) == null)
+    if (!require("tachyon_core.variant_state").is_tachyon_core())
         return "component";
 
     let settings = object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
@@ -4212,6 +4206,65 @@ function urltest_interrupt_exist_connections(section, value) {
     return item_bool(section, "urltest_settings", value, "interrupt_exist_connections", fallback);
 }
 
+function urltest_mode(section, value) {
+    let child = urltest_child(section, value);
+    let raw = child != null
+        ? lc(trim(child_option_alias(child, [ "mode", "urltest_mode" ], "")))
+        : lc(trim(item_option(section, "urltest_settings", value, "mode", option(section, "urltest_mode", ""))));
+    if (raw == "least_test" || raw == "round_robin" || raw == "failover" ||
+        raw == "stability" || raw == "sticky" || raw == "least_load" ||
+        raw == "weighted" || raw == "passive" || raw == "priority" || raw == "hedged" ||
+        raw == "throughput" || raw == "quota")
+        return raw;
+    return "";
+}
+
+function urltest_sticky_hash(section, value) {
+    let child = urltest_child(section, value);
+    let raw_list = child != null
+        ? child_list_alias(child, [ "sticky_hash", "urltest_sticky_hash" ], [])
+        : item_list(section, "urltest_settings", value, "sticky_hash", list_option(section, "urltest_sticky_hash"));
+    let result = [];
+    let seen = {};
+    for (let item in common.array_or_empty(raw_list)) {
+        for (let token in split(lc(trim(as_string(item))), /[,\s]+/)) {
+            if ((token == "source_ip" || token == "domain" || token == "dest_ip" ||
+                 token == "dest_port" || token == "process" || token == "none") && !seen[token]) {
+                seen[token] = true;
+                push(result, token);
+            }
+        }
+    }
+    return result;
+}
+
+function urltest_balancer_pool(section, value) {
+    let child = urltest_child(section, value);
+    let raw = child != null
+        ? trim(child_option_alias(child, [ "balancer_pool", "pool" ], ""))
+        : trim(item_option(section, "urltest_settings", value, "balancer_pool", option(section, "urltest_balancer_pool", "")));
+    let n = int(raw, 10);
+    return (raw != "" && n >= 1) ? n : 0;
+}
+
+function urltest_balancer_pool_tolerance(section, value) {
+    let child = urltest_child(section, value);
+    let raw = child != null
+        ? trim(child_option_alias(child, [ "balancer_pool_tolerance", "pool_tolerance" ], ""))
+        : trim(item_option(section, "urltest_settings", value, "balancer_pool_tolerance", option(section, "urltest_balancer_pool_tolerance", "")));
+    let n = int(raw, 10);
+    return (raw != "" && n >= 1 && n <= 15000) ? n : 0;
+}
+
+function urltest_balancer_quota_mib(section, value) {
+    let child = urltest_child(section, value);
+    let raw = child != null
+        ? trim(child_option_alias(child, [ "quota_mib", "balancer_quota_mib" ], ""))
+        : trim(item_option(section, "urltest_settings", value, "quota_mib", option(section, "urltest_quota_mib", "")));
+    let n = int(raw, 10);
+    return (raw != "" && n >= 1) ? n : 0;
+}
+
 function urltest_group_refs(section, value) {
     let child = urltest_child(section, value);
     if (child != null)
@@ -6402,6 +6455,11 @@ return {
     urltest_display_name,
     urltest_idle_timeout,
     urltest_interrupt_exist_connections,
+    urltest_mode,
+    urltest_sticky_hash,
+    urltest_balancer_pool,
+    urltest_balancer_pool_tolerance,
+    urltest_balancer_quota_mib,
     urltest_filter_mode,
     urltest_detect_server_country,
     urltest_pin_dashboard,

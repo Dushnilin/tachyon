@@ -559,6 +559,80 @@ function createBalancersContent(section) {
 
   o = section.taboption(
     'general',
+    form.ListValue,
+    'mode',
+    _('Selection Algorithm'),
+    _(
+      'Native Rust kernel balancing mode for URLTest pools: Stability filters out jittery/lossy nodes, Sticky pins flows via Rendezvous HRW hashing, Least Load spreads concurrent streams, Weighted distributes proportionally to 1/RTT², Passive quarantines nodes dropping streams early (< 64 KiB), and Hedged races a backup node when handshake stalls.',
+    ),
+  );
+  o.modalonly = true;
+  o.default = 'least_test';
+  o.value('least_test', _('Fastest (Lowest RTT)'));
+  o.value('stability', _('Stability (EWMA + RFC 3550 Jitter + Loss Penalty)'));
+  o.value('sticky', _('Sticky Flow (Rendezvous HRW by Client / Domain)'));
+  o.value('least_load', _('Least Load (Active Connections × RTT)'));
+  o.value('weighted', _('Weighted (Smooth WRR by 1/RTT²)'));
+  o.value('passive', _('Passive Circuit Breaker (Early-Abort Quarantine)'));
+  o.value('hedged', _('Hedged (Happy Eyeballs Parallel Backup)'));
+  o.value('throughput', _('Throughput (Active Bandwidth Decay)'));
+  o.value('quota', _('Quota (Traffic Quota Balancer)'));
+  o.value('round_robin', _('Round-Robin Pool'));
+  o.value('failover', _('Failover (Pin Current Until Failure)'));
+  o.depends('balancer_type', 'urltest');
+
+  o = section.taboption(
+    'general',
+    form.DynamicList,
+    'sticky_hash',
+    _('Sticky Hash Components'),
+    _(
+      'Flow fields combined for Rendezvous HRW stickiness (domain is automatically normalized to eTLD+1 so subdomains stay on the same exit IP).',
+    ),
+  );
+  o.modalonly = true;
+  o.value('source_ip', _('Client LAN IP (source_ip)'));
+  o.value('domain', _('Registrable Domain eTLD+1 (domain)'));
+  o.value('dest_ip', _('Destination IP (dest_ip)'));
+  o.value('dest_port', _('Destination Port (dest_port)'));
+  o.value('process', _('Local Process (process)'));
+  o.depends({ balancer_type: 'urltest', mode: 'sticky' });
+  o.depends({ balancer_type: 'urltest', mode: 'round_robin' });
+
+  o = section.taboption(
+    'general',
+    form.Value,
+    'balancer_pool',
+    _('Active Pool Size (Top N Nodes)'),
+    _(
+      'Maximum number of fastest healthy nodes included in the active balancing pool (0 or empty = all healthy nodes within tolerance).',
+    ),
+  );
+  o.modalonly = true;
+  o.placeholder = '4';
+  o.depends({ balancer_type: 'urltest', mode: 'sticky' });
+  o.depends({ balancer_type: 'urltest', mode: 'round_robin' });
+  o.depends({ balancer_type: 'urltest', mode: 'least_load' });
+  o.depends({ balancer_type: 'urltest', mode: 'weighted' });
+  o.depends({ balancer_type: 'urltest', mode: 'hedged' });
+  o.depends({ balancer_type: 'urltest', mode: 'throughput' });
+  o.depends({ balancer_type: 'urltest', mode: 'quota' });
+
+  o = section.taboption(
+    'general',
+    form.Value,
+    'quota_mib',
+    _('Traffic Quota per Node (MiB)'),
+    _(
+      'Soft traffic cap per node in MiB before shifting new streams to remaining under-quota nodes.',
+    ),
+  );
+  o.modalonly = true;
+  o.placeholder = '10240';
+  o.depends({ balancer_type: 'urltest', mode: 'quota' });
+
+  o = section.taboption(
+    'general',
     form.DummyValue,
     '_used_in',
     _('Used in Sections'),

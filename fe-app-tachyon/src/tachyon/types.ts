@@ -5,6 +5,18 @@ export namespace ClashAPI {
     delay: number;
   }
 
+  export interface NodeTelemetrySnapshot {
+    rtt_ms?: number;
+    ewma_rtt_ms?: number;
+    jitter_ms?: number;
+    loss_penalty_ms?: number;
+    quarantined?: boolean;
+    quarantine_rem_s?: number;
+    active_conns?: number;
+    throughput_kib_s?: number;
+    transferred_kib?: number;
+  }
+
   export interface ProxyBase {
     type: string;
     name: string;
@@ -12,6 +24,8 @@ export namespace ClashAPI {
     history: ProxyHistoryEntry[];
     now?: string;
     all?: string[];
+    mode?: string;
+    telemetry?: Record<string, NodeTelemetrySnapshot>;
   }
 
   export interface Proxies {
@@ -368,6 +382,7 @@ export namespace Tachyon {
     link?: string;
     canCopyLink?: boolean;
     country?: string;
+    telemetry?: ClashAPI.NodeTelemetrySnapshot;
   }
 
   export interface UrlTestInfo {
@@ -376,6 +391,7 @@ export namespace Tachyon {
     selectedCode?: string;
     selectedName?: string;
     isManualSelection?: boolean;
+    mode?: string;
     url?: string;
     urls?: string[];
     multiUrlStrategy?: string;

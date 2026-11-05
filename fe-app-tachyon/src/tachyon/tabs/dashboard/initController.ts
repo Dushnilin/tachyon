@@ -1897,6 +1897,63 @@ function renderCommonDetailsModal(
                       { class: getUrlTestLatencyClass(member.latency) },
                       formatUrlTestLatency(member.latency),
                     ),
+                    ...(member.telemetry
+                      ? (() => {
+                          const t = member.telemetry!;
+                          const tipParts: string[] = [];
+                          if (t.ewma_rtt_ms)
+                            tipParts.push(`EWMA: ${t.ewma_rtt_ms} ms`);
+                          if (t.jitter_ms)
+                            tipParts.push(`Jitter: ±${t.jitter_ms} ms`);
+                          if (t.loss_penalty_ms)
+                            tipParts.push(`Penalty: +${t.loss_penalty_ms} ms`);
+                          if (t.active_conns)
+                            tipParts.push(`Conns: ${t.active_conns}`);
+                          if (t.throughput_kib_s)
+                            tipParts.push(`BW: ${t.throughput_kib_s} KiB/s`);
+                          if (t.transferred_kib)
+                            tipParts.push(
+                              `Data: ${(t.transferred_kib / 1024).toFixed(1)} MiB`,
+                            );
+                          if (t.quarantined) {
+                            return [
+                              E(
+                                'span',
+                                {
+                                  class: 'badge badge-warning',
+                                  title: tipParts.join(' · '),
+                                  style:
+                                    'margin-left: 6px; padding: 1px 5px; font-size: 10px; font-variant-numeric: tabular-nums;',
+                                },
+                                `Quarantine ${t.quarantine_rem_s || 0}s`,
+                              ),
+                            ];
+                          }
+                          if (
+                            tipParts.length > 0 &&
+                            (t.jitter_ms ||
+                              t.active_conns ||
+                              t.throughput_kib_s)
+                          ) {
+                            return [
+                              E(
+                                'span',
+                                {
+                                  title: tipParts.join(' · '),
+                                  style:
+                                    'margin-left: 6px; font-size: 11px; opacity: 0.72; font-variant-numeric: tabular-nums;',
+                                },
+                                t.jitter_ms
+                                  ? `±${t.jitter_ms}ms`
+                                  : t.active_conns
+                                    ? `${t.active_conns} conn`
+                                    : `${t.throughput_kib_s} KiB/s`,
+                              ),
+                            ];
+                          }
+                          return [];
+                        })()
+                      : []),
                     ...(renderMemberUrlDelaysPopover(
                       member,
                       info.urls || info.healthUrls,
@@ -2186,6 +2243,9 @@ function renderUrlTestInfoModal(
       label: _('Selected'),
       children: [renderUrlTestSelectedValue(info)],
     },
+    ...(info.mode && info.mode !== 'least_test'
+      ? [{ label: _('Algorithm'), value: info.mode }]
+      : []),
     {
       label: effectiveUrls.length > 1 ? _('Testing URLs') : _('Testing URL'),
       children: [renderDetailsUrls(info.url, info.urls)],

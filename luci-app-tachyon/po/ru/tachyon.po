@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-05 16:13+0300\n"
-"PO-Revision-Date: 2026-11-05 16:13+0300\n"
+"POT-Creation-Date: 2026-11-05 17:17+0300\n"
+"PO-Revision-Date: 2026-11-05 17:17+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -344,6 +344,9 @@ msgstr "Активный основной DNS"
 msgid "Active Only"
 msgstr "Активные"
 
+msgid "Active Pool Size (Top N Nodes)"
+msgstr ""
+
 msgid "Active Route"
 msgstr "Активный выход"
 
@@ -523,6 +526,9 @@ msgstr "Объявлять как выходной узел (Exit Node)"
 
 msgid "Advertise routes"
 msgstr "Объявлять маршруты"
+
+msgid "Algorithm"
+msgstr ""
 
 msgid "All"
 msgstr "Все"
@@ -1724,6 +1730,9 @@ msgstr "IP или MAC клиента (например, 192.168.1.100)"
 msgid "Client Key"
 msgstr "Клиентский ключ"
 
+msgid "Client LAN IP (source_ip)"
+msgstr ""
+
 msgid "Client Private Key"
 msgstr "Приватный ключ клиента (PrivateKey)"
 
@@ -2615,11 +2624,17 @@ msgstr "Удалить снапшот"
 msgid "Dest IP"
 msgstr "IP назначения"
 
+msgid "Destination IP (dest_ip)"
+msgstr ""
+
 msgid "Destination IP / CIDR Subnets"
 msgstr "IP-адреса и подсети назначения (CIDR)"
 
 msgid "Destination IPs or CIDR blocks to exclude from this condition."
 msgstr "Целевые IP-адреса или подсети CIDR, исключаемые из этого условия."
+
+msgid "Destination Port (dest_port)"
+msgstr ""
 
 msgid "Destination Ports"
 msgstr "Порты назначения"
@@ -3755,6 +3770,9 @@ msgstr "Не удалось обновить устройство"
 msgid "Failed to update subscriptions"
 msgstr "Не удалось обновить подписки"
 
+msgid "Failover (Pin Current Until Failure)"
+msgstr ""
+
 msgid "Failover Health Check URL"
 msgstr "URL проверки доступности для переключения (Failover)"
 
@@ -3878,6 +3896,9 @@ msgstr "Интервал поиска более быстрого сервера
 msgid "Fastest"
 msgstr "Самый быстрый"
 
+msgid "Fastest (Lowest RTT)"
+msgstr ""
+
 msgid "Filter Mode"
 msgstr "Режим фильтрации"
 
@@ -3940,6 +3961,9 @@ msgstr "Средняя задержка серверов"
 
 msgid "Flow"
 msgstr "Поток (Flow)"
+
+msgid "Flow fields combined for Rendezvous HRW stickiness (domain is automatically normalized to eTLD+1 so subdomains stay on the same exit IP)."
+msgstr ""
 
 msgid "Flush Conntrack Table"
 msgstr "Очистить таблицу соед. (conntrack)"
@@ -4213,6 +4237,9 @@ msgstr "URL проверки доступности"
 
 msgid "Healthy"
 msgstr "Исправно"
+
+msgid "Hedged (Happy Eyeballs Parallel Backup)"
+msgstr ""
 
 msgid "Hello! I am Tachyon AI Assistant. How can I help you today? Ask me about domain blocks, diagnostics, or router settings."
 msgstr "Привет! Я ИИ-ассистент Tachyon. Чем могу помочь? Задайте вопрос о блокировках, диагностике или настройках роутера."
@@ -5294,6 +5321,9 @@ msgstr "Уровень 1: Пул серверов, подписки и тунн�
 msgid "Layer 2: Reusable Outbound Server Groups"
 msgstr "Уровень 2: Переиспользуемые группы серверов (Outbound Groups)"
 
+msgid "Least Load (Active Connections × RTT)"
+msgstr ""
+
 msgid "Leave blank to auto-generate on start or click button above"
 msgstr "Оставьте пустым для автогенерации при старте или нажмите кнопку выше"
 
@@ -5443,6 +5473,9 @@ msgstr "Локальный кэш DNS"
 
 msgid "Local DNS caching disabled (0 entries)"
 msgstr "Локальное DNS-кэширование отключено (0 записей)"
+
+msgid "Local Process (process)"
+msgstr ""
 
 msgid "Local Tor Daemon SOCKS5 Port (127.0.0.1)"
 msgstr "Локальный SOCKS5-порт демона Tor (127.0.0.1)"
@@ -5611,6 +5644,9 @@ msgstr "Максимально допустимое время доступа в
 
 msgid "Maximum number of cached domain entries in dnsmasq (default: 10000 ≈ 1.2 MB RAM). Memory is allocated dynamically per request (~120 B per domain), not pre-allocated upfront. Recommended: 10000 for routers with ≥128 MB RAM, 2500–5000 for 64 MB devices."
 msgstr "Максимальный лимит кэшируемых доменов в dnsmasq (по умолчанию: 10000 ≈ 1.2 МБ RAM). Память выделяется динамически по мере запросов (~120 Б на домен), а не резервируется сразу. Рекомендуется: 10000 для роутеров от 128 МБ RAM, 2500–5000 для 64 МБ устройств."
+
+msgid "Maximum number of fastest healthy nodes included in the active balancing pool (0 or empty = all healthy nodes within tolerance)."
+msgstr ""
 
 msgid "Maximum size of junk packets"
 msgstr "Максимальный размер мусорных пакетов"
@@ -5836,6 +5872,9 @@ msgstr "Встроенный Desync"
 
 msgid "Native Desync (tachyon-core)"
 msgstr "Встроенный Desync (tachyon-core)"
+
+msgid "Native Rust kernel balancing mode for URLTest pools: Stability filters out jittery/lossy nodes, Sticky pins flows via Rendezvous HRW hashing, Least Load spreads concurrent streams, Weighted distributes proportionally to 1/RTT², Passive quarantines nodes dropping streams early (< 64 KiB), and Hedged races a backup node when handshake stalls."
+msgstr ""
 
 msgid "Native Tailscale is configured, but tailscale package is missing"
 msgstr "Нативный Tailscale настроен, но пакет tailscale отсутствует"
@@ -6590,6 +6629,9 @@ msgstr "Обработанные записи:"
 msgid "Partial presence match — other AND conditions not supplied"
 msgstr "Частичное вхождение — остальные операнды И (AND) не указаны"
 
+msgid "Passive Circuit Breaker (Early-Abort Quarantine)"
+msgstr ""
+
 msgid "Password"
 msgstr "Пароль"
 
@@ -7199,6 +7241,9 @@ msgstr "Быстрое создание своего VPN / Прокси серв
 msgid "Quick setup for outbound routing & anti-censorship"
 msgstr "Быстрая настройка исходящего маршрута и обхода блокировок"
 
+msgid "Quota (Traffic Quota Balancer)"
+msgstr ""
+
 msgid "RAG Knowledge Base + Live ISP Probe Context"
 msgstr "База знаний RAG + результаты живого зондирования провайдера"
 
@@ -7348,6 +7393,9 @@ msgstr "Регистрация аккаунта Cloudflare WARP..."
 
 msgid "Registering Cloudflare WARP keys..."
 msgstr "Регистрация ключей Cloudflare WARP..."
+
+msgid "Registrable Domain eTLD+1 (domain)"
+msgstr ""
 
 msgid "Registration Detour"
 msgstr "Маршрут регистрации"
@@ -7582,6 +7630,9 @@ msgstr "Откатить"
 
 msgid "Rose"
 msgstr "Розовый"
+
+msgid "Round-Robin Pool"
+msgstr ""
 
 msgid "Route"
 msgstr "Маршрут"
@@ -8231,6 +8282,9 @@ msgstr "Выборочный: указанные устройства стано
 msgid "Selection & Filter Parameters"
 msgstr "Параметры выбора и фильтрации"
 
+msgid "Selection Algorithm"
+msgstr ""
+
 msgid "Selector"
 msgstr "Селектор"
 
@@ -8651,6 +8705,9 @@ msgstr "Температура SoC/CPU"
 msgid "Social media"
 msgstr "Социальные сети"
 
+msgid "Soft traffic cap per node in MiB before shifting new streams to remaining under-quota nodes."
+msgstr ""
+
 msgid "Sort Alphabetically"
 msgstr "Сортировать по алфавиту"
 
@@ -8734,6 +8791,9 @@ msgstr "Значения сплита (-s)"
 
 msgid "Stability & Fleet Report"
 msgstr "Отчёт о стабильности"
+
+msgid "Stability (EWMA + RFC 3550 Jitter + Loss Penalty)"
+msgstr ""
 
 msgid "Stability penalties detected on active system:"
 msgstr "Обнаружены штрафы стабильности у активной системы:"
@@ -8863,6 +8923,12 @@ msgstr "Невидимый для DPI сервер VLESS TLS 1.3 REALITY без 
 
 msgid "Step-by-Step Outbound Connection (Client / DPI)"
 msgstr "Исходящее подключение по шагам (Аутбаунд)"
+
+msgid "Sticky Flow (Rendezvous HRW by Client / Domain)"
+msgstr ""
+
+msgid "Sticky Hash Components"
+msgstr ""
 
 msgid "Stop"
 msgstr "Стоп"
@@ -9653,6 +9719,9 @@ msgstr "Замедление / Глубокий анализ пакетов"
 msgid "Through Tachyon Routing Rules"
 msgstr "По правилам секций Tachyon (обход блокировок)"
 
+msgid "Throughput (Active Bandwidth Decay)"
+msgstr ""
+
 msgid "Thu"
 msgstr "Чт"
 
@@ -9766,6 +9835,9 @@ msgstr "График трафика"
 
 msgid "Traffic Morphing Profile"
 msgstr "Профиль морфинга трафика (Traffic Shaper)"
+
+msgid "Traffic Quota per Node (MiB)"
+msgstr ""
 
 msgid "Traffic Shaper"
 msgstr "Шейпер трафика"
@@ -10555,6 +10627,9 @@ msgstr "Будни (Пн-Пт)"
 
 msgid "Weekends (Sat-Sun)"
 msgstr "Выходные (Сб-Вс)"
+
+msgid "Weighted (Smooth WRR by 1/RTT²)"
+msgstr ""
 
 msgid "What Tachyon should do when this section matches"
 msgstr "Что должен делать Tachyon при совпадении этой секции"

@@ -37,7 +37,8 @@ const CORE_PROFILES = {
         // Native desync is a tachyon-core feature. No sing-box build has it,
         // so the answer is a flat "no" for every sing-box profile.
         desync: "no",
-        unified_delay: "no"
+        unified_delay: "no",
+        native_balancer: "no"
     },
     "lx": {
         marker: "lx",
@@ -51,7 +52,8 @@ const CORE_PROFILES = {
         xhttp: "yes",
         tailscale: "yes",
         desync: "no",
-        unified_delay: "no"
+        unified_delay: "no",
+        native_balancer: "no"
     },
     "extended": {
         marker: "extended",
@@ -66,7 +68,8 @@ const CORE_PROFILES = {
         xhttp: "yes",
         tailscale: "yes",
         desync: "no",
-        unified_delay: "yes"
+        unified_delay: "yes",
+        native_balancer: "no"
     },
     "extended-compressed": {
         marker: "extended-compressed",
@@ -81,7 +84,8 @@ const CORE_PROFILES = {
         xhttp: "yes",
         tailscale: "yes",
         desync: "no",
-        unified_delay: "yes"
+        unified_delay: "yes",
+        native_balancer: "no"
     },
     // Our own core. Its version is a different series entirely - the released
     // build reports "tachyon-core 0.0.1", a bare number with no fork suffix -
@@ -106,7 +110,8 @@ const CORE_PROFILES = {
         // core do not have the outbound, so the gate is a version floor and
         // not a flat yes.
         desync: FROM_VERSION_PREFIX + "0.1.7",
-        unified_delay: "no"
+        unified_delay: "no",
+        native_balancer: "yes"
     }
 };
 
@@ -433,6 +438,12 @@ function supports_unified_delay(version, marker) {
     return flag(version, marker, "unified_delay", "with_unified_delay", null) === true;
 }
 
+// Native URLTest balancers (stability, sticky, least_load, weighted, passive,
+// priority, hedged) exist exclusively in tachyon-core.
+function supports_native_balancer(version, marker) {
+    return flag(version, marker, "native_balancer", "with_native_balancer", null) === true;
+}
+
 return {
     CORE_PROFILES,
     CORE_PROTOCOLS,
@@ -459,6 +470,7 @@ return {
     supports_tailscale,
     supports_desync,
     supports_unified_delay,
+    supports_native_balancer,
     version_triple,
     reaches_triple,
     reaches,
