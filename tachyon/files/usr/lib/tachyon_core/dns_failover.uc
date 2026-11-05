@@ -342,11 +342,11 @@ function core_age_seconds() {
     }
 
     for (let stamp_file in [
+        RUNTIME_STATE_DIR + "/sing-box-reload.timestamp",
         RUNTIME_STATE_DIR + "/tachyon-core-reload.timestamp",
         RUNTIME_STATE_DIR + "/reload.timestamp",
         RUNTIME_STATE_DIR + "/reload.hash",
-        RUNTIME_STATE_DIR + "/reload-state",
-        RUNTIME_STATE_DIR + "/sing-box-reload.timestamp"
+        RUNTIME_STATE_DIR + "/reload-state"
     ]) {
         let stamp_stat = fs.stat(stamp_file);
         if (stamp_stat != null && stamp_stat.mtime > 0) {

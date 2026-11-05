@@ -2932,7 +2932,7 @@ function createSettingsContent(section, capabilities) {
   );
   o.depends('proxy_mode', 'tun');
   o.default = 'tun0';
-  o.value('tun0', 'tun0 (Default)');
+  o.value('tun0', _('tun0 (Default)'));
   o.value('tachyon0', 'tachyon0');
   o.value('singtun0', 'singtun0');
   o.value('utun0', 'utun0');

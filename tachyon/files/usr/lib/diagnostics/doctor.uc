@@ -2907,6 +2907,55 @@ function compress_log_snippet(raw_snippet) {
     return join("\n", compressed);
 }
 
+let _sb_redact_mod = null;
+function sb_redact_mod() {
+    if (_sb_redact_mod == null) {
+        try { _sb_redact_mod = require("service.support_bundle"); } catch(e) { _sb_redact_mod = false; }
+    }
+    return _sb_redact_mod || null;
+}
+
+function redact_for_ai(text) {
+    if (text == null || text == "")
+        return "";
+    let s = as_string(text);
+    let sb = sb_redact_mod();
+    if (sb && sb.redact_for_llm)
+        s = sb.redact_for_llm(s);
+    else if (sb && sb.redact_string)
+        s = sb.redact_string(s);
+    // Inline fallback guard so private data never leaks even if support_bundle is unavailable
+    s = replace(s, /[0-9]{8,12}:[-_a-zA-Z0-9]{35}/g, "[REDACTED_TELEGRAM_TOKEN]");
+    s = replace(s, /Bearer[ \t]+[-_a-zA-Z0-9.+=]{16,}/gi, "Bearer [REDACTED_TOKEN]");
+    s = replace(s, /(sk-(or-v1-|ant-|proj-)?[-_a-zA-Z0-9]{16,}|AIza[-_a-zA-Z0-9]{20,}|gsk_[-_a-zA-Z0-9]{16,}|xai-[-_a-zA-Z0-9]{16,})/g, "[REDACTED_API_KEY]");
+    s = replace(s, /(vless|vmess|trojan|ss|ssr|hysteria2?|hy2|tuic|fptns?|warp|wireguard|wg|awg):\/\/[^ \t\r\n'"]+/gi, "$1://[REDACTED]");
+    s = replace(s, /:\/\/([^:@[ \t\r\n]+)(:[^@ \t\r\n]+)?@/g, "://[REDACTED]@");
+    s = replace(s, /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g, "[REDACTED_UUID]");
+    s = replace(s, /([?&](password|pass|secret|key|api_key|apikey|token|access_token|auth|auth_token|uuid|id|sub|hash|sig|signature|hwid)=)[^& \t\r\n'"]+/gi, "$1[REDACTED]");
+    s = replace(s, /(https?:\/\/[^\/ \t\r\n'"]+\/(sub|subscribe|subscription|api\/v1\/client\/subscribe)\/)[-_a-zA-Z0-9]{8,}/gi, "$1[REDACTED_SUB_TOKEN]");
+    s = replace(s, /([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}/g, "[REDACTED_MAC]");
+    return s;
+}
+
+function redact_obj_for_ai(val) {
+    let sb = sb_redact_mod();
+    if (sb && sb.redact_object)
+        return sb.redact_object(val);
+    let t = type(val);
+    if (t == "string") return redact_for_ai(val);
+    if (t == "array") {
+        let out = [];
+        for (let item in val) push(out, redact_obj_for_ai(item));
+        return out;
+    }
+    if (t == "object") {
+        let out = {};
+        for (let k, v in val) out[k] = redact_obj_for_ai(v);
+        return out;
+    }
+    return val;
+}
+
 function diagnose_json() {
     let res = run_doctor_checks();
     let problems = [];
@@ -2937,9 +2986,9 @@ function diagnose_json() {
             push(problems, {
                 check:         chk.name,
                 severity:      severity,
-                description:   description,
-                suggested_fix: suggested_fix,
-                evidence:      as_string(chk.detail),
+                description:   redact_for_ai(description),
+                suggested_fix: redact_for_ai(suggested_fix),
+                evidence:      redact_for_ai(as_string(chk.detail)),
                 fixed:         fixed_inline
             });
         }
@@ -2976,8 +3025,8 @@ function diagnose_json() {
 
             push(problems, {
                 severity:      severity,
-                description:   description,
-                suggested_fix: suggested_fix,
+                description:   redact_for_ai(description),
+                suggested_fix: redact_for_ai(suggested_fix),
                 fixed:         fixed_inline
             });
         }
@@ -2986,11 +3035,11 @@ function diagnose_json() {
     let ai_status_data = {};
     let ai_status_raw = fs.readfile("/tmp/tachyon_ai_status.json");
     if (ai_status_raw) {
-        try { ai_status_data = json(ai_status_raw); } catch(e) {}
+        try { ai_status_data = redact_obj_for_ai(json(ai_status_raw)); } catch(e) {}
     }
 
     let raw_log_snippet = trim(command_output("logread | grep -iE 'tachyon|sing-box|dnsmasq|oom|error|fatal|byedpi|zapret|nftables' | tail -n 50 2>/dev/null")) || "No recent system errors logged.";
-    let log_snippet = compress_log_snippet(raw_log_snippet);
+    let log_snippet = redact_for_ai(compress_log_snippet(raw_log_snippet));
 
     print(sprintf("%J\n", {
         success:          true,
@@ -3738,9 +3787,11 @@ function compute_ai_doctor_result(user_query) {
         return local_res;
     }
 
-    let report = res.report;
+    let report = redact_for_ai(res.report);
+    let local_report_sanitized = redact_for_ai(local_res.report);
 
     let dns_type = cfg.dns_type || "doh";
+    let active_engine = cfg.engine || "tachyon-core";
     let version = trim(command_output("cat /etc/tachyon/version 2>/dev/null")) || "unknown";
     // busybox pgrep has no -x, so the old check reported "not running" on OpenWrt
     // even when sing-box was up. pidof matches the process name exactly and
@@ -3755,19 +3806,19 @@ function compute_ai_doctor_result(user_query) {
     if (watchdog_status_raw) {
         let wd_json = parse_json_or_null(watchdog_status_raw);
         if (wd_json) {
-            watchdog_info = sprintf(
+            watchdog_info = redact_for_ai(sprintf(
                 "Watchdog Status:\n- Last OOM: %s\n- WAN fail streak: %d\n- Proxy fail streak: %d\n- DNS fail streak: %d\n- Active repairs: %s",
                 as_string(wd_json.last_oom_time || "none"),
                 int(wd_json.wan_fail_streak || 0),
                 int(wd_json.proxy_fail_streak || 0),
                 int(wd_json.dns_fail_streak || 0),
                 as_string(wd_json.active_repairs || "none")
-            );
+            ));
         }
     }
 
     let raw_log_snippet = trim(command_output("logread | grep -iE 'tachyon|sing-box|dnsmasq|oom|error|fatal' | tail -n 25 2>/dev/null")) || "No recent system errors logged.";
-    let log_snippet = compress_log_snippet(raw_log_snippet);
+    let log_snippet = redact_for_ai(compress_log_snippet(raw_log_snippet));
 
     // Live end-to-end verification — the part that catches "all OK on paper,
     // broken in practice": DNS through each layer, HTTP through the proxy, and
@@ -3775,7 +3826,7 @@ function compute_ai_doctor_result(user_query) {
     let core_name = is_tachyon_core_active() ? "tachyon-core" : "sing-box";
     let verify_lines = [ "Live Verification:" ];
     for (let c in verify.checks) {
-        push(verify_lines, sprintf("- %s: %s (%s)", c.name, c.status, c.detail));
+        push(verify_lines, sprintf("- %s: %s (%s)", c.name, c.status, redact_for_ai(c.detail)));
     }
     push(verify_lines, sprintf("Stability (recent log): WAN flaps: %d, %s restarts: %d, dnsmasq restarts: %d, tachyon reloads: %d",
         verify.stability.wan_flaps, core_name, verify.stability.singbox_restarts,
@@ -3787,33 +3838,75 @@ function compute_ai_doctor_result(user_query) {
         "Local Rule Diagnosis:\n%s\n\n" +
         "System Parameters:\n" +
         "Version: %s\n" +
+        "Active Engine: %s\n" +
         "DNS type: %s\n" +
         "%s running: %s\n" +
         "Uptime: %d minutes\n\n" +
         "%s\n\n" +
         "%s\n\n" +
         "Recent Critical System Logs:\n%s\n",
-        report, local_res.report, version, dns_type, core_name, singbox_running ? "yes" : "no", uptime_min,
+        report, local_report_sanitized, version, active_engine, dns_type, core_name, singbox_running ? "yes" : "no", uptime_min,
         watchdog_info, verify_info, log_snippet
     );
 
     // Declared before first use: the RAG call below needs the configured
     // chat/embedding model override, which used to be read only further down.
     let model_override = trim(cfg.ai_doctor_model || "");
+    user_query = redact_for_ai(trim(as_string(user_query || "")));
 
     let rag_context = "";
     if (cfg.enable_rag == "1") {
-        let rag_query = user_query || substr(sys_context, 0, 500);
+        let rag_parts = [];
+        if (user_query != "")
+            push(rag_parts, user_query);
+        for (let chk in (res.checks || [])) {
+            if (chk.status != "pass")
+                push(rag_parts, as_string(chk.name) + " " + redact_for_ai(as_string(chk.detail || "")));
+        }
+        for (let vc in (verify.checks || [])) {
+            if (vc.status != "PASS")
+                push(rag_parts, as_string(vc.name) + " " + redact_for_ai(as_string(vc.detail || "")));
+        }
+        if (type(local_res.quick_fixes) == "array" && length(local_res.quick_fixes) > 0)
+            push(rag_parts, join(" ", local_res.quick_fixes));
+        if (length(rag_parts) == 0)
+            push(rag_parts, active_engine + " " + dns_type + " " + substr(log_snippet, 0, 240));
+        let rag_query = join(" ", rag_parts);
         rag_context = rag.retrieve(rag_query, prov, cfg.ai_doctor_api_key || "", cfg.ai_doctor_custom_url || "", model_override);
     }
     if (rag_context != "")
         sys_context += "\n\nRelevant Documentation:\n" + rag_context;
 
+    let arch_ref_en =
+        "Tachyon Architecture Reference:\n" +
+        "- Routing Engines (`settings.engine`): `tachyon-core` and `sing-box` (`/etc/init.d/tachyon-core`, config `/etc/tachyon-core/config.json` or `/etc/sing-box/config.json`, variants `stable`, `tiny`, `extended`, `lx`).\n" +
+        "- Packet & DNS Path: LAN clients -> `dnsmasq` (forwards to `127.0.0.42:53`, FakeIP range `198.18.0.0/15`, bootstrap DNS in `settings.bootstrap_dns_server`) -> `nftables` table `inet TachyonTable` -> `fwmark 0x04000000` -> `ip rule` table `tachyon` (205) -> TProxy inbound `:1602` (Clash API `127.0.0.1:9090`).\n" +
+        "- Modular UCI Schema (`/etc/config/tachyon`): `settings`, `section` (routing rule orchestrator), `condition` (traffic matchers: domains, lists, CIDRs, GeoIP/GeoSite, ports, client IPs/MACs), `outbound_source` (subscriptions, proxy links, JSON, providers), `balancer` (`urltest`, `least_ping`, `round_robin`, `sticky_hash`, `passive_check`), `outbound_group` (primary/backup failover & `fail_policy`), `server` (inbound server nodes), `telegram`, `guest_mode`.\n" +
+        "- Local Providers: `zapret` (`nfqws` NFQueue 200+, `--dpi-desync=...`), `zapret2` (`nfqws2` NFQueue 201+, Lua scripts in `/opt/zapret2/lua/`, `--lua-desync=multisplit:pos=1,midsld:seqovl=1:fooling=badseq`), `byedpi` (`ciadpi` SOCKS5 `:4539`), `wdtt`, `olcrtc`, `fptn`, `tailscale`, `torrserver`.\n" +
+        "- Self-Healing & Tools: `watchdog.uc`, `reconciler.uc` (targeted drift repair without core restart), `known_good.uc` (Last Known Good rollback), `transaction.uc` (atomic LIFO rollback), `route_explain.uc`, `config_plan.uc`, `support_bundle.uc`, `smart_detect.uc`.\n\n" +
+        "PRIVACY & SECURITY RULES:\n" +
+        "- All diagnostic inputs are pre-redacted (`[REDACTED_*]`).\n" +
+        "- NEVER ask the user to share private keys, passwords, API keys, Telegram tokens, UUIDs, full subscription URLs, or unredacted `/etc/config/tachyon` dumps.\n" +
+        "- NEVER output commands that exfiltrate or print plaintext credentials.\n\n";
+
+    let arch_ref_ru =
+        "Архитектурная справка Tachyon:\n" +
+        "- Движки маршрутизации (`settings.engine`): `tachyon-core` и `sing-box` (`/etc/init.d/tachyon-core`, конфиг `/etc/tachyon-core/config.json` или `/etc/sing-box/config.json`, варианты `stable`, `tiny`, `extended`, `lx`).\n" +
+        "- Тракт пакетов и DNS: LAN-клиенты -> `dnsmasq` (пересылает запросы на `127.0.0.42:53`, пул FakeIP `198.18.0.0/15`, bootstrap DNS в `settings.bootstrap_dns_server`) -> таблица `nftables` `inet TachyonTable` -> `fwmark 0x04000000` -> `ip rule` таблица `tachyon` (205) -> TProxy `:1602` (Clash API `127.0.0.1:9090`).\n" +
+        "- Модульная схема UCI (`/etc/config/tachyon`): `settings`, `section` (оркестратор правила), `condition` (условия: домены, списки, CIDR, GeoIP/GeoSite, порты, IP/MAC клиентов), `outbound_source` (подписки, ссылки, JSON, провайдеры), `balancer` (`urltest`, `least_ping`, `round_robin`, `sticky_hash`, `passive_check`), `outbound_group` (цепочка отказоустойчивости primary/backup и `fail_policy`), `server` (серверные инбаунды), `telegram`, `guest_mode`.\n" +
+        "- Локальные провайдеры: `zapret` (`nfqws` NFQueue 200+, `--dpi-desync=...`), `zapret2` (`nfqws2` NFQueue 201+, Lua-скрипты `/opt/zapret2/lua/`, `--lua-desync=multisplit:pos=1,midsld:seqovl=1:fooling=badseq`), `byedpi` (`ciadpi` SOCKS5 `:4539`), `wdtt`, `olcrtc`, `fptn`, `tailscale`, `torrserver`.\n" +
+        "- Контур надёжности и инструменты: `watchdog.uc`, `reconciler.uc` (точечный ремонт без перезапуска ядра), `known_good.uc` (откат к эталону Last Known Good), `transaction.uc` (атомарные транзакции с LIFO-откатом), `route_explain.uc`, `config_plan.uc`, `support_bundle.uc`, `smart_detect.uc`.\n\n" +
+        "ПРАВИЛА КОНФИДЕНЦИАЛЬНОСТИ И БЕЗОПАСНОСТИ:\n" +
+        "- Все входные данные обезличены системой защиты Tachyon (`[REDACTED_*]`).\n" +
+        "- НИКОГДА не просите пользователя прислать приватные ключи, пароли, API-ключи, токены Telegram, UUID, полные ссылки подписок или немаскированный `/etc/config/tachyon`.\n" +
+        "- НИКОГДА не предлагайте команды, выводящие или отправляющие секреты в открытом виде.\n\n";
+
     let lang = lc(trim(cfg.ai_doctor_lang || "ru"));
     let prompt = "";
     if (lang == "en") {
         prompt = sprintf(
-            "You are \"Tachyon AI Doctor\", an AI assistant for anti-censorship and proxy services on OpenWrt.\n" +
+            "You are \"Tachyon AI Doctor\", an AI assistant for network routing, tunneling, and traffic optimization services on OpenWrt.\n" +
+            "%s" +
             "Analyze the diagnostic report and system logs below.\n\n%s\n\n" +
             "Formulate a concise diagnosis (in English, max 3-4 bullet points).\n" +
             "For each issue or recommendation, cite concrete evidence or symptoms from the diagnostic report (e.g., specific error message, failed check, or log entry).\n" +
@@ -3821,12 +3914,12 @@ function compute_ai_doctor_result(user_query) {
             "FIX: code1, code2\n\n" +
             "IMPORTANT: do NOT report \"everything is fine\" when the Live Verification or Stability section shows any FAIL check, WAN flaps, or repeated service restarts — those are real problems even if the point-in-time checks passed.\n\n" +
             "Available quick fix codes:\n" +
-            "- start_singbox (sing-box process is stopped or missing)\n" +
+            "- start_singbox (sing-box / tachyon-core process is stopped or missing)\n" +
             "- rebuild_rules (nftables or ip rules damaged)\n" +
             "- fix_dnsmasq (dnsmasq service not responding)\n" +
             "- fix_resolv_symlink (resolv.conf symlink broken)\n" +
             "- start_watchdog (watchdog daemon stopped)\n" +
-            "- restart_singbox_dns (sing-box DNS failed)\n" +
+            "- restart_singbox_dns (sing-box / tachyon-core DNS failed)\n" +
             "- fix_uci_config (Tachyon UCI config corrupted)\n" +
             "- fix_wan_interface (WAN interface down)\n" +
             "- fix_gateway (default gateway missing)\n" +
@@ -3844,11 +3937,13 @@ function compute_ai_doctor_result(user_query) {
             "- enable_safe_bypass (enable safe Direct WAN bypass fallback)\n" +
             "- restore_native_internet (restore native direct internet without Tachyon)\n" +
             "- optimize_memory (flush memory caches)\n" +
-            "- switch_to_doh (switch DNS interception to DoH)\n\n" +
-            "If no quick fix applies, do NOT output any FIX tag.", sys_context);
+            "- switch_to_doh (switch DNS interception to DoH)\n" +
+            "- upgrade_to_singbox_extended (upgrade sing-box to extended fork for AmneziaWG/advanced protocols)\n\n" +
+            "If no quick fix applies, do NOT output any FIX tag.", arch_ref_en, sys_context);
     } else {
         prompt = sprintf(
-            "Вы — ИИ-ассистент \"Tachyon AI Doctor\" для сервиса обхода блокировок на OpenWrt.\n" +
+            "Вы — ИИ-ассистент \"Tachyon AI Doctor\" для системы маршрутизации, туннелирования и сетевой оптимизации трафика на OpenWrt.\n" +
+            "%s" +
             "Проанализируйте диагностический отчет и логи ниже.\n\n%s\n\n" +
             "Сформулируйте краткий диагноз (на русском, максимум 3-4 пункта).\n" +
             "Для каждого замечания или рекомендации обязательно приводите конкретные подтверждения и симптомы из отчёта (точную ошибку, упавшую проверку или строку логов).\n" +
@@ -3856,12 +3951,12 @@ function compute_ai_doctor_result(user_query) {
             "FIX: код1, код2\n\n" +
             "ВАЖНО: не пишите «всё в порядке», если в секции Live Verification или Stability есть хоть один провал, флапы WAN или повторные перезапуски сервисов — это реальные проблемы, даже если мгновенные проверки прошли.\n\n" +
             "Доступные коды быстрого исправления:\n" +
-            "- start_singbox (sing-box упал или остановлен)\n" +
+            "- start_singbox (sing-box / tachyon-core упал или остановлен)\n" +
             "- rebuild_rules (nftables или ip rule правила нарушены)\n" +
             "- fix_dnsmasq (конфиг или сервис dnsmasq не отвечает)\n" +
             "- fix_resolv_symlink (resolv.conf повреждён)\n" +
             "- start_watchdog (watchdog остановлен)\n" +
-            "- restart_singbox_dns (sing-box DNS не отвечает)\n" +
+            "- restart_singbox_dns (sing-box / tachyon-core DNS не отвечает)\n" +
             "- fix_uci_config (конфиг Tachyon повреждён)\n" +
             "- fix_wan_interface (WAN интерфейс не работает)\n" +
             "- fix_gateway (шлюз отсутствует)\n" +
@@ -3879,13 +3974,13 @@ function compute_ai_doctor_result(user_query) {
             "- enable_safe_bypass (включить безопасный обход через WAN напрямую)\n" +
             "- restore_native_internet (вернуть прямой интернет без Tachyon)\n" +
             "- optimize_memory (очистить оперативно память)\n" +
-            "- switch_to_doh (переключить DNS на DoH)\n\n" +
-            "Если авто-исправление не применимо, не пишите тег FIX.", sys_context);
+            "- switch_to_doh (переключить DNS на DoH)\n" +
+            "- upgrade_to_singbox_extended (установить расширенную сборку sing-box-extended для AmneziaWG и доп. протоколов)\n\n" +
+            "Если авто-исправление не применимо, не пишите тег FIX.", arch_ref_ru, sys_context);
     }
 
-    user_query = trim(as_string(user_query || ""));
     if (user_query != "") {
-        prompt += "\n\n---\nПользователь задал вопрос: " + user_query + "\nОтветьте на него, учитывая диагностический контекст выше. Если вопрос не связан с диагностикой/настройкой роутера — ответьте на него как ИИ-ассистент, но кратко упомяните текущее состояние системы.\n";
+        prompt += "\n\n---\nПользователь задал вопрос: " + user_query + "\nОтветьте на него, учитывая диагностический контекст и архитектуру Tachyon выше. Если вопрос не связан с диагностикой/настройкой роутера — ответьте на него как ИИ-ассистент, но кратко упомяните текущее состояние системы.\n";
     }
 
     let provider = cfg.ai_doctor_provider || "openai";

@@ -1290,15 +1290,24 @@ function isUrlTestProxyEntry(entry?: ClashProxyEntry) {
   return entry?.value?.type?.toLowerCase() === 'urltest';
 }
 
-function getLatencySortValue(outbound: { latency: number }) {
+function getLatencySortValue(outbound: {
+  latency: number;
+  runtimeAvailable?: boolean;
+}) {
+  if (outbound.runtimeAvailable === false) {
+    return Number.POSITIVE_INFINITY;
+  }
   const latency = Number(outbound.latency);
-
-  return Number.isFinite(latency) && latency > 0
-    ? latency
-    : Number.POSITIVE_INFINITY;
+  if (Number.isFinite(latency) && latency > 0) {
+    return latency;
+  }
+  if (Number.isFinite(latency) && latency === 0) {
+    return 888_888_888;
+  }
+  return Number.POSITIVE_INFINITY;
 }
 
-function sortOutboundsForDashboard(
+export function sortOutboundsForDashboard(
   outbounds: Tachyon.Outbound[],
   options: {
     pinnedCode?: string;
@@ -1344,6 +1353,16 @@ function sortOutboundsForDashboard(
         if (rankDiff !== 0) {
           return rankDiff;
         }
+      }
+
+      const leftDead =
+        left.outbound.runtimeAvailable === false ||
+        Number(left.outbound.latency) < 0;
+      const rightDead =
+        right.outbound.runtimeAvailable === false ||
+        Number(right.outbound.latency) < 0;
+      if (leftDead !== rightDead) {
+        return leftDead ? 1 : -1;
       }
 
       if (sortMode === 'country_latency') {
@@ -1411,7 +1430,7 @@ function sortOutboundsForDashboard(
     .map((item) => item.outbound);
 }
 
-function sortUrlTestMembers(outbounds: Tachyon.UrlTestMember[]) {
+export function sortUrlTestMembers(outbounds: Tachyon.UrlTestMember[]) {
   return outbounds
     .map((outbound, index) => ({ outbound, index }))
     .sort((left, right) => {
@@ -1660,6 +1679,14 @@ function getPriorityConfigs(section: Tachyon.ConfigSection): PriorityConfig[] {
   });
 }
 
+function isFsNotFoundError(err: unknown): boolean {
+  const obj = err as { name?: string; message?: string } | null | undefined;
+  const msg = `${String(obj?.name || '')} ${String(obj?.message || err || '')}`;
+  return /NotFoundError|ENOENT|No such file or directory|Object not found|-32000/i.test(
+    msg,
+  );
+}
+
 async function readDashboardSectionCache(
   sectionName: string,
 ): Promise<DashboardSectionCache | undefined> {
@@ -1670,7 +1697,10 @@ async function readDashboardSectionCache(
   const path = `${DASHBOARD_SECTION_CACHE_DIR}/${sectionName}.json`;
 
   try {
-    const raw = await fs.read(path).catch(async () => {
+    const raw = await fs.read(path).catch(async (err: unknown) => {
+      if (isFsNotFoundError(err)) {
+        return '';
+      }
       const directFs = fs as unknown as {
         read_direct?: (p: string, type?: string) => Promise<string>;
         exec_direct?: (
@@ -3048,7 +3078,7 @@ export async function getDashboardSections(
       | 'country_alpha'
       | 'default'
       | undefined) || 'latency';
-  const globalHoverFreeze = settingsSection?.dashboard_hover_freeze !== '0';
+  const globalHoverFreeze = settingsSection?.dashboard_hover_freeze === '1';
   const globalShowSubscriptionMetadata =
     settingsSection?.dashboard_show_subscription_metadata !== '0';
 
@@ -3069,11 +3099,15 @@ export async function getDashboardSections(
         const proxyConfigType = getSectionProxyConfigType(section);
         const sectionSortByLatency = shouldSortByLatency(section);
         const effectiveSortMode =
-          !sectionSortByLatency && !section.dashboard_sort_mode
+          section.sort_by_latency === '0' && !section.dashboard_sort_mode
             ? 'default'
-            : (section.dashboard_sort_mode as typeof globalSortMode) ||
-              globalSortMode ||
-              'latency';
+            : !sectionSortByLatency &&
+                !section.dashboard_sort_mode &&
+                !settingsSection
+              ? 'default'
+              : (section.dashboard_sort_mode as typeof globalSortMode) ||
+                globalSortMode ||
+                'latency';
         const effectiveCountryGrouping =
           (section.dashboard_country_grouping as typeof globalCountryGrouping) ||
           globalCountryGrouping;

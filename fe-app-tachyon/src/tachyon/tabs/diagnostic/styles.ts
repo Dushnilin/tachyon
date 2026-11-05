@@ -100,7 +100,7 @@ export const styles = `
 }
 
 .tachyon_diagnostic-summary-banner--clickable:hover {
-    border-color: rgba(148, 130, 224, 0.42);
+    border-color: color-mix(in srgb, var(--tachyon-accent) 42%, transparent);
 }
 
 .tachyon_diagnostic-summary-banner--loading {
@@ -149,11 +149,11 @@ export const styles = `
 .tachyon_diagnostic-summary-banner__toggle {
     font-size: 11.5px;
     font-weight: 600;
-    color: #b4a5f0;
+    color: var(--tachyon-accent-text);
     padding: 4px 10px;
     border-radius: 6px;
-    background: rgba(148, 130, 224, 0.14);
-    border: 1px solid rgba(148, 130, 224, 0.28);
+    background: color-mix(in srgb, var(--tachyon-accent) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--tachyon-accent) 28%, transparent);
     white-space: nowrap;
     flex-shrink: 0;
 }
@@ -367,8 +367,8 @@ export const styles = `
 
 .tachyon_diagnostic-page__right-bar__wiki > .tachyon-partial-button:hover,
 .tachyon_diagnostic-page__right-bar__wiki > button.btn:hover {
-    border-color: rgba(148, 130, 224, 0.38) !important;
-    background: rgba(148, 130, 224, 0.1) !important;
+    border-color: color-mix(in srgb, var(--tachyon-accent) 38%, transparent) !important;
+    background: color-mix(in srgb, var(--tachyon-accent) 10%, transparent) !important;
 }
 
 .tachyon_diagnostic-page__right-bar__wiki > .tachyon_diagnostic-wiki-btn--support,
@@ -381,8 +381,8 @@ export const styles = `
 
 .tachyon_diagnostic-page__right-bar__wiki > .tachyon_diagnostic-wiki-btn--support:hover,
 .tachyon_diagnostic-page__right-bar__wiki > button:last-child:hover {
-    border-color: rgba(148, 130, 224, 0.38) !important;
-    background: rgba(148, 130, 224, 0.12) !important;
+    border-color: color-mix(in srgb, var(--tachyon-accent) 38%, transparent) !important;
+    background: color-mix(in srgb, var(--tachyon-accent) 12%, transparent) !important;
 }
 
 .tachyon_diagnostic-page__right-bar__wiki--warning {
@@ -492,7 +492,7 @@ export const styles = `
 .tachyon_diagnostic_alert__toggle-hint {
     font-size: 11px;
     font-weight: 600;
-    color: #b4a5f0;
+    color: var(--tachyon-accent-text);
     margin-top: 2px;
 }
 

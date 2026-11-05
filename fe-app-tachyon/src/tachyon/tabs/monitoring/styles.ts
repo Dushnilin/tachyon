@@ -65,11 +65,11 @@ export const styles = `
         --tachyon-monitoring-divider-color: rgba(148, 163, 184, 0.18);
         --tachyon-monitoring-soft-bg: rgba(148, 163, 184, 0.08);
         --tachyon-monitoring-soft-bg-hover: rgba(148, 163, 184, 0.15);
-        --tachyon-monitoring-paused-color: #9482e0;
+        --tachyon-monitoring-paused-color: var(--tachyon-accent);
         --tachyon-monitoring-tabs-bg: var(--background-color-low, rgba(128, 128, 128, 0.08));
-        --tachyon-monitoring-tab-active-bg: rgba(148, 130, 224, 0.18);
-        --tachyon-monitoring-tab-active-color: #c4b5fd;
-        --tachyon-monitoring-tab-badge-active-bg: rgba(148, 130, 224, 0.28);
+        --tachyon-monitoring-tab-active-bg: color-mix(in srgb, var(--tachyon-accent) 18%, transparent);
+        --tachyon-monitoring-tab-active-color: var(--tachyon-accent-text);
+        --tachyon-monitoring-tab-badge-active-bg: color-mix(in srgb, var(--tachyon-accent) 28%, transparent);
         --tachyon-monitoring-tab-badge-active-color: #f1f5f9;
         --tachyon-monitoring-table-bg: var(--background-color-high, rgba(128, 128, 128, 0.04));
         --tachyon-monitoring-th-bg: rgba(148, 163, 184, 0.06);
@@ -92,11 +92,11 @@ body.dark .tachyon_monitoring-page {
     --tachyon-monitoring-divider-color: rgba(148, 163, 184, 0.18);
     --tachyon-monitoring-soft-bg: rgba(148, 163, 184, 0.08);
     --tachyon-monitoring-soft-bg-hover: rgba(148, 163, 184, 0.15);
-    --tachyon-monitoring-paused-color: #9482e0;
+    --tachyon-monitoring-paused-color: var(--tachyon-accent);
     --tachyon-monitoring-tabs-bg: var(--background-color-low, rgba(128, 128, 128, 0.08));
-    --tachyon-monitoring-tab-active-bg: rgba(148, 130, 224, 0.18);
-    --tachyon-monitoring-tab-active-color: #c4b5fd;
-    --tachyon-monitoring-tab-badge-active-bg: rgba(148, 130, 224, 0.28);
+    --tachyon-monitoring-tab-active-bg: color-mix(in srgb, var(--tachyon-accent) 18%, transparent);
+    --tachyon-monitoring-tab-active-color: var(--tachyon-accent-text);
+    --tachyon-monitoring-tab-badge-active-bg: color-mix(in srgb, var(--tachyon-accent) 28%, transparent);
     --tachyon-monitoring-tab-badge-active-color: #f1f5f9;
     --tachyon-monitoring-table-bg: var(--background-color-high, rgba(128, 128, 128, 0.04));
     --tachyon-monitoring-th-bg: rgba(148, 163, 184, 0.06);
@@ -181,7 +181,7 @@ body.dark .tachyon_monitoring-page {
 
 .tachyon_monitoring-page .btn.tachyon_monitoring-page__icon-button--active {
     background: var(--tachyon-monitoring-tab-active-bg) !important;
-    border-color: rgba(148, 130, 224, 0.4) !important;
+    border-color: color-mix(in srgb, var(--tachyon-accent) 40%, transparent) !important;
     color: var(--tachyon-monitoring-tab-active-color) !important;
 }
 
@@ -213,8 +213,8 @@ body.dark .tachyon_monitoring-page {
 
 .tachyon_monitoring-page #monitoring-pause-toggle.btn.tachyon_monitoring-page__icon-button:hover:not(:disabled),
 .tachyon_monitoring-page #monitoring-pause-toggle.btn.tachyon_monitoring-page__icon-button--active:hover:not(:disabled) {
-    border-color: rgba(148, 130, 224, 0.4) !important;
-    background: rgba(148, 130, 224, 0.12) !important;
+    border-color: color-mix(in srgb, var(--tachyon-accent) 40%, transparent) !important;
+    background: color-mix(in srgb, var(--tachyon-accent) 12%, transparent) !important;
     color: var(--text-color-high, #f8fafc) !important;
 }
 
@@ -375,13 +375,13 @@ body.dark .tachyon_monitoring-page {
 
 .tachyon_monitoring-page .btn.tachyon_monitoring-page__multiselect-trigger:hover:not(:disabled),
 .tachyon_monitoring-page__multiselect--open .btn.tachyon_monitoring-page__multiselect-trigger {
-    border-color: rgba(139, 92, 246, 0.5) !important;
-    background: rgba(139, 92, 246, 0.08) !important;
+    border-color: color-mix(in srgb, var(--tachyon-accent) 50%, transparent) !important;
+    background: color-mix(in srgb, var(--tachyon-accent) 8%, transparent) !important;
 }
 
 .tachyon_monitoring-page .btn.tachyon_monitoring-page__multiselect-trigger--active {
-    border-color: rgba(139, 92, 246, 0.65) !important;
-    background: rgba(139, 92, 246, 0.14) !important;
+    border-color: color-mix(in srgb, var(--tachyon-accent) 65%, transparent) !important;
+    background: color-mix(in srgb, var(--tachyon-accent) 14%, transparent) !important;
     font-weight: 600 !important;
 }
 
@@ -451,7 +451,7 @@ body.dark .tachyon_monitoring-page {
 .tachyon_monitoring-page__menu-reset {
     border: 0 !important;
     background: transparent !important;
-    color: #8b5cf6 !important;
+    color: var(--tachyon-accent) !important;
     font-size: 11px;
     font-weight: 600;
     padding: 2px 6px !important;
@@ -460,7 +460,7 @@ body.dark .tachyon_monitoring-page {
 }
 
 .tachyon_monitoring-page__menu-reset:hover {
-    background: rgba(139, 92, 246, 0.12) !important;
+    background: color-mix(in srgb, var(--tachyon-accent) 12%, transparent) !important;
 }
 
 .tachyon_monitoring-page__menu-list {
@@ -489,7 +489,7 @@ body.dark .tachyon_monitoring-page {
 }
 
 .tachyon_monitoring-page__check-item--checked {
-    background: rgba(139, 92, 246, 0.1);
+    background: color-mix(in srgb, var(--tachyon-accent) 10%, transparent);
 }
 
 .tachyon_monitoring-page__checkbox {
@@ -497,7 +497,7 @@ body.dark .tachyon_monitoring-page {
     height: 14px !important;
     margin: 0 !important;
     flex: 0 0 14px;
-    accent-color: #8b5cf6;
+    accent-color: var(--tachyon-accent);
     cursor: pointer;
 }
 
@@ -580,7 +580,7 @@ body.dark .tachyon_monitoring-page {
     height: 14px !important;
     margin: 0 !important;
     flex: 0 0 14px;
-    accent-color: #8b5cf6;
+    accent-color: var(--tachyon-accent);
     cursor: pointer;
 }
 
@@ -663,7 +663,7 @@ body.dark .tachyon_monitoring-page {
 }
 
 .tachyon_monitoring-page__quick-chip:hover {
-    border-color: rgba(139, 92, 246, 0.45);
+    border-color: color-mix(in srgb, var(--tachyon-accent) 45%, transparent);
 }
 
 .tachyon_monitoring-page__quick-chip-input {
@@ -690,12 +690,12 @@ body.dark .tachyon_monitoring-page {
 }
 
 .tachyon_monitoring-page__quick-chip--checked {
-    box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.35);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--tachyon-accent) 35%, transparent);
 }
 
 .tachyon_monitoring-page__quick-chip--checked .tachyon_monitoring-page__quick-chip-box {
-    background: #8b5cf6;
-    border-color: #8b5cf6;
+    background: var(--tachyon-accent);
+    border-color: var(--tachyon-accent);
 }
 
 .tachyon_monitoring-page__quick-chip-label {
@@ -725,8 +725,8 @@ body.dark .tachyon_monitoring-page {
     gap: 5px;
     padding: 3px 8px;
     border-radius: 7px;
-    border: 1px solid rgba(139, 92, 246, 0.38);
-    background: rgba(139, 92, 246, 0.14);
+    border: 1px solid color-mix(in srgb, var(--tachyon-accent) 38%, transparent);
+    background: color-mix(in srgb, var(--tachyon-accent) 14%, transparent);
     color: var(--tachyon-monitoring-text-primary);
     font-size: 11.5px;
     font-weight: 600;
@@ -857,7 +857,7 @@ body.dark .tachyon_monitoring-page {
 }
 
 .tachyon_monitoring-page__table tbody tr:hover {
-    background: rgba(139, 92, 246, 0.04);
+    background: color-mix(in srgb, var(--tachyon-accent) 4%, transparent);
 }
 
 .tachyon_monitoring-page__table th:nth-child(1) {

@@ -463,10 +463,18 @@ function resolveSectionTelemetry(sid: string): {
   const balancers = balRefs.map((bid) => {
     const bObj =
       (typeof uci !== 'undefined' && uci.get(UCI_PACKAGE, bid)) || {};
+    const btype = String(bObj.balancer_type || 'urltest').toLowerCase();
+    const bmode = String(bObj.mode || 'least_test').toLowerCase();
+    const tag =
+      btype === 'priority'
+        ? 'PRIORITY'
+        : bmode && bmode !== 'least_test'
+          ? bmode.toUpperCase()
+          : 'URLTEST';
     return {
       id: bid,
       name: bObj.name || bObj.label || bid,
-      type: String(bObj.balancer_type || 'urltest').toUpperCase(),
+      type: tag,
     };
   });
 
@@ -692,6 +700,102 @@ interface QuickCreateTemplate {
   defaults: Record<string, any>;
 }
 
+function getBalancerEngineCapabilities(): {
+  isTachyonCore: boolean;
+  supportsNativeTachyonBalancers: boolean;
+  supportsPoolModes: boolean;
+} {
+  let activeEngine = 'sing-box';
+  try {
+    const uciEngine = String(
+      uci.get(UCI_PACKAGE, 'settings', 'engine') || '',
+    ).trim();
+    if (uciEngine) {
+      activeEngine = uciEngine;
+    }
+  } catch {
+    // ignore
+  }
+
+  let sysInfo: Record<string, any> = {};
+  try {
+    const storeMod = (globalThis as any).tachyonStore || null;
+    sysInfo =
+      (storeMod && typeof storeMod.get === 'function'
+        ? storeMod.get()?.systemInfoWidget?.data
+        : null) || {};
+  } catch {
+    // ignore
+  }
+
+  const isTachyonCore =
+    activeEngine === 'tachyon-core' ||
+    Boolean(sysInfo.tachyon_core_installed && activeEngine === 'tachyon-core');
+  const tcVersion = String(sysInfo.tachyon_core_version || '').trim();
+  const parseSemverAtLeast = (
+    ver: string,
+    minMaj: number,
+    minMin: number,
+    minPatch: number,
+  ): boolean => {
+    const m = ver.match(/(\d+)\.(\d+)\.(\d+)/);
+    if (!m) return true;
+    const maj = Number(m[1] || 0);
+    const min = Number(m[2] || 0);
+    const pat = Number(m[3] || 0);
+    if (maj !== minMaj) return maj > minMaj;
+    if (min !== minMin) return min > minMin;
+    return pat >= minPatch;
+  };
+  const supportsNativeTachyonBalancers =
+    isTachyonCore &&
+    (Boolean(sysInfo.tachyon_core_native_balancers) ||
+      parseSemverAtLeast(tcVersion, 0, 3, 9));
+  const isExtendedOrLx = Boolean(
+    sysInfo.sing_box_extended || sysInfo.sing_box_lx,
+  );
+  return {
+    isTachyonCore,
+    supportsNativeTachyonBalancers,
+    supportsPoolModes: supportsNativeTachyonBalancers || isExtendedOrLx,
+  };
+}
+
+function formatBalancerModeBadge(btype: string, modeRaw?: string): string {
+  if (btype === 'priority') {
+    return tr('PRIORITY • КАСКАД', 'PRIORITY • CASCADE');
+  }
+  const m = String(modeRaw || 'least_test')
+    .trim()
+    .toLowerCase();
+  switch (m) {
+    case 'stability':
+      return tr('STABILITY • БЕЗ ДЖИТТЕРА', 'STABILITY • EWMA + JITTER');
+    case 'sticky':
+      return tr('STICKY • ПРИВЯЗКА СЕССИЙ', 'STICKY • HRW AFFINITY');
+    case 'least_load':
+      return tr('LEAST LOAD • ПО НАГРУЗКЕ', 'LEAST LOAD • ACTIVE × RTT');
+    case 'weighted':
+      return tr('WEIGHTED • ВЗВЕШЕННЫЙ 1/RTT²', 'WEIGHTED • SMOOTH WRR');
+    case 'passive':
+      return tr('PASSIVE • АВТОКАРАНТИН', 'PASSIVE • CIRCUIT BREAKER');
+    case 'hedged':
+      return tr('HEDGED • ПАРАЛЛЕЛЬНЫЙ РЕЗЕРВ', 'HEDGED • HAPPY EYEBALLS');
+    case 'throughput':
+      return tr('THROUGHPUT • ПО СКОРОСТИ', 'THROUGHPUT • PEAK BANDWIDTH');
+    case 'quota':
+      return tr('QUOTA • ПО КВОТЕ ТРАФИКА', 'QUOTA • TRAFFIC CAP');
+    case 'round_robin':
+      return tr('ROUND-ROBIN • ПО КРУГУ', 'ROUND-ROBIN • POOL');
+    case 'random':
+      return tr('RANDOM • СЛУЧАЙНЫЙ ПУЛ', 'RANDOM • POOL');
+    case 'failover':
+      return tr('FAILOVER • ДО ОТКАЗА', 'FAILOVER • PIN UNTIL DOWN');
+    default:
+      return tr('URLTEST • АВТОВЫБОР', 'URLTEST • FASTEST PING');
+  }
+}
+
 function getQuickCreateTemplates(
   type: StudioEntityType,
 ): QuickCreateTemplate[] {
@@ -871,7 +975,8 @@ function getQuickCreateTemplates(
     ];
   }
   if (type === 'balancer') {
-    return [
+    const caps = getBalancerEngineCapabilities();
+    const templates: QuickCreateTemplate[] = [
       {
         id: 'urltest',
         icon: () => renderZapIcon(20),
@@ -886,30 +991,253 @@ function getQuickCreateTemplates(
         defaults: {
           enabled: '1',
           balancer_type: 'urltest',
+          mode: 'least_test',
           check_interval: '3m',
           tolerance: '50',
           testing_url: 'https://www.gstatic.com/generate_204',
         },
       },
-      {
-        id: 'priority',
-        icon: () => renderShieldIcon(20),
-        title: tr(
-          'Priority (Каскадный резерв по уровням)',
-          'Priority Cascade (Tiered Failover)',
-        ),
-        desc: tr(
-          'Использование основного уровня серверов с автоматическим переходом на резервный при сбое',
-          'Use primary server tier first and automatically fail over to backup tiers on outage',
-        ),
-        defaults: {
-          enabled: '1',
-          balancer_type: 'priority',
-          check_interval: '30s',
-          pick_fastest: '1',
-        },
-      },
     ];
+
+    if (caps.supportsNativeTachyonBalancers) {
+      templates.push(
+        {
+          id: 'stability',
+          icon: () => renderActivityIcon(20),
+          title: tr(
+            'Stability (Стабильный без джиттера и потерь)',
+            'Stability (EWMA + Jitter + Loss Filter)',
+          ),
+          desc: tr(
+            'Оценка стабильности по сглаженному пингу EWMA, джиттеру RFC 3550 и штрафам за потери пакетов',
+            'Composite score combining EWMA RTT, RFC 3550 jitter, and packet loss penalty',
+          ),
+          defaults: {
+            enabled: '1',
+            balancer_type: 'urltest',
+            mode: 'stability',
+            check_interval: '2m',
+            tolerance: '50',
+            testing_url: 'https://www.gstatic.com/generate_204',
+          },
+        },
+        {
+          id: 'sticky',
+          icon: () => renderPinIcon(20),
+          title: tr(
+            'Sticky Flow (Привязка сессий HRW)',
+            'Sticky Flow (Rendezvous HRW Affinity)',
+          ),
+          desc: tr(
+            'Консистентное хэширование Rendezvous HRW: сохраняет один выходной IP для клиента и домена (банки, ИИ, игры)',
+            'Rendezvous HRW hashing keeps each client + eTLD+1 domain pinned to the same healthy exit IP',
+          ),
+          defaults: {
+            enabled: '1',
+            balancer_type: 'urltest',
+            mode: 'sticky',
+            sticky_hash: ['source_ip', 'domain'],
+            balancer_pool: '4',
+            check_interval: '3m',
+            tolerance: '80',
+            testing_url: 'https://www.gstatic.com/generate_204',
+          },
+        },
+        {
+          id: 'least_load',
+          icon: () => renderScaleIcon(20),
+          title: tr(
+            'Least Load (Наименьшая нагрузка × RTT)',
+            'Least Load (Active Streams × RTT)',
+          ),
+          desc: tr(
+            'Распределение новых потоков на сервер с минимальным произведением активных соединений и задержки',
+            'Routes new connections to the node with the lowest (active_connections + 1) × RTT score',
+          ),
+          defaults: {
+            enabled: '1',
+            balancer_type: 'urltest',
+            mode: 'least_load',
+            balancer_pool: '4',
+            check_interval: '3m',
+            tolerance: '80',
+            testing_url: 'https://www.gstatic.com/generate_204',
+          },
+        },
+        {
+          id: 'weighted',
+          icon: () => renderScaleIcon(20),
+          title: tr(
+            'Weighted (Взвешенный Smooth WRR по 1/RTT²)',
+            'Weighted (Smooth WRR by 1/RTT²)',
+          ),
+          desc: tr(
+            'Детерминированное распределение трафика между топ-узлами пропорционально квадрату скорости отклика',
+            'Smooth weighted round-robin across top healthy nodes proportional to 1/RTT²',
+          ),
+          defaults: {
+            enabled: '1',
+            balancer_type: 'urltest',
+            mode: 'weighted',
+            balancer_pool: '4',
+            check_interval: '3m',
+            tolerance: '80',
+            testing_url: 'https://www.gstatic.com/generate_204',
+          },
+        },
+        {
+          id: 'passive',
+          icon: () => renderShieldIcon(20),
+          title: tr(
+            'Passive Circuit Breaker (Автокарантин обрывов)',
+            'Passive Circuit Breaker (Early-Abort Quarantine)',
+          ),
+          desc: tr(
+            'Мгновенный карантин серверов при ранних обрывах соединений (< 64 КБ за < 3 с) без ожидания проверки пинга',
+            'Automatically quarantines nodes that drop live connections early (< 64 KiB in < 3 s)',
+          ),
+          defaults: {
+            enabled: '1',
+            balancer_type: 'urltest',
+            mode: 'passive',
+            check_interval: '3m',
+            tolerance: '50',
+            testing_url: 'https://www.gstatic.com/generate_204',
+          },
+        },
+        {
+          id: 'hedged',
+          icon: () => renderRocketIcon(20),
+          title: tr(
+            'Hedged (Параллельный резерв Happy Eyeballs)',
+            'Hedged (Happy Eyeballs Parallel Backup)',
+          ),
+          desc: tr(
+            'При задержке установки соединения запускает параллельное подключение ко второму серверу и выбирает первый ответивший',
+            'Fires a parallel backup dial if primary handshake stalls and uses whichever connects first',
+          ),
+          defaults: {
+            enabled: '1',
+            balancer_type: 'urltest',
+            mode: 'hedged',
+            balancer_pool: '3',
+            check_interval: '3m',
+            tolerance: '60',
+            testing_url: 'https://www.gstatic.com/generate_204',
+          },
+        },
+        {
+          id: 'throughput',
+          icon: () => renderRocketIcon(20),
+          title: tr(
+            'Throughput (По пропускной способности)',
+            'Throughput (Peak Bandwidth Selection)',
+          ),
+          desc: tr(
+            'Выбор сервера с максимальной реальной скоростью передачи данных на основе пассивных замеров трафика',
+            'Prefers nodes with the highest measured peak throughput with exponential decay',
+          ),
+          defaults: {
+            enabled: '1',
+            balancer_type: 'urltest',
+            mode: 'throughput',
+            balancer_pool: '4',
+            check_interval: '3m',
+            tolerance: '80',
+            testing_url: 'https://www.gstatic.com/generate_204',
+          },
+        },
+        {
+          id: 'quota',
+          icon: () => renderCloudIcon(20),
+          title: tr(
+            'Quota (Балансировка по квоте трафика)',
+            'Quota (Traffic Cap Balancer)',
+          ),
+          desc: tr(
+            'Автоматический перевод новых соединений на другие узлы пула после исчерпания заданного лимита трафика в МиБ',
+            'Shifts new streams to remaining under-quota nodes once a node reaches its MiB cap',
+          ),
+          defaults: {
+            enabled: '1',
+            balancer_type: 'urltest',
+            mode: 'quota',
+            quota_mib: '10240',
+            balancer_pool: '4',
+            check_interval: '3m',
+            tolerance: '80',
+            testing_url: 'https://www.gstatic.com/generate_204',
+          },
+        },
+      );
+    }
+
+    if (caps.supportsPoolModes) {
+      templates.push(
+        {
+          id: 'round_robin',
+          icon: () => renderRefreshCwIcon(20),
+          title: tr(
+            'Round-Robin (Циклический перебор пула)',
+            'Round-Robin Pool',
+          ),
+          desc: tr(
+            'Поочерёдное распределение соединений по кругу среди живых серверов пула в пределах допуска пинга',
+            'Cycles new connections evenly across healthy nodes in the active latency pool',
+          ),
+          defaults: {
+            enabled: '1',
+            balancer_type: 'urltest',
+            mode: 'round_robin',
+            balancer_pool: '4',
+            check_interval: '3m',
+            tolerance: '80',
+            testing_url: 'https://www.gstatic.com/generate_204',
+          },
+        },
+        {
+          id: 'failover',
+          icon: () => renderLockIcon(20),
+          title: tr(
+            'Failover (Удержание узла до отказа)',
+            'Failover (Pin Current Until Failure)',
+          ),
+          desc: tr(
+            'Удерживает текущий рабочий сервер без переключений при колебаниях пинга и меняет его только при полном отказе',
+            'Stays pinned to the current working server regardless of RTT fluctuations until it fails',
+          ),
+          defaults: {
+            enabled: '1',
+            balancer_type: 'urltest',
+            mode: 'failover',
+            check_interval: '1m',
+            tolerance: '100',
+            testing_url: 'https://www.gstatic.com/generate_204',
+          },
+        },
+      );
+    }
+
+    templates.push({
+      id: 'priority',
+      icon: () => renderShieldIcon(20),
+      title: tr(
+        'Priority (Каскадный резерв по уровням)',
+        'Priority Cascade (Tiered Failover)',
+      ),
+      desc: tr(
+        'Использование основного уровня серверов с автоматическим переходом на резервный при сбое',
+        'Use primary server tier first and automatically fail over to backup tiers on outage',
+      ),
+      defaults: {
+        enabled: '1',
+        balancer_type: 'priority',
+        check_interval: '30s',
+        pick_fastest: '1',
+      },
+    });
+
+    return templates;
   }
   if (type === 'server') {
     return [
@@ -1373,6 +1701,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
     {
       badge: string;
       title: string;
+      panelTitle: string;
       subtitle: string;
       addLabel: string;
       filters: { id: string; label: string }[];
@@ -1380,15 +1709,13 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
   > = {
     section: {
       badge: 'TACHYON ROUTING PIPELINE',
-      title: tr(
-        'Конвейер секций маршрутизации',
-        'Routing Sections & Traffic Pipeline',
-      ),
+      title: tr('Настройки секций маршрутизации', 'Routing Sections Settings'),
+      panelTitle: tr('Секции маршрутизации', 'Routing Sections'),
       subtitle: tr(
         'Пакеты проверяются сверху вниз (#1 → #N). Перетаскивайте карточки или используйте стрелки приоритета.',
         'Packets are matched from top (#1) to bottom. Drag cards or use priority arrows to reorder.',
       ),
-      addLabel: `+ ${tr('Новая секция', 'New Section')}`,
+      addLabel: `+ ${tr('Добавить секцию', 'Add Section')}`,
       filters: [
         { id: 'all', label: tr('Все секции', 'All Sections') },
         { id: 'proxy', label: tr('Прокси / VPN', 'Proxy / VPN') },
@@ -1398,10 +1725,8 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
     },
     outbound_source: {
       badge: 'GLOBAL SERVER POOL • LAYER 1',
-      title: tr(
-        'Уровень 1: Пул серверов, подписки и туннели',
-        'Layer 1: Outbound Sources, Subscriptions & Tunnels',
-      ),
+      title: tr('Настройки узлов и подписок', 'Nodes & Subscriptions Settings'),
+      panelTitle: tr('Узлы и подписки', 'Nodes & Subscriptions'),
       subtitle: tr(
         'Единый пул подписок, ссылок VLESS/Hysteria2, туннелей AmneziaWG/WARP и стратегий обхода DPI.',
         'Unified pool of subscriptions, VLESS/Hysteria2 links, AmneziaWG/WARP tunnels, and DPI strategies.',
@@ -1423,15 +1748,13 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
     },
     condition: {
       badge: 'TRAFFIC MATCHERS & RULES',
-      title: tr(
-        'Условия трафика и наборы правил',
-        'Traffic Conditions & Rule Matchers',
-      ),
+      title: tr('Настройки условий трафика', 'Traffic Conditions Settings'),
+      panelTitle: tr('Условия трафика', 'Traffic Conditions'),
       subtitle: tr(
         'Списки сервисов, домены, подсети и составные логические условия (AND / OR / NOT) для секций.',
         'Reusable service lists, domain/IP sets, and boolean rules (AND / OR / NOT) attached to routing sections.',
       ),
-      addLabel: `+ ${tr('Новое условие', 'New Condition')}`,
+      addLabel: `+ ${tr('Добавить условие', 'Add Condition')}`,
       filters: [
         { id: 'all', label: tr('Все условия', 'All Conditions') },
         {
@@ -1444,32 +1767,32 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
     },
     balancer: {
       badge: 'SMART FAILOVER & AUTO-SELECT',
-      title: tr(
-        'Балансировщики и отказоустойчивость',
-        'Balancers & Failover Policies',
-      ),
+      title: tr('Настройки балансировщиков', 'Balancers & Failover Settings'),
+      panelTitle: tr('Балансировщики', 'Balancers'),
       subtitle: tr(
-        'Автовыбор самого быстрого узла по пингу (URLTest) и каскадное резервирование по уровням (Priority).',
-        'Latency-based URLTest auto-selection and tiered Priority failover across server pools.',
+        'Автовыбор по пингу (URLTest), стабильности (EWMA + Jitter), привязке сессий (Sticky HRW), нагрузке (Least Load), скорости (Throughput), квоте (Quota) и каскадному резерву (Priority).',
+        'Latency URLTest, Stability EWMA+Jitter, Sticky HRW, Least Load, Weighted, Hedged, Throughput, Quota, and tiered Priority failover.',
       ),
-      addLabel: `+ ${tr('Новый балансировщик', 'New Balancer')}`,
+      addLabel: `+ ${tr('Добавить балансировщик', 'Add Balancer')}`,
       filters: [
         { id: 'all', label: tr('Все политики', 'All Policies') },
-        { id: 'urltest', label: 'URLTest' },
+        { id: 'urltest', label: tr('Пинг / Стабильность', 'Ping / Stability') },
+        { id: 'pool', label: tr('Пул / Балансировка', 'Pool / Load Balance') },
         { id: 'priority', label: 'Priority' },
       ],
     },
     server: {
       badge: 'INBOUND SERVER HUB',
       title: tr(
-        'Входящие VPN и прокси-серверы на роутере (Inbound)',
-        'Inbound VPN & Proxy Servers on Router',
+        'Настройки входящих серверов (Inbound)',
+        'Inbound Servers Settings',
       ),
+      panelTitle: tr('Серверы (Inbound)', 'Inbound Servers'),
       subtitle: tr(
         'Поднимите собственный сервер VLESS Reality, Hysteria2, TUIC, AmneziaWG или SOCKS5 для доступа к роутеру извне.',
         'Host your own VLESS Reality, Hysteria2, TUIC, AmneziaWG, or SOCKS5 server for remote access.',
       ),
-      addLabel: `+ ${tr('Новый сервер', 'New Inbound Server')}`,
+      addLabel: `+ ${tr('Добавить сервер', 'Add Inbound Server')}`,
       filters: [
         { id: 'all', label: tr('Все протоколы', 'All Protocols') },
         { id: 'enabled', label: tr('Активные', 'Active Only') },
@@ -1481,25 +1804,27 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
     },
     profile: {
       badge: 'FAMILY ACCESS PROFILES',
-      title: tr('Семейные профили устройств', 'Family & Device Profiles'),
+      title: tr('Настройки семейных профилей', 'Family Profiles Settings'),
+      panelTitle: tr('Семейные профили', 'Family Profiles'),
       subtitle: tr(
         'Объединяйте домашние устройства в профили для фильтрации контента, SafeSearch и расписаний.',
         'Group household devices to apply SafeSearch, ad blocking, and parental schedules.',
       ),
-      addLabel: `+ ${tr('Новый профиль', 'New Profile')}`,
+      addLabel: `+ ${tr('Добавить профиль', 'Add Profile')}`,
       filters: [{ id: 'all', label: tr('Все профили', 'All Profiles') }],
     },
     schedule: {
       badge: 'PARENTAL TIME POLICIES',
       title: tr(
-        'Родительский контроль и расписания',
-        'Parental Control & Schedules',
+        'Настройки родительского контроля',
+        'Parental Control Settings',
       ),
+      panelTitle: tr('Родительский контроль', 'Parental Control'),
       subtitle: tr(
         'Ограничение доступа в интернет или отдельных секций по времени суток и дням недели.',
         'Time-based internet access and section restrictions by day of week.',
       ),
-      addLabel: `+ ${tr('Новое правило', 'New Schedule')}`,
+      addLabel: `+ ${tr('Добавить правило', 'Add Schedule')}`,
       filters: [{ id: 'all', label: tr('Все расписания', 'All Schedules') }],
     },
   };
@@ -1507,7 +1832,16 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
   const meta = headerMeta[type] || headerMeta.section;
 
   const toolbarEl = E('div', { class: 'tachyon-studio-toolbar' });
+  const panelEl = E('div', { class: 'tachyon-studio-panel' });
+  const panelHeaderEl = E('div', { class: 'tachyon-studio-panel__header' });
   const bodyEl = E('div', { class: 'tachyon-studio-body' });
+  let disabledTrayOpen = false;
+  const disabledTrayEl = E('div', {
+    class: 'tachyon-studio-disabled-tray is-hidden',
+  });
+  panelEl.appendChild(panelHeaderEl);
+  panelEl.appendChild(bodyEl);
+  panelEl.appendChild(disabledTrayEl);
 
   interface SubCacheServerItem {
     name: string;
@@ -1538,13 +1872,25 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
   const expandedSourceIds = new Set<string>();
   const updatingSubTargets = new Set<string>();
 
-  const readFsText = (path: string): Promise<string> => {
+  const isFsNotFoundError = (err: any): boolean => {
+    const msg = `${String(err?.name || '')} ${String(err?.message || err || '')}`;
+    return /NotFoundError|ENOENT|No such file or directory|Object not found|-32000/i.test(
+      msg,
+    );
+  };
+
+  const readFsText = (
+    path: string,
+    allowDirectFallback = true,
+  ): Promise<string> => {
     if (typeof fs === 'undefined' || typeof fs.read !== 'function') {
       return Promise.resolve('');
     }
     return fs
       .read(path)
-      .catch(() =>
+      .catch((err: any) =>
+        allowDirectFallback &&
+        !isFsNotFoundError(err) &&
         typeof (fs as any).read_direct === 'function'
           ? (fs as any).read_direct(path, 'text')
           : Promise.resolve(''),
@@ -1572,258 +1918,288 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
       ]),
     ).filter(Boolean);
 
-    return Promise.all(
-      secNames.map((secName) =>
-        readFsText(`/var/run/tachyon/section-cache/${secName}.json`).then(
-          (raw) => {
-            if (!raw) return null;
-            try {
-              return JSON.parse(raw);
-            } catch {
-              return null;
-            }
-          },
-        ),
-      ),
-    ).then((caches) => {
-      const validCaches = caches.filter((c) => c && typeof c === 'object');
-      if (validCaches.length === 0) return;
+    const listCacheDirPromise: Promise<Set<string> | null> =
+      typeof fs !== 'undefined' && typeof fs.list === 'function'
+        ? fs
+            .list('/var/run/tachyon/section-cache')
+            .then((entries: any) =>
+              Array.isArray(entries)
+                ? new Set(
+                    entries
+                      .map((e: any) => String((e && e.name) || ''))
+                      .filter(Boolean),
+                  )
+                : null,
+            )
+            .catch(() => null)
+        : Promise.resolve(null);
 
-      const singleSub = subSources.length === 1 ? subSources[0] : null;
-      const fptnSources = subSources.filter(
-        (s: any) =>
-          String(s.source_type || s.type || '').toLowerCase() === 'fptn',
-      );
-      const singleFptn = fptnSources.length === 1 ? fptnSources[0] : null;
-      subSources.forEach((src: any) => {
-        const sid = String(src['.name'] || '');
-        const srcStype = String(
-          src.source_type || src.type || 'subscription',
-        ).toLowerCase();
-        const rawSubName = String(src.name || '').trim();
-        const subUrl = String(
-          src.url || (/^https?:\/\//i.test(rawSubName) ? rawSubName : ''),
-        ).trim();
-        const existingByUrl =
-          srcStype === 'subscription' && subUrl
-            ? subCacheByUrl.get(subUrl)
-            : undefined;
-        const alreadyHasServers = (existingByUrl?.servers.length || 0) > 0;
-        const prefix =
-          src.prefix_nodes !== '0' && src.node_prefix
-            ? String(src.node_prefix).trim()
-            : '';
-        const srcTitle = String(src.name || src.label || sid).trim();
-        const serverMap = new Map<string, SubCacheServerItem>();
-        let foundMeta: SubCacheEntryInfo['metadata'] = undefined;
-        let foundUpdatedAt = 0;
+    return listCacheDirPromise
+      .then((existingFiles) => {
+        const candidates =
+          existingFiles !== null
+            ? secNames.filter((secName) => existingFiles.has(`${secName}.json`))
+            : secNames;
+        if (candidates.length === 0) return [];
+        const allowDirect = existingFiles !== null;
+        return Promise.all(
+          candidates.map((secName) =>
+            readFsText(
+              `/var/run/tachyon/section-cache/${secName}.json`,
+              allowDirect,
+            ).then((raw) => {
+              if (!raw) return null;
+              try {
+                return JSON.parse(raw);
+              } catch {
+                return null;
+              }
+            }),
+          ),
+        );
+      })
+      .then((caches) => {
+        const validCaches = caches.filter((c) => c && typeof c === 'object');
+        if (validCaches.length === 0) return;
 
-        validCaches.forEach((c: any) => {
-          const meta =
-            c.outboundMetadata && typeof c.outboundMetadata === 'object'
-              ? c.outboundMetadata
-              : {};
-          const namesObj =
-            (meta.names && typeof meta.names === 'object'
-              ? meta.names
-              : c.names && typeof c.names === 'object'
-                ? c.names
-                : {}) || {};
-          const protocolsObj =
-            (meta.protocols && typeof meta.protocols === 'object'
-              ? meta.protocols
-              : c.types && typeof c.types === 'object'
-                ? c.types
-                : {}) || {};
-          const transportsObj =
-            meta.transports && typeof meta.transports === 'object'
-              ? meta.transports
-              : {};
-          const prefixesObj =
-            meta.prefixes && typeof meta.prefixes === 'object'
-              ? meta.prefixes
-              : {};
-          const sourceIdsObj =
-            meta.source_ids && typeof meta.source_ids === 'object'
-              ? meta.source_ids
-              : {};
-          const linksObj =
-            c.links && typeof c.links === 'object' ? c.links : {};
-          const outboundsArr = Array.from(
-            new Set([
-              ...Object.keys(namesObj),
-              ...(Array.isArray(c.urltestCandidateTags)
-                ? c.urltestCandidateTags
+        const singleSub = subSources.length === 1 ? subSources[0] : null;
+        const fptnSources = subSources.filter(
+          (s: any) =>
+            String(s.source_type || s.type || '').toLowerCase() === 'fptn',
+        );
+        const singleFptn = fptnSources.length === 1 ? fptnSources[0] : null;
+        subSources.forEach((src: any) => {
+          const sid = String(src['.name'] || '');
+          const srcStype = String(
+            src.source_type || src.type || 'subscription',
+          ).toLowerCase();
+          const rawSubName = String(src.name || '').trim();
+          const subUrl = String(
+            src.url || (/^https?:\/\//i.test(rawSubName) ? rawSubName : ''),
+          ).trim();
+          const existingByUrl =
+            srcStype === 'subscription' && subUrl
+              ? subCacheByUrl.get(subUrl)
+              : undefined;
+          const alreadyHasServers = (existingByUrl?.servers.length || 0) > 0;
+          const prefix =
+            src.prefix_nodes !== '0' && src.node_prefix
+              ? String(src.node_prefix).trim()
+              : '';
+          const srcTitle = String(src.name || src.label || sid).trim();
+          const serverMap = new Map<string, SubCacheServerItem>();
+          let foundMeta: SubCacheEntryInfo['metadata'] = undefined;
+          let foundUpdatedAt = 0;
+
+          validCaches.forEach((c: any) => {
+            const meta =
+              c.outboundMetadata && typeof c.outboundMetadata === 'object'
+                ? c.outboundMetadata
+                : {};
+            const namesObj =
+              (meta.names && typeof meta.names === 'object'
+                ? meta.names
+                : c.names && typeof c.names === 'object'
+                  ? c.names
+                  : {}) || {};
+            const protocolsObj =
+              (meta.protocols && typeof meta.protocols === 'object'
+                ? meta.protocols
+                : c.types && typeof c.types === 'object'
+                  ? c.types
+                  : {}) || {};
+            const transportsObj =
+              meta.transports && typeof meta.transports === 'object'
+                ? meta.transports
+                : {};
+            const prefixesObj =
+              meta.prefixes && typeof meta.prefixes === 'object'
+                ? meta.prefixes
+                : {};
+            const sourceIdsObj =
+              meta.source_ids && typeof meta.source_ids === 'object'
+                ? meta.source_ids
+                : {};
+            const linksObj =
+              c.links && typeof c.links === 'object' ? c.links : {};
+            const outboundsArr = Array.from(
+              new Set([
+                ...Object.keys(namesObj),
+                ...(Array.isArray(c.urltestCandidateTags)
+                  ? c.urltestCandidateTags
+                  : []),
+                ...(Array.isArray(c.outbounds) ? c.outbounds : []),
+              ]),
+            );
+            const subInfos = [
+              ...(Array.isArray(c.subscriptionMetadata)
+                ? c.subscriptionMetadata
                 : []),
-              ...(Array.isArray(c.outbounds) ? c.outbounds : []),
-            ]),
-          );
-          const subInfos = [
-            ...(Array.isArray(c.subscriptionMetadata)
-              ? c.subscriptionMetadata
-              : []),
-            ...(Array.isArray(c.subscriptionInfos) ? c.subscriptionInfos : []),
-          ];
+              ...(Array.isArray(c.subscriptionInfos)
+                ? c.subscriptionInfos
+                : []),
+            ];
 
-          subInfos.forEach((si: any) => {
-            if (!si || typeof si !== 'object') return;
-            const siTitle = String(si.title || '').trim();
-            const siSec = String(
-              si.sourceSection || si.source_section || '',
-            ).trim();
-            if (
-              singleSub ||
-              (sid &&
-                (siSec === `${sid}-subscription-1` ||
-                  siSec === `Pool_${sid}-subscription-1`)) ||
-              (prefix && siTitle.toLowerCase() === prefix.toLowerCase()) ||
-              (srcTitle && siTitle.toLowerCase() === srcTitle.toLowerCase())
-            ) {
-              const siUpd = Number(si.updatedAt || 0);
-              if (siUpd > foundUpdatedAt) foundUpdatedAt = siUpd;
-              foundMeta = {
-                title: siTitle || foundMeta?.title || undefined,
-                traffic: si.traffic ?? foundMeta?.traffic,
-                expire: si.expire ?? foundMeta?.expire,
-                webPageUrl: si.webPageUrl || foundMeta?.webPageUrl,
-                supportUrl: si.supportUrl || foundMeta?.supportUrl,
-                announce: si.announce || foundMeta?.announce,
-                updatedAt: siUpd > 0 ? siUpd : foundMeta?.updatedAt,
+            subInfos.forEach((si: any) => {
+              if (!si || typeof si !== 'object') return;
+              const siTitle = String(si.title || '').trim();
+              const siSec = String(
+                si.sourceSection || si.source_section || '',
+              ).trim();
+              if (
+                singleSub ||
+                (sid &&
+                  (siSec === `${sid}-subscription-1` ||
+                    siSec === `Pool_${sid}-subscription-1`)) ||
+                (prefix && siTitle.toLowerCase() === prefix.toLowerCase()) ||
+                (srcTitle && siTitle.toLowerCase() === srcTitle.toLowerCase())
+              ) {
+                const siUpd = Number(si.updatedAt || 0);
+                if (siUpd > foundUpdatedAt) foundUpdatedAt = siUpd;
+                foundMeta = {
+                  title: siTitle || foundMeta?.title || undefined,
+                  traffic: si.traffic ?? foundMeta?.traffic,
+                  expire: si.expire ?? foundMeta?.expire,
+                  webPageUrl: si.webPageUrl || foundMeta?.webPageUrl,
+                  supportUrl: si.supportUrl || foundMeta?.supportUrl,
+                  announce: si.announce || foundMeta?.announce,
+                  updatedAt: siUpd > 0 ? siUpd : foundMeta?.updatedAt,
+                };
+              }
+            });
+
+            if (alreadyHasServers) return;
+
+            outboundsArr.forEach((code: string) => {
+              const cStr = String(code || '');
+              if (
+                !cStr ||
+                cStr === 'direct-out' ||
+                cStr === 'block-out' ||
+                cStr.endsWith('-urltest-out') ||
+                cStr.endsWith('-priority-out') ||
+                cStr.startsWith('bal-') ||
+                cStr.startsWith('lvl-')
+              ) {
+                return;
+              }
+              const rawName = String(namesObj[cStr] || cStr).trim();
+              const link = String(linksObj[cStr] || '').trim();
+              const rawType = String(protocolsObj[cStr] || '').toUpperCase();
+              if (
+                rawType === 'URLTEST' ||
+                rawType === 'SELECTOR' ||
+                rawType === 'DIRECT' ||
+                rawType === 'DPI'
+              ) {
+                return;
+              }
+
+              const codeSourceId = String(sourceIdsObj[cStr] || '').trim();
+              const codePrefix = String(prefixesObj[cStr] || '').trim();
+              let matches = false;
+              let cleanName = rawName;
+              if (codeSourceId && codeSourceId === sid) {
+                matches = true;
+              } else if (
+                prefix &&
+                codePrefix &&
+                codePrefix.toLowerCase() === prefix.toLowerCase()
+              ) {
+                matches = true;
+              } else if (prefix) {
+                if (rawName.startsWith(`${prefix}: `)) {
+                  matches = true;
+                  cleanName = rawName.slice(prefix.length + 2).trim();
+                } else if (rawName.startsWith(`${prefix} `)) {
+                  matches = true;
+                  cleanName = rawName.slice(prefix.length + 1).trim();
+                }
+              } else if (
+                srcStype === 'fptn' &&
+                (rawType === 'FPTN' || cStr.toLowerCase().includes('fptn')) &&
+                (singleFptn ||
+                  (srcTitle &&
+                    rawName.toLowerCase().startsWith(srcTitle.toLowerCase())))
+              ) {
+                matches = true;
+              } else if (
+                singleSub &&
+                srcStype === 'subscription' &&
+                !codeSourceId
+              ) {
+                matches = true;
+              }
+
+              if (matches && cleanName && !serverMap.has(cleanName)) {
+                const proto =
+                  rawType ||
+                  (link.includes('://')
+                    ? link.split('://')[0].toUpperCase()
+                    : 'PROXY');
+                const trans =
+                  String(transportsObj[cStr] || '').toUpperCase() ||
+                  (link.includes('://')
+                    ? (getProxyUrlTransport(link) || 'TCP').toUpperCase()
+                    : '');
+                serverMap.set(cleanName, {
+                  name: cleanName,
+                  proto,
+                  trans,
+                  link,
+                });
+              }
+            });
+          });
+
+          if (alreadyHasServers && existingByUrl) {
+            if (foundUpdatedAt > (existingByUrl.mtime || 0)) {
+              existingByUrl.mtime = foundUpdatedAt;
+            }
+            const metaFound = foundMeta as
+              | NonNullable<SubCacheEntryInfo['metadata']>
+              | undefined;
+            if (metaFound) {
+              existingByUrl.metadata = {
+                ...(existingByUrl.metadata || {}),
+                title: existingByUrl.metadata?.title || metaFound.title,
+                traffic: metaFound.traffic ?? existingByUrl.metadata?.traffic,
+                expire: metaFound.expire ?? existingByUrl.metadata?.expire,
+                webPageUrl:
+                  metaFound.webPageUrl || existingByUrl.metadata?.webPageUrl,
+                supportUrl:
+                  metaFound.supportUrl || existingByUrl.metadata?.supportUrl,
+                announce:
+                  metaFound.announce || existingByUrl.metadata?.announce,
+                updatedAt: Math.max(
+                  Number(existingByUrl.metadata?.updatedAt || 0),
+                  Number(metaFound.updatedAt || 0),
+                ),
               };
             }
-          });
-
-          if (alreadyHasServers) return;
-
-          outboundsArr.forEach((code: string) => {
-            const cStr = String(code || '');
-            if (
-              !cStr ||
-              cStr === 'direct-out' ||
-              cStr === 'block-out' ||
-              cStr.endsWith('-urltest-out') ||
-              cStr.endsWith('-priority-out') ||
-              cStr.startsWith('bal-') ||
-              cStr.startsWith('lvl-')
-            ) {
-              return;
-            }
-            const rawName = String(namesObj[cStr] || cStr).trim();
-            const link = String(linksObj[cStr] || '').trim();
-            const rawType = String(protocolsObj[cStr] || '').toUpperCase();
-            if (
-              rawType === 'URLTEST' ||
-              rawType === 'SELECTOR' ||
-              rawType === 'DIRECT' ||
-              rawType === 'DPI'
-            ) {
-              return;
-            }
-
-            const codeSourceId = String(sourceIdsObj[cStr] || '').trim();
-            const codePrefix = String(prefixesObj[cStr] || '').trim();
-            let matches = false;
-            let cleanName = rawName;
-            if (codeSourceId && codeSourceId === sid) {
-              matches = true;
-            } else if (
-              prefix &&
-              codePrefix &&
-              codePrefix.toLowerCase() === prefix.toLowerCase()
-            ) {
-              matches = true;
-            } else if (prefix) {
-              if (rawName.startsWith(`${prefix}: `)) {
-                matches = true;
-                cleanName = rawName.slice(prefix.length + 2).trim();
-              } else if (rawName.startsWith(`${prefix} `)) {
-                matches = true;
-                cleanName = rawName.slice(prefix.length + 1).trim();
-              }
-            } else if (
-              srcStype === 'fptn' &&
-              (rawType === 'FPTN' || cStr.toLowerCase().includes('fptn')) &&
-              (singleFptn ||
-                (srcTitle &&
-                  rawName.toLowerCase().startsWith(srcTitle.toLowerCase())))
-            ) {
-              matches = true;
-            } else if (
-              singleSub &&
-              srcStype === 'subscription' &&
-              !codeSourceId
-            ) {
-              matches = true;
-            }
-
-            if (matches && cleanName && !serverMap.has(cleanName)) {
-              const proto =
-                rawType ||
-                (link.includes('://')
-                  ? link.split('://')[0].toUpperCase()
-                  : 'PROXY');
-              const trans =
-                String(transportsObj[cStr] || '').toUpperCase() ||
-                (link.includes('://')
-                  ? (getProxyUrlTransport(link) || 'TCP').toUpperCase()
-                  : '');
-              serverMap.set(cleanName, {
-                name: cleanName,
-                proto,
-                trans,
-                link,
-              });
-            }
-          });
-        });
-
-        if (alreadyHasServers && existingByUrl) {
-          if (foundUpdatedAt > (existingByUrl.mtime || 0)) {
-            existingByUrl.mtime = foundUpdatedAt;
+            subCacheBySid.set(sid, existingByUrl);
+            return;
           }
-          const metaFound = foundMeta as
-            | NonNullable<SubCacheEntryInfo['metadata']>
-            | undefined;
-          if (metaFound) {
-            existingByUrl.metadata = {
-              ...(existingByUrl.metadata || {}),
-              title: existingByUrl.metadata?.title || metaFound.title,
-              traffic: metaFound.traffic ?? existingByUrl.metadata?.traffic,
-              expire: metaFound.expire ?? existingByUrl.metadata?.expire,
-              webPageUrl:
-                metaFound.webPageUrl || existingByUrl.metadata?.webPageUrl,
-              supportUrl:
-                metaFound.supportUrl || existingByUrl.metadata?.supportUrl,
-              announce: metaFound.announce || existingByUrl.metadata?.announce,
-              updatedAt: Math.max(
-                Number(existingByUrl.metadata?.updatedAt || 0),
-                Number(metaFound.updatedAt || 0),
-              ),
+
+          const servers = Array.from(serverMap.values());
+          if (servers.length > 0 || foundMeta) {
+            const existingMtime = Math.max(
+              (subUrl ? subCacheByUrl.get(subUrl)?.mtime : 0) || 0,
+              subCacheBySid.get(sid)?.mtime || 0,
+              foundUpdatedAt,
+            );
+            const entry: SubCacheEntryInfo = {
+              mtime: existingMtime,
+              servers,
+              metadata: foundMeta,
             };
+            subCacheBySid.set(sid, entry);
+            if (subUrl && !subCacheByUrl.has(subUrl)) {
+              subCacheByUrl.set(subUrl, entry);
+            }
           }
-          subCacheBySid.set(sid, existingByUrl);
-          return;
-        }
-
-        const servers = Array.from(serverMap.values());
-        if (servers.length > 0 || foundMeta) {
-          const existingMtime = Math.max(
-            (subUrl ? subCacheByUrl.get(subUrl)?.mtime : 0) || 0,
-            subCacheBySid.get(sid)?.mtime || 0,
-            foundUpdatedAt,
-          );
-          const entry: SubCacheEntryInfo = {
-            mtime: existingMtime,
-            servers,
-            metadata: foundMeta,
-          };
-          subCacheBySid.set(sid, entry);
-          if (subUrl && !subCacheByUrl.has(subUrl)) {
-            subCacheByUrl.set(subUrl, entry);
-          }
-        }
+        });
       });
-    });
   };
 
   const loadSubscriptionCacheMap = () => {
@@ -2288,54 +2664,47 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
       );
     }
 
+    const viewSwitchEl = E('div', { class: 'tachyon-studio-view-switch' }, [
+      E(
+        'button',
+        {
+          type: 'button',
+          class: `tachyon-studio-view-btn ${viewMode === 'pipeline' ? 'is-active' : ''}`,
+          title: tr('Компактный конвейер', 'Compact Pipeline View'),
+          click: () => {
+            viewMode = 'pipeline';
+            setStudioViewMode(type, 'pipeline');
+            renderDeck();
+          },
+        },
+        [renderListIcon(13), E('span', {}, tr('Конвейер', 'Pipeline'))],
+      ),
+      E(
+        'button',
+        {
+          type: 'button',
+          class: `tachyon-studio-view-btn ${viewMode === 'cards' ? 'is-active' : ''}`,
+          title: tr('Bento-карточки', 'Bento Cards View'),
+          click: () => {
+            viewMode = 'cards';
+            setStudioViewMode(type, 'cards');
+            renderDeck();
+          },
+        },
+        [renderLayoutGridIcon(13), E('span', {}, tr('Карточки', 'Cards'))],
+      ),
+    ]);
+
     toolbarEl.appendChild(
       E('div', { class: 'tachyon-studio-toolbar__top' }, [
         E('div', { class: 'tachyon-studio-toolbar__titles' }, [
           E('div', { class: 'tachyon-studio-toolbar__title-row' }, [
             E('h3', { class: 'tachyon-studio-toolbar__title' }, meta.title),
-            E(
-              'span',
-              { class: 'tachyon-studio-toolbar__counter' },
-              `${enabledCount} / ${sids.length} ${tr('активно', 'active')}`,
-            ),
           ]),
           E('p', { class: 'tachyon-studio-toolbar__subtitle' }, meta.subtitle),
         ]),
         E('div', { class: 'tachyon-studio-toolbar__actions' }, [
           ...extraButtons,
-          E('div', { class: 'tachyon-studio-view-switch' }, [
-            E(
-              'button',
-              {
-                type: 'button',
-                class: `tachyon-studio-view-btn ${viewMode === 'cards' ? 'is-active' : ''}`,
-                title: tr('Bento-карточки', 'Bento Cards View'),
-                click: () => {
-                  viewMode = 'cards';
-                  setStudioViewMode(type, 'cards');
-                  renderDeck();
-                },
-              },
-              [
-                renderLayoutGridIcon(13),
-                E('span', {}, tr('Карточки', 'Cards')),
-              ],
-            ),
-            E(
-              'button',
-              {
-                type: 'button',
-                class: `tachyon-studio-view-btn ${viewMode === 'pipeline' ? 'is-active' : ''}`,
-                title: tr('Компактный конвейер', 'Compact Pipeline View'),
-                click: () => {
-                  viewMode = 'pipeline';
-                  setStudioViewMode(type, 'pipeline');
-                  renderDeck();
-                },
-              },
-              [renderListIcon(13), E('span', {}, tr('Конвейер', 'Pipeline'))],
-            ),
-          ]),
           E(
             'button',
             {
@@ -2350,8 +2719,22 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
       ]),
     );
 
-    toolbarEl.appendChild(
-      E('div', { class: 'tachyon-studio-toolbar__bottom' }, [
+    panelHeaderEl.innerHTML = '';
+    panelHeaderEl.appendChild(
+      E('div', { class: 'tachyon-studio-panel__header-top' }, [
+        E('div', { class: 'tachyon-studio-panel__header-left' }, [
+          E('h4', { class: 'tachyon-studio-panel__title' }, meta.panelTitle),
+          E(
+            'span',
+            { class: 'tachyon-studio-toolbar__counter' },
+            `${enabledCount} / ${sids.length} ${tr('активно', 'active')}`,
+          ),
+        ]),
+        viewSwitchEl,
+      ]),
+    );
+    panelHeaderEl.appendChild(
+      E('div', { class: 'tachyon-studio-panel__header-right' }, [
         E('div', { class: 'tachyon-studio-filter-group' }, filterPills),
         searchInput,
       ]),
@@ -2453,10 +2836,36 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
 
       if (type === 'balancer') {
         const btype = String(raw.balancer_type || 'urltest').toLowerCase();
-        if (activeFilter === 'urltest' && btype !== 'urltest') return false;
-        if (activeFilter === 'priority' && btype !== 'priority') return false;
-        if (q && !`${sid} ${name} ${btype}`.toLowerCase().includes(q))
+        const bmode = String(raw.mode || 'least_test').toLowerCase();
+        const poolModes = [
+          'sticky',
+          'least_load',
+          'weighted',
+          'hedged',
+          'throughput',
+          'quota',
+          'round_robin',
+          'random',
+        ];
+        if (
+          activeFilter === 'urltest' &&
+          (btype !== 'urltest' || poolModes.includes(bmode))
+        ) {
           return false;
+        }
+        if (
+          activeFilter === 'pool' &&
+          (btype !== 'urltest' || !poolModes.includes(bmode))
+        ) {
+          return false;
+        }
+        if (activeFilter === 'priority' && btype !== 'priority') return false;
+        if (
+          q &&
+          !`${sid} ${name} ${btype} ${bmode}`.toLowerCase().includes(q)
+        ) {
+          return false;
+        }
         return true;
       }
 
@@ -2509,6 +2918,9 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
       return true;
     });
 
+    disabledTrayEl.innerHTML = '';
+    disabledTrayEl.classList.add('is-hidden');
+
     if (!filteredSids.length) {
       bodyEl.appendChild(
         E('div', { class: 'tachyon-studio-empty' }, [
@@ -2530,11 +2942,92 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
       return;
     }
 
-    filteredSids.forEach((sid) => {
-      const globalOrderIdx = sids.indexOf(sid) + 1;
-      const cardEl = renderEntityCard(sid, globalOrderIdx, sids.length);
-      bodyEl.appendChild(cardEl);
-    });
+    const enabledSids = filteredSids.filter(
+      (sid) => uci.get(UCI_PACKAGE, sid, 'enabled') !== '0',
+    );
+    const disabledSids = filteredSids.filter(
+      (sid) => uci.get(UCI_PACKAGE, sid, 'enabled') === '0',
+    );
+
+    if (enabledSids.length > 0) {
+      enabledSids.forEach((sid) => {
+        const globalOrderIdx = sids.indexOf(sid) + 1;
+        const cardEl = renderEntityCard(sid, globalOrderIdx, sids.length);
+        bodyEl.appendChild(cardEl);
+      });
+    } else if (disabledSids.length > 0) {
+      bodyEl.appendChild(
+        E('div', { class: 'tachyon-studio-empty' }, [
+          E(
+            'div',
+            { class: 'tachyon-studio-empty__title' },
+            tr('Нет активных записей', 'No active entries'),
+          ),
+          E(
+            'div',
+            { class: 'tachyon-studio-empty__sub' },
+            tr(
+              'Все подходящие записи сейчас отключены и свернуты в блок ниже.',
+              'All matching entries are currently disabled and collapsed in the drawer below.',
+            ),
+          ),
+        ]),
+      );
+    }
+
+    if (disabledSids.length > 0) {
+      disabledTrayEl.classList.remove('is-hidden');
+      const isOpen =
+        disabledTrayOpen || q.length > 0 || enabledSids.length === 0;
+      const trayBodyEl = E(
+        'div',
+        {
+          class: `tachyon-studio-disabled-tray__body tachyon-studio-body tachyon-studio-body--${viewMode} ${isOpen ? 'is-open' : ''}`,
+        },
+        disabledSids.map((sid) => {
+          const globalOrderIdx = sids.indexOf(sid) + 1;
+          return renderEntityCard(sid, globalOrderIdx, sids.length);
+        }),
+      );
+      const chevronEl = E(
+        'span',
+        { class: 'tachyon-studio-disabled-tray__chevron' },
+        isOpen ? '▾' : '▸',
+      );
+      const trayHeaderBtn = E(
+        'button',
+        {
+          type: 'button',
+          class: `tachyon-studio-disabled-tray__toggle ${isOpen ? 'is-open' : ''}`,
+          click: () => {
+            disabledTrayOpen = !trayBodyEl.classList.contains('is-open');
+            trayBodyEl.classList.toggle('is-open', disabledTrayOpen);
+            trayHeaderBtn.classList.toggle('is-open', disabledTrayOpen);
+            chevronEl.textContent = disabledTrayOpen ? '▾' : '▸';
+          },
+        },
+        [
+          E('span', { class: 'tachyon-studio-disabled-tray__label' }, [
+            chevronEl,
+            E(
+              'span',
+              {},
+              tr(
+                `Отключенные (${disabledSids.length}) — включите переключатель на карточке, чтобы вернуть в активный список`,
+                `Disabled (${disabledSids.length}) — toggle switch on card to restore to active list`,
+              ),
+            ),
+          ]),
+          E(
+            'span',
+            { class: 'tachyon-studio-disabled-tray__count' },
+            String(disabledSids.length),
+          ),
+        ],
+      );
+      disabledTrayEl.appendChild(trayHeaderBtn);
+      disabledTrayEl.appendChild(trayBodyEl);
+    }
   };
 
   const renderEntityCard = (
@@ -2558,7 +3051,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
       card.addEventListener('dragend', () => {
         draggedSid = null;
         card.classList.remove('is-dragging');
-        bodyEl
+        panelEl
           .querySelectorAll('.is-drag-over')
           .forEach((el) => el.classList.remove('is-drag-over'));
       });
@@ -4357,6 +4850,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
     if (type === 'balancer') {
       const name = raw.name || raw.label || sid;
       const btype = String(raw.balancer_type || 'urltest').toLowerCase();
+      const bmode = String(raw.mode || 'least_test').toLowerCase();
       const usedInObjs = (uci.sections(UCI_PACKAGE, 'section') || [])
         .filter((s: any) => asArray(s.balancer_refs).includes(sid))
         .map((s: any) => ({
@@ -4375,6 +4869,10 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
       const excCountries = asArray(raw.exclude_countries);
       const incCountries = asArray(raw.include_countries);
       const excServers = asArray(raw.exclude_outbounds);
+      const balancerPool = Number(raw.balancer_pool || 0);
+      const stickyHash = asArray(raw.sticky_hash);
+      const quotaMib = Number(raw.quota_mib || 0);
+      const interruptConns = raw.interrupt_exist_connections === '1';
 
       const policyChips: HTMLElement[] = [
         E(
@@ -4401,6 +4899,57 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
             ],
           ),
         );
+        if (
+          balancerPool > 0 &&
+          [
+            'sticky',
+            'least_load',
+            'weighted',
+            'hedged',
+            'throughput',
+            'quota',
+            'round_robin',
+            'random',
+          ].includes(bmode)
+        ) {
+          policyChips.push(
+            E(
+              'span',
+              { class: 'tachyon-studio-chip tachyon-studio-chip--section' },
+              `${tr('Пул', 'Pool')}: Top-${balancerPool}`,
+            ),
+          );
+        }
+        if (bmode === 'sticky' && stickyHash.length > 0) {
+          policyChips.push(
+            E(
+              'span',
+              { class: 'tachyon-studio-chip tachyon-studio-chip--balancer' },
+              [
+                renderPinIcon(11),
+                E('span', {}, `HRW: ${stickyHash.join('+')}`),
+              ],
+            ),
+          );
+        }
+        if (bmode === 'quota' && quotaMib > 0) {
+          policyChips.push(
+            E(
+              'span',
+              { class: 'tachyon-studio-chip tachyon-studio-chip--balancer' },
+              `${tr('Лимит', 'Quota')}: ${quotaMib} MiB`,
+            ),
+          );
+        }
+        if (interruptConns) {
+          policyChips.push(
+            E(
+              'span',
+              { class: 'tachyon-studio-chip tachyon-studio-chip--muted' },
+              tr('Сброс сессий при смене', 'Reset active sessions'),
+            ),
+          );
+        }
       } else if (btype === 'priority') {
         const rawLvls = raw.outbound_group_levels;
         const lvlList: string[] = Array.isArray(rawLvls)
@@ -4486,9 +5035,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                     {
                       class: 'tachyon-studio-badge tachyon-studio-badge--proxy',
                     },
-                    btype === 'priority'
-                      ? 'PRIORITY • КАСКАД'
-                      : 'URLTEST • АВТОВЫБОР',
+                    formatBalancerModeBadge(btype, bmode),
                   ),
                 ]),
                 E(
@@ -4840,7 +5387,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
   };
 
   deckRoot.appendChild(toolbarEl);
-  deckRoot.appendChild(bodyEl);
+  deckRoot.appendChild(panelEl);
 
   const tableAnchor =
     containerEl.querySelector('.cbi-section-node') ||

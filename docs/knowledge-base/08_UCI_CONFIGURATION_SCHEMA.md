@@ -1,160 +1,193 @@
 # 08. Complete UCI Configuration Schema Reference
 
 The primary configuration for Tachyon is stored at `/etc/config/tachyon` (UCI format, mode `0600`).
+Tachyon uses a **modular relational UCI schema**: a routing `section` orchestrates traffic by referencing reusable `condition`, `outbound_source`, `balancer`, and `outbound_group` entities.
 
 ---
 
-## 1. Section: `config settings 'settings'`
+## 1. Global Settings: `config settings 'settings'`
 
-Global settings defining service behaviour, DNS resolution, watchdog parameters, Telegram integration, and AI Doctor.
+Global settings defining the active routing engine (`tachyon-core` or `sing-box`), DNS resolution, intercepted LAN interfaces, watchdog parameters, Smart Detect, AI Doctor, and Agent API.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `enabled` | `boolean` (`0`/`1`) | `1` | Master toggle for Tachyon service. |
-| `log_level` | `string` | `info` | Logging verbosity: `debug`, `info`, `warn`, `error`. |
-| `dns_mode` | `string` | `doh` | DNS routing mode: `direct`, `doh`, `dot`, `udp`, `hosts_only`. |
-| `remote_dns_server` | `string` | `https://1.1.1.1/dns-query` | Upstream secure DNS resolver for proxied domains. |
-| `direct_dns_server` | `string` | `77.88.8.8` | Fallback DNS resolver for direct / local domains. |
-| `tproxy_port` | `integer` | `10080` | Local TCP/UDP transparent proxy port for sing-box. |
-| `dns_port` | `integer` | `5353` | Local DNS listening port for sing-box DNS engine. |
-| `clash_api_port` | `integer` | `9090` | sing-box Clash REST API controller port. |
-| `clash_api_secret` | `string` | `""` | Secret token for sing-box Clash API. |
-| `watchdog_interval` | `integer` | `10` | Watchdog polling interval in seconds (5–60s). |
-| `memory_limit_mb` | `integer` | `0` | Dynamic `GOMEMLIMIT` cap in MB (`0` = auto 50% free RAM). |
-| `enable_telegram` | `boolean` | `0` | Enable interactive Telegram management bot. |
-| `telegram_token` | `string` | `""` | Telegram Bot API token from `@BotFather`. |
-| `telegram_chat_id` | `string` | `""` | Allowed Admin Telegram Chat ID(s) (comma-separated). |
-| `enable_ai_doctor` | `boolean` | `0` | Enable LLM AI Doctor diagnostic engine. |
-| `ai_doctor_provider`| `string` | `openai` | LLM Provider: `openai`, `anthropic`, `deepseek`, `custom`. |
-| `ai_doctor_model` | `string` | `""` | Model override (e.g. `gpt-4o-mini`, `claude-3-5-haiku`). |
-| `ai_doctor_api_key`| `string` | `""` | API key for the chosen LLM provider. |
-| `ai_doctor_custom_url`| `string` | `""` | Custom OpenAI-compatible endpoint URL (e.g. OpenRouter/Ollama). |
-| `agent_api_token` | `string` | `""` | Bearer token for HTTP REST Agent API write access. |
+| `engine` | `string` | `tachyon-core` | Active routing engine: `tachyon-core` or `sing-box`. |
+| `dns_type` | `string` | `doh` | Upstream DNS protocol: `doh`, `dot`, or `udp`. |
+| `dns_server` | `string` / `list` | `1.1.1.1` | Remote DNS resolver(s) for proxied / FakeIP resolution. |
+| `bootstrap_dns_server` | `string` / `list` | `77.88.8.8` | Direct WAN bootstrap DNS resolver(s) used to resolve outbound server hostnames without circular deadlocks. |
+| `fallback_dns_server` | `string` | `8.8.8.8` | Secondary fallback DNS resolver. |
+| `dns_rewrite_ttl` | `integer` | `60` | DNS TTL rewrite value (seconds) for intercepted responses (`127.0.0.42:53`). |
+| `source_network_interfaces` | `list string` | `['br-lan']` | LAN interfaces intercepted by `inet TachyonTable` (TProxy `:1602`). |
+| `enable_ipv6` | `boolean` (`0`/`1`) | `0` | Enable IPv6 routing and `inet TachyonTable` IPv6 sets. |
+| `enable_watchdog` | `boolean` (`0`/`1`) | `1` | Enable autonomous Watchdog supervisor and Reconciler drift checks. |
+| `enable_smart_detect` | `boolean` (`0`/`1`) | `0` | Enable Smart Detect degraded-domain detection. |
+| `smart_detect_mode` | `string` | `default` | Smart Detect mode: `default` or `plus`. |
+| `recovery_bypass` | `boolean` (`0`/`1`) | `0` | Emergency bypass mode allowing direct traffic on tunnel failure. |
+| `enable_ai_doctor` | `boolean` (`0`/`1`) | `0` | Enable LLM AI Doctor diagnostic engine. |
+| `enable_rag` | `boolean` (`0`/`1`) | `1` | Enable hybrid RAG knowledge base retrieval (`/usr/lib/tachyon/rag_index.json`). |
+| `ai_doctor_provider` | `string` | `openai` | LLM Provider: `openai`, `anthropic`, `gemini`, `deepseek`, `openrouter`, `groq`, `xai`, `mistral`, `ollama`, `lmstudio`, `custom`. |
+| `ai_doctor_model` | `string` | `""` | Model override (e.g. `gpt-4o-mini`, `claude-3-5-haiku-20241022`, `deepseek-chat`, `gemini-2.5-flash`). |
+| `ai_doctor_api_key` | `string` | `""` | API key for the chosen LLM provider (redacted in all API/log outputs). |
+| `ai_doctor_custom_url` | `string` | `""` | Custom OpenAI-compatible chat/embeddings endpoint URL. |
+| `ai_doctor_lang` | `string` | `ru` | AI Doctor output language (`ru` or `en`). |
+| `agent_api_token` | `string` | `""` | Bearer token for HTTP REST Agent API & MCP write access. |
+| `clash_api_secret` | `string` | `""` | Secret token for local Clash API (`127.0.0.1:9090`). |
 
 ---
 
-## 2. Section: `config server 'name'`
+## 2. Routing Section Orchestrator: `config section '<id>'`
 
-Defines an individual manual proxy outbound node.
-
-| Option | Type | Required | Description |
-|---|---|---|---|
-| `type` | `string` | Yes | Protocol: `vless`, `vmess`, `shadowsocks`, `trojan`, `hysteria2`, `wireguard`. |
-| `server` | `string` | Yes | Remote server hostname or IPv4/IPv6 address. |
-| `server_port` | `integer` | Yes | Remote server port (e.g. `443`, `8443`). |
-| `uuid` | `string` | Conditional | User UUID for VLESS / VMess. |
-| `password` | `string` | Conditional | Password for Shadowsocks / Trojan / Hysteria2. |
-| `flow` | `string` | No | Flow control: `xtls-rprx-vision` (VLESS). |
-| `security` | `string` | No | Security type: `reality`, `tls`, `none`. |
-| `sni` | `string` | Conditional | Server Name Indication for TLS / Reality. |
-| `pbk` | `string` | Conditional | Public Key for VLESS Reality. |
-| `sid` | `string` | Conditional | Short ID for VLESS Reality (hex string). |
-| `fingerprint` | `string` | No | TLS fingerprint: `chrome`, `firefox`, `safari`, `randomized`. |
-| `method` | `string` | Conditional | Cipher method for Shadowsocks (e.g. `2022-blake3-aes-128-gcm`). |
-| `routing_mode` | `string` | No | Routing mode: `rules` (default), `direct`, `section`. |
-| `routing_section` | `string` | No | Bound routing section when `routing_mode = 'section'`. |
-| `isolate_lan_for_users` | `boolean` | No | Restrict access to private/LAN IP addresses (`1` / `0`). |
-| `isolated_users` | `list string` | No | Specific usernames (`auth_user`) restricted from LAN. If empty, restricts all users of the inbound. |
-| `isolated_subnets` | `list string` | No | Optional custom subnets to block for isolated users (defaults to `ip_is_private: true`). |
-| `custom_route_rules` | `list string` | No | Raw JSON sing-box route rule objects injected before general routing rules. |
-
-When saving in LuCI, disabling a routing section also disables enabled servers with `routing_mode = 'section'` and a matching `routing_section`. Their routing settings are preserved; enabling the section again does not automatically enable the servers. The warning lists the affected servers and remains in that browser after page reload until dismissed. If browser storage is unavailable, the warning is shown for the current page only. Direct configuration edits and imports remain subject to runtime validation.
-
----
-
-## 3. Section: `config subscription 'name'`
-
-Defines a remote subscription URL for automated batch node fetching.
+Each `section` binds traffic conditions (`condition_refs`) to an action/outbound (`outbound_source_refs`, `balancer_refs`, or `outbound_group_ref`).
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `enabled` | `boolean` | `1` | Enable this subscription source. |
-| `url` | `string` | Required | HTTPS / HTTP link to subscription (Base64, Clash, SIP002). |
-| `update_interval`| `integer` | `86400` | Auto-update interval in seconds (default 24 hours). |
-| `custom_user_agent`| `string` | `""` | Custom User-Agent header for subscription request. |
-| `filter_keywords` | `list string` | `[]` | Include nodes matching regex/keywords. |
-| `exclude_keywords`| `list string` | `[]` | Exclude nodes matching regex/keywords. |
+| `enabled` | `boolean` | `1` | Enable or disable this routing section. |
+| `label` | `string` | `""` | Human-readable section name in LuCI UI. |
+| `connection_type` | `string` | `proxy` | Section type: `proxy`, `vpn`, `direct`, `block`, `hosts`, `zapret`, `zapret2`, `byedpi`, `wdtt`, `olcrtc`, `fptn`, `desync`. |
+| `action` | `string` | `proxy` | Action mode corresponding to `connection_type`. |
+| `condition_refs` | `list string` | `[]` | References to `condition` sections that select traffic for this rule. |
+| `outbound_source_refs` | `list string` | `[]` | References to `outbound_source` sections providing proxy nodes or local providers. |
+| `balancer_refs` | `list string` | `[]` | References to `balancer` sections for latency/weighted load distribution. |
+| `outbound_group_ref` | `string` | `""` | Reference to an `outbound_group` section for primary/backup failover cascade. |
 
 ---
 
-## 4. Section: `config rule 'name'`
+## 3. Traffic Matcher: `config condition '<id>'`
 
-Defines a selective routing policy.
+Defines reusable atomic or composite (`all` / `any` / `not`) matching criteria.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `enabled` | `boolean` | `1` | Enable this routing rule. |
-| `name` | `string` | `""` | Human-readable label for UI. |
-| `action` | `string` | `proxy` | Route target: `proxy`, `zapret`, `zapret2`, `byedpi`, `direct`, `hosts`. |
-| `target_server` | `string` | `""` | Bound server ID or outbound tag when `action = 'proxy'`. |
-| `domain_pattern` | `list string` | `[]` | List of target domains or wildcards (e.g. `*.youtube.com`). |
-| `ip_cidr` | `list string` | `[]` | List of IP subnets (e.g. `104.16.0.0/12`). |
-| `client_group` | `string` | `""` | Restrict this rule to a specific client device group. |
+| `enabled` | `boolean` | `1` | Enable this condition. |
+| `name` | `string` | `""` | Condition display name. |
+| `condition_type` | `string` | `atomic` | `atomic`, `all`, `any`, or `not` (composite conditions use `children`). |
+| `community_lists` | `list string` | `[]` | Built-in community domain/IP lists (`youtube`, `discord`, `telegram`, `meta`, `openai`, etc.). |
+| `user_domains` | `list string` | `[]` | Custom domains and suffixes (e.g. `example.com`, `googlevideo.com`). |
+| `user_subnets` | `list string` | `[]` | Custom destination IPv4/IPv6 CIDR subnets. |
+| `remote_domain_lists` | `list string` | `[]` | Remote URLs of domain lists. |
+| `remote_subnet_lists` | `list string` | `[]` | Remote URLs of IP CIDR lists. |
+| `geoip_codes` | `list string` | `[]` | GeoIP country codes. |
+| `geosite_codes` | `list string` | `[]` | GeoSite category codes. |
+| `client_ips` | `list string` | `[]` | Match specific LAN client IPv4/IPv6 addresses. |
+| `exclude_client_ips` | `list string` | `[]` | Exclude specific LAN client IPs from matching. |
+| `ports` | `list string` | `[]` | Destination ports or ranges (e.g. `443`, `50000-65535`). |
+| `l4_proto` | `string` | `""` | Layer-4 protocol filter: `tcp`, `udp`, or empty (both). |
 
 ---
 
-## 5. Section: `config hosts 'name'`
+## 4. Outbound Source: `config outbound_source '<id>'`
 
-Configures static DNS overrides and remote blocklists ingestion.
+Defines proxy subscriptions, manual proxy links, raw JSON outbounds, network interfaces, or local provider strategies.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `enabled` | `boolean` | `1` | Enable hosts mapping. |
-| `dns_hosts` | `list string` | `[]` | Static mappings in format `domain:ip` (e.g. `example.com:1.2.3.4`). |
-| `hosts_list_urls` | `list string` | `[]` | External URLs for blocklists (AdAway, StevenBlack). |
-| `update_interval` | `integer` | `86400` | Auto-refresh interval in seconds. |
+| `enabled` | `boolean` | `1` | Enable this outbound source. |
+| `name` | `string` | `""` | Human-readable source name. |
+| `source_type` | `string` | `subscription` | `subscription`, `proxy_links`, `custom_json`, `interface`, or `provider`. |
+| `subscription_urls` | `list string` | `[]` | Subscription URLs (`https://...`) when `source_type = 'subscription'`. |
+| `proxy_links` | `list string` | `[]` | Direct proxy URIs (`vless://`, `vmess://`, `ss://`, `trojan://`, `hysteria2://`, `wireguard://`, `awg://`). |
+| `custom_json` | `string` | `""` | Raw outbound JSON object when `source_type = 'custom_json'`. |
+| `interface_name` | `string` | `""` | Network interface name (e.g. `wg0`, `awg0`, `tun0`) when `source_type = 'interface'`. |
+| `provider_kind` | `string` | `""` | Local provider type: `zapret`, `zapret2`, `byedpi`, `wdtt`, `olcrtc`, `fptn`, `desync`. |
+| `nfqws2_strategy` | `string` | `""` | Zapret v2 Lua strategy (`--lua-desync=multisplit:pos=1,midsld:seqovl=1:fooling=badseq`). |
+| `nfqws_strategy` | `string` | `""` | Zapret v1 strategy (`--dpi-desync=fake,split2 --dpi-desync-split-pos=1,midsld`). |
+| `byedpi_args` | `string` | `""` | ByeDPI (`ciadpi`) CLI arguments (`-s 1 -d 1 --auto=t,r,s -o 1`). |
+| `filter_allow_regex` | `string` | `""` | Include subscription nodes matching regex. |
+| `filter_deny_regex` | `string` | `""` | Exclude subscription nodes matching regex. |
 
 ---
 
-## 6. Ready-to-Use Configuration Recipes
+## 5. Balancers & Failover Groups: `config balancer '<id>'` & `config outbound_group '<id>'`
 
-### Recipe A: Zero-VPS Local DPI Bypass (YouTube + Discord)
+### 5.1. `config balancer '<id>'`
+Distributes or selects across nodes from `outbound_source_refs`:
+* `balancer_type`: `urltest` (default) or `priority`.
+* `mode`: `least_test`, `least_ping`, `round_robin`, `random`, `stability`.
+* `testing_url`: Probe URL (default `https://www.gstatic.com/generate_204`).
+* `check_interval`: Probe interval in seconds (default `180`).
+* `tolerance`: Latency switch threshold in ms (default `50`).
+* `sticky_hash`: Sticky hash key (`src_ip`, `dst_ip`, `dst_host`).
+* `passive_check`: Enable passive failure tracking (`0`/`1`).
+
+### 5.2. `config outbound_group '<id>'`
+Defines a multi-tier failover cascade:
+* `primary_refs`: Primary `outbound_source` or `balancer` IDs.
+* `backup_refs`: Backup `outbound_source` or `balancer` IDs activated when primaries fail.
+* `fail_policy`: Behavior when all tiers fail (`block`, `direct`, or `last_alive`).
+
+---
+
+## 6. Inbound Server Node: `config server '<id>'`
+
+Defines an inbound server hosted on the router (`shadowsocks`, `vless`, `vmess`, `trojan`, `socks`, `http`, `wireguard`):
+* `routing_mode`: `rules` (default), `direct`, or `section` (bound to `routing_section`).
+* `isolate_lan_for_users`, `isolated_users`, `isolated_subnets`: Restrict inbound clients from accessing private LAN subnets.
+* When saving in LuCI, disabling a routing section also disables enabled servers with `routing_mode = 'section'` and a matching `routing_section`. Their routing settings are preserved; enabling the section again does not automatically enable the servers.
+
+---
+
+## 7. Ready-to-Use Configuration Recipes
+
+### Recipe A: Zero-VPS Local Packet Desynchronization (YouTube + Discord via Zapret v2)
 ```ini
 config settings 'settings'
-    option enabled '1'
-    option dns_mode 'doh'
+    option engine 'tachyon-core'
+    option dns_type 'doh'
+    option bootstrap_dns_server '77.88.8.8'
 
-config provider 'zapret2'
+config condition 'cond_media'
     option enabled '1'
-    option daemon_bin '/usr/bin/nfqws2'
-    option qnum '201'
-    option args_tcp '--dpi-desync=multisplit --dpi-desync-split-pos=1,midsld --dpi-desync-seqovl=1 --dpi-desync-fooling=badseq'
+    option name 'YouTube & Discord'
+    option condition_type 'atomic'
+    list community_lists 'youtube'
+    list community_lists 'discord'
+    list user_domains 'googlevideo.com'
 
-config rule 'youtube_discord'
+config outbound_source 'src_zapret2'
     option enabled '1'
-    option name 'YouTube & Discord Local Desync'
+    option name 'Zapret2 Multisplit'
+    option source_type 'provider'
+    option provider_kind 'zapret2'
+    option nfqws2_strategy '--lua-desync=multisplit:pos=1,midsld:seqovl=1:fooling=badseq'
+
+config section 'sec_media'
+    option enabled '1'
+    option label 'Media Local Desync'
+    option connection_type 'zapret2'
     option action 'zapret2'
-    list domain_pattern 'googlevideo.com'
-    list domain_pattern 'youtube.com'
-    list domain_pattern 'ytimg.com'
-    list domain_pattern 'discord.com'
-    list domain_pattern 'discord.gg'
+    list condition_refs 'cond_media'
+    list outbound_source_refs 'src_zapret2'
 ```
 
-### Recipe B: Hybrid Mode (Local Desync for Media + VLESS Reality for Blocked Sites)
+### Recipe B: Hybrid Mode (Zapret v2 for Media + VLESS Reality Subscription with Balancer)
 ```ini
-config server 'my_vps'
-    option type 'vless'
-    option server 'vps.example.com'
-    option server_port '443'
-    option uuid '12345678-1234-1234-1234-123456789abc'
-    option flow 'xtls-rprx-vision'
-    option security 'reality'
-    option sni 'yahoo.com'
-    option pbk 'XYZ...PUBLIC_KEY...'
-    option sid '1a2b3c4d'
-
-config rule 'media_rule'
+config outbound_source 'src_vps_sub'
     option enabled '1'
-    option action 'zapret2'
-    list domain_pattern 'youtube.com'
-    list domain_pattern 'googlevideo.com'
+    option name 'Main Subscription'
+    option source_type 'subscription'
+    list subscription_urls 'https://sub.example.com/api/v1/client/subscribe?token=REDACTED'
 
-config rule 'blocked_rule'
+config balancer 'bal_fastest'
     option enabled '1'
+    option name 'Fastest EU Node'
+    option balancer_type 'urltest'
+    option mode 'least_ping'
+    option check_interval '180'
+    option tolerance '50'
+    list outbound_source_refs 'src_vps_sub'
+
+config condition 'cond_proxied'
+    option enabled '1'
+    option name 'Proxied Services'
+    option condition_type 'atomic'
+    list community_lists 'openai'
+    list user_domains 'example.org'
+
+config section 'sec_proxy'
+    option enabled '1'
+    option label 'Main Proxy Route'
+    option connection_type 'proxy'
     option action 'proxy'
-    option target_server 'my_vps'
-    list domain_pattern 'instagram.com'
-    list domain_pattern 'twitter.com'
-    list domain_pattern 'x.com'
+    list condition_refs 'cond_proxied'
+    list balancer_refs 'bal_fastest'
 ```

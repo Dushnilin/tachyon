@@ -1136,7 +1136,10 @@ export function renderStrategyFuzzerModal(
             style:
               'font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;',
           },
-          [renderZapIcon(14), 'Native Desync (tachyon-core) Matrix Patterns'],
+          [
+            renderZapIcon(14),
+            _('Native Desync (tachyon-core) Matrix Patterns'),
+          ],
         ),
         renderChipGroup(
           _('Desync Modes (--mode)'),

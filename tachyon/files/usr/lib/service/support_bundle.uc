@@ -86,8 +86,8 @@ function command_output(cmd) {
 
 // ─── Secret Redaction Subsystem ───────────────────────────────────────────────
 
-const SENSITIVE_KEY_REGEX = /^(password|username|user|secret|token|access_token|bot_token|telegram_bot_token|telegram_token|api_key|auth_token|auth_key|auth_str|auth|bearer|uuid|private_key|private_key_passphrase|public_key|secret_key|psk|pre_shared_key|preshared_key|key|cookie|server_cert_pin|header_protection_key|shadowsocks_key|vless_uuid|vmess_uuid|trojan_password|hysteria_auth|outbound_json|outbound_jsons|amnezia_config|amnezia_configs|selector_amnezia_configs|amnezia_conf_text|proxy_links|selector_proxy_links|urltest_proxy_links|proxy_links_text|selector_proxy_links_text|urltest_proxy_links_text)$/i;
-const SENSITIVE_KEY_SUBSTR = /(bot_token|telegram_token|private_key|secret_key|preshared_key|pre_shared_key|password|username|access_token|auth_key|outbound_json|amnezia_conf)/i;
+const SENSITIVE_KEY_REGEX = /^(password|username|user|secret|token|access_token|bot_token|telegram_bot_token|telegram_token|telegram_chat_id|allowed_chats|admin_ids|api_key|ai_doctor_api_key|agent_api_token|clash_api_secret|yacd_secret_key|auth_token|auth_key|auth_str|auth|bearer|uuid|private_key|private_key_passphrase|public_key|secret_key|psk|pre_shared_key|preshared_key|key|crypto_key|sudoku_key|snell_psk|cookie|openconnect_cookie|server_cert_pin|header_protection_key|shadowsocks_key|vless_uuid|vmess_uuid|trojan_password|hysteria_auth|hwid|hwid_token|fptn_token|fptn_access_token|fptn_password|olcrtc_token|olcrtc_password|wdtt_token|wdtt_password|warp_flow_uri|subscription_url|subscription_urls|proxy_string|proxy_url|proxy_urls|outbound_json|outbound_jsons|custom_json|custom_jsons|proxy_custom_json|proxy_custom_jsons|amnezia_config|amnezia_configs|selector_amnezia_configs|amnezia_conf_text|proxy_links|selector_proxy_links|urltest_proxy_links|proxy_links_text|selector_proxy_links_text|urltest_proxy_links_text)$/i;
+const SENSITIVE_KEY_SUBSTR = /(bot_token|telegram_token|private_key|secret_key|preshared_key|pre_shared_key|password|username|access_token|api_key|auth_key|hwid_token|fptn_token|outbound_json|custom_json|amnezia_conf|proxy_links|subscription_url)/i;
 
 function is_sensitive_key(key) {
     if (key == null || key == "") return false;
@@ -102,28 +102,41 @@ function redact_string(str) {
     // 1. Telegram bot tokens: e.g. 123456789:ABCdef-GHIjkl_MNOpqrsTUVwxyz1234567
     s = replace(s, /[0-9]{8,12}:[-_a-zA-Z0-9]{35}/g, "[REDACTED_TELEGRAM_TOKEN]");
 
-    // 2. Bearer tokens: e.g. Bearer eyJhbGci...
+    // 2. Bearer tokens & cloud LLM API keys: e.g. Bearer eyJhbGci..., sk-..., AIza..., gsk_..., xai-...
     s = replace(s, /Bearer[ \t]+[-_a-zA-Z0-9.+=]{16,}/gi, "Bearer [REDACTED_TOKEN]");
+    s = replace(s, /(sk-(or-v1-|ant-|proj-)?[-_a-zA-Z0-9]{16,}|AIza[-_a-zA-Z0-9]{20,}|gsk_[-_a-zA-Z0-9]{16,}|xai-[-_a-zA-Z0-9]{16,})/g, "[REDACTED_API_KEY]");
 
-    // 3. VLESS / Trojan / Hysteria UUIDs & passwords in links
+    // 3. VLESS / Trojan / Hysteria / Base64 proxy links
     s = replace(s, /vless:\/\/([^@ \t\r\n]+)@/g, "vless://[REDACTED_UUID]@");
     s = replace(s, /trojan:\/\/([^@ \t\r\n]+)@/g, "trojan://[REDACTED_PASS]@");
     s = replace(s, /hysteria2?:\/\/([^@ \t\r\n]+)@/g, "hysteria2://[REDACTED_AUTH]@");
+    s = replace(s, /(vmess|ssr|fptn|fptns|warp):\/\/[^ \t\r\n'"]+/gi, "$1://[REDACTED]");
 
     // 4. Other proxy / HTTP URLs with credentials: e.g. https://user:pass@host:port
-    s = replace(s, /:\/\/([^:@\[ \t\r\n]+)(:[^@ \t\r\n]+)?@/g, "://[REDACTED]@");
+    s = replace(s, /:\/\/([^:@[ \t\r\n]+)(:[^@ \t\r\n]+)?@/g, "://[REDACTED]@");
 
-    // 5. Standalone secret/password params in query strings
-    s = replace(s, /([?&](password|secret|key|token|auth)=)[^& \t\r\n]+/gi, "$1[REDACTED]");
+    // 5. Standalone UUIDs, subscription URL tokens, and secret/password params in query strings
+    s = replace(s, /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g, "[REDACTED_UUID]");
+    s = replace(s, /([?&](password|pass|secret|key|api_key|apikey|token|access_token|auth|auth_token|uuid|id|sub|hash|sig|signature|hwid)=)[^& \t\r\n'"]+/gi, "$1[REDACTED]");
+    s = replace(s, /(https?:\/\/[^\/ \t\r\n'"]+\/(sub|subscribe|subscription|api\/v1\/client\/subscribe)\/)[-_a-zA-Z0-9]{8,}/gi, "$1[REDACTED_SUB_TOKEN]");
+    s = replace(s, /(password|passwd|secret|api_key|apikey|bot_token|agent_api_token|access_token|auth_token|private_key|preshared_key|pre_shared_key|hwid_token|fptn_token)=([^ \t\r\n'";,&]+)/gi, "$1=[REDACTED]");
 
     // 6. UCI configuration options with sensitive data
-    s = replace(s, /(option[ \t]+([_a-zA-Z0-9]*(telegram_bot_token|bot_token|agent_api_token|api_token|access_token|token|password|username|secret|private_key|public_key|preshared_key|pre_shared_key|psk|cookie|server_cert_pin|uuid|key|auth|pass|outbound_json|amnezia_config|amnezia_conf_text|proxy_links_text|proxy_string|subscription_url|hwid)[_a-zA-Z0-9]*)[ \t]+['"])[^'"]*(['"])/gi, "$1[REDACTED]$4");
+    s = replace(s, /(option[ \t]+([_a-zA-Z0-9]*(telegram_bot_token|bot_token|telegram_chat_id|agent_api_token|api_token|api_key|access_token|token|password|username|secret|private_key|public_key|preshared_key|pre_shared_key|psk|cookie|server_cert_pin|uuid|key|auth|pass|outbound_json|custom_json|amnezia_config|amnezia_conf_text|proxy_links_text|proxy_string|proxy_url|subscription_url|warp_flow_uri|hwid)[_a-zA-Z0-9]*)[ \t]+['"])[^'"]*(['"])/gi, "$1[REDACTED]$4");
     s = replace(s, /(list[ \t]+(telegram_chat_id|allowed_chats|admin_ids)[ \t]+['"])[^'"]*(['"])/gi, "$1[REDACTED_CHAT_ID]$3");
-    s = replace(s, /(list[ \t]+(outbound_jsons|amnezia_configs|selector_amnezia_configs|proxy_links|selector_proxy_links|urltest_proxy_links|subscription_urls|server_users)[ \t]+['"])[^'"]*(['"])/gi, "$1[REDACTED]$3");
+    s = replace(s, /(list[ \t]+(outbound_jsons|custom_jsons|proxy_custom_jsons|amnezia_configs|selector_amnezia_configs|proxy_links|selector_proxy_links|urltest_proxy_links|proxy_urls|subscription_urls|server_users)[ \t]+['"])[^'"]*(['"])/gi, "$1[REDACTED]$3");
 
     // 7. Inline JSON credential fields (e.g. inside outbound_jsons / outbound_json)
-    s = replace(s, /("(password|username|user|uuid|secret|token|access_token|auth_token|auth_key|auth_str|auth|private_key|private_key_passphrase|public_key|pre_shared_key|preshared_key|psk|key|cookie|server_cert_pin|header_protection_key)"[ \t]*:[ \t]*")[^"]*(")/gi, "$1[REDACTED]$3");
+    s = replace(s, /("(password|username|user|uuid|secret|token|access_token|api_key|auth_token|auth_key|auth_str|auth|private_key|private_key_passphrase|public_key|pre_shared_key|preshared_key|psk|key|cookie|server_cert_pin|header_protection_key)"[ \t]*:[ \t]*")[^"]*(")/gi, "$1[REDACTED]$3");
 
+    return s;
+}
+
+function redact_for_llm(str) {
+    if (str == null || str == "") return "";
+    let s = redact_string(str);
+    // Redact client MAC addresses before sending telemetry to external cloud LLMs
+    s = replace(s, /([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}/g, "[REDACTED_MAC]");
     return s;
 }
 
@@ -618,7 +631,9 @@ function module_exports() {
         collect_service_status,
         collect_events_and_jobs,
         collect_process_and_fd_stats,
+        is_sensitive_key,
         redact_string,
+        redact_for_llm,
         redact_object,
         sanitize_uci_text,
         set_test_overrides,

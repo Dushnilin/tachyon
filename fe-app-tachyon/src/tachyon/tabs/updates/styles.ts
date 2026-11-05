@@ -170,8 +170,8 @@ export const styles = `
 }
 
 .tachyon_updates-page__component__info-row--outdated {
-    background: rgba(139, 92, 246, 0.1);
-    border-color: rgba(139, 92, 246, 0.28);
+    background: color-mix(in srgb, var(--tachyon-accent) 10%, transparent);
+    border-color: color-mix(in srgb, var(--tachyon-accent) 28%, transparent);
 }
 
 .tachyon_updates-page__component__info-row--latest {

@@ -1798,38 +1798,87 @@ export function resolveSectionEngineMeta(
 
   // Also add Proxy/Tunnel protocol badge and transport badges (e.g. VLESS + GRPC / XHTTP)
   if (!isDpiOnly) {
+    const info =
+      selectedOutbound?.urlTestInfo || selectedOutbound?.priorityInfo;
+    const activeChild = info?.outbounds?.find(
+      (m) =>
+        m.selected ||
+        (info.selectedCode && m.code === info.selectedCode) ||
+        (info.selectedName && m.displayName === info.selectedName),
+    );
+    const matchedNode = (section.outbounds || []).find(
+      (o) =>
+        (activeChild?.code && o.code === activeChild.code) ||
+        (info?.selectedCode && o.code === info.selectedCode) ||
+        (activeChild?.displayName && o.displayName === activeChild.displayName),
+    );
+
+    let protoRaw = (
+      activeChild?.type ||
+      matchedNode?.type ||
+      selectedOutbound?.type ||
+      ''
+    ).toUpperCase();
+
+    if (!protoRaw || groupMetaTypes.has(protoRaw)) {
+      const firstRealNode =
+        (info?.outbounds || []).find(
+          (m) => m.type && !groupMetaTypes.has(m.type.toUpperCase()),
+        ) ||
+        (section.outbounds || []).find(
+          (o) => o.type && !groupMetaTypes.has(o.type.toUpperCase()),
+        );
+      if (firstRealNode?.type) {
+        protoRaw = firstRealNode.type.toUpperCase();
+      }
+    }
+
+    const singleSourceType = sourceTypes.length === 1 ? sourceTypes[0] : '';
+
     if (
-      rawAction === 'fptn' ||
-      sourceTypes.includes('fptn') ||
-      selectedTypeUpper.includes('FPTN')
+      protoRaw.includes('FPTN') ||
+      (!protoRaw &&
+        (rawAction === 'fptn' ||
+          singleSourceType === 'fptn' ||
+          selectedTypeUpper.includes('FPTN')))
     ) {
       pushBadge('FPTN', 'proxy', 'FPTN VPN', () => renderShieldIcon(11));
     } else if (
-      rawAction === 'warp' ||
-      sourceTypes.includes('warp') ||
-      selectedTypeUpper.includes('WARP')
+      protoRaw.includes('WARP') ||
+      protoRaw === 'MASQUE' ||
+      (!protoRaw &&
+        (rawAction === 'warp' ||
+          singleSourceType === 'warp' ||
+          selectedTypeUpper.includes('WARP')))
     ) {
       pushBadge('WARP', 'proxy', 'Cloudflare WARP', () => renderCloudIcon(11));
     } else if (
-      rawAction === 'awg' ||
-      sourceTypes.includes('amnezia_config') ||
-      sourceTypes.includes('awg') ||
-      selectedTypeUpper.includes('AWG') ||
-      selectedTypeUpper.includes('WIREGUARD')
+      protoRaw.includes('AWG') ||
+      protoRaw.includes('WIREGUARD') ||
+      protoRaw.includes('AMNEZIA') ||
+      (!protoRaw &&
+        (rawAction === 'awg' ||
+          singleSourceType === 'amnezia_config' ||
+          singleSourceType === 'awg' ||
+          selectedTypeUpper.includes('AWG') ||
+          selectedTypeUpper.includes('WIREGUARD')))
     ) {
       pushBadge('AWG / WG', 'proxy', 'AmneziaWG / WireGuard', () =>
         renderLockIcon(11),
       );
     } else if (
-      sourceTypes.includes('tailscale') ||
-      selectedTypeUpper.includes('TAILSCALE')
+      protoRaw.includes('TAILSCALE') ||
+      (!protoRaw &&
+        (singleSourceType === 'tailscale' ||
+          selectedTypeUpper.includes('TAILSCALE')))
     ) {
       pushBadge('Tailscale', 'proxy', 'Tailscale Mesh VPN', () =>
         renderShieldIcon(11),
       );
     } else if (
-      sourceTypes.includes('interface') ||
-      selectedTypeUpper === 'INTERFACE'
+      protoRaw === 'INTERFACE' ||
+      (!protoRaw &&
+        (singleSourceType === 'interface' || selectedTypeUpper === 'INTERFACE'))
     ) {
       pushBadge(
         tr('Интерфейс', 'Interface'),
@@ -1837,51 +1886,15 @@ export function resolveSectionEngineMeta(
         tr('Сетевой интерфейс роутера', 'Router network interface'),
         () => renderShieldIcon(11),
       );
-    } else if (selectedOutbound || (section.outbounds || []).length > 0) {
-      const info =
-        selectedOutbound?.urlTestInfo || selectedOutbound?.priorityInfo;
-      const activeChild = info?.outbounds?.find(
-        (m) =>
-          m.selected ||
-          (info.selectedCode && m.code === info.selectedCode) ||
-          (info.selectedName && m.displayName === info.selectedName),
-      );
-      const matchedNode = (section.outbounds || []).find(
-        (o) =>
-          (activeChild?.code && o.code === activeChild.code) ||
-          (info?.selectedCode && o.code === info.selectedCode) ||
-          (activeChild?.displayName &&
-            o.displayName === activeChild.displayName),
-      );
+    } else if (
+      protoRaw &&
+      !groupMetaTypes.has(protoRaw) &&
+      !dpiTypes.has(protoRaw.toLowerCase())
+    ) {
+      pushBadge(protoRaw, 'proxy');
+    }
 
-      let protoRaw = (
-        activeChild?.type ||
-        matchedNode?.type ||
-        selectedOutbound?.type ||
-        ''
-      ).toUpperCase();
-
-      if (!protoRaw || groupMetaTypes.has(protoRaw)) {
-        const firstRealNode =
-          (info?.outbounds || []).find(
-            (m) => m.type && !groupMetaTypes.has(m.type.toUpperCase()),
-          ) ||
-          (section.outbounds || []).find(
-            (o) => o.type && !groupMetaTypes.has(o.type.toUpperCase()),
-          );
-        if (firstRealNode?.type) {
-          protoRaw = firstRealNode.type.toUpperCase();
-        }
-      }
-
-      if (
-        protoRaw &&
-        !groupMetaTypes.has(protoRaw) &&
-        !dpiTypes.has(protoRaw.toLowerCase())
-      ) {
-        pushBadge(protoRaw, 'proxy');
-      }
-
+    if (selectedOutbound || (section.outbounds || []).length > 0) {
       // Collect transport protocols (GRPC, XHTTP, WS, HTTPUPGRADE, QUIC, H2, TCP)
       const activeTransport =
         extractNodeTransportLabel(activeChild) ||

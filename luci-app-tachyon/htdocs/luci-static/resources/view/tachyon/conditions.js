@@ -439,7 +439,7 @@ function createTwoModeTracerWidget() {
           E(
             "span",
             { class: "tachyon-studio-toolbar__kicker" },
-            "RULE SIMULATION & SEARCH",
+            _("RULE SIMULATION & SEARCH"),
           ),
           E(
             "h3",
@@ -2175,14 +2175,14 @@ function createConditionsContent(section) {
   o.value("by", _("Belarus (by)"));
   o.value("kz", _("Kazakhstan (kz)"));
   o.value("ua", _("Ukraine (ua)"));
-  o.value("pl", "🇵🇱 Poland (pl)");
-  o.value("ee", "🇪🇪 Estonia (ee)");
-  o.value("lv", "🇱🇻 Latvia (lv)");
-  o.value("lt", "🇱🇹 Lithuania (lt)");
-  o.value("ch", "🇨🇭 Switzerland (ch)");
-  o.value("at", "🇦🇹 Austria (at)");
-  o.value("cz", "🇨🇿 Czechia (cz)");
-  o.value("hk", "🇭🇰 Hong Kong (hk)");
+  o.value("pl", _("🇵🇱 Poland (pl)"));
+  o.value("ee", _("🇪🇪 Estonia (ee)"));
+  o.value("lv", _("🇱🇻 Latvia (lv)"));
+  o.value("lt", _("🇱🇹 Lithuania (lt)"));
+  o.value("ch", _("🇨🇭 Switzerland (ch)"));
+  o.value("at", _("🇦🇹 Austria (at)"));
+  o.value("cz", _("🇨🇿 Czechia (cz)"));
+  o.value("hk", _("🇭🇰 Hong Kong (hk)"));
 }
 
 return baseclass.extend({

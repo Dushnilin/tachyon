@@ -38,6 +38,44 @@ let write_json = common.write_json;
 
 let command_output = common.command_output;
 
+let _sb_mod = null;
+function sb_mod() {
+    if (_sb_mod == null) {
+        try { _sb_mod = require("service.support_bundle"); } catch (e) { _sb_mod = false; }
+    }
+    return _sb_mod || null;
+}
+
+function redact_text(str) {
+    if (str == null || str == "") return "";
+    let s = as_string(str);
+    let sb = sb_mod();
+    if (sb && sb.redact_for_llm)
+        return sb.redact_for_llm(s);
+    if (sb && sb.redact_string)
+        return sb.redact_string(s);
+    return s;
+}
+
+function redact_obj(val) {
+    let sb = sb_mod();
+    if (sb && sb.redact_object)
+        return sb.redact_object(val);
+    let t = type(val);
+    if (t == "string") return redact_text(val);
+    if (t == "array") {
+        let out = [];
+        for (let item in val) push(out, redact_obj(item));
+        return out;
+    }
+    if (t == "object") {
+        let out = {};
+        for (let k, v in val) out[k] = redact_obj(v);
+        return out;
+    }
+    return val;
+}
+
 function ok(data) {
     let result = { success: true };
     for (let k in keys(data)) result[k] = data[k];
@@ -127,7 +165,7 @@ function handle_logs() {
     let lines = [];
     for (let line in split(raw, "\n")) {
         line = trim(as_string(line));
-        if (line != "") push(lines, line);
+        if (line != "") push(lines, redact_text(line));
     }
     ok({ lines: lines });
 }
@@ -178,7 +216,7 @@ function handle_snapshot() {
     let logs = [];
     for (let line in split(logs_raw, "\n")) {
         line = trim(as_string(line));
-        if (line != "") push(logs, line);
+        if (line != "") push(logs, redact_text(line));
     }
 
     let sections = [];
@@ -240,7 +278,7 @@ function handle_snapshot() {
         },
         incidents: {
             total: ai_status.incidents_resolved_total || 0,
-            last:  ai_status.last_incident || null
+            last:  ai_status.last_incident != null ? redact_obj(ai_status.last_incident) : null
         },
         sections:         sections,
         conditions:       conditions,
@@ -330,8 +368,8 @@ function handle_known_good_check() {
 }
 
 function handle_support_bundle(body) {
-    let sb_mod = require("service.support_bundle");
-    if (!sb_mod) {
+    let sb = sb_mod();
+    if (!sb) {
         err("Failed to load support_bundle module", 500);
         return;
     }
@@ -340,12 +378,29 @@ function handle_support_bundle(body) {
     let opts = {
         no_archive: body ? (body.no_archive == true) : false
     };
-    let res = sb_mod.create_bundle(target, opts);
+    let res = sb.create_bundle(target, opts);
     if (!res.ok) {
         err(res.error || "Failed to create support bundle", 500);
         return;
     }
     ok(res);
+}
+
+function handle_docs_search(path_str, body) {
+    let qp = parse_query_params(path_str);
+    let q = trim(as_string((body && (body.query || body.q)) || qp.query || qp.q || ""));
+    let top_k = int((body && body.top_k) || qp.top_k || 5);
+    if (q == "") {
+        err("query (or q) parameter is required", 400);
+        return;
+    }
+    let rag_mod = require("diagnostics.rag");
+    let results = rag_mod.search_docs ? rag_mod.search_docs(q, top_k) : [];
+    ok({
+        query: rag_mod.sanitize_query ? rag_mod.sanitize_query(q) : redact_text(q),
+        count: length(results),
+        results: results
+    });
 }
 
 function handle_tools() {
@@ -522,6 +577,20 @@ function handle_tools() {
                         no_archive:  { type: "boolean", description: "Collect files without packaging into .tar.gz (optional)" }
                     }
                 }
+            },
+            {
+                name:         "tachyon_docs_search",
+                description:  "Search the built-in Tachyon RAG knowledge base (architecture, UCI schema, nftables, DNS, Zapret/Zapret2/ByeDPI, troubleshooting, reconciler, transactions, jobs) for authoritative documentation chunks.",
+                method:       "GET",
+                path:         "/tachyon/agent/v1/docs/search",
+                input_schema: {
+                    type:       "object",
+                    required:   ["query"],
+                    properties: {
+                        query: { type: "string", description: "Search query keywords (e.g. 'zapret2 multisplit', 'outbound_source balancer', 'bootstrap dns')" },
+                        top_k: { type: "integer", description: "Max chunks to return (1..15, default: 5)" }
+                    }
+                }
             }
         ]
     });
@@ -587,7 +656,9 @@ function handle_config_set(body) {
         return;
     }
 
-    ok({ message: "Set " + path + " = " + value });
+    let sb = sb_mod();
+    let display_val = (sb && sb.is_sensitive_key && sb.is_sensitive_key(option)) ? "[REDACTED]" : redact_text(value);
+    ok({ message: "Set " + path + " = " + display_val });
 }
 
 function handle_section_toggle(body) {
@@ -880,7 +951,7 @@ function handle_ai_doctor_last() {
         err("Corrupted AI Doctor history file", 500);
         return;
     }
-    ok(data);
+    ok(redact_obj(data));
 }
 
 function handle_ai_doctor_fix(body) {
@@ -941,6 +1012,8 @@ if (method == "GET") {
         handle_known_good_check();
     else if (route == "/support-bundle" || route == "/support-bundle/" || route == "/support_bundle" || route == "/support_bundle/")
         handle_support_bundle(body);
+    else if (index(route, "/docs/search") == 0 || index(route, "/knowledge/search") == 0)
+        handle_docs_search(path_arg, body);
     else
         err("Unknown endpoint: GET " + route, 404);
 } else if (method == "POST") {
@@ -950,6 +1023,8 @@ if (method == "GET") {
         handle_config_plan(path_arg, body);
     } else if (route == "/support-bundle" || route == "/support-bundle/" || route == "/support_bundle" || route == "/support_bundle/") {
         handle_support_bundle(body);
+    } else if (index(route, "/docs/search") == 0 || index(route, "/knowledge/search") == 0) {
+        handle_docs_search(path_arg, body);
     } else if ((route == "/known-good" || route == "/known-good/" || route == "/known_good" || route == "/known_good/") && (body.action == "status" || body.action == "check")) {
         if (body.action == "check")
             handle_known_good_check();

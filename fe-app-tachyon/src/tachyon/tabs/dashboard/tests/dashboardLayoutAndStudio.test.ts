@@ -718,4 +718,93 @@ xiaomi.com`,
     expect(chipTexts.some((t: string) => t.includes('Xiaomi'))).toBe(true);
     expect(chipTexts.some((t: string) => t.includes('Mi'))).toBe(true);
   });
+
+  it('does not trigger fs.read_direct CGI requests for missing section-cache files with many sections (#351)', async () => {
+    const containerEl = createDummyElement('div');
+    const mockOutboundRef = {
+      sectiontype: 'outbound_source',
+      cfgsections: () => ['sub1'],
+      renderMoreOptionsModal: vi.fn(),
+      remove: vi.fn(),
+    };
+
+    const manySections = Array.from({ length: 18 }, (_, idx) => ({
+      '.name': `sec_${idx + 1}`,
+      '.type': 'section',
+      name: `Section_${idx + 1}`,
+      enabled: '1',
+      action: idx < 2 ? 'proxy' : 'direct',
+    }));
+
+    (globalThis as any).uci.sections = (_pkg: string, type: string) => {
+      if (type === 'section') return manySections;
+      if (type === 'outbound_source') {
+        return [
+          {
+            '.name': 'sub1',
+            '.type': 'outbound_source',
+            name: 'Sub One',
+            source_type: 'subscription',
+            url: 'https://sub.example/list',
+          },
+        ];
+      }
+      return [];
+    };
+
+    const fsReadMock = vi.fn((path: string) => {
+      if (
+        path === '/var/run/tachyon/section-cache/Main.json' ||
+        path === '/var/run/tachyon/section-cache/Section_1.json'
+      ) {
+        return Promise.resolve(
+          JSON.stringify({
+            outboundMetadata: {
+              names: { 'sub1-node-1': 'DE Frankfurt' },
+              protocols: { 'sub1-node-1': 'vless' },
+              source_ids: { 'sub1-node-1': 'sub1' },
+            },
+          }),
+        );
+      }
+      const err: any = new Error('No such file or directory');
+      err.name = 'NotFoundError';
+      return Promise.reject(err);
+    });
+    const fsReadDirectMock = vi.fn(() => Promise.resolve(''));
+    const fsListMock = vi.fn((dir: string) => {
+      if (dir === '/var/run/tachyon/section-cache') {
+        return Promise.resolve([
+          { name: 'Main.json', type: 'file' },
+          { name: 'Section_1.json', type: 'file' },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    (globalThis as any).fs = {
+      ...(globalThis as any).fs,
+      read: fsReadMock,
+      read_direct: fsReadDirectMock,
+      list: fsListMock,
+    };
+
+    studioDeckMod.mountTachyonStudioDeck({
+      type: 'outbound_source',
+      sectionRef: mockOutboundRef,
+      containerEl,
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(fsListMock).toHaveBeenCalledWith('/var/run/tachyon/section-cache');
+    expect(fsReadDirectMock).not.toHaveBeenCalled();
+    const sectionCacheReads = fsReadMock.mock.calls
+      .map((c) => String(c[0]))
+      .filter((p) => p.startsWith('/var/run/tachyon/section-cache/'));
+    expect(sectionCacheReads).toEqual([
+      '/var/run/tachyon/section-cache/Main.json',
+      '/var/run/tachyon/section-cache/Section_1.json',
+    ]);
+  });
 });

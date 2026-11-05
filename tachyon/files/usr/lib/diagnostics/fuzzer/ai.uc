@@ -517,6 +517,34 @@ function sanitize_strategy_args(engine, raw_args) {
     return cleaned;
 }
 
+let _fuzzer_sb_mod = null;
+function fuzzer_sb_mod() {
+    if (_fuzzer_sb_mod == null) {
+        try { _fuzzer_sb_mod = require("service.support_bundle"); } catch(e) { _fuzzer_sb_mod = false; }
+    }
+    return _fuzzer_sb_mod || null;
+}
+
+function redact_for_ai(str) {
+    if (str == null || str == "")
+        return "";
+    let s = as_string(str);
+    let sb = fuzzer_sb_mod();
+    if (sb && sb.redact_for_llm)
+        s = sb.redact_for_llm(s);
+    else if (sb && sb.redact_string)
+        s = sb.redact_string(s);
+    s = replace(s, /[0-9]{8,12}:[-_a-zA-Z0-9]{35}/g, "[REDACTED_TELEGRAM_TOKEN]");
+    s = replace(s, /Bearer[ \t]+[-_a-zA-Z0-9.+=]{16,}/gi, "Bearer [REDACTED_TOKEN]");
+    s = replace(s, /(sk-(or-v1-|ant-|proj-)?[-_a-zA-Z0-9]{16,}|AIza[-_a-zA-Z0-9]{20,}|gsk_[-_a-zA-Z0-9]{16,}|xai-[-_a-zA-Z0-9]{16,})/g, "[REDACTED_API_KEY]");
+    s = replace(s, /(vless|vmess|trojan|ss|ssr|hysteria2?|hy2|tuic|fptns?|warp|wireguard|wg|awg):\/\/[^ \t\r\n'"]+/gi, "$1://[REDACTED]");
+    s = replace(s, /:\/\/([^:@[ \t\r\n]+)(:[^@ \t\r\n]+)?@/g, "://[REDACTED]@");
+    s = replace(s, /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g, "[REDACTED_UUID]");
+    s = replace(s, /([?&](password|pass|secret|key|api_key|apikey|token|access_token|auth|auth_token|uuid|id|sub|hash|sig|signature|hwid)=)[^& \t\r\n'"]+/gi, "$1[REDACTED]");
+    s = replace(s, /([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}/g, "[REDACTED_MAC]");
+    return s;
+}
+
 function compute_ai_strategies_result(engine, target, custom_url, user_prompt) {
     let current = history.get_fuzzer_state();
     if (current.running) {
@@ -525,10 +553,12 @@ function compute_ai_strategies_result(engine, target, custom_url, user_prompt) {
 
     engine = lc(as_string(engine || "zapret2"));
     target = trim(as_string(target || "youtube_suite"));
-    user_prompt = trim(as_string(user_prompt || ""));
+    user_prompt = redact_for_ai(trim(as_string(user_prompt || "")));
     let target_url = binaries.resolve_target_url(target, custom_url);
 
     let baseline = run_baseline_probe(target_url);
+    let safe_target_url = redact_for_ai(target_url);
+    let safe_probe_error = redact_for_ai(baseline.error != "" ? baseline.error : "none");
 
     let uci = uci_core.cursor();
     let cfg = uci != null ? (uci.get_all(CONFIG_NAME, "settings") || {}) : {};
@@ -538,13 +568,19 @@ function compute_ai_strategies_result(engine, target, custom_url, user_prompt) {
     let ai_custom_url = cfg.ai_doctor_custom_url || ai_sec.custom_url || "";
     let model_override = cfg.ai_doctor_model || ai_sec.model || "";
 
-    let query_text = sprintf("%s %s %s", engine, target, user_prompt);
+    let query_text = redact_for_ai(sprintf("%s %s %s", engine, target, user_prompt));
     let rag_docs = rag.retrieve(query_text, provider, api_key, ai_custom_url, model_override, 4);
 
     let target_engines = (engine == "all") ? "zapret2, zapret, byedpi, and desync" : engine;
     let prompt = sprintf(
-        "You are an expert DPI Bypass Engineer specializing in OpenWrt, Zapret, Zapret2 (nfqws2), ByeDPI (ciadpi), and Tachyon Native Desync.\n" +
-        "We need to bypass censorship / TSPU blocking for target service '%s' (%s) using engine '%s'.\n\n" +
+        "You are an expert Packet Desynchronization & Network Optimization Engineer specializing in OpenWrt, Zapret, Zapret2 (nfqws2), ByeDPI (ciadpi), and Tachyon Native Desync.\n" +
+        "We need to optimize packet delivery and overcome transit middlebox filtering for target service '%s' (%s) using engine '%s'.\n\n" +
+        "TACHYON ENGINE CONTEXT & PRIVACY RULES:\n" +
+        "- In Tachyon, `zapret2` (`nfqws2`) runs on NFQueue 201+ (sandbox queue 299) with Lua libraries (`zapret-lib.lua`, `zapret-antidpi.lua`, `zapret-auto.lua`) pre-loaded by Tachyon.\n" +
+        "- `zapret` (`nfqws` v1) runs on NFQueue 200+ (sandbox queue 298).\n" +
+        "- `byedpi` (`ciadpi`) runs as local SOCKS5 proxy on port 4539 (sandbox port 11089).\n" +
+        "- `desync` runs natively inside `tachyon-core` outbound dialer.\n" +
+        "- PRIVACY RULE: Inputs are pre-redacted. Never request or output private keys, tokens, passwords, UUIDs, or private URLs.\n\n" +
         "LIVE PROBE DIAGNOSTICS:\n" +
         "- Direct HTTP Code: %d\n" +
         "- Connect Time: %d ms\n" +
@@ -553,18 +589,18 @@ function compute_ai_strategies_result(engine, target, custom_url, user_prompt) {
         "- User Notes / ISP Context: %s\n\n" +
         "TECHNICAL KNOWLEDGE BASE FRAGMENTS:\n%s\n\n" +
         "TASK:\n" +
-        "1. Analyze why this target is blocked or throttled.\n" +
-        "2. Formulate 3 to 5 highly effective, syntactically valid DPI desync strategies for '%s'.\n" +
+        "1. Analyze why this target experiences connection degradation or packet resets.\n" +
+        "2. Formulate 3 to 5 highly effective, syntactically valid packet desync strategies for '%s'.\n" +
         "3. Output MUST be strictly valid JSON matching this schema:\n" +
         "{\n" +
-        '  "analysis": "Brief 1-2 sentence diagnosis of the blocking pattern",\n' +
+        '  "analysis": "Brief 1-2 sentence diagnosis of the filtering pattern",\n' +
         '  "strategies": [\n' +
         '    {\n' +
         '      "id": "ai_strat_1",\n' +
         '      "name": "Human-readable descriptive strategy name",\n' +
         '      "engine": "%s",\n' +
         '      "args": "Exact command-line arguments string for the engine",\n' +
-        '      "description": "Why this combination should bypass the block"\n' +
+        '      "description": "Why this combination restores handshake delivery"\n' +
         '    }\n' +
         '  ]\n' +
         "}\n\n" +
@@ -574,9 +610,9 @@ function compute_ai_strategies_result(engine, target, custom_url, user_prompt) {
         "- For byedpi (ciadpi): ONLY use valid ciadpi flags like '-s 1 -d 1 --auto=t,r,s -o 1' or '--split 1 --disorder 3+s --tlsrec 1+s'. DO NOT include binary name, -i, or -p.\n" +
         "- For desync (tachyon-core native): ONLY use space-separated key=value pairs from: preset=(fake_split|tlsrec|disorder|split|fake|oob|auto), mode=(fake_split|tlsrec|disorder|split|fake|oob), split_pos=(1|2|midsld|sni), fake_ttl=(2..12), fake_sni=(max.ru|www.google.com|gosuslugi.ru|sberbank.ru), repeats=(1..12), split_delay_ms=(0..50), udp_fake=(true|false), udp_repeats=(1..12), udp_fake_ttl=(2..12). Example: 'mode=fake_split split_pos=midsld fake_ttl=4 fake_sni=max.ru repeats=6'.\n\n" +
         "JSON OUTPUT:",
-        target, target_url, target_engines,
+        target, safe_target_url, target_engines,
         baseline.http_code, baseline.handshake_ms, baseline.ttfb_ms,
-        baseline.error != "" ? baseline.error : "none",
+        safe_probe_error,
         user_prompt != "" ? user_prompt : "None provided",
         rag_docs,
         target_engines,

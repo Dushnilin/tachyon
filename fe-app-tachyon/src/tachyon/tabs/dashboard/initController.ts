@@ -40,6 +40,7 @@ import {
   StoreType,
 } from '../../services';
 import {
+  clearDashboardGridHoverFreeze,
   getLatencyTestLabel,
   renderFlagEmojis,
   renderSections,
@@ -54,6 +55,10 @@ import {
   renderDashboardSectionsAndNodes,
   renderSectionConditionsAndBalancersView,
 } from './partials';
+import {
+  sortOutboundsForDashboard,
+  sortUrlTestMembers,
+} from '../../methods/custom/getDashboardSections';
 import { fetchServicesInfo } from '../../fetchers/fetchServicesInfo';
 import { fetchHostnames } from '../../fetchers/fetchHostnames';
 import { getExpandedSections, toggleSectionExpansion } from './actions';
@@ -1089,7 +1094,9 @@ export async function applyTestedLatenciesResults(
 
       const isNewMeasurement =
         Boolean(currentTime) &&
-        (isFreshTimestamp || (prevTime != null && currentTime !== prevTime));
+        (isFreshTimestamp ||
+          prevTime == null ||
+          (prevTime != null && currentTime !== prevTime));
 
       if (isNewMeasurement && delay > 0) {
         customProxyLatencies.set(tag, delay);
@@ -1100,6 +1107,7 @@ export async function applyTestedLatenciesResults(
     }
 
     capMapSize(customProxyLatencies);
+    clearDashboardGridHoverFreeze();
     void renderSectionsWidget();
   } catch (error) {
     logger.warn(
@@ -1805,16 +1813,18 @@ function renderCommonDetailsModal(
     class: 'tachyon_dashboard-page__urltest-details__table',
   });
   const colInds = new Map<'name' | 'type' | 'latency', HTMLElement>();
+  const colBtns = new Map<'name' | 'type' | 'latency', HTMLElement>();
 
   const populateModalRows = () => {
     const sortState = modalNodesSortState.get(sortKey);
     colInds.forEach((ind, col) => {
-      ind.textContent =
-        sortState && sortState.col === col
-          ? sortState.dir === 'asc'
-            ? ' ▲'
-            : ' ▼'
-          : '';
+      const isActive = Boolean(sortState && sortState.col === col);
+      ind.textContent = isActive
+        ? sortState!.dir === 'asc'
+          ? ' ▲'
+          : ' ▼'
+        : '';
+      colBtns.get(col)?.classList.toggle('is-active', isActive);
     });
 
     const rawMembers: any[] = Array.isArray(info.outbounds)
@@ -1980,9 +1990,32 @@ function renderCommonDetailsModal(
                           if (
                             tipParts.length > 0 &&
                             (t.jitter_ms ||
+                              t.loss_penalty_ms ||
                               t.active_conns ||
                               t.throughput_kib_s)
                           ) {
+                            const metricLabels: string[] = [];
+                            if (t.jitter_ms) {
+                              metricLabels.push(`±${t.jitter_ms} ${_('ms')}`);
+                            }
+                            if (t.loss_penalty_ms) {
+                              metricLabels.push(
+                                `+${t.loss_penalty_ms} ${_('ms')}`,
+                              );
+                            }
+                            if (metricLabels.length === 0 && t.active_conns) {
+                              metricLabels.push(
+                                `${t.active_conns} ${_('conn.')}`,
+                              );
+                            }
+                            if (
+                              metricLabels.length === 0 &&
+                              t.throughput_kib_s
+                            ) {
+                              metricLabels.push(
+                                `${t.throughput_kib_s} ${_('KiB/s')}`,
+                              );
+                            }
                             return [
                               E(
                                 'span',
@@ -1991,11 +2024,7 @@ function renderCommonDetailsModal(
                                   style:
                                     'margin-left: 6px; font-size: 11px; opacity: 0.72; font-variant-numeric: tabular-nums;',
                                 },
-                                t.jitter_ms
-                                  ? `±${t.jitter_ms} ${_('ms')}`
-                                  : t.active_conns
-                                    ? `${t.active_conns} ${_('conn.')}`
-                                    : `${t.throughput_kib_s} ${_('KiB/s')}`,
+                                metricLabels.join(' · '),
                               ),
                             ];
                           }
@@ -2142,13 +2171,12 @@ function renderCommonDetailsModal(
   const makeSortPill = (col: 'name' | 'type' | 'latency', label: string) => {
     const ind = E('span', { style: 'font-size: 10px; opacity: 0.8;' });
     colInds.set(col, ind);
-    return E(
+    const btn = E(
       'button',
       {
         type: 'button',
-        class: 'btn cbi-button',
-        style:
-          'cursor: pointer; user-select: none; padding: 2px 8px; height: 24px; min-height: 24px; font-size: 11px; font-weight: 600; border-radius: 6px;',
+        class:
+          'btn cbi-button tachyon_dashboard-page__urltest-details__sort-pill',
         click: (e: MouseEvent) => {
           e.preventDefault();
           const cur = modalNodesSortState.get(sortKey);
@@ -2165,6 +2193,8 @@ function renderCommonDetailsModal(
       },
       [E('span', {}, label), ind],
     );
+    colBtns.set(col, btn);
+    return btn;
   };
 
   populateModalRows();
@@ -2316,7 +2346,13 @@ function renderUrlTestInfoModal(
       ],
     },
     { label: _('Interval'), value: info.interval },
-    { label: _('Tolerance'), value: info.tolerance },
+    {
+      label: _('Tolerance'),
+      value:
+        info.tolerance != null && /^\d+$/.test(String(info.tolerance).trim())
+          ? `${String(info.tolerance).trim()} ms`
+          : info.tolerance,
+    },
     { label: _('Idle timeout'), value: info.idleTimeout },
     {
       label: _('Interrupt connections'),
@@ -3123,50 +3159,87 @@ function getSectionsWithCustomLatencies(): Tachyon.OutboundGroup[] {
 
   return sectionsWidget.data.map((section) => {
     const skipSectionLatency = isServiceGroup(section);
-    return {
-      ...section,
-      outbounds: section.outbounds.map((outbound) => {
-        if (skipSectionLatency || isNonTestableOutboundType(outbound.type)) {
-          return {
-            ...outbound,
-            latency: 0,
-          };
-        }
-        const customLatency = customProxyLatencies.get(outbound.code);
-        const latency =
-          customLatency == null ? outbound.latency : customLatency;
-
-        const urlTestInfo = outbound.urlTestInfo
-          ? {
-              ...outbound.urlTestInfo,
-              outbounds: outbound.urlTestInfo.outbounds.map((member) => ({
-                ...member,
-                latency: customProxyLatencies.has(member.code)
-                  ? customProxyLatencies.get(member.code)!
-                  : member.latency,
-              })),
-            }
-          : undefined;
-
-        const priorityInfo = outbound.priorityInfo
-          ? {
-              ...outbound.priorityInfo,
-              outbounds: outbound.priorityInfo.outbounds.map((member) => ({
-                ...member,
-                latency: customProxyLatencies.has(member.code)
-                  ? customProxyLatencies.get(member.code)!
-                  : member.latency,
-              })),
-            }
-          : undefined;
-
+    const sortMode = section.dashboardSettings?.sortMode || 'latency';
+    const mappedOutbounds = section.outbounds.map((outbound) => {
+      if (skipSectionLatency || isNonTestableOutboundType(outbound.type)) {
         return {
           ...outbound,
-          latency,
-          urlTestInfo,
-          priorityInfo,
+          latency: 0,
         };
-      }),
+      }
+      const customLatency = customProxyLatencies.get(outbound.code);
+      let latency = customLatency == null ? outbound.latency : customLatency;
+
+      const urlTestInfo = outbound.urlTestInfo
+        ? (() => {
+            const membersWithLatency = outbound.urlTestInfo.outbounds.map(
+              (member) => ({
+                ...member,
+                latency: customProxyLatencies.has(member.code)
+                  ? customProxyLatencies.get(member.code)!
+                  : member.latency,
+              }),
+            );
+            const sortedMembers = sortUrlTestMembers(membersWithLatency);
+            let selectedCode = outbound.urlTestInfo.selectedCode;
+            let selectedName = outbound.urlTestInfo.selectedName;
+            const currentSelectedMember = sortedMembers.find(
+              (m) => m.code === selectedCode,
+            );
+            const bestAliveMember = sortedMembers.find((m) => m.latency > 0);
+            if (
+              bestAliveMember &&
+              (!currentSelectedMember || currentSelectedMember.latency <= 0)
+            ) {
+              selectedCode = bestAliveMember.code;
+              selectedName = bestAliveMember.displayName;
+            }
+            const activeMember = sortedMembers.find(
+              (m) => m.code === selectedCode,
+            );
+            if (activeMember && activeMember.latency !== 0) {
+              latency = activeMember.latency;
+            }
+            return {
+              ...outbound.urlTestInfo,
+              selectedCode,
+              selectedName,
+              outbounds: sortedMembers.map((m) => ({
+                ...m,
+                selected: m.code === selectedCode,
+              })),
+            };
+          })()
+        : undefined;
+
+      const priorityInfo = outbound.priorityInfo
+        ? {
+            ...outbound.priorityInfo,
+            outbounds: outbound.priorityInfo.outbounds.map((member) => ({
+              ...member,
+              latency: customProxyLatencies.has(member.code)
+                ? customProxyLatencies.get(member.code)!
+                : member.latency,
+            })),
+          }
+        : undefined;
+
+      return {
+        ...outbound,
+        latency,
+        urlTestInfo,
+        priorityInfo,
+      };
+    });
+
+    return {
+      ...section,
+      outbounds: skipSectionLatency
+        ? mappedOutbounds
+        : sortOutboundsForDashboard(mappedOutbounds, {
+            sortByLatency: sortMode !== 'default',
+            sortMode,
+          }),
     };
   });
 }

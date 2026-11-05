@@ -53,8 +53,8 @@ const DEFAULT_JOURNAL_MAX_BYTES   = int(getenv("TACHYON_JOURNAL_MAX_BYTES") || "
 // Secret Redaction Engine
 // ---------------------------------------------------------------------------
 
-const SENSITIVE_KEY_REGEX = /^(token|secret|password|passwd|key|auth|credential|credentials|api_key|bot_token|private_key|private|cert|cookie|access_token|refresh_token)$/i;
-const SENSITIVE_KEY_SUBSTR_REGEX = /(token|secret|password|passwd|bot_token|api_key|private_key)/i;
+const SENSITIVE_KEY_REGEX = /^(token|secret|password|passwd|key|auth|credential|credentials|api_key|bot_token|private_key|private|cert|cookie|access_token|refresh_token|uuid|preshared_key|pre_shared_key|psk|hwid|hwid_token|fptn_token|crypto_key|outbound_json|outbound_jsons|amnezia_config|amnezia_configs|proxy_links|proxy_links_text|subscription_url|subscription_urls)$/i;
+const SENSITIVE_KEY_SUBSTR_REGEX = /(token|secret|password|passwd|bot_token|api_key|private_key|preshared_key|pre_shared_key|outbound_json|amnezia_conf|proxy_links)/i;
 
 function is_sensitive_key(key) {
     if (key == null || key == "")
@@ -71,19 +71,25 @@ function redact_string(str) {
     // 1. Telegram bot tokens: e.g. 123456789:ABCdef-GHIjkl_MNOpqrsTUVwxyz1234567
     s = replace(s, /[0-9]{8,12}:[-_a-zA-Z0-9]{35}/g, "[REDACTED_TELEGRAM_TOKEN]");
 
-    // 2. Bearer tokens: e.g. Bearer eyJhbGci...
+    // 2. Bearer tokens & cloud LLM API keys
     s = replace(s, /Bearer[ \t]+[-_a-zA-Z0-9.+=]{16,}/gi, "Bearer [REDACTED_TOKEN]");
+    s = replace(s, /(sk-(or-v1-|ant-|proj-)?[-_a-zA-Z0-9]{16,}|AIza[-_a-zA-Z0-9]{20,}|gsk_[-_a-zA-Z0-9]{16,}|xai-[-_a-zA-Z0-9]{16,})/g, "[REDACTED_API_KEY]");
 
-    // 3. Proxy & HTTP URLs with credentials:
+    // 3. VLESS / Trojan / Hysteria / Base64 proxy links
+    s = replace(s, /vless:\/\/([^@ \t\r\n]+)@/g, "vless://[REDACTED_UUID]@");
+    s = replace(s, /trojan:\/\/([^@ \t\r\n]+)@/g, "trojan://[REDACTED_PASS]@");
+    s = replace(s, /hysteria2?:\/\/([^@ \t\r\n]+)@/g, "hysteria2://[REDACTED_AUTH]@");
+    s = replace(s, /(vmess|ssr|fptn|fptns|warp):\/\/[^ \t\r\n'"]+/gi, "$1://[REDACTED]");
+
+    // 4. Proxy & HTTP URLs with credentials:
     //    e.g. https://user:pass@host:port -> https://[REDACTED]@host:port
     s = replace(s, /:\/\/([^:@ \t\r\n]+)(:[^@ \t\r\n]+)?@/g, "://[REDACTED]@");
 
-    // 4. VLESS / Trojan UUIDs in links: e.g. vless://12345678-1234-1234-1234-1234567890ab@
-    s = replace(s, /vless:\/\/([-a-fA-F0-9]{36})@/g, "vless://[REDACTED_UUID]@");
-    s = replace(s, /trojan:\/\/([^@ \t\r\n]+)@/g, "trojan://[REDACTED_PASS]@");
-
-    // 5. Standalone UUID / Hex secret patterns in query parameters: e.g. ?secret=... or &key=...
-    s = replace(s, /([?&](password|secret|key|token|auth)=)[^& \t\r\n]+/gi, "$1[REDACTED]");
+    // 5. Standalone UUIDs and secret/password params in query strings or key=value pairs
+    s = replace(s, /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g, "[REDACTED_UUID]");
+    s = replace(s, /([?&](password|pass|secret|key|api_key|apikey|token|access_token|auth|auth_token|uuid|id|sub|hash|sig|signature|hwid)=)[^& \t\r\n'"]+/gi, "$1[REDACTED]");
+    s = replace(s, /(https?:\/\/[^\/ \t\r\n'"]+\/(sub|subscribe|subscription|api\/v1\/client\/subscribe)\/)[-_a-zA-Z0-9]{8,}/gi, "$1[REDACTED_SUB_TOKEN]");
+    s = replace(s, /(password|passwd|secret|api_key|apikey|bot_token|agent_api_token|access_token|auth_token|private_key|preshared_key|pre_shared_key|hwid_token|fptn_token)=([^ \t\r\n'";,&]+)/gi, "$1=[REDACTED]");
 
     return s;
 }

@@ -2,7 +2,7 @@
 
 ## 1. High-Level Overview
 
-**Tachyon** is an enterprise-grade, lightweight traffic orchestration, multi-protocol proxying, and DPI anti-censorship platform built natively for **OpenWrt** (supporting 23.05, 24.10, 25.x, and SNAPSHOT).
+**Tachyon** is an enterprise-grade, lightweight traffic orchestration, multi-protocol proxying, and packet desynchronization platform built natively for **OpenWrt** (supporting 23.05, 24.10, 25.x, and SNAPSHOT).
 
 ```mermaid
 graph TD
@@ -11,10 +11,10 @@ graph TD
     
     NFT -->|Direct List / 0ms| WAN[Direct WAN Gateway]
     NFT -->|NFQueue Desync| Zapret[Zapret v1 / v2 nfqws/2]
-    NFT -->|SOCKS Desync| ByeDPI[ByeDPI ciadpi]
-    NFT -->|TProxy / Redirect| SingBox[sing-box Core v1.11+]
+    NFT -->|SOCKS Desync| ByeDPI[ByeDPI ciadpi :4539]
+    NFT -->|TProxy :1602| SingBox[tachyon-core / sing-box]
     
-    SingBox -->|VLESS Reality / H2 / WG| VPS[External VPS / Global Web]
+    SingBox -->|VLESS Reality / H2 / AWG| VPS[External VPS / Global Web]
     Zapret --> WAN
     ByeDPI --> WAN
     
@@ -23,10 +23,10 @@ graph TD
         UCODE --> SingBox
         UCODE --> Zapret
         UCODE --> ByeDPI
-        Watchdog[Autonomous Watchdog 5-15s] --> UCODE
-        AIDoctor[AI Doctor v3.0 / Local Doctor] --> Watchdog
+        Watchdog[Autonomous Watchdog & Reconciler] --> UCODE
+        AIDoctor[AI Doctor v3.0 / Local Doctor / RAG] --> Watchdog
         Telegram[Telegram Bot Daemon] --> UCODE
-        RestAPI[HTTP REST Agent API / OpenAPI 3.0] --> UCODE
+        RestAPI[HTTP REST Agent API & MCP Server] --> UCODE
         LuCI[LuCI TypeScript Web UI] --> UCODE
     end
 ```
@@ -42,21 +42,17 @@ graph TD
   * Executes directly in C-speed with native bindings to `libuci`, `libubus`, `libblobmsg`, and posix syscalls (`fs`, `math`, `socket`).
   * Runs on routers with as little as 128 MB RAM.
 
-### 2.2. Deterministic State & Atomic Writes
-* All configuration changes (`/etc/config/tachyon`) and JSON runtime configurations (`/tmp/tachyon/sing-box.json`) use an **atomic write pattern** (`tmp_file + rename`):
-  ```ucode
-  fs.writefile(tmp_path, json_str);
-  fs.rename(tmp_path, target_path);
-  ```
-  This prevents file corruption during sudden power losses or kernel panics.
+### 2.2. Deterministic State, Flash-Wear Protection & Atomic Transactions
+* All file writes funnel through `write_file()`, `write_json_file()`, and `copy_file()` in `core/common.uc`, which check `content_unchanged()` before touching NAND flash and use atomic temp-file + `fs.rename()` replacement.
+* Multi-step mutations (UCI, generated configs `/etc/tachyon-core/config.json`, init scripts, firewall tables) execute inside `core/transaction.uc` (8-phase `PLAN -> PREFLIGHT -> SNAPSHOT -> MUTATE -> VALIDATE -> ACTIVATE -> VERIFY -> COMMIT` engine with LIFO rollback) and are guarded by Last Known Good (`service/known_good.uc`) and declarative drift repair (`service/reconciler.uc`).
 
-### 2.3. Dual Control Interfaces: LuCI & Headless Telegram/REST
+### 2.3. Dual Control Interfaces: LuCI & Headless Telegram/REST/MCP
 1. **LuCI Web UI**: Modern TypeScript SPA (`fe-app-tachyon`) compiled into LuCI JS assets (`luci-app-tachyon`).
-2. **Interactive Telegram Bot**: Embedded polling daemon with inline keyboards for on-the-fly server switching, rule updates, and instant diagnostics.
-3. **HTTP REST Agent API**: Secure CGI endpoint (`/cgi-bin/tachyon-agent/`) with OpenAPI 3.0.3 spec for integration with LLM agents (ChatGPT Custom GPTs, Cursor, Claude Code, N8N).
+2. **Interactive Telegram Bot**: Embedded polling daemon (`service/telegram.uc`) with inline keyboards for server switching, rule updates, and instant diagnostics.
+3. **HTTP REST Agent API & MCP Server**: Secure CGI endpoint (`/cgi-bin/tachyon-agent/`) with OpenAPI 3.0.3 spec and JSON-RPC 2.0 Model Context Protocol (`service/agent_mcp.uc`) with built-in privacy redaction (`service/support_bundle.uc`) so connected LLMs never see plaintext secrets.
 
 ### 2.4. Core Service Contract (`core/process.uc`)
-Doctor, status, watchdog, lifecycle and the init-script generators share one contract: procd name `tachyon-core`, init script `/etc/init.d/tachyon-core`, UCI package `tachyon-core`, binaries `/usr/bin/tachyon-core` and `/usr/bin/sing-box`, and the pid files under `/var/run`. The generated init script stops the daemon by executable path. It does not call `killall` on its own comm: BusyBox matches `/proc/PID/comm`, and that comm is `tachyon-core` for the init script itself. A script that still contains such a `killall` is treated as stale and regenerated.
+Doctor, status, watchdog, lifecycle and the init-script generators share one contract: procd name `tachyon-core`, init script `/etc/init.d/tachyon-core`, UCI package `tachyon-core`, binaries `/usr/bin/tachyon-core` and `/usr/bin/sing-box`, and the pid files under `/var/run`. Process liveness is verified using triple identity (`pid` + `/proc/<pid>/stat` `starttime` + `/proc/sys/kernel/random/boot_id`) to prevent PID recycling false positives.
 
 ---
 
@@ -71,17 +67,18 @@ tachyon/
 │   │   └── uci-defaults/              # Post-installation default configs
 │   ├── usr/
 │   │   ├── bin/tachyon                # Main CLI entrypoint wrapper
-│   │   └── lib/tachyon/               # Modular ucode libraries (60+ modules)
-│   │       ├── core/                  # Low-level helpers, UCI, constants
-│   │       ├── service/               # Lifecycle, Watchdog, APIs, Telegram
-│   │       ├── diagnostics/           # AI Doctor, Local Doctor, Quick Fixes
-│   │       ├── singbox/               # Config generator, DNS, routing
-│   │       ├── providers/             # Zapret v1/v2, ByeDPI, NFQueue
-│   │       ├── nft/                   # nftables ruleset compiler & applier
-│   │       ├── dns/                   # dnsmasq & DNS routing coordinator
-│   │       ├── components/            # Updater, package manager, hosts
-│   │       ├── config/                # Validator, rule engine, migrations
-│   │       └── subscription/          # Subscriptions fetcher & parser
+│   │   └── lib/tachyon/               # Modular ucode libraries (70+ modules)
+│   │       ├── core/                  # Low-level helpers, exec, process, transaction, jobs, events
+│   │       ├── service/               # Lifecycle, Watchdog, Reconciler, Known-Good, APIs, MCP, Telegram
+│   │       ├── diagnostics/           # AI Doctor, Local Doctor, RAG, Fuzzer, Route Explain, Quick Fixes
+│   │       ├── tachyon_core/          # Core config generator, outbounds, routes, DNS, balancers
+│   │       ├── providers/             # Zapret v1/v2, ByeDPI, NFQueue, WDTT, OlcRTC, FPTN, Tailscale
+│   │       ├── nft/                   # nftables ruleset compiler & applier (inet TachyonTable)
+│   │       ├── dns/                   # dnsmasq & DNS routing coordinator, speed test
+│   │       ├── components/            # Updater, package catalog, hosts, engine state
+│   │       ├── config/                # Validator, migration engine, connections, UCI schema
+│   │       ├── subscription/          # Subscriptions fetcher, cache & universal URI parser
+│   │       └── torrserver/            # TorrServer direct routing helper
 ├── luci-app-tachyon/                  # OpenWrt LuCI package
 │   ├── htdocs/luci-static/resources/view/tachyon/ # Compiled frontend JS bundle
 │   ├── root/etc/uci-defaults/         # LuCI menu registration
@@ -102,9 +99,9 @@ tachyon/
 
 | Process | Role | Execution Model |
 |---|---|---|
-| `tachyon-core` / `sing-box` | Core proxying and packet tunneling engine | Managed by procd (`/etc/init.d/tachyon-core`), identity from `core/process.uc` |
-| `nfqws` / `nfqws2` | Local TCP/UDP packet desynchronizer (Zapret) | Spawned into background per configured rule |
-| `ciadpi` | Local SOCKS desync proxy (ByeDPI) | Spawned on `127.0.0.1:1080` / custom port |
-| `watchdog.uc` | State supervision, loop mitigation, self-healing | Background periodic daemon (every 5–15s) |
+| `tachyon-core` / `sing-box` | Core proxying and packet tunneling engine (TProxy `:1602`, DNS `127.0.0.42:53`, Clash API `127.0.0.1:9090`) | Managed by procd (`/etc/init.d/tachyon-core`), identity verified via `core/process.uc` |
+| `nfqws` / `nfqws2` | Local TCP/UDP packet desynchronizer (Zapret v1 NFQueue `200+`, Zapret v2 NFQueue `201+` with Lua) | Spawned into background per configured rule |
+| `ciadpi` | Local SOCKS5 desync proxy (ByeDPI) | Spawned on `127.0.0.1:4539` (Fuzzer sandbox: `11089`) |
+| `watchdog.uc` | State supervision, Reconciler drift repair, LKG observation, OOM guard, Smart Detect | Background periodic daemon (every 5–15s) |
 | `telegram.uc` | Telegram Bot Long-Polling Daemon | Procd-supervised background worker |
-| `agent_api.uc` | HTTP REST Agent API Handler | Invoked on-demand via `uhttpd` CGI |
+| `agent_api.uc` / `agent_mcp.uc` | HTTP REST Agent API & MCP Server | Invoked on-demand via `uhttpd` CGI |

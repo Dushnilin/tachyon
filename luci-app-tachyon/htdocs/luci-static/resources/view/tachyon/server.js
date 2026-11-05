@@ -5893,10 +5893,10 @@ function createServerContent(section, options = {}) {
     _("Morph Profile"),
   );
   o.value("auto", _("Auto / Adaptive Transformer"));
-  o.value("browsing", "Browsing");
-  o.value("video", "Video");
+  o.value("browsing", _("Browsing"));
+  o.value("video", _("Video"));
   o.value("webrtc", "WebRTC");
-  o.value("bulk", "Bulk");
+  o.value("bulk", _("Bulk"));
   o.default = "auto";
   o.rmempty = true;
   o.modalonly = true;

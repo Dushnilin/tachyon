@@ -4135,6 +4135,7 @@ function list_update() {
 
     if (ok) {
         write_list_update_timestamp(now_seconds());
+        try { require("service.config_plan").refresh_conflict_diagnostics(); } catch (e) {}
         log_message("Lists update completed successfully", "info");
         update_list_status(false, true, "done", "Lists and rule sets successfully updated");
     }
@@ -4360,6 +4361,8 @@ function subscription_update_common_locked(force, target_section, target_source_
 
     if (!subscription_runtime_apply_changed("updated subscriptions"))
         return false;
+
+    try { require("service.config_plan").refresh_conflict_diagnostics(); } catch (e) {}
 
     if (failed > 0)
         log_message("Subscription update applied for changed rules; failed rules kept their previous cache", "info");

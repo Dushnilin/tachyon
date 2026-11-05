@@ -1,136 +1,106 @@
-# 04. Движки обхода DPI и десинхронизации пакетов
+# 04. Движки пакетной десинхронизации и локальные провайдеры
 
-Tachyon интегрирует три независимых локальных движка десинхронизации сетевых пакетов, которые функционируют непосредственно на оборудовании роутера без необходимости использования внешнего VPS или прокси-сервера (режим «Zero-VPS»).
+Tachyon интегрирует несколько независимых движков десинхронизации сетевых пакетов и специализированных туннельных провайдеров, которые работают непосредственно на роутере OpenWrt (как в режиме «Zero-VPS» без внешнего сервера, так и в гибридном режиме совместно с `tachyon-core` / `sing-box`).
 
 ---
 
-## 1. Сравнительная матрица: Zapret v1 vs Zapret v2 vs ByeDPI
+## 1. Сравнительная матрица движков десинхронизации
 
-| Параметр | Zapret v1 (`nfqws`) | Zapret v2 (`nfqws2`) | ByeDPI (`ciadpi`) |
-|---|---|---|---|
-| **Исполняемый файл** | `/usr/bin/nfqws` | `/usr/bin/nfqws2` | `/usr/bin/ciadpi` |
-| **Модель работы** | Перехват через Kernel NFQueue | Multi-Queue NFQueue с Lua | Локальный SOCKS5 / TProxy |
-| **Целевые протоколы** | HTTP, TLS (ClientHello) | HTTP, TLS, QUIC, WireGuard, UDP | HTTP, TLS |
-| **Методы фрагментации** | `split2`, `disorder`, `fake` | `multisplit`, `seqovl`, `wsize`, `fake` | `--split-pos`, `--disorder`, `--fake` |
-| **Многоуровневые цепочки** | 1 стратегия на правило | Сложные составные цепочки | Составные аргументы SOCKS |
-| **Нагрузка на CPU** | Минимальная (< 1%) | Низкая (< 2%) | Низкая (< 2%) |
-| **Оптимально для** | Базового DPI, старых роутеров | YouTube 4K, Discord, ТСПУ | Не-root окружений, SOCKS-роутинга |
+| Параметр | Zapret v2 (`nfqws2`) | Zapret v1 (`nfqws`) | ByeDPI (`ciadpi`) | Native `desync` (`tachyon-core`) |
+|---|---|---|---|---|
+| **Исполняемый файл** | `/opt/zapret2/nfq2/nfqws2` | `/opt/zapret/nfq/nfqws` | `/usr/bin/ciadpi` | Встроен в `/usr/bin/tachyon-core` |
+| **Модель перехвата** | Kernel NFQueue `201+` + Lua | Kernel NFQueue `200+` | Локальный SOCKS5 (`127.0.0.1:4539`) | Нативный L4/L7 dialer внутри ядра |
+| **Целевые протоколы** | HTTP, TLS, QUIC, STUN, Discord UDP, кастомный UDP | HTTP, TLS, QUIC | HTTP, TLS (TCP) | TLS, HTTP, QUIC/UDP |
+| **Синтаксис флагов** | `--lua-desync=multisplit:pos=1,midsld:seqovl=1:fooling=badseq` | `--dpi-desync=fake,split2 --dpi-desync-split-pos=1,midsld` | `-s 1 -d 1 --auto=t,r,s -o 1` | `mode=fake_split split_pos=midsld fake_ttl=4 repeats=6` |
+| **Многоуровневые профили** | Мультипрофили через `--new` в одном процессе | 1 профиль или `--new` | Составные группы `--auto` | На уровне секции / outbound |
+
+> [!IMPORTANT]
+> **Никогда не путайте синтаксис Zapret v1 и Zapret v2:**
+> - **Zapret v2 (`nfqws2`)** принимает ТОЛЬКО флаги `--lua-desync=<функция>[:ключ=значение...]` (используя предзагруженные Lua-библиотеки `/opt/zapret2/lua/zapret-lib.lua`, `zapret-antidpi.lua`, `zapret-auto.lua`). Флаги `--dpi-desync` от первой версии в `nfqws2` не существуют.
+> - **Zapret v1 (`nfqws`)** принимает классические флаги `--dpi-desync=...`, `--dpi-desync-split-pos=...`, `--dpi-desync-fooling=...`.
 
 ---
 
 ## 2. Принципы и техники десинхронизации пакетов
 
-Системы глубокого анализа пакетов (DPI / ТСПУ) анализируют заголовки сетевых протоколов (такие как `SNI` в расширении TLS ClientHello или заголовок `Host` в HTTP) для блокировки или замедления трафика. 
+Промежуточные сетевые фильтры (middlebox / DPI) анализируют заголовки начальных пакетов соединения (расширение `SNI` в TLS ClientHello, заголовок `Host` в HTTP, начальные датаграммы QUIC/UDP).
 
-Десинхронизация обманывает конечный автомат DPI, заставляя его потерять контекст TCP-сессии или пропустить целевой заголовок, в то время как целевой сервер корректно собирает исходный поток данных.
+Десинхронизация модифицирует структуру исходящих пакетов так, чтобы транзитный фильтр потерял контекст сессии, а целевой сервер корректно собрал поток по стандартам TCP/IP:
 
-```
-Исходный поток:   [TLS ClientHello с SNI] ──────────► (Блокируется ТСПУ / DPI)
-
-Десинхронизация:  [Fake-пакет с неверной суммой/TTL] ──► (DPI сбрасывает состояние)
-                  [Фрагмент 1: Начало ClientHello]  ───► (DPI не видит полный SNI)
-                  [Фрагмент 2: Окончание данных]  ─────► (Сервер собирает TCP-поток)
-```
-
-### 2.1. Основные стратегии обхода
-
-1. **`split2` / `multisplit` (Многопозиционное разделение)**:
-   * Разрезает TCP-сегмент непосредственно внутри поля TLS SNI или заголовка HTTP Host. Оборудование DPI не выполняет глубокую реассемблинг-сборку мелких фрагментов, а стек TCP целевого сервера склеивает поток без потерь.
-2. **`disorder` / `disorder2` (Изменение порядка доставки)**:
-   * Отправляет вторую часть пакета раньше первой с корректными TCP Sequence Numbers. DPI видит фрагменты не по порядку и пропускает инспекцию.
-3. **`fake` / `fake_sni` (Внедрение фейковых пакетов)**:
-   * Отправляет поддельный пакет TLS ClientHello с намеренно заниженным TTL (Time To Live). DPI перехватывает поддельный пакет и считает соединение легитимным, после чего пакет угасает в сети, не доходя до целевого сервера.
-4. **`seqovl` (Наложение порядковых номеров / Sequence Overlap)**:
-   * Посылает пакет с перекрывающимся диапазоном TCP Sequence. Стек TCP на сервере отбрасывает дублирующиеся байты, тогда как DPI парсит неверные данные и теряет контроль над сессией.
-5. **`wsize` (Манипуляция размером окна TCP Window Size)**:
-   * Принудительно устанавливает размер TCP-окна в 1–2 байта, заставляя клиент слать данные микросегментами, что ломает эвристики DPI.
+1. **`multisplit` / `split2` (Многопозиционная фрагментация)**:
+   * Разрезает TCP-сегмент внутри поля TLS SNI (`pos=1,midsld,sniext+4`). Транзитный узел не видит цельной сигнатуры домена, а стек TCP сервера склеивает сегменты без потерь.
+2. **`multidisorder` / `disorder2` (Обратный порядок сегментов)**:
+   * Отправляет второй фрагмент раньше первого с валидными TCP Sequence Numbers.
+3. **`fake` (Инжекция ложных пакетов)**:
+   * Отправляет перед реальным ClientHello фейковый пакет с ограниченным временем жизни (`ttl` / `ip_ttl`) или модифицированной подписью (`fooling=badseq`, `fooling=md5sig`, `tcp_ts=-600000`). Фейковый пакет сбрасывает автомат фильтра на маршруте, но отбрасывается целевым сервером.
+4. **`seqovl` (Наложение TCP Sequence Numbers)**:
+   * Второй фрагмент имеет сдвиг Sequence назад (`seqovl=1`), перекрывая конец первого сегмента.
+5. **`wsize` (Ограничение TCP Window Size)**:
+   * Занижает размер окна TCP (`wsize=1`), принуждая разбивать ответный и исходящий поток на микросегменты.
 
 ---
 
-## 3. Конфигурация и управление в UCI
+## 3. Настройка в модульной схеме UCI (`/etc/config/tachyon`)
 
-### 3.1. Пример настройки Zapret v2 (`/etc/config/tachyon`)
+В актуальной архитектуре Tachyon правила десинхронизации связываются через модульные секции `section` + `condition` + `outbound_source` (либо поля стратегии прямо в `section`):
 
 ```ini
-config provider 'zapret2'
+config condition 'cond_media'
     option enabled '1'
-    option daemon_bin '/usr/bin/nfqws2'
-    option qnum '201'
-    option args_tcp '--dpi-desync=multisplit --dpi-desync-split-pos=1,midsld --dpi-desync-seqovl=1 --dpi-desync-fooling=badseq'
-    option args_udp '--dpi-desync=fake --dpi-desync-any-protocol=1 --dpi-desync-cutoff=d4'
+    option name 'YouTube & Discord Domains'
+    option condition_type 'atomic'
+    list community_lists 'youtube'
+    list community_lists 'discord'
+    list user_domains 'googlevideo.com'
+    list user_domains 'youtube.com'
 
-config rule 'youtube_rule'
+config outbound_source 'src_zapret2_media'
     option enabled '1'
-    option name 'YouTube 4K Desync'
+    option name 'Zapret2 Multisplit'
+    option source_type 'provider'
+    option provider_kind 'zapret2'
+    option nfqws2_strategy '--lua-desync=multisplit:pos=1,midsld:seqovl=1:fooling=badseq'
+
+config section 'sec_media'
+    option enabled '1'
+    option label 'Media Packet Optimization'
+    option connection_type 'zapret2'
     option action 'zapret2'
-    list domain_pattern 'googlevideo.com'
-    list domain_pattern 'youtube.com'
-    list domain_pattern 'ytimg.com'
-    list domain_pattern 'discord.gg'
-    list domain_pattern 'discord.com'
-```
-
-### 3.2. Пример настройки ByeDPI
-
-```ini
-config provider 'byedpi'
-    option enabled '1'
-    option daemon_bin '/usr/bin/ciadpi'
-    option listen_ip '127.0.0.1'
-    option listen_port '1080'
-    option args '--split-pos 1 --disorder 1 --fake -1 --ttl 8'
+    list condition_refs 'cond_media'
+    list outbound_source_refs 'src_zapret2_media'
 ```
 
 ---
 
-## 4. Мультиплексирование NFQueue и изоляция очередей
+## 4. Мультиплексирование NFQueue и специализированные провайдеры
 
-* Подсистема ядра Linux `nfnetlink_queue` требует уникальный номер очереди (`qnum`) для каждого запущенного процесса демона.
-* Модуль `providers/nfqueue/runtime.uc` в Tachyon динамически управляет выделением очередей:
-  * Базовая очередь Zapret v1: `200`
-  * Базовая очередь Zapret v2: `201`
-  * Очередь Strategy Fuzzer: `298` / `299`
-* При одновременной активации Zapret v1 и Zapret v2 для разных правил маршрутизации Tachyon гарантирует строгую изоляцию очередей и исключает конфликты PID и fwmark.
+### 4.1. Изоляция очередей NFQueue (`providers/nfqueue/runtime.uc`)
+* Базовая очередь Zapret v1 (`nfqws`): `200+`
+* Базовая очередь Zapret v2 (`nfqws2`): `201+`
+* Очереди изолированного сэндбокса Strategy Fuzzer: `298` / `299` (с сокет-меткой `0x08000000`)
+* Пакеты после обработки демоном маркируются `0x40000000` (`NFT_COMMON_MARK`), что исключает повторное попадание в очередь.
 
----
-
-## 5. Интеграция AmneziaWG в sing-box-extended (2026)
-
-Проверено против релизного бинарника `v1.13.18-extended-2.6.5` (`shtorm-7/sing-box-extended`):
-
-- Секция `endpoint.amnezia` полностью реализована в форке: `AmneziaOptions` (`transport/wireguard/endpoint_options.go`) → параметры IPC `jc / jmin / jmax / s1-s4 / h1-h4 / i1-i5`.
-- Форк `shtorm-7/wireguard-go v0.0.4-extended-1.5.3`: пакеты `I1–I5` отправляются отдельными дейтаграммами **перед** инициализацией рукопожатия (`SendHandshakeInitiation`), значение задается в hex-формате.
-- Генератор Tachyon (`singbox/generator_outbounds.uc` -> `add_awg_endpoint`) формирует конфигурацию, полностью совместимую со схемой форка:
-  - Секция `peer` содержит обязательный `allowed_ips`.
-  - Параметры `pre_shared_key` и `persistent_keepalive_interval` опциональны.
-  - Hex-значения `i1–i5` передаются через `uci_bin_to_hex` без повторного кодирования.
-- **Диагностика:** если AWG/WARP-туннель имеет состояние «TX есть, RX нет» на sing-box-extended, конфиг применен корректно — причина во внешней UDP-фильтрации провайдера или блокировке сервера.
+### 4.2. Дополнительные провайдеры (`providers/`)
+* **`wdtt` (`providers/wdtt/`)**: специализированный туннель для WebRTC, голосовых каналов Discord и звонков Telegram.
+* **`olcrtc` (`providers/olcrtc/`)**: ретранслятор медиа- и RTC-трафика.
+* **`fptn` (`providers/fptn/`)**: клиент устойчивого к фильтрации VPN-протокола FPTN.
+* **`tailscale` (`providers/tailscale/`)**: интеграция mesh-сети Tailscale (нативный демон `tailscaled` или встроенный endpoint в `sing-box`).
+* **`torrserver` (`torrserver/direct.uc`)**: автоматический прямой обход для локального медиа-сервера TorrServer.
 
 ---
 
-## 6. Strategy Fuzzer и автоматический подбор стратегий
+## 5. Интеграция AmneziaWG в `sing-box-extended` / `tachyon-core`
 
-Tachyon включает встроенный модуль автоматического тестирования стратегий обхода — **Strategy Fuzzer & Auto-Tuner** (`diagnostics/fuzzer.uc`), который избавляет от необходимости вручную подбирать флаги `nfqws2` или `ciadpi`.
+- Секция `endpoint.amnezia` поддерживает параметры обфускации рукопожатия WireGuard: `jc`, `jmin`, `jmax`, `s1–s4`, `h1–h4`, `i1–i5`.
+- Пакеты сигнатурной маскировки `I1–I5` отправляются отдельными UDP-дейтаграммами перед `SendHandshakeInitiation`.
+- Генератор Tachyon (`tachyon_core/generator_outbounds.uc` -> `add_awg_endpoint`) автоматически компилирует эти поля из UCI или конфигов Amnezia.
+- Если выбран стандартный бинарник `sing-box` без поддержки `amnezia`, `diagnostics/doctor.uc` обнаружит это и предложит быстрое исправление `upgrade_to_singbox_extended`.
 
-### 6.1. Механизм работы
-- **Изолированный сэндбокс:** Тестирование выполняется через временные очереди `qnum 298/299` с сокетной меткой `0x08000000` (для Zapret) либо через локальный порт `127.0.0.1:11089` (для ByeDPI), не затрагивая активный домашний трафик.
-- **Метрический скоринг:** Замеряются время TLS-рукопожатия, TTFB (время до первого байта), битрейт загрузки чанка потокового видео (MB/s) и HTTP-код ответа.
-- **1-Click Apply:** Победившая стратегия мгновенно применяется к правилу YouTube/Discord или в глобальные параметры провайдера с автоматической перезагрузкой службы.
+---
 
-### 6.2. Команды управления через CLI
-```sh
-# Запуск бенчмарка стратегий
-tachyon fuzzer_start <engine> <target> [custom_url] [rule_section]
+## 6. Strategy Fuzzer и ИИ-генератор стратегий (`diagnostics/fuzzer.uc`, `diagnostics/fuzzer/ai.uc`)
 
-# Просмотр текущего прогресса и результатов
-tachyon fuzzer_status
-
-# Остановка фонового бенчмарка
-tachyon fuzzer_stop
-
-# Применение выбранной стратегии в UCI
-tachyon fuzzer_apply <engine> "<strategy_args>" [target_rule_or_global]
-
-# Вывод доступной матрицы стратегий
-tachyon fuzzer_strategies
-```
+Встроенный бенчмарк стратегий тестирует комбинации флагов `zapret2`, `zapret`, `byedpi` и нативного `desync` в изолированном сэндбоксе без разрыва домашнего интернета:
+- **Изоляция:** NFQueue `298/299` (fwmark `0x08000000`) или локальный порт `127.0.0.1:11089` для `ciadpi`.
+- **Метрики:** время TLS-рукопожатия, TTFB, скорость скачивания потокового видеочанка и HTTP-статус.
+- **AI Strategy Generator (`fuzzer/ai.uc`):** использует RAG (`diagnostics/rag.uc`) и подключённую LLM для генерации 3–5 валидных стратегий под конкретный сервис и сетевой профиль оператора, автоматически очищая все входные данные от любых секретов и нормализуя синтаксис через `sanitize_strategy_args()` + `validate_strategy_args()`.

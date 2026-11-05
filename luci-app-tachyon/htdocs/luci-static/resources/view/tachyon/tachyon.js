@@ -2052,14 +2052,23 @@ const EntryPoint = {
           (globalThis.__vitest_worker__ ||
             (typeof process !== "undefined" && process.env?.VITEST)),
       );
-      let deferredIndex = 0;
       targets.forEach(({ type, el }) => {
         const ref = gridSectionRegistry[type];
         if (!ref || !el) return;
         el.classList.add("tachyon-studio-managed");
         let mountedOnce = false;
+        let visibilityObserver = null;
+        const disconnectObserver = () => {
+          if (visibilityObserver) {
+            try {
+              visibilityObserver.disconnect();
+            } catch (_e) {}
+            visibilityObserver = null;
+          }
+        };
         const doMount = () => {
           mountedOnce = true;
+          disconnectObserver();
           main.mountTachyonStudioDeck({
             type,
             sectionRef: ref,
@@ -2075,24 +2084,64 @@ const EntryPoint = {
             onNavigateSubTab: selectSectionSubTabExternal,
           });
         };
+        const ensureMounted = () => {
+          if (!mountedOnce) doMount();
+        };
         ref._refreshStudioDeck = doMount;
+        ref._ensureStudioDeckMounted = ensureMounted;
         const tabPane = el.closest
-          ? el.closest(".cbi-tab, .cbi-tab-descr")
+          ? el.closest(".cbi-tab, .cbi-tab-descr, .cbi-tab-disabled")
           : null;
-        const isHiddenTab =
-          !isTestEnv &&
-          tabPane &&
-          tabPane.classList &&
-          tabPane.classList.contains("cbi-tab-descr");
-        if (
-          isHiddenTab &&
-          typeof window !== "undefined" &&
-          typeof window.setTimeout === "function"
-        ) {
-          deferredIndex += 1;
-          window.setTimeout(() => {
-            if (!mountedOnce) doMount();
-          }, deferredIndex * 20);
+        const subPane = el.closest
+          ? el.closest(".tachyon-section-subpane")
+          : null;
+        const isCurrentlyHidden = () => {
+          if (isTestEnv) return false;
+          if (tabPane) {
+            if (
+              tabPane.classList &&
+              (tabPane.classList.contains("cbi-tab-descr") ||
+                tabPane.classList.contains("cbi-tab-disabled"))
+            ) {
+              return true;
+            }
+            if (tabPane.style && tabPane.style.display === "none") {
+              return true;
+            }
+          }
+          if (subPane) {
+            const subTabKey = subPane.getAttribute
+              ? subPane.getAttribute("data-subtab")
+              : null;
+            if (subTabKey && subTabKey !== activeSectionSubTab) {
+              return true;
+            }
+            if (subPane.style && subPane.style.display === "none") {
+              return true;
+            }
+          }
+          return false;
+        };
+        if (isCurrentlyHidden()) {
+          if (typeof MutationObserver === "function") {
+            visibilityObserver = new MutationObserver(() => {
+              if (!mountedOnce && !isCurrentlyHidden()) {
+                ensureMounted();
+              }
+            });
+            if (tabPane) {
+              visibilityObserver.observe(tabPane, {
+                attributes: true,
+                attributeFilter: ["class", "style"],
+              });
+            }
+            if (subPane && subPane !== tabPane) {
+              visibilityObserver.observe(subPane, {
+                attributes: true,
+                attributeFilter: ["class", "style"],
+              });
+            }
+          }
         } else {
           doMount();
         }
@@ -2240,6 +2289,17 @@ const EntryPoint = {
             pane.style.display = isActive ? "" : "none";
           }
         });
+        const entityKey = subTabToEntityType[targetKey] || targetKey;
+        const targetRef = gridSectionRegistry[entityKey];
+        if (
+          targetRef &&
+          typeof targetRef._ensureStudioDeckMounted === "function" &&
+          !secEl.classList.contains("cbi-tab-descr") &&
+          !secEl.classList.contains("cbi-tab-disabled") &&
+          secEl.style.display !== "none"
+        ) {
+          targetRef._ensureStudioDeckMounted();
+        }
       };
 
       const subTabMenu = E(

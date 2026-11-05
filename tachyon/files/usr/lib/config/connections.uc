@@ -2298,7 +2298,12 @@ function expand_server_name_filter_candidates(srv_name) {
 
 function synthesized_priority_levels_for_balancer(group_id, section, force_from_section_pool) {
     let bal = balancer_section(group_id);
-    if (bal == null || lc(option(bal, "balancer_type", "urltest")) != "priority")
+    let is_priority_bal = bal != null && lc(option(bal, "balancer_type", "urltest")) == "priority";
+    let is_section_priority = type(section) == "object" && (
+        force_from_section_pool == true ||
+        lc(trim(option(section, "section_selection_mode", "auto"))) == "priority_failover"
+    );
+    if (!is_priority_bal && !is_section_priority)
         return [];
     if (type(section) == "object")
         last_priority_section_by_group[as_string(group_id)] = section;
@@ -2310,7 +2315,12 @@ function synthesized_priority_levels_for_balancer(group_id, section, force_from_
     if (use_force_pool) {
         group_refs = section_combined_pool_tier_refs(owner_sec);
     } else {
-        group_refs = extract_entity_priority_level_refs(owner_sec);
+        let bal_sec_st = type(owner_sec) == "object"
+            ? item_settings(owner_sec, "balancer_settings", group_id)
+            : {};
+        group_refs = extract_entity_priority_level_refs(bal_sec_st);
+        if (length(group_refs) == 0)
+            group_refs = extract_entity_priority_level_refs(owner_sec);
         if (length(group_refs) == 0)
             group_refs = extract_entity_priority_level_refs(bal);
         if (length(group_refs) == 0) {
@@ -3771,12 +3781,17 @@ function urltest_child(section, value) {
                 break;
             }
         }
-        if (has_base) {
-            for (let k, v in bal)
+        for (let k, v in bal)
+            merged[k] = v;
+        let bal_sec_st = type(section) == "object"
+            ? item_settings(section, "balancer_settings", value)
+            : {};
+        if (type(bal_sec_st) == "object" && length(keys(bal_sec_st)) > 0) {
+            for (let k, v in bal_sec_st)
                 merged[k] = v;
-            return merged;
+            has_base = true;
         }
-        return bal;
+        return has_base ? merged : bal;
     }
     return null;
 }
@@ -6556,6 +6571,7 @@ return {
     active_provider_sections,
     active_provider_section_index,
     outbound_source_subscription_url,
+    extract_entity_priority_level_refs,
     section_combined_pool_tier_refs,
     packet_encoding
 };

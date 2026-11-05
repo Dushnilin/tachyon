@@ -125,24 +125,41 @@ uci commit tachyon
 | Метод | Путь | Описание |
 |---|---|---|
 | GET | `/cgi-bin/tachyon-agent/health` | Быстрая проверка работоспособности служб |
-| GET | `/cgi-bin/tachyon-agent/snapshot` | Полный снимок системы для LLM |
+| GET | `/cgi-bin/tachyon-agent/snapshot` | Полный снимок системы для LLM (все секреты и MAC скрыты) |
 | GET | `/cgi-bin/tachyon-agent/diagnose` | Результаты диагностики + предложения по ремонту |
-| GET | `/cgi-bin/tachyon-agent/logs` | Последние 100 строк системного лога Tachyon |
-| GET | `/cgi-bin/tachyon-agent/config` | Конфигурация UCI (секреты скрыты) |
-| GET | `/cgi-bin/tachyon-agent/tools` | Схема инструментов в формате OpenAI Function Calling / MCP |
-| GET | `/cgi-bin/tachyon-agent/ai-doctor/last` | Последний отчёт AI Doctor с меткой времени |
+| GET | `/cgi-bin/tachyon-agent/logs` | Последние строки системного лога Tachyon (обезличенные) |
+| GET | `/cgi-bin/tachyon-agent/config` | Конфигурация UCI (`tachyon-config-masked`, все секреты скрыты) |
+| GET | `/cgi-bin/tachyon-agent/docs/search` | Поиск по встроенной базе знаний RAG (`?q=zapret2&limit=5`) |
+| GET | `/cgi-bin/tachyon-agent/route/explain` | Трассировка маршрута пакета и DNS для любого домена/IP (`?target=youtube.com`) |
+| GET | `/cgi-bin/tachyon-agent/known-good` | Статус эталонной конфигурации Last Known Good (`?action=status`) |
+| GET | `/cgi-bin/tachyon-agent/tools` | Схема всех 18 инструментов в формате OpenAI Function Calling / MCP |
+| GET | `/cgi-bin/tachyon-agent/ai-doctor/last` | Последний отчёт AI Doctor (обезличенный) с меткой времени |
 
 #### WRITE (Обязателен заголовок `Authorization: Bearer <токен>`):
 
 | Метод | Путь | Тело запроса | Описание |
 |---|---|---|---|
 | POST | `/cgi-bin/tachyon-agent/heal` | `{}` | Принудительный запуск авто-ремонта |
+| POST | `/cgi-bin/tachyon-agent/ai-doctor` | `{"query":"почему не работает..."}` | Запуск анализа AI Doctor через подключённую LLM |
 | POST | `/cgi-bin/tachyon-agent/ai-doctor/fix` | `{"fix":"clear_dns_cache,start_singbox"}` | Применение кодов исправления |
-| POST | `/cgi-bin/tachyon-agent/restart` | `{"service":"singbox"}` | Перезапуск службы (`singbox`, `watchdog`, `dnsmasq`) |
+| POST | `/cgi-bin/tachyon-agent/restart` | `{"service":"singbox"}` | Перезапуск службы (`singbox`, `tachyon`, `dnsmasq`) |
 | POST | `/cgi-bin/tachyon-agent/reload` | `{}` | Перезагрузка правил и конфигурации |
+| POST | `/cgi-bin/tachyon-agent/config/plan` | `{"changes":[...]}` | Сухой прогон (dry-run), проверка коллизий и маскированный diff перед изменением UCI |
 | POST | `/cgi-bin/tachyon-agent/config/set` | `{"section":"settings","option":"dns_type","value":"doh"}` | Изменение параметров UCI |
-| POST | `/cgi-bin/tachyon-agent/section/toggle` | `{"section":"имя_секции"}` | Включение / выключение правил обхода |
-| POST | `/cgi-bin/tachyon-agent/domain/add` | `{"section":"имя_секции","domain":"example.com"}` | Добавление домена в списки |
+| POST | `/cgi-bin/tachyon-agent/section/toggle` | `{"section":"имя_секции"}` | Включение / выключение секции маршрутизации |
+| POST | `/cgi-bin/tachyon-agent/domain/add` | `{"section":"имя_секции","domain":"example.com"}` | Добавление домена в условие (`condition`) секции |
+| POST | `/cgi-bin/tachyon-agent/known-good` | `{"action":"capture\|promote\|rollback"}` | Управление эталонным снимком Last Known Good |
+| POST | `/cgi-bin/tachyon-agent/support-bundle` | `{}` | Сборка обезличенного диагностического архива с SHA-256 манифестом |
+| POST | `/cgi-bin/tachyon-agent/mcp` | JSON-RPC 2.0 | Точка входа Model Context Protocol (MCP) |
+
+---
+
+## 3.3. Защита приватных данных при работе с подключёнными нейросетями
+
+Во всех каналах взаимодействия с LLM (`AI Doctor`, `Strategy Fuzzer AI`, `RAG embeddings`, `REST Agent API`, `MCP Server`) действует автоматическая фильтрация секретов (`service/support_bundle.uc`, `core/events.uc`, `diagnostics/status.uc`, `service/config_plan.uc`):
+- Автоматически маскируются: токены Telegram (`[REDACTED_TG_TOKEN]`, `telegram_chat_id`, `allowed_chats`), облачные и LLM API-ключи (`sk-*`, `AIza*`, `gsk_*`, `xai-*`), `Bearer`-токены, ссылки прокси и подписок (`vless://`, `vmess://`, `ss://`, `trojan://`, `hysteria2://`, `wireguard://`, `awg://`, `fptn://`, `warp://`), UUID (`[REDACTED_UUID]`), ключи WireGuard/AmneziaWG/Reality (`private_key`, `pbk`, `sid`, `crypto_key`), пароли, HWID и MAC-адреса клиентов (`[REDACTED_MAC]`).
+- Запросы в RAG (`diagnostics/rag.uc`) проходят через `sanitize_query()` перед отправкой на внешний эндпоинт эмбеддингов.
+- Системные промпты запрещают подключённым нейросетям запрашивать у пользователя ключи, токены, пароли, полные ссылки подписок или немаскированный `/etc/config/tachyon`.
 
 ---
 

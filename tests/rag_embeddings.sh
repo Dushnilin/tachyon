@@ -65,9 +65,39 @@ let idx = {
 let res = rag.search([1.0, 0.0], idx, 2);
 assert(length(res) == 2, "limit 2");
 assert(res[0].chunk.file == "f1.md", "best match");
+
+// 7. Verify query secret sanitization before RAG retrieval / embedding
+let dirty_q = "why did vless://12345678-1234-1234-1234-123456789abc@1.2.3.4:443 fail with key sk-proj-AbCdEfGhIjKlMnOpQrStUvWxYz123456 and bot 123456789:AAH_testTokenSecret1234567890abcdef and mac AA:BB:CC:DD:EE:FF?";
+let clean_q = rag.sanitize_query(dirty_q);
+assert(index(clean_q, "12345678-1234-1234-1234-123456789abc") == -1, "UUID redacted in rag query");
+assert(index(clean_q, "sk-proj-") == -1, "OpenAI key redacted in rag query");
+assert(index(clean_q, "AAH_testTokenSecret") == -1, "Telegram token redacted in rag query");
+assert(index(clean_q, "AA:BB:CC:DD:EE:FF") == -1, "MAC redacted in rag query");
+
+// 8. Verify lexical_search & search_docs over real rag_index.json
+let st = rag.status();
+assert(st.total_chunks >= 50, "real rag_index.json loaded");
+let docs_res = rag.search_docs("how does reconciler repair drift and known_good rollback work in tachyon", 3);
+assert(length(docs_res) == 3, "search_docs returns top 3");
+assert(docs_res[0].relevance > 0, "positive domain-boosted score");
+
+let sb = require("service.support_bundle");
+let llm_clean = sb.redact_for_llm("token=AIzaSyDa1234567890abcdefghijklmnopqrstuvw client=11:22:33:44:55:66 url=https://sub.example.com/sub?token=my_secret_sub_999");
+assert(index(llm_clean, "AIzaSyDa") == -1, "Gemini key redacted");
+assert(index(llm_clean, "11:22:33:44:55:66") == -1, "Client MAC redacted");
+assert(index(llm_clean, "my_secret_sub_999") == -1, "Subscription token redacted");
+
 print("OK");
 ' 2>&1 || echo "FAIL")"
 [ "$runtime_check" = "OK" ] ||
   fail "rag.uc runtime execution failed (saw '$runtime_check')"
+
+# 9. Verify no steer references in RAG index, AI Doctor prompt, or MCP knowledge base
+grep -Fqi '"steer"' "$TACHYON_LIB/rag_index.json" &&
+  fail "rag_index.json must not reference removed steer engine"
+grep -Fq 'steer' "$TACHYON_LIB/diagnostics/doctor.uc" &&
+  fail "doctor.uc must not reference removed steer engine"
+grep -Fq 'steer' "$TACHYON_LIB/service/agent_mcp.uc" &&
+  fail "agent_mcp.uc must not reference removed steer engine"
 
 printf 'rag embeddings checks passed\n'

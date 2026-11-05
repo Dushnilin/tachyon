@@ -271,8 +271,8 @@ const NAV_ITEMS: NavItemDef[] = [
     uciTabId: 'dashboard',
     luciTab: 'dashboard',
     simpleVisible: true,
-    labelRu: 'Обзор',
-    labelEn: 'Overview',
+    labelRu: 'Дашбоард',
+    labelEn: 'Dashboard',
     subtitleRu: 'Состояние маршрутов и инфраструктуры в реальном времени',
     subtitleEn: 'Real-time routing and infrastructure status',
     iconPaths: [
@@ -1253,7 +1253,51 @@ export function mountTachyonAppShell(options: MountAppShellOptions = {}): void {
     }
   }
 
+  const syncLuciThemeAccent = () => {
+    if (typeof document === 'undefined' || typeof window === 'undefined') {
+      return;
+    }
+    try {
+      const root = document.documentElement;
+      const rootStyle = window.getComputedStyle(root);
+      const varCandidates = [
+        '--primary-color-high',
+        '--primary',
+        '--main-color',
+        '--bs-primary',
+        '--color-primary',
+      ];
+      for (const prop of varCandidates) {
+        const val = (rootStyle.getPropertyValue(prop) || '').trim();
+        if (val) {
+          root.style.setProperty('--tachyon-theme-accent', val);
+          return;
+        }
+      }
+      const probe = document.createElement('button');
+      probe.className = 'btn cbi-button cbi-button-apply';
+      probe.style.cssText =
+        'position:fixed;left:-9999px;top:-9999px;visibility:hidden;pointer-events:none;';
+      document.body.appendChild(probe);
+      const probeStyle = window.getComputedStyle(probe);
+      const bg = (probeStyle.backgroundColor || '').trim();
+      probe.remove();
+      if (
+        bg &&
+        bg !== 'transparent' &&
+        bg !== 'rgba(0, 0, 0, 0)' &&
+        bg !== 'rgb(255, 255, 255)' &&
+        bg !== 'rgb(0, 0, 0)'
+      ) {
+        root.style.setProperty('--tachyon-theme-accent', bg);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
   const syncShellAttributes = () => {
+    syncLuciThemeAccent();
     const collapsedStr = sidebarCollapsed ? 'true' : 'false';
     const topbarCollapsedStr = topbarCollapsed ? 'true' : 'false';
     mapEl.setAttribute('data-ui-mode', uiMode);

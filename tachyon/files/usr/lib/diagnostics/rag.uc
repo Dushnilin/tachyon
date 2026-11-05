@@ -11,6 +11,34 @@ let INDEX_BUILTIN = LIB_DIR + "/rag_index.json";
 let INDEX_CUSTOM = "/etc/tachyon/rag_index.json";
 let EMBED_CACHE = "/tmp/tachyon_rag_embeddings.json";
 
+let _sb_mod = null;
+function sb_mod() {
+    if (_sb_mod == null) {
+        try { _sb_mod = require("service.support_bundle"); } catch (e) { _sb_mod = false; }
+    }
+    return _sb_mod || null;
+}
+
+function sanitize_query(query) {
+    if (query == null || query == "")
+        return "";
+    let s = as_string(query);
+    let sb = sb_mod();
+    if (sb && sb.redact_for_llm)
+        s = sb.redact_for_llm(s);
+    else if (sb && sb.redact_string)
+        s = sb.redact_string(s);
+    // Fallback inline redaction so RAG never leaks secrets even if support_bundle is unavailable
+    s = replace(s, /[0-9]{8,12}:[-_a-zA-Z0-9]{35}/g, "[REDACTED_TELEGRAM_TOKEN]");
+    s = replace(s, /Bearer[ \t]+[-_a-zA-Z0-9.+=]{16,}/gi, "Bearer [REDACTED_TOKEN]");
+    s = replace(s, /(sk-(or-v1-|ant-|proj-)?[-_a-zA-Z0-9]{16,}|AIza[-_a-zA-Z0-9]{20,}|gsk_[-_a-zA-Z0-9]{16,}|xai-[-_a-zA-Z0-9]{16,})/g, "[REDACTED_API_KEY]");
+    s = replace(s, /(vless|vmess|trojan|ss|ssr|hysteria2?|hy2|tuic|fptns?|warp|wireguard|wg|awg):\/\/[^ \t\r\n'"]+/gi, "$1://[REDACTED]");
+    s = replace(s, /:\/\/([^:@ \t\r\n]+)(:[^@ \t\r\n]+)?@/g, "://[REDACTED]@");
+    s = replace(s, /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g, "[REDACTED_UUID]");
+    s = replace(s, /([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}/g, "[REDACTED_MAC]");
+    return s;
+}
+
 function rag_index_path() {
     if (fs.stat(INDEX_CUSTOM))
         return INDEX_CUSTOM;
@@ -214,6 +242,7 @@ function ensure_embeddings(index, provider, api_key, custom_url, model_override)
 }
 
 function embed_query(query, provider, api_key, custom_url, model_override) {
+    query = sanitize_query(query);
     let api_url = get_api_url(provider, api_key, custom_url);
     if (!api_url)
         return null;
@@ -242,23 +271,68 @@ function search(query_embedding, index, top_k) {
     return scored;
 }
 
+const STOP_WORDS = {
+    "the": true, "and": true, "for": true, "with": true, "from": true,
+    "this": true, "that": true, "are": true, "was": true, "were": true,
+    "have": true, "has": true, "had": true, "not": true, "but": true,
+    "you": true, "all": true, "can": true, "her": true, "his": true,
+    "one": true, "our": true, "out": true, "who": true, "get": true,
+    "how": true, "why": true, "what": true, "when": true, "where": true,
+    "into": true, "only": true, "other": true, "some": true, "such": true,
+    "than": true, "then": true, "them": true, "they": true, "will": true,
+    "check": true, "checks": true, "status": true, "active": true, "passed": true,
+    "running": true, "info": true, "warn": true, "true": true, "false": true,
+    "null": true, "none": true, "redacted": true, "redacted_uuid": true,
+    "redacted_token": true, "redacted_mac": true, "redacted_api_key": true,
+    "для": true, "как": true, "что": true, "при": true, "или": true,
+    "нет": true, "все": true, "всё": true, "это": true, "так": true,
+    "его": true, "она": true, "они": true, "мы": true, "вы": true,
+    "над": true, "под": true, "без": true, "про": true, "через": true,
+    "если": true, "когда": true, "почему": true, "зачем": true, "где": true,
+    "работает": true, "проверка": true, "статус": true
+};
+
+const DOMAIN_BOOST_TERMS = {
+    "zapret2": 1.8, "nfqws2": 1.8, "zapret": 1.5, "nfqws": 1.6,
+    "byedpi": 1.7, "ciadpi": 1.7, "multisplit": 1.8, "seqovl": 1.8,
+    "disorder2": 1.6, "split2": 1.5, "fooling": 1.5, "badseq": 1.5,
+    "md5sig": 1.5, "wsize": 1.5, "sniext": 1.6, "midsld": 1.6,
+    "fakeip": 1.7, "tproxy": 1.6, "dnsmasq": 1.6, "nftables": 1.6,
+    "tachyontable": 1.8, "fwmark": 1.7, "nfqueue": 1.7, "conntrack": 1.7,
+    "vless": 1.6, "reality": 1.6, "wireguard": 1.6, "amnezia": 1.7,
+    "awg": 1.7, "hysteria2": 1.6, "shadowsocks": 1.5, "trojan": 1.5,
+    "tailscale": 1.7, "fptn": 1.8, "wdtt": 1.8, "olcrtc": 1.8,
+    "torrserver": 1.7, "urltest": 1.6, "balancer": 1.6,
+    "condition": 1.6, "outbound_source": 1.8, "outbound_group": 1.8,
+    "reconciler": 1.8, "known_good": 1.8, "transaction": 1.7, "watchdog": 1.6,
+    "smart_detect": 1.8, "route_explain": 1.8, "config_plan": 1.8,
+    "support_bundle": 1.8, "mcp": 1.7, "telegram": 1.5, "fuzzer": 1.7,
+    "bootstrap": 1.6, "resolv": 1.6, "mtu": 1.6, "doh": 1.5, "oom": 1.6,
+    "gomemlimit": 1.7, "youtube": 1.5, "googlevideo": 1.6, "discord": 1.5
+};
+
 function lexical_search(query, idx_obj, top_k) {
     if (!idx_obj || type(idx_obj.chunks) != "array" || length(idx_obj.chunks) == 0)
         return [];
+    query = sanitize_query(query);
     let q_lc = lc(trim(as_string(query || "")));
-    q_lc = replace(q_lc, /[,.;:!?()"'\/\\]+/g, " ");
+    q_lc = replace(q_lc, /[,.;:!?()"'\/<>=]+/g, " ");
+    q_lc = replace(q_lc, /[\][{}]/g, " ");
     let raw_words = split(q_lc, /[ \t\r\n]+/);
     let terms = [];
     let seen = {};
     for (let w in raw_words) {
         let t = trim(as_string(w));
-        if (length(t) >= 2 && !seen[t]) {
+        if (length(t) >= 2 && !STOP_WORDS[t] && !seen[t]) {
             seen[t] = true;
             push(terms, t);
         }
     }
     if (length(terms) == 0)
         return [];
+
+    let eff_terms = length(terms) > 6 ? 6 : length(terms);
+    let denom = eff_terms * 2.0;
 
     let scored = [];
     for (let i = 0; i < length(idx_obj.chunks); i++) {
@@ -267,22 +341,37 @@ function lexical_search(query, idx_obj, top_k) {
         let file_lc = lc(as_string(chunk.file || ""));
         let text_lc = lc(as_string(chunk.text || ""));
         let hits = 0.0;
+        let matched_terms = 0;
         for (let t in terms) {
+            let boost = DOMAIN_BOOST_TERMS[t] || 1.0;
+            let term_hit = 0.0;
             if (index(heading_lc, t) >= 0)
-                hits += 2.5;
-            else if (index(file_lc, t) >= 0)
-                hits += 1.5;
-            else if (index(text_lc, t) >= 0)
-                hits += 1.0;
+                term_hit += 2.5 * boost;
+            if (index(file_lc, t) >= 0)
+                term_hit += 1.5 * boost;
+            if (index(text_lc, t) >= 0)
+                term_hit += 1.0 * boost;
+            if (term_hit > 0) {
+                hits += term_hit;
+                matched_terms++;
+            }
         }
         if (hits > 0) {
-            let norm_score = hits / (length(terms) * 1.5);
+            // Bonus for matching multiple distinct query terms in the same chunk
+            if (matched_terms > 1)
+                hits += (matched_terms - 1) * 0.5;
+            let norm_score = hits / denom;
             if (norm_score > 0.99) norm_score = 0.99;
-            if (norm_score < 0.35) norm_score = 0.35;
-            push(scored, { chunk: chunk, score: norm_score });
+            if (norm_score < 0.35) norm_score = 0.35 + (hits * 0.01);
+            if (norm_score > 0.99) norm_score = 0.99;
+            push(scored, { chunk: chunk, score: norm_score, raw_hits: hits });
         }
     }
-    sort(scored, function(a, b) { return b.score - a.score; });
+    sort(scored, function(a, b) {
+        if (b.raw_hits != a.raw_hits)
+            return (b.raw_hits > a.raw_hits) ? 1 : -1;
+        return (b.score > a.score) ? 1 : ((b.score < a.score) ? -1 : 0);
+    });
     let limit = top_k || 3;
     if (length(scored) > limit)
         scored = slice(scored, 0, limit);
@@ -301,6 +390,7 @@ function has_valid_embedding_cache(idx_obj, provider, model_override) {
 }
 
 function retrieve(query, provider, api_key, custom_url, model_override, top_k) {
+    query = sanitize_query(query);
     let idx = load_raw_index();
     if (!idx)
         return "";
@@ -327,6 +417,28 @@ function retrieve(query, provider, api_key, custom_url, model_override, top_k) {
     return join("\n\n---\n\n", parts);
 }
 
+function search_docs(query, top_k) {
+    query = sanitize_query(query);
+    let idx = load_raw_index();
+    if (!idx)
+        return [];
+    let limit = int(top_k || 5);
+    if (limit < 1) limit = 5;
+    if (limit > 15) limit = 15;
+    let results = lexical_search(query, idx, limit);
+    let out = [];
+    for (let i = 0; i < length(results); i++) {
+        let r = results[i];
+        push(out, {
+            file: r.chunk.file,
+            heading: r.chunk.heading,
+            relevance: int(r.score * 100),
+            text: r.chunk.text
+        });
+    }
+    return out;
+}
+
 function invalidate_cache() {
     common.remove_file(EMBED_CACHE);
     rag_embed_cache = null;
@@ -347,6 +459,8 @@ function status() {
 
 return {
     retrieve: retrieve,
+    search_docs: search_docs,
+    sanitize_query: sanitize_query,
     invalidate_cache: invalidate_cache,
     status: status,
     load_raw_index: load_raw_index,

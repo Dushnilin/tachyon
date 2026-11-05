@@ -338,10 +338,11 @@ function compute_uci_diff(active_uci, candidate_uci) {
                 let old_val = act_sec[opt];
                 let new_val = cand_sec[opt];
                 if (!values_equal(old_val, new_val)) {
+                    let is_secret = match(as_string(opt), /(token|secret|password|passwd|private_key|preshared_key|pre_shared_key|psk|api_key|auth_key|cookie|uuid|hwid|outbound_json|custom_json|amnezia_conf|proxy_links|proxy_string|proxy_url|subscription_url|warp_flow_uri|crypto_key)/i) != null;
                     push(diffs, {
                         option: opt,
-                        old_value: old_val != null ? old_val : null,
-                        new_value: new_val != null ? new_val : null
+                        old_value: old_val != null ? (is_secret ? "[REDACTED]" : old_val) : null,
+                        new_value: new_val != null ? (is_secret ? "[REDACTED]" : new_val) : null
                     });
                     changed_options_count++;
                 }
@@ -461,7 +462,130 @@ function analyze_subsystem_impact(diff_result, active_uci, candidate_uci) {
     };
 }
 
-// ─── Routing & DNS Rule Overlap / Shadowing Analyzer (#331) ──────────────────
+// ─── Routing & DNS Rule Overlap / Shadowing Analyzer (#331 / #347) ────────────
+
+const COMMUNITY_LIST_DOMAINS = {
+    google_services: [
+        "google.com", "gmail.com", "drive.google.com", "docs.google.com",
+        "maps.google.com", "translate.google.com", "gstatic.com",
+        "googleapis.com", "googleusercontent.com"
+    ],
+    google_ai: [
+        "gemini.google.com", "aistudio.google.com", "makersuite.google.com",
+        "notebooklm.google.com", "bard.google.com", "deepmind.google",
+        "generativelanguage.googleapis.com", "alkalimakersuite-pa.clients6.google.com"
+    ],
+    google_meet: [ "meet.google.com", "stun.l.google.com" ],
+    zoom_teams: [
+        "zoom.us", "zoom.com", "meet.google.com", "teams.microsoft.com",
+        "webex.com", "slack.com", "loom.com", "gather.town", "whereby.com", "jitsi.org"
+    ],
+    youtube: [ "youtube.com", "googlevideo.com", "ytimg.com", "youtu.be", "ggpht.com" ],
+    youtube_images: [ "ytimg.com", "i.ytimg.com", "i9.ytimg.com", "ggpht.com", "yt3.ggpht.com", "yt4.ggpht.com" ],
+    telegram: [ "t.me", "telegram.org", "telegram.me", "telesco.pe", "tdesktop.com", "telegra.ph" ],
+    discord: [
+        "discord.com", "discord.gg", "discordapp.com", "discordapp.net",
+        "discordstatus.com", "watchanimeattheoffice.net",
+        "discord-attachments-uploads-prd.storage.googleapis.com"
+    ],
+    discord_voice: [ "discord.media" ],
+    meta: [
+        "facebook.com", "instagram.com", "whatsapp.com", "fbcdn.net",
+        "cdninstagram.com", "meta.com", "threads.net", "messenger.com"
+    ],
+    whatsapp: [ "whatsapp.com", "whatsapp.net", "wa.me" ],
+    meta_ads: [ "an.facebook.com", "pixel.facebook.com", "graph.instagram.com" ],
+    twitter: [ "twitter.com", "x.com", "twimg.com", "t.co", "x.co" ],
+    openai: [ "openai.com", "chatgpt.com", "oaistatic.com", "oaiusercontent.com", "sora.com" ],
+    anthropic: [ "anthropic.com", "claude.ai", "claudeusercontent.com" ],
+    xai: [ "x.ai", "grok.com" ],
+    openrouter: [
+        "openrouter.ai", "poe.com", "groq.com", "mistral.ai", "together.ai",
+        "fireworks.ai", "deepinfra.com", "cerebras.ai", "replicate.com",
+        "fal.ai", "chutes.ai", "cohere.com", "lmarena.ai"
+    ],
+    cursor: [
+        "cursor.com", "cursor.sh", "cursorapi.com", "opencode.ai", "models.dev",
+        "windsurf.com", "codeium.com", "grazie.ai", "jetbrains.ai", "trae.ai",
+        "cline.bot", "roocode.com", "kilocode.ai", "lovable.dev", "bolt.new",
+        "v0.dev", "devin.ai", "replit.com", "coderabbit.ai", "context7.com"
+    ],
+    perplexity: [ "perplexity.ai", "pplx.ai", "you.com", "genspark.ai", "consensus.app", "elicit.com", "scite.ai" ],
+    copilot: [ "githubcopilot.com", "copilot-proxy.githubusercontent.com", "copilot.microsoft.com", "sydney.bing.com" ],
+    deepseek: [
+        "deepseek.com", "chat.deepseek.com", "api.deepseek.com", "kimi.ai",
+        "qwen.ai", "chat.qwen.ai", "minimax.io", "z.ai", "manus.im", "dify.ai"
+    ],
+    ai_all: [
+        "openai.com", "chatgpt.com", "oaistatic.com", "oaiusercontent.com", "sora.com",
+        "claude.ai", "anthropic.com", "claudeusercontent.com",
+        "gemini.google.com", "aistudio.google.com", "makersuite.google.com",
+        "notebooklm.google.com", "bard.google.com", "deepmind.google",
+        "generativelanguage.googleapis.com", "alkalimakersuite-pa.clients6.google.com",
+        "x.ai", "grok.com", "openrouter.ai", "poe.com", "groq.com", "mistral.ai",
+        "cursor.com", "cursor.sh", "perplexity.ai", "pplx.ai", "githubcopilot.com",
+        "deepseek.com", "huggingface.co", "hf.co"
+    ],
+    steam: [ "steampowered.com", "steamcommunity.com", "steamstatic.com", "steamcontent.com" ],
+    steam_cdn: [ "steamcontent.com", "steampipe.akamaized.net", "dl.steam.ksyna.com", "steamserver.net" ],
+    cs2_dota2: [ "steamdatagram.com", "valve.net", "counter-strike.net", "dota2.com" ],
+    epicgames: [ "epicgames.com", "unrealengine.com", "fortnite.com" ],
+    riot: [ "riotgames.com", "leagueoflegends.com", "playvalorant.com" ],
+    roblox: [ "roblox.com", "rbxcdn.com", "robloxlabs.com" ],
+    games_all: [
+        "steampowered.com", "steamcommunity.com", "steamstatic.com", "steamcontent.com",
+        "epicgames.com", "unrealengine.com", "fortnite.com", "riotgames.com",
+        "leagueoflegends.com", "playvalorant.com", "roblox.com", "rbxcdn.com"
+    ],
+    cloudflare: [ "cloudflare.com", "cloudflare-dns.com", "workers.dev" ],
+    doh_dot_dns: [
+        "cloudflare-dns.com", "dns.google", "dns.quad9.net", "dns.adguard-dns.com",
+        "dns.nextdns.io", "doh.opendns.com", "freedns.controld.com", "dns.mullvad.net"
+    ],
+    ads_hagezi_pro: [
+        "doubleclick.net", "googlesyndication.com", "googleadservices.com",
+        "adservice.google.com", "an.yandex.ru", "mc.yandex.ru"
+    ],
+    android_ads_block: [
+        "googleadservices.com", "googlesyndication.com", "applovin.com",
+        "unityads.unity3d.com", "ironsrc.com", "vungle.com", "mintegral.com",
+        "an.yandex.ru", "ads.vk.com"
+    ],
+    phishing_malware_block: [ "doubleclick.net" ],
+    russia_inside: [
+        "youtube.com", "instagram.com", "facebook.com", "twitter.com", "x.com",
+        "discord.com", "gemini.google.com", "chatgpt.com", "openai.com", "rutracker.org"
+    ],
+    russia_outside: [
+        "yandex.ru", "vk.com", "mail.ru", "gosuslugi.ru", "sberbank.ru", "rambler.ru",
+        "dzen.ru", "rutube.ru", "ozon.ru", "wildberries.ru", "avito.ru", "kinopoisk.ru",
+        "rbc.ru", "tinkoff.ru", "t-bank.ru", "mos.ru", "ya.ru"
+    ],
+    geosite_ru: [
+        "yandex.ru", "vk.com", "mail.ru", "gosuslugi.ru", "sberbank.ru", "rambler.ru",
+        "dzen.ru", "rutube.ru", "ozon.ru", "wildberries.ru", "avito.ru", "kinopoisk.ru",
+        "rbc.ru", "tinkoff.ru", "t-bank.ru", "mos.ru", "ya.ru", "2ch.hk", "pikabu.ru"
+    ],
+    ru_whitelist: [ "gosuslugi.ru", "yandex.ru", "vk.com", "sberbank.ru", "tbank.ru", "ozon.ru", "wildberries.ru" ],
+    ru_domains: [ "yandex.ru", "vk.com", "mail.ru", "gosuslugi.ru", "sberbank.ru", "ozon.ru", "wildberries.ru" ],
+    ru_only_inside: [ "gosuslugi.ru", "nalog.ru", "mos.ru", "rzd.ru", "sberbank.ru" ]
+};
+
+const COMMUNITY_LIST_SUBNETS = {
+    telegram: [
+        "5.28.192.0/18", "91.105.192.0/23", "91.108.4.0/22", "91.108.8.0/21",
+        "91.108.16.0/21", "91.108.56.0/22", "95.161.64.0/20", "149.154.160.0/20",
+        "185.76.151.0/24", "194.221.0.0/16"
+    ],
+    discord: [ "162.158.0.0/15" ],
+    meta: [ "157.240.0.0/16", "31.13.64.0/18", "129.134.0.0/16", "185.60.216.0/22" ],
+    cloudflare: [
+        "173.245.48.0/20", "103.21.244.0/22", "103.22.200.0/22", "103.31.4.0/22",
+        "141.101.64.0/18", "108.162.192.0/18", "190.93.240.0/20", "188.114.96.0/20",
+        "197.234.240.0/22", "198.41.128.0/17", "162.158.0.0/15", "104.16.0.0/13",
+        "104.24.0.0/14", "172.64.0.0/13", "131.0.72.0/22"
+    ]
+};
 
 function normalize_action_family(action) {
     let a = lc(trim(as_string(action || "outbound")));
@@ -473,6 +597,8 @@ function normalize_action_family(action) {
 
 function normalize_domain_token(raw) {
     let d = lc(trim(as_string(raw || "")));
+    if (substr(d, 0, 5) == "full:") d = substr(d, 5);
+    else if (substr(d, 0, 7) == "domain:") d = substr(d, 7);
     if (substr(d, 0, 2) == "*.") d = substr(d, 2);
     if (substr(d, 0, 1) == ".") d = substr(d, 1);
     return d;
@@ -489,6 +615,287 @@ function domain_covers(parent_dom, child_dom) {
     return false;
 }
 
+function ipv4_to_u32(ip) {
+    let parts = split(trim(as_string(ip)), ".");
+    if (length(parts) != 4) return -1;
+    let val = 0;
+    for (let p in parts) {
+        if (match(p, /^[0-9]+$/) == null) return -1;
+        let oct = int(p);
+        if (oct < 0 || oct > 255) return -1;
+        val = val * 256 + oct;
+    }
+    return val;
+}
+
+function parse_ipv4_cidr_range(raw) {
+    let s = trim(as_string(raw || ""));
+    if (s == "" || index(s, ":") >= 0) return null;
+    let slash = index(s, "/");
+    let ip_part = slash > 0 ? substr(s, 0, slash) : s;
+    let prefix = slash > 0 ? int(substr(s, slash + 1)) : 32;
+    if (prefix < 0 || prefix > 32) return null;
+    let ip_num = ipv4_to_u32(ip_part);
+    if (ip_num < 0) return null;
+    let host_bits = 32 - prefix;
+    let block_size = 1;
+    for (let b = 0; b < host_bits; b++) block_size = block_size * 2;
+    let start = int(ip_num / block_size) * block_size;
+    let end = start + block_size - 1;
+    return { start: start, end: end, prefix: prefix, raw: s };
+}
+
+function cidr_covers(parent_raw, child_raw) {
+    parent_raw = trim(as_string(parent_raw || ""));
+    child_raw = trim(as_string(child_raw || ""));
+    if (parent_raw == "" || child_raw == "") return false;
+    if (lc(parent_raw) == lc(child_raw)) return true;
+    let p = parse_ipv4_cidr_range(parent_raw);
+    let c = parse_ipv4_cidr_range(child_raw);
+    if (p == null || c == null) return false;
+    return p.start <= c.start && p.end >= c.end;
+}
+
+function parse_plain_list_entries(content, domains_out, cidrs_out) {
+    if (content == null || content == "") return;
+    for (let line in split(as_string(content), "\n")) {
+        let hash = index(line, "#");
+        if (hash >= 0) line = substr(line, 0, hash);
+        line = trim(replace(line, "\r", ""));
+        if (line == "" || substr(line, 0, 2) == "//") continue;
+        if (substr(line, 0, 8) == "keyword:" || substr(line, 0, 6) == "regex:") continue;
+        if (core_ip.valid_ip_or_cidr(line)) {
+            if (index(cidrs_out, line) < 0) push(cidrs_out, line);
+        } else {
+            let norm = normalize_domain_token(line);
+            if (norm != "" && index(norm, "/") < 0 && index(domains_out, norm) < 0) {
+                push(domains_out, norm);
+            }
+        }
+    }
+}
+
+function parse_json_ruleset_entries(parsed, domains_out, cidrs_out) {
+    if (type(parsed) != "object" || type(parsed.rules) != "array") return;
+    for (let r in parsed.rules) {
+        if (type(r) != "object") continue;
+        for (let dkey in [ "domain", "domain_suffix" ]) {
+            if (type(r[dkey]) == "array") {
+                for (let d in r[dkey]) {
+                    let norm = normalize_domain_token(d);
+                    if (norm != "" && index(domains_out, norm) < 0) push(domains_out, norm);
+                }
+            } else if (type(r[dkey]) == "string") {
+                let norm = normalize_domain_token(r[dkey]);
+                if (norm != "" && index(domains_out, norm) < 0) push(domains_out, norm);
+            }
+        }
+        if (type(r.ip_cidr) == "array") {
+            for (let cidr in r.ip_cidr) {
+                let c = trim(as_string(cidr));
+                if (c != "" && index(cidrs_out, c) < 0) push(cidrs_out, c);
+            }
+        } else if (type(r.ip_cidr) == "string") {
+            let c = trim(as_string(r.ip_cidr));
+            if (c != "" && index(cidrs_out, c) < 0) push(cidrs_out, c);
+        }
+    }
+}
+
+function resolve_list_contents(list_name, options) {
+    let raw_name = trim(as_string(list_name || ""));
+    let norm_name = lc(raw_name);
+    let domains = [];
+    let cidrs = [];
+    let source = "unverified";
+    let found_path = "";
+    let mtime = 0;
+    let version = "";
+
+    if (type(options) == "object" && type(options.list_contents) == "object") {
+        let ov = options.list_contents[raw_name] || options.list_contents[norm_name];
+        if (type(ov) == "object") {
+            for (let d in (type(ov.domains) == "array" ? ov.domains : words_list(ov.domains))) {
+                let nd = normalize_domain_token(d);
+                if (nd != "" && index(domains, nd) < 0) push(domains, nd);
+            }
+            for (let c in (type(ov.cidrs) == "array" ? ov.cidrs : words_list(ov.cidrs || ov.ips))) {
+                let nc = trim(as_string(c));
+                if (nc != "" && index(cidrs, nc) < 0) push(cidrs, nc);
+            }
+            source = as_string(ov.source || "local_override");
+            found_path = as_string(ov.path || "");
+            mtime = int(ov.mtime || ov.updated_at || 0);
+            version = as_string(ov.version || "");
+        }
+    }
+
+    let folders = [];
+    if (type(options) == "object" && type(options.rulesets_dir) == "string" && options.rulesets_dir != "") {
+        push(folders, options.rulesets_dir);
+    }
+    let env_folder = getenv("TMP_RULESET_FOLDER");
+    if (env_folder != null && env_folder != "" && index(folders, env_folder) < 0) {
+        push(folders, env_folder);
+    }
+    for (let def_dir in [ "/tmp/tachyon-core/rulesets", "/etc/tachyon/rulesets", "/usr/share/tachyon/rulesets" ]) {
+        if (index(folders, def_dir) < 0) push(folders, def_dir);
+    }
+
+    for (let dir in folders) {
+        let json_candidates = [
+            dir + "/community-" + raw_name + ".json",
+            dir + "/community-" + norm_name + ".json",
+            dir + "/" + raw_name + ".json"
+        ];
+        for (let jp in json_candidates) {
+            let st = fs.stat(jp);
+            if (st != null && st.type == "file" && (st.size || 0) > 0) {
+                let parsed = common.read_json_file(jp);
+                parse_json_ruleset_entries(parsed, domains, cidrs);
+                if (found_path == "") found_path = jp;
+                if ((st.mtime || 0) > mtime) mtime = int(st.mtime || 0);
+                source = "local_file";
+            }
+        }
+
+        let lst_candidates = [
+            dir + "/community-domains-" + raw_name + ".lst",
+            dir + "/community-domains-" + norm_name + ".lst",
+            dir + "/community-subnets-" + raw_name + ".lst",
+            dir + "/community-subnets-" + norm_name + ".lst",
+            dir + "/" + raw_name + ".lst",
+            dir + "/" + raw_name + ".txt"
+        ];
+        for (let lp in lst_candidates) {
+            let st = fs.stat(lp);
+            if (st != null && st.type == "file" && (st.size || 0) > 0) {
+                parse_plain_list_entries(fs.readfile(lp), domains, cidrs);
+                if (found_path == "") found_path = lp;
+                if ((st.mtime || 0) > mtime) mtime = int(st.mtime || 0);
+                source = "local_file";
+            }
+        }
+
+        for (let bin_ext in [ ".trs", ".srs" ]) {
+            let bp = dir + "/community-" + raw_name + bin_ext;
+            let st = fs.stat(bp);
+            if (st != null && st.type == "file" && (st.size || 0) > 0) {
+                if (found_path == "") found_path = bp;
+                if ((st.mtime || 0) > mtime) mtime = int(st.mtime || 0);
+            }
+        }
+    }
+
+    let cat_domains = COMMUNITY_LIST_DOMAINS[norm_name];
+    if (type(cat_domains) == "array") {
+        for (let cd in cat_domains) {
+            let nd = normalize_domain_token(cd);
+            if (nd != "" && index(domains, nd) < 0) push(domains, nd);
+        }
+        if (source == "unverified") source = found_path != "" ? "local_binary+catalog" : "builtin_catalog";
+    }
+
+    let cat_subnets = COMMUNITY_LIST_SUBNETS[norm_name];
+    if (type(cat_subnets) == "array") {
+        for (let cs in cat_subnets) {
+            let nc = trim(as_string(cs));
+            if (nc != "" && index(cidrs, nc) < 0) push(cidrs, nc);
+        }
+        if (source == "unverified") source = found_path != "" ? "local_binary+catalog" : "builtin_catalog";
+    }
+
+    let verified = (length(domains) > 0 || length(cidrs) > 0);
+    return {
+        name: raw_name,
+        source: source,
+        path: found_path,
+        mtime: mtime,
+        version: version,
+        domains: domains,
+        cidrs: cidrs,
+        domains_count: length(domains),
+        cidrs_count: length(cidrs),
+        verified: verified
+    };
+}
+
+function parse_port_intervals(port_tokens) {
+    let intervals = [];
+    for (let tok in port_tokens) {
+        let p = trim(as_string(tok || ""));
+        if (p == "") continue;
+        let dash = index(p, "-");
+        if (dash < 0) dash = index(p, ":");
+        if (dash > 0) {
+            let p1 = int(substr(p, 0, dash));
+            let p2 = int(substr(p, dash + 1));
+            if (p1 > 0 && p2 >= p1 && p2 <= 65535) {
+                push(intervals, [ p1, p2 ]);
+            }
+        } else {
+            let num = int(p);
+            if (num > 0 && num <= 65535) {
+                push(intervals, [ num, num ]);
+            }
+        }
+    }
+    return intervals;
+}
+
+function port_intervals_overlap(a, b) {
+    if (length(a) == 0 || length(b) == 0) return true;
+    for (let ia in a) {
+        for (let ib in b) {
+            if (ia[0] <= ib[1] && ib[0] <= ia[1]) return true;
+        }
+    }
+    return false;
+}
+
+function port_intervals_cover(parent, child) {
+    if (length(parent) == 0) return true;
+    if (length(child) == 0) return false;
+    for (let ic in child) {
+        let covered = false;
+        for (let ip in parent) {
+            if (ip[0] <= ic[0] && ip[1] >= ic[1]) {
+                covered = true;
+                break;
+            }
+        }
+        if (!covered) return false;
+    }
+    return true;
+}
+
+function token_sets_overlap(a, b, is_ip_set) {
+    if (length(a) == 0 || length(b) == 0) return true;
+    for (let va in a) {
+        for (let vb in b) {
+            if (lc(as_string(va)) == lc(as_string(vb))) return true;
+            if (is_ip_set && (cidr_covers(va, vb) || cidr_covers(vb, va))) return true;
+        }
+    }
+    return false;
+}
+
+function token_set_covers(parent, child, is_ip_set) {
+    if (length(parent) == 0) return true;
+    if (length(child) == 0) return false;
+    for (let vc in child) {
+        let ok = false;
+        for (let vp in parent) {
+            if (lc(as_string(vp)) == lc(as_string(vc)) || (is_ip_set && cidr_covers(vp, vc))) {
+                ok = true;
+                break;
+            }
+        }
+        if (!ok) return false;
+    }
+    return true;
+}
+
 function collect_section_domains(sec, conditions_map) {
     let out = [];
     for (let key in [ "domain", "domains", "fully_qualified_domain_names", "domain_ip_lists" ]) {
@@ -503,6 +910,8 @@ function collect_section_domains(sec, conditions_map) {
         for (let cref in words_list(sec.condition_refs)) {
             let cond = conditions_map[cref];
             if (type(cond) == "object") {
+                let ctype = lc(trim(as_string(cond.condition_type || "atomic")));
+                if (ctype == "not" || cond.invert == "1") continue;
                 for (let item in words_list(cond.domains || cond.domain)) {
                     let norm = normalize_domain_token(item);
                     if (norm != "" && index(out, norm) < 0) push(out, norm);
@@ -513,15 +922,316 @@ function collect_section_domains(sec, conditions_map) {
     return out;
 }
 
-function analyze_rule_conflicts(candidate_uci) {
+function collect_section_conditions(sec, conditions_map) {
+    let devices = [];
+    let interfaces = [];
+    let ports = [];
+    let protocols = [];
+    let exclude_domains = [];
+    let exclude_ips = [];
+    let unverified = [];
+
+    for (let dkey in [ "devices", "device", "src_ip", "source_ip_cidr", "client_ips", "mac", "profile" ]) {
+        for (let item in words_list(sec[dkey])) {
+            let v = lc(trim(as_string(item)));
+            if (v != "" && index(devices, v) < 0) push(devices, v);
+        }
+    }
+    for (let ikey in [ "inbound", "interface", "in_interface" ]) {
+        for (let item in words_list(sec[ikey])) {
+            let v = lc(trim(as_string(item)));
+            if (v != "" && index(interfaces, v) < 0) push(interfaces, v);
+        }
+    }
+    for (let pkey in [ "ports", "port", "ports_text" ]) {
+        for (let item in words_list(sec[pkey])) {
+            let v = trim(as_string(item));
+            if (v != "" && index(ports, v) < 0) push(ports, v);
+        }
+    }
+    for (let prkey in [ "protocol", "network" ]) {
+        for (let item in words_list(sec[prkey])) {
+            let v = lc(trim(as_string(item)));
+            if (v != "" && index(protocols, v) < 0) push(protocols, v);
+        }
+    }
+    for (let exkey in [ "exclude_domains", "domain_exclude" ]) {
+        for (let item in words_list(sec[exkey])) {
+            let v = normalize_domain_token(item);
+            if (v != "" && index(exclude_domains, v) < 0) push(exclude_domains, v);
+        }
+    }
+    for (let exip in [ "exclude_ips", "ip_exclude" ]) {
+        for (let item in words_list(sec[exip])) {
+            let v = trim(as_string(item));
+            if (v != "" && index(exclude_ips, v) < 0) push(exclude_ips, v);
+        }
+    }
+    for (let uvkey in [ "schedule_refs", "schedule", "process_name", "wifi_ssid" ]) {
+        if (length(words_list(sec[uvkey])) > 0) {
+            if (index(unverified, uvkey) < 0) push(unverified, uvkey);
+        }
+    }
+
+    if (type(conditions_map) == "object") {
+        for (let cref in words_list(sec.condition_refs)) {
+            let cond = conditions_map[cref];
+            if (type(cond) != "object") {
+                push(unverified, "missing_condition:" + cref);
+                continue;
+            }
+            let ctype = lc(trim(as_string(cond.condition_type || "atomic")));
+            let is_neg = (ctype == "not" || cond.invert == "1");
+            if (ctype == "or" || ctype == "composite") {
+                if (index(unverified, "condition:" + cref + "(" + ctype + ")") < 0)
+                    push(unverified, "condition:" + cref + "(" + ctype + ")");
+            }
+            if (is_neg) {
+                for (let d in words_list(cond.domains || cond.domain)) {
+                    let nd = normalize_domain_token(d);
+                    if (nd != "" && index(exclude_domains, nd) < 0) push(exclude_domains, nd);
+                }
+                for (let ip in words_list(cond.ip_cidr || cond.ip || cond.subnets)) {
+                    let nip = trim(as_string(ip));
+                    if (nip != "" && index(exclude_ips, nip) < 0) push(exclude_ips, nip);
+                }
+                continue;
+            }
+            for (let dkey in [ "devices", "device", "src_ip", "source_ip_cidr", "client_ips", "mac" ]) {
+                for (let item in words_list(cond[dkey])) {
+                    let v = lc(trim(as_string(item)));
+                    if (v != "" && index(devices, v) < 0) push(devices, v);
+                }
+            }
+            for (let ikey in [ "inbound", "interface", "in_interface" ]) {
+                for (let item in words_list(cond[ikey])) {
+                    let v = lc(trim(as_string(item)));
+                    if (v != "" && index(interfaces, v) < 0) push(interfaces, v);
+                }
+            }
+            for (let pkey in [ "ports", "port", "ports_text" ]) {
+                for (let item in words_list(cond[pkey])) {
+                    let v = trim(as_string(item));
+                    if (v != "" && index(ports, v) < 0) push(ports, v);
+                }
+            }
+            for (let prkey in [ "protocol", "network" ]) {
+                for (let item in words_list(cond[prkey])) {
+                    let v = lc(trim(as_string(item)));
+                    if (v != "" && index(protocols, v) < 0) push(protocols, v);
+                }
+            }
+            for (let exkey in [ "exclude_domains", "domain_exclude" ]) {
+                for (let item in words_list(cond[exkey])) {
+                    let v = normalize_domain_token(item);
+                    if (v != "" && index(exclude_domains, v) < 0) push(exclude_domains, v);
+                }
+            }
+        }
+    }
+
+    let parts = [];
+    if (length(devices) > 0) push(parts, "devices=" + join(",", devices));
+    if (length(interfaces) > 0) push(parts, "iface=" + join(",", interfaces));
+    if (length(ports) > 0) push(parts, "ports=" + join(",", ports));
+    if (length(protocols) > 0) push(parts, "proto=" + join(",", protocols));
+    if (length(exclude_domains) > 0) push(parts, "exclude_domains=" + join(",", exclude_domains));
+    if (length(exclude_ips) > 0) push(parts, "exclude_ips=" + join(",", exclude_ips));
+    if (length(unverified) > 0) push(parts, "unverified=" + join(",", unverified));
+
+    return {
+        devices: devices,
+        interfaces: interfaces,
+        ports: ports,
+        port_intervals: parse_port_intervals(ports),
+        protocols: protocols,
+        exclude_domains: exclude_domains,
+        exclude_ips: exclude_ips,
+        unverified: unverified,
+        summary: length(parts) > 0 ? join("; ", parts) : "unrestricted"
+    };
+}
+
+function evaluate_condition_relation(earlier_cond, later_cond, target_domain, target_ip) {
+    if (target_domain != null && target_domain != "") {
+        for (let ex_d in earlier_cond.exclude_domains) {
+            if (domain_covers(ex_d, target_domain)) {
+                return { excluded: true, l3_disjoint: true, l4_disjoint: false, covers_all: false };
+            }
+        }
+    }
+    if (target_ip != null && target_ip != "") {
+        for (let ex_ip in earlier_cond.exclude_ips) {
+            if (cidr_covers(ex_ip, target_ip)) {
+                return { excluded: true, l3_disjoint: true, l4_disjoint: false, covers_all: false };
+            }
+        }
+    }
+
+    let dev_overlap = token_sets_overlap(earlier_cond.devices, later_cond.devices, true);
+    let iface_overlap = token_sets_overlap(earlier_cond.interfaces, later_cond.interfaces, false);
+    let port_overlap = port_intervals_overlap(earlier_cond.port_intervals, later_cond.port_intervals);
+    let proto_overlap = token_sets_overlap(earlier_cond.protocols, later_cond.protocols, false);
+
+    let l3_disjoint = (!dev_overlap || !iface_overlap);
+    let l4_disjoint = (!port_overlap || !proto_overlap);
+
+    let covers_all = (
+        !l3_disjoint &&
+        !l4_disjoint &&
+        token_set_covers(earlier_cond.devices, later_cond.devices, true) &&
+        token_set_covers(earlier_cond.interfaces, later_cond.interfaces, false) &&
+        port_intervals_cover(earlier_cond.port_intervals, later_cond.port_intervals) &&
+        token_set_covers(earlier_cond.protocols, later_cond.protocols, false) &&
+        length(earlier_cond.unverified) == 0 &&
+        length(earlier_cond.exclude_domains) == 0 &&
+        length(earlier_cond.exclude_ips) == 0
+    );
+
+    return {
+        excluded: false,
+        l3_disjoint: l3_disjoint,
+        l4_disjoint: l4_disjoint,
+        covers_all: covers_all
+    };
+}
+
+function resolve_section_dns_info(sec, family, cond) {
+    let has_l4 = (length(cond.ports) > 0 || length(cond.protocols) > 0);
+    let custom_dns = trim(as_string(sec.dns_server || sec.custom_dns || ""));
+    if (family == "block") {
+        if (has_l4) {
+            return { participates: false, resolver: "skipped_l4_restriction", family: "skipped" };
+        }
+        return { participates: true, resolver: "dns-block", family: "block" };
+    }
+    if (family == "direct") {
+        return {
+            participates: !has_l4,
+            resolver: custom_dns != "" ? ("custom:" + custom_dns) : "dns-direct",
+            family: "direct"
+        };
+    }
+    if (substr(family, 0, 4) == "dpi:") {
+        return {
+            participates: !has_l4,
+            resolver: custom_dns != "" ? ("custom:" + custom_dns) : "dns-direct",
+            family: "direct"
+        };
+    }
+    return {
+        participates: !has_l4,
+        resolver: custom_dns != "" ? ("custom:" + custom_dns) : "dns-remote",
+        family: "proxy"
+    };
+}
+
+function collect_expected_overlaps(candidate_uci, options) {
+    let expected = [];
+    if (type(options) == "object" && options.expected_overlaps != null) {
+        for (let item in words_list(options.expected_overlaps)) {
+            let v = lc(trim(as_string(item)));
+            if (v != "" && index(expected, v) < 0) push(expected, v);
+        }
+    }
+    if (candidate_uci && type(candidate_uci.settings) == "object") {
+        for (let k in [ "expected_overlaps", "ignore_conflicts", "acknowledged_conflicts" ]) {
+            for (let item in words_list(candidate_uci.settings[k])) {
+                let v = lc(trim(as_string(item)));
+                if (v != "" && index(expected, v) < 0) push(expected, v);
+            }
+        }
+    }
+    if (candidate_uci && type(candidate_uci.sections) == "object") {
+        for (let sname, sec in candidate_uci.sections) {
+            if (type(sec) != "object") continue;
+            for (let k in [ "expected_overlaps", "ignore_conflicts" ]) {
+                for (let item in words_list(sec[k])) {
+                    let v = lc(trim(as_string(item)));
+                    if (v != "" && index(expected, v) < 0) push(expected, v);
+                }
+            }
+        }
+    }
+    return expected;
+}
+
+function is_conflict_expected(c_obj, expected_list) {
+    if (length(expected_list) == 0) return false;
+    let w_sec = lc(as_string(c_obj.winner_section || ""));
+    let s_sec = lc(as_string(c_obj.shadowed_section || ""));
+    let target = lc(as_string(c_obj.target || ""));
+    let w_src = lc(as_string(c_obj.winner_source || ""));
+    let s_src = lc(as_string(c_obj.shadowed_source || ""));
+    let cid = lc(as_string(c_obj.id || ""));
+
+    let candidates = [
+        cid,
+        w_sec + "->" + s_sec,
+        w_sec + ":" + s_sec,
+        w_sec + "->" + s_sec + ":" + target,
+        w_src + "->" + s_src,
+        target
+    ];
+    for (let cand in candidates) {
+        if (cand != "" && index(expected_list, cand) >= 0) return true;
+    }
+    return false;
+}
+
+function build_dns_and_route_decisions(earlier, later, target, winner_source, shadowed_source, rel) {
+    let dns_sec = earlier;
+    let dns_src = winner_source;
+    if (!earlier.dns.participates && later.dns.participates) {
+        dns_sec = later;
+        dns_src = shadowed_source;
+    }
+    let route_sec = rel.l4_disjoint ? later : earlier;
+    let route_src = rel.l4_disjoint ? shadowed_source : winner_source;
+
+    let dns_decision = {
+        section: dns_sec.name,
+        action: dns_sec.action,
+        priority: dns_sec.priority,
+        resolver: dns_sec.dns.resolver,
+        source: dns_src
+    };
+    let route_decision = {
+        section: route_sec.name,
+        action: route_sec.action,
+        priority: route_sec.priority,
+        family: route_sec.family,
+        source: route_src,
+        conditions: route_sec.conditions.summary
+    };
+    let mismatch = (
+        dns_decision.section != route_decision.section ||
+        (dns_sec.dns.family != "skipped" && dns_sec.dns.family != route_sec.family &&
+         !(dns_sec.dns.family == "direct" && substr(route_sec.family, 0, 4) == "dpi:"))
+    );
+
+    return {
+        dns_decision: dns_decision,
+        route_decision: route_decision,
+        dns_route_mismatch: mismatch
+    };
+}
+
+function analyze_rule_conflicts(candidate_uci, options) {
     let conflicts = [];
+    let acknowledged_conflicts = [];
     let duplicates = [];
     let shadowed_sections = [];
     let dns_route_warnings = [];
     let warnings = [];
+    let list_cache = {};
+    let analyzed_lists = [];
+    let unverified_lists = [];
+    let unverified_conditions = [];
 
     let sections_map = (candidate_uci && type(candidate_uci.sections) == "object") ? candidate_uci.sections : {};
     let conditions_map = (candidate_uci && type(candidate_uci.conditions) == "object") ? candidate_uci.conditions : {};
+    let expected_list = collect_expected_overlaps(candidate_uci, options);
     let sec_names = keys(sections_map);
 
     let entries = [];
@@ -533,12 +1243,50 @@ function analyze_rule_conflicts(candidate_uci) {
         let family = normalize_action_family(action);
         let domains = collect_section_domains(sec, conditions_map);
         let lists = words_list(sec.community_lists);
-        let ips = words_list(sec.ip_cidr || sec.ip || sec.subnets || sec.local_subnet_lists);
-        let ports = words_list(sec.ports || sec.port || sec.ports_text);
-        let protos = words_list(sec.protocol);
+        let ips = [];
+        for (let raw_ip in words_list(sec.ip_cidr || sec.ip || sec.subnets || sec.local_subnet_lists)) {
+            let nip = trim(as_string(raw_ip));
+            if (nip != "" && core_ip.valid_ip_or_cidr(nip) && index(ips, nip) < 0) {
+                push(ips, nip);
+            }
+        }
+        let cond = collect_section_conditions(sec, conditions_map);
+        let ports = cond.ports;
+        let protos = cond.protocols;
+        let dns_info = resolve_section_dns_info(sec, family, cond);
 
-        if (family == "block" && (length(ports) > 0 || length(protos) > 0) && length(domains) > 0) {
-            let msg = sprintf("Section '%s' (action: block) restricts ports/protocol, so DNS-level blocking is skipped and only L3/L4 route rejection applies.", name);
+        if (length(cond.unverified) > 0) {
+            push(unverified_conditions, {
+                section: name,
+                conditions: cond.unverified
+            });
+        }
+
+        let section_list_meta = {};
+        for (let lname in lists) {
+            if (list_cache[lname] == null) {
+                let resolved = resolve_list_contents(lname, options);
+                list_cache[lname] = resolved;
+                push(analyzed_lists, {
+                    name: resolved.name,
+                    source: resolved.source,
+                    path: resolved.path,
+                    mtime: resolved.mtime,
+                    version: resolved.version,
+                    domains_count: resolved.domains_count,
+                    cidrs_count: resolved.cidrs_count,
+                    verified: resolved.verified
+                });
+                if (!resolved.verified && index(unverified_lists, lname) < 0) {
+                    push(unverified_lists, lname);
+                }
+            }
+            section_list_meta[lname] = list_cache[lname];
+        }
+
+        if (family == "block" && (length(ports) > 0 || length(protos) > 0) && (length(domains) > 0 || length(lists) > 0)) {
+            let msg = sprintf("Section '%s' (action: block) restricts ports/protocol (%s), so DNS-level blocking is skipped and only L3/L4 route rejection applies.",
+                name, cond.summary);
             push(dns_route_warnings, msg);
             push(warnings, msg);
         }
@@ -550,98 +1298,477 @@ function analyze_rule_conflicts(candidate_uci) {
             family: family,
             domains: domains,
             lists: lists,
+            list_meta: section_list_meta,
             ips: ips,
-            ports: ports
+            ports: ports,
+            protocols: protos,
+            conditions: cond,
+            dns: dns_info
         });
     }
 
     for (let j = 0; j < length(entries); j++) {
         let later = entries[j];
-        let total_items = length(later.domains) + length(later.lists);
+        let total_items = length(later.domains) + length(later.lists) + length(later.ips);
         let covered_items = 0;
 
+        // 1. Check later manual domains against earlier manual domains & earlier lists
         for (let d_later in later.domains) {
-            let covered_by_earlier = false;
+            let fully_covered = false;
             for (let i = 0; i < j; i++) {
                 let earlier = entries[i];
+                let rel = evaluate_condition_relation(earlier.conditions, later.conditions, d_later, null);
+                if (rel.excluded || rel.l3_disjoint) continue;
+
+                let matched_early = "";
+                let early_source = "manual";
                 for (let d_early in earlier.domains) {
                     if (domain_covers(d_early, d_later)) {
-                        covered_by_earlier = true;
-                        if (earlier.family != later.family) {
-                            let block_override = (later.family == "block" && earlier.family != "block");
-                            let c_obj = {
-                                kind: block_override ? "block_overridden" : "domain_conflict",
-                                target: d_later,
-                                covered_by: d_early,
-                                winner_section: earlier.name,
-                                winner_action: earlier.action,
-                                winner_priority: earlier.priority,
-                                shadowed_section: later.name,
-                                shadowed_action: later.action,
-                                shadowed_priority: later.priority
-                            };
-                            push(conflicts, c_obj);
-                            let w_msg = block_override
-                                ? sprintf("Block rule in section '%s' for '%s' is overridden by earlier permissive section '%s' (%s, Matched by '%s').",
-                                    later.name, d_later, earlier.name, earlier.action, d_early)
-                                : sprintf("Domain '%s' in section '%s' (%s) is shadowed by earlier section '%s' (%s, matched by '%s').",
-                                    d_later, later.name, later.action, earlier.name, earlier.action, d_early);
-                            if (index(warnings, w_msg) < 0) push(warnings, w_msg);
-                        } else {
-                            push(duplicates, {
-                                target: d_later,
-                                first_section: earlier.name,
-                                second_section: later.name,
-                                action: earlier.action
-                            });
-                        }
+                        matched_early = d_early;
+                        early_source = "domain:" + d_early;
                         break;
                     }
                 }
-                if (covered_by_earlier) break;
-            }
-            if (covered_by_earlier) covered_items++;
-        }
+                if (matched_early == "") {
+                    for (let l_early in earlier.lists) {
+                        let lmeta = earlier.list_meta[l_early];
+                        if (lmeta != null) {
+                            for (let ld in lmeta.domains) {
+                                if (domain_covers(ld, d_later)) {
+                                    matched_early = ld;
+                                    early_source = "list:" + l_early;
+                                    break;
+                                }
+                            }
+                        }
+                        if (matched_early != "") break;
+                    }
+                }
 
-        for (let l_later in later.lists) {
-            let list_covered = false;
-            for (let i = 0; i < j; i++) {
-                let earlier = entries[i];
-                if (index(earlier.lists, l_later) >= 0) {
-                    list_covered = true;
+                if (matched_early != "") {
+                    let decisions = build_dns_and_route_decisions(earlier, later, d_later, early_source, "domain:" + d_later, rel);
+                    if (rel.l4_disjoint) {
+                        if (decisions.dns_route_mismatch && earlier.family != later.family) {
+                            let dm_msg = sprintf("DNS/Route mismatch for '%s': DNS resolves via section '%s' (#%d, %s) while L4 traffic (%s) routes via section '%s' (#%d, %s).",
+                                d_later, decisions.dns_decision.section, decisions.dns_decision.priority, decisions.dns_decision.resolver,
+                                later.conditions.summary, decisions.route_decision.section, decisions.route_decision.priority, decisions.route_decision.action);
+                            if (index(dns_route_warnings, dm_msg) < 0) push(dns_route_warnings, dm_msg);
+                            if (index(warnings, dm_msg) < 0) push(warnings, dm_msg);
+                        }
+                        continue;
+                    }
+
+                    if (rel.covers_all) fully_covered = true;
+                    let scope = rel.covers_all ? "full" : "conditional";
+
                     if (earlier.family != later.family) {
-                        let w_msg = sprintf("Community list '%s' in section '%s' (%s) conflicts with earlier section '%s' (%s).",
-                            l_later, later.name, later.action, earlier.name, earlier.action);
-                        push(conflicts, {
-                            kind: "list_conflict",
-                            target: "list:" + l_later,
+                        let block_override = (later.family == "block" && earlier.family != "block");
+                        let c_obj = {
+                            id: sprintf("%s->%s:%s", earlier.name, later.name, d_later),
+                            kind: block_override ? "block_overridden" : "domain_conflict",
+                            target: d_later,
+                            covered_by: matched_early,
+                            winner_source: early_source,
+                            shadowed_source: "domain:" + d_later,
                             winner_section: earlier.name,
                             winner_action: earlier.action,
+                            winner_priority: earlier.priority,
+                            winner_conditions: earlier.conditions.summary,
                             shadowed_section: later.name,
-                            shadowed_action: later.action
+                            shadowed_action: later.action,
+                            shadowed_priority: later.priority,
+                            shadowed_conditions: later.conditions.summary,
+                            scope: scope,
+                            dns_decision: decisions.dns_decision,
+                            route_decision: decisions.route_decision,
+                            dns_route_mismatch: decisions.dns_route_mismatch,
+                            expected: false
+                        };
+                        if (is_conflict_expected(c_obj, expected_list)) {
+                            c_obj.expected = true;
+                            push(acknowledged_conflicts, c_obj);
+                        } else {
+                            push(conflicts, c_obj);
+                            let cond_note = scope == "conditional" ? sprintf(" [when %s]", earlier.conditions.summary) : "";
+                            let path_note = sprintf(" (DNS: %s via '%s' #%d; Route: %s via '%s' #%d)",
+                                decisions.dns_decision.resolver, decisions.dns_decision.section, decisions.dns_decision.priority,
+                                decisions.route_decision.action, decisions.route_decision.section, decisions.route_decision.priority);
+                            let w_msg = block_override
+                                ? sprintf("Block rule in section '%s' (#%d) for '%s' is overridden by earlier permissive section '%s' (#%d, %s, matched by '%s' from %s)%s%s.",
+                                    later.name, later.priority, d_later, earlier.name, earlier.priority, earlier.action, matched_early, early_source, cond_note, path_note)
+                                : sprintf("Domain '%s' in section '%s' (#%d, %s) is shadowed by earlier section '%s' (#%d, %s, matched by '%s' from %s)%s%s.",
+                                    d_later, later.name, later.priority, later.action, earlier.name, earlier.priority, earlier.action, matched_early, early_source, cond_note, path_note);
+                            if (index(warnings, w_msg) < 0) push(warnings, w_msg);
+                            if (decisions.dns_route_mismatch && index(dns_route_warnings, w_msg) < 0) {
+                                push(dns_route_warnings, w_msg);
+                            }
+                        }
+                    } else if (scope == "full") {
+                        push(duplicates, {
+                            target: d_later,
+                            first_section: earlier.name,
+                            second_section: later.name,
+                            action: earlier.action
                         });
-                        if (index(warnings, w_msg) < 0) push(warnings, w_msg);
                     }
-                    break;
+                    if (fully_covered) break;
                 }
             }
-            if (list_covered) covered_items++;
+            if (fully_covered) covered_items++;
         }
 
-        if (total_items > 0 && covered_items == total_items && length(later.ips) == 0) {
+        // 2. Check later community lists against earlier lists & earlier manual domains
+        for (let l_later in later.lists) {
+            let l_later_meta = later.list_meta[l_later];
+            let list_fully_covered = false;
+
+            for (let i = 0; i < j; i++) {
+                let earlier = entries[i];
+                let rel = evaluate_condition_relation(earlier.conditions, later.conditions, null, null);
+                if (rel.l3_disjoint) continue;
+
+                // 2a. Identical list name in both sections
+                if (index(earlier.lists, l_later) >= 0 && !rel.l4_disjoint) {
+                    if (rel.covers_all) list_fully_covered = true;
+                    let scope = rel.covers_all ? "full" : "conditional";
+                    let decisions = build_dns_and_route_decisions(earlier, later, "list:" + l_later, "list:" + l_later, "list:" + l_later, rel);
+                    if (earlier.family != later.family) {
+                        let block_override = (later.family == "block" && earlier.family != "block");
+                        let c_obj = {
+                            id: sprintf("%s->%s:list:%s", earlier.name, later.name, l_later),
+                            kind: block_override ? "block_overridden" : "list_conflict",
+                            target: "list:" + l_later,
+                            covered_by: "list:" + l_later,
+                            winner_source: "list:" + l_later,
+                            shadowed_source: "list:" + l_later,
+                            winner_section: earlier.name,
+                            winner_action: earlier.action,
+                            winner_priority: earlier.priority,
+                            winner_conditions: earlier.conditions.summary,
+                            shadowed_section: later.name,
+                            shadowed_action: later.action,
+                            shadowed_priority: later.priority,
+                            shadowed_conditions: later.conditions.summary,
+                            scope: scope,
+                            dns_decision: decisions.dns_decision,
+                            route_decision: decisions.route_decision,
+                            dns_route_mismatch: decisions.dns_route_mismatch,
+                            expected: false
+                        };
+                        if (is_conflict_expected(c_obj, expected_list)) {
+                            c_obj.expected = true;
+                            push(acknowledged_conflicts, c_obj);
+                        } else {
+                            push(conflicts, c_obj);
+                            let w_msg = sprintf("Community list '%s' in section '%s' (#%d, %s) conflicts with earlier section '%s' (#%d, %s) (DNS: %s via '%s'; Route: %s via '%s').",
+                                l_later, later.name, later.priority, later.action, earlier.name, earlier.priority, earlier.action,
+                                decisions.dns_decision.resolver, decisions.dns_decision.section, decisions.route_decision.action, decisions.route_decision.section);
+                            if (index(warnings, w_msg) < 0) push(warnings, w_msg);
+                        }
+                    } else if (scope == "full") {
+                        push(duplicates, {
+                            target: "list:" + l_later,
+                            first_section: earlier.name,
+                            second_section: later.name,
+                            action: earlier.action
+                        });
+                    }
+                    if (list_fully_covered) break;
+                    continue;
+                }
+
+                // 2b. Content-level overlap between different lists or between earlier manual entries and later list
+                if (l_later_meta == null || !l_later_meta.verified) continue;
+
+                for (let l_early in earlier.lists) {
+                    if (l_early == l_later) continue;
+                    let l_early_meta = earlier.list_meta[l_early];
+                    if (l_early_meta == null || !l_early_meta.verified) continue;
+
+                    let shared_domains = [];
+                    let parent_map = {};
+                    let covered_later_dom_count = 0;
+
+                    for (let dl in l_later_meta.domains) {
+                        let d_rel = evaluate_condition_relation(earlier.conditions, later.conditions, dl, null);
+                        if (d_rel.excluded) continue;
+                        for (let de in l_early_meta.domains) {
+                            if (domain_covers(de, dl)) {
+                                if (index(shared_domains, dl) < 0) push(shared_domains, dl);
+                                parent_map[dl] = de;
+                                covered_later_dom_count++;
+                                break;
+                            }
+                        }
+                    }
+
+                    let shared_cidrs = [];
+                    for (let cl in l_later_meta.cidrs) {
+                        let c_rel = evaluate_condition_relation(earlier.conditions, later.conditions, null, cl);
+                        if (c_rel.excluded) continue;
+                        for (let ce in l_early_meta.cidrs) {
+                            if (cidr_covers(ce, cl)) {
+                                if (index(shared_cidrs, cl) < 0) push(shared_cidrs, cl);
+                                parent_map[cl] = ce;
+                                break;
+                            }
+                        }
+                    }
+
+                    let overlaps_total = length(shared_domains) + length(shared_cidrs);
+                    if (overlaps_total > 0 && !rel.l4_disjoint) {
+                        let all_later_doms_covered = (
+                            length(l_later_meta.domains) > 0 &&
+                            covered_later_dom_count == length(l_later_meta.domains) &&
+                            length(shared_cidrs) == length(l_later_meta.cidrs)
+                        );
+                        if (all_later_doms_covered && rel.covers_all) {
+                            list_fully_covered = true;
+                        }
+                        let sample_target = length(shared_domains) > 0 ? shared_domains[0] : shared_cidrs[0];
+                        let sample_parent = parent_map[sample_target] || sample_target;
+                        let all_targets = [];
+                        for (let sd in shared_domains) push(all_targets, sd);
+                        for (let sc in shared_cidrs) push(all_targets, sc);
+
+                        let scope = (all_later_doms_covered && rel.covers_all) ? "full" : "conditional";
+                        let decisions = build_dns_and_route_decisions(earlier, later, sample_target, "list:" + l_early, "list:" + l_later, rel);
+
+                        if (earlier.family != later.family || decisions.dns_route_mismatch) {
+                            let block_override = (later.family == "block" && earlier.family != "block");
+                            let c_obj = {
+                                id: sprintf("%s->%s:list:%s->%s", earlier.name, later.name, l_early, l_later),
+                                kind: block_override ? "block_overridden" : "list_overlap",
+                                target: sample_target,
+                                overlapping_targets: all_targets,
+                                overlap_count: overlaps_total,
+                                covered_by: sample_parent,
+                                winner_source: "list:" + l_early,
+                                shadowed_source: "list:" + l_later,
+                                winner_section: earlier.name,
+                                winner_action: earlier.action,
+                                winner_priority: earlier.priority,
+                                winner_conditions: earlier.conditions.summary,
+                                shadowed_section: later.name,
+                                shadowed_action: later.action,
+                                shadowed_priority: later.priority,
+                                shadowed_conditions: later.conditions.summary,
+                                scope: scope,
+                                dns_decision: decisions.dns_decision,
+                                route_decision: decisions.route_decision,
+                                dns_route_mismatch: decisions.dns_route_mismatch,
+                                expected: false
+                            };
+                            if (is_conflict_expected(c_obj, expected_list)) {
+                                c_obj.expected = true;
+                                push(acknowledged_conflicts, c_obj);
+                            } else {
+                                push(conflicts, c_obj);
+                                let preview_items = [];
+                                for (let k = 0; k < length(all_targets) && k < 4; k++) {
+                                    push(preview_items, all_targets[k]);
+                                }
+                                let preview_str = join(", ", preview_items) + (length(all_targets) > 4 ? sprintf(" (+%d more)", length(all_targets) - 4) : "");
+                                let w_msg = block_override
+                                    ? sprintf("Block list '%s' in section '%s' (#%d) is overridden on [%s] by earlier list '%s' in section '%s' (#%d, %s; matched by '%s') (DNS: %s via '%s' #%d; Route: %s via '%s' #%d).",
+                                        l_later, later.name, later.priority, preview_str, l_early, earlier.name, earlier.priority, earlier.action, sample_parent,
+                                        decisions.dns_decision.resolver, decisions.dns_decision.section, decisions.dns_decision.priority,
+                                        decisions.route_decision.action, decisions.route_decision.section, decisions.route_decision.priority)
+                                    : sprintf("List '%s' in section '%s' (#%d, %s) overlaps on [%s] with earlier list '%s' in section '%s' (#%d, %s; matched by '%s') (DNS: %s via '%s' #%d; Route: %s via '%s' #%d).",
+                                        l_later, later.name, later.priority, later.action, preview_str, l_early, earlier.name, earlier.priority, earlier.action, sample_parent,
+                                        decisions.dns_decision.resolver, decisions.dns_decision.section, decisions.dns_decision.priority,
+                                        decisions.route_decision.action, decisions.route_decision.section, decisions.route_decision.priority);
+                                if (index(warnings, w_msg) < 0) push(warnings, w_msg);
+                                if ((earlier.family == "direct" && later.family == "proxy") || decisions.dns_route_mismatch) {
+                                    if (index(dns_route_warnings, w_msg) < 0) push(dns_route_warnings, w_msg);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 2c. Earlier manual domains covering domains inside later list
+                if (length(earlier.domains) > 0 && !rel.l4_disjoint) {
+                    let manual_hits = [];
+                    let manual_parent = "";
+                    for (let dl in l_later_meta.domains) {
+                        let d_rel = evaluate_condition_relation(earlier.conditions, later.conditions, dl, null);
+                        if (d_rel.excluded) continue;
+                        for (let de in earlier.domains) {
+                            if (domain_covers(de, dl)) {
+                                if (index(manual_hits, dl) < 0) push(manual_hits, dl);
+                                if (manual_parent == "") manual_parent = de;
+                                break;
+                            }
+                        }
+                    }
+                    if (length(manual_hits) > 0 && earlier.family != later.family) {
+                        if (length(manual_hits) == length(l_later_meta.domains) && length(l_later_meta.cidrs) == 0 && rel.covers_all) {
+                            list_fully_covered = true;
+                        }
+                        let sample_t = manual_hits[0];
+                        let decisions = build_dns_and_route_decisions(earlier, later, sample_t, "domain:" + manual_parent, "list:" + l_later, rel);
+                        let block_override = (later.family == "block" && earlier.family != "block");
+                        let c_obj = {
+                            id: sprintf("%s->%s:%s->list:%s", earlier.name, later.name, manual_parent, l_later),
+                            kind: block_override ? "block_overridden" : "list_overlap",
+                            target: sample_t,
+                            overlapping_targets: manual_hits,
+                            overlap_count: length(manual_hits),
+                            covered_by: manual_parent,
+                            winner_source: "domain:" + manual_parent,
+                            shadowed_source: "list:" + l_later,
+                            winner_section: earlier.name,
+                            winner_action: earlier.action,
+                            winner_priority: earlier.priority,
+                            winner_conditions: earlier.conditions.summary,
+                            shadowed_section: later.name,
+                            shadowed_action: later.action,
+                            shadowed_priority: later.priority,
+                            shadowed_conditions: later.conditions.summary,
+                            scope: (list_fully_covered && rel.covers_all) ? "full" : "conditional",
+                            dns_decision: decisions.dns_decision,
+                            route_decision: decisions.route_decision,
+                            dns_route_mismatch: decisions.dns_route_mismatch,
+                            expected: false
+                        };
+                        if (is_conflict_expected(c_obj, expected_list)) {
+                            c_obj.expected = true;
+                            push(acknowledged_conflicts, c_obj);
+                        } else {
+                            push(conflicts, c_obj);
+                            let w_msg = sprintf("List '%s' in section '%s' (#%d, %s) is overlapped on '%s' by earlier manual domain '%s' in section '%s' (#%d, %s) (DNS: %s via '%s'; Route: %s via '%s').",
+                                l_later, later.name, later.priority, later.action, sample_t, manual_parent, earlier.name, earlier.priority, earlier.action,
+                                decisions.dns_decision.resolver, decisions.dns_decision.section, decisions.route_decision.action, decisions.route_decision.section);
+                            if (index(warnings, w_msg) < 0) push(warnings, w_msg);
+                        }
+                    }
+                }
+            }
+            if (list_fully_covered) covered_items++;
+        }
+
+        // 3. Check later manual IP/CIDRs against earlier manual IP/CIDRs and earlier list CIDRs
+        for (let ip_later in later.ips) {
+            let ip_covered = false;
+            for (let i = 0; i < j; i++) {
+                let earlier = entries[i];
+                let rel = evaluate_condition_relation(earlier.conditions, later.conditions, null, ip_later);
+                if (rel.excluded || rel.l3_disjoint || rel.l4_disjoint) continue;
+
+                let matched_cidr = "";
+                let early_src = "";
+                for (let ip_early in earlier.ips) {
+                    if (cidr_covers(ip_early, ip_later)) {
+                        matched_cidr = ip_early;
+                        early_src = "ip:" + ip_early;
+                        break;
+                    }
+                }
+                if (matched_cidr == "") {
+                    for (let l_early in earlier.lists) {
+                        let lmeta = earlier.list_meta[l_early];
+                        if (lmeta != null) {
+                            for (let lc_cidr in lmeta.cidrs) {
+                                if (cidr_covers(lc_cidr, ip_later)) {
+                                    matched_cidr = lc_cidr;
+                                    early_src = "list:" + l_early;
+                                    break;
+                                }
+                            }
+                        }
+                        if (matched_cidr != "") break;
+                    }
+                }
+                if (matched_cidr != "") {
+                    if (rel.covers_all) ip_covered = true;
+                    if (earlier.family != later.family) {
+                        let block_override = (later.family == "block" && earlier.family != "block");
+                        let c_obj = {
+                            id: sprintf("%s->%s:ip:%s", earlier.name, later.name, ip_later),
+                            kind: block_override ? "block_overridden" : "ip_conflict",
+                            target: ip_later,
+                            covered_by: matched_cidr,
+                            winner_source: early_src,
+                            shadowed_source: "ip:" + ip_later,
+                            winner_section: earlier.name,
+                            winner_action: earlier.action,
+                            winner_priority: earlier.priority,
+                            winner_conditions: earlier.conditions.summary,
+                            shadowed_section: later.name,
+                            shadowed_action: later.action,
+                            shadowed_priority: later.priority,
+                            shadowed_conditions: later.conditions.summary,
+                            scope: rel.covers_all ? "full" : "conditional",
+                            dns_decision: { section: "n/a (IP literal)", action: "none", priority: 0, resolver: "none" },
+                            route_decision: { section: earlier.name, action: earlier.action, priority: earlier.priority, family: earlier.family },
+                            dns_route_mismatch: false,
+                            expected: false
+                        };
+                        if (is_conflict_expected(c_obj, expected_list)) {
+                            c_obj.expected = true;
+                            push(acknowledged_conflicts, c_obj);
+                        } else {
+                            push(conflicts, c_obj);
+                            let w_msg = sprintf("IP/CIDR '%s' in section '%s' (#%d, %s) is shadowed by '%s' (%s) in earlier section '%s' (#%d, %s).",
+                                ip_later, later.name, later.priority, later.action, matched_cidr, early_src, earlier.name, earlier.priority, earlier.action);
+                            if (index(warnings, w_msg) < 0) push(warnings, w_msg);
+                        }
+                    }
+                    if (ip_covered) break;
+                }
+            }
+            if (ip_covered) covered_items++;
+        }
+
+        if (total_items > 0 && covered_items == total_items) {
             push(shadowed_sections, later.name);
-            let s_msg = sprintf("Section '%s' (%s) is completely shadowed by earlier rules and will never match traffic.", later.name, later.action);
+            let s_msg = sprintf("Section '%s' (#%d, %s) is completely shadowed by earlier rules and will never match traffic.",
+                later.name, later.priority, later.action);
             if (index(warnings, s_msg) < 0) push(warnings, s_msg);
         }
     }
 
+    let limitations = [];
+    if (length(unverified_lists) > 0) {
+        push(limitations, sprintf("Unverified lists (local content unavailable): %s", join(", ", unverified_lists)));
+    }
+    if (length(unverified_conditions) > 0) {
+        let uv_sec_strs = [];
+        for (let uvc in unverified_conditions) {
+            push(uv_sec_strs, uvc.section + "(" + join(",", uvc.conditions) + ")");
+        }
+        push(limitations, sprintf("Dynamic/unverified conditions not statically evaluated: %s", join(", ", uv_sec_strs)));
+    }
+    let is_complete = (length(unverified_lists) == 0 && length(unverified_conditions) == 0);
+
     return {
         conflicts: conflicts,
+        acknowledged_conflicts: acknowledged_conflicts,
         duplicates: duplicates,
         shadowed_sections: shadowed_sections,
         dns_route_warnings: dns_route_warnings,
-        warnings: warnings
+        warnings: warnings,
+        analysis_completeness: {
+            complete: is_complete,
+            status: is_complete ? "complete" : "partial",
+            analyzed_lists: analyzed_lists,
+            unverified_lists: unverified_lists,
+            unverified_conditions: unverified_conditions,
+            limitations: limitations
+        }
     };
+}
+
+function refresh_conflict_diagnostics(options) {
+    let active_uci = load_active_uci();
+    let result = analyze_rule_conflicts(active_uci, options);
+    result.updated_at = time();
+    if (getenv("TACHYON_PACKAGE_TEST_MODE") == null && getenv("TACHYON_UCI_STATE_FILE") == null) {
+        common.ensure_dir("/var/run/tachyon");
+        common.write_json_file("/var/run/tachyon/rule-conflicts.json", result);
+    }
+    return result;
 }
 
 // ─── Candidate Syntax & Semantics Validator ───────────────────────────────────
@@ -865,8 +1992,8 @@ function plan(candidate_source, options) {
     for (let e in port_check.errors) push(all_errors, e);
     for (let w in port_check.warnings) push(all_warnings, w);
 
-    // 4b. Routing & DNS rule overlap / shadowing check (#331)
-    let rule_conflicts = analyze_rule_conflicts(candidate_uci);
+    // 4b. Routing & DNS rule overlap / shadowing check (#331 / #347)
+    let rule_conflicts = analyze_rule_conflicts(candidate_uci, options);
     for (let w in rule_conflicts.warnings) {
         if (index(all_warnings, w) < 0)
             push(all_warnings, w);
@@ -1119,6 +2246,68 @@ function selftest() {
     assert(length(rc.conflicts) == 1 && rc.conflicts[0].kind == "block_overridden", "analyze_rule_conflicts detects block overridden by earlier direct parent domain");
     assert(length(rc.shadowed_sections) == 1 && rc.shadowed_sections[0] == "block_sub", "analyze_rule_conflicts detects completely shadowed section");
 
+    // Test 9 (#347): Content overlap between google_services in Direct and google_ai in VPN with DNS/route decisions
+    let google_overlap_uci = {
+        settings: { engine: "tachyon-core" },
+        sections: {
+            "Direct": { ".name": "Direct", ".type": "section", action: "direct", community_lists: [ "google_services" ] },
+            "VPN": { ".name": "VPN", ".type": "section", action: "proxy", community_lists: [ "google_ai" ] }
+        },
+        servers: {},
+        all_by_name: {}
+    };
+    let rc_google = analyze_rule_conflicts(google_overlap_uci);
+    assert(length(rc_google.conflicts) >= 1 && rc_google.conflicts[0].kind == "list_overlap", "detects content overlap between google_services in Direct and google_ai in VPN");
+    assert(rc_google.conflicts[0].winner_source == "list:google_services" && rc_google.conflicts[0].shadowed_source == "list:google_ai", "identifies source lists google_services and google_ai");
+    assert(rc_google.conflicts[0].dns_decision.resolver == "dns-direct" && rc_google.conflicts[0].route_decision.section == "Direct", "exposes DNS and routing decisions for overlapped domains");
+    assert(length(rc_google.dns_route_warnings) >= 1, "records DNS/route warning when Direct list shadows subsequent VPN list");
+
+    // Test 10 (#347): Disjoint devices or non-overlapping ports are NOT declared completely shadowed
+    let disjoint_cond_uci = {
+        settings: { engine: "tachyon-core" },
+        sections: {
+            "dev_a": { ".name": "dev_a", ".type": "section", action: "direct", devices: [ "192.168.1.10" ], domain: [ "example.org" ], ports: [ "80" ] },
+            "dev_b": { ".name": "dev_b", ".type": "section", action: "proxy", devices: [ "192.168.1.20" ], domain: [ "sub.example.org" ], ports: [ "443" ] },
+            "narrow_early": { ".name": "narrow_early", ".type": "section", action: "direct", devices: [ "192.168.1.10" ], domain: [ "narrow.org" ] },
+            "broad_later": { ".name": "broad_later", ".type": "section", action: "proxy", domain: [ "app.narrow.org" ] }
+        },
+        servers: {},
+        all_by_name: {}
+    };
+    let rc_disjoint = analyze_rule_conflicts(disjoint_cond_uci);
+    assert(index(rc_disjoint.shadowed_sections, "dev_b") < 0, "rules for different devices/ports are not declared shadowed");
+    assert(index(rc_disjoint.shadowed_sections, "broad_later") < 0, "broad section after device-restricted section is only conditionally overlapped, not completely shadowed");
+
+    // Test 11 (#347): Dynamic list update reflects new overlap, expected_overlaps acknowledges conflict, and unverified lists mark analysis incomplete
+    let updated_list_uci = {
+        settings: { engine: "tachyon-core" },
+        sections: {
+            "early_direct": { ".name": "early_direct", ".type": "section", action: "direct", community_lists: [ "custom_feed_a" ] },
+            "later_vpn": { ".name": "later_vpn", ".type": "section", action: "proxy", community_lists: [ "custom_feed_b" ] }
+        },
+        servers: {},
+        all_by_name: {}
+    };
+    let rc_unverified = analyze_rule_conflicts(updated_list_uci);
+    assert(rc_unverified.analysis_completeness.complete == false && length(rc_unverified.analysis_completeness.unverified_lists) == 2, "incomplete analysis is explicitly reported when list contents are unavailable");
+
+    let rc_after_update = analyze_rule_conflicts(updated_list_uci, {
+        list_contents: {
+            custom_feed_a: { domains: [ "shared-api.example.net" ], mtime: 1700000100, version: "2026.11" },
+            custom_feed_b: { domains: [ "v1.shared-api.example.net" ], mtime: 1700000200, version: "2026.11" }
+        }
+    });
+    assert(rc_after_update.analysis_completeness.complete == true && length(rc_after_update.conflicts) == 1, "new overlap after list update is reflected in diagnostics");
+
+    let rc_acknowledged = analyze_rule_conflicts(updated_list_uci, {
+        expected_overlaps: [ "early_direct->later_vpn" ],
+        list_contents: {
+            custom_feed_a: { domains: [ "shared-api.example.net" ], mtime: 1700000100 },
+            custom_feed_b: { domains: [ "v1.shared-api.example.net" ], mtime: 1700000200 }
+        }
+    });
+    assert(length(rc_acknowledged.conflicts) == 0 && length(rc_acknowledged.acknowledged_conflicts) == 1, "expected overlap is moved to acknowledged_conflicts and suppressed from active warnings");
+
     print(sprintf("Config plan selftest: %d passed, %d failed\n", passed, failed));
     return failed == 0 ? 0 : 1;
 }
@@ -1129,6 +2318,7 @@ function module_exports() {
         compute_uci_diff,
         analyze_subsystem_impact,
         analyze_rule_conflicts,
+        refresh_conflict_diagnostics,
         validate_uci_semantics,
         load_candidate_uci,
         parse_uci_text_to_dict,

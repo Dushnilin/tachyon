@@ -156,10 +156,19 @@ function extractFlagCountryIso(str) {
   return '';
 }
 
-function readTextSafe(path) {
+function isFsNotFoundErr(err) {
+  const msg = `${String((err && err.name) || '')} ${String((err && err.message) || err || '')}`;
+  return /NotFoundError|ENOENT|No such file or directory|Object not found|-32000/i.test(
+    msg,
+  );
+}
+
+function readTextSafe(path, allowDirect = true) {
   return fs
     .read(path)
-    .catch(() =>
+    .catch((err) =>
+      allowDirect &&
+      !isFsNotFoundErr(err) &&
       typeof fs.read_direct === 'function'
         ? fs.read_direct(path, 'text')
         : Promise.resolve(''),
@@ -168,8 +177,8 @@ function readTextSafe(path) {
     .catch(() => '');
 }
 
-function readJsonSafe(path) {
-  return readTextSafe(path)
+function readJsonSafe(path, allowDirect = true) {
+  return readTextSafe(path, allowDirect)
     .then((raw) => (raw.trim() ? JSON.parse(raw) : {}))
     .catch(() => ({}));
 }
@@ -180,8 +189,33 @@ function loadGlobalPoolChoices() {
     .filter((n) => n && /^[A-Za-z0-9_-]+$/.test(n));
   if (!secNames.includes('Main')) secNames.unshift('Main');
 
-  const readSecCache = (secName) =>
-    readJsonSafe(`${SECTION_CACHE_DIR}/${secName}.json`);
+  const readSectionCaches = () =>
+    (typeof fs.list === 'function'
+      ? fs
+          .list(SECTION_CACHE_DIR)
+          .then((entries) =>
+            Array.isArray(entries)
+              ? new Set(
+                  entries
+                    .map((e) => String((e && e.name) || ''))
+                    .filter(Boolean),
+                )
+              : null,
+          )
+          .catch(() => null)
+      : Promise.resolve(null)
+    ).then((existingFiles) => {
+      const candidates =
+        existingFiles !== null
+          ? secNames.filter((secName) => existingFiles.has(`${secName}.json`))
+          : secNames;
+      const allowDirect = existingFiles !== null;
+      return Promise.all(
+        candidates.map((secName) =>
+          readJsonSafe(`${SECTION_CACHE_DIR}/${secName}.json`, allowDirect),
+        ),
+      );
+    });
 
   const readSubCaches = () =>
     fs
@@ -253,364 +287,371 @@ function loadGlobalPoolChoices() {
       })
       .catch(() => []);
 
-  return Promise.all([
-    Promise.all(secNames.map(readSecCache)),
-    readSubCaches(),
-  ]).then(([caches, subCaches]) => {
-    const serverMap = new Map();
-    const countrySet = new Set();
-    const prefixSet = new Set();
-    const urlToSources = new Map();
+  return Promise.all([readSectionCaches(), readSubCaches()]).then(
+    ([caches, subCaches]) => {
+      const serverMap = new Map();
+      const countrySet = new Set();
+      const prefixSet = new Set();
+      const urlToSources = new Map();
 
-    const upsertServer = (name, details) => {
-      const cleanName = String(name || '').trim();
-      if (!cleanName) return;
-      const prefix = String(details.prefix || '').trim();
-      const mapKey =
-        prefix &&
-        !cleanName.startsWith(`${prefix}: `) &&
-        !cleanName.startsWith(`[${prefix}]`)
-          ? `[${prefix}] ${cleanName}`
-          : cleanName;
-      const existing = serverMap.get(mapKey);
-      const proto = String(details.proto || (existing && existing.proto) || '')
-        .trim()
-        .toLowerCase();
-      const trans = String(details.trans || (existing && existing.trans) || '')
-        .trim()
-        .toLowerCase();
-      const sec = String(details.sec || (existing && existing.sec) || '')
-        .trim()
-        .toLowerCase();
-      const port = String(
-        details.port || (existing && existing.port) || '',
-      ).trim();
-      const effPrefix = String(
-        prefix || (existing && existing.prefix) || '',
-      ).trim();
-      const link = String(
-        details.link || (existing && existing.link) || '',
-      ).trim();
-      const country = String(
-        details.country ||
-          (existing && existing.country) ||
-          extractFlagCountryIso(cleanName) ||
-          '',
-      )
-        .trim()
-        .toUpperCase();
-      if (country.length === 2) countrySet.add(country);
-      if (effPrefix) prefixSet.add(effPrefix);
-
-      const pUp = proto.toUpperCase();
-      const tUp = trans.toUpperCase();
-      const badge =
-        pUp && tUp && pUp !== tUp ? `${pUp}+${tUp}` : pUp || tUp || '';
-      const label = badge ? `${mapKey} [${badge}]` : mapKey;
-      const sourceIds = existing ? existing.sourceIds : new Set();
-      if (details.sourceId) sourceIds.add(details.sourceId);
-
-      serverMap.set(mapKey, {
-        value: mapKey,
-        rawName: cleanName,
-        label,
-        proto,
-        trans,
-        sec,
-        port,
-        prefix: effPrefix,
-        link,
-        country,
-        sourceIds,
-      });
-    };
-
-    (uci.sections(UCI_PACKAGE, 'outbound_source') || []).forEach((src) => {
-      const sid = src['.name'];
-      const pfx =
-        src.prefix_nodes === '0' ? '' : String(src.node_prefix || '').trim();
-      if (pfx) prefixSet.add(pfx);
-      const stype = String(src.source_type || 'subscription').toLowerCase();
-
-      if (stype === 'subscription') {
-        const rawUrl = String(src.url || '').trim();
-        const fallbackName = String(src.name || '').trim();
-        const u =
-          rawUrl || (/^https?:\/\//i.test(fallbackName) ? fallbackName : '');
-        if (u) {
-          if (!urlToSources.has(u)) urlToSources.set(u, []);
-          urlToSources.get(u).push({ sid, prefix: pfx });
-        }
-      }
-
-      const sname = String(src.name || src['.name'] || '').trim();
-      const rawLinks = [
-        ...asArray(src.proxy_links),
-        ...asArray(src.selector_proxy_links),
-        ...String(src.proxy_links_text || '')
-          .split(/\r?\n/)
-          .map((l) => l.trim())
-          .filter(Boolean),
-        ...String(src.selector_proxy_links_text || '')
-          .split(/\r?\n/)
-          .map((l) => l.trim())
-          .filter(Boolean),
-      ];
-      Array.from(new Set(rawLinks)).forEach((link) => {
-        const lname =
-          (typeof main.getProxyUrlName === 'function' &&
-            main.getProxyUrlName(link)) ||
-          link;
-        const m = String(link || '').match(/^([a-z0-9+-]+):\/\//i);
-        const lproto = m ? m[1].toLowerCase() : '';
-        if (lname) {
-          upsertServer(poolServerName(lname, pfx), {
-            proto: lproto,
-            prefix: pfx,
-            link,
-            sourceId: sid,
-          });
-        }
-      });
-      if (stype === 'amnezia_config' || stype === 'awg') {
-        const awgList = asRawList(
-          src.amnezia_configs || src.selector_amnezia_configs,
-        );
-        if (awgList.length > 0) {
-          awgList.forEach((entry) => {
-            let cname = sname;
-            try {
-              const parsed = JSON.parse(entry);
-              if (
-                parsed &&
-                typeof parsed.name === 'string' &&
-                parsed.name.trim()
-              ) {
-                cname = parsed.name.trim();
-              }
-            } catch (_e) {}
-            if (cname) {
-              upsertServer(cname, {
-                proto: 'amneziawg',
-                prefix: pfx,
-                sourceId: sid,
-              });
-            }
-          });
-        } else if (sname) {
-          upsertServer(sname, {
-            proto: 'amneziawg',
-            prefix: pfx,
-            sourceId: sid,
-          });
-        }
-      } else if (stype !== 'subscription' && stype !== 'proxy_links' && sname) {
-        upsertServer(sname, {
-          proto: stype,
-          prefix: pfx,
-          sourceId: sid,
-        });
-      }
-    });
-
-    // 1. Add all unfiltered servers from /etc/tachyon/subscription-cache
-    (subCaches || []).forEach((sc) => {
-      const matchedSources = (sc.url && urlToSources.get(sc.url)) || [
-        { sid: '', prefix: '' },
-      ];
-      const linkByTag = new Map();
-      (sc.links || []).forEach((lnk) => {
-        const hashIdx = lnk.indexOf('#');
-        if (hashIdx >= 0) {
-          try {
-            const dec = decodeURIComponent(lnk.slice(hashIdx + 1)).trim();
-            if (dec) linkByTag.set(dec, lnk);
-          } catch (_e) {
-            const rawFrag = lnk.slice(hashIdx + 1).trim();
-            if (rawFrag) linkByTag.set(rawFrag, lnk);
-          }
-        }
-      });
-      const leafOutbounds = (sc.outbounds || []).filter((ob) => {
-        if (!ob || typeof ob !== 'object') return false;
-        const rawTag = String(ob.remark || ob.tag || ob.name || '').trim();
-        const proto = String(ob.type || '').toLowerCase();
-        return (
-          Boolean(rawTag) &&
-          proto !== 'urltest' &&
-          proto !== 'selector' &&
-          proto !== 'direct'
-        );
-      });
-      leafOutbounds.forEach((ob, idx) => {
-        const rawTag = String(ob.remark || ob.tag || ob.name || '').trim();
-        const proto = String(ob.type || '').toLowerCase();
+      const upsertServer = (name, details) => {
+        const cleanName = String(name || '').trim();
+        if (!cleanName) return;
+        const prefix = String(details.prefix || '').trim();
+        const mapKey =
+          prefix &&
+          !cleanName.startsWith(`${prefix}: `) &&
+          !cleanName.startsWith(`[${prefix}]`)
+            ? `[${prefix}] ${cleanName}`
+            : cleanName;
+        const existing = serverMap.get(mapKey);
+        const proto = String(
+          details.proto || (existing && existing.proto) || '',
+        )
+          .trim()
+          .toLowerCase();
         const trans = String(
-          (ob.transport && ob.transport.type) || 'tcp',
-        ).toLowerCase();
-        const sec =
-          ob.tls && ob.tls.enabled
-            ? ob.tls.reality && ob.tls.reality.enabled
-              ? 'reality'
-              : 'tls'
-            : 'none';
-        const port = String(ob.server_port || ob.port || '');
-
-        matchedSources.forEach((ms) => {
-          const cleanName = poolServerName(rawTag, ms.prefix);
-          const resolvedLink = String(
-            ob.share_link ||
-              ob.__tachyon_link ||
-              ob.link ||
-              linkByTag.get(cleanName) ||
-              linkByTag.get(rawTag) ||
-              (Array.isArray(sc.links) &&
-              sc.links.length >= leafOutbounds.length &&
-              sc.links[idx]
-                ? sc.links[idx]
-                : '') ||
-              '',
-          ).trim();
-          upsertServer(cleanName, {
-            proto,
-            trans,
-            sec,
-            port,
-            prefix: ms.prefix,
-            link: resolvedLink,
-            sourceId: ms.sid,
-          });
-        });
-      });
-    });
-
-    const knownPrefixes = Array.from(prefixSet).filter(Boolean);
-
-    // 2. Also merge servers and metadata from section-cache
-    caches.forEach((c) => {
-      const meta = (c && c.outboundMetadata) || {};
-      const groups = (c && c.urltestGroups) || {};
-      const pgroups = (c && c.priorityGroups) || {};
-      const rawHidden = (c && c.hiddenOutboundTags) || {};
-      const hiddenSet = new Set(
-        Array.isArray(rawHidden) ? rawHidden : Object.keys(rawHidden),
-      );
-      const names =
-        meta.names && Object.keys(meta.names).length
-          ? meta.names
-          : (c && c.names) || {};
-      const countries =
-        meta.countries && Object.keys(meta.countries).length
-          ? meta.countries
-          : (c && c.countries) || {};
-      const protocols =
-        meta.protocols && Object.keys(meta.protocols).length
-          ? meta.protocols
-          : (c && (c.protocols || c.types)) || {};
-      const transports =
-        meta.transports && Object.keys(meta.transports).length
-          ? meta.transports
-          : (c && c.transports) || {};
-      const securities =
-        meta.securities && Object.keys(meta.securities).length
-          ? meta.securities
-          : (c && c.securities) || {};
-      const ports =
-        meta.ports && Object.keys(meta.ports).length
-          ? meta.ports
-          : (c && c.ports) || {};
-      const prefixes =
-        meta.prefixes && Object.keys(meta.prefixes).length
-          ? meta.prefixes
-          : (c && c.prefixes) || {};
-      const links =
-        meta.links && Object.keys(meta.links).length
-          ? meta.links
-          : (c && (c.outboundLinks || c.links)) || {};
-
-      Object.entries(names).forEach(([tag, rawName]) => {
-        if (groups[tag] || pgroups[tag] || hiddenSet.has(tag)) return;
-        if (
-          tag === 'direct-out' ||
-          tag === 'block-out' ||
-          tag.endsWith('-urltest-out') ||
-          tag.endsWith('-priority-out') ||
-          tag.startsWith('bal-') ||
-          tag.startsWith('lvl-')
+          details.trans || (existing && existing.trans) || '',
         )
-          return;
-        let pfx = String(prefixes[tag] || '').trim();
-        const rawStr = String(rawName || '').trim();
-        if (!pfx && rawStr) {
-          for (let i = 0; i < knownPrefixes.length; i++) {
-            const kp = knownPrefixes[i];
-            if (rawStr.startsWith(`${kp}: `)) {
-              pfx = kp;
-              break;
-            }
-          }
-        }
-        const name = poolServerName(rawStr, pfx);
-        if (!name) return;
-        const proto = String(protocols[tag] || '').toLowerCase();
-        if (
-          proto === 'urltest' ||
-          proto === 'selector' ||
-          proto === 'direct' ||
-          proto === 'dpi'
+          .trim()
+          .toLowerCase();
+        const sec = String(details.sec || (existing && existing.sec) || '')
+          .trim()
+          .toLowerCase();
+        const port = String(
+          details.port || (existing && existing.port) || '',
+        ).trim();
+        const effPrefix = String(
+          prefix || (existing && existing.prefix) || '',
+        ).trim();
+        const link = String(
+          details.link || (existing && existing.link) || '',
+        ).trim();
+        const country = String(
+          details.country ||
+            (existing && existing.country) ||
+            extractFlagCountryIso(cleanName) ||
+            '',
         )
-          return;
-        const trans = String(transports[tag] || '').toLowerCase();
-        const sec = String(securities[tag] || '').toLowerCase();
-        const port = String(ports[tag] || '');
-        const link = String(links[tag] || '').trim();
-        const country = String(countries[tag] || '')
           .trim()
           .toUpperCase();
-        upsertServer(name, {
+        if (country.length === 2) countrySet.add(country);
+        if (effPrefix) prefixSet.add(effPrefix);
+
+        const pUp = proto.toUpperCase();
+        const tUp = trans.toUpperCase();
+        const badge =
+          pUp && tUp && pUp !== tUp ? `${pUp}+${tUp}` : pUp || tUp || '';
+        const label = badge ? `${mapKey} [${badge}]` : mapKey;
+        const sourceIds = existing ? existing.sourceIds : new Set();
+        if (details.sourceId) sourceIds.add(details.sourceId);
+
+        serverMap.set(mapKey, {
+          value: mapKey,
+          rawName: cleanName,
+          label,
           proto,
           trans,
           sec,
           port,
-          prefix: pfx,
+          prefix: effPrefix,
           link,
           country,
+          sourceIds,
+        });
+      };
+
+      (uci.sections(UCI_PACKAGE, 'outbound_source') || []).forEach((src) => {
+        const sid = src['.name'];
+        const pfx =
+          src.prefix_nodes === '0' ? '' : String(src.node_prefix || '').trim();
+        if (pfx) prefixSet.add(pfx);
+        const stype = String(src.source_type || 'subscription').toLowerCase();
+
+        if (stype === 'subscription') {
+          const rawUrl = String(src.url || '').trim();
+          const fallbackName = String(src.name || '').trim();
+          const u =
+            rawUrl || (/^https?:\/\//i.test(fallbackName) ? fallbackName : '');
+          if (u) {
+            if (!urlToSources.has(u)) urlToSources.set(u, []);
+            urlToSources.get(u).push({ sid, prefix: pfx });
+          }
+        }
+
+        const sname = String(src.name || src['.name'] || '').trim();
+        const rawLinks = [
+          ...asArray(src.proxy_links),
+          ...asArray(src.selector_proxy_links),
+          ...String(src.proxy_links_text || '')
+            .split(/\r?\n/)
+            .map((l) => l.trim())
+            .filter(Boolean),
+          ...String(src.selector_proxy_links_text || '')
+            .split(/\r?\n/)
+            .map((l) => l.trim())
+            .filter(Boolean),
+        ];
+        Array.from(new Set(rawLinks)).forEach((link) => {
+          const lname =
+            (typeof main.getProxyUrlName === 'function' &&
+              main.getProxyUrlName(link)) ||
+            link;
+          const m = String(link || '').match(/^([a-z0-9+-]+):\/\//i);
+          const lproto = m ? m[1].toLowerCase() : '';
+          if (lname) {
+            upsertServer(poolServerName(lname, pfx), {
+              proto: lproto,
+              prefix: pfx,
+              link,
+              sourceId: sid,
+            });
+          }
+        });
+        if (stype === 'amnezia_config' || stype === 'awg') {
+          const awgList = asRawList(
+            src.amnezia_configs || src.selector_amnezia_configs,
+          );
+          if (awgList.length > 0) {
+            awgList.forEach((entry) => {
+              let cname = sname;
+              try {
+                const parsed = JSON.parse(entry);
+                if (
+                  parsed &&
+                  typeof parsed.name === 'string' &&
+                  parsed.name.trim()
+                ) {
+                  cname = parsed.name.trim();
+                }
+              } catch (_e) {}
+              if (cname) {
+                upsertServer(cname, {
+                  proto: 'amneziawg',
+                  prefix: pfx,
+                  sourceId: sid,
+                });
+              }
+            });
+          } else if (sname) {
+            upsertServer(sname, {
+              proto: 'amneziawg',
+              prefix: pfx,
+              sourceId: sid,
+            });
+          }
+        } else if (
+          stype !== 'subscription' &&
+          stype !== 'proxy_links' &&
+          sname
+        ) {
+          upsertServer(sname, {
+            proto: stype,
+            prefix: pfx,
+            sourceId: sid,
+          });
+        }
+      });
+
+      // 1. Add all unfiltered servers from /etc/tachyon/subscription-cache
+      (subCaches || []).forEach((sc) => {
+        const matchedSources = (sc.url && urlToSources.get(sc.url)) || [
+          { sid: '', prefix: '' },
+        ];
+        const linkByTag = new Map();
+        (sc.links || []).forEach((lnk) => {
+          const hashIdx = lnk.indexOf('#');
+          if (hashIdx >= 0) {
+            try {
+              const dec = decodeURIComponent(lnk.slice(hashIdx + 1)).trim();
+              if (dec) linkByTag.set(dec, lnk);
+            } catch (_e) {
+              const rawFrag = lnk.slice(hashIdx + 1).trim();
+              if (rawFrag) linkByTag.set(rawFrag, lnk);
+            }
+          }
+        });
+        const leafOutbounds = (sc.outbounds || []).filter((ob) => {
+          if (!ob || typeof ob !== 'object') return false;
+          const rawTag = String(ob.remark || ob.tag || ob.name || '').trim();
+          const proto = String(ob.type || '').toLowerCase();
+          return (
+            Boolean(rawTag) &&
+            proto !== 'urltest' &&
+            proto !== 'selector' &&
+            proto !== 'direct'
+          );
+        });
+        leafOutbounds.forEach((ob, idx) => {
+          const rawTag = String(ob.remark || ob.tag || ob.name || '').trim();
+          const proto = String(ob.type || '').toLowerCase();
+          const trans = String(
+            (ob.transport && ob.transport.type) || 'tcp',
+          ).toLowerCase();
+          const sec =
+            ob.tls && ob.tls.enabled
+              ? ob.tls.reality && ob.tls.reality.enabled
+                ? 'reality'
+                : 'tls'
+              : 'none';
+          const port = String(ob.server_port || ob.port || '');
+
+          matchedSources.forEach((ms) => {
+            const cleanName = poolServerName(rawTag, ms.prefix);
+            const resolvedLink = String(
+              ob.share_link ||
+                ob.__tachyon_link ||
+                ob.link ||
+                linkByTag.get(cleanName) ||
+                linkByTag.get(rawTag) ||
+                (Array.isArray(sc.links) &&
+                sc.links.length >= leafOutbounds.length &&
+                sc.links[idx]
+                  ? sc.links[idx]
+                  : '') ||
+                '',
+            ).trim();
+            upsertServer(cleanName, {
+              proto,
+              trans,
+              sec,
+              port,
+              prefix: ms.prefix,
+              link: resolvedLink,
+              sourceId: ms.sid,
+            });
+          });
         });
       });
 
-      Object.values(countries).forEach((cc) => {
-        const code = String(cc || '')
-          .trim()
-          .toUpperCase();
-        if (code.length === 2) countrySet.add(code);
+      const knownPrefixes = Array.from(prefixSet).filter(Boolean);
+
+      // 2. Also merge servers and metadata from section-cache
+      caches.forEach((c) => {
+        const meta = (c && c.outboundMetadata) || {};
+        const groups = (c && c.urltestGroups) || {};
+        const pgroups = (c && c.priorityGroups) || {};
+        const rawHidden = (c && c.hiddenOutboundTags) || {};
+        const hiddenSet = new Set(
+          Array.isArray(rawHidden) ? rawHidden : Object.keys(rawHidden),
+        );
+        const names =
+          meta.names && Object.keys(meta.names).length
+            ? meta.names
+            : (c && c.names) || {};
+        const countries =
+          meta.countries && Object.keys(meta.countries).length
+            ? meta.countries
+            : (c && c.countries) || {};
+        const protocols =
+          meta.protocols && Object.keys(meta.protocols).length
+            ? meta.protocols
+            : (c && (c.protocols || c.types)) || {};
+        const transports =
+          meta.transports && Object.keys(meta.transports).length
+            ? meta.transports
+            : (c && c.transports) || {};
+        const securities =
+          meta.securities && Object.keys(meta.securities).length
+            ? meta.securities
+            : (c && c.securities) || {};
+        const ports =
+          meta.ports && Object.keys(meta.ports).length
+            ? meta.ports
+            : (c && c.ports) || {};
+        const prefixes =
+          meta.prefixes && Object.keys(meta.prefixes).length
+            ? meta.prefixes
+            : (c && c.prefixes) || {};
+        const links =
+          meta.links && Object.keys(meta.links).length
+            ? meta.links
+            : (c && (c.outboundLinks || c.links)) || {};
+
+        Object.entries(names).forEach(([tag, rawName]) => {
+          if (groups[tag] || pgroups[tag] || hiddenSet.has(tag)) return;
+          if (
+            tag === 'direct-out' ||
+            tag === 'block-out' ||
+            tag.endsWith('-urltest-out') ||
+            tag.endsWith('-priority-out') ||
+            tag.startsWith('bal-') ||
+            tag.startsWith('lvl-')
+          )
+            return;
+          let pfx = String(prefixes[tag] || '').trim();
+          const rawStr = String(rawName || '').trim();
+          if (!pfx && rawStr) {
+            for (let i = 0; i < knownPrefixes.length; i++) {
+              const kp = knownPrefixes[i];
+              if (rawStr.startsWith(`${kp}: `)) {
+                pfx = kp;
+                break;
+              }
+            }
+          }
+          const name = poolServerName(rawStr, pfx);
+          if (!name) return;
+          const proto = String(protocols[tag] || '').toLowerCase();
+          if (
+            proto === 'urltest' ||
+            proto === 'selector' ||
+            proto === 'direct' ||
+            proto === 'dpi'
+          )
+            return;
+          const trans = String(transports[tag] || '').toLowerCase();
+          const sec = String(securities[tag] || '').toLowerCase();
+          const port = String(ports[tag] || '');
+          const link = String(links[tag] || '').trim();
+          const country = String(countries[tag] || '')
+            .trim()
+            .toUpperCase();
+          upsertServer(name, {
+            proto,
+            trans,
+            sec,
+            port,
+            prefix: pfx,
+            link,
+            country,
+          });
+        });
+
+        Object.values(countries).forEach((cc) => {
+          const code = String(cc || '')
+            .trim()
+            .toUpperCase();
+          if (code.length === 2) countrySet.add(code);
+        });
+
+        Object.values(prefixes).forEach((p) => {
+          const pfx = String(p || '').trim();
+          if (pfx) prefixSet.add(pfx);
+        });
       });
 
-      Object.values(prefixes).forEach((p) => {
-        const pfx = String(p || '').trim();
-        if (pfx) prefixSet.add(pfx);
+      const servers = Array.from(serverMap.values())
+        .map((s) => ({
+          ...s,
+          sourceIds: Array.from(s.sourceIds),
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label));
+
+      const countryMap = new Map(COMMON_COUNTRIES);
+      countrySet.forEach((cc) => {
+        if (!countryMap.has(cc)) {
+          countryMap.set(cc, `${isoToFlagEmoji(cc)} ${cc}`);
+        }
       });
-    });
+      const countries = Array.from(countryMap.entries()).map(
+        ([value, label]) => ({ value, label }),
+      );
 
-    const servers = Array.from(serverMap.values())
-      .map((s) => ({
-        ...s,
-        sourceIds: Array.from(s.sourceIds),
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label));
-
-    const countryMap = new Map(COMMON_COUNTRIES);
-    countrySet.forEach((cc) => {
-      if (!countryMap.has(cc)) {
-        countryMap.set(cc, `${isoToFlagEmoji(cc)} ${cc}`);
-      }
-    });
-    const countries = Array.from(countryMap.entries()).map(
-      ([value, label]) => ({ value, label }),
-    );
-
-    const prefixes = Array.from(prefixSet).filter(Boolean);
-    return { servers, countries, prefixes };
-  });
+      const prefixes = Array.from(prefixSet).filter(Boolean);
+      return { servers, countries, prefixes };
+    },
+  );
 }
 
 function portMatchesSpec(portStr, specList) {
@@ -2516,7 +2557,7 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
             E(
               'span',
               { class: 'tachyon-studio-toolbar__kicker' },
-              'SERVER FILTERING • LAYER 2',
+              _('SERVER FILTERING • LAYER 2'),
             ),
             E(
               'h3',
@@ -2751,7 +2792,7 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
         E(
           'span',
           { class: 'tachyon-studio-toolbar__kicker' },
-          'LIVE CONNECTIVITY PROBER',
+          _('LIVE CONNECTIVITY PROBER'),
         ),
         E(
           'h3',
@@ -2992,15 +3033,15 @@ function parseAwgConfigText(text) {
 }
 
 const PREFIX_COLOR_PRESETS = [
-  { label: 'Default', bg: '', color: '' },
-  { label: 'Blue', bg: '#dbeafe', color: '#1e40af' },
-  { label: 'Green', bg: '#dcfce7', color: '#166534' },
-  { label: 'Amber', bg: '#fef3c7', color: '#92400e' },
-  { label: 'Red', bg: '#fee2e2', color: '#991b1b' },
-  { label: 'Purple', bg: '#f3e8ff', color: '#6b21a8' },
-  { label: 'Cyan', bg: '#cffafe', color: '#155e75' },
-  { label: 'Pink', bg: '#fce7f3', color: '#9d174d' },
-  { label: 'Dark', bg: '#1e293b', color: '#f8fafc' },
+  { label: _('Default'), bg: '', color: '' },
+  { label: _('Blue'), bg: '#dbeafe', color: '#1e40af' },
+  { label: _('Green'), bg: '#dcfce7', color: '#166534' },
+  { label: _('Amber'), bg: '#fef3c7', color: '#92400e' },
+  { label: _('Red'), bg: '#fee2e2', color: '#991b1b' },
+  { label: _('Purple'), bg: '#f3e8ff', color: '#6b21a8' },
+  { label: _('Cyan'), bg: '#cffafe', color: '#155e75' },
+  { label: _('Pink'), bg: '#fce7f3', color: '#9d174d' },
+  { label: _('Dark'), bg: '#1e293b', color: '#f8fafc' },
 ];
 
 const WDTT_DEFAULT_NFQWS2_OPT =
@@ -4213,43 +4254,43 @@ function createOutboundsContent(section) {
   o.depends('source_type', 'awg');
 
   [
-    ['awg_jc', 'Jc (Junk Packet Count)', '4'],
-    ['awg_jmin', 'Jmin (Junk Min Size)', '40'],
-    ['awg_jmax', 'Jmax (Junk Max Size)', '70'],
-    ['awg_s1', 'S1 (Init Padding)', '0'],
-    ['awg_s2', 'S2 (Response Padding)', '0'],
-    ['awg_s3', 'S3 (Cookie Padding)', '0'],
-    ['awg_s4', 'S4 (Transport Padding)', '0'],
-    ['awg_h1', 'H1 (Init Header)', '1'],
-    ['awg_h2', 'H2 (Response Header)', '2'],
-    ['awg_h3', 'H3 (Cookie Header)', '3'],
-    ['awg_h4', 'H4 (Transport Header)', '4'],
-    ['awg_i1', 'I1 (Signature Packet 1)', ''],
-    ['awg_i2', 'I2 (Signature Packet 2)', ''],
-    ['awg_i3', 'I3 (Signature Packet 3)', ''],
-    ['awg_i4', 'I4 (Signature Packet 4)', ''],
-    ['awg_i5', 'I5 (Signature Packet 5)', ''],
-    ['awg_j1', 'J1 (Custom Junk 1)', ''],
-    ['awg_j2', 'J2 (Custom Junk 2)', ''],
-    ['awg_j3', 'J3 (Custom Junk 3)', ''],
-    ['awg_itime', 'Itime (Signature Timeout)', ''],
+    ['awg_jc', _('Jc (Junk Packet Count)'), '4'],
+    ['awg_jmin', _('Jmin (Junk Min Size)'), '40'],
+    ['awg_jmax', _('Jmax (Junk Max Size)'), '70'],
+    ['awg_s1', _('S1 (Init Padding)'), '0'],
+    ['awg_s2', _('S2 (Response Padding)'), '0'],
+    ['awg_s3', _('S3 (Cookie Padding)'), '0'],
+    ['awg_s4', _('S4 (Transport Padding)'), '0'],
+    ['awg_h1', _('H1 (Init Header)'), '1'],
+    ['awg_h2', _('H2 (Response Header)'), '2'],
+    ['awg_h3', _('H3 (Cookie Header)'), '3'],
+    ['awg_h4', _('H4 (Transport Header)'), '4'],
+    ['awg_i1', _('I1 (Signature Packet 1)'), ''],
+    ['awg_i2', _('I2 (Signature Packet 2)'), ''],
+    ['awg_i3', _('I3 (Signature Packet 3)'), ''],
+    ['awg_i4', _('I4 (Signature Packet 4)'), ''],
+    ['awg_i5', _('I5 (Signature Packet 5)'), ''],
+    ['awg_j1', _('J1 (Custom Junk 1)'), ''],
+    ['awg_j2', _('J2 (Custom Junk 2)'), ''],
+    ['awg_j3', _('J3 (Custom Junk 3)'), ''],
+    ['awg_itime', _('Itime (Signature Timeout)'), ''],
   ].forEach(([key, title, ph]) => {
-    o = section.taboption('general', form.Value, key, _(title));
+    o = section.taboption('general', form.Value, key, title);
     o.modalonly = true;
     if (ph) o.placeholder = ph;
     o.depends('source_type', 'awg');
   });
 
   [
-    ['awg_header_protection_key', 'HeaderProtectionKey (Base64)', ''],
-    ['awg_content_padding_addition', 'ContentPaddingAddition', '0'],
-    ['awg_rekey_after_time', 'RekeyAfterTime (s)', '120'],
-    ['awg_rekey_timeout', 'RekeyTimeout (s)', '5'],
-    ['awg_reject_after_time', 'RejectAfterTime (s)', '180'],
-    ['awg_keepalive_timeout', 'KeepaliveTimeout (s)', '10'],
-    ['awg_max_handshake_attempts', 'MaxHandshakeAttempts', '10'],
+    ['awg_header_protection_key', _('HeaderProtectionKey (Base64)'), ''],
+    ['awg_content_padding_addition', _('ContentPaddingAddition'), '0'],
+    ['awg_rekey_after_time', _('RekeyAfterTime (s)'), '120'],
+    ['awg_rekey_timeout', _('RekeyTimeout (s)'), '5'],
+    ['awg_reject_after_time', _('RejectAfterTime (s)'), '180'],
+    ['awg_keepalive_timeout', _('KeepaliveTimeout (s)'), '10'],
+    ['awg_max_handshake_attempts', _('MaxHandshakeAttempts'), '10'],
   ].forEach(([key, title, ph]) => {
-    o = section.taboption('general', form.Value, key, _(title));
+    o = section.taboption('general', form.Value, key, title);
     o.modalonly = true;
     if (ph) o.placeholder = ph;
     o.depends({ source_type: 'awg', awg_version: '3.0' });
@@ -5006,10 +5047,10 @@ function createOutboundsContent(section) {
   );
   o.modalonly = true;
   o.value('', _('Default'));
-  o.value('MULTIPLEXING_OFF', 'Off');
-  o.value('MULTIPLEXING_LOW', 'Low');
-  o.value('MULTIPLEXING_MIDDLE', 'Middle');
-  o.value('MULTIPLEXING_HIGH', 'High');
+  o.value('MULTIPLEXING_OFF', _('Off'));
+  o.value('MULTIPLEXING_LOW', _('Low'));
+  o.value('MULTIPLEXING_MIDDLE', _('Middle'));
+  o.value('MULTIPLEXING_HIGH', _('High'));
   o.depends('source_type', 'mieru');
 
   o = section.taboption(
@@ -5020,8 +5061,8 @@ function createOutboundsContent(section) {
   );
   o.modalonly = true;
   o.value('', _('Default'));
-  o.value('HANDSHAKE_STANDARD', 'Standard');
-  o.value('HANDSHAKE_NO_WAIT', 'No Wait (0-RTT)');
+  o.value('HANDSHAKE_STANDARD', _('Standard'));
+  o.value('HANDSHAKE_NO_WAIT', _('No Wait (0-RTT)'));
   o.depends('source_type', 'mieru');
 
   // NaiveProxy extras
@@ -5283,10 +5324,10 @@ function createOutboundsContent(section) {
   o.modalonly = true;
   o.value('', _('Auto / Adaptive Transformer (Default)'));
   o.value('auto', _('Auto / Adaptive Transformer'));
-  o.value('browsing', 'Browsing');
-  o.value('video', 'Video');
+  o.value('browsing', _('Browsing'));
+  o.value('video', _('Video'));
   o.value('webrtc', 'WebRTC');
-  o.value('bulk', 'Bulk');
+  o.value('bulk', _('Bulk'));
   o.depends('source_type', 'tewfai');
 
   o = section.taboption(
@@ -5662,18 +5703,18 @@ function createOutboundsContent(section) {
   );
   o.modalonly = true;
   o.default = 'fake_split';
-  o.value('fake_split', 'fake_split (Fake + Split)');
-  o.value('fake_disorder', 'fake_disorder (Fake + Out-of-order Split)');
+  o.value('fake_split', _('fake_split (Fake + Split)'));
+  o.value('fake_disorder', _('fake_disorder (Fake + Out-of-order Split)'));
   o.value(
     'multi_disorder',
-    'multi_disorder (TLSRec + Fake + 3-way Out-of-order Split)',
+    _('multi_disorder (TLSRec + Fake + 3-way Out-of-order Split)'),
   );
-  o.value('multi_split', 'multi_split (3-way TLS Record + SNI + MidSLD)');
-  o.value('tlsrec', 'tlsrec (TLS Record Fragmentation)');
-  o.value('disorder', 'disorder (Out-of-order TCP Split)');
-  o.value('split', 'split (TCP Segment Split)');
-  o.value('fake', 'fake (Fake Packet Only)');
-  o.value('oob', 'oob (TCP Urgent OOB)');
+  o.value('multi_split', _('multi_split (3-way TLS Record + SNI + MidSLD)'));
+  o.value('tlsrec', _('tlsrec (TLS Record Fragmentation)'));
+  o.value('disorder', _('disorder (Out-of-order TCP Split)'));
+  o.value('split', _('split (TCP Segment Split)'));
+  o.value('fake', _('fake (Fake Packet Only)'));
+  o.value('oob', _('oob (TCP Urgent OOB)'));
   o.depends({ source_type: 'desync', desync_preset: 'custom' });
 
   o = section.taboption(
@@ -5996,18 +6037,18 @@ function createOutboundsContent(section) {
   o.depends('source_type', 'subscription');
 
   [
-    ['device_os', 'Device OS (x-device-os)', 'Android'],
-    ['ver_os', 'OS Version (x-ver-os)', '14'],
-    ['device_model', 'Device Model (x-device-model)', 'Pixel 8'],
-    ['device_locale', 'Device Locale (x-device-locale)', 'en-US'],
-    ['app_version', 'App Version', '3.7.1'],
-    ['accept_language', 'Accept-Language Header', 'en-US,en;q=0.9'],
+    ['device_os', _('Device OS (x-device-os)'), 'Android'],
+    ['ver_os', _('OS Version (x-ver-os)'), '14'],
+    ['device_model', _('Device Model (x-device-model)'), 'Pixel 8'],
+    ['device_locale', _('Device Locale (x-device-locale)'), 'en-US'],
+    ['app_version', _('App Version'), '3.7.1'],
+    ['accept_language', _('Accept-Language Header'), 'en-US,en;q=0.9'],
   ].forEach(([key, title, ph]) => {
     o = section.taboption(
       'advanced',
       form.Value,
       key,
-      _(title),
+      title,
       _('Leave empty to omit this header'),
     );
     o.modalonly = true;
@@ -6115,8 +6156,8 @@ function createOutboundsContent(section) {
   o.value('ios', 'iOS');
   o.value('edge', 'Edge');
   o.value('android', 'Android');
-  o.value('random', 'Random');
-  o.value('randomized', 'Randomized');
+  o.value('random', _('Random'));
+  o.value('randomized', _('Randomized'));
   o.depends('source_type', 'subscription');
 
   o = section.taboption(

@@ -724,12 +724,24 @@ function filter_candidate_outbounds(filter_mode, urltest_candidate_tags, names, 
         exclude_additional_matches
     );
 
+    let has_include_criteria =
+        length(array_or_empty(include_names)) > 0 ||
+        length(array_or_empty(include_regex)) > 0 ||
+        length(array_or_empty(include_countries)) > 0 ||
+        length(array_or_empty(include_additional_matches)) > 0 ||
+        (include_proxy_parameters == true && (
+            length(array_or_empty(include_protocols)) > 0 ||
+            length(array_or_empty(include_transports)) > 0 ||
+            length(array_or_empty(include_securities)) > 0 ||
+            length(array_or_empty(include_ports)) > 0
+        ));
+
     if (filter_mode == "include")
         return include_outbounds;
     if (filter_mode == "exclude")
         return urltest_exclude_outbounds(visible_outbounds, exclude_outbounds);
     if (filter_mode == "mixed")
-        return urltest_exclude_outbounds(include_outbounds, exclude_outbounds);
+        return urltest_exclude_outbounds(has_include_criteria ? include_outbounds : visible_outbounds, exclude_outbounds);
     return visible_outbounds;
 }
 
@@ -1370,6 +1382,44 @@ function add_urltest_outbound(config, section, urltest_id, urltest_candidate_tag
     let urltest_outbounds = urltest_filtered_outbounds(section, urltest_id, urltest_candidate_tags, state);
     let urltest_tag = urltest_outbound_tag(section_name, urltest_id);
     let display_name = connections.urltest_display_name(section, urltest_id);
+
+    let sel_mode = lc(trim(option(section, "section_selection_mode", "auto")));
+    let has_sec_priority = sel_mode == "priority_failover";
+    let ut_tiers = [];
+    if (has_sec_priority && length(urltest_outbounds) > 1) {
+        let built_levels = priority_levels_with_outbounds(urltest_id, urltest_outbounds, state, section);
+        let ordered_ut = [];
+        let seen_ut = {};
+        for (let lvl in array_or_empty(built_levels)) {
+            if (lvl.direct)
+                continue;
+            let tier_tags = [];
+            for (let t in array_or_empty(lvl.outbounds)) {
+                t = as_string(t);
+                if (t != "" && !seen_ut[t]) {
+                    seen_ut[t] = true;
+                    push(tier_tags, t);
+                    push(ordered_ut, t);
+                }
+            }
+            if (length(tier_tags) > 0)
+                push(ut_tiers, tier_tags);
+        }
+        let leftover_tier = [];
+        for (let t in urltest_outbounds) {
+            t = as_string(t);
+            if (t != "" && !seen_ut[t]) {
+                seen_ut[t] = true;
+                push(leftover_tier, t);
+                push(ordered_ut, t);
+            }
+        }
+        if (length(leftover_tier) > 0 && length(ut_tiers) > 0)
+            push(ut_tiers, leftover_tier);
+        if (length(ordered_ut) == length(urltest_outbounds))
+            urltest_outbounds = ordered_ut;
+    }
+
     let urltest_outbound = {
         type: "urltest",
         tag: urltest_tag,
@@ -1388,6 +1438,7 @@ function add_urltest_outbound(config, section, urltest_id, urltest_candidate_tag
         if (ut_mode != "" && ut_mode != "least_test")
             urltest_outbound.mode = ut_mode;
 
+        let bal_obj = {};
         if (ut_mode == "round_robin" || ut_mode == "sticky" || ut_mode == "stability" ||
             ut_mode == "least_load" || ut_mode == "weighted" || ut_mode == "passive" ||
             ut_mode == "priority" || ut_mode == "hedged" || ut_mode == "throughput" ||
@@ -1396,26 +1447,26 @@ function add_urltest_outbound(config, section, urltest_id, urltest_candidate_tag
             let bal_tol = connections.urltest_balancer_pool_tolerance(section, urltest_id);
             let bal_sticky = connections.urltest_sticky_hash(section, urltest_id);
             let bal_quota = connections.urltest_balancer_quota_mib(section, urltest_id);
-            if (bal_pool > 0 || bal_tol > 0 || length(bal_sticky) > 0 || bal_quota > 0) {
-                let bal_obj = {};
-                if (bal_pool > 0)
-                    bal_obj.pool = bal_pool;
-                if (bal_tol > 0)
-                    bal_obj.pool_tolerance = bal_tol;
-                if (length(bal_sticky) > 0)
-                    bal_obj.sticky_hash = bal_sticky;
-                if (bal_quota > 0)
-                    bal_obj.quota_mib = bal_quota;
-                urltest_outbound.balancer = bal_obj;
-            }
+            if (bal_pool > 0)
+                bal_obj.pool = bal_pool;
+            if (bal_tol > 0)
+                bal_obj.pool_tolerance = bal_tol;
+            if (length(bal_sticky) > 0)
+                bal_obj.sticky_hash = bal_sticky;
+            if (bal_quota > 0)
+                bal_obj.quota_mib = bal_quota;
         }
+        if (length(ut_tiers) >= 2)
+            bal_obj.tiers = ut_tiers;
+        if (length(keys(bal_obj)) > 0)
+            urltest_outbound.balancer = bal_obj;
     }
 
     let active_check_interval = connections.urltest_active_check_interval(section, urltest_id);
     let testing_urls = connections.urltest_testing_urls(section, urltest_id);
     let multi_url_strategy = connections.urltest_multi_url_strategy(section, urltest_id);
     runtime_subscription.remember_outbound_metadata(state, urltest_tag, display_name, urltest_outbound);
-    runtime_subscription.remember_urltest_group_config(state, urltest_tag, {
+    let ut_cfg = {
         displayName: display_name,
         outbounds: urltest_outbounds,
         url: urltest_outbound.url,
@@ -1426,7 +1477,10 @@ function add_urltest_outbound(config, section, urltest_id, urltest_candidate_tag
         tolerance: urltest_outbound.tolerance,
         idle_timeout: urltest_outbound.idle_timeout,
         interrupt_exist_connections: urltest_outbound.interrupt_exist_connections
-    });
+    };
+    if (length(ut_tiers) >= 2)
+        ut_cfg.tiers = ut_tiers;
+    runtime_subscription.remember_urltest_group_config(state, urltest_tag, ut_cfg);
 
     if (length(urltest_outbounds) == 0)
         return {
@@ -2002,23 +2056,95 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
         filtered_outbounds = ordered_filtered;
     }
 
+    let has_explicit_tier_levels = sel_mode == "priority_failover" &&
+        connections.extract_entity_priority_level_refs &&
+        length(connections.extract_entity_priority_level_refs(section)) > 0;
+    let is_priority_failover_mode = sel_mode == "priority_failover";
+    if (has_explicit_tier_levels && length(filtered_outbounds) > 0) {
+        let built_sec_levels = priority_levels_with_outbounds(section_name, filtered_outbounds, state, section);
+        if (length(built_sec_levels) > 0) {
+            let custom_entries = [];
+            let ordered_by_tiers = [];
+            let seen_by_tiers = {};
+            let dpi_by_src = {};
+            for (let entry in source_level_entries) {
+                if (entry.is_dpi) {
+                    for (let t in array_or_empty(entry.outbounds))
+                        dpi_by_src[as_string(t)] = true;
+                }
+            }
+            for (let lvl in built_sec_levels) {
+                if (lvl.direct) {
+                    push(custom_entries, {
+                        id: lvl.id,
+                        displayName: lvl.displayName || "Direct",
+                        is_dpi: false,
+                        direct: true,
+                        outbounds: [ runtime_constants.DIRECT_OUTBOUND_TAG ]
+                    });
+                    continue;
+                }
+                let tier_tags = [];
+                let tier_has_dpi = false;
+                for (let t in array_or_empty(lvl.outbounds)) {
+                    t = as_string(t);
+                    if (t != "" && !seen_by_tiers[t]) {
+                        seen_by_tiers[t] = true;
+                        push(tier_tags, t);
+                        push(ordered_by_tiers, t);
+                        if (dpi_by_src[t])
+                            tier_has_dpi = true;
+                    }
+                }
+                if (length(tier_tags) > 0) {
+                    push(custom_entries, {
+                        id: lvl.id,
+                        displayName: lvl.displayName || lvl.id,
+                        is_dpi: tier_has_dpi,
+                        direct: false,
+                        outbounds: tier_tags
+                    });
+                }
+            }
+            for (let t in filtered_outbounds) {
+                t = as_string(t);
+                if (t != "" && !seen_by_tiers[t]) {
+                    seen_by_tiers[t] = true;
+                    push(ordered_by_tiers, t);
+                }
+            }
+            if (length(custom_entries) > 0) {
+                source_level_entries = custom_entries;
+                first_is_dpi = custom_entries[0].is_dpi == true;
+            }
+            if (length(ordered_by_tiers) == length(filtered_outbounds))
+                filtered_outbounds = ordered_by_tiers;
+        }
+    }
+
     selector_outbounds = filtered_outbounds;
     selector_default = selector_outbounds[0];
     let has_explicit_balancers = length(urltest_tags) > 0 || length(priority_tags) > 0;
-    let use_section_failover = sel_mode != "default" && has_dpi_source;
+    let supports_native_bal = variant_state.supports_native_balancer(ctx.detect_sing_box_version ? ctx.detect_sing_box_version() : null);
+    let use_section_failover = sel_mode != "default" && (
+        has_dpi_source ||
+        (is_priority_failover_mode && (!has_explicit_balancers || (!supports_native_bal && length(priority_tags) == 0)))
+    );
     if (has_explicit_balancers) {
         for (let tag in urltest_tags)
             push(selector_outbounds, tag);
         for (let tag in priority_tags)
             push(selector_outbounds, tag);
-        if (!first_is_dpi)
-            selector_default = length(urltest_tags) > 0 ? urltest_tags[0] : priority_tags[0];
+        if (!first_is_dpi && (!is_priority_failover_mode || supports_native_bal || length(priority_tags) > 0))
+            selector_default = length(priority_tags) > 0 && is_priority_failover_mode
+                ? priority_tags[0]
+                : (length(urltest_tags) > 0 ? urltest_tags[0] : priority_tags[0]);
     }
 
     if (use_section_failover) {
         let auto_levels = [];
         let lvl_order = 1;
-        let prefer_balancer_for_non_dpi = has_explicit_balancers;
+        let prefer_balancer_for_non_dpi = has_explicit_balancers && (!is_priority_failover_mode || supports_native_bal);
         let added_balancers = false;
         let append_balancer_levels = () => {
             if (added_balancers)
@@ -2044,7 +2170,7 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
             }
         };
         for (let entry in source_level_entries) {
-            if (prefer_balancer_for_non_dpi && !entry.is_dpi) {
+            if (prefer_balancer_for_non_dpi && !entry.is_dpi && !entry.direct) {
                 append_balancer_levels();
                 continue;
             }
@@ -2052,7 +2178,7 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
                 id: entry.id,
                 displayName: entry.displayName,
                 order: lvl_order++,
-                direct: false,
+                direct: entry.direct == true,
                 outbounds: entry.outbounds
             });
         }
@@ -3602,14 +3728,31 @@ function resolve_section_server_outbound_tag(config, section, server_key) {
 
     for (let t in leaves) {
         let t_str = as_string(t);
+        if (lc(t_str) == key_lc)
+            return t_str;
+    }
+    for (let t in keys(names)) {
+        let t_str = as_string(t);
+        if (lc(t_str) == key_lc)
+            return t_str;
+    }
+
+    for (let t in leaves) {
+        let t_str = as_string(t);
         let disp = trim(as_string(names[t_str] || ""));
         let badge = tag_source_badge(t_str, disp, metadata);
         let b_disp = badge != "" ? ("[" + badge + "] " + disp) : "";
         let p_disp = badge != "" ? (badge + ": " + disp) : "";
-        if (lc(t_str) == key_lc ||
-            (disp != "" && lc(disp) == key_lc) ||
-            (b_disp != "" && lc(b_disp) == key_lc) ||
-            (p_disp != "" && lc(p_disp) == key_lc))
+        let s_disp = badge != "" ? (badge + " " + disp) : "";
+        if ((b_disp != "" && lc(b_disp) == key_lc) ||
+            (p_disp != "" && lc(p_disp) == key_lc) ||
+            (s_disp != "" && lc(s_disp) == key_lc))
+            return t_str;
+    }
+    for (let t in leaves) {
+        let t_str = as_string(t);
+        let disp = trim(as_string(names[t_str] || ""));
+        if (disp != "" && lc(disp) == key_lc)
             return t_str;
     }
     for (let t, disp_raw in names) {
@@ -3618,10 +3761,11 @@ function resolve_section_server_outbound_tag(config, section, server_key) {
         let badge = tag_source_badge(t_str, disp, metadata);
         let b_disp = badge != "" ? ("[" + badge + "] " + disp) : "";
         let p_disp = badge != "" ? (badge + ": " + disp) : "";
-        if (lc(t_str) == key_lc ||
-            (disp != "" && lc(disp) == key_lc) ||
+        let s_disp = badge != "" ? (badge + " " + disp) : "";
+        if ((disp != "" && lc(disp) == key_lc) ||
             (b_disp != "" && lc(b_disp) == key_lc) ||
-            (p_disp != "" && lc(p_disp) == key_lc))
+            (p_disp != "" && lc(p_disp) == key_lc) ||
+            (s_disp != "" && lc(s_disp) == key_lc))
             return t_str;
     }
     for (let t in leaves) {

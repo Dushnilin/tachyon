@@ -95,7 +95,11 @@ export function resolvePrefixBadgeStyle(prefix?: string): PrefixPalette {
       border: localCustom.border || localCustom.bg || uciMap?.bg || base.border,
     };
   }
-  if (uciMap && (uciMap.bg || uciMap.color)) {
+  const isLegacyDefaultUci =
+    uciMap &&
+    String(uciMap.bg || '').toLowerCase() === '#f3e8ff' &&
+    (!uciMap.color || String(uciMap.color).toLowerCase() === '#6b21a8');
+  if (uciMap && !isLegacyDefaultUci && (uciMap.bg || uciMap.color)) {
     return {
       name: 'UCI',
       bg: uciMap.bg || base.bg,
@@ -103,7 +107,12 @@ export function resolvePrefixBadgeStyle(prefix?: string): PrefixPalette {
       border: uciMap.bg || base.border,
     };
   }
-  return base;
+  return {
+    name: 'Theme',
+    bg: 'var(--tachyon-accent-soft, rgba(128, 128, 128, 0.14))',
+    color: 'var(--tachyon-accent-text, inherit)',
+    border: 'var(--tachyon-accent-border, rgba(128, 128, 128, 0.28))',
+  };
 }
 
 function translatePresetColorName(name: string): string {

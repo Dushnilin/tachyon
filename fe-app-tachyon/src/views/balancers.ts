@@ -128,10 +128,19 @@ function loadGlobalPoolChoices() {
     .filter((n) => n && /^[A-Za-z0-9_-]+$/.test(n));
   if (!secNames.includes('Main')) secNames.unshift('Main');
 
-  const readJsonFile = (path) =>
+  const isNotFoundErr = (err) => {
+    const msg = `${String((err && err.name) || '')} ${String((err && err.message) || err || '')}`;
+    return /NotFoundError|ENOENT|No such file or directory|Object not found|-32000/i.test(
+      msg,
+    );
+  };
+
+  const readJsonFile = (path, allowDirect = true) =>
     fs
       .read(path)
-      .catch(() =>
+      .catch((err) =>
+        allowDirect &&
+        !isNotFoundErr(err) &&
         typeof fs.read_direct === 'function'
           ? fs.read_direct(path, 'text')
           : Promise.resolve('{}'),
@@ -139,8 +148,33 @@ function loadGlobalPoolChoices() {
       .then((raw) => JSON.parse(raw || '{}'))
       .catch(() => ({}));
 
-  const readCache = (secName) =>
-    readJsonFile(`${SECTION_CACHE_DIR}/${secName}.json`);
+  const readSectionCaches = () =>
+    (typeof fs.list === 'function'
+      ? fs
+          .list(SECTION_CACHE_DIR)
+          .then((entries) =>
+            Array.isArray(entries)
+              ? new Set(
+                  entries
+                    .map((e) => String((e && e.name) || ''))
+                    .filter(Boolean),
+                )
+              : null,
+          )
+          .catch(() => null)
+      : Promise.resolve(null)
+    ).then((existingFiles) => {
+      const candidates =
+        existingFiles !== null
+          ? secNames.filter((secName) => existingFiles.has(`${secName}.json`))
+          : secNames;
+      const allowDirect = existingFiles !== null;
+      return Promise.all(
+        candidates.map((secName) =>
+          readJsonFile(`${SECTION_CACHE_DIR}/${secName}.json`, allowDirect),
+        ),
+      );
+    });
 
   const readSubCaches = () =>
     fs
@@ -162,165 +196,168 @@ function loadGlobalPoolChoices() {
       })
       .catch(() => []);
 
-  return Promise.all([
-    Promise.all(secNames.map(readCache)),
-    readSubCaches(),
-  ]).then(([caches, subCaches]) => {
-    const serverMap = new Map();
-    const countrySet = new Set();
-    const prefixSet = new Set();
+  return Promise.all([readSectionCaches(), readSubCaches()]).then(
+    ([caches, subCaches]) => {
+      const serverMap = new Map();
+      const countrySet = new Set();
+      const prefixSet = new Set();
 
-    (uci.sections(UCI_PACKAGE, 'outbound_source') || []).forEach((src) => {
-      if (src.node_prefix) prefixSet.add(String(src.node_prefix).trim());
-      const stype = String(src.source_type || 'subscription').toLowerCase();
-      const sname = String(src.name || src['.name'] || '').trim();
-      const rawLinks = [
-        ...asArray(src.proxy_links),
-        ...asArray(src.selector_proxy_links),
-        ...String(src.proxy_links_text || '')
-          .split(/\r?\n/)
-          .map((l) => l.trim())
-          .filter(Boolean),
-        ...String(src.selector_proxy_links_text || '')
-          .split(/\r?\n/)
-          .map((l) => l.trim())
-          .filter(Boolean),
-      ];
-      Array.from(new Set(rawLinks)).forEach((link) => {
-        const lname =
-          (typeof main.getProxyUrlName === 'function' &&
-            main.getProxyUrlName(link)) ||
-          link;
-        if (lname && !serverMap.has(lname)) {
-          serverMap.set(lname, lname);
-        }
-      });
-      if (stype === 'amnezia_config' || stype === 'awg') {
-        const awgList = asArray(
-          src.amnezia_configs || src.selector_amnezia_configs,
-        );
-        if (awgList.length > 0) {
-          awgList.forEach((entry) => {
-            let cname = sname;
-            try {
-              const parsed = JSON.parse(entry);
-              if (
-                parsed &&
-                typeof parsed.name === 'string' &&
-                parsed.name.trim()
-              ) {
-                cname = parsed.name.trim();
+      (uci.sections(UCI_PACKAGE, 'outbound_source') || []).forEach((src) => {
+        if (src.node_prefix) prefixSet.add(String(src.node_prefix).trim());
+        const stype = String(src.source_type || 'subscription').toLowerCase();
+        const sname = String(src.name || src['.name'] || '').trim();
+        const rawLinks = [
+          ...asArray(src.proxy_links),
+          ...asArray(src.selector_proxy_links),
+          ...String(src.proxy_links_text || '')
+            .split(/\r?\n/)
+            .map((l) => l.trim())
+            .filter(Boolean),
+          ...String(src.selector_proxy_links_text || '')
+            .split(/\r?\n/)
+            .map((l) => l.trim())
+            .filter(Boolean),
+        ];
+        Array.from(new Set(rawLinks)).forEach((link) => {
+          const lname =
+            (typeof main.getProxyUrlName === 'function' &&
+              main.getProxyUrlName(link)) ||
+            link;
+          if (lname && !serverMap.has(lname)) {
+            serverMap.set(lname, lname);
+          }
+        });
+        if (stype === 'amnezia_config' || stype === 'awg') {
+          const awgList = asArray(
+            src.amnezia_configs || src.selector_amnezia_configs,
+          );
+          if (awgList.length > 0) {
+            awgList.forEach((entry) => {
+              let cname = sname;
+              try {
+                const parsed = JSON.parse(entry);
+                if (
+                  parsed &&
+                  typeof parsed.name === 'string' &&
+                  parsed.name.trim()
+                ) {
+                  cname = parsed.name.trim();
+                }
+              } catch (_e) {}
+              if (cname && !serverMap.has(cname)) {
+                serverMap.set(cname, `${cname} [AMNEZIAWG]`);
               }
-            } catch (_e) {}
-            if (cname && !serverMap.has(cname)) {
-              serverMap.set(cname, `${cname} [AMNEZIAWG]`);
-            }
-          });
-        } else if (sname && !serverMap.has(sname)) {
-          serverMap.set(sname, `${sname} [AMNEZIAWG]`);
-        }
-      } else if (stype !== 'subscription' && stype !== 'proxy_links' && sname) {
-        const badge = stype.toUpperCase();
-        if (!serverMap.has(sname)) {
-          serverMap.set(sname, `${sname} [${badge}]`);
-        }
-      }
-    });
-
-    (subCaches || []).forEach((sc) => {
-      const outbounds = Array.isArray(sc && sc.outbounds) ? sc.outbounds : [];
-      outbounds.forEach((ob) => {
-        if (!ob || typeof ob !== 'object') return;
-        const name = String(ob.tag || ob.name || '').trim();
-        if (!name) return;
-        const proto = String(ob.type || '').toUpperCase();
-        if (proto === 'URLTEST' || proto === 'SELECTOR' || proto === 'DIRECT')
-          return;
-        const trans = String(
-          (ob.transport && ob.transport.type) || '',
-        ).toUpperCase();
-        const badge =
-          proto && trans && proto !== trans
-            ? `${proto}+${trans}`
-            : proto || trans;
-        const label = badge ? `${name} [${badge}]` : name;
-        if (!serverMap.has(name)) {
-          serverMap.set(name, label);
+            });
+          } else if (sname && !serverMap.has(sname)) {
+            serverMap.set(sname, `${sname} [AMNEZIAWG]`);
+          }
+        } else if (
+          stype !== 'subscription' &&
+          stype !== 'proxy_links' &&
+          sname
+        ) {
+          const badge = stype.toUpperCase();
+          if (!serverMap.has(sname)) {
+            serverMap.set(sname, `${sname} [${badge}]`);
+          }
         }
       });
-    });
 
-    caches.forEach((c) => {
-      const meta = (c && c.outboundMetadata) || {};
-      const groups = (c && c.urltestGroups) || {};
-      const pgroups = (c && c.priorityGroups) || {};
-      const rawHidden = (c && c.hiddenOutboundTags) || {};
-      const hiddenSet = new Set(
-        Array.isArray(rawHidden) ? rawHidden : Object.keys(rawHidden),
+      (subCaches || []).forEach((sc) => {
+        const outbounds = Array.isArray(sc && sc.outbounds) ? sc.outbounds : [];
+        outbounds.forEach((ob) => {
+          if (!ob || typeof ob !== 'object') return;
+          const name = String(ob.tag || ob.name || '').trim();
+          if (!name) return;
+          const proto = String(ob.type || '').toUpperCase();
+          if (proto === 'URLTEST' || proto === 'SELECTOR' || proto === 'DIRECT')
+            return;
+          const trans = String(
+            (ob.transport && ob.transport.type) || '',
+          ).toUpperCase();
+          const badge =
+            proto && trans && proto !== trans
+              ? `${proto}+${trans}`
+              : proto || trans;
+          const label = badge ? `${name} [${badge}]` : name;
+          if (!serverMap.has(name)) {
+            serverMap.set(name, label);
+          }
+        });
+      });
+
+      caches.forEach((c) => {
+        const meta = (c && c.outboundMetadata) || {};
+        const groups = (c && c.urltestGroups) || {};
+        const pgroups = (c && c.priorityGroups) || {};
+        const rawHidden = (c && c.hiddenOutboundTags) || {};
+        const hiddenSet = new Set(
+          Array.isArray(rawHidden) ? rawHidden : Object.keys(rawHidden),
+        );
+        const names = meta.names || {};
+        const countries = meta.countries || {};
+        const protocols = meta.protocols || {};
+        const transports = meta.transports || {};
+        const prefixes = meta.prefixes || {};
+
+        Object.entries(names).forEach(([tag, rawName]) => {
+          if (groups[tag] || pgroups[tag] || hiddenSet.has(tag)) return;
+          const name = String(rawName || '').trim();
+          if (!name) return;
+          const proto = String(protocols[tag] || '').toUpperCase();
+          if (proto === 'URLTEST' || proto === 'SELECTOR') return;
+          const trans = String(transports[tag] || '').toUpperCase();
+          const pfx = String(prefixes[tag] || '').trim();
+          const val =
+            pfx && !name.startsWith(`${pfx}: `) && !name.startsWith(`[${pfx}]`)
+              ? `[${pfx}] ${name}`
+              : name;
+          const badge =
+            proto && trans && proto !== trans
+              ? `${proto}+${trans}`
+              : proto || trans;
+          const label = badge ? `${val} [${badge}]` : val;
+          if (!serverMap.has(val)) {
+            serverMap.set(val, label);
+          }
+        });
+
+        Object.values(countries).forEach((cc) => {
+          const code = String(cc || '')
+            .trim()
+            .toUpperCase();
+          if (code.length === 2) countrySet.add(code);
+        });
+
+        Object.values(prefixes).forEach((p) => {
+          const pfx = String(p || '').trim();
+          if (pfx) prefixSet.add(pfx);
+        });
+      });
+
+      const servers = Array.from(serverMap.entries())
+        .map(([value, label]) => ({ value, label }))
+        .sort((a, b) => a.label.localeCompare(b.label));
+
+      const countryMap = new Map(COMMON_COUNTRIES);
+      countrySet.forEach((cc) => {
+        if (!countryMap.has(cc)) {
+          countryMap.set(cc, `${isoToFlagEmoji(cc)} ${cc}`);
+        }
+      });
+      const countries = Array.from(countryMap.entries()).map(
+        ([value, label]) => ({ value, label }),
       );
-      const names = meta.names || {};
-      const countries = meta.countries || {};
-      const protocols = meta.protocols || {};
-      const transports = meta.transports || {};
-      const prefixes = meta.prefixes || {};
 
-      Object.entries(names).forEach(([tag, rawName]) => {
-        if (groups[tag] || pgroups[tag] || hiddenSet.has(tag)) return;
-        const name = String(rawName || '').trim();
-        if (!name) return;
-        const proto = String(protocols[tag] || '').toUpperCase();
-        if (proto === 'URLTEST' || proto === 'SELECTOR') return;
-        const trans = String(transports[tag] || '').toUpperCase();
-        const pfx = String(prefixes[tag] || '').trim();
-        const val =
-          pfx && !name.startsWith(`${pfx}: `) && !name.startsWith(`[${pfx}]`)
-            ? `[${pfx}] ${name}`
-            : name;
-        const badge =
-          proto && trans && proto !== trans
-            ? `${proto}+${trans}`
-            : proto || trans;
-        const label = badge ? `${val} [${badge}]` : val;
-        if (!serverMap.has(val)) {
-          serverMap.set(val, label);
-        }
-      });
+      const prefixes = Array.from(prefixSet)
+        .filter(Boolean)
+        .map((p) => ({ value: p, label: p }));
 
-      Object.values(countries).forEach((cc) => {
-        const code = String(cc || '')
-          .trim()
-          .toUpperCase();
-        if (code.length === 2) countrySet.add(code);
-      });
-
-      Object.values(prefixes).forEach((p) => {
-        const pfx = String(p || '').trim();
-        if (pfx) prefixSet.add(pfx);
-      });
-    });
-
-    const servers = Array.from(serverMap.entries())
-      .map(([value, label]) => ({ value, label }))
-      .sort((a, b) => a.label.localeCompare(b.label));
-
-    const countryMap = new Map(COMMON_COUNTRIES);
-    countrySet.forEach((cc) => {
-      if (!countryMap.has(cc)) {
-        countryMap.set(cc, `${isoToFlagEmoji(cc)} ${cc}`);
-      }
-    });
-    const countries = Array.from(countryMap.entries()).map(
-      ([value, label]) => ({ value, label }),
-    );
-
-    const prefixes = Array.from(prefixSet)
-      .filter(Boolean)
-      .map((p) => ({ value: p, label: p }));
-
-    cachedPoolChoices = { servers, countries, prefixes };
-    cachedPoolFetchedAt = Date.now();
-    return cachedPoolChoices;
-  });
+      cachedPoolChoices = { servers, countries, prefixes };
+      cachedPoolFetchedAt = Date.now();
+      return cachedPoolChoices;
+    },
+  );
 }
 
 function asArray(val) {
@@ -519,7 +556,6 @@ function escapeHtml(str) {
 
 function createBalancersContent(section) {
   section.tab('general', _('Policy Settings'));
-  section.tab('pool', _('Server Filters'));
 
   let o = section.taboption('general', form.Flag, 'enabled', _('Enable'));
   o.default = '1';
@@ -936,330 +972,12 @@ function createBalancersContent(section) {
     form.Flag,
     'interrupt_exist_connections',
     _('Interrupt Existing Connections on Switch'),
+    _(
+      'Close active TCP/UDP sessions routed through the previous node when the balancer switches to a new server so traffic immediately moves to the new route instead of staying on the old or stalled connection.',
+    ),
   );
   o.modalonly = true;
   o.default = '1';
-
-  o = section.taboption(
-    'general',
-    form.Flag,
-    'pin_dashboard',
-    _('Pin to Dashboard'),
-  );
-  o.modalonly = true;
-  o.default = '1';
-
-  // Tab 2: Server Filters (prefixes, countries, servers, protocols, regex)
-  o = section.taboption(
-    'pool',
-    form.ListValue,
-    'filter_mode',
-    _('Filter Mode'),
-    _(
-      'Filter which servers from the pool participate in this URLTest balancer.',
-    ),
-  );
-  o.modalonly = true;
-  o.default = 'disabled';
-  o.value('disabled', _('Disabled (Use all servers in pool)'));
-  o.value('include', _('Include Only Matching'));
-  o.value('exclude', _('Exclude Matching'));
-  o.value('mixed', _('Mixed (Include AND Exclude)'));
-  o.depends('balancer_type', 'urltest');
-
-  o = section.taboption(
-    'pool',
-    form.ListValue,
-    'detect_server_country',
-    _('Detect server country'),
-  );
-  o.modalonly = true;
-  o.default = 'flag_emoji';
-  o.value('flag_emoji', _('By flag emoji from name'));
-  o.value('country_is', _('Via country.is'));
-  o.depends({ balancer_type: 'urltest', filter_mode: 'include' });
-  o.depends({ balancer_type: 'urltest', filter_mode: 'exclude' });
-  o.depends({ balancer_type: 'urltest', filter_mode: 'mixed' });
-
-  o = section.taboption(
-    'pool',
-    form.DynamicList,
-    'include_prefixes',
-    _('Include Subscription Prefixes'),
-  );
-  o.modalonly = true;
-  o.placeholder = _('e.g. Unlim');
-  o.depends({ balancer_type: 'urltest', filter_mode: 'include' });
-  o.depends({ balancer_type: 'urltest', filter_mode: 'mixed' });
-  o.load = function (sectionId) {
-    return loadGlobalPoolChoices().then((pool) => {
-      this.keylist = [];
-      this.vallist = [];
-      pool.prefixes.forEach((c) => this.value(c.value, c.label));
-      return form.DynamicList.prototype.load.call(this, sectionId);
-    });
-  };
-
-  o = section.taboption(
-    'pool',
-    form.DynamicList,
-    'exclude_prefixes',
-    _('Exclude Subscription Prefixes'),
-  );
-  o.modalonly = true;
-  o.placeholder = _('e.g. Backup');
-  o.depends({ balancer_type: 'urltest', filter_mode: 'exclude' });
-  o.depends({ balancer_type: 'urltest', filter_mode: 'mixed' });
-  o.load = function (sectionId) {
-    return loadGlobalPoolChoices().then((pool) => {
-      this.keylist = [];
-      this.vallist = [];
-      pool.prefixes.forEach((c) => this.value(c.value, c.label));
-      return form.DynamicList.prototype.load.call(this, sectionId);
-    });
-  };
-
-  o = section.taboption(
-    'pool',
-    form.DynamicList,
-    'include_countries',
-    _('Include Country Flags (ISO)'),
-    _(
-      'Select countries from the dropdown or enter 2-letter ISO codes (NL, DE, FI, RU).',
-    ),
-  );
-  o.modalonly = true;
-  o.placeholder = _('-- Select country --');
-  o.depends({ balancer_type: 'urltest', filter_mode: 'include' });
-  o.depends({ balancer_type: 'urltest', filter_mode: 'mixed' });
-  o.load = function (sectionId) {
-    return loadGlobalPoolChoices().then((pool) => {
-      this.keylist = [];
-      this.vallist = [];
-      pool.countries.forEach((c) => this.value(c.value, c.label));
-      return form.DynamicList.prototype.load.call(this, sectionId);
-    });
-  };
-
-  o = section.taboption(
-    'pool',
-    form.DynamicList,
-    'exclude_countries',
-    _('Exclude Country Flags (ISO)'),
-    _('Select countries to exclude from auto-selection.'),
-  );
-  o.modalonly = true;
-  o.placeholder = _('-- Select country --');
-  o.depends({ balancer_type: 'urltest', filter_mode: 'exclude' });
-  o.depends({ balancer_type: 'urltest', filter_mode: 'mixed' });
-  o.load = function (sectionId) {
-    return loadGlobalPoolChoices().then((pool) => {
-      this.keylist = [];
-      this.vallist = [];
-      pool.countries.forEach((c) => this.value(c.value, c.label));
-      return form.DynamicList.prototype.load.call(this, sectionId);
-    });
-  };
-
-  o = section.taboption(
-    'pool',
-    form.DynamicList,
-    'include_outbounds',
-    _('Include Servers'),
-    _(
-      'Select specific servers from the pool to include in this auto-selection.',
-    ),
-  );
-  o.modalonly = true;
-  o.placeholder = _('-- Select server --');
-  o.depends({ balancer_type: 'urltest', filter_mode: 'include' });
-  o.depends({ balancer_type: 'urltest', filter_mode: 'mixed' });
-  o.cfgvalue = function (sectionId) {
-    return asServerList(uci.get(UCI_PACKAGE, sectionId, 'include_outbounds'));
-  };
-  o.load = function (sectionId) {
-    return loadGlobalPoolChoices().then((pool) => {
-      this.keylist = [];
-      this.vallist = [];
-      const seen = new Set();
-      pool.servers.forEach((s) => {
-        seen.add(s.value);
-        this.value(s.value, s.label);
-      });
-      const current = this.cfgvalue(sectionId);
-      current.forEach((v) => {
-        if (!seen.has(v)) {
-          seen.add(v);
-          this.value(v, v);
-        }
-      });
-      return current;
-    });
-  };
-
-  o = section.taboption(
-    'pool',
-    form.DynamicList,
-    'exclude_outbounds',
-    _('Exclude Servers'),
-    _(
-      'Select specific servers from the pool to exclude from this auto-selection.',
-    ),
-  );
-  o.modalonly = true;
-  o.placeholder = _('-- Select server --');
-  o.depends({ balancer_type: 'urltest', filter_mode: 'exclude' });
-  o.depends({ balancer_type: 'urltest', filter_mode: 'mixed' });
-  o.cfgvalue = function (sectionId) {
-    return asServerList(uci.get(UCI_PACKAGE, sectionId, 'exclude_outbounds'));
-  };
-  o.load = function (sectionId) {
-    return loadGlobalPoolChoices().then((pool) => {
-      this.keylist = [];
-      this.vallist = [];
-      const seen = new Set();
-      pool.servers.forEach((s) => {
-        seen.add(s.value);
-        this.value(s.value, s.label);
-      });
-      const current = this.cfgvalue(sectionId);
-      current.forEach((v) => {
-        if (!seen.has(v)) {
-          seen.add(v);
-          this.value(v, v);
-        }
-      });
-      return current;
-    });
-  };
-
-  o = section.taboption(
-    'pool',
-    form.DynamicList,
-    'include_protocols',
-    _('Include Protocols'),
-    _('Filter servers by protocol (e.g. VLESS, Hysteria2, AmneziaWG).'),
-  );
-  o.modalonly = true;
-  o.placeholder = _('-- Select protocol --');
-  o.depends({ balancer_type: 'urltest', filter_mode: 'include' });
-  o.depends({ balancer_type: 'urltest', filter_mode: 'mixed' });
-  PROTOCOL_CHOICES.forEach(([val, label]) => o.value(val, label));
-
-  o = section.taboption(
-    'pool',
-    form.DynamicList,
-    'exclude_protocols',
-    _('Exclude Protocols'),
-    _('Exclude servers with specified protocols.'),
-  );
-  o.modalonly = true;
-  o.placeholder = _('-- Select protocol --');
-  o.depends({ balancer_type: 'urltest', filter_mode: 'exclude' });
-  o.depends({ balancer_type: 'urltest', filter_mode: 'mixed' });
-  PROTOCOL_CHOICES.forEach(([val, label]) => o.value(val, label));
-
-  o = section.taboption(
-    'pool',
-    form.DynamicList,
-    'include_transports',
-    _('Include Transports'),
-    _('Only servers with one of the selected transports.'),
-  );
-  o.modalonly = true;
-  o.placeholder = _('-- Select transport --');
-  o.depends({ balancer_type: 'urltest', filter_mode: 'include' });
-  o.depends({ balancer_type: 'urltest', filter_mode: 'mixed' });
-  TRANSPORT_CHOICES.forEach(([val, label]) => o.value(val, label));
-
-  o = section.taboption(
-    'pool',
-    form.DynamicList,
-    'exclude_transports',
-    _('Exclude Transports'),
-    _('Do not test servers with one of the selected transports.'),
-  );
-  o.modalonly = true;
-  o.placeholder = _('-- Select transport --');
-  o.depends({ balancer_type: 'urltest', filter_mode: 'exclude' });
-  o.depends({ balancer_type: 'urltest', filter_mode: 'mixed' });
-  TRANSPORT_CHOICES.forEach(([val, label]) => o.value(val, label));
-
-  o = section.taboption(
-    'pool',
-    form.DynamicList,
-    'include_securities',
-    _('Include Security Types'),
-    _('Only servers with one of the selected security types.'),
-  );
-  o.modalonly = true;
-  o.placeholder = _('-- Select security --');
-  o.depends({ balancer_type: 'urltest', filter_mode: 'include' });
-  o.depends({ balancer_type: 'urltest', filter_mode: 'mixed' });
-  SECURITY_CHOICES.forEach(([val, label]) => o.value(val, label));
-
-  o = section.taboption(
-    'pool',
-    form.DynamicList,
-    'exclude_securities',
-    _('Exclude Security Types'),
-    _('Do not test servers with one of the selected security types.'),
-  );
-  o.modalonly = true;
-  o.placeholder = _('-- Select security --');
-  o.depends({ balancer_type: 'urltest', filter_mode: 'exclude' });
-  o.depends({ balancer_type: 'urltest', filter_mode: 'mixed' });
-  SECURITY_CHOICES.forEach(([val, label]) => o.value(val, label));
-
-  o = section.taboption(
-    'pool',
-    form.DynamicList,
-    'include_ports',
-    _('Include Ports'),
-    _(
-      'Test only servers with one of the selected ports or port ranges (e.g. 443, 8443, 2000-3000).',
-    ),
-  );
-  o.modalonly = true;
-  o.placeholder = _('-- Select or type port/range --');
-  o.depends({ balancer_type: 'urltest', filter_mode: 'include' });
-  o.depends({ balancer_type: 'urltest', filter_mode: 'mixed' });
-  PORT_CHOICES.forEach(([val, label]) => o.value(val, label));
-
-  o = section.taboption(
-    'pool',
-    form.DynamicList,
-    'exclude_ports',
-    _('Exclude Ports'),
-    _('Do not test servers with one of the selected ports or port ranges.'),
-  );
-  o.modalonly = true;
-  o.placeholder = _('-- Select or type port/range --');
-  o.depends({ balancer_type: 'urltest', filter_mode: 'exclude' });
-  o.depends({ balancer_type: 'urltest', filter_mode: 'mixed' });
-  PORT_CHOICES.forEach(([val, label]) => o.value(val, label));
-
-  o = section.taboption(
-    'pool',
-    form.DynamicList,
-    'include_regex',
-    _('Include Name Regex'),
-  );
-  o.modalonly = true;
-  o.placeholder = _('e.g. Amsterdam|Frankfurt');
-  o.depends({ balancer_type: 'urltest', filter_mode: 'include' });
-  o.depends({ balancer_type: 'urltest', filter_mode: 'mixed' });
-
-  o = section.taboption(
-    'pool',
-    form.DynamicList,
-    'exclude_regex',
-    _('Exclude Name Regex'),
-  );
-  o.modalonly = true;
-  o.placeholder = _('e.g. \\|WL\\| or Bypass');
-  o.depends({ balancer_type: 'urltest', filter_mode: 'exclude' });
-  o.depends({ balancer_type: 'urltest', filter_mode: 'mixed' });
 }
 
 export default baseclass.extend({

@@ -35,14 +35,14 @@
 ## 4. Перекрытие Sequence (`--dpi-desync-split-seqovl`)
 
 - `--dpi-desync-split-seqovl=1` или `2` — при сплите второй сегмент имеет начальный Sequence номер, заходящий на N байт назад (перекрывает конец первого сегмента).
-- ТСПУ видит коллизию данных в потоке и сбрасывает проверку, а сервер назначения корректно дедуплицирует байты по RFC 793.
+- Промежуточный сетевой фильтр видит коллизию данных в потоке и прекращает инспекцию, а сервер назначения корректно дедуплицирует байты по RFC 793.
 
 ---
 
-## 5. Методы дурения ТСПУ (`--dpi-desync-fooling`)
+## 5. Методы модификации фейковых пакетов (`--dpi-desync-fooling`)
 
 - `badseq` — отправка фейка с невалидным Sequence номером.
-- `md5sig` — добавление опции TCP MD5 signature, заставляющей DPI дропнуть фейк или пропустить сессию.
+- `md5sig` — добавление опции TCP MD5 signature, заставляющей транзитный фильтр отбросить контекст инспекции.
 - `badack` — невалидный номер подтверждения ACK.
 - `hopbyhop` — добавление IPv6 Hop-by-Hop extension header.
 
@@ -55,12 +55,12 @@
 --dpi-desync=fake,split2 --dpi-desync-split-pos=1 --dpi-desync-ttl=8 --dpi-desync-fooling=badseq
 ```
 
-### 2. RuTracker & Заблокированные HTTP/HTTPS ресурсы
+### 2. Веб-ресурсы с фильтрацией по HTTP/HTTPS SNI
 ```text
 --dpi-desync=disorder2 --dpi-desync-split-pos=1 --dpi-desync-fooling=badseq
 ```
 
-### 3. State-DPI Bypass (Перекрытие TCP Sequence)
+### 3. Stateful Inspection Desync (Перекрытие TCP Sequence)
 ```text
 --dpi-desync=split2 --dpi-desync-split-seqovl=1 --dpi-desync-fooling=badseq
 ```

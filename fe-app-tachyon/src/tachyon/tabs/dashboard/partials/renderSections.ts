@@ -39,6 +39,16 @@ const sectionTableSortState = new Map<
   { col: 'name' | 'source' | 'type' | 'latency'; dir: 'asc' | 'desc' }
 >();
 
+export function clearDashboardGridHoverFreeze(sectionCode?: string): void {
+  if (sectionCode) {
+    gridHoveredSections.delete(sectionCode);
+    gridFrozenOutboundOrders.delete(sectionCode);
+    return;
+  }
+  gridHoveredSections.clear();
+  gridFrozenOutboundOrders.clear();
+}
+
 function getUciHandle(): typeof uci | undefined {
   return typeof uci !== 'undefined' ? uci : undefined;
 }
@@ -60,12 +70,36 @@ function getSectionServerDomainRulesRaw(sectionName: string): string[] {
   return [];
 }
 
-function matchesServerRuleKey(
-  ruleKey: string,
+function collectSectionLeafOutbounds(
+  section?: Tachyon.OutboundGroup,
+): Tachyon.Outbound[] {
+  if (!section || !Array.isArray(section.outbounds)) return [];
+  const byCode = new Map<string, Tachyon.Outbound>();
+  for (const ob of section.outbounds) {
+    if (!ob) continue;
+    if (ob.urlTestInfo?.outbounds?.length) {
+      for (const child of ob.urlTestInfo.outbounds) {
+        if (child?.code && !byCode.has(child.code)) {
+          byCode.set(child.code, child);
+        }
+      }
+    } else if (ob.priorityInfo?.outbounds?.length) {
+      for (const child of ob.priorityInfo.outbounds) {
+        if (child?.code && !byCode.has(child.code)) {
+          byCode.set(child.code, child);
+        }
+      }
+    } else if (ob.code && !byCode.has(ob.code)) {
+      byCode.set(ob.code, ob);
+    }
+  }
+  return Array.from(byCode.values());
+}
+
+function matchesSingleOutboundRuleKey(
+  k: string,
   outbound: Tachyon.Outbound,
 ): boolean {
-  const k = ruleKey.trim().toLowerCase();
-  if (!k) return false;
   const code = String(outbound.code || '')
     .trim()
     .toLowerCase();
@@ -95,9 +129,88 @@ function matchesServerRuleKey(
   return k === disp || k === dispWithFlag;
 }
 
+function matchesServerRuleKey(
+  ruleKey: string,
+  outbound: Tachyon.Outbound,
+  section?: Tachyon.OutboundGroup,
+): boolean {
+  const k = ruleKey.trim().toLowerCase();
+  if (!k) return false;
+  const code = String(outbound.code || '')
+    .trim()
+    .toLowerCase();
+  if (k === code) return true;
+
+  const leaves = collectSectionLeafOutbounds(section);
+  if (leaves.length > 0) {
+    const exactCodeMatch = leaves.find(
+      (leaf) =>
+        String(leaf.code || '')
+          .trim()
+          .toLowerCase() === k,
+    );
+    if (exactCodeMatch) {
+      return (
+        String(exactCodeMatch.code || '')
+          .trim()
+          .toLowerCase() === code
+      );
+    }
+
+    const prefixedMatch = leaves.find((leaf) => {
+      const pfx = String(leaf.prefix || '')
+        .trim()
+        .toLowerCase();
+      if (!pfx) return false;
+      const disp = String(leaf.displayName || '')
+        .trim()
+        .toLowerCase();
+      const dispWithFlag = ensureOutboundDisplayFlag(leaf).trim().toLowerCase();
+      return (
+        k === `${pfx}: ${disp}` ||
+        k === `${pfx} ${disp}` ||
+        k === `[${pfx}] ${disp}` ||
+        k === `${pfx}: ${dispWithFlag}` ||
+        k === `${pfx} ${dispWithFlag}` ||
+        k === `[${pfx}] ${dispWithFlag}`
+      );
+    });
+    if (prefixedMatch) {
+      return (
+        String(prefixedMatch.code || '')
+          .trim()
+          .toLowerCase() === code
+      );
+    }
+
+    if (k.includes(': ') || k.startsWith('[')) {
+      return false;
+    }
+
+    const firstDispMatch = leaves.find((leaf) => {
+      const disp = String(leaf.displayName || '')
+        .trim()
+        .toLowerCase();
+      const dispWithFlag = ensureOutboundDisplayFlag(leaf).trim().toLowerCase();
+      return k === disp || k === dispWithFlag;
+    });
+    if (firstDispMatch) {
+      return (
+        String(firstDispMatch.code || '')
+          .trim()
+          .toLowerCase() === code
+      );
+    }
+    return false;
+  }
+
+  return matchesSingleOutboundRuleKey(k, outbound);
+}
+
 function getPinnedDomainsForOutbound(
   sectionName: string,
   outbound: Tachyon.Outbound,
+  section?: Tachyon.OutboundGroup,
 ): string[] {
   const entries = getSectionServerDomainRulesRaw(sectionName);
   const domains: string[] = [];
@@ -106,7 +219,7 @@ function getPinnedDomainsForOutbound(
     if (eqIdx <= 0) continue;
     const srvKey = entry.slice(0, eqIdx).trim();
     const domPart = entry.slice(eqIdx + 1).trim();
-    if (!matchesServerRuleKey(srvKey, outbound)) continue;
+    if (!matchesServerRuleKey(srvKey, outbound, section)) continue;
     for (const token of domPart.split(/[\s,;]+/)) {
       const t = token.trim();
       if (t && !domains.includes(t)) {
@@ -133,6 +246,7 @@ function openPinSitesToServerModal(
   const existingDomains = getPinnedDomainsForOutbound(
     section.sectionName,
     outbound,
+    section,
   );
   const textareaEl = E(
     'textarea',
@@ -188,6 +302,10 @@ function openPinSitesToServerModal(
     ),
   );
 
+  const modalServerTitle = outbound.prefix
+    ? `[${outbound.prefix}] ${outbound.displayName}`
+    : outbound.displayName;
+
   const saveRule = async (domainsText: string) => {
     const tokens = domainsText
       .split(/[\s,;]+/)
@@ -199,7 +317,7 @@ function openPinSitesToServerModal(
       const eqIdx = entry.indexOf('=');
       if (eqIdx <= 0) return true;
       const srvKey = entry.slice(0, eqIdx).trim();
-      return !matchesServerRuleKey(srvKey, outbound);
+      return !matchesServerRuleKey(srvKey, outbound, section);
     });
 
     if (uniqueTokens.length > 0) {
@@ -235,12 +353,12 @@ function openPinSitesToServerModal(
     showToast(
       uniqueTokens.length > 0
         ? t(
-            `Привязано сайтов к серверу «${outbound.displayName}»: ${uniqueTokens.length}. Применяем маршрут...`,
-            `Pinned ${uniqueTokens.length} site(s) to server "${outbound.displayName}". Applying route...`,
+            `Привязано сайтов к серверу «${modalServerTitle}»: ${uniqueTokens.length}. Применяем маршрут...`,
+            `Pinned ${uniqueTokens.length} site(s) to server "${modalServerTitle}". Applying route...`,
           )
         : t(
-            `Привязка сайтов для сервера «${outbound.displayName}» очищена.`,
-            `Cleared pinned sites for "${outbound.displayName}".`,
+            `Привязка сайтов для сервера «${modalServerTitle}» очищена.`,
+            `Cleared pinned sites for "${modalServerTitle}".`,
           ),
       'success',
     );
@@ -249,8 +367,8 @@ function openPinSitesToServerModal(
 
   uiRef.showModal(
     t(
-      `Привязка сайтов к серверу: ${outbound.displayName}`,
-      `Pin Sites to Server: ${outbound.displayName}`,
+      `Привязка сайтов к серверу: ${modalServerTitle}`,
+      `Pin Sites to Server: ${modalServerTitle}`,
     ),
     [
       E(
@@ -1875,7 +1993,7 @@ function renderDefaultState({
       : ensureOutboundDisplayFlag(outbound);
     const pinnedDomains =
       !isAutoGroup && !isServiceNode && !isConnectionNode
-        ? getPinnedDomainsForOutbound(section.sectionName, outbound)
+        ? getPinnedDomainsForOutbound(section.sectionName, outbound, section)
         : [];
 
     return E(
@@ -2196,6 +2314,7 @@ function renderDefaultState({
       const pinnedDomains = getPinnedDomainsForOutbound(
         section.sectionName,
         outbound,
+        section,
       );
 
       const getLatencyClass = () => {
@@ -2556,7 +2675,7 @@ function renderDefaultState({
     const frozenOrder = gridFrozenOutboundOrders.get(section.code);
     let effectiveOutbounds = section.outbounds || [];
     if (
-      section.dashboardSettings?.hoverFreeze !== false &&
+      section.dashboardSettings?.hoverFreeze === true &&
       gridHoveredSections.has(section.code) &&
       frozenOrder &&
       frozenOrder.length > 0
@@ -3472,24 +3591,22 @@ function renderDefaultState({
             {
               class: 'tachyon_dashboard-page__outbound-grid',
               mouseenter:
-                section.dashboardSettings?.hoverFreeze !== false
+                section.dashboardSettings?.hoverFreeze === true
                   ? () => {
                       gridHoveredSections.add(section.code);
-                      gridFrozenOutboundOrders.set(
-                        section.code,
-                        (section.outbounds || []).map((o) => o.code),
-                      );
+                      if (!gridFrozenOutboundOrders.has(section.code)) {
+                        gridFrozenOutboundOrders.set(
+                          section.code,
+                          (section.outbounds || []).map((o) => o.code),
+                        );
+                      }
                     }
                   : undefined,
               mouseleave:
-                section.dashboardSettings?.hoverFreeze !== false
+                section.dashboardSettings?.hoverFreeze === true
                   ? () => {
                       gridHoveredSections.delete(section.code);
-                      setTimeout(() => {
-                        if (!gridHoveredSections.has(section.code)) {
-                          gridFrozenOutboundOrders.delete(section.code);
-                        }
-                      }, 800);
+                      gridFrozenOutboundOrders.delete(section.code);
                     }
                   : undefined,
             },
