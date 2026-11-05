@@ -198,14 +198,30 @@ function get_settings() {
 
 function is_service_enabled() {
     let s = get_settings();
-    return s.enabled == "1" || s.enabled == "true" || s.enabled == true;
+    if (s.enabled == "0" || s.enabled == "false" || s.enabled === false)
+        return false;
+    if (s.enabled == "1" || s.enabled == "true" || s.enabled === true)
+        return true;
+    if (s.shutdown_correctly == "0")
+        return true;
+    if (s.shutdown_correctly == "1")
+        return false;
+    return file_exists("/etc/rc.d/S99" + CONFIG_NAME) ||
+        uci_core.get("tachyon-core", "main", "enabled") == "1";
 }
 
 function get_active_engine_id() {
-    if (engine_core && engine_core.active_engine_id)
-        return engine_core.active_engine_id();
+    if (engine_core) {
+        if (type(engine_core.get_active) == "function")
+            return engine_core.get_active();
+        if (type(engine_core.active_engine_id) == "function")
+            return engine_core.active_engine_id();
+    }
     let s = get_settings();
-    return s.engine || "sing-box";
+    let raw = lc(trim(as_string(s.engine || "")));
+    if (raw == "" || raw == "sing-box")
+        return "tachyon-core";
+    return raw;
 }
 
 function get_enabled_outbound_sections() {
@@ -213,7 +229,8 @@ function get_enabled_outbound_sections() {
     let all = uci_core.get_all(CONFIG_NAME);
     if (!all) return sections;
     for (let sname, sec in all) {
-        if (sec[".type"] == "outbound" && (sec.enabled == "1" || sec.enabled == "true" || sec.enabled == null)) {
+        if ((sec[".type"] == "section" || sec[".type"] == "outbound") &&
+            sec.enabled != "0" && sec.enabled != "false" && sec.enabled !== false) {
             push(sections, sec);
         }
     }
@@ -431,8 +448,11 @@ function inspect_actual_nftables(desired_nft) {
                 push(sets_missing, set_name);
             } else {
                 push(sets_present, set_name);
-                // Check if empty
-                if (index(res.output, "elements = {") < 0 || match(res.output, /elements\s*=\s*\{\s*\}/)) {
+                // Only localv4/localv6 are unconditionally populated; routing sets
+                // (tachyon_subnets, tachyon_ports, tachyon_ip_ports) are legitimately
+                // empty when no section rules populate them.
+                if ((set_name == "localv4" || set_name == "localv6") &&
+                    (index(res.output, "elements = {") < 0 || match(res.output, /elements\s*=\s*\{\s*\}/))) {
                     push(sets_empty, set_name);
                 }
             }
@@ -463,6 +483,8 @@ function inspect_actual_routing(desired_routing) {
             rule6_present = true;
 
         let routes = command_output_from_args([ "ip", "route", "show", "table", desired_routing.table_name ]);
+        if (routes == "" && desired_routing.table_id)
+            routes = command_output_from_args([ "ip", "route", "show", "table", desired_routing.table_id ]);
         if (routes != "")
             route_present = true;
     }

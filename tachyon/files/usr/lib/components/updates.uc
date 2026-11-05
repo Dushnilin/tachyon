@@ -3952,7 +3952,7 @@ function refresh_remote_rulesets(config_path) {
     return ok;
 }
 
-function reload_singbox_after_list_update() {
+function reload_singbox_after_list_update(allow_deferred_remote_refresh) {
     let sing_box_pid = trim(module_output([ LIB_DIR + "/service/state.uc", "tachyon-core-service-runtime-pid" ]));
     if (sing_box_pid == "" || int(sing_box_pid) <= 0)
         return true;
@@ -3988,7 +3988,8 @@ function reload_singbox_after_list_update() {
     // Remote .srs/.json sets are owned by the core, not the plain-list importer.
     // Refresh after reload: reloading can restart the core's interval timer,
     // indefinitely postponing downloads when configuration changes frequently.
-    return refresh_remote_rulesets(sing_box_config_path);
+    let refreshed = refresh_remote_rulesets(sing_box_config_path);
+    return allow_deferred_remote_refresh ? true : refreshed;
 }
 
 function list_update() {
@@ -4129,7 +4130,7 @@ function list_update() {
 
     release_runtime_lock(RELOAD_LOCK_DIR);
 
-    if (ok && !reload_singbox_after_list_update())
+    if (ok && !reload_singbox_after_list_update(true))
         ok = false;
 
     if (ok) {

@@ -68,6 +68,38 @@ ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture \
 assert_downloads_via "$output" "myproxy-out" \
   "remote community ruleset must automatically download via the section outbound"
 
+# 1b. Verify custom remote rule_sets URL also downloads through section's proxy outbound
+cat >"$WORK_DIR/fixture-custom-rs.json" <<'JSON'
+{
+  "settings": {
+    ".name": "settings",
+    ".type": "settings",
+    "enabled": "1",
+    "dns_type": "udp",
+    "dns_server": "1.1.1.1",
+    "service_listen_address": "127.0.0.1"
+  },
+  "section": [
+    {
+      ".name": "myproxy",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "outbound_jsons": [ "{\"type\":\"direct\"}" ],
+      "rule_set": [ "https://example.com/custom-domains.srs" ]
+    }
+  ]
+}
+JSON
+
+output_custom="$WORK_DIR/out_custom.json"
+mkdir -p "$output_custom.section-cache" "$output_custom.rulesets"
+ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture \
+  "$WORK_DIR/fixture-custom-rs.json" "$output_custom" "127.0.0.1" "0" "1"
+
+assert_downloads_via "$output_custom" "myproxy-out" \
+  "remote custom ruleset must automatically download via the section outbound"
+
 # 2. Verify download_via_proxy fallback selects first enabled proxy section
 cat >"$WORK_DIR/fixture-detour-enabled.json" <<'JSON'
 {

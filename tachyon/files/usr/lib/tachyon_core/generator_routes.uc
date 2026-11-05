@@ -2139,7 +2139,27 @@ function plain_ruleset_kind(json_path, etc_json, srs_path, fallback_kind) {
     return (fallback_kind != null && fallback_kind != "" && fallback_kind != "unknown") ? fallback_kind : "domains";
 }
 
-function ensure_custom_ruleset(config, reference) {
+function resolve_ruleset_download_detour(config, section_name) {
+    let detour = ctx.download_detour_tag(ctx.runtime_settings(), "lists");
+    let sec_name = as_string(section_name || ctx.current_section || "");
+    if (detour == "" && sec_name != "") {
+        let sec_out = outbound_tag(sec_name);
+        if (sec_out != "" && sec_out != runtime_constants.DIRECT_OUTBOUND_TAG && sec_out != runtime_constants.BYPASS_OUTBOUND_TAG && is_valid_detour(config, sec_out)) {
+            detour = sec_out;
+        }
+    }
+    if (detour == "") {
+        for (let outb in array_or_empty(config.outbounds)) {
+            if (type(outb) == "object" && (outb.type == "selector" || outb.type == "urltest") && is_valid_detour(config, outb.tag)) {
+                detour = as_string(outb.tag);
+                break;
+            }
+        }
+    }
+    return detour;
+}
+
+function ensure_custom_ruleset(config, reference, section_name) {
     let tag_name;
     let kind = runtime_rulesets.kind_from_reference_hint(reference);
 
@@ -2199,7 +2219,7 @@ if (type(runtime_rulesets.is_referenceable_trs_file) == "function" && runtime_ru
                     ? runtime_rulesets.community_trs_url(reference)
                     : runtime_rulesets.community_url(reference)
             };
-                let detour = ctx.download_detour_tag(ctx.runtime_settings());
+                let detour = resolve_ruleset_download_detour(config, section_name);
                 apply_download_transport(config, rule_set, detour);
                 rule_set.update_interval = remote_ruleset_update_interval();
                 push(config.route.rule_set, rule_set);
@@ -2367,7 +2387,7 @@ if (type(runtime_rulesets.is_referenceable_trs_file) == "function" && runtime_ru
             format: runtime_rulesets.remote_format(reference),
             url: reference
         };
-        let detour = ctx.download_detour_tag(ctx.runtime_settings());
+        let detour = resolve_ruleset_download_detour(config, section_name);
         apply_download_transport(config, rule_set, detour);
         rule_set.update_interval = remote_ruleset_update_interval();
         if (config.route.rule_set == null)
@@ -2429,21 +2449,7 @@ if (type(runtime_rulesets.is_referenceable_trs_file) == "function" && runtime_ru
                 url: runtime_rulesets.community_url(community),
                 update_interval: remote_ruleset_update_interval()
             };
-            let detour = ctx.download_detour_tag(ctx.runtime_settings(), "lists");
-            if (detour == "" && section_name != "") {
-                let sec_out = outbound_tag(section_name);
-                if (sec_out != "" && sec_out != runtime_constants.DIRECT_OUTBOUND_TAG && sec_out != runtime_constants.BYPASS_OUTBOUND_TAG && is_valid_detour(config, sec_out)) {
-                    detour = sec_out;
-                }
-            }
-            if (detour == "") {
-                for (let outb in array_or_empty(config.outbounds)) {
-                    if (type(outb) == "object" && (outb.type == "selector" || outb.type == "urltest") && is_valid_detour(config, outb.tag)) {
-                        detour = as_string(outb.tag);
-                        break;
-                    }
-                }
-            }
+            let detour = resolve_ruleset_download_detour(config, section_name);
             apply_download_transport(config, rule_set, detour);
             push(config.route.rule_set, rule_set);
         }
@@ -2941,7 +2947,7 @@ function add_dns_action_rules_for_clause(config, section, phase) {
                 push(response_rule_set_tags, ensured.tag);
         }
         for (let reference in connections.rule_sets(section)) {
-            let ensured = ensure_custom_ruleset(config, as_string(reference));
+            let ensured = ensure_custom_ruleset(config, as_string(reference), section_name);
             if (ensured == null)
                 continue;
             if (ensured.kind == "domains")
@@ -2950,7 +2956,7 @@ function add_dns_action_rules_for_clause(config, section, phase) {
                 push(response_rule_set_tags, ensured.tag);
         }
         for (let reference in connections.rule_sets_with_subnets(section)) {
-            let ensured = ensure_custom_ruleset(config, as_string(reference));
+            let ensured = ensure_custom_ruleset(config, as_string(reference), section_name);
             if (ensured == null)
                 continue;
             push(response_rule_set_tags, ensured.tag);
@@ -3922,12 +3928,12 @@ function build_inverted_subrules(config, section_name, inverted_conditions) {
                 push(nrs, ens.tag);
         }
         for (let rset in list_option(neg, "rule_set")) {
-            let ens = ensure_custom_ruleset(config, as_string(rset));
+            let ens = ensure_custom_ruleset(config, as_string(rset), section_name);
             if (ens && ens.tag)
                 push(nrs, ens.tag);
         }
         for (let rset_sub in list_option(neg, "rule_set_with_subnets")) {
-            let ens = ensure_custom_ruleset(config, as_string(rset_sub));
+            let ens = ensure_custom_ruleset(config, as_string(rset_sub), section_name);
             if (ens && ens.tag)
                 push(nrs, ens.tag);
         }
@@ -3990,7 +3996,7 @@ function add_combined_route_for_clause(config, section) {
     }
     for (let reference in connections.rule_sets(section)) {
         let ref_str = as_string(reference);
-        let ensured = ensure_custom_ruleset(config, ref_str);
+        let ensured = ensure_custom_ruleset(config, ref_str, section_name);
         if (ensured == null)
             continue;
         push(rule_set_tags, ensured.tag);
@@ -4003,7 +4009,7 @@ function add_combined_route_for_clause(config, section) {
     }
     for (let reference in connections.rule_sets_with_subnets(section)) {
         let ref_str = as_string(reference);
-        let ensured = ensure_custom_ruleset(config, ref_str);
+        let ensured = ensure_custom_ruleset(config, ref_str, section_name);
         if (ensured == null)
             continue;
         push(rule_set_tags, ensured.tag);

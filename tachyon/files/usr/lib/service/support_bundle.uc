@@ -274,8 +274,11 @@ function collect_service_status() {
         settings = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
     } catch (e) {}
 
+    let is_enabled = settings.enabled == "1" || settings.enabled == "true" || settings.enabled === true ||
+        (settings.enabled != "0" && settings.enabled != "false" && settings.enabled !== false &&
+         (settings.shutdown_correctly == "0" || common.file_exists("/etc/rc.d/S99" + CONFIG_NAME)));
     let st = {
-        enabled: settings.enabled == "1" || settings.enabled == "true" || settings.enabled == true,
+        enabled: is_enabled,
         engine: "tachyon-core",
         dns_mode: settings.dns_mode || "dnsmasq",
         tproxy_port: settings.tproxy_port || "1602",

@@ -94,6 +94,7 @@ assert(subsystems_touched["routing"] == null, "Routing subsystem must NOT be fla
 // Test B: Desired state verification
 let desired = reconciler.get_desired_state();
 assert(desired.timestamp > 0, "Desired state must have positive timestamp");
+assert(desired.engine != null && desired.engine.id == "tachyon-core", "Desired engine id must default/normalize to tachyon-core");
 
 // Test C: Event mapping dispatch
 let ev_dns = reconciler.reconcile_event("dns.down", {});
