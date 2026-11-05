@@ -874,10 +874,12 @@ function effective_section_for_match(section) {
 
     let list_keys = [
         "community_lists", "community", "community_subnets", "rule_set",
+        "rule_set_with_subnets", "domain_ip_lists", "domain_lists", "custom_domain_lists",
         "domain", "domain_suffix", "domain_keyword", "domain_regex", "user_domains",
         "ip_cidr", "ip", "subnets", "ports", "port", "protocol", "excluded_protocol",
         "source_ip_cidr", "fully_routed_ips", "excluded_ips",
-        "device_ip", "devices", "device_mac", "geoip_country"
+        "device_ip", "devices", "device_mac", "source_macs", "dscp", "source_inbounds",
+        "geoip_country"
     ];
 
     let c = uci_core.cursor();
@@ -991,33 +993,73 @@ function evaluate_atomic_clause_match(section, client_info, target_info, port, p
         "device_ip", "devices", "device_mac", "source_macs",
         "source_ip_cidr", "source_ip_cidr_text"
     ]);
+    let matched_dev = "";
     if (length(dev_ips) > 0) {
         let dev_matched = false;
         for (let dev in dev_ips) {
             if (client_Matches_Entry(dev)) {
                 dev_matched = true;
+                matched_dev = as_string(dev);
                 break;
             }
         }
         if (!dev_matched) return null;
     }
 
+    let query_proto = lc(trim(as_string(proto || "tcp")));
+    let proto_matches_filter = function(q_proto, filter_list) {
+        for (let raw_p in filter_list) {
+            let p = lc(trim(as_string(raw_p)));
+            if (p == "")
+                continue;
+            if (p == q_proto)
+                return true;
+            if (q_proto == "quic" && p == "udp")
+                return true;
+            if ((q_proto == "tls" || q_proto == "http" || q_proto == "ssh" || q_proto == "rdp") && p == "tcp")
+                return true;
+        }
+        return false;
+    };
+
+    // Check excluded_protocol on section if specified
+    let exc_protos = parse_combined_items(section, [ "excluded_protocol" ]);
+    if (length(exc_protos) > 0 && proto_matches_filter(query_proto, exc_protos))
+        return null;
+
+    // Check protocol restriction on section if specified
+    let protos = parse_combined_items(section, [ "protocol" ]);
+    let proto_matched = false;
+    if (length(protos) > 0) {
+        if (!proto_matches_filter(query_proto, protos))
+            return null;
+        proto_matched = true;
+    }
+
     // Check port restrictions on section if specified
     let ports = parse_combined_items(section, [ "ports", "ports_text", "port" ]);
-    if (length(ports) > 0 && port > 0) {
+    let matched_port_spec = "";
+    if (length(ports) > 0) {
+        if (port <= 0)
+            return null;
         let port_matched = false;
         for (let p_spec in ports) {
+            p_spec = trim(as_string(p_spec));
             let dash = index(p_spec, "-");
+            if (dash <= 0)
+                dash = index(p_spec, ":");
             if (dash > 0) {
                 let p_start = int(substr(p_spec, 0, dash));
                 let p_end = int(substr(p_spec, dash + 1));
                 if (port >= p_start && port <= p_end) {
                     port_matched = true;
+                    matched_port_spec = p_spec;
                     break;
                 }
             } else {
                 if (int(p_spec) == port) {
                     port_matched = true;
+                    matched_port_spec = p_spec;
                     break;
                 }
             }
@@ -1168,13 +1210,14 @@ function evaluate_atomic_clause_match(section, client_info, target_info, port, p
     }
 
     // 4. Standalone GeoIP rule (for sections without explicit domain/IP matchers or in closed mode)
+    let has_domain_matchers = length(domains) > 0 ||
+        length(suffixes) > 0 ||
+        length(keywords) > 0 ||
+        length(regexes) > 0;
+    let has_ip_matchers = length(parse_combined_items(section, [ "ip_cidr", "ip_cidr_text", "ip", "subnets" ])) > 0;
+    let has_comm_matchers = length(parse_combined_items(section, [ "community_lists", "community", "community_subnets", "rule_set", "rule_set_with_subnets", "domain_ip_lists", "domain_lists", "custom_domain_lists" ])) > 0;
+
     if (geoip_filter_active) {
-        let has_domain_matchers = length(domains) > 0 ||
-            length(suffixes) > 0 ||
-            length(keywords) > 0 ||
-            length(regexes) > 0;
-        let has_ip_matchers = length(parse_combined_items(section, [ "ip_cidr", "ip_cidr_text", "ip", "subnets" ])) > 0;
-        let has_comm_matchers = length(parse_combined_items(section, [ "community_lists", "community", "rule_set", "rule_set_with_subnets", "domain_ip_lists" ])) > 0;
         let is_geo_catch_all = !has_domain_matchers && !has_ip_matchers && !has_comm_matchers;
         let is_closed_geo = (geo_mode == "include_all" || geo_mode == "exclude_direct") && length(geo_countries) > 0;
 
@@ -1186,6 +1229,43 @@ function evaluate_atomic_clause_match(section, client_info, target_info, port, p
                     rule_value: (is_invert ? "!" : "") + join(",", geo_countries)
                 };
             }
+        }
+    }
+
+    // 5. Standalone L4/source matchers (ports, protocol, device/source IP, DSCP, source inbound)
+    // when the clause does not specify destination domain/IP/list/GeoIP matchers.
+    if (!has_domain_matchers && !has_ip_matchers && !has_comm_matchers && !geoip_filter_active) {
+        if (length(ports) > 0 && matched_port_spec != "") {
+            return {
+                rule_type: proto_matched ? "protocol_port" : "port",
+                rule_value: proto_matched ? (query_proto + ":" + matched_port_spec) : matched_port_spec
+            };
+        }
+        if (proto_matched) {
+            return {
+                rule_type: "protocol",
+                rule_value: query_proto
+            };
+        }
+        if (length(dev_ips) > 0 && matched_dev != "") {
+            return {
+                rule_type: "source_ip",
+                rule_value: matched_dev
+            };
+        }
+        let dscp_items = parse_combined_items(section, [ "dscp" ]);
+        if (length(dscp_items) > 0) {
+            return {
+                rule_type: "dscp",
+                rule_value: join(",", dscp_items)
+            };
+        }
+        let inb_items = parse_combined_items(section, [ "source_inbounds" ]);
+        if (length(inb_items) > 0) {
+            return {
+                rule_type: "inbound",
+                rule_value: join(",", inb_items)
+            };
         }
     }
 
@@ -1842,11 +1922,22 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
     if (action == "bypass" || action == "direct") {
         nft_intercepted = false;
         nft_mark = "none";
-        let set_label = section_name ? ("@tachyon_rule_" + section_name + "_subnets") : "default direct";
-        nft_action = section_name ? ("ip daddr " + set_label + " counter accept") : "accept (no mark)";
-        nft_details = section_name
-            ? "Accepted directly in priority_rules (" + set_label + " counter accept) and forwarded to WAN without TProxy interception."
-            : "Unmarked packet passes through mangle chain and is forwarded directly to WAN.";
+        if (section_name && (matched_rule.rule_type == "port" || matched_rule.rule_type == "protocol_port")) {
+            let set_label = "@tachyon_rule_" + section_name + "_ports";
+            let l4_p = (proto == "udp" || proto == "quic") ? "udp" : "tcp";
+            nft_action = l4_p + " dport " + set_label + " counter accept";
+            nft_details = "Accepted directly in priority_rules (" + l4_p + " dport " + set_label + " counter accept) and forwarded to WAN without TProxy interception.";
+        } else if (section_name && (matched_rule.rule_type == "source_ip" || matched_rule.rule_type == "fully_routed_ips")) {
+            let set_label = "@tachyon_rule_" + section_name + "_sources";
+            nft_action = "ip saddr " + set_label + " counter accept";
+            nft_details = "Accepted directly in priority_rules (ip saddr " + set_label + " counter accept) and forwarded to WAN without TProxy interception.";
+        } else {
+            let set_label = section_name ? ("@tachyon_rule_" + section_name + "_subnets") : "default direct";
+            nft_action = section_name ? ("ip daddr " + set_label + " counter accept") : "accept (no mark)";
+            nft_details = section_name
+                ? "Accepted directly in priority_rules (" + set_label + " counter accept) and forwarded to WAN without TProxy interception."
+                : "Unmarked packet passes through mangle chain and is forwarded directly to WAN.";
+        }
     } else if (action == "dns" || action == "hosts") {
         nft_intercepted = false;
         nft_mark = "none";
@@ -2165,6 +2256,21 @@ function selftest() {
 
     let m_all = evaluate_section_match({ enabled: "1", match_all: "1" }, dummy_client, { host: "example.org", type: "domain" }, 443, "tcp");
     assert(m_all != null && m_all.rule_type == "match_all", "match_all rule matches");
+
+    // Test 11: Standalone port + protocol condition matching (UDP 7600, 7777 -> Direct)
+    let sec_udp_ports = {
+        ".name": "Direct",
+        enabled: "1",
+        action: "bypass",
+        ports: [ "7600", "7777" ],
+        protocol: [ "udp" ]
+    };
+    let m_udp_7600 = evaluate_section_match(sec_udp_ports, dummy_client, { host: "34.6.146.185", type: "ipv4" }, 7600, "udp");
+    assert(m_udp_7600 != null && m_udp_7600.rule_type == "protocol_port" && m_udp_7600.rule_value == "udp:7600", "UDP 7600 matches port+protocol section");
+    let m_tcp_7600 = evaluate_section_match(sec_udp_ports, dummy_client, { host: "34.6.146.185", type: "ipv4" }, 7600, "tcp");
+    assert(m_tcp_7600 == null, "TCP 7600 does not match UDP-only port+protocol section");
+    let m_udp_443 = evaluate_section_match(sec_udp_ports, dummy_client, { host: "34.6.146.185", type: "ipv4" }, 443, "udp");
+    assert(m_udp_443 == null, "UDP 443 does not match 7600/7777 port+protocol section");
 
     print(sprintf("Route explain selftest: %d passed, %d failed\n", passed, failed));
     return failed == 0 ? 0 : 1;

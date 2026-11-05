@@ -877,6 +877,96 @@ if (connections.section_interrupt_exist_connections(sec_alpha) !== false) {
     warn("Expected section_interrupt_exist_connections(sec_alpha) to inherit false from bal_shared_prio\n");
     exit(1);
 }
+
+// 7. Verify AWG connection with 2 .conf files (CRLF vs LF + amnezia_conf_text) produces only 2 servers (no phantom 3rd server named after the connection)
+let conf_01_crlf = "[Interface]\r\nPrivateKey = AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\r\nAddress = 10.8.1.2/32\r\n\r\n[Peer]\r\nPublicKey = BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=\r\nEndpoint = 198.51.100.10:51820\r\nAllowedIPs = 0.0.0.0/0\r\n";
+let conf_01_lf = "[Interface]\nPrivateKey = AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\nAddress = 10.8.1.2/32\n\n[Peer]\nPublicKey = BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=\nEndpoint = 198.51.100.10:51820\nAllowedIPs = 0.0.0.0/0\n";
+let conf_02_crlf = "[Interface]\r\nPrivateKey = CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=\r\nAddress = 10.8.1.3/32\r\n\r\n[Peer]\r\nPublicKey = DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD=\r\nEndpoint = 198.51.100.11:51820\r\nAllowedIPs = 0.0.0.0/0\r\n";
+
+let sec_awg_multi = {
+    ".name": "Main",
+    ".type": "section",
+    enabled: "1",
+    action: "connection",
+    outbound_source_refs: [ "src_warp_awg3", "src_desync_1" ]
+};
+connections.set_item_sections_from_data({
+    outbound_source: [
+        {
+            ".name": "src_warp_awg3",
+            ".type": "outbound_source",
+            enabled: "1",
+            name: "WARPAmnezia#3",
+            source_type: "amnezia_config",
+            amnezia_configs: [
+                sprintf("%J", { name: "AWGwarp_tg_01", config: conf_01_crlf }),
+                sprintf("%J", { name: "AWGwarp_tg_02", config: conf_02_crlf }),
+                sprintf("%J", { name: "WARPAmnezia#3", config: conf_01_lf })
+            ],
+            amnezia_conf_text: conf_01_lf
+        },
+        {
+            ".name": "src_desync_1",
+            ".type": "outbound_source",
+            enabled: "1",
+            name: "AutoDesync",
+            source_type: "desync",
+            desync_preset: "auto"
+        }
+    ],
+    section: [ sec_awg_multi ]
+});
+
+let resolved_awg = connections.amnezia_configs(sec_awg_multi);
+if (length(resolved_awg) != 2) {
+    warn("Expected exactly 2 deduplicated AWG configs (AWGwarp_tg_01, AWGwarp_tg_02) without phantom WARPAmnezia#3, got: " + sprintf("%J", resolved_awg) + "\n");
+    exit(1);
+}
+let tier_refs = connections.section_combined_pool_tier_refs(sec_awg_multi);
+if (length(tier_refs) != 2 || tier_refs[0] != "src_warp_awg3" || tier_refs[1] != "src_desync_1") {
+    warn("Expected section_combined_pool_tier_refs to include both AWG and Desync outbound sources, got: " + sprintf("%J", tier_refs) + "\n");
+    exit(1);
+}
+
+// 8. Verify condition with UDP protocol filter + ports 7600, 7777 in Direct section generates route rule with network="udp" and port=[7600, 7777]
+let sec_direct_udp = {
+    ".name": "Direct",
+    ".type": "section",
+    enabled: "1",
+    action: "bypass",
+    condition_refs: [ "cond_udp_ports" ]
+};
+connections.set_item_sections_from_data({
+    condition: [
+        {
+            ".name": "cond_udp_ports",
+            ".type": "condition",
+            enabled: "1",
+            condition_type: "atomic",
+            ports: [ "7600", "7777" ],
+            protocol: [ "udp" ]
+        }
+    ],
+    section: [ sec_direct_udp ]
+});
+let gen_routes_mod = require("tachyon_core.generator_routes");
+gen_routes_mod.init({
+    runtime_settings: function() { return {}; },
+    is_sb_1_14_plus: function() { return true; },
+    runtime_generate_unsupported: function(msg) { warn(msg + "\n"); exit(1); }
+});
+let udp_cfg = { outbounds: [], route: { rules: [] }, dns: { servers: [], rules: [] } };
+gen_routes_mod.add_combined_route_for_section(udp_cfg, sec_direct_udp);
+if (length(udp_cfg.route.rules) != 1 ||
+    udp_cfg.route.rules[0].network != "udp" ||
+    udp_cfg.route.rules[0].protocol != null ||
+    length(udp_cfg.route.rules[0].port) != 2 ||
+    udp_cfg.route.rules[0].port[0] != 7600 ||
+    udp_cfg.route.rules[0].port[1] != 7777 ||
+    udp_cfg.route.rules[0].outbound != "bypass-out") {
+    warn("Expected Direct section with UDP+ports condition to emit route rule with network='udp', port=[7600,7777], outbound='bypass-out', got: " + sprintf("%J", udp_cfg.route.rules) + "\n");
+    exit(1);
+}
 UCODE
 
 printf 'modular redesign #242 checks passed\n'

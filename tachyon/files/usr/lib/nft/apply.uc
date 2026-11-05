@@ -1105,19 +1105,46 @@ function nft_add_section_priority_rules(table, section, interface_set, localv4_s
         }
     }
 
-    if (needs_ip_port_rules &&
-        (!nft_add_priority_rule_pair(table, "priority_rules", section, interface_set, localv4_set, localv6_set, match_ip_port4_tcp, match_ip_port6_tcp, mark) ||
-            !nft_add_priority_rule_pair(table, "priority_rules", section, interface_set, localv4_set, localv6_set, match_ip_port4_udp, match_ip_port6_udp, mark) ||
-            !nft_add_priority_rule_pair(table, "priority_output_rules", section, interface_set, localv4_set, localv6_set, match_ip_port4_tcp, match_ip_port6_tcp, mark) ||
-            !nft_add_priority_rule_pair(table, "priority_output_rules", section, interface_set, localv4_set, localv6_set, match_ip_port4_udp, match_ip_port6_udp, mark)))
-        return false;
+    let proto_filter = section_leaf_list_option(section, "protocol");
+    let has_l4_filter = false;
+    let allow_tcp = false;
+    let allow_udp = false;
+    for (let pf in proto_filter) {
+        let lpf = lc(trim(as_string(pf)));
+        if (lpf == "tcp") {
+            has_l4_filter = true;
+            allow_tcp = true;
+        } else if (lpf == "udp") {
+            has_l4_filter = true;
+            allow_udp = true;
+        }
+    }
+    if (!has_l4_filter) {
+        allow_tcp = true;
+        allow_udp = true;
+    }
 
-    if (has_port_only_matchers &&
-        (!nft_add_priority_rule_pair(table, "priority_rules", section, interface_set, localv4_set, localv6_set, match_port4_tcp, match_port6_tcp, mark) ||
-            !nft_add_priority_rule_pair(table, "priority_rules", section, interface_set, localv4_set, localv6_set, match_port4_udp, match_port6_udp, mark) ||
-            !nft_add_priority_rule_pair(table, "priority_output_rules", section, interface_set, localv4_set, localv6_set, match_port4_tcp, match_port6_tcp, mark) ||
-            !nft_add_priority_rule_pair(table, "priority_output_rules", section, interface_set, localv4_set, localv6_set, match_port4_udp, match_port6_udp, mark)))
-        return false;
+    if (needs_ip_port_rules) {
+        if (allow_tcp &&
+            (!nft_add_priority_rule_pair(table, "priority_rules", section, interface_set, localv4_set, localv6_set, match_ip_port4_tcp, match_ip_port6_tcp, mark) ||
+                !nft_add_priority_rule_pair(table, "priority_output_rules", section, interface_set, localv4_set, localv6_set, match_ip_port4_tcp, match_ip_port6_tcp, mark)))
+            return false;
+        if (allow_udp &&
+            (!nft_add_priority_rule_pair(table, "priority_rules", section, interface_set, localv4_set, localv6_set, match_ip_port4_udp, match_ip_port6_udp, mark) ||
+                !nft_add_priority_rule_pair(table, "priority_output_rules", section, interface_set, localv4_set, localv6_set, match_ip_port4_udp, match_ip_port6_udp, mark)))
+            return false;
+    }
+
+    if (has_port_only_matchers) {
+        if (allow_tcp &&
+            (!nft_add_priority_rule_pair(table, "priority_rules", section, interface_set, localv4_set, localv6_set, match_port4_tcp, match_port6_tcp, mark) ||
+                !nft_add_priority_rule_pair(table, "priority_output_rules", section, interface_set, localv4_set, localv6_set, match_port4_tcp, match_port6_tcp, mark)))
+            return false;
+        if (allow_udp &&
+            (!nft_add_priority_rule_pair(table, "priority_rules", section, interface_set, localv4_set, localv6_set, match_port4_udp, match_port6_udp, mark) ||
+                !nft_add_priority_rule_pair(table, "priority_output_rules", section, interface_set, localv4_set, localv6_set, match_port4_udp, match_port6_udp, mark)))
+            return false;
+    }
 
     if (section_has_dscp_matchers(section)) {
         let dscp_vals = connections.dscp_list(section);

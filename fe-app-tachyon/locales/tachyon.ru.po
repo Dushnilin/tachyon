@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-04 02:01+0300\n"
-"PO-Revision-Date: 2026-11-04 02:01+0300\n"
+"POT-Creation-Date: 2026-11-05 11:40+0300\n"
+"PO-Revision-Date: 2026-11-05 11:40+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -64,9 +64,6 @@ msgstr "-- Выберите входящий сервер --"
 
 msgid "-- Select country --"
 msgstr "-- Выберите страну --"
-
-msgid "-- Select group, source, or server --"
-msgstr ""
 
 msgid "-- Select or type port/range --"
 msgstr "-- Выберите или введите порт/диапазон --"
@@ -6494,12 +6491,6 @@ msgstr "Или вставьте содержимое файла hosts:"
 msgid "Orange"
 msgstr "Оранжевый"
 
-msgid "Ordered Failover Tiers (Groups / Sources / Servers)"
-msgstr ""
-
-msgid "Ordered list of Outbound Groups, Outbound Sources, individual Servers from subscriptions, or 'direct' for direct fallback. Tier 1 is tried first, then Tier 2, etc."
-msgstr ""
-
 msgid "Ordered list of Outbound Groups, Sources, individual Servers from subscriptions/pool, or 'direct' for direct fallback. Tier 1 is tried first, then Tier 2, etc."
 msgstr "Упорядоченный список групп серверов, источников, отдельных серверов из подписок/пула или «direct» для резервного прямого выхода. Сначала проверяется ступень 1, затем ступень 2 и т.д."
 
@@ -11185,6 +11176,15 @@ msgstr "● Высокий пинг"
 
 msgid "✓ No subscription needed for this preset — uses built-in Tachyon Core Desync"
 msgstr "✓ Для этого пресета подписка не требуется — используется встроенный Tachyon Core Desync"
+
+msgid "-- Select group, source, or server --"
+msgstr ""
+
+msgid "Ordered Failover Tiers (Groups / Sources / Servers)"
+msgstr ""
+
+msgid "Ordered list of Outbound Groups, Outbound Sources, individual Servers from subscriptions, or 'direct' for direct fallback. Tier 1 is tried first, then Tier 2, etc."
+msgstr ""
 
 msgid "Resolve specific domains via a dedicated DoH / DoT / UDP DNS server"
 msgstr "Разрешение выбранных доменов через выделенный DoH / DoT / UDP DNS-сервер"

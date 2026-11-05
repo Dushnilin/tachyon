@@ -2966,7 +2966,7 @@ function add_dns_action_rules_for_clause(config, section, phase) {
         );
     }
 
-    let rewrite_ttl = int_option(ctx.runtime_settings(), "dns_rewrite_ttl", "15");
+    let rewrite_ttl = int_option(ctx.runtime_settings ? ctx.runtime_settings() : {}, "dns_rewrite_ttl", "15");
     let section_servers = section_dns_servers(section);
     let server_tags = [];
     if (length(section_servers) <= 1) {
@@ -3538,7 +3538,7 @@ function add_fully_routed_ips_rule(config, section) {
     let routed_dns = connections.routed_dns_enabled(section);
     if (routed_dns) {
         let server_tag = runtime_constants.tag(section[".name"], "routed-dns-server");
-        let rewrite_ttl = int_option(ctx.runtime_settings(), "dns_rewrite_ttl", "15");
+        let rewrite_ttl = int_option(ctx.runtime_settings ? ctx.runtime_settings() : {}, "dns_rewrite_ttl", "15");
         let dns_rule = {
             action: "route",
             server: server_tag,
@@ -3624,7 +3624,7 @@ function add_server_domain_rules_for_section(config, section) {
     let excluded_cidrs = core_ip.normalize_to_cidrs(section_leaf_list_option(section, "excluded_ips"));
     let dns_server_tag = section_dns_server(section);
     let ipv4_only_dpi = section_is_ipv4_only_dpi(section);
-    let rewrite_ttl = int_option(ctx.runtime_settings(), "dns_rewrite_ttl", "15");
+    let rewrite_ttl = int_option(ctx.runtime_settings ? ctx.runtime_settings() : {}, "dns_rewrite_ttl", "15");
 
     for (let entry in raw_entries) {
         let text = trim(as_string(entry));
@@ -3794,19 +3794,50 @@ function add_excluded_protocol_rule(config, section) {
     if (length(excluded) == 0)
         return;
 
-    let route_rule = {
-        action: "route",
-        inbound: tproxy_inbound_matcher(),
-        outbound: runtime_constants.DIRECT_OUTBOUND_TAG,
-        protocol: single_or_array(excluded)
-    };
-    push(config.route.rules, route_rule);
+    let l4_nets = [];
+    let l7_protos = [];
+    for (let p in excluded) {
+        let lp = lc(trim(as_string(p)));
+        if (lp == "tcp" || lp == "udp" || lp == "icmp")
+            push(l4_nets, lp);
+        else if (lp != "")
+            push(l7_protos, lp);
+    }
+    if (length(l4_nets) > 0) {
+        push(config.route.rules, {
+            action: "route",
+            inbound: tproxy_inbound_matcher(),
+            outbound: runtime_constants.DIRECT_OUTBOUND_TAG,
+            network: single_or_array(l4_nets)
+        });
+    }
+    if (length(l7_protos) > 0) {
+        push(config.route.rules, {
+            action: "route",
+            inbound: tproxy_inbound_matcher(),
+            outbound: runtime_constants.DIRECT_OUTBOUND_TAG,
+            protocol: single_or_array(l7_protos)
+        });
+    }
 }
 
 function add_protocol_matchers(rule, section) {
     let protocols = section_leaf_list_option(section, "protocol");
-    if (length(protocols) > 0)
-        rule.protocol = single_or_array(protocols);
+    if (length(protocols) == 0)
+        return;
+    let l4_nets = [];
+    let l7_protos = [];
+    for (let p in protocols) {
+        let lp = lc(trim(as_string(p)));
+        if (lp == "tcp" || lp == "udp" || lp == "icmp")
+            push(l4_nets, lp);
+        else if (lp != "")
+            push(l7_protos, lp);
+    }
+    if (length(l4_nets) > 0)
+        rule.network = single_or_array(l4_nets);
+    if (length(l7_protos) > 0)
+        rule.protocol = single_or_array(l7_protos);
 }
 
 
@@ -4133,7 +4164,7 @@ function add_combined_route_for_clause(config, section) {
             let fallback_rule = create_section_route_rule();
             let has_any_matcher = fallback_rule.source_ip_cidr != null ||
                 fallback_rule.port != null || fallback_rule.port_range != null ||
-                fallback_rule.protocol != null ||
+                fallback_rule.protocol != null || fallback_rule.network != null ||
                 (fallback_rule.__inv_subrules != null && length(fallback_rule.__inv_subrules) > 0);
             if (has_any_matcher)
                 push_section_route_rule(config, fallback_rule, target.outbound, excluded_cidrs);
@@ -4169,7 +4200,7 @@ function add_combined_route_for_clause(config, section) {
         }
     }
 
-    let rewrite_ttl = int_option(ctx.runtime_settings(), "dns_rewrite_ttl", "15");
+    let rewrite_ttl = int_option(ctx.runtime_settings ? ctx.runtime_settings() : {}, "dns_rewrite_ttl", "15");
     let dns_server_tag = section_dns_server(section);
     let ipv4_only_dpi = section_is_ipv4_only_dpi(section) &&
         dns_server_tag == runtime_constants.FAKEIP_DNS_SERVER_TAG;

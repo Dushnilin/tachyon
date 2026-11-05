@@ -422,19 +422,31 @@ function urltest_leaf_candidate_outbound(outbound) {
         return false;
 
     let t = lc(as_string(outbound.type || ""));
-    if (t == "selector" || t == "urltest" || t == "dns" || t == "block" || t == "desync")
+    if (t == "selector" || t == "urltest" || t == "dns" || t == "block")
         return false;
-    if (t == "direct" && outbound.routing_mark != null && as_string(outbound.bind_interface || "") == "")
+    if (t == "desync" || t == "tailscale" || t == "tor" || t == "chain")
+        return true;
+    if (t == "direct") {
+        if (as_string(outbound.bind_interface || "") != "")
+            return true;
+        if (outbound.routing_mark != null)
+            return true;
         return false;
-    if (t == "socks" && as_string(outbound.server || "") == "127.0.0.1" && int(outbound.server_port || 0) >= 1080 && int(outbound.server_port || 0) < 1180)
-        return false;
+    }
+    if (t == "fptn") {
+        if (as_string(outbound.token || "") != "")
+            return true;
+        return !is_dummy_outbound_server(outbound.server, outbound.server_port);
+    }
     if (t == "wireguard") {
         let peer = array_or_empty(outbound.peers)[0];
         if (type(peer) == "object")
             return !is_dummy_outbound_server(peer.address, peer.port);
         return !is_dummy_outbound_server(outbound.server, outbound.server_port);
     }
-    if (t == "warp") {
+    if (t == "warp" || t == "masque") {
+        if (type(outbound.profile) == "object" || as_string(outbound.private_key || "") != "")
+            return true;
         return !is_dummy_outbound_server(outbound.endpoint || outbound.server, outbound.server_port);
     }
     if (is_dummy_outbound_server(outbound.server, outbound.server_port))
@@ -2610,6 +2622,8 @@ function add_connection_dpi_sources(config, state, section, taken, selector_tags
         let stype = lc(trim(option(src, "source_type", "")));
         let src_id = as_string(src[".name"] || "");
         let display_name = trim(option(src, "name", src_id)) || src_id;
+        if (!state.outboundMetadata.source_ids)
+            state.outboundMetadata.source_ids = {};
         if (stype == "zapret2") {
             let idx = enabled_action_index(dpi_sections(), section, "zapret2");
             if (idx <= 0)
@@ -2623,8 +2637,11 @@ function add_connection_dpi_sources(config, state, section, taken, selector_tags
             };
             push(config.outbounds, outbound);
             push(selector_tags, tag_name);
+            push(urltest_candidate_tags, tag_name);
             runtime_subscription.remember_outbound_metadata(state, tag_name, display_name, outbound);
+            state.outboundMetadata.protocols[tag_name] = "zapret2";
             state.outboundMetadata.sources[tag_name] = src_id;
+            state.outboundMetadata.source_ids[tag_name] = src_id;
         } else if (stype == "zapret") {
             let idx = enabled_action_index(dpi_sections(), section, "zapret");
             if (idx <= 0)
@@ -2638,10 +2655,13 @@ function add_connection_dpi_sources(config, state, section, taken, selector_tags
             };
             push(config.outbounds, outbound);
             push(selector_tags, tag_name);
+            push(urltest_candidate_tags, tag_name);
             runtime_subscription.remember_outbound_metadata(state, tag_name, display_name, outbound);
+            state.outboundMetadata.protocols[tag_name] = "zapret";
             state.outboundMetadata.sources[tag_name] = src_id;
+            state.outboundMetadata.source_ids[tag_name] = src_id;
         } else if (stype == "byedpi") {
-            let idx = enabled_action_index(all_sections, section, "byedpi");
+            let idx = enabled_action_index(dpi_sections(), section, "byedpi");
             if (idx <= 0)
                 idx = 1;
             let tag_name = unique_tag(outbound_tag(section_name + "-byedpi-" + src_id), taken);
@@ -2655,10 +2675,13 @@ function add_connection_dpi_sources(config, state, section, taken, selector_tags
             };
             push(config.outbounds, outbound);
             push(selector_tags, tag_name);
+            push(urltest_candidate_tags, tag_name);
             runtime_subscription.remember_outbound_metadata(state, tag_name, display_name, outbound);
+            state.outboundMetadata.protocols[tag_name] = "byedpi";
             state.outboundMetadata.sources[tag_name] = src_id;
+            state.outboundMetadata.source_ids[tag_name] = src_id;
         } else if (stype == "wdtt") {
-            let idx = enabled_action_index(all_sections, section, "wdtt");
+            let idx = enabled_action_index(dpi_sections(), section, "wdtt");
             if (idx <= 0)
                 idx = 1;
             let tag_name = unique_tag(outbound_tag(section_name + "-wdtt-" + src_id), taken);
@@ -2674,9 +2697,11 @@ function add_connection_dpi_sources(config, state, section, taken, selector_tags
             push(selector_tags, tag_name);
             push(urltest_candidate_tags, tag_name);
             runtime_subscription.remember_outbound_metadata(state, tag_name, display_name, outbound);
+            state.outboundMetadata.protocols[tag_name] = "wdtt";
             state.outboundMetadata.sources[tag_name] = src_id;
+            state.outboundMetadata.source_ids[tag_name] = src_id;
         } else if (stype == "olcrtc") {
-            let idx = enabled_action_index(all_sections, section, "olcrtc");
+            let idx = enabled_action_index(dpi_sections(), section, "olcrtc");
             if (idx <= 0)
                 idx = 1;
             let tag_name = unique_tag(outbound_tag(section_name + "-olcrtc-" + src_id), taken);
@@ -2692,7 +2717,9 @@ function add_connection_dpi_sources(config, state, section, taken, selector_tags
             push(selector_tags, tag_name);
             push(urltest_candidate_tags, tag_name);
             runtime_subscription.remember_outbound_metadata(state, tag_name, display_name, outbound);
+            state.outboundMetadata.protocols[tag_name] = "olcrtc";
             state.outboundMetadata.sources[tag_name] = src_id;
+            state.outboundMetadata.source_ids[tag_name] = src_id;
         } else if (stype == "openvpn") {
             let server = trim(option(src, "openvpn_server", ""));
             if (server == "")

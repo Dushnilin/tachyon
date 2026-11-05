@@ -2713,14 +2713,6 @@ function currentSectionPriorityTierChoices(section_id, selectedValues = []) {
   if (!outboundNameChoicesCache.has(section_id)) {
     loadOutboundNameChoices(section_id);
   }
-  const dpiTypes = new Set([
-    "zapret",
-    "zapret2",
-    "byedpi",
-    "desync",
-    "wdtt",
-    "olcrtc",
-  ]);
   const seen = new Set();
   const result = [];
   const pushChoice = (value, label) => {
@@ -2756,7 +2748,6 @@ function currentSectionPriorityTierChoices(section_id, selectedValues = []) {
     const sid = src && src[".name"];
     if (!sid) return;
     const stypeLower = String(src.source_type || "subscription").toLowerCase();
-    if (dpiTypes.has(stypeLower)) return;
     const stype = stypeLower.toUpperCase();
     const pfx = src.node_prefix ? ` [${src.node_prefix}]` : ` [${stype}]`;
     pushChoice(sid, `📡 ${_("Source")}: ${src.name || src.label || sid}${pfx}`);

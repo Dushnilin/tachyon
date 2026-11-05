@@ -54,6 +54,14 @@ const PROTOCOL_CHOICES = [
   "shadowtls",
   "snell",
   "sudoku",
+  "warp",
+  "tewfai",
+  "tailscale",
+  "tor",
+  "desync",
+  "zapret2",
+  "zapret",
+  "byedpi",
   "socks",
   "http",
   "direct",
@@ -321,7 +329,6 @@ function loadGlobalPoolChoices() {
         src.prefix_nodes === "0" ? "" : String(src.node_prefix || "").trim();
       if (pfx) prefixSet.add(pfx);
       const stype = String(src.source_type || "subscription").toLowerCase();
-      if (DPI_SOURCE_TYPES.has(stype)) return;
 
       if (stype === "subscription") {
         const rawUrl = String(src.url || "").trim();
@@ -363,7 +370,39 @@ function loadGlobalPoolChoices() {
           });
         }
       });
-      if (stype !== "subscription" && stype !== "proxy_links" && sname) {
+      if (stype === "amnezia_config" || stype === "awg") {
+        const awgList = asRawList(
+          src.amnezia_configs || src.selector_amnezia_configs,
+        );
+        if (awgList.length > 0) {
+          awgList.forEach((entry) => {
+            let cname = sname;
+            try {
+              const parsed = JSON.parse(entry);
+              if (
+                parsed &&
+                typeof parsed.name === "string" &&
+                parsed.name.trim()
+              ) {
+                cname = parsed.name.trim();
+              }
+            } catch (_e) {}
+            if (cname) {
+              upsertServer(cname, {
+                proto: "amneziawg",
+                prefix: pfx,
+                sourceId: sid,
+              });
+            }
+          });
+        } else if (sname) {
+          upsertServer(sname, {
+            proto: "amneziawg",
+            prefix: pfx,
+            sourceId: sid,
+          });
+        }
+      } else if (stype !== "subscription" && stype !== "proxy_links" && sname) {
         upsertServer(sname, {
           proto: stype,
           prefix: pfx,
@@ -1465,13 +1504,7 @@ function showOutboundGroupModal(existingId, onSaved) {
   const secChips = createChipToggleBar(secRefsInput, sectionChoices, false);
 
   const sourceChoices = (uci.sections(UCI_PACKAGE, "outbound_source") || [])
-    .filter(
-      (s) =>
-        s[".name"] &&
-        !DPI_SOURCE_TYPES.has(
-          String(s.source_type || "subscription").toLowerCase(),
-        ),
-    )
+    .filter((s) => s[".name"])
     .map((s) => ({
       value: s[".name"],
       label: `${s.name || s.label || s[".name"]}${s.node_prefix ? " [" + s.node_prefix + "]" : ""}`,
@@ -2543,7 +2576,6 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
       const sid = src[".name"];
       if (!sid) return;
       const stypeRaw = String(src.source_type || "subscription").toLowerCase();
-      if (["zapret", "zapret2", "byedpi", "desync"].includes(stypeRaw)) return;
       const stype = stypeRaw.toUpperCase();
       groupSelect.appendChild(
         E(
@@ -3636,7 +3668,9 @@ function createOutboundsContent(section) {
               reader.onload = (e) =>
                 resolve({
                   name: file.name.replace(/\.(conf|wg|txt)$/i, ""),
-                  config: String((e.target && e.target.result) || "").trim(),
+                  config: String((e.target && e.target.result) || "")
+                    .replace(/\r\n?/g, "\n")
+                    .trim(),
                 });
               reader.onerror = () => resolve(null);
               reader.readAsText(file);
@@ -3659,16 +3693,8 @@ function createOutboundsContent(section) {
             [sectionId]: next,
           };
           setModalFieldValue(section, sectionId, "amnezia_configs", next);
-          if (next.length === 1 && valid.length === 1) {
-            setModalFieldValue(
-              section,
-              sectionId,
-              "amnezia_conf_text",
-              valid[0].config,
-            );
-          } else if (next.length > 1) {
-            setModalFieldValue(section, sectionId, "amnezia_conf_text", "");
-          }
+          uci.unset(UCI_PACKAGE, sectionId, "amnezia_conf_text");
+          setModalFieldValue(section, sectionId, "amnezia_conf_text", "");
           ui.addNotification(
             null,
             E("p", _("Loaded %d configuration file(s).").format(valid.length)),
@@ -3731,21 +3757,41 @@ function createOutboundsContent(section) {
   );
   o.modalonly = true;
   o.rows = 6;
+  o.rmempty = true;
   o.depends("source_type", "amnezia_config");
+  o.remove = function (sectionId) {
+    uci.unset(UCI_PACKAGE, sectionId, "amnezia_conf_text");
+  };
   o.write = function (sectionId, value) {
-    const trimmed = String(value || "").trim();
+    const trimmed = String(value || "")
+      .replace(/\r\n?/g, "\n")
+      .trim();
     if (!trimmed) {
       uci.unset(UCI_PACKAGE, sectionId, "amnezia_conf_text");
       return;
     }
-    const cur = asRawList(uci.get(UCI_PACKAGE, sectionId, "amnezia_configs"));
+    const loaded =
+      (section._loadedAmneziaConfigs &&
+        section._loadedAmneziaConfigs[sectionId]) ||
+      [];
+    const cur = loaded.length
+      ? loaded
+      : asRawList(uci.get(UCI_PACKAGE, sectionId, "amnezia_configs"));
     const name = uci.get(UCI_PACKAGE, sectionId, "name") || sectionId;
     const serialized = JSON.stringify({ name, config: trimmed });
     const alreadyExists = cur.some((entry) => {
-      if (entry === serialized || entry === trimmed) return true;
+      const normEntry = String(entry || "")
+        .replace(/\r\n?/g, "\n")
+        .trim();
+      if (normEntry === serialized || normEntry === trimmed) return true;
       try {
         const parsed = JSON.parse(entry);
-        return parsed && String(parsed.config || "").trim() === trimmed;
+        return (
+          parsed &&
+          String(parsed.config || "")
+            .replace(/\r\n?/g, "\n")
+            .trim() === trimmed
+        );
       } catch (_e) {
         return false;
       }
@@ -3753,7 +3799,7 @@ function createOutboundsContent(section) {
     if (!alreadyExists) {
       uci.set(UCI_PACKAGE, sectionId, "amnezia_configs", [...cur, serialized]);
     }
-    if (cur.length > 1 || (alreadyExists && cur.length >= 1)) {
+    if (cur.length > 0 || alreadyExists) {
       uci.unset(UCI_PACKAGE, sectionId, "amnezia_conf_text");
     } else {
       uci.set(UCI_PACKAGE, sectionId, "amnezia_conf_text", trimmed);
@@ -5846,7 +5892,7 @@ function createOutboundsContent(section) {
     _("Desync Strategy String (Fuzzer / CLI)"),
   );
   o.modalonly = true;
-  o.depends("source_type", "desync");
+  o.depends({ source_type: "desync", desync_preset: "custom" });
 
   // ── 11. Advanced & Subscription Options Tab ───────────────────────────────
   o = section.taboption(

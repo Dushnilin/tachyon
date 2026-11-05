@@ -54,6 +54,14 @@ const PROTOCOL_CHOICES = [
   ["shadowtls", "ShadowTLS"],
   ["snell", "Snell"],
   ["sudoku", "Sudoku"],
+  ["warp", "WARP"],
+  ["tewfai", "TewFai"],
+  ["tailscale", "Tailscale"],
+  ["tor", "Tor"],
+  ["desync", "Native Desync"],
+  ["zapret2", "Zapret2 (nfqws2)"],
+  ["zapret", "Zapret (nfqws)"],
+  ["byedpi", "ByeDPI (ciadpi)"],
   ["socks", "SOCKS5 / Tor"],
   ["http", "HTTP"],
   ["direct", "Direct"],
@@ -163,7 +171,6 @@ function loadGlobalPoolChoices() {
     (uci.sections(UCI_PACKAGE, "outbound_source") || []).forEach((src) => {
       if (src.node_prefix) prefixSet.add(String(src.node_prefix).trim());
       const stype = String(src.source_type || "subscription").toLowerCase();
-      if (DPI_SOURCE_TYPES.has(stype)) return;
       const sname = String(src.name || src[".name"] || "").trim();
       const rawLinks = [
         ...asArray(src.proxy_links),
@@ -186,7 +193,31 @@ function loadGlobalPoolChoices() {
           serverMap.set(lname, lname);
         }
       });
-      if (stype !== "subscription" && stype !== "proxy_links" && sname) {
+      if (stype === "amnezia_config" || stype === "awg") {
+        const awgList = asArray(
+          src.amnezia_configs || src.selector_amnezia_configs,
+        );
+        if (awgList.length > 0) {
+          awgList.forEach((entry) => {
+            let cname = sname;
+            try {
+              const parsed = JSON.parse(entry);
+              if (
+                parsed &&
+                typeof parsed.name === "string" &&
+                parsed.name.trim()
+              ) {
+                cname = parsed.name.trim();
+              }
+            } catch (_e) {}
+            if (cname && !serverMap.has(cname)) {
+              serverMap.set(cname, `${cname} [AMNEZIAWG]`);
+            }
+          });
+        } else if (sname && !serverMap.has(sname)) {
+          serverMap.set(sname, `${sname} [AMNEZIAWG]`);
+        }
+      } else if (stype !== "subscription" && stype !== "proxy_links" && sname) {
         const badge = stype.toUpperCase();
         if (!serverMap.has(sname)) {
           serverMap.set(sname, `${sname} [${badge}]`);
@@ -361,19 +392,20 @@ function summarizeBalancer(sectionId) {
     );
   };
   if (btype === "priority") {
-    let levelList = parsePriorityLevelsList(
-      uci.get(UCI_PACKAGE, sectionId, "outbound_group_levels"),
-    );
-    if (!levelList.length) {
-      for (const sid of sectionsUsingRef("balancer_refs", sectionId)) {
-        const secLevels = parsePriorityLevelsList(
-          uci.get(UCI_PACKAGE, sid, "outbound_group_levels"),
-        );
-        if (secLevels.length) {
-          levelList = secLevels;
-          break;
-        }
+    let levelList = [];
+    for (const sid of sectionsUsingRef("balancer_refs", sectionId)) {
+      const secLevels = parsePriorityLevelsList(
+        uci.get(UCI_PACKAGE, sid, "outbound_group_levels"),
+      );
+      if (secLevels.length) {
+        levelList = secLevels;
+        break;
       }
+    }
+    if (!levelList.length) {
+      levelList = parsePriorityLevelsList(
+        uci.get(UCI_PACKAGE, sectionId, "outbound_group_levels"),
+      );
     }
     const levels = levelList.map(resolveEntityName);
     const interval =
@@ -584,91 +616,6 @@ function createBalancersContent(section) {
   };
   o.textvalue = function (sectionId) {
     return this.cfgvalue(sectionId);
-  };
-
-  o = section.taboption(
-    "general",
-    form.DynamicList,
-    "outbound_group_levels",
-    _("Ordered Failover Tiers (Groups / Sources / Servers)"),
-    _(
-      "Ordered list of Outbound Groups, Outbound Sources, individual Servers from subscriptions, or 'direct' for direct fallback. Tier 1 is tried first, then Tier 2, etc.",
-    ),
-  );
-  o.modalonly = true;
-  o.depends("balancer_type", "priority");
-  o.placeholder = _("-- Select group, source, or server --");
-  o.cfgvalue = function (sectionId) {
-    const own = parsePriorityLevelsList(
-      uci.get(UCI_PACKAGE, sectionId, "outbound_group_levels"),
-    );
-    if (own.length > 0) return own;
-    for (const sid of sectionsUsingRef("balancer_refs", sectionId)) {
-      const secLevels = parsePriorityLevelsList(
-        uci.get(UCI_PACKAGE, sid, "outbound_group_levels"),
-      );
-      if (secLevels.length > 0) return secLevels;
-    }
-    return [];
-  };
-  o.load = function (sectionId) {
-    return loadGlobalPoolChoices().then((pool) => {
-      this.keylist = [];
-      this.vallist = [];
-      const seen = new Set();
-      const addChoice = (val, label) => {
-        if (!val || seen.has(val)) return;
-        seen.add(val);
-        this.value(val, label);
-      };
-      (uci.sections(UCI_PACKAGE, "outbound_group") || []).forEach((grp) => {
-        const gid = grp[".name"];
-        if (!gid || grp.enabled === "0") return;
-        addChoice(gid, `📦 ${_("Group")}: ${grp.name || gid}`);
-      });
-      (uci.sections(UCI_PACKAGE, "outbound_source") || []).forEach((src) => {
-        const sid = src[".name"];
-        if (!sid || src.enabled === "0") return;
-        const stype = String(src.source_type || "subscription").toUpperCase();
-        addChoice(sid, `📡 ${_("Source")}: ${src.name || sid} [${stype}]`);
-      });
-      (pool.servers || []).forEach((s) => {
-        addChoice(`srv:${s.value}`, `🎯 ${_("Server")}: ${s.label}`);
-      });
-      addChoice("direct", `🌐 ${_("Direct Connection (Fallback)")}`);
-
-      const currentVals = this.cfgvalue(sectionId);
-      currentVals.forEach((v) => {
-        if (seen.has(v)) return;
-        if (String(v).startsWith("srv:")) {
-          addChoice(v, `🎯 ${_("Server")}: ${String(v).slice(4)}`);
-        } else {
-          addChoice(v, v);
-        }
-      });
-      return currentVals;
-    });
-  };
-  o.write = function (sectionId, value) {
-    const levels = parsePriorityLevelsList(value);
-    if (levels.length) {
-      uci.set(UCI_PACKAGE, sectionId, "outbound_group_levels", levels);
-    } else {
-      uci.unset(UCI_PACKAGE, sectionId, "outbound_group_levels");
-    }
-    for (const sid of sectionsUsingRef("balancer_refs", sectionId)) {
-      if (levels.length) {
-        uci.set(UCI_PACKAGE, sid, "outbound_group_levels", levels);
-      } else {
-        uci.unset(UCI_PACKAGE, sid, "outbound_group_levels");
-      }
-    }
-  };
-  o.remove = function (sectionId) {
-    uci.unset(UCI_PACKAGE, sectionId, "outbound_group_levels");
-    for (const sid of sectionsUsingRef("balancer_refs", sectionId)) {
-      uci.unset(UCI_PACKAGE, sid, "outbound_group_levels");
-    }
   };
 
   // URLTest & Priority URL fields

@@ -858,14 +858,14 @@ function synthesize_awg_conf_from_source(src) {
 }
 
 function amnezia_config_entry_body(raw_val) {
-    let val = trim(as_string(raw_val));
+    let val = trim(replace(as_string(raw_val), /\r\n?/g, "\n"));
     if (val == "")
         return "";
     if (substr(val, 0, 1) == "{") {
         let parsed = null;
         try { parsed = json(val); } catch (e) {}
         if (type(parsed) == "object" && type(parsed.config) == "string")
-            return trim(parsed.config);
+            return trim(replace(parsed.config, /\r\n?/g, "\n"));
     }
     return val;
 }
@@ -899,11 +899,13 @@ function raw_amnezia_configs_from_obj(obj) {
                 push_unique_amnezia_cfg(result, seen, seen_bodies, norm);
         }
     }
-    let raw_conf_text = trim(option(obj, "amnezia_conf_text", ""));
-    if (raw_conf_text != "") {
-        let norm_text = normalize_amnezia_config_entry(raw_conf_text, fallback_name);
-        if (norm_text != "")
-            push_unique_amnezia_cfg(result, seen, seen_bodies, norm_text);
+    if (length(result) == 0) {
+        let raw_conf_text = trim(option(obj, "amnezia_conf_text", ""));
+        if (raw_conf_text != "") {
+            let norm_text = normalize_amnezia_config_entry(raw_conf_text, fallback_name);
+            if (norm_text != "")
+                push_unique_amnezia_cfg(result, seen, seen_bodies, norm_text);
+        }
     }
     return result;
 }
@@ -934,11 +936,15 @@ function amnezia_configs(section) {
 
     for (let src in section_effective_outbound_sources(section)) {
         let stype = lc(option(src, "source_type", "subscription"));
+        let src_cfgs = [];
         if (stype == "amnezia_config" || stype == "awg" || raw_option(src, "amnezia_configs") != null || raw_option(src, "selector_amnezia_configs") != null || raw_option(src, "amnezia_conf_text") != null) {
-            for (let c in raw_amnezia_configs_from_obj(src))
+            src_cfgs = raw_amnezia_configs_from_obj(src);
+            for (let c in src_cfgs) {
+                has_awg_source = true;
                 push_unique_amnezia_cfg(result, seen, seen_bodies, c);
+            }
         }
-        if (include_synthesized && stype == "awg") {
+        if (include_synthesized && stype == "awg" && length(src_cfgs) == 0) {
             let synth = synthesize_awg_conf_from_source(src);
             if (synth != "") {
                 has_awg_source = true;
@@ -946,12 +952,13 @@ function amnezia_configs(section) {
             }
         }
     }
+    let sec_cfgs = raw_amnezia_configs_from_obj(section);
     if (include_synthesized && !has_awg_source) {
         let sec_synth = synthesize_awg_conf_from_source(section);
         if (sec_synth != "")
             push_unique_amnezia_cfg(result, seen, seen_bodies, sec_synth);
     }
-    for (let c in raw_amnezia_configs_from_obj(section))
+    for (let c in sec_cfgs)
         push_unique_amnezia_cfg(result, seen, seen_bodies, c);
     return result;
 }
@@ -2136,21 +2143,20 @@ function child_effective_include_prefixes(child, section, keep_all_source_prefix
         return [];
     if (type(section) == "object" && !keep_all_source_prefixes) {
         let eff_srcs = section_effective_outbound_sources(section);
-        let non_dpi_ids = [];
+        let sec_src_ids = [];
         for (let es in eff_srcs) {
-            if (!is_dpi_or_desync_source_type(option(es, "source_type", "")))
-                push(non_dpi_ids, section_name(es));
+            push(sec_src_ids, section_name(es));
         }
-        if (length(non_dpi_ids) > 0) {
+        if (length(sec_src_ids) > 0) {
             let sec_id_set = {};
-            for (let sec_sid in non_dpi_ids)
+            for (let sec_sid in sec_src_ids)
                 sec_id_set[sec_sid] = true;
             let intersected = [];
             for (let sid in srefs) {
                 if (sec_id_set[sid])
                     push(intersected, sid);
             }
-            if (length(intersected) == length(non_dpi_ids) && !section_has_inline_connection_items(section))
+            if (length(intersected) == length(sec_src_ids) && !section_has_inline_connection_items(section))
                 return [];
             if (length(intersected) > 0)
                 srefs = intersected;
@@ -2243,12 +2249,8 @@ function section_combined_pool_tier_refs(owner_sec) {
     let seen = {};
     for (let gid in section_outbound_group_refs(owner_sec))
         push_unique_str(combined, seen, gid);
-    for (let sid in section_outbound_source_refs(owner_sec)) {
-        let src = outbound_source_section(sid);
-        if (src != null && is_dpi_or_desync_source_type(option(src, "source_type", "")))
-            continue;
+    for (let sid in section_outbound_source_refs(owner_sec))
         push_unique_str(combined, seen, sid);
-    }
     return combined;
 }
 
@@ -5707,7 +5709,7 @@ function probe_outbound_url(target_url, group_id, timeout_ms) {
     let selector_groups = [];
     let urltest_groups_by_tag = {};
     if (type(sb_cfg) == "object" && type(sb_cfg.outbounds) == "array") {
-        let skip_types = { selector: true, urltest: true, direct: true, block: true, dns: true, desync: true };
+        let skip_types = { selector: true, urltest: true, block: true, dns: true };
         for (let ob in sb_cfg.outbounds) {
             if (type(ob) != "object") continue;
             let otype = lc(as_string(ob.type || ""));
@@ -5720,6 +5722,8 @@ function probe_outbound_url(target_url, group_id, timeout_ms) {
                 urltest_groups_by_tag[otag] = ob.outbounds;
                 continue;
             }
+            if (otype == "direct" && as_string(ob.bind_interface || "") == "" && ob.routing_mark == null)
+                continue;
             if (otag == "" || skip_types[otype]) continue;
             if (hidden_tags[otag] || group_tags[otag]) continue;
             if (protocols_map[otag] == null || protocols_map[otag] == "")
@@ -5777,20 +5781,18 @@ function probe_outbound_url(target_url, group_id, timeout_ms) {
             if (src != null) {
                 let pfx = bool_option(src, "prefix_nodes", true) ? trim(option(src, "node_prefix", "")) : "";
                 let stype = lc(trim(option(src, "source_type", "subscription")));
-                if (!is_dpi_or_desync_source_type(stype)) {
-                    for (let t in candidate_tags) {
-                        if (source_id_map[t] == sid) {
-                            push(filtered, t);
-                            continue;
-                        }
-                        if (source_id_map[t] == null && pfx != "" && (lc(prefixes_map[t] || "") == lc(pfx) || index(lc(names_map[t] || t), lc(pfx) + " ") == 0)) {
-                            push(filtered, t);
-                            continue;
-                        }
-                        if (source_id_map[t] == null && stype != "subscription" && lc(protocols_map[t] || "") == stype) {
-                            push(filtered, t);
-                            continue;
-                        }
+                for (let t in candidate_tags) {
+                    if (source_id_map[t] == sid) {
+                        push(filtered, t);
+                        continue;
+                    }
+                    if (source_id_map[t] == null && pfx != "" && (lc(prefixes_map[t] || "") == lc(pfx) || index(lc(names_map[t] || t), lc(pfx) + " ") == 0)) {
+                        push(filtered, t);
+                        continue;
+                    }
+                    if (source_id_map[t] == null && stype != "subscription" && lc(protocols_map[t] || "") == stype) {
+                        push(filtered, t);
+                        continue;
                     }
                 }
             }
@@ -6496,5 +6498,6 @@ return {
     active_provider_sections,
     active_provider_section_index,
     outbound_source_subscription_url,
+    section_combined_pool_tier_refs,
     packet_encoding
 };

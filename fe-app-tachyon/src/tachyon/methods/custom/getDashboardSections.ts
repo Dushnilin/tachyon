@@ -478,13 +478,15 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
         );
         const seenBodies = new Set<string>();
         const extractConfBody = (raw: string): string => {
-          const trimmed = String(raw || '').trim();
+          const trimmed = String(raw || '')
+            .replace(/\r\n?/g, '\n')
+            .trim();
           if (!trimmed) return '';
           if (trimmed.startsWith('{')) {
             try {
               const parsed = JSON.parse(trimmed) as { config?: string };
               if (parsed && typeof parsed.config === 'string') {
-                return parsed.config.trim();
+                return parsed.config.replace(/\r\n?/g, '\n').trim();
               }
             } catch {
               // ignore
@@ -502,7 +504,7 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
           awgCfgs.push(entry);
         });
         const confText = (src.amnezia_conf_text || '').trim();
-        if (confText) {
+        if (confText && awgCfgs.length === 0) {
           const body = extractConfBody(confText);
           if (!body || !seenBodies.has(body)) {
             if (body) seenBodies.add(body);
@@ -531,8 +533,7 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
               pushSourceLink(src, `wireguard://${src['.name']}#${cname}`);
             }
           });
-        }
-        if (
+        } else if (
           next.action !== 'awg' &&
           (src.awg_private_key || src.awg_server_address || src.awg_endpoint)
         ) {
