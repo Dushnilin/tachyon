@@ -1446,6 +1446,36 @@ function formatMultiUrlStrategyLabel(strategy?: string) {
   return _('All URLs must respond (worst latency)');
 }
 
+function formatBalancerModeLabel(mode?: string) {
+  const key = `${mode || 'least_test'}`.trim().toLowerCase();
+  switch (key) {
+    case 'stability':
+      return _('Stability (EWMA + RFC 3550 Jitter + Loss Penalty)');
+    case 'sticky':
+      return _('Sticky Flow (Rendezvous HRW by Client / Domain)');
+    case 'least_load':
+      return _('Least Load (Active Connections × RTT)');
+    case 'weighted':
+      return _('Weighted (Smooth WRR by 1/RTT²)');
+    case 'passive':
+      return _('Passive Circuit Breaker (Early-Abort Quarantine)');
+    case 'hedged':
+      return _('Hedged (Happy Eyeballs Parallel Backup)');
+    case 'throughput':
+      return _('Throughput (Active Bandwidth Decay)');
+    case 'quota':
+      return _('Quota (Traffic Quota Balancer)');
+    case 'round_robin':
+      return _('Round-Robin Pool');
+    case 'failover':
+      return _('Failover (Pin Current Until Failure)');
+    case 'priority':
+      return _('Priority (Ordered Failover Tiers)');
+    default:
+      return _('Fastest (Lowest RTT)');
+  }
+}
+
 function shortenUrlForPopover(rawUrl: string, idx: number) {
   const trimmed = `${rawUrl || ''}`.trim();
   const stripped = trimmed.replace(/^https?:\/\//i, '').replace(/\/$/, '');
@@ -1902,18 +1932,26 @@ function renderCommonDetailsModal(
                           const t = member.telemetry!;
                           const tipParts: string[] = [];
                           if (t.ewma_rtt_ms)
-                            tipParts.push(`EWMA: ${t.ewma_rtt_ms} ms`);
+                            tipParts.push(`EWMA: ${t.ewma_rtt_ms} ${_('ms')}`);
                           if (t.jitter_ms)
-                            tipParts.push(`Jitter: ±${t.jitter_ms} ms`);
+                            tipParts.push(
+                              `${_('Jitter')}: ±${t.jitter_ms} ${_('ms')}`,
+                            );
                           if (t.loss_penalty_ms)
-                            tipParts.push(`Penalty: +${t.loss_penalty_ms} ms`);
+                            tipParts.push(
+                              `${_('Penalty')}: +${t.loss_penalty_ms} ${_('ms')}`,
+                            );
                           if (t.active_conns)
-                            tipParts.push(`Conns: ${t.active_conns}`);
+                            tipParts.push(
+                              `${_('Connections')}: ${t.active_conns}`,
+                            );
                           if (t.throughput_kib_s)
-                            tipParts.push(`BW: ${t.throughput_kib_s} KiB/s`);
+                            tipParts.push(
+                              `${_('Throughput')}: ${t.throughput_kib_s} ${_('KiB/s')}`,
+                            );
                           if (t.transferred_kib)
                             tipParts.push(
-                              `Data: ${(t.transferred_kib / 1024).toFixed(1)} MiB`,
+                              `${_('Traffic')}: ${(t.transferred_kib / 1024).toFixed(1)} ${_('MiB')}`,
                             );
                           if (t.quarantined) {
                             return [
@@ -1925,7 +1963,7 @@ function renderCommonDetailsModal(
                                   style:
                                     'margin-left: 6px; padding: 1px 5px; font-size: 10px; font-variant-numeric: tabular-nums;',
                                 },
-                                `Quarantine ${t.quarantine_rem_s || 0}s`,
+                                `${_('Quarantine')} ${t.quarantine_rem_s || 0}${_('s')}`,
                               ),
                             ];
                           }
@@ -1944,10 +1982,10 @@ function renderCommonDetailsModal(
                                     'margin-left: 6px; font-size: 11px; opacity: 0.72; font-variant-numeric: tabular-nums;',
                                 },
                                 t.jitter_ms
-                                  ? `±${t.jitter_ms}ms`
+                                  ? `±${t.jitter_ms} ${_('ms')}`
                                   : t.active_conns
-                                    ? `${t.active_conns} conn`
-                                    : `${t.throughput_kib_s} KiB/s`,
+                                    ? `${t.active_conns} ${_('conn.')}`
+                                    : `${t.throughput_kib_s} ${_('KiB/s')}`,
                               ),
                             ];
                           }
@@ -2244,7 +2282,7 @@ function renderUrlTestInfoModal(
       children: [renderUrlTestSelectedValue(info)],
     },
     ...(info.mode && info.mode !== 'least_test'
-      ? [{ label: _('Algorithm'), value: info.mode }]
+      ? [{ label: _('Algorithm'), value: formatBalancerModeLabel(info.mode) }]
       : []),
     {
       label: effectiveUrls.length > 1 ? _('Testing URLs') : _('Testing URL'),

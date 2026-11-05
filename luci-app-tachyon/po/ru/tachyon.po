@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-05 17:17+0300\n"
-"PO-Revision-Date: 2026-11-05 17:17+0300\n"
+"POT-Creation-Date: 2026-11-05 17:33+0300\n"
+"PO-Revision-Date: 2026-11-05 17:33+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -345,7 +345,7 @@ msgid "Active Only"
 msgstr "Активные"
 
 msgid "Active Pool Size (Top N Nodes)"
-msgstr ""
+msgstr "Размер активного пула (топ N узлов)"
 
 msgid "Active Route"
 msgstr "Активный выход"
@@ -528,7 +528,7 @@ msgid "Advertise routes"
 msgstr "Объявлять маршруты"
 
 msgid "Algorithm"
-msgstr ""
+msgstr "Алгоритм"
 
 msgid "All"
 msgstr "Все"
@@ -1731,7 +1731,7 @@ msgid "Client Key"
 msgstr "Клиентский ключ"
 
 msgid "Client LAN IP (source_ip)"
-msgstr ""
+msgstr "IP клиента в LAN (source_ip)"
 
 msgid "Client Private Key"
 msgstr "Приватный ключ клиента (PrivateKey)"
@@ -2625,7 +2625,7 @@ msgid "Dest IP"
 msgstr "IP назначения"
 
 msgid "Destination IP (dest_ip)"
-msgstr ""
+msgstr "IP назначения (dest_ip)"
 
 msgid "Destination IP / CIDR Subnets"
 msgstr "IP-адреса и подсети назначения (CIDR)"
@@ -2634,7 +2634,7 @@ msgid "Destination IPs or CIDR blocks to exclude from this condition."
 msgstr "Целевые IP-адреса или подсети CIDR, исключаемые из этого условия."
 
 msgid "Destination Port (dest_port)"
-msgstr ""
+msgstr "Порт назначения (dest_port)"
 
 msgid "Destination Ports"
 msgstr "Порты назначения"
@@ -3771,7 +3771,7 @@ msgid "Failed to update subscriptions"
 msgstr "Не удалось обновить подписки"
 
 msgid "Failover (Pin Current Until Failure)"
-msgstr ""
+msgstr "Отказоустойчивый (удерживать текущий до сбоя)"
 
 msgid "Failover Health Check URL"
 msgstr "URL проверки доступности для переключения (Failover)"
@@ -3897,7 +3897,7 @@ msgid "Fastest"
 msgstr "Самый быстрый"
 
 msgid "Fastest (Lowest RTT)"
-msgstr ""
+msgstr "Самый быстрый (минимальный RTT)"
 
 msgid "Filter Mode"
 msgstr "Режим фильтрации"
@@ -3963,7 +3963,7 @@ msgid "Flow"
 msgstr "Поток (Flow)"
 
 msgid "Flow fields combined for Rendezvous HRW stickiness (domain is automatically normalized to eTLD+1 so subdomains stay on the same exit IP)."
-msgstr ""
+msgstr "Поля потока для привязки по хэшу Rendezvous HRW (домен автоматически нормализуется до eTLD+1, чтобы поддомены оставались на одном выходном IP)."
 
 msgid "Flush Conntrack Table"
 msgstr "Очистить таблицу соед. (conntrack)"
@@ -4239,7 +4239,7 @@ msgid "Healthy"
 msgstr "Исправно"
 
 msgid "Hedged (Happy Eyeballs Parallel Backup)"
-msgstr ""
+msgstr "Параллельный резерв (Hedged / Happy Eyeballs)"
 
 msgid "Hello! I am Tachyon AI Assistant. How can I help you today? Ask me about domain blocks, diagnostics, or router settings."
 msgstr "Привет! Я ИИ-ассистент Tachyon. Чем могу помочь? Задайте вопрос о блокировках, диагностике или настройках роутера."
@@ -5246,6 +5246,9 @@ msgstr "Ключевое слово не должно содержать про�
 msgid "Keyword must not contain spaces, commas, or slashes"
 msgstr "Ключевое слово не должно содержать пробелы, запятые или слеши"
 
+msgid "KiB/s"
+msgstr "КиБ/с"
+
 msgid "LAN Clients"
 msgstr "Локальные клиенты (LAN)"
 
@@ -5322,7 +5325,7 @@ msgid "Layer 2: Reusable Outbound Server Groups"
 msgstr "Уровень 2: Переиспользуемые группы серверов (Outbound Groups)"
 
 msgid "Least Load (Active Connections × RTT)"
-msgstr ""
+msgstr "Наименьшая нагрузка (активные соединения × RTT)"
 
 msgid "Leave blank to auto-generate on start or click button above"
 msgstr "Оставьте пустым для автогенерации при старте или нажмите кнопку выше"
@@ -5475,7 +5478,7 @@ msgid "Local DNS caching disabled (0 entries)"
 msgstr "Локальное DNS-кэширование отключено (0 записей)"
 
 msgid "Local Process (process)"
-msgstr ""
+msgstr "Локальный процесс (process)"
 
 msgid "Local Tor Daemon SOCKS5 Port (127.0.0.1)"
 msgstr "Локальный SOCKS5-порт демона Tor (127.0.0.1)"
@@ -5646,7 +5649,7 @@ msgid "Maximum number of cached domain entries in dnsmasq (default: 10000 ≈ 1.
 msgstr "Максимальный лимит кэшируемых доменов в dnsmasq (по умолчанию: 10000 ≈ 1.2 МБ RAM). Память выделяется динамически по мере запросов (~120 Б на домен), а не резервируется сразу. Рекомендуется: 10000 для роутеров от 128 МБ RAM, 2500–5000 для 64 МБ устройств."
 
 msgid "Maximum number of fastest healthy nodes included in the active balancing pool (0 or empty = all healthy nodes within tolerance)."
-msgstr ""
+msgstr "Максимальное число самых быстрых доступных узлов в активном пуле балансировки (0 или пусто — все доступные узлы в пределах допуска)."
 
 msgid "Maximum size of junk packets"
 msgstr "Максимальный размер мусорных пакетов"
@@ -5683,6 +5686,9 @@ msgstr "Способ, гарантирующий, что фейковый Client
 
 msgid "Metrics Retention (hours)"
 msgstr "Хранение метрик (часы)"
+
+msgid "MiB"
+msgstr "МиБ"
 
 msgid "Mieru Server Address"
 msgstr "Адрес сервера Mieru"
@@ -5874,7 +5880,7 @@ msgid "Native Desync (tachyon-core)"
 msgstr "Встроенный Desync (tachyon-core)"
 
 msgid "Native Rust kernel balancing mode for URLTest pools: Stability filters out jittery/lossy nodes, Sticky pins flows via Rendezvous HRW hashing, Least Load spreads concurrent streams, Weighted distributes proportionally to 1/RTT², Passive quarantines nodes dropping streams early (< 64 KiB), and Hedged races a backup node when handshake stalls."
-msgstr ""
+msgstr "Встроенный алгоритм балансировки ядра Rust для пулов URLTest: «Стабильность» отсеивает узлы с джиттером и потерями, «Привязка потока» закрепляет сессии через хэш Rendezvous HRW, «Наименьшая нагрузка» распределяет параллельные потоки, «Взвешенный» делит трафик пропорционально 1/RTT², «Пассивный предохранитель» отправляет в карантин узлы при раннем обрыве (< 64 КиБ), а «Параллельный резерв» подключает запасной узел при задержке рукопожатия."
 
 msgid "Native Tailscale is configured, but tailscale package is missing"
 msgstr "Нативный Tailscale настроен, но пакет tailscale отсутствует"
@@ -6630,7 +6636,7 @@ msgid "Partial presence match — other AND conditions not supplied"
 msgstr "Частичное вхождение — остальные операнды И (AND) не указаны"
 
 msgid "Passive Circuit Breaker (Early-Abort Quarantine)"
-msgstr ""
+msgstr "Пассивный предохранитель (карантин при раннем обрыве)"
 
 msgid "Password"
 msgstr "Пароль"
@@ -6715,6 +6721,9 @@ msgstr "Полезный груз (I5)"
 
 msgid "Peer Public Key"
 msgstr "Публичный ключ пира"
+
+msgid "Penalty"
+msgstr "Штраф"
 
 msgid "Pending"
 msgstr "Ожидает запуска"
@@ -7211,6 +7220,9 @@ msgstr "Алгоритм QUIC Congestion Control & Потоки"
 msgid "QoS Priority Engine (DSCP)"
 msgstr "Движок приоритета QoS (DSCP)"
 
+msgid "Quarantine"
+msgstr "Карантин"
+
 msgid "Querying direct connection and proxy outbound..."
 msgstr "Опрос прямого подключения и исходящего прокси..."
 
@@ -7242,7 +7254,7 @@ msgid "Quick setup for outbound routing & anti-censorship"
 msgstr "Быстрая настройка исходящего маршрута и обхода блокировок"
 
 msgid "Quota (Traffic Quota Balancer)"
-msgstr ""
+msgstr "Квота трафика (ротация по лимиту МиБ)"
 
 msgid "RAG Knowledge Base + Live ISP Probe Context"
 msgstr "База знаний RAG + результаты живого зондирования провайдера"
@@ -7395,7 +7407,7 @@ msgid "Registering Cloudflare WARP keys..."
 msgstr "Регистрация ключей Cloudflare WARP..."
 
 msgid "Registrable Domain eTLD+1 (domain)"
-msgstr ""
+msgstr "Базовый домен eTLD+1 (domain)"
 
 msgid "Registration Detour"
 msgstr "Маршрут регистрации"
@@ -7632,7 +7644,7 @@ msgid "Rose"
 msgstr "Розовый"
 
 msgid "Round-Robin Pool"
-msgstr ""
+msgstr "Циклический перебор пула (Round-Robin)"
 
 msgid "Route"
 msgstr "Маршрут"
@@ -8283,7 +8295,7 @@ msgid "Selection & Filter Parameters"
 msgstr "Параметры выбора и фильтрации"
 
 msgid "Selection Algorithm"
-msgstr ""
+msgstr "Алгоритм выбора"
 
 msgid "Selector"
 msgstr "Селектор"
@@ -8706,7 +8718,7 @@ msgid "Social media"
 msgstr "Социальные сети"
 
 msgid "Soft traffic cap per node in MiB before shifting new streams to remaining under-quota nodes."
-msgstr ""
+msgstr "Мягкий порог трафика на узел в МиБ, после которого новые потоки переключаются на узлы с неизрасходованной квотой."
 
 msgid "Sort Alphabetically"
 msgstr "Сортировать по алфавиту"
@@ -8793,7 +8805,7 @@ msgid "Stability & Fleet Report"
 msgstr "Отчёт о стабильности"
 
 msgid "Stability (EWMA + RFC 3550 Jitter + Loss Penalty)"
-msgstr ""
+msgstr "Стабильность (EWMA + джиттер RFC 3550 + штраф потерь)"
 
 msgid "Stability penalties detected on active system:"
 msgstr "Обнаружены штрафы стабильности у активной системы:"
@@ -8925,10 +8937,10 @@ msgid "Step-by-Step Outbound Connection (Client / DPI)"
 msgstr "Исходящее подключение по шагам (Аутбаунд)"
 
 msgid "Sticky Flow (Rendezvous HRW by Client / Domain)"
-msgstr ""
+msgstr "Привязка потока (Rendezvous HRW по клиенту / домену)"
 
 msgid "Sticky Hash Components"
-msgstr ""
+msgstr "Компоненты хэша привязки (Sticky Hash)"
 
 msgid "Stop"
 msgstr "Стоп"
@@ -9719,8 +9731,11 @@ msgstr "Замедление / Глубокий анализ пакетов"
 msgid "Through Tachyon Routing Rules"
 msgstr "По правилам секций Tachyon (обход блокировок)"
 
+msgid "Throughput"
+msgstr "Пропускная способность"
+
 msgid "Throughput (Active Bandwidth Decay)"
-msgstr ""
+msgstr "Пропускная способность (по скорости потока с затуханием)"
 
 msgid "Thu"
 msgstr "Чт"
@@ -9837,7 +9852,7 @@ msgid "Traffic Morphing Profile"
 msgstr "Профиль морфинга трафика (Traffic Shaper)"
 
 msgid "Traffic Quota per Node (MiB)"
-msgstr ""
+msgstr "Квота трафика на узел (МиБ)"
 
 msgid "Traffic Shaper"
 msgstr "Шейпер трафика"
@@ -10629,7 +10644,7 @@ msgid "Weekends (Sat-Sun)"
 msgstr "Выходные (Сб-Вс)"
 
 msgid "Weighted (Smooth WRR by 1/RTT²)"
-msgstr ""
+msgstr "Взвешенный (плавный WRR пропорционально 1/RTT²)"
 
 msgid "What Tachyon should do when this section matches"
 msgstr "Что должен делать Tachyon при совпадении этой секции"
@@ -10819,6 +10834,9 @@ msgstr "compressed"
 
 msgid "confidence"
 msgstr "уверенность"
+
+msgid "conn."
+msgstr "соед."
 
 msgid "connections"
 msgstr "соединений"
@@ -11017,6 +11035,9 @@ msgstr "outbounds должен быть непустым массивом стр
 
 msgid "pre-release"
 msgstr "пре-релиз"
+
+msgid "s"
+msgstr "с"
 
 msgid "server_port must be a number from 1 to 65535"
 msgstr "server_port должен быть числом от 1 до 65535"
