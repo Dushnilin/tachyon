@@ -161,12 +161,28 @@ have_unshare_root() {
 download_sdk_archive() {
   local url="$1"
   local archive_path="$SDK_CACHE_DIR/$(basename "$url")"
+  local rel_path="${url#https://downloads.openwrt.org/}"
+  local candidate_urls=(
+    "$url"
+    "https://mirror-03.infra.openwrt.org/${rel_path}"
+    "https://ftp.fau.de/openwrt/${rel_path}"
+  )
+  local candidate
 
   mkdir -p "$SDK_CACHE_DIR"
   if [[ ! -f "$archive_path" ]]; then
-    echo "Downloading SDK: $url" >&2
-    wget -O "$archive_path.part" "$url"
-    mv "$archive_path.part" "$archive_path"
+    for candidate in "${candidate_urls[@]}"; do
+      echo "Downloading SDK: $candidate" >&2
+      rm -f "$archive_path.part"
+      if curl -4 -fL --retry 2 --connect-timeout 10 --speed-time 20 --speed-limit 102400 -o "$archive_path.part" "$candidate"; then
+        mv "$archive_path.part" "$archive_path"
+        break
+      fi
+    done
+    if [[ ! -f "$archive_path" ]]; then
+      echo "Failed to download SDK from all mirrors: $url" >&2
+      exit 1
+    fi
   fi
 
   printf '%s\n' "$archive_path"
