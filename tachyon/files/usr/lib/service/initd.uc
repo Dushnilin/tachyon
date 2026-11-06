@@ -513,6 +513,8 @@ function retry_start_on_wan_up_action(runtime_running_value, service_enabled_val
 }
 
 function retry_start_on_wan_up(owner_pid) {
+    if (file_exists(RUNTIME_STATE_DIR + "/reset-stopped"))
+        return 0;
     let running = runtime_is_running();
     let enabled = service_is_enabled();
     let retry_pending = start_retry_pending(START_RETRY_FILE);
@@ -717,7 +719,12 @@ function stop_service(owner_pid) {
         return 1;
     }
 
-    let status = command_status_from_args([ BIN_PATH, "stop" ]);
+    let status = 0;
+    if (file_exists(RUNTIME_STATE_DIR + "/reset-stopped")) {
+        unlink_file(RUNTIME_STATE_DIR + "/reset-stopped");
+    } else {
+        status = command_status_from_args([ BIN_PATH, "stop" ]);
+    }
     // These survive tachyon stop because background subprocesses (reload_firewall,
     // restart) inherit the logread pipe read-end, preventing SIGPIPE delivery.
     // BusyBox lacks pkill, so we use pgrep + kill via common.kill_orphaned_logread().

@@ -35,8 +35,35 @@ const SING_BOX_TMP_DIR = env("TACHYON_SING_BOX_TMP_DIR", "/tmp/tachyon-core");
 const SING_BOX_CONFIG_PATH = env("TACHYON_SING_BOX_CONFIG_PATH", "/etc/tachyon-core/config.json");
 
 const PRESERVED_PERSISTENT_ENTRIES = {
-    tailscale: 1
+    tailscale: 1,
+    "tachyon-core-variant": 1,
+    "tachyon-core-version": 1,
+    "sing-box-variant": 1,
+    "sing-box-version": 1,
+    "installer-backups": 1
 };
+
+function config_has_enabled_work(path) {
+    let text = fs.readfile(as_string(path));
+    if (text == null)
+        return false;
+
+    let in_work_section = false;
+    for (let raw_line in split(as_string(text), "\n")) {
+        let line = replace(as_string(raw_line), /^[ \t\r]+|[ \t\r]+$/g, "");
+        if (line == "" || substr(line, 0, 1) == "#")
+            continue;
+        let header = match(line, /^config[ \t]+([A-Za-z0-9_]+)/);
+        if (header != null) {
+            let stype = header[1];
+            in_work_section = (stype == "section" || stype == "server");
+            continue;
+        }
+        if (in_work_section && match(line, /^option[ \t]+enabled[ \t]+['"]?1['"]?([ \t#]|$)/) != null)
+            return true;
+    }
+    return false;
+}
 
 function default_config_source() {
     for (let candidate in [
@@ -69,8 +96,77 @@ function remove_persistent_state() {
     return true;
 }
 
+function ancestor_pids() {
+    let seen = {};
+    let stat = fs.readfile("/proc/self/stat");
+    if (stat == null)
+        return seen;
+    let m = match(as_string(stat), /^([0-9]+)[ \t]+\([^)]*\)[ \t]+[A-Za-z][ \t]+([0-9]+)/);
+    let pid = m ? m[1] : "";
+    let ppid = m ? m[2] : "";
+    if (pid != "")
+        seen[pid] = 1;
+    let guard = 0;
+    while (ppid != "" && int(ppid) > 1 && guard < 32) {
+        seen[ppid] = 1;
+        guard++;
+        let pstat = fs.readfile("/proc/" + ppid + "/stat");
+        if (pstat == null)
+            break;
+        let pm = match(as_string(pstat), /^[0-9]+[ \t]+\([^)]*\)[ \t]+[A-Za-z][ \t]+([0-9]+)/);
+        ppid = pm ? pm[1] : "";
+    }
+    return seen;
+}
+
+function abort_inflight_init_and_retries() {
+    let skip = ancestor_pids();
+    let kill_args = [ "kill", "-9" ];
+
+    let retry_pid = fs.readfile(RUNTIME_STATE_DIR + "/start-retry.pid");
+    if (retry_pid != null) {
+        retry_pid = replace(as_string(retry_pid), /[^0-9]/g, "");
+        if (retry_pid != "" && !skip[retry_pid])
+            push(kill_args, retry_pid);
+        fs.unlink(RUNTIME_STATE_DIR + "/start-retry.pid");
+    }
+    fs.unlink(RUNTIME_STATE_DIR + "/start.retry");
+
+    if (INIT_PATH != "/etc/init.d/" + CONFIG_NAME)
+        return;
+
+    let procs = fs.lsdir("/proc");
+    if (type(procs) == "array") {
+        for (let entry in procs) {
+            entry = as_string(entry);
+            if (match(entry, /^[0-9]+$/) == null || skip[entry])
+                continue;
+            let cmd = fs.readfile("/proc/" + entry + "/cmdline");
+            let text = cmd != null ? replace(as_string(cmd), /\0/g, " ") : "";
+            let lock_fd = fs.readlink("/proc/" + entry + "/fd/1000");
+            if (index(text, "retry_start_on_wan_up") >= 0 ||
+                index(text, "retry-start-on-wan-up") >= 0 ||
+                index(text, "wait-tachyon-core-service-stable") >= 0 ||
+                index(text, "wait-tachyon-stable-start") >= 0 ||
+                index(text, "/etc/init.d/" + CONFIG_NAME) >= 0 ||
+                (lock_fd != null && index(as_string(lock_fd), "procd_" + CONFIG_NAME) >= 0)) {
+                push(kill_args, entry);
+            }
+        }
+    }
+
+    if (length(kill_args) > 2)
+        command_success_from_args(kill_args);
+}
+
 function reset_settings(no_start) {
+    fs.mkdir(RUNTIME_STATE_DIR, 0755);
+    common.write_file(RUNTIME_STATE_DIR + "/reset-stopped", "1\n");
+    abort_inflight_init_and_retries();
     command_success_from_args([ BIN_PATH, "stop" ]);
+    fs.mkdir(RUNTIME_STATE_DIR, 0755);
+    common.write_file(RUNTIME_STATE_DIR + "/reset-stopped", "1\n");
+    abort_inflight_init_and_retries();
     command_success_from_args([ INIT_PATH, "stop" ]);
 
     command_success_from_args([ "rm", "-rf",
@@ -99,17 +195,21 @@ function reset_settings(no_start) {
     command_success_from_args([ "chmod", "600", CONFIG_PATH ]);
 
     log_message("Settings have been reset to defaults");
-    print("{\"success\":true}\n");
 
-    if (no_start == "1")
+    if (no_start == "1" || !config_has_enabled_work(CONFIG_PATH)) {
+        print("{\"success\":true}\n");
         return 0;
+    }
 
     let start_status = command_success_from_args([ INIT_PATH, "start" ]) ? 0 : 1;
     if (start_status != 0) {
         log_message("Reset settings: service failed to start after reset");
         print("{\"success\":true,\"started\":false}\n");
+        return 0;
     }
-    return start_status;
+
+    print("{\"success\":true,\"started\":true}\n");
+    return 0;
 }
 
 let mode = as_string(ARGV[0]);

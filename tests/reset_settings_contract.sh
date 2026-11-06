@@ -36,6 +36,8 @@ mkdir -p \
 printf '%s\n' stale >"$WORK_DIR/persistent/subscription-cache/cache.json"
 printf '%s\n' stale >"$WORK_DIR/persistent/rulesets/community.srs"
 printf '%s\n' identity >"$WORK_DIR/persistent/tailscale/server-main/node.key"
+printf '%s\n' tachyon-core >"$WORK_DIR/persistent/tachyon-core-variant"
+printf '%s\n' 0.3.9 >"$WORK_DIR/persistent/tachyon-core-version"
 printf '%s\n' '{}' >"$WORK_DIR/sing-box-config"
 printf '%s\n' custom >"$WORK_DIR/config"
 
@@ -78,9 +80,36 @@ cmp -s "$WORK_DIR/config" "$WORK_DIR/default-config" || fail "reset must restore
 [ ! -e "$WORK_DIR/persistent/subscription-cache" ] || fail "reset must clear subscription cache"
 [ ! -e "$WORK_DIR/persistent/rulesets" ] || fail "reset must clear ruleset cache"
 [ "$(cat "$WORK_DIR/persistent/tailscale/server-main/node.key")" = identity ] || fail "reset must preserve Tailscale identity"
+[ "$(cat "$WORK_DIR/persistent/tachyon-core-variant")" = tachyon-core ] || fail "reset must preserve core variant marker"
+[ "$(cat "$WORK_DIR/persistent/tachyon-core-version")" = 0.3.9 ] || fail "reset must preserve core version marker"
 [ ! -e "$WORK_DIR/runtime" ] || fail "reset must clear runtime state"
 [ ! -e "$WORK_DIR/sing-box-tmp" ] || fail "reset must clear sing-box temporary state"
 [ ! -e "$WORK_DIR/sing-box-config" ] || fail "reset must remove generated sing-box config"
+
+# Default reset without no-start must not start service when factory defaults have no enabled sections
+: >"$WORK_DIR/init.log"
+run_reset >"$WORK_DIR/result-empty.json"
+if grep -Fxq 'start' "$WORK_DIR/init.log"; then fail "reset with empty factory sections must not attempt service start"; fi
+[ "$(wc -l < "$WORK_DIR/result-empty.json" | tr -d ' ')" = "1" ] || fail "reset must print a single JSON line"
+
+# When default config has an enabled section and start fails, reset must still return 0 and emit valid single-line JSON
+cat >>"$WORK_DIR/lib/defaults/config" <<'EOF'
+
+config section 'main'
+        option enabled '1'
+EOF
+cat >"$WORK_DIR/fake-init" <<'SH'
+#!/usr/bin/env sh
+printf '%s\n' "$*" >> "$TACHYON_RESET_INIT_LOG"
+[ "$1" = "start" ] && exit 1
+exit 0
+SH
+chmod 0755 "$WORK_DIR/fake-init"
+: >"$WORK_DIR/init.log"
+run_reset >"$WORK_DIR/result-start-fail.json"
+grep -Fxq 'start' "$WORK_DIR/init.log" || fail "reset with enabled section must attempt service start"
+[ "$(wc -l < "$WORK_DIR/result-start-fail.json" | tr -d ' ')" = "1" ] || fail "failed start after reset must still print a single JSON line"
+grep -Fq '"success":true,"started":false' "$WORK_DIR/result-start-fail.json" || fail "failed start after reset must report started:false in single JSON payload"
 
 # Installer v3 preserves configuration and delegates package initialization to
 # package hooks/runtime modules. It must never implement reset semantics itself.

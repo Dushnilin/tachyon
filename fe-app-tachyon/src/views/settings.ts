@@ -718,7 +718,19 @@ function createResetSettingsWidget() {
       .then(function (res) {
         let success = false;
         try {
-          success = JSON.parse((res && res.stdout) || '').success !== false;
+          const raw = String((res && res.stdout) || '').trim();
+          const jsonLines = raw
+            .split(/\r?\n/)
+            .map(function (line) {
+              return line.trim();
+            })
+            .filter(function (line) {
+              return line.startsWith('{') && line.endsWith('}');
+            });
+          const payload = JSON.parse(
+            jsonLines[jsonLines.length - 1] || raw || '',
+          );
+          success = Boolean(payload && payload.success !== false);
         } catch (e) {
           success = false;
         }
