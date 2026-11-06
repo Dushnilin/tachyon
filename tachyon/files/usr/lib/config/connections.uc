@@ -583,6 +583,20 @@ function section_allows_legacy_subscription_url(section, url) {
     return true;
 }
 
+function extract_entity_priority_level_refs(entity) {
+    if (type(entity) != "object")
+        return [];
+    let raw_lvls = raw_option(entity, "outbound_group_levels");
+    if (type(raw_lvls) == "array")
+        return raw_lvls;
+    let s = trim(as_string(raw_lvls));
+    if (s == "")
+        return [];
+    if (substr(s, 0, 4) == "srv:")
+        return [ s ];
+    return whitespace_list_value(entity, "outbound_group_levels");
+}
+
 function section_effective_outbound_sources(section) {
     let result = [];
     let seen = {};
@@ -639,35 +653,51 @@ function section_effective_outbound_sources(section) {
         }
     }
 
-    if (!has_explicit_non_dpi_sources) {
-        for (let bal_id in section_balancer_refs(section)) {
-            let bal = balancer_section(bal_id);
-            if (bal == null || !bool_option(bal, "enabled", true))
-                continue;
-            let bal_srcs = whitespace_list_value(bal, "source_refs");
-            let bal_grps = whitespace_list_value(bal, "group_refs");
-            let raw_lvls = raw_option(bal, "outbound_group_levels");
-            let bal_lvls = type(raw_lvls) == "array"
-                ? raw_lvls
-                : (substr(trim(as_string(raw_lvls)), 0, 4) == "srv:"
-                    ? [ trim(as_string(raw_lvls)) ]
-                    : whitespace_list_value(bal, "outbound_group_levels"));
+    for (let bal_id in section_balancer_refs(section)) {
+        let bal = balancer_section(bal_id);
+        if (bal == null || !bool_option(bal, "enabled", true))
+            continue;
+        let bal_srcs = whitespace_list_value(bal, "source_refs");
+        let bal_grps = whitespace_list_value(bal, "group_refs");
+        let bal_sec_st = type(section) == "object"
+            ? item_settings(section, "balancer_settings", bal_id)
+            : {};
+        let bal_lvls = extract_entity_priority_level_refs(bal_sec_st);
+        if (length(bal_lvls) == 0 && type(section) == "object")
+            bal_lvls = extract_entity_priority_level_refs(section);
+        if (length(bal_lvls) == 0)
+            bal_lvls = extract_entity_priority_level_refs(bal);
+        if (!has_explicit_non_dpi_sources) {
             for (let src_id in bal_srcs)
                 add_src(outbound_source_section(src_id));
             for (let grp_id in bal_grps)
                 add_grp(grp_id);
-            for (let lvl_ref in bal_lvls) {
-                lvl_ref = trim(as_string(lvl_ref));
-                if (lvl_ref == "" || lc(lvl_ref) == "direct")
-                    continue;
-                if (substr(lvl_ref, 0, 4) == "srv:" || (outbound_group_section(lvl_ref) == null && outbound_source_section(lvl_ref) == null)) {
-                    for (let src in outbound_source_sections()) {
-                        if (!is_dpi_or_desync_source_type(option(src, "source_type", "")))
-                            add_src(src);
-                    }
+        }
+        for (let lvl_ref in bal_lvls) {
+            lvl_ref = trim(as_string(lvl_ref));
+            if (lvl_ref == "" || lc(lvl_ref) == "direct")
+                continue;
+            let explicit_src = substr(lvl_ref, 0, 4) == "srv:" ? null : outbound_source_section(lvl_ref);
+            if (explicit_src != null) {
+                add_src(explicit_src);
+                continue;
+            }
+            let explicit_grp = substr(lvl_ref, 0, 4) == "srv:" ? null : outbound_group_section(lvl_ref);
+            if (explicit_grp != null) {
+                let g_srcs = whitespace_list_value(explicit_grp, "source_refs");
+                if (length(g_srcs) > 0 && g_srcs[0] != "*") {
+                    for (let g_sid in g_srcs)
+                        add_src(outbound_source_section(g_sid));
                 } else {
                     add_grp(lvl_ref);
-                    add_src(outbound_source_section(lvl_ref));
+                }
+                continue;
+            }
+            if (!has_explicit_non_dpi_sources &&
+                (substr(lvl_ref, 0, 4) == "srv:" || balancer_section(lvl_ref) != null)) {
+                for (let src in outbound_source_sections()) {
+                    if (!is_dpi_or_desync_source_type(option(src, "source_type", "")))
+                        add_src(src);
                 }
             }
         }
@@ -2224,20 +2254,6 @@ function resolve_balancer_owner_section(group_id, section) {
     return null;
 }
 
-function extract_entity_priority_level_refs(entity) {
-    if (type(entity) != "object")
-        return [];
-    let raw_lvls = raw_option(entity, "outbound_group_levels");
-    if (type(raw_lvls) == "array")
-        return raw_lvls;
-    let s = trim(as_string(raw_lvls));
-    if (s == "")
-        return [];
-    if (substr(s, 0, 4) == "srv:")
-        return [ s ];
-    return whitespace_list_value(entity, "outbound_group_levels");
-}
-
 function section_combined_pool_tier_refs(owner_sec) {
     if (type(owner_sec) != "object")
         return [];
@@ -2401,35 +2417,88 @@ function synthesized_priority_levels_for_balancer(group_id, section, force_from_
                     exclude_ports: []
                 });
             } else {
-                let srv_name = substr(ref, 0, 4) == "srv:" ? trim(substr(ref, 4)) : ref;
-                if (srv_name != "") {
+                let ref_bal = substr(ref, 0, 4) == "srv:" ? null : balancer_section(ref);
+                if (ref_bal != null && lc(option(ref_bal, "balancer_type", "urltest")) != "priority") {
+                    let bal_st = type(owner_sec) == "object"
+                        ? item_settings(owner_sec, "balancer_settings", ref)
+                        : {};
+                    let eff_bal = {};
+                    for (let k, v in ref_bal)
+                        eff_bal[k] = v;
+                    if (type(bal_st) == "object") {
+                        for (let k, v in bal_st)
+                            eff_bal[k] = v;
+                    }
+                    let b_mode = lc(trim(option(eff_bal, "filter_mode", "disabled")));
+                    if (b_mode == "" || b_mode == "disabled")
+                        b_mode = "include";
                     push(result, {
                         ".name": synth_id,
                         group: as_string(group_id),
-                        name: srv_name,
+                        name: option(ref_bal, "name", option(ref_bal, "label", ref)) || ref,
                         order: as_string(i + 1),
                         direct: "0",
-                        filter_mode: "include",
-                        detect_server_country: "flag_emoji",
-                        include_countries: [],
-                        include_outbounds: expand_server_name_filter_candidates(srv_name),
-                        include_regex: [],
-                        include_prefixes: [],
-                        include_proxy_parameters: "0",
-                        include_protocols: [],
-                        include_transports: [],
-                        include_securities: [],
-                        include_ports: [],
-                        exclude_countries: [],
-                        exclude_outbounds: [],
-                        exclude_regex: [],
-                        exclude_prefixes: [],
-                        exclude_proxy_parameters: "0",
-                        exclude_protocols: [],
-                        exclude_transports: [],
-                        exclude_securities: [],
-                        exclude_ports: []
+                        outbound_group_ref: ref,
+                        filter_mode: b_mode,
+                        detect_server_country: option(eff_bal, "detect_server_country", "flag_emoji") || "flag_emoji",
+                        include_countries: list_value(eff_bal, "include_countries"),
+                        include_outbounds: list_value(eff_bal, "include_outbounds"),
+                        include_regex: list_value(eff_bal, "include_regex"),
+                        include_prefixes: child_effective_include_prefixes(eff_bal, owner_sec, true),
+                        include_proxy_parameters: (bool_option(eff_bal, "include_proxy_parameters", false) ||
+                            length(list_value(eff_bal, "include_protocols")) > 0 ||
+                            length(list_value(eff_bal, "include_transports")) > 0 ||
+                            length(list_value(eff_bal, "include_securities")) > 0 ||
+                            length(list_value(eff_bal, "include_ports")) > 0) ? "1" : "0",
+                        include_protocols: list_value(eff_bal, "include_protocols"),
+                        include_transports: list_value(eff_bal, "include_transports"),
+                        include_securities: list_value(eff_bal, "include_securities"),
+                        include_ports: list_value(eff_bal, "include_ports"),
+                        exclude_countries: list_value(eff_bal, "exclude_countries"),
+                        exclude_outbounds: list_value(eff_bal, "exclude_outbounds"),
+                        exclude_regex: list_value(eff_bal, "exclude_regex"),
+                        exclude_prefixes: list_value(eff_bal, "exclude_prefixes"),
+                        exclude_proxy_parameters: (bool_option(eff_bal, "exclude_proxy_parameters", false) ||
+                            length(list_value(eff_bal, "exclude_protocols")) > 0 ||
+                            length(list_value(eff_bal, "exclude_transports")) > 0 ||
+                            length(list_value(eff_bal, "exclude_securities")) > 0 ||
+                            length(list_value(eff_bal, "exclude_ports")) > 0) ? "1" : "0",
+                        exclude_protocols: list_value(eff_bal, "exclude_protocols"),
+                        exclude_transports: list_value(eff_bal, "exclude_transports"),
+                        exclude_securities: list_value(eff_bal, "exclude_securities"),
+                        exclude_ports: list_value(eff_bal, "exclude_ports")
                     });
+                } else {
+                    let srv_name = substr(ref, 0, 4) == "srv:" ? trim(substr(ref, 4)) : ref;
+                    if (srv_name != "") {
+                        push(result, {
+                            ".name": synth_id,
+                            group: as_string(group_id),
+                            name: srv_name,
+                            order: as_string(i + 1),
+                            direct: "0",
+                            filter_mode: "include",
+                            detect_server_country: "flag_emoji",
+                            include_countries: [],
+                            include_outbounds: expand_server_name_filter_candidates(srv_name),
+                            include_regex: [],
+                            include_prefixes: [],
+                            include_proxy_parameters: "0",
+                            include_protocols: [],
+                            include_transports: [],
+                            include_securities: [],
+                            include_ports: [],
+                            exclude_countries: [],
+                            exclude_outbounds: [],
+                            exclude_regex: [],
+                            exclude_prefixes: [],
+                            exclude_proxy_parameters: "0",
+                            exclude_protocols: [],
+                            exclude_transports: [],
+                            exclude_securities: [],
+                            exclude_ports: []
+                        });
+                    }
                 }
             }
             continue;

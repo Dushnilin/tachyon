@@ -931,13 +931,12 @@ function singbox_log_section(log_level, sb_version_val) {
         timestamp: false
     };
 
-    // Everything below warn produces a line per connection. Routed through
-    // procd's stderr into syslog, that fills the 128 KiB ring within minutes
-    // and evicts hostapd, dnsmasq and the actual errors we go looking for - the
-    // measured case was 744 of 771 buffered lines being sing-box INFO. Send the
-    // verbose levels to a file on tmpfs instead: the full log stays available
-    // for debugging while syslog keeps room for what it is for.
-    if (log_level == "info" || log_level == "debug" || log_level == "trace")
+    // Per-connection events (including sing-box's benign "stream N canceled by
+    // remote with error code 0" and WAN-down "no route to internet" bursts at
+    // ERROR/WARN level) flood OpenWrt's 128 KiB logd ring within ~10 minutes and
+    // evict netifd/pppd/hostapd/dnsmasq history (issue #365). Route all non-fatal
+    // levels to the tmpfs log file (auto-trimmed to 512 KiB by watchdog/failover).
+    if (log_level == "warn" || log_level == "error" || log_level == "info" || log_level == "debug" || log_level == "trace")
         section.output = VERBOSE_LOG_PATH;
 
     return section;

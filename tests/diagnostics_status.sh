@@ -101,6 +101,26 @@ case "$large_logs" in
   *) fail "large logread marker missing from rendered logs" ;;
 esac
 
+{
+  printf 'Tue Jun 30 11:00:00 2026 user.notice tachyon: [info] Starting Tachyon\n'
+  for i in 1 2 3 4 5; do
+    printf 'Tue Jun 30 11:00:0%d 2026 daemon.err tachyon-core: ERROR connection upload closed: stream %d canceled by remote with error code 0\n' "$i" "$i"
+  done
+  for i in 1 2 3 4 5 6; do
+    printf 'Tue Jun 30 11:00:1%d 2026 daemon.err sing-box: ERROR connection: dial udp 77.238.230.167:304: no route to internet\n' "$i"
+  done
+} >"$WORK_DIR/spam-logread.txt"
+spam_logs="$(TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$DIAGNOSTICS_RUNTIME" tachyon-logs-fixture <"$WORK_DIR/spam-logread.txt")" ||
+  fail "tachyon-logs-fixture failed on spam payload"
+case "$spam_logs" in
+  *"Suppressed 5 benign client stream-cancel notices"*) ;;
+  *) fail "benign stream-cancel spam was not aggregated: $spam_logs" ;;
+esac
+case "$spam_logs" in
+  *"Suppressed 3 additional 'no route to internet / network is unreachable' lines"*) ;;
+  *) fail "no-route burst was not aggregated after 3 lines: $spam_logs" ;;
+esac
+
 fake_bin="$WORK_DIR/bin"
 mkdir -p "$fake_bin"
 cat >"$fake_bin/curl" <<'SH'

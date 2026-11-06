@@ -216,10 +216,12 @@ function check_sing_box_logs() {
     for (let log_path in [ TMP_SING_BOX_FOLDER + "/tachyon-core.log", TMP_SING_BOX_FOLDER + "/sing-box.log" ]) {
         let st = fs.stat(log_path);
         if (st != null && int(st.size || 0) > 0) {
-            let tail_out = command_output_from_args([ "tail", "-n", "100", log_path ]);
+            let tail_out = command_output_from_args([ "tail", "-n", "500", log_path ]);
             if (tail_out != "") {
-                print(tail_out);
-                if (substr(tail_out, length(tail_out) - 1, 1) != "\n")
+                let filtered = status_capture([ "matching-log-tail", "*", "100" ], tail_out);
+                let out_text = filtered.output != "" ? filtered.output : tail_out;
+                print(out_text);
+                if (substr(out_text, length(out_text) - 1, 1) != "\n")
                     print("\n");
                 return 0;
             }

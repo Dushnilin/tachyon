@@ -49,9 +49,11 @@ JSON
   ' < "$out"
 }
 
-# info is the level a router can sit at for weeks unnoticed, and the one that
-# floods. debug and trace are worse, so they have to be routed the same way.
-for level in info debug trace; do
+# Non-fatal levels (warn, error, info, debug, trace) emit per-connection lines
+# in sing-box (e.g. "stream N canceled by remote with error code 0" and
+# "no route to internet" bursts at ERROR/WARN level, issue #365), so all of them
+# must write to the tmpfs file instead of drowning the 128 KiB logd ring.
+for level in warn error info debug trace; do
   got="$(generate_log_level "$level" "$WORK_DIR/$level.out")"
   case "$got" in
     "none "*)  fail "log_level=$level must write to a file, syslog would drown" ;;
@@ -61,8 +63,8 @@ for level in info debug trace; do
   esac
 done
 
-# warn and above are the levels worth having in syslog; keep them there.
-for level in warn error fatal; do
+# fatal/panic are process-death events and stay in syslog.
+for level in fatal; do
   got="$(generate_log_level "$level" "$WORK_DIR/$level.out")"
   case "$got" in
     none\ *) ;; *) fail "log_level=$level must not be redirected to a file: got '$got'" ;;
@@ -72,9 +74,9 @@ for level in warn error fatal; do
   esac
 done
 
-# The verbose file lives on tmpfs: /etc and /usr are the overlay on the flash
+# The log file lives on tmpfs: /etc and /usr are the overlay on the flash
 # that actually wears out, and a per-connection log would be written constantly.
-for level in info debug trace; do
+for level in warn error info debug trace; do
   grep -Fq '"output": "/tmp/tachyon-core/tachyon-core.log"' "$WORK_DIR/$level.out" ||
     fail "log_level=$level must point the verbose log at tmpfs, not the flash overlay"
 done

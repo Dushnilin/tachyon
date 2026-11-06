@@ -1683,27 +1683,58 @@ function is_udp_unsupported_outbound_log(line) {
     return index(as_string(line), "UDP is not supported by outbound:") >= 0;
 }
 
+function is_benign_stream_cancel_log(line) {
+    let text = as_string(line);
+    return index(text, "canceled by remote with error code 0") >= 0 ||
+        index(text, "cancelled by remote with error code 0") >= 0;
+}
+
+function is_no_route_burst_log(line) {
+    let text = as_string(line);
+    return index(text, "no route to internet") >= 0 ||
+        index(text, "network is unreachable") >= 0;
+}
+
 function render_matching_log_tail(needle, max_lines) {
     let lines = split(read_stdin(), "\n");
     let filtered = [];
     let udp_http_notice_emitted = false;
+    let stream_cancel_count = 0;
+    let no_route_count = 0;
+    let last_no_route_line = "";
 
     for (let line in lines) {
         if (line == "")
             continue;
-        if (line_contains(line, needle))
+        if (line_contains(line, needle) || needle == "*")
         {
-            if ((needle == "tachyon-core" || needle == "sing-box") && is_udp_unsupported_outbound_log(line)) {
+            if ((needle == "tachyon-core" || needle == "sing-box" || needle == "*") && is_udp_unsupported_outbound_log(line)) {
                 if (!udp_http_notice_emitted) {
                     push(filtered, "UDP traffic through HTTP outbounds is not supported by tachyon-core; repeated UDP warnings for HTTP outbounds are hidden by Tachyon.");
                     udp_http_notice_emitted = true;
                 }
                 continue;
             }
+            if ((needle == "tachyon-core" || needle == "sing-box" || needle == "*") && is_benign_stream_cancel_log(line)) {
+                stream_cancel_count++;
+                continue;
+            }
+            if ((needle == "tachyon-core" || needle == "sing-box" || needle == "*") && is_no_route_burst_log(line)) {
+                no_route_count++;
+                last_no_route_line = line;
+                if (no_route_count <= 3)
+                    push(filtered, line);
+                continue;
+            }
 
             push(filtered, line);
         }
     }
+
+    if (no_route_count > 3)
+        push(filtered, "[Tachyon] Suppressed " + as_string(no_route_count - 3) + " additional 'no route to internet / network is unreachable' lines (last: " + last_no_route_line + ")");
+    if (stream_cancel_count > 0)
+        push(filtered, "[Tachyon] Suppressed " + as_string(stream_cancel_count) + " benign client stream-cancel notices (error code 0).");
 
     if (length(filtered) == 0) {
         print_line("No matching logs found in system journal (needle: " + needle + ")");
@@ -1720,6 +1751,9 @@ function render_tachyon_logs() {
     let filtered = [];
     let start = -1;
     let udp_http_notice_emitted = false;
+    let stream_cancel_count = 0;
+    let no_route_count = 0;
+    let last_no_route_line = "";
 
     for (let line in lines) {
         if (line == "")
@@ -1734,12 +1768,28 @@ function render_tachyon_logs() {
             }
             continue;
         }
+        if ((line_contains(line, "tachyon-core") || line_contains(line, "sing-box")) && is_benign_stream_cancel_log(line)) {
+            stream_cancel_count++;
+            continue;
+        }
+        if ((line_contains(line, "tachyon-core") || line_contains(line, "sing-box")) && is_no_route_burst_log(line)) {
+            no_route_count++;
+            last_no_route_line = line;
+            if (no_route_count <= 3)
+                push(filtered, line);
+            continue;
+        }
 
         if (line_contains(line, "tachyon") && line_contains(line, "Starting Tachyon"))
             start = length(filtered);
 
         push(filtered, line);
     }
+
+    if (no_route_count > 3)
+        push(filtered, "[Tachyon] Suppressed " + as_string(no_route_count - 3) + " additional 'no route to internet / network is unreachable' lines (last: " + last_no_route_line + ")");
+    if (stream_cancel_count > 0)
+        push(filtered, "[Tachyon] Suppressed " + as_string(stream_cancel_count) + " benign client stream-cancel notices (error code 0).");
 
     if (length(filtered) == 0) {
         print_line("No Tachyon entries found in recent system logs");

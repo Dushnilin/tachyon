@@ -222,11 +222,20 @@ function choose_index(kind, state, current_index, timeout_seconds, recovery, str
     if (current_ok || (strikes[kind][current_index] || 0) < failure_threshold)
         return { index: current_index, reason: "alive", alive: true };
 
+    let failed_candidates = 0;
     for (let i = 0; i < length(values); i++) {
         if (i == current_index)
             continue;
-        if (is_probe_ok(i))
+        if (is_probe_ok(i)) {
+            if (i > current_index && failed_candidates > 0) {
+                if (current_index > 0 && is_probe_ok(0))
+                    return { index: 0, reason: "recovery", alive: true };
+                if (is_probe_ok(current_index))
+                    return { index: current_index, reason: "alive", alive: true };
+            }
             return { index: i, reason: i < current_index ? "recovery" : "active_dead", alive: true };
+        }
+        failed_candidates++;
     }
     return { index: current_index, reason: "all_down", alive: false };
 }
@@ -346,7 +355,8 @@ function core_age_seconds() {
         RUNTIME_STATE_DIR + "/tachyon-core-reload.timestamp",
         RUNTIME_STATE_DIR + "/reload.timestamp",
         RUNTIME_STATE_DIR + "/reload.hash",
-        RUNTIME_STATE_DIR + "/reload-state"
+        RUNTIME_STATE_DIR + "/reload-state",
+        RUNTIME_STATE_DIR + "/wan-event.timestamp"
     ]) {
         let stamp_stat = fs.stat(stamp_file);
         if (stamp_stat != null && stamp_stat.mtime > 0) {
@@ -357,6 +367,50 @@ function core_age_seconds() {
     }
 
     return min_age;
+}
+
+function wan_transport_down() {
+    let state_files = fs.glob(RUNTIME_STATE_DIR + "/wan_transport_*") || [];
+    if (length(state_files) == 0)
+        state_files = fs.glob(RUNTIME_STATE_DIR + "/wan_state_*") || [];
+    if (length(state_files) > 0) {
+        let any_up = false;
+        let any_down = false;
+        for (let path in state_files) {
+            let st = trim(as_string(fs.readfile(path) || ""));
+            if (st == "up")
+                any_up = true;
+            else if (st == "down")
+                any_down = true;
+        }
+        if (any_down && !any_up)
+            return true;
+    }
+
+    let routes = fs.readfile("/proc/net/route");
+    if (routes != null && routes != "") {
+        let has_default = false;
+        let line_idx = 0;
+        for (let line in split(as_string(routes), "\n")) {
+            line_idx++;
+            if (line_idx == 1)
+                continue;
+            let fields = split(trim(line), "\t");
+            if (length(fields) < 4)
+                fields = split(trim(line), " ");
+            if (length(fields) >= 4 && fields[1] == "00000000") {
+                let flags = int(fields[3], 16);
+                if ((flags & 1) != 0) {
+                    has_default = true;
+                    break;
+                }
+            }
+        }
+        if (!has_default)
+            return true;
+    }
+
+    return false;
 }
 
 const CORE_GRACE_SECONDS = 90;
@@ -430,6 +484,18 @@ function worker() {
         let recovery_threshold = int(common.option(current_cfg, "dns_recovery_threshold", is_parallel ? "3" : "3"));
 
         if (now >= next_active) {
+            if (wan_transport_down()) {
+                if (!all_down.wan) {
+                    log_message("WAN/transport is down, deferring DNS failover", "warn");
+                    all_down.wan = true;
+                }
+                strikes = { main: {}, bootstrap: {}, recovery_successes: { main: {}, bootstrap: {} } };
+                next_active = now_seconds() + active_interval;
+                next_recovery = now_seconds() + recovery_interval;
+                command_success_from_args([ "sleep", as_string(sleep_interval) ]);
+                continue;
+            }
+            all_down.wan = false;
             let age = core_age_seconds();
             if (age == null || age < CORE_GRACE_SECONDS) {
                 strikes = { main: {}, bootstrap: {}, recovery_successes: { main: {}, bootstrap: {} } };
@@ -444,7 +510,13 @@ function worker() {
                     PROBE_DETAIL.bootstrap + ")", "warn");
             all_down.bootstrap = !bootstrap.alive;
 
-            if (bootstrap.index != int(state.bootstrap_index)) {
+            if (!bootstrap.alive && length(state.bootstrap_servers) > 0) {
+                // Direct bootstrap resolvers are all unreachable -> WAN/transport outage;
+                // do not switch main DNS to lower-priority or ISP fallback servers.
+                strikes.main = {};
+                next_active = now_seconds() + active_interval;
+            }
+            else if (bootstrap.index != int(state.bootstrap_index)) {
                 let main = choose_index("main", state, int(state.main_index), timeout_seconds, false, strikes, failure_threshold, recovery_threshold);
                 let selections = { bootstrap };
                 if (main.alive)
@@ -522,8 +594,17 @@ function select_fixture(state_path, alive_path, kind, recovery) {
     let alive = common.object_or_empty(common.read_json_file(alive_path));
     let key = kind == "main" ? "main_index" : "bootstrap_index";
     let current = int(state[key] || 0);
+    let call_counts = {};
     let probe = function(index_value) {
-        return alive[as_string(index_value)] === true || alive[as_string(index_value)] == 1;
+        let k = as_string(index_value);
+        let entry = alive[k];
+        if (type(entry) == "array" && length(entry) > 0) {
+            let idx = int(call_counts[k] || 0);
+            call_counts[k] = idx + 1;
+            let val = idx < length(entry) ? entry[idx] : entry[length(entry) - 1];
+            return val === true || val == 1;
+        }
+        return entry === true || entry == 1;
     };
 
     // Drives the production decision. This used to be a second, simplified copy

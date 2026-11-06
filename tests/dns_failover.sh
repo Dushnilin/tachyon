@@ -137,6 +137,17 @@ selected="$(ucode -L "$TACHYON_LIB" "$FAILOVER" select-fixture "$WORK_DIR/select
 printf '%s' "$selected" | grep -Eq '"index"[[:space:]]*:[[:space:]]*0' || fail "recovery must return to the highest live priority"
 printf '%s' "$selected" | grep -Eq '"reason"[[:space:]]*:[[:space:]]*"recovery"' || fail "recovery reason"
 
+# Issue #364: transient WAN blip where index 0 and 1 fail while WAN is down,
+# then WAN comes back up by the time index 2 is probed. Re-probing index 0
+# must keep priority 0 instead of switching to fallback index 2.
+cat >"$WORK_DIR/alive-blip.json" <<'JSON'
+{ "0": [false, true], "1": false, "2": true }
+JSON
+selected="$(ucode -L "$TACHYON_LIB" "$FAILOVER" select-fixture "$WORK_DIR/select-state.json" "$WORK_DIR/alive-blip.json" main 0)"
+printf '%s' "$selected" | grep -Eq '"index"[[:space:]]*:[[:space:]]*0' || fail "transient WAN blip must re-verify and keep active DNS index 0"
+printf '%s' "$selected" | grep -Eq '"reason"[[:space:]]*:[[:space:]]*"alive"' || fail "transient WAN blip reason must be alive"
+
+
 cat >"$WORK_DIR/verify-previous.json" <<'JSON'
 { "main_index": 0, "bootstrap_index": 0, "bootstrap_servers": [ "a", "b" ] }
 JSON

@@ -3688,7 +3688,6 @@ function add_desync_outbound(config, section) {
     let delay_raw = option(section, "desync_split_delay_ms", "");
     if (delay_raw != "" && match(delay_raw, /^[0-9]+$/))
         outbound.split_delay_ms = int(delay_raw, 10);
-    let udp_fake_raw = trim(option(section, "desync_udp_fake", ""));
     if (udp_fake_raw != "")
         outbound.udp_fake = bool_option(section, "desync_udp_fake", false);
     let udp_repeats = int_option(section, "desync_udp_repeats", "0");

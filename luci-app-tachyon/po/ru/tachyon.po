@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-06 21:38+0300\n"
-"PO-Revision-Date: 2026-11-06 21:38+0300\n"
+"POT-Creation-Date: 2026-11-06 23:41+0300\n"
+"PO-Revision-Date: 2026-11-06 23:41+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -6704,9 +6704,6 @@ msgstr "Или вставьте содержимое файла hosts:"
 msgid "Orange"
 msgstr "Оранжевый"
 
-msgid "Order of failover strictly from connections and servers added to this section. Top item is primary (Tier 1), next is backup (Tier 2), etc."
-msgstr "Порядок резервирования строго из подключений и серверов, добавленных в эту секцию. Первый элемент — основной (ступень 1), следующий — резервный (ступень 2) и т.д."
-
 msgid "Ordered list of Outbound Groups, Sources, individual Servers from subscriptions/pool, or 'direct' for direct fallback. Tier 1 is tried first, then Tier 2, etc."
 msgstr "Упорядоченный список групп серверов, источников, отдельных серверов из подписок/пула или «direct» для резервного прямого выхода. Сначала проверяется ступень 1, затем ступень 2 и т.д."
 
@@ -7207,9 +7204,6 @@ msgstr "Приоритетный фейловер"
 
 msgid "Priority Failover (2nd activates only after 1st fails)"
 msgstr "По приоритету с отказоустойчивостью (2-е только после отказа 1-го)"
-
-msgid "Priority Tiers (Connections & Servers of This Section)"
-msgstr "Ступени приоритета (подключения и серверы этой секции)"
 
 msgid "Priority Tiers (Groups / Sources / Servers)"
 msgstr "Ступени приоритета (группы / источники / серверы)"
@@ -11626,6 +11620,12 @@ msgstr "🇱🇻 Латвия (lv)"
 
 msgid "🇵🇱 Poland (pl)"
 msgstr "🇵🇱 Польша (pl)"
+
+msgid "Order of failover strictly from connections and servers added to this section. Top item is primary (Tier 1), next is backup (Tier 2), etc."
+msgstr "Порядок резервирования строго из подключений и серверов, добавленных в эту секцию. Первый элемент — основной (ступень 1), следующий — резервный (ступень 2) и т.д."
+
+msgid "Priority Tiers (Connections & Servers of This Section)"
+msgstr "Ступени приоритета (подключения и серверы этой секции)"
 
 msgid "Auto (Clone target SNI / www.google.com)"
 msgstr "Авто (Клонировать целевой SNI / www.google.com)"

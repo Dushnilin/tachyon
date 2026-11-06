@@ -283,6 +283,9 @@ function sanitizeUciDeletes(targetSectionId) {
 function attachModalNoOpParseGuard(modalMap, defaultSid) {
   if (!modalMap || !defaultSid) return;
   sanitizeUciDeletes(defaultSid);
+  if (typeof modalMap.checkDepends === 'function') {
+    modalMap.checkDepends();
+  }
   const initialUciFingerprint = getUciStateFingerprint();
   const trackedPairs = [];
 
@@ -342,17 +345,26 @@ function attachModalNoOpParseGuard(modalMap, defaultSid) {
         ) {
           return true;
         }
-        return !areModalFormValuesEqual(targetOpt.formvalue(sid), snap.formVal);
+        const curVal = targetOpt.formvalue(sid);
+        return (
+          !areModalFormValuesEqual(curVal, snap.formVal) ||
+          !areModalFormValuesEqual(curVal, targetOpt.cfgvalue(sid))
+        );
       };
 
       opt.__isModalOptChangedForSid = isOptChangedForSid;
+      opt.__modalDefaultSid = defaultSid;
 
       if (!opt.__tachyonNoOpGuardAttached) {
         opt.__tachyonNoOpGuardAttached = true;
         const origParse = opt.parse;
         opt.parse = function (sid) {
-          const targetSid = sid ?? defaultSid;
-          if (!isOptChangedForSid(this, targetSid)) {
+          const guardFn = this.__isModalOptChangedForSid;
+          if (typeof guardFn !== 'function') {
+            return origParse.apply(this, arguments);
+          }
+          const targetSid = sid ?? this.__modalDefaultSid;
+          if (!guardFn(this, targetSid)) {
             if (
               Boolean(this.isActive(targetSid)) &&
               typeof this.isValid === 'function' &&
@@ -371,6 +383,15 @@ function attachModalNoOpParseGuard(modalMap, defaultSid) {
   if (Array.isArray(modalMap.children)) {
     modalMap.children.forEach((secObj) => guardSectionOptions(secObj));
   }
+
+  modalMap.__clearModalNoOpGuards = function () {
+    trackedPairs.forEach(({ opt }) => {
+      if (opt) {
+        opt.__isModalOptChangedForSid = null;
+        opt.__modalDefaultSid = null;
+      }
+    });
+  };
 
   modalMap.__hasAnyModalChanges = function () {
     if (getUciStateFingerprint() !== initialUciFingerprint) {
@@ -686,7 +707,6 @@ function configureGridSection(sectionRef, type, title, addTitle) {
       try {
         sanitizeUciDeletes(targetSectionId);
         const saveDone =
-          origModalSave &&
           hasPendingUciStateChanges() &&
           typeof uci !== 'undefined' &&
           typeof uci.save === 'function'
@@ -718,7 +738,15 @@ function configureGridSection(sectionRef, type, title, addTitle) {
   };
 
   const origModalCancel = sectionRef.handleModalCancel;
-  sectionRef.handleModalCancel = function () {
+  sectionRef.handleModalCancel = function (modalMap) {
+    const targetMap =
+      modalMap ||
+      (typeof this.getActiveModalMap === 'function'
+        ? dom.findClassInstance(this.getActiveModalMap())
+        : null);
+    if (targetMap && typeof targetMap.__clearModalNoOpGuards === 'function') {
+      targetMap.__clearModalNoOpGuards();
+    }
     const res = origModalCancel
       ? origModalCancel.apply(this, arguments)
       : form.GridSection.prototype.handleModalCancel.apply(this, arguments);
@@ -1769,6 +1797,7 @@ const EntryPoint = {
           const validGroupsAndSources = new Set([
             ...validGroups,
             ...validSources,
+            ...validBalancers,
           ]);
           (uci.sections(self.config, 'section') || []).forEach((sec) => {
             const sid = sec ? sec['.name'] : null;

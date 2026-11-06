@@ -5691,6 +5691,9 @@ function createOutboundsContent(section) {
     if (stype === "olcrtc") return OLCRTC_DEFAULT_NFQWS2_OPT;
     return ZAPRET2_DEFAULT_NFQWS2_OPT;
   };
+  o.cfgvalue = function (sectionId) {
+    return this.load(sectionId);
+  };
   o.write = function (sectionId, value) {
     const nextVal = String(value || "").trim() || ZAPRET2_DEFAULT_NFQWS2_OPT;
     uci.set(UCI_PACKAGE, sectionId, "nfqws2_opt", nextVal);
@@ -5713,6 +5716,9 @@ function createOutboundsContent(section) {
     return (
       uci.get(UCI_PACKAGE, sectionId, "nfqws_opt") || ZAPRET_DEFAULT_NFQWS_OPT
     );
+  };
+  o.cfgvalue = function (sectionId) {
+    return this.load(sectionId);
   };
   o.write = function (sectionId, value) {
     const nextVal = String(value || "").trim() || ZAPRET_DEFAULT_NFQWS_OPT;
@@ -5753,6 +5759,9 @@ function createOutboundsContent(section) {
       uci.get(UCI_PACKAGE, sectionId, "byedpi_cmd_opts") ||
       BYEDPI_DEFAULT_CMD_OPTS
     );
+  };
+  o.cfgvalue = function (sectionId) {
+    return this.load(sectionId);
   };
   o.write = function (sectionId, value) {
     const nextVal = String(value || "").trim() || BYEDPI_DEFAULT_CMD_OPTS;

@@ -46,6 +46,19 @@ function unsetIfPresent(sectionId, key) {
   const cur = uci.get(UCI_PACKAGE, sectionId, key);
   if (cur !== undefined && cur !== null) {
     uci.unset(UCI_PACKAGE, sectionId, key);
+    return;
+  }
+  const hasCommittedValue =
+    uci.state?.values?.[UCI_PACKAGE]?.[sectionId] &&
+    Object.prototype.hasOwnProperty.call(
+      uci.state.values[UCI_PACKAGE][sectionId],
+      key,
+    );
+  if (
+    !hasCommittedValue &&
+    uci.state?.deletes?.[UCI_PACKAGE]?.[sectionId]?.[key]
+  ) {
+    delete uci.state.deletes[UCI_PACKAGE][sectionId][key];
   }
 }
 
@@ -1110,6 +1123,15 @@ function attachAnnotatedTextarea(
       } else {
         this.wrapper = parent;
       }
+      if (this.wrapper) {
+        Object.defineProperty(this.wrapper, "value", {
+          get: () => this.textarea.value,
+          set: (v) => {
+            this.textarea.value = v != null ? String(v) : "";
+          },
+          configurable: true,
+        });
+      }
 
       if (this.overlay.parentNode !== this.wrapper) {
         this.wrapper.insertBefore(this.overlay, this.textarea.nextSibling);
@@ -1308,8 +1330,53 @@ function attachAnnotatedTextarea(
   }
 }
 
+function getOptionTextarea(option, sectionId, rootNode = null) {
+  if (rootNode) {
+    if (rootNode.tagName === "TEXTAREA") {
+      return rootNode;
+    }
+    if (typeof rootNode.querySelector === "function") {
+      const nested = rootNode.querySelector("textarea");
+      if (nested) {
+        return nested;
+      }
+    }
+  }
+
+  if (typeof document === "undefined") {
+    return null;
+  }
+
+  const cbid = option.cbid(sectionId);
+  const direct = document.getElementById(`widget.${cbid}`);
+  if (direct && direct.tagName === "TEXTAREA") {
+    return direct;
+  }
+
+  const field = document.getElementById(cbid) || direct;
+  if (field && typeof field.querySelector === "function") {
+    return field.querySelector("textarea");
+  }
+
+  return null;
+}
+
 function configureTextareaOption(option, analyzer, normalizeFn) {
   const originalRenderWidget = option.renderWidget;
+  const originalFormValue = option.formvalue;
+
+  option.formvalue = function (section_id) {
+    if (typeof this.isActive === "function" && !this.isActive(section_id)) {
+      return null;
+    }
+    const ta = getOptionTextarea(this, section_id);
+    if (ta && typeof ta.value === "string") {
+      return ta.value;
+    }
+    return typeof originalFormValue === "function"
+      ? originalFormValue.call(this, section_id)
+      : null;
+  };
 
   option.renderWidget = function (section_id, option_index, cfgvalue) {
     const node = originalRenderWidget.call(
@@ -1318,10 +1385,7 @@ function configureTextareaOption(option, analyzer, normalizeFn) {
       option_index,
       cfgvalue,
     );
-    const textarea =
-      node && typeof node.querySelector === "function"
-        ? node.querySelector("textarea")
-        : node;
+    const textarea = getOptionTextarea(this, section_id, node);
 
     if (textarea) {
       applyTextareaInputAttributes(textarea);
@@ -1742,6 +1806,9 @@ function createConditionsContent(section) {
   function attachPendingConditionListInput(opt) {
     const baseFormValue = opt.formvalue || form.DynamicList.prototype.formvalue;
     opt.formvalue = function (sectionId) {
+      if (typeof this.isActive === "function" && !this.isActive(sectionId)) {
+        return null;
+      }
       const raw = baseFormValue.call(this, sectionId);
       const list = Array.isArray(raw) ? raw.slice() : raw ? [raw] : [];
       if (typeof document === "undefined") return list;
@@ -1851,13 +1918,19 @@ function createConditionsContent(section) {
       .toLowerCase();
     return lower.startsWith("domain:") ? lower.slice(7) : lower;
   });
+  o.load = function (sectionId) {
+    return loadCombinedDomainText(sectionId);
+  };
   o.cfgvalue = function (sectionId) {
     return loadCombinedDomainText(sectionId);
   };
   o.write = function (sectionId, value) {
     const text = String(value || "").trim();
     if (text) {
-      if (String(uci.get(UCI_PACKAGE, sectionId, "domain") ?? "") !== text) {
+      if (
+        loadCombinedDomainText(sectionId).trim() !== text ||
+        String(uci.get(UCI_PACKAGE, sectionId, "domain") ?? "") !== text
+      ) {
         uci.set(UCI_PACKAGE, sectionId, "domain", text);
       }
       syncConditionOptionToParentSection(sectionId, "domain", text);
@@ -1914,6 +1987,9 @@ function createConditionsContent(section) {
       .toLowerCase();
     return lower.startsWith("domain:") ? lower.slice(7) : lower;
   });
+  o.load = function (sectionId) {
+    return loadMultilineText(sectionId, "user_domains", "user_domains_text");
+  };
   o.cfgvalue = function (sectionId) {
     return loadMultilineText(sectionId, "user_domains", "user_domains_text");
   };
@@ -1955,13 +2031,20 @@ function createConditionsContent(section) {
       .trim()
       .toLowerCase(),
   );
+  o.load = function (sectionId) {
+    return loadMultilineText(sectionId, "ip_cidr", "ip_cidr_text");
+  };
   o.cfgvalue = function (sectionId) {
     return loadMultilineText(sectionId, "ip_cidr", "ip_cidr_text");
   };
   o.write = function (sectionId, value) {
     const text = String(value || "").trim();
     if (text) {
-      if (String(uci.get(UCI_PACKAGE, sectionId, "ip_cidr") ?? "") !== text) {
+      if (
+        loadMultilineText(sectionId, "ip_cidr", "ip_cidr_text").trim() !==
+          text ||
+        String(uci.get(UCI_PACKAGE, sectionId, "ip_cidr") ?? "") !== text
+      ) {
         uci.set(UCI_PACKAGE, sectionId, "ip_cidr", text);
       }
       syncConditionOptionToParentSection(sectionId, "ip_cidr", text);

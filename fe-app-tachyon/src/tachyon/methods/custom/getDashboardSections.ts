@@ -397,19 +397,63 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
       );
     }
 
-    if (!hasExplicitNonDpiSources) {
-      getListValues(next.balancer_refs).forEach((bid) => {
-        const bal = balancerById.get(bid);
-        if (!bal || bal.enabled === '0') return;
+    getListValues(next.balancer_refs).forEach((bid) => {
+      const bal = balancerById.get(bid);
+      if (!bal || bal.enabled === '0') return;
+      if (!hasExplicitNonDpiSources) {
         getListValues(bal.source_refs).forEach((sid) =>
           addSource(sourceById.get(sid)),
         );
         getListValues(bal.group_refs).forEach(addGroupSources);
-        getListValues(bal.outbound_group_levels).forEach((lvl) => {
-          if (lvl.toLowerCase() !== 'direct') addGroupSources(lvl);
-        });
+      }
+      const balSettings = itemSettingsMap(next.balancer_settings)[bid];
+      const balLvls = getRawListValues(
+        balSettings?.outbound_group_levels as string[] | string,
+      );
+      const secLvls = getRawListValues(next.outbound_group_levels);
+      const itemLvls = getRawListValues(bal.outbound_group_levels);
+      const lvls =
+        balLvls.length > 0 ? balLvls : secLvls.length > 0 ? secLvls : itemLvls;
+      lvls.forEach((rawLvl) => {
+        const lvl = rawLvl.trim();
+        if (!lvl || lvl.toLowerCase() === 'direct') return;
+        const explicitSrc = sourceById.get(lvl);
+        if (explicitSrc) {
+          addSource(explicitSrc);
+          return;
+        }
+        const explicitGrp = groupById.get(lvl);
+        if (explicitGrp) {
+          const gSources = getListValues(explicitGrp.source_refs);
+          if (gSources.length > 0 && gSources[0] !== '*') {
+            gSources.forEach((sid) => addSource(sourceById.get(sid)));
+          } else {
+            addGroupSources(lvl);
+          }
+          return;
+        }
+        const explicitBal = balancerById.get(lvl);
+        if (explicitBal && explicitBal.enabled !== '0') {
+          getListValues(explicitBal.source_refs).forEach((sid) =>
+            addSource(sourceById.get(sid)),
+          );
+          getListValues(explicitBal.group_refs).forEach((gid) => {
+            const g = groupById.get(gid);
+            if (!g || g.enabled === '0') return;
+            const gSrcs = getListValues(g.source_refs);
+            if (gSrcs.length > 0 && gSrcs[0] !== '*') {
+              gSrcs.forEach((sid) => addSource(sourceById.get(sid)));
+            } else {
+              addGroupSources(gid);
+            }
+          });
+          return;
+        }
+        if (!hasExplicitNonDpiSources) {
+          addGroupSources(lvl);
+        }
       });
-    }
+    });
 
     const serviceSourceTypes = new Set([
       'zapret',
@@ -964,6 +1008,59 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
                     excludeCountries: [],
                     excludeOutbounds: [],
                     excludeRegex: [],
+                  },
+                ];
+              }
+              const refBal = balancerById.get(ref);
+              if (
+                refBal &&
+                (refBal.balancer_type || 'urltest').toLowerCase() !== 'priority'
+              ) {
+                const refBalSt =
+                  itemSettingsMap(next.balancer_settings)[ref] || {};
+                const rawMode = String(
+                  refBalSt.filter_mode || refBal.filter_mode || 'disabled',
+                )
+                  .trim()
+                  .toLowerCase();
+                const filterMode =
+                  !rawMode || rawMode === 'disabled' ? 'include' : rawMode;
+                return [
+                  {
+                    id: synthId,
+                    displayName: refBal.name || refBal.label || ref,
+                    order: idx + 1,
+                    direct: false,
+                    filterMode,
+                    detectServerCountry: String(
+                      refBalSt.detect_server_country ||
+                        refBal.detect_server_country ||
+                        'flag_emoji',
+                    ),
+                    country: getListValues(
+                      (refBalSt.include_countries as string[] | string) ??
+                        refBal.include_countries,
+                    ),
+                    serverName: getRawListValues(
+                      (refBalSt.include_outbounds as string[] | string) ??
+                        refBal.include_outbounds,
+                    ),
+                    regex: getListValues(
+                      (refBalSt.include_regex as string[] | string) ??
+                        refBal.include_regex,
+                    ),
+                    excludeCountries: getListValues(
+                      (refBalSt.exclude_countries as string[] | string) ??
+                        refBal.exclude_countries,
+                    ),
+                    excludeOutbounds: getRawListValues(
+                      (refBalSt.exclude_outbounds as string[] | string) ??
+                        refBal.exclude_outbounds,
+                    ),
+                    excludeRegex: getListValues(
+                      (refBalSt.exclude_regex as string[] | string) ??
+                        refBal.exclude_regex,
+                    ),
                   },
                 ];
               }

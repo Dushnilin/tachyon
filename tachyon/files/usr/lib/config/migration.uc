@@ -2243,6 +2243,8 @@ function cleanup_modular_entities_v1(ctx) {
         valid_groups_and_sources[k] = v;
     for (let k, v in valid_sources)
         valid_groups_and_sources[k] = v;
+    for (let k, v in valid_balancers)
+        valid_groups_and_sources[k] = v;
     for (let sec in (ctx.model.sections || []))
         prune_ref_list(sec, "outbound_group_levels", valid_groups_and_sources, "direct");
     for (let bal in (ctx.model.balancer || [])) {

@@ -2869,18 +2869,65 @@ function currentSectionPriorityTierChoices(section_id, selectedValues = []) {
     result.push({ value: v, label: `${label || v}`.trim() });
   };
 
+  const dpiTypes = new Set([
+    "zapret",
+    "zapret2",
+    "byedpi",
+    "desync",
+    "wdtt",
+    "olcrtc",
+  ]);
+
+  const secGroupRefs = new Set(
+    currentSourceOptionValues(section_id, "outbound_group_refs"),
+  );
+  const allGroups = uci.sections(UCI_PACKAGE, "outbound_group") || [];
+  const appendGroup = (g) => {
+    const gid = g && g[".name"];
+    if (!gid || g.enabled === "0") return;
+    pushChoice(gid, `📦 ${_("Group")}: ${g.name || g.label || gid}`);
+  };
+  allGroups.forEach((g) => {
+    if (g && secGroupRefs.has(g[".name"])) appendGroup(g);
+  });
+  allGroups.forEach(appendGroup);
+
+  const secBalancerRefs = new Set(
+    currentSourceOptionValues(section_id, "balancer_refs"),
+  );
+  const allBalancers = uci.sections(UCI_PACKAGE, "balancer") || [];
+  const appendUrlTestBalancer = (b) => {
+    const bid = b && b[".name"];
+    if (!bid || b.enabled === "0") return;
+    const btype = String(b.balancer_type || "urltest").toLowerCase();
+    if (btype === "priority") return;
+    pushChoice(
+      bid,
+      `⚖️ ${_("Balancer")}: ${b.name || b.label || bid} [URLTEST]`,
+    );
+  };
+  allBalancers.forEach((b) => {
+    if (b && secBalancerRefs.has(b[".name"])) appendUrlTestBalancer(b);
+  });
+  allBalancers.forEach(appendUrlTestBalancer);
+
   const secSourceRefs = new Set(
     currentSourceOptionValues(section_id, "outbound_source_refs"),
   );
   const allSources = uci.sections(UCI_PACKAGE, "outbound_source") || [];
-  allSources.forEach((src) => {
+  const appendSource = (src) => {
     const sid = src && src[".name"];
-    if (!sid || src.enabled === "0" || !secSourceRefs.has(sid)) return;
+    if (!sid || src.enabled === "0") return;
     const stypeLower = String(src.source_type || "subscription").toLowerCase();
+    if (dpiTypes.has(stypeLower)) return;
     const stype = stypeLower.toUpperCase();
     const pfx = src.node_prefix ? ` [${src.node_prefix}]` : ` [${stype}]`;
     pushChoice(sid, `📡 ${_("Source")}: ${src.name || src.label || sid}${pfx}`);
+  };
+  allSources.forEach((src) => {
+    if (src && secSourceRefs.has(src[".name"])) appendSource(src);
   });
+  allSources.forEach(appendSource);
 
   currentOutboundNameChoices(section_id, []).forEach((s) => {
     if (!s || !s.value) return;
@@ -2896,12 +2943,21 @@ function currentSectionPriorityTierChoices(section_id, selectedValues = []) {
       pushChoice("direct", _("Direct Connection (Fallback)"));
     } else if (val.startsWith("srv:")) {
       pushChoice(val, `🎯 ${_("Server")}: ${val.slice(4)}`);
-    } else if (secSourceRefs.has(val)) {
+    } else {
+      const secType = uci.get(UCI_PACKAGE, val, ".type");
       const name =
         uci.get(UCI_PACKAGE, val, "name") ||
         uci.get(UCI_PACKAGE, val, "label") ||
         val;
-      pushChoice(val, name);
+      if (secType === "outbound_group") {
+        pushChoice(val, `📦 ${_("Group")}: ${name}`);
+      } else if (secType === "balancer") {
+        pushChoice(val, `⚖️ ${_("Balancer")}: ${name} [URLTEST]`);
+      } else if (secType === "outbound_source") {
+        pushChoice(val, `📡 ${_("Source")}: ${name}`);
+      } else {
+        pushChoice(val, name);
+      }
     }
   });
 
@@ -8192,6 +8248,15 @@ function attachAnnotatedTextarea(
       } else {
         this.wrapper = parent;
       }
+      if (this.wrapper) {
+        Object.defineProperty(this.wrapper, "value", {
+          get: () => this.textarea.value,
+          set: (v) => {
+            this.textarea.value = v != null ? String(v) : "";
+          },
+          configurable: true,
+        });
+      }
 
       if (this.overlay.parentNode !== this.wrapper) {
         this.wrapper.insertBefore(this.overlay, this.textarea.nextSibling);
@@ -10191,6 +10256,18 @@ function configureTextareaOption(
   normalizeFn,
 ) {
   const originalRenderWidget = option.renderWidget;
+  const origFormValue = option.formvalue || form.TextValue.prototype.formvalue;
+
+  option.formvalue = function (section_id) {
+    if (typeof this.isActive === "function" && !this.isActive(section_id)) {
+      return null;
+    }
+    const ta = getOptionTextarea(this, section_id);
+    if (ta && typeof ta.value === "string") {
+      return ta.value;
+    }
+    return origFormValue.call(this, section_id);
+  };
 
   option.renderWidget = function (section_id, option_index, cfgvalue) {
     const node = originalRenderWidget.call(
@@ -10205,6 +10282,19 @@ function configureTextareaOption(
         : node;
 
     if (textarea) {
+      const uiEl =
+        typeof dom !== "undefined" &&
+        typeof dom.findClassInstance === "function"
+          ? dom.findClassInstance(node)
+          : null;
+      if (uiEl) {
+        uiEl.getValue = function () {
+          return textarea.value;
+        };
+        uiEl.setValue = function (val) {
+          textarea.value = val != null ? String(val) : "";
+        };
+      }
       applyTextareaInputAttributes(textarea);
       if (typeof analyzer === "function") {
         attachAnnotatedTextarea(
@@ -10383,6 +10473,32 @@ function addDynamicConditionField(section, config) {
     syncLinkedConditionOption(section_id, `${config.key}_text`, null);
     syncLinkedConditionOption(section_id, `${config.key}_text_mode`, null);
   };
+  const baseDynFormValue = o.formvalue || form.DynamicList.prototype.formvalue;
+  o.formvalue = function (section_id) {
+    if (typeof this.isActive === "function" && !this.isActive(section_id)) {
+      return null;
+    }
+    const raw = baseDynFormValue.call(this, section_id);
+    const list = Array.isArray(raw) ? raw.slice() : raw ? [raw] : [];
+    if (typeof document === "undefined") return list;
+    const widgetEl = document.getElementById(this.cbid(section_id));
+    if (!widgetEl) return list;
+    const inputs = widgetEl.querySelectorAll(
+      '.add-item input[type="text"], .cbi-dropdown input[type="text"]',
+    );
+    inputs.forEach((inp) => {
+      const val = String((inp && inp.value) || "").trim();
+      if (!val || list.includes(val)) return;
+      if (
+        typeof this.validate === "function" &&
+        this.validate(section_id, val) !== true
+      ) {
+        return;
+      }
+      list.push(val);
+    });
+    return list;
+  };
 
   return o;
 }
@@ -10442,6 +10558,33 @@ function addLocalDeviceSubnetDynamicField(section, config) {
       section_id,
       cfgvalue,
     );
+  };
+  const baseSubnetFormValue =
+    o.formvalue || form.DynamicList.prototype.formvalue;
+  o.formvalue = function (section_id) {
+    if (typeof this.isActive === "function" && !this.isActive(section_id)) {
+      return null;
+    }
+    const raw = baseSubnetFormValue.call(this, section_id);
+    const list = Array.isArray(raw) ? raw.slice() : raw ? [raw] : [];
+    if (typeof document === "undefined") return list;
+    const widgetEl = document.getElementById(this.cbid(section_id));
+    if (!widgetEl) return list;
+    const inputs = widgetEl.querySelectorAll(
+      '.add-item input[type="text"], .cbi-dropdown input[type="text"]',
+    );
+    inputs.forEach((inp) => {
+      const val = String((inp && inp.value) || "").trim();
+      if (!val || list.includes(val)) return;
+      if (
+        typeof this.validate === "function" &&
+        this.validate(section_id, val) !== true
+      ) {
+        return;
+      }
+      list.push(val);
+    });
+    return list;
   };
 
   return o;
@@ -11906,6 +12049,9 @@ function createSectionContent(section) {
 
     return value;
   };
+  o.cfgvalue = function (section_id) {
+    return this.load(section_id);
+  };
   o.write = function (section_id, value) {
     const normalized = normalizeNfqwsStrategyValue(value);
     const nextValue =
@@ -11949,6 +12095,9 @@ function createSectionContent(section) {
     }
     return secVal || srcVal || ZAPRET2_DEFAULT_NFQWS2_OPT;
   };
+  o.cfgvalue = function (section_id) {
+    return this.load(section_id);
+  };
   o.write = function (section_id, value) {
     const normalized = normalizeNfqws2StrategyValue(value);
     uci.set(UCI_PACKAGE, section_id, "nfqws2_opt", normalized);
@@ -11986,6 +12135,9 @@ function createSectionContent(section) {
       return srcVal;
     }
     return secVal || srcVal || BYEDPI_DEFAULT_CMD_OPTS;
+  };
+  o.cfgvalue = function (section_id) {
+    return this.load(section_id);
   };
   o.write = function (section_id, value) {
     const normalized = normalizeByedpiStrategyValue(value);
@@ -15775,13 +15927,20 @@ function createSectionContent(section) {
     ),
   );
   o.modalonly = true;
-  o.depends("action", "__legacy_inline__");
-  configureLiveDynamicListChoices(o, () =>
-    (uci.sections(UCI_PACKAGE, "outbound_group") || []).map((grp) => ({
-      value: grp[".name"],
-      label: `[GROUP] ${grp.name || grp.label || grp[".name"]}`,
-    })),
+  ["connection", "proxy", "outbound", "vpn", "awg", "fptn", "group"].forEach(
+    (act) => o.depends("action", act),
   );
+  configureLiveDynamicListChoices(o, () =>
+    (uci.sections(UCI_PACKAGE, "outbound_group") || [])
+      .filter((grp) => grp && grp.enabled !== "0")
+      .map((grp) => ({
+        value: grp[".name"],
+        label: `[GROUP] ${grp.name || grp.label || grp[".name"]}`,
+      })),
+  );
+  o.onchange = function (_event, section_id) {
+    refreshDashboardFilterChoiceWidgets(section_id);
+  };
   outboundNameSourceOptions.set("outbound_group_refs", o);
 
   const getAvailableBalancerChoices = () =>
@@ -15893,9 +16052,9 @@ function createSectionContent(section) {
         const tiersOpt = itemSection.option(
           form.DynamicList,
           "outbound_group_levels",
-          _("Priority Tiers (Connections & Servers of This Section)"),
+          _("Priority Tiers (Groups / Sources / Servers)"),
           _(
-            "Order of failover strictly from connections and servers added to this section. Top item is primary (Tier 1), next is backup (Tier 2), etc.",
+            "Ordered list of Outbound Groups, Sources, individual Servers from subscriptions/pool, or 'direct' for direct fallback. Tier 1 is tried first, then Tier 2, etc.",
           ),
         );
         tiersOpt.rmempty = true;
@@ -17643,6 +17802,9 @@ function createSectionContent(section) {
   const attachPendingListInputFormValue = (opt, validator) => {
     const baseFormValue = opt.formvalue || form.DynamicList.prototype.formvalue;
     opt.formvalue = function (section_id) {
+      if (typeof this.isActive === "function" && !this.isActive(section_id)) {
+        return null;
+      }
       const raw = baseFormValue.call(this, section_id);
       const list = Array.isArray(raw) ? raw.slice() : raw ? [raw] : [];
       if (typeof document === "undefined") return list;
