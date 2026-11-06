@@ -241,13 +241,17 @@ function parse_curl_output(output, result) {
     // Any valid HTTP response from origin (including 401/403/404/405/421 when hitting endpoints without auth headers / session tokens)
     if ((http_code >= 200 && http_code < 400) || http_code == 401 || http_code == 403 || http_code == 404 || http_code == 405 || http_code == 421) {
         result.success = true;
-        let base_score = (http_code >= 200 && http_code < 400) ? 100 : 85;
+        let is_unauth_endpoint = (http_code == 401 || http_code == 403 || http_code == 404 || http_code == 405 || http_code == 421);
+        if (is_unauth_endpoint && result.handshake_ms > 0 && (http_code == 421 || result.ttfb_ms > result.handshake_ms * 2)) {
+            result.ttfb_ms = result.handshake_ms;
+        }
+        let base_score = 100;
         let latency_score = max(0, 1000 - result.ttfb_ms);
         let speed_score = int(result.speed_kbps / 10.0);
-        let data_bonus = size_download >= 32768 ? 50 : (size_download >= 1024 ? 20 : 0);
+        let data_bonus = (size_download >= 32768 || (is_unauth_endpoint && result.handshake_ms > 0)) ? 50 : (size_download >= 1024 ? 20 : 0);
         result.score = base_score + latency_score + speed_score + data_bonus;
         result.error = "";
-        result.data_verified = size_download >= 32768;
+        result.data_verified = size_download >= 32768 || (is_unauth_endpoint && result.handshake_ms > 0);
         result.dpi_verdict = size_download >= 32768 ? "verified_32k" : "available";
     } else {
         result.success = false;

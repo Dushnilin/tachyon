@@ -98,5 +98,20 @@ $offenders"
   ok
 done
 
+# --- 5. googlevideo fallback recursion guard & HTTP 421 scoring -------------
+grep -q 'host != "googlevideo.com"' "$BINARIES" ||
+  fail "binaries.uc must guard against recursive googlevideo.com lookup"
+ok
+
+ucode -L "$TACHYON_LIB" -e '
+  let probe = require("diagnostics.fuzzer.probe");
+  let res = probe.parse_curl_output("421\t0.120\t2.450\t128\t156\t0.040\t1\t0", {});
+  if (!res.success || res.ttfb_ms != 120 || res.score < 1000) {
+    warn(sprintf("unexpected 421 parse result: %J\n", res));
+    exit(1);
+  }
+' || fail "parse_curl_output must normalize delayed HTTP 421 TTFB to handshake_ms and score >= 1000"
+ok
+
 printf 'fuzzer queue isolation: %d checks passed\n' "$pass_count"
 printf 'PASS: fuzzer_queue_isolation\n'

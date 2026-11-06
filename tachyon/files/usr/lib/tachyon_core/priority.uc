@@ -765,15 +765,27 @@ function current_group_selected(group_tag) {
 
 function trigger_urltest_recheck(group) {
     let timeout = as_string(duration_to_milliseconds(group.check_timeout, 3000));
-    let res = module_capture([ "get_proxy_latency", group.tag, timeout, group.health_url ]);
+    let res = module_capture([ "get_group_latency", group.tag, timeout, group.health_url ]);
+    cached_delays_mtime = -1;
     return res.status == 0;
 }
 
 function set_group_proxy(group, tag_name) {
     if (group.kind == "urltest") {
-        let sel_tag = group.section != "" ? (group.section + "-out") : "";
-        if (sel_tag != "" && current_group_selected(sel_tag) == group.tag) {
-            trigger_urltest_recheck(group);
+        let target_member = as_string(tag_name);
+        if (target_member != "" && target_member != group.tag) {
+            let info = priority_clash_info();
+            let curl_args = [
+                "curl", "-X", "PUT", "-s", "-m", "4",
+                info.base_url + "/proxies/" + urlencode_segment(group.tag)
+            ];
+            if (info.secret != "") {
+                push(curl_args, "-H");
+                push(curl_args, "Authorization: Bearer " + info.secret);
+            }
+            push(curl_args, "--data-raw");
+            push(curl_args, sprintf("%J", { name: target_member }));
+            common.command_status(command_from_args(curl_args));
         } else {
             trigger_urltest_recheck(group);
         }
@@ -920,6 +932,25 @@ function tick_group(state, group) {
     }
 
     if (state.active == "" && now >= state.nextActiveCheck) {
+        if (group.kind == "urltest" && fixture_delays_path == "") {
+            let snap = object_or_empty(clash_delays_snapshot());
+            let has_measured = false;
+            let total_candidates = 0;
+            for (let lvl in array_or_empty(group.levels)) {
+                for (let cand in array_or_empty(object_or_empty(lvl).outbounds)) {
+                    total_candidates++;
+                    let d = snap[as_string(cand)];
+                    if (d != null && int(d, 10) > 0) {
+                        has_measured = true;
+                        break;
+                    }
+                }
+                if (has_measured)
+                    break;
+            }
+            if (!has_measured && total_candidates > 1)
+                trigger_urltest_recheck(group);
+        }
         let selected = choose_from_level_range(group, 0, length(group.levels) - 1, clash_probe);
         if (switch_group(state, group, selected, "initial") && state.levelIndex > 0 && state.guard) {
             state.guard.escalated = true;

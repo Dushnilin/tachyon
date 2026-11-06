@@ -205,6 +205,7 @@ function get_resolved_host_flags(url) {
     if (!fuzzer_runner.is_valid_hostname(host)) return "";
     if (exists(_fuzzer_host_cache, host))
         return _fuzzer_host_cache[host];
+    _fuzzer_host_cache[host] = "";
 
     // Do not use redirector.googlevideo.com/report_mapping here: the address on
     // the left of "=>" is the *client's* public IP (the router WAN address), not
@@ -214,15 +215,7 @@ function get_resolved_host_flags(url) {
     let safe_host = shell_quote(host);
     let ip = null;
 
-    if (host == "rr1.googlevideo.com") {
-        let gv_flags = get_resolved_host_flags("https://googlevideo.com/");
-        if (gv_flags == "") gv_flags = get_resolved_host_flags("https://www.youtube.com/");
-        let m_ip = match(gv_flags, /:443:([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
-        if (m_ip && m_ip[1])
-            ip = m_ip[1];
-    }
-
-    // 1. Primary: query "наш DNS" (router bootstrap DNS & ISP upstream DNS) via UDP 53
+    // 1. Primary: query router bootstrap DNS & ISP upstream DNS via UDP 53
     // MUST NEVER query 127.0.0.1 or ::1 to prevent resolving into FakeIP (198.18.x.x)
     let dns_candidates = [];
     let seen_dns = {};
@@ -314,10 +307,10 @@ function get_resolved_host_flags(url) {
         }
     }
 
-    // 4. Fallback for googlevideo.com CDN nodes that are not in public DNS:
-    // resolve googlevideo.com or www.youtube.com IP so curl connects directly to Google's video infrastructure
-    // while preserving the regional SNI in ClientHello that triggers TSPU DPI rules.
-    if (!ip && (index(host, ".googlevideo.com") >= 0 || host == "googlevideo.com")) {
+    // 4. Fallback for regional googlevideo.com CDN nodes that are not in public DNS:
+    // resolve googlevideo.com or www.youtube.com IP so curl connects to Google's frontend
+    // while preserving the regional SNI in ClientHello.
+    if (!ip && index(host, ".googlevideo.com") >= 0 && host != "googlevideo.com") {
         let gv_flags = get_resolved_host_flags("https://googlevideo.com/");
         if (gv_flags == "") gv_flags = get_resolved_host_flags("https://www.youtube.com/");
         let m_ip = match(gv_flags, /:443:([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
