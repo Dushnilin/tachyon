@@ -1454,6 +1454,8 @@ function process_shadowsocks(raw) {
         outbound.plugin = plugin;
     if (plugin_opts != "")
         outbound.plugin_opts = plugin_opts;
+    if (is_true(params.uot || params.udp_over_tcp || params["udp-over-tcp"]))
+        outbound.udp_over_tcp = true;
     return outbound;
 }
 
@@ -1752,7 +1754,7 @@ function string_value(value) {
     return value == null ? "" : as_string(value);
 }
 
-function process_vmess_json(raw, decoded) {
+function process_vmess_json(raw, decoded, frag_override) {
     let vmess = json_decode_text(decoded);
     if (type(vmess) != "object")
         return null;
@@ -1763,9 +1765,13 @@ function process_vmess_json(raw, decoded) {
     if (server == "" || is_dummy_server(server, port) || !valid_port(port) || uuid == "")
         return null;
 
+    let tag = trim(as_string(frag_override || ""));
+    if (tag == "")
+        tag = string_value(vmess.ps) != "" ? string_value(vmess.ps) : (server + ":" + port);
+
     let outbound = {
         type: "vmess",
-        tag: string_value(vmess.ps) != "" ? string_value(vmess.ps) : (server + ":" + port),
+        tag: tag,
         share_link: raw,
         server: server,
         server_port: port,
@@ -1782,7 +1788,7 @@ function process_vmess_json(raw, decoded) {
         outbound.packet_encoding = packet_encoding;
 
     let network = string_value(vmess.net);
-    if (vmess.tls === true || vmess.tls == "tls" || vmess.tls == "true") {
+    if (vmess.tls == true || vmess.tls == "tls" || vmess.tls == "true" || vmess.tls == "1") {
         let fingerprint = normalize_utls_fingerprint(string_value(vmess.fp));
         let tls = { enabled: true };
         if (string_value(vmess.sni) != "")
@@ -1824,14 +1830,73 @@ function process_vmess_json(raw, decoded) {
     return outbound;
 }
 
+function process_vmess_url(raw) {
+    let url = parse_url(raw);
+    if (url == null || url.host == "" || is_dummy_server(url.host, url.port) || !valid_port(url.port) || url.userinfo == "")
+        return null;
+
+    let uuid = url.userinfo;
+    let security = "";
+    let colon = index(url.userinfo, ":");
+    if (colon > 0) {
+        security = substr(url.userinfo, 0, colon);
+        uuid = substr(url.userinfo, colon + 1);
+    }
+    if (security == "") {
+        let q_enc = trim(as_string(url.query.encryption || url.query.scy || ""));
+        if (q_enc == "") {
+            let q_sec = lc(trim(as_string(url.query.security || "")));
+            if (q_sec != "" && q_sec != "tls" && q_sec != "reality" && q_sec != "xtls")
+                q_enc = q_sec;
+        }
+        security = q_enc != "" ? q_enc : "auto";
+    }
+
+    let outbound = {
+        type: "vmess",
+        tag: url.fragment != "" ? url.fragment : ("vmess-" + url.host + ":" + url.port),
+        share_link: raw,
+        server: url.host,
+        server_port: int(url.port),
+        uuid: uuid,
+        security: security
+    };
+
+    let aid = int(url.query.alterId || url.query.aid || 0);
+    if (aid > 0)
+        outbound.alter_id = aid;
+
+    let packet_encoding = normalize_packet_encoding(url.query.packetEncoding || url.query.packet_encoding || url.query["packet-encoding"] || url.query.packetencoding || "");
+    if (packet_encoding != "")
+        outbound.packet_encoding = packet_encoding;
+
+    let tls_result = add_tls(url, url.query.security || "", false);
+    if (!tls_result[1])
+        return null;
+    if (tls_result[0])
+        outbound.tls = tls_result[0];
+
+    let transport = add_transport(url);
+    if (transport)
+        outbound.transport = transport;
+
+    return outbound;
+}
+
 function process_vmess(raw) {
     if (!starts_with(raw, "vmess://"))
         return null;
 
     let encoded = substr(raw, 8);
+    let frag_override = "";
     let hash_pos = index(encoded, "#");
-    if (hash_pos >= 0)
+    if (hash_pos >= 0) {
+        frag_override = urldecode_fragment(substr(encoded, hash_pos + 1));
         encoded = substr(encoded, 0, hash_pos);
+    }
+    if (index(encoded, "@") >= 0)
+        return process_vmess_url(raw);
+
     let decoded = base64_decode(encoded);
     if (!decoded)
         return null;
@@ -1840,7 +1905,7 @@ function process_vmess(raw) {
     let trimmed = trim(decoded);
     if (substr(trimmed, 0, 1) != "{" || substr(trimmed, length(trimmed) - 1) != "}")
         return null;
-    return process_vmess_json(raw, trimmed);
+    return process_vmess_json(raw, trimmed, frag_override);
 }
 
 function from_amneziawg_share_link(line) {
@@ -1986,8 +2051,8 @@ function process_snell(raw, url) {
     if (url.host == "" || is_dummy_server(url.host, url.port) || !valid_port(url.port) || url.userinfo == "")
         return null;
 
-    let version = int(url.query.version || 5);
-    if (version < 1 || version > 5)
+    let version = int(url.query.version || url.query.v || 5);
+    if (version < 1 || version > 6)
         version = 5;
 
     let outbound = {
@@ -1999,7 +2064,7 @@ function process_snell(raw, url) {
         psk: url.userinfo,
         version: version
     };
-    let obfs = lc(trim(as_string(url.query.obfs || "")));
+    let obfs = lc(trim(as_string(url.query.obfs || url.query.plugin || "")));
     if (obfs == "http" || obfs == "tls") {
         outbound.obfs = { mode: obfs };
         if ((url.query["obfs-host"] || url.query.obfs_host || url.query.host || "") != "")
@@ -2093,8 +2158,22 @@ function process_mtproto(raw, url) {
 
     let norm_secret = lc(trim(as_string(secret)));
     let padded_prefix = false;
+    let faketls_sni = "";
     if (length(norm_secret) >= 34 && match(norm_secret, /^(ee|dd)[0-9a-f]{32}/)) {
         padded_prefix = substr(norm_secret, 0, 2) == "dd";
+        if (substr(norm_secret, 0, 2) == "ee" && length(norm_secret) > 34 && ((length(norm_secret) - 34) % 2) == 0) {
+            let dhex = substr(norm_secret, 34);
+            if (match(dhex, /^[0-9a-f]+$/)) {
+                let dstr = "";
+                for (let i = 0; i < length(dhex); i += 2) {
+                    let b = int(substr(dhex, i, 2), 16);
+                    if (b >= 32 && b < 127)
+                        dstr += chr(b);
+                }
+                if (trim(dstr) != "")
+                    faketls_sni = trim(dstr);
+            }
+        }
         secret = substr(norm_secret, 2, 32);
     } else if (length(norm_secret) == 32 && match(norm_secret, /^[0-9a-f]{32}$/)) {
         secret = norm_secret;
@@ -2116,8 +2195,9 @@ function process_mtproto(raw, url) {
     let mode = lc(trim(as_string(url.query.mode || "")));
     if (mode == "mtproto" || mode == "mtproxy")
         outbound.mode = mode;
-    if ((url.query.sni || url.query.faketls || "") != "")
-        outbound.tls = { enabled: true, server_name: url.query.sni || url.query.faketls };
+    let sni_val = as_string(url.query.sni || url.query.faketls || faketls_sni);
+    if (sni_val != "")
+        outbound.tls = { enabled: true, server_name: sni_val };
     return outbound;
 }
 
@@ -2679,7 +2759,8 @@ function empty_clash_record() {
         fields: {},
         keys: [],
         context: "",
-        context_indent: -1
+        context_indent: -1,
+        context_stack: []
     };
 }
 
@@ -2702,10 +2783,22 @@ function emit_clash_record(records, record) {
 
 let clash_nested_keys = {
     "ws-opts": true,
+    "httpupgrade-opts": true,
     "grpc-opts": true,
+    "h2-opts": true,
+    "http-opts": true,
+    "xhttp-opts": true,
+    "splithttp-opts": true,
     "reality-opts": true,
     "obfs-opts": true,
-    headers: true
+    "plugin-opts": true,
+    "amnezia-wg-option": true,
+    "amnezia_wg_option": true,
+    "amnezia-wg-opts": true,
+    "amnezia_wg_opts": true,
+    headers: true,
+    extra: true,
+    xmux: true
 };
 
 function parse_clash_block_line(record, line) {
@@ -2721,18 +2814,24 @@ function parse_clash_block_line(record, line) {
     let key = clean_scalar(substr(text, 0, colon));
     let value = trim(substr(text, colon + 1));
 
-    if (record.context != "" && indent <= record.context_indent) {
+    while (length(record.context_stack) > 0 && indent <= record.context_stack[length(record.context_stack) - 1][0]) {
+        pop(record.context_stack);
+    }
+    if (length(record.context_stack) > 0) {
+        let top = record.context_stack[length(record.context_stack) - 1];
+        record.context_indent = top[0];
+        record.context = top[1];
+    } else {
         record.context = "";
         record.context_indent = -1;
     }
 
     if (value == "") {
         if (clash_nested_keys[key]) {
-            if (record.context != "" && indent > record.context_indent)
-                record.context = record.context + "." + key;
-            else
-                record.context = key;
+            let next_ctx = (record.context != "" && indent > record.context_indent) ? (record.context + "." + key) : key;
+            record.context = next_ctx;
             record.context_indent = indent;
+            push(record.context_stack, [ indent, next_ctx ]);
         }
         return;
     }
@@ -2838,7 +2937,7 @@ function add_clash_tls(outbound, options) {
     outbound.tls = tls;
 }
 
-function add_clash_transport(outbound, options) {
+function add_clash_transport(outbound, options, record) {
     if (options.network == "ws") {
         outbound.transport = {
             type: "ws",
@@ -2846,11 +2945,61 @@ function add_clash_transport(outbound, options) {
         };
         if (options.ws_host != "")
             outbound.transport.headers = { Host: options.ws_host };
+        if (record != null) {
+            let ed = as_string(record["ws-opts.max-early-data"] || "");
+            if (is_integer_string(ed) && int(ed, 10) > 0)
+                outbound.transport.max_early_data = int(ed, 10);
+            let eh = as_string(record["ws-opts.early-data-header-name"] || "");
+            if (eh != "")
+                outbound.transport.early_data_header_name = eh;
+        }
     }
     else if (options.network == "grpc") {
         outbound.transport = { type: "grpc" };
         if (options.grpc_service_name != "")
             outbound.transport.service_name = options.grpc_service_name;
+    }
+    else if (options.network == "httpupgrade") {
+        let tr = { type: "httpupgrade" };
+        let path = record != null ? as_string(record["httpupgrade-opts.path"] || options.ws_path || "") : options.ws_path;
+        let host = record != null ? as_string(record["httpupgrade-opts.host"] || record["httpupgrade-opts.headers.Host"] || options.ws_host || "") : options.ws_host;
+        if (path != "")
+            tr.path = path;
+        if (host != "")
+            tr.host = host;
+        outbound.transport = tr;
+    }
+    else if (options.network == "h2" || options.network == "http") {
+        let tr = { type: "http" };
+        if (record != null) {
+            let path = clean_scalar(as_string(record["h2-opts.path"] || record["http-opts.path"] || ""));
+            if (substr(path, 0, 1) == "[" && substr(path, length(path) - 1) == "]") {
+                let parts = split_csv(normalized_clash_alpn(path));
+                path = length(parts) > 0 ? parts[0] : "";
+            }
+            if (path != "")
+                tr.path = path;
+            let host_raw = normalized_clash_alpn(record["h2-opts.host"] || record["http-opts.host"] || "");
+            let hosts = split_csv(host_raw);
+            if (length(hosts) > 0)
+                tr.host = hosts;
+        }
+        outbound.transport = tr;
+    }
+    else if (options.network == "xhttp" || options.network == "splithttp") {
+        let tr = { type: "xhttp" };
+        if (record != null) {
+            let path = as_string(record["xhttp-opts.path"] || record["splithttp-opts.path"] || "");
+            let host = as_string(record["xhttp-opts.host"] || record["splithttp-opts.host"] || "");
+            let mode = as_string(record["xhttp-opts.mode"] || record["splithttp-opts.mode"] || "");
+            if (path != "")
+                tr.path = path;
+            if (host != "")
+                tr.host = host;
+            if (mode != "")
+                tr.mode = mode;
+        }
+        outbound.transport = tr;
     }
 }
 
@@ -2909,7 +3058,7 @@ function parse_clash_record(record) {
         if (packet_encoding != "")
             outbound.packet_encoding = packet_encoding;
         add_clash_tls(outbound, options);
-        add_clash_transport(outbound, options);
+        add_clash_transport(outbound, options, record);
         return outbound;
     }
     if (proxy_type == "vless") {
@@ -2927,7 +3076,7 @@ function parse_clash_record(record) {
         if (packet_encoding != "")
             outbound.packet_encoding = packet_encoding;
         add_clash_tls(outbound, options);
-        add_clash_transport(outbound, options);
+        add_clash_transport(outbound, options, record);
         return outbound;
     }
     if (proxy_type == "trojan") {
@@ -2937,32 +3086,81 @@ function parse_clash_record(record) {
         let outbound = { type: "trojan", tag: name, server: server, server_port: port, password: password };
         options.always = true;
         add_clash_tls(outbound, options);
-        add_clash_transport(outbound, options);
+        add_clash_transport(outbound, options, record);
         return outbound;
     }
     if (proxy_type == "hysteria2" || proxy_type == "hy2") {
-        let password = as_string(record.password);
+        let password = as_string(record.password || record.auth || "");
         if (password == "")
             return null;
         let outbound = { type: "hysteria2", tag: name, server: server, server_port: port, password: password, tls: { enabled: true } };
         if (options.sni != "")
             outbound.tls.server_name = options.sni;
+        else
+            outbound.tls.server_name = server;
         if (is_true(options.skip_verify))
             outbound.tls.insecure = true;
         if (options.alpn != "")
             outbound.tls.alpn = split_csv(options.alpn);
-        let obfs = as_string(record.obfs);
-        let obfs_password = as_string(record["obfs-password"] || record["obfs-opts.password"]);
+        let obfs = lc(trim(as_string(record.obfs || "")));
+        let obfs_password = as_string(record["obfs-password"] || record.obfs_password || record["obfs-opts.password"] || "");
         if (obfs != "" && obfs != "none") {
-            outbound.obfs = { type: obfs };
-            if (obfs_password != "")
-                outbound.obfs.password = obfs_password;
+            let min_ps = xhttp_positive_integer_value(record["min-packet-size"] || record.min_packet_size) || 0;
+            let max_ps = xhttp_positive_integer_value(record["max-packet-size"] || record.max_packet_size) || 0;
+            let ps_pair = parse_hysteria2_packet_size_value(record["packet-size"] || record.packet_size || record.packetSize);
+            if (ps_pair != null) {
+                if (min_ps <= 0) min_ps = ps_pair[0];
+                if (max_ps <= 0) max_ps = ps_pair[1];
+            }
+            if (obfs == "gecko" || min_ps > 0 || max_ps > 0)
+                outbound.obfs = build_hysteria2_obfs(true, obfs_password, min_ps, max_ps);
+            else {
+                outbound.obfs = { type: obfs };
+                if (obfs_password != "")
+                    outbound.obfs.password = obfs_password;
+            }
         }
+        let sp = parse_hysteria2_server_ports(as_string(record.ports || record.mport || ""));
+        if (sp != null)
+            outbound.server_ports = sp;
+        let hi = normalize_hysteria2_hop_interval(record["hop-interval"] || record.hop_interval);
+        if (hi != "")
+            outbound.hop_interval = hi;
+        let up = parse_hysteria2_mbps(record.up);
+        if (up != null)
+            outbound.up_mbps = up;
+        let down = parse_hysteria2_mbps(record.down);
+        if (down != null)
+            outbound.down_mbps = down;
+        return outbound;
+    }
+    if (proxy_type == "hysteria" || proxy_type == "hy") {
+        let outbound = { type: "hysteria", tag: name, server: server, server_port: port, tls: { enabled: true } };
+        if (options.sni != "")
+            outbound.tls.server_name = options.sni;
+        else
+            outbound.tls.server_name = server;
+        if (is_true(options.skip_verify))
+            outbound.tls.insecure = true;
+        if (options.alpn != "")
+            outbound.tls.alpn = split_csv(options.alpn);
+        let auth_str = as_string(record["auth-str"] || record.auth_str || record.auth || "");
+        if (auth_str != "")
+            outbound.auth_str = auth_str;
+        let obfs = as_string(record.obfs || "");
+        if (obfs != "")
+            outbound.obfs = obfs;
+        let up = parse_hysteria2_mbps(record.up);
+        if (up != null)
+            outbound.up_mbps = up;
+        let down = parse_hysteria2_mbps(record.down);
+        if (down != null)
+            outbound.down_mbps = down;
         return outbound;
     }
     if (proxy_type == "tuic") {
-        let uuid = as_string(record.uuid || "");
-        let password = as_string(record.password || "");
+        let uuid = as_string(record.uuid || record.token || "");
+        let password = as_string(record.password || record.token || "");
         if (uuid == "")
             return null;
         let outbound = { type: "tuic", tag: name, server: server, server_port: port, uuid: uuid, tls: { enabled: true } };
@@ -2970,18 +3168,95 @@ function parse_clash_record(record) {
             outbound.password = password;
         if (options.sni != "")
             outbound.tls.server_name = options.sni;
+        else
+            outbound.tls.server_name = server;
         if (is_true(options.skip_verify) || is_true(record["skip-cert-verify"]))
             outbound.tls.insecure = true;
         if (options.alpn != "")
             outbound.tls.alpn = split_csv(options.alpn);
-        let cc = as_string(record["congestion-control"] || record.congestion_control || "");
+        let cc = as_string(record["congestion-controller"] || record["congestion-control"] || record.congestion_control || "");
         if (cc != "")
             outbound.congestion_control = cc;
         let udp_mode = as_string(record["udp-relay-mode"] || record.udp_relay_mode || "");
         if (udp_mode != "")
             outbound.udp_relay_mode = udp_mode;
-        if (is_true(record["zero-rtt-握手"]) || is_true(record["zero_rtt_handshake"]))
+        if (is_true(record["reduce-rtt"]) || is_true(record["fast-open"]) || is_true(record["zero-rtt-握手"]) || is_true(record["zero_rtt_handshake"]))
             outbound.zero_rtt_handshake = true;
+        return outbound;
+    }
+    if (proxy_type == "wireguard" || proxy_type == "amneziawg" || proxy_type == "awg") {
+        let priv_key = trim(as_string(record["private-key"] || record.private_key || ""));
+        let pub_key = trim(as_string(record["public-key"] || record.public_key || ""));
+        if (priv_key == "" || pub_key == "")
+            return null;
+        let addrs = [];
+        for (let raw_ip in [ as_string(record.ip || ""), as_string(record.ipv6 || "") ]) {
+            if (trim(raw_ip) == "")
+                continue;
+            for (let part in split(raw_ip, ",")) {
+                part = trim(part);
+                if (part == "")
+                    continue;
+                if (index(part, "/") < 0)
+                    part = part + (index(part, ":") >= 0 ? "/128" : "/32");
+                push(addrs, part);
+            }
+        }
+        if (length(addrs) == 0)
+            push(addrs, "10.0.0.2/32");
+        let peer = {
+            address: server,
+            port: port,
+            public_key: pub_key,
+            allowed_ips: [ "0.0.0.0/0", "::/0" ]
+        };
+        let outbound = {
+            type: "wireguard",
+            tag: name,
+            server: server,
+            server_port: port,
+            private_key: priv_key,
+            peer_public_key: pub_key,
+            local_address: addrs,
+            address: addrs,
+            peers: [ peer ]
+        };
+        let psk = trim(as_string(record["pre-shared-key"] || record["preshared-key"] || record.pre_shared_key || ""));
+        if (psk != "") {
+            outbound.pre_shared_key = psk;
+            peer.pre_shared_key = psk;
+        }
+        let mtu_s = trim(as_string(record.mtu || ""));
+        if (is_integer_string(mtu_s) && int(mtu_s, 10) > 0)
+            outbound.mtu = int(mtu_s, 10);
+        let prefixes = [ "amnezia-wg-option.", "amnezia_wg_option.", "amnezia-wg-opts.", "amnezia_wg_opts.", "" ];
+        for (let ik in [ "jc", "jmin", "jmax", "s1", "s2", "s3", "s4" ]) {
+            for (let pref in prefixes) {
+                let v = trim(as_string(record[pref + ik] || ""));
+                if (is_integer_string(v)) {
+                    outbound[ik] = int(v, 10);
+                    break;
+                }
+            }
+        }
+        for (let hk in [ "h1", "h2", "h3", "h4" ]) {
+            for (let pref in prefixes) {
+                let v = trim(as_string(record[pref + hk] || ""));
+                if (v != "") {
+                    outbound[hk] = is_integer_string(v) ? int(v, 10) : v;
+                    break;
+                }
+            }
+        }
+        for (let sk in [ "i1", "i2", "i3", "i4", "i5" ]) {
+            for (let pref in prefixes) {
+                let v = trim(as_string(record[pref + sk] || ""));
+                if (v != "") {
+                    outbound[sk] = v;
+                    break;
+                }
+            }
+        }
         return outbound;
     }
     if (proxy_type == "socks5" || proxy_type == "socks") {
@@ -3022,7 +3297,7 @@ function parse_clash_record(record) {
         if (psk == "")
             return null;
         let version = int(record.version || 5);
-        if (version < 1 || version > 5)
+        if (version < 1 || version > 6)
             version = 5;
         let outbound = { type: "snell", tag: name, server: server, server_port: port, psk: psk, version: version };
         let obfs_mode = lc(as_string(record["obfs-opts.mode"] || record.obfs || ""));
@@ -3166,6 +3441,97 @@ function parse_clash_record(record) {
             outbound.ip = as_string(record.ip);
         if (as_string(record.ipv6 || "") != "")
             outbound.ipv6 = as_string(record.ipv6);
+        options.always = true;
+        add_clash_tls(outbound, options);
+        return outbound;
+    }
+    if (proxy_type == "sudoku") {
+        let key = as_string(record.key || record.password || "");
+        if (key == "")
+            return null;
+        let outbound = {
+            type: "sudoku",
+            tag: name,
+            server: server,
+            server_port: port,
+            key: key
+        };
+        let aead = as_string(record["aead-method"] || record.aead_method || record.aead || "");
+        if (aead != "")
+            outbound.aead = aead;
+        let pmin = as_string(record["padding-min"] || record.padding_min || "");
+        if (is_integer_string(pmin))
+            outbound.padding_min = int(pmin, 10);
+        let pmax = as_string(record["padding-max"] || record.padding_max || "");
+        if (is_integer_string(pmax))
+            outbound.padding_max = int(pmax, 10);
+        let tt = as_string(record["table-type"] || record.table_type || record.ascii || "");
+        if (tt != "")
+            outbound.table_type = tt;
+        let hm = record["http-mask"] != null ? record["http-mask"] : record.http_mask;
+        if (hm != null)
+            outbound.disable_http_mask = !is_true(hm);
+        let hmode = as_string(record["http-mask-mode"] || record.http_mask_mode || "");
+        let hhost = as_string(record["http-mask-host"] || record.http_mask_host || "");
+        let hpath = as_string(record["http-mask-path"] || record.http_mask_path || record.path || "");
+        if (hmode != "" || hhost != "" || hpath != "") {
+            let mask = {};
+            if (hmode != "") mask.mode = hmode;
+            if (hhost != "") mask.host = hhost;
+            if (hpath != "") mask.path_root = hpath;
+            outbound.http_mask = mask;
+        }
+        return outbound;
+    }
+    if (proxy_type == "naive") {
+        let outbound = {
+            type: "naive",
+            tag: name,
+            server: server,
+            server_port: port
+        };
+        if (as_string(record.username || "") != "")
+            outbound.username = as_string(record.username);
+        if (as_string(record.password || "") != "")
+            outbound.password = as_string(record.password);
+        if (is_true(record.quic))
+            outbound.quic = true;
+        if (is_true(record.uot) || is_true(record["udp-over-tcp"]) || is_true(record.udp_over_tcp))
+            outbound.udp_over_tcp = true;
+        options.always = true;
+        add_clash_tls(outbound, options);
+        return outbound;
+    }
+    if (proxy_type == "ssh") {
+        let outbound = {
+            type: "ssh",
+            tag: name,
+            server: server,
+            server_port: port,
+            user: as_string(record.username || record.user || "root")
+        };
+        if (as_string(record.password || "") != "")
+            outbound.password = as_string(record.password);
+        if (as_string(record["private-key"] || record.private_key || "") != "")
+            outbound.private_key = as_string(record["private-key"] || record.private_key);
+        if (as_string(record["client-version"] || record.client_version || "") != "")
+            outbound.client_version = as_string(record["client-version"] || record.client_version);
+        return outbound;
+    }
+    if (proxy_type == "openconnect" || proxy_type == "anyconnect") {
+        let outbound = {
+            type: "openconnect",
+            tag: name,
+            server: server,
+            server_port: port,
+            flavor: as_string(record.flavor || "anyconnect")
+        };
+        if (as_string(record.username || "") != "")
+            outbound.username = as_string(record.username);
+        if (as_string(record.password || "") != "")
+            outbound.password = as_string(record.password);
+        if (as_string(record.cookie || "") != "")
+            outbound.cookie = as_string(record.cookie);
         options.always = true;
         add_clash_tls(outbound, options);
         return outbound;
@@ -5407,19 +5773,11 @@ function core_subscription_cli_supported() {
 }
 
 function content_requires_ucode_normalizer(input_file, headers_file) {
-    let peer = extract_peer_params_from_headers_file(headers_file);
-    if (peer.public_key != "" || peer.endpoint != "")
-        return true;
-
     let data = read_file(input_file);
     if (data == null || data == "")
         return true;
 
-    if (happ.is_encrypted(data))
-        return true;
-    if (index(data, "vpn://") >= 0 || index(data, "amneziawg://") >= 0 || index(data, "awg://") >= 0 ||
-        index(data, "fptn:") >= 0 || index(data, "fptnb:") >= 0 || index(lc(data), "[interface]") >= 0 ||
-        index(data, "awg_config") >= 0 || index(data, "wg_config") >= 0)
+    if (index(data, "fptn:") >= 0 || index(data, "fptnb:") >= 0)
         return true;
 
     return false;
@@ -5432,7 +5790,7 @@ function try_normalize_with_core_cli(input_file, output_file, headers_file, forc
         return false;
 
     let core_tmp = temp_path("tachyon-subscription-core-parse");
-    let status = common.command_status_from_args([
+    let args = [
         core_subscription_bin_path(),
         "subscription",
         "parse",
@@ -5441,7 +5799,12 @@ function try_normalize_with_core_cli(input_file, output_file, headers_file, forc
         "outbounds",
         "-o",
         core_tmp
-    ]);
+    ];
+    if (as_string(headers_file) != "" && fs.stat(as_string(headers_file)) != null) {
+        push(args, "--headers");
+        push(args, as_string(headers_file));
+    }
+    let status = common.command_status_from_args(args);
     if (status != 0) {
         fs.unlink(core_tmp);
         return false;

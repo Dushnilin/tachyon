@@ -14210,8 +14210,18 @@ function createSectionContent(section) {
   o.value('midsld+2', _('midsld+2 (2 bytes after MidSLD)'));
   o.value('endhost-1', _('endhost-1 (1 byte before end of hostname)'));
   o.value('extlen', _('extlen (TLS extensions length field)'));
+  o.value(
+    'sni,endhost-1',
+    _('sni,endhost-1 (HostFakeSplit: hostname boundaries)'),
+  );
   o.value('1,midsld', _('1,midsld (Byte 1 + MidSLD)'));
   o.value('1,sniext+1,midsld', _('1,sniext+1,midsld (3-way compound split)'));
+  o.value(
+    '1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1',
+    _(
+      '1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1 (7-point deep split)',
+    ),
+  );
   o.value('1', _('1 (Byte 1 after header)'));
   o.value('2', _('2 (Byte 2)'));
   o.value('3', _('3 (Byte 3)'));
@@ -14253,7 +14263,9 @@ function createSectionContent(section) {
   o.modalonly = true;
   o.rmempty = true;
   o.placeholder = 'ya.ru';
-  o.value('', _('Auto (Clone target SNI / www.google.com)'));
+  o.value('', _('Auto (Clone target SNI / Whitelist pool)'));
+  o.value('padencap', _('padencap (max.ru + TLS Padding 1:1 exact length)'));
+  o.value('rndsni', _('rndsni (Random same-length ASCII SNI)'));
   o.value('ya.ru', 'ya.ru (Яндекс — Белый список РФ)');
   o.value('vk.com', 'vk.com (ВКонтакте — Белый список РФ)');
   o.value('max.ru', 'max.ru (MAX — Белый список РФ)');
@@ -14269,6 +14281,7 @@ function createSectionContent(section) {
   o.value('pochta.ru', 'pochta.ru (Почта России — Белый список РФ)');
   o.value('2gis.ru', '2gis.ru (2ГИС — Белый список РФ)');
   o.value('mail.ru', 'mail.ru (Mail.ru — Белый список РФ)');
+  o.value('fonts.google.com', 'fonts.google.com (Google Fonts)');
   o.value('www.google.com', 'www.google.com (Google Global)');
   o.depends({ action: 'desync', desync_preset: 'auto' });
   o.depends({ action: 'desync', desync_preset: 'custom' });

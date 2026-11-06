@@ -1051,14 +1051,14 @@ export const WIZARD_QUICK_PRESETS: WizardQuickPreset[] = [
   },
   {
     id: 'dpi_desync_no_vpn',
-    titleRu: 'Без подписки: Встроенный обход DPI (YouTube + Discord)',
-    titleEn: 'No Subscription: Built-in DPI Desync (YouTube + Discord)',
+    titleRu: 'Без подписки: Встроенный десинк пакетов (YouTube + Discord)',
+    titleEn: 'No Subscription: Built-in Packet Desync (YouTube + Discord)',
     badgeRu: 'БЕЗ ПРОКСИ',
     badgeEn: 'NO VPN NEEDED',
     descRu:
-      'Работает без покупки прокси и подписок! Запускает нативный модификатор пакетов Tachyon Core Desync (Fake + Split) для разблокировки YouTube и Discord напрямую.',
+      'Работает без покупки прокси и подписок! Запускает нативный адаптивный модификатор пакетов Tachyon Core Desync (Adaptive 2.0) для прямой доставки трафика YouTube и Discord.',
     descEn:
-      'Works without any proxy subscription! Enables built-in Tachyon Core Desync (Fake + Split) to unblock YouTube and Discord directly.',
+      'Works without any proxy subscription! Enables built-in adaptive Tachyon Core Desync (Adaptive 2.0) for direct YouTube and Discord traffic delivery.',
     requiresConnection: false,
     defaultSectionName: 'Youtube',
     presetIds: ['youtube', 'discord'],
@@ -1334,11 +1334,10 @@ export function openConnectionWizardModal(
   let desyncPresetKey = 'auto';
   let desyncMode = 'fake_disorder';
   let desyncSplitPos = 'midsld';
-  let desyncFakeTtl = '6';
-  let desyncFakeSni = 'www.google.com';
+  let desyncFakeTtl = '';
+  let desyncFakeSni = '';
   const desyncUdpFake = true;
-  let desyncPreset =
-    '--dpi-desync=fake,multidisorder --dpi-desync-split-pos=1,midsld --dpi-desync-fooling=badsum';
+  let desyncPreset = '';
   let nfqws2Opt = ZAPRET2_DEFAULT_NFQWS2_OPT;
   let nfqwsOpt = ZAPRET_DEFAULT_NFQWS_OPT;
   let directNfqws = true;
@@ -1571,7 +1570,7 @@ export function openConnectionWizardModal(
     if (!preset.requiresConnection && !String(rawInput || '').trim()) {
       outboundMethod = 'desync';
       dpiEngineType = 'desync';
-      desyncPresetKey = 'fake_split';
+      desyncPresetKey = 'auto';
       if (!connName.trim()) {
         connName = 'Tachyon Desync';
       }
@@ -2612,12 +2611,20 @@ export function openConnectionWizardModal(
                       ['endhost-1', 'endhost-1 (перед концом домена)'],
                       ['extlen', 'extlen (поле длины расширений TLS)'],
                       [
+                        'sni,endhost-1',
+                        'sni,endhost-1 (HostFakeSplit: границы хоста)',
+                      ],
+                      [
                         '1,midsld',
                         '1,midsld (мульти-разрез: байт 1 + середина домена)',
                       ],
                       [
                         '1,sniext+1,midsld',
                         '1,sniext+1,midsld (3 разреза: байт 1 + SNI ext + середина)',
+                      ],
+                      [
+                        '1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1',
+                        '7-точечный разрез (1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1)',
                       ],
                       ['1', 'Байт 1'],
                       ['2', 'Байт 2'],
@@ -2641,8 +2648,22 @@ export function openConnectionWizardModal(
             [
               '',
               tr(
-                'Авто (клонировать SNI / www.google.com)',
-                'Auto (clone SNI / www.google.com)',
+                'Авто (пул доменов / клонирование ClientHello)',
+                'Auto (domain pool / ClientHello clone)',
+              ),
+            ],
+            [
+              'padencap',
+              tr(
+                'padencap (max.ru + TLS Padding 1:1 по длине)',
+                'padencap (max.ru + exact-length TLS Padding)',
+              ),
+            ],
+            [
+              'rndsni',
+              tr(
+                'rndsni (случайный SNI той же длины)',
+                'rndsni (random same-length SNI)',
               ),
             ],
             ['ya.ru', 'ya.ru (Яндекс — Белый список РФ)'],
@@ -2663,6 +2684,7 @@ export function openConnectionWizardModal(
             ['pochta.ru', 'pochta.ru (Почта России — Белый список РФ)'],
             ['2gis.ru', '2gis.ru (2ГИС — Белый список РФ)'],
             ['mail.ru', 'mail.ru (Mail.ru — Белый список РФ)'],
+            ['fonts.google.com', 'fonts.google.com (Google Fonts)'],
             ['www.google.com', 'www.google.com (Google Global)'],
           ];
           formFields.push(
@@ -2676,7 +2698,7 @@ export function openConnectionWizardModal(
                 E('input', {
                   type: 'number',
                   class: 'cbi-input-text tachyon-wizard__input',
-                  placeholder: '4',
+                  placeholder: 'Авто (калибровка по хопам)',
                   value: desyncFakeTtl,
                   input: (ev: Event) => {
                     desyncFakeTtl = (ev.target as HTMLInputElement).value;
@@ -2716,7 +2738,7 @@ export function openConnectionWizardModal(
                 E('input', {
                   type: 'text',
                   class: 'cbi-input-text tachyon-wizard__input',
-                  placeholder: 'ya.ru, vk.com, max.ru...',
+                  placeholder: 'Авто (ya.ru, max.ru, padencap, rndsni...)',
                   value: desyncFakeSni,
                   input: (ev: Event) => {
                     desyncFakeSni = (ev.target as HTMLInputElement).value;
@@ -2724,25 +2746,31 @@ export function openConnectionWizardModal(
                 } as any),
               ]),
             ]),
-            E('div', { class: 'tachyon-wizard__field' }, [
-              E(
-                'label',
-                { class: 'tachyon-wizard__label' },
-                tr(
-                  'Дополнительная CLI-строка (необязательно)',
-                  'Extra CLI Strategy String (optional)',
-                ),
-              ),
-              E('input', {
-                type: 'text',
-                class: 'cbi-input-text tachyon-wizard__input',
-                value: desyncPreset,
-                input: (ev: Event) => {
-                  desyncPreset = (ev.target as HTMLInputElement).value;
-                },
-              } as any),
-            ]),
           );
+          if (desyncPresetKey === 'custom') {
+            formFields.push(
+              E('div', { class: 'tachyon-wizard__field' }, [
+                E(
+                  'label',
+                  { class: 'tachyon-wizard__label' },
+                  tr(
+                    'Дополнительная CLI-строка (необязательно)',
+                    'Extra CLI Strategy String (optional)',
+                  ),
+                ),
+                E('input', {
+                  type: 'text',
+                  class: 'cbi-input-text tachyon-wizard__input',
+                  placeholder:
+                    'mode=fake_disorder split_pos=1,sniext+1,midsld fooling=md5_badack',
+                  value: desyncPreset,
+                  input: (ev: Event) => {
+                    desyncPreset = (ev.target as HTMLInputElement).value;
+                  },
+                } as any),
+              ]),
+            );
+          }
         }
       } else if (dpiEngineType === 'zapret2') {
         formFields.push(
@@ -6151,7 +6179,7 @@ export function openConnectionWizardModal(
           TACHYON_UCI_PACKAGE,
           srcId,
           'desync_preset',
-          desyncPresetKey || 'fake_split',
+          desyncPresetKey || 'auto',
         );
         if (desyncPresetKey === 'custom' || desyncPresetKey === 'auto') {
           if (desyncPresetKey === 'custom') {
@@ -6162,6 +6190,14 @@ export function openConnectionWizardModal(
               'desync_split_pos',
               desyncSplitPos,
             );
+            if (desyncPreset.trim()) {
+              uciObj.set(
+                TACHYON_UCI_PACKAGE,
+                srcId,
+                'desync_opts',
+                desyncPreset.trim(),
+              );
+            }
           }
           if (desyncFakeTtl.trim()) {
             uciObj.set(
@@ -6185,14 +6221,6 @@ export function openConnectionWizardModal(
             'desync_udp_fake',
             desyncUdpFake ? '1' : '0',
           );
-          if (desyncPreset.trim()) {
-            uciObj.set(
-              TACHYON_UCI_PACKAGE,
-              srcId,
-              'desync_opts',
-              desyncPreset.trim(),
-            );
-          }
         }
       } else if (dpiEngineType === 'zapret2') {
         uciObj.set(
