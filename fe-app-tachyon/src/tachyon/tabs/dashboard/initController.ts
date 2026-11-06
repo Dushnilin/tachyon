@@ -1055,6 +1055,55 @@ async function handleChooseOutbound(
   }
 }
 
+type DashboardSectionItem = StoreType['sectionsWidget']['data'][number];
+
+function serializeSectionLatencyTag(
+  section: DashboardSectionItem,
+  tag: string[],
+): string {
+  const hasGroupChildren = Boolean(
+    section.sectionName &&
+      section.outbounds?.some(
+        (o) =>
+          Boolean(o.urlTestInfo?.outbounds?.length) ||
+          Boolean(o.priorityInfo?.outbounds?.length),
+      ),
+  );
+  if ((tag.length > 40 || hasGroupChildren) && section.sectionName) {
+    return `@section:${section.sectionName}`;
+  }
+  return JSON.stringify(tag);
+}
+
+function expandSectionTestableTags(
+  section: DashboardSectionItem | undefined,
+  baseTags: string[],
+): string[] {
+  if (!section?.outbounds?.length) {
+    return baseTags;
+  }
+  const seen = new Set<string>(baseTags);
+  const result = [...baseTags];
+  for (const outbound of section.outbounds) {
+    if (baseTags.length > 0 && !seen.has(outbound.code)) {
+      continue;
+    }
+    for (const member of outbound.urlTestInfo?.outbounds || []) {
+      if (member?.code && !seen.has(member.code)) {
+        seen.add(member.code);
+        result.push(member.code);
+      }
+    }
+    for (const member of outbound.priorityInfo?.outbounds || []) {
+      if (member?.code && !seen.has(member.code)) {
+        seen.add(member.code);
+        result.push(member.code);
+      }
+    }
+  }
+  return result;
+}
+
 function getInitialLatencyProgress(
   latencyType: Tachyon.LatencyActionState['latency_type'],
   tag: string,
@@ -1069,8 +1118,12 @@ function getInitialLatencyProgress(
     const section = store
       .get()
       .sectionsWidget.data.find((s) => s.sectionName === secName);
-    const total =
-      section?.latencyTestCodes?.length || section?.outbounds?.length || 0;
+    const baseTags = section?.latencyTestCodes?.length
+      ? section.latencyTestCodes
+      : (section?.outbounds || [])
+          .filter((o) => !isNonTestableOutboundType(o.type))
+          .map((o) => o.code);
+    const total = expandSectionTestableTags(section, baseTags).length;
     return total > 0 ? { completed: 0, total, failed: 0 } : undefined;
   }
 
@@ -1080,9 +1133,15 @@ function getInitialLatencyProgress(
       return undefined;
     }
 
-    const total = tags.filter(
-      (item) => typeof item === 'string' && item.length > 0,
-    ).length;
+    const validTags = tags.filter(
+      (item): item is string => typeof item === 'string' && item.length > 0,
+    );
+    const section = sectionName
+      ? store
+          .get()
+          .sectionsWidget.data.find((s) => s.sectionName === sectionName)
+      : undefined;
+    const total = expandSectionTestableTags(section, validTags).length;
 
     return total > 0 ? { completed: 0, total, failed: 0 } : undefined;
   } catch {
@@ -1105,21 +1164,30 @@ export function extractTestedTags(
         return [];
       }
       if (section?.latencyTestCodes?.length) {
-        return [...section.latencyTestCodes];
+        return expandSectionTestableTags(section, [
+          ...section.latencyTestCodes,
+        ]);
       }
       if (section?.outbounds) {
-        return section.outbounds
+        const base = section.outbounds
           .filter((o) => !isNonTestableOutboundType(o.type))
           .map((o) => o.code);
+        return expandSectionTestableTags(section, base);
       }
       return [];
     }
     try {
       const parsed = JSON.parse(tag);
       if (Array.isArray(parsed)) {
-        return parsed.filter(
+        const validTags = parsed.filter(
           (item): item is string => typeof item === 'string' && item.length > 0,
         );
+        const section = sectionName
+          ? store
+              .get()
+              .sectionsWidget.data.find((s) => s.sectionName === sectionName)
+          : undefined;
+        return expandSectionTestableTags(section, validTags);
       }
     } catch {
       return [];
@@ -1134,9 +1202,10 @@ export function extractTestedTags(
       return [];
     }
     if (section?.outbounds) {
-      return section.outbounds
+      const base = section.outbounds
         .filter((o) => !isNonTestableOutboundType(o.type))
         .map((o) => o.code);
+      return expandSectionTestableTags(section, base);
     }
     return [];
   }
@@ -1186,18 +1255,38 @@ export async function applyTestedLatenciesResults(
           prevTime == null ||
           (prevTime != null && currentTime !== prevTime));
 
+      const childTags: string[] = [];
+      if (typeof proxy?.now === 'string' && proxy.now.trim()) {
+        childTags.push(proxy.now.trim());
+      }
+      if (Array.isArray(proxy?.all)) {
+        for (const c of proxy.all) {
+          if (typeof c === 'string' && c.trim()) childTags.push(c.trim());
+        }
+      }
+      for (const cTag of childTags) {
+        const cLatest = proxies[cTag]?.history?.[0];
+        const cDelay = typeof cLatest?.delay === 'number' ? cLatest.delay : 0;
+        const cTime = typeof cLatest?.time === 'string' ? cLatest.time : '';
+        const cPrevTime = beforeTimes?.get(cTag);
+        const cTs = cTime ? Date.parse(cTime) : 0;
+        const cFresh =
+          testStartedAt > 0 &&
+          Number.isFinite(cTs) &&
+          cTs >= testStartedAt - 15000;
+        const cIsNew =
+          Boolean(cTime) &&
+          (cFresh ||
+            cPrevTime == null ||
+            (cPrevTime != null && cTime !== cPrevTime));
+        if (cIsNew && cDelay > 0) {
+          customProxyLatencies.set(cTag, cDelay);
+        }
+      }
+
       if (isNewMeasurement && delay > 0) {
         customProxyLatencies.set(tag, delay);
       } else {
-        const childTags: string[] = [];
-        if (typeof proxy?.now === 'string' && proxy.now.trim()) {
-          childTags.push(proxy.now.trim());
-        }
-        if (Array.isArray(proxy?.all)) {
-          for (const c of proxy.all) {
-            if (typeof c === 'string' && c.trim()) childTags.push(c.trim());
-          }
-        }
         let derivedDelay = 0;
         for (const cTag of childTags) {
           const cCustom = customProxyLatencies.get(cTag);
@@ -1408,7 +1497,7 @@ async function handleTestAllSections() {
 
   try {
     const sectionsWidget = store.get().sectionsWidget;
-    const tasks: Promise<void>[] = [];
+    const taskFns: Array<() => Promise<void>> = [];
     for (const section of sectionsWidget.data) {
       if (!section.outbounds || section.outbounds.length === 0) {
         continue;
@@ -1431,11 +1520,8 @@ async function handleTestAllSections() {
           ? section.latencyTestCodes
           : section.latencyTestCode || section.code;
         if (Array.isArray(tag)) {
-          const serializedTag =
-            tag.length > 40
-              ? `@section:${section.sectionName}`
-              : JSON.stringify(tag);
-          tasks.push(
+          const serializedTag = serializeSectionLatencyTag(section, tag);
+          taskFns.push(() =>
             handleTestLatency(
               'proxy_list',
               section.sectionName,
@@ -1444,7 +1530,7 @@ async function handleTestAllSections() {
             ),
           );
         } else {
-          tasks.push(
+          taskFns.push(() =>
             handleTestLatency(
               'group',
               section.sectionName,
@@ -1454,7 +1540,7 @@ async function handleTestAllSections() {
           );
         }
       } else {
-        tasks.push(
+        taskFns.push(() =>
           handleTestLatency(
             'proxy',
             section.sectionName,
@@ -1464,8 +1550,20 @@ async function handleTestAllSections() {
         );
       }
     }
-    if (tasks.length > 0) {
-      await Promise.all(tasks);
+    if (taskFns.length > 0) {
+      const maxConcurrency = 2;
+      let cursor = 0;
+      const runWorker = async () => {
+        while (cursor < taskFns.length) {
+          const idx = cursor++;
+          await taskFns[idx]();
+        }
+      };
+      await Promise.all(
+        Array.from({ length: Math.min(maxConcurrency, taskFns.length) }, () =>
+          runWorker(),
+        ),
+      );
     }
   } finally {
     isTestingAllSections = false;
@@ -3700,10 +3798,10 @@ function renderSectionInspectorModalContent(
                   ? section.latencyTestCodes
                   : section.latencyTestCode || section.code;
                 if (Array.isArray(tag)) {
-                  const serializedTag =
-                    tag.length > 40
-                      ? `@section:${section.sectionName}`
-                      : JSON.stringify(tag);
+                  const serializedTag = serializeSectionLatencyTag(
+                    section,
+                    tag,
+                  );
                   void handleTestLatency(
                     'proxy_list',
                     section.sectionName,
@@ -3806,10 +3904,7 @@ function renderSectionInspectorModalContent(
             },
             onTestLatency: (tag: string | string[]) => {
               if (Array.isArray(tag)) {
-                const serializedTag =
-                  tag.length > 40
-                    ? `@section:${section.sectionName}`
-                    : JSON.stringify(tag);
+                const serializedTag = serializeSectionLatencyTag(section, tag);
                 void handleTestLatency(
                   'proxy_list',
                   section.sectionName,
@@ -4060,10 +4155,10 @@ function renderSectionAccordionBody(
                     ? section.latencyTestCodes
                     : section.latencyTestCode || section.code;
                   if (Array.isArray(tag)) {
-                    const serializedTag =
-                      tag.length > 40
-                        ? `@section:${section.sectionName}`
-                        : JSON.stringify(tag);
+                    const serializedTag = serializeSectionLatencyTag(
+                      section,
+                      tag,
+                    );
                     void handleTestLatency(
                       'proxy_list',
                       section.sectionName,
@@ -4288,10 +4383,7 @@ function renderSectionAccordionBody(
             },
             onTestLatency: (tag: string | string[]) => {
               if (Array.isArray(tag)) {
-                const serializedTag =
-                  tag.length > 40
-                    ? `@section:${section.sectionName}`
-                    : JSON.stringify(tag);
+                const serializedTag = serializeSectionLatencyTag(section, tag);
                 void handleTestLatency(
                   'proxy_list',
                   section.sectionName,
@@ -4514,10 +4606,7 @@ async function renderSectionsWidget(forceImmediate = false) {
           ? section.latencyTestCodes
           : section.latencyTestCode || section.code;
         if (Array.isArray(tag)) {
-          const serializedTag =
-            tag.length > 40
-              ? `@section:${section.sectionName}`
-              : JSON.stringify(tag);
+          const serializedTag = serializeSectionLatencyTag(section, tag);
           void handleTestLatency(
             'proxy_list',
             section.sectionName,

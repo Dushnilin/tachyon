@@ -915,30 +915,70 @@ function createSnapshotsWidget() {
       });
   }
 
+  function readExportFileChunked() {
+    let acc = "";
+    const step = 32768;
+    function nextChunk(offset) {
+      return execSnapshotJson([
+        "snapshot_export",
+        "read-chunk:" + String(offset) + ":" + String(step),
+      ]).then(function (res) {
+        const piece = typeof res.chunk === "string" ? res.chunk : "";
+        acc += piece;
+        if (res.eof || !piece) {
+          const parsed = JSON.parse(acc.trim());
+          const prof = parsed && parsed.profile ? parsed.profile : parsed;
+          if (!prof || prof.format !== "tachyon-profile-v1") {
+            throw new Error("invalid_export_profile");
+          }
+          return { success: true, profile: prof };
+        }
+        return nextChunk(offset + piece.length);
+      });
+    }
+    return nextChunk(0);
+  }
+
+  function readExportFallbackFile(err) {
+    return fs
+      .read("/tmp/tachyon-snapshot-export.json")
+      .catch(function () {
+        return fs.read("/var/run/tachyon/ui-state/snapshot-export.json");
+      })
+      .catch(function () {
+        return typeof fs.read_direct === "function"
+          ? fs.read_direct("/tmp/tachyon-snapshot-export.json", "text")
+          : Promise.reject(err);
+      })
+      .then(function (raw) {
+        const parsed =
+          raw && typeof raw === "object"
+            ? raw
+            : JSON.parse(String(raw || "").trim());
+        const prof = parsed && parsed.profile ? parsed.profile : parsed;
+        if (!prof || prof.format !== "tachyon-profile-v1") {
+          throw err;
+        }
+        return { success: true, profile: prof };
+      })
+      .catch(function () {
+        return readExportFileChunked();
+      });
+  }
+
   function performExport(snap) {
     execSnapshotJson(["snapshot_export", snap.file])
+      .then(function (data) {
+        if (
+          data &&
+          (data.chunked_export || (data.profile && data.profile.chunked_export))
+        ) {
+          return readExportFallbackFile(new Error("chunked_export"));
+        }
+        return data;
+      })
       .catch(function (err) {
-        return fs
-          .read("/tmp/tachyon-snapshot-export.json")
-          .catch(function () {
-            return typeof fs.read_direct === "function"
-              ? fs.read_direct("/tmp/tachyon-snapshot-export.json", "text")
-              : Promise.reject(err);
-          })
-          .then(function (raw) {
-            const parsed =
-              raw && typeof raw === "object"
-                ? raw
-                : JSON.parse(String(raw || "").trim());
-            const prof = parsed && parsed.profile ? parsed.profile : parsed;
-            if (!prof || prof.format !== "tachyon-profile-v1") {
-              throw err;
-            }
-            return { success: true, profile: prof };
-          })
-          .catch(function () {
-            throw err;
-          });
+        return readExportFallbackFile(err);
       })
       .then(function (data) {
         const payload = JSON.stringify(data.profile || data, null, 2);
@@ -1256,11 +1296,15 @@ function createSnapshotsWidget() {
   });
 
   btnImport.addEventListener("click", function () {
+    let loadedFileText = "";
     const textarea = E("textarea", {
       class: "cbi-input-textarea",
       style:
         "width:100%;min-height:140px;font-family:monospace;font-size:12px;",
       placeholder: '{"format": "tachyon-profile-v1", ...}',
+    });
+    textarea.addEventListener("input", function () {
+      loadedFileText = "";
     });
     const fileInput = E("input", {
       type: "file",
@@ -1272,10 +1316,56 @@ function createSnapshotsWidget() {
       if (!f) return;
       const reader = new FileReader();
       reader.onload = function (ev) {
-        textarea.value = String((ev && ev.target && ev.target.result) || "");
+        const text = String((ev && ev.target && ev.target.result) || "");
+        loadedFileText = text;
+        textarea.value =
+          text.length > 65536
+            ? text.slice(0, 4096) +
+              "\n... (" +
+              Math.round(text.length / 1024) +
+              " KB)"
+            : text;
       };
       reader.readAsText(f);
     });
+
+    function bytesToBase64(bytes) {
+      let binary = "";
+      for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      return btoa(binary);
+    }
+
+    function uploadImportChunks(rawText, tmpImportPath) {
+      const bytes =
+        typeof TextEncoder !== "undefined"
+          ? new TextEncoder().encode(rawText)
+          : new Uint8Array(
+              Array.from(unescape(encodeURIComponent(rawText))).map((ch) =>
+                ch.charCodeAt(0),
+              ),
+            );
+      const chunkByteSize = 24576; // Multiple of 3 bytes -> 32768 base64 chars
+      return execSnapshot(["snapshot_import", "chunk-init"])
+        .then(function () {
+          let chain = Promise.resolve();
+          for (let offset = 0; offset < bytes.length; offset += chunkByteSize) {
+            const slice = bytes.subarray(
+              offset,
+              Math.min(bytes.length, offset + chunkByteSize),
+            );
+            const b64 = bytesToBase64(slice);
+            chain = chain.then(function () {
+              return execSnapshot(["snapshot_import", "chunk-append:" + b64]);
+            });
+          }
+          return chain;
+        })
+        .then(function () {
+          return execSnapshot(["snapshot_import", tmpImportPath]);
+        });
+    }
 
     ui.showModal(
       _("Import Snapshot Profile"),
@@ -1307,7 +1397,7 @@ function createSnapshotsWidget() {
               class: "btn cbi-button cbi-button-positive",
               type: "button",
               click: function () {
-                const raw = (textarea.value || "").trim();
+                const raw = (loadedFileText || textarea.value || "").trim();
                 if (!raw) return;
                 ui.hideModal();
                 const tmpImportPath = "/tmp/tachyon-snapshot-import.json";
@@ -1330,16 +1420,20 @@ function createSnapshotsWidget() {
                   } catch (_e) {}
                   return text;
                 };
-                fs.write(tmpImportPath, raw)
+                uploadImportChunks(raw, tmpImportPath)
                   .catch(function () {
-                    const slim = buildSlimPayload(raw);
-                    if (slim !== raw) {
-                      return fs.write(tmpImportPath, slim);
-                    }
-                    throw new Error("write_failed");
-                  })
-                  .then(function () {
-                    return execSnapshot(["snapshot_import", tmpImportPath]);
+                    return fs
+                      .write(tmpImportPath, raw)
+                      .catch(function () {
+                        const slim = buildSlimPayload(raw);
+                        if (slim !== raw) {
+                          return fs.write(tmpImportPath, slim);
+                        }
+                        throw new Error("write_failed");
+                      })
+                      .then(function () {
+                        return execSnapshot(["snapshot_import", tmpImportPath]);
+                      });
                   })
                   .catch(function () {
                     const slim = buildSlimPayload(raw);
@@ -4268,6 +4362,9 @@ function createSettingsContent(section, capabilities) {
   resetOpt.cfgvalue = function () {
     return createResetSettingsWidget();
   };
+  resetOpt.renderWidget = function () {
+    return createResetSettingsWidget();
+  };
 
   const snapshotsOpt = section.taboption(
     "advanced",
@@ -4280,6 +4377,9 @@ function createSettingsContent(section, capabilities) {
   );
   snapshotsOpt.rawhtml = true;
   snapshotsOpt.cfgvalue = function () {
+    return createSnapshotsWidget();
+  };
+  snapshotsOpt.renderWidget = function () {
     return createSnapshotsWidget();
   };
 

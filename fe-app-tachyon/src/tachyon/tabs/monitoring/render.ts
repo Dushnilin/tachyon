@@ -35,6 +35,44 @@ export function render() {
             E(
               'div',
               {
+                id: 'monitoring-datasource-filters',
+                class: 'tachyon_monitoring-page__tabs',
+                'aria-label': _('Data source'),
+              },
+              [
+                E(
+                  'button',
+                  {
+                    id: 'monitoring-datasource-all',
+                    class:
+                      'btn cbi-button tachyon_monitoring-page__tab tachyon_monitoring-page__tab--active',
+                    type: 'button',
+                  },
+                  _('All'),
+                ),
+                E(
+                  'button',
+                  {
+                    id: 'monitoring-datasource-core',
+                    class: 'btn cbi-button tachyon_monitoring-page__tab',
+                    type: 'button',
+                  },
+                  _('Tachyon Core'),
+                ),
+                E(
+                  'button',
+                  {
+                    id: 'monitoring-datasource-conntrack',
+                    class: 'btn cbi-button tachyon_monitoring-page__tab',
+                    type: 'button',
+                  },
+                  _('Router Conntrack'),
+                ),
+              ],
+            ),
+            E(
+              'div',
+              {
                 id: 'monitoring-device-filter-wrap',
                 class: 'tachyon_monitoring-page__multiselect',
               },

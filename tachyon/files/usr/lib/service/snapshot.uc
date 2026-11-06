@@ -55,8 +55,31 @@ const SNAPSHOT_EXCLUDED_DIRS = [
     "installer-backups",
     "subscription-cache",
     "component-backups",
-    "hosts-lists"
+    "hosts-lists",
+    "state",
+    "tailscale",
+    "smart-detect-exclusions"
 ];
+
+const SNAPSHOT_EXCLUDED_FILES = [
+    "fuzzer_history.json",
+    "fuzzer_patterns.json",
+    "rag_index.json",
+    "smart_detect_seen.json",
+    "smart_detect_plus_seen.json",
+    "emergency_state.json"
+];
+
+function is_excluded_data_entry(entry_name) {
+    entry_name = as_string(entry_name);
+    for (let d in SNAPSHOT_EXCLUDED_DIRS)
+        if (entry_name == d)
+            return true;
+    for (let f in SNAPSHOT_EXCLUDED_FILES)
+        if (entry_name == f)
+            return true;
+    return false;
+}
 
 function strip_excluded_dirs(data_dir) {
     if (fs.stat(data_dir) == null)
@@ -65,6 +88,11 @@ function strip_excluded_dirs(data_dir) {
         let p = data_dir + "/" + dir;
         if (fs.stat(p) != null)
             command_status(command_from_args([ "rm", "-rf", p ]));
+    }
+    for (let f in SNAPSHOT_EXCLUDED_FILES) {
+        let p = data_dir + "/" + f;
+        if (fs.stat(p) != null)
+            command_status(command_from_args([ "rm", "-f", p ]));
     }
 }
 
@@ -77,6 +105,30 @@ function preserve_excluded_dirs(src_data_dir, dst_data_dir) {
         if (fs.stat(src) != null && fs.stat(dst) == null)
             command_status(command_from_args([ "cp", "-a", src, dst ]));
     }
+    for (let f in SNAPSHOT_EXCLUDED_FILES) {
+        let src = src_data_dir + "/" + f;
+        let dst = dst_data_dir + "/" + f;
+        if (fs.stat(src) != null && fs.stat(dst) == null)
+            command_status(command_from_args([ "cp", "-a", src, dst ]));
+    }
+}
+
+function stage_filtered_data_dir(src_dir, dst_dir) {
+    if (!command_success_from_args([ "mkdir", "-p", dst_dir ]))
+        return false;
+    if (fs.stat(src_dir) == null)
+        return true;
+    let items = fs.lsdir(src_dir);
+    if (type(items) != "array")
+        return true;
+    for (let item in items) {
+        item = as_string(item);
+        if (item == "" || item == "." || item == ".." || is_excluded_data_entry(item))
+            continue;
+        if (!command_success_from_args([ "cp", "-a", src_dir + "/" + item, dst_dir + "/" + item ]))
+            return false;
+    }
+    return true;
 }
 
 function snapshot_stamp() {
@@ -141,6 +193,51 @@ function prune_snapshots() {
     }
 }
 
+function compact_bloated_snapshot_if_needed(archive_path) {
+    let st = fs.stat(archive_path);
+    if (st == null || int(st.size || 0) <= 524288)
+        return;
+    let members_out = command_output_from_args([ "tar", "-tzf", archive_path ]);
+    let has_excluded = false;
+    let members = [];
+    let data_prefix = CONFIG_NAME + "/";
+    for (let line in split(members_out, "\n")) {
+        line = trim(line);
+        if (line == "")
+            continue;
+        push(members, line);
+        let clean_m = replace(line, /^\.\//, "");
+        if (substr(clean_m, 0, length(data_prefix)) == data_prefix) {
+            let rest = substr(clean_m, length(data_prefix));
+            let slash_idx = index(rest, "/");
+            let top_entry = slash_idx >= 0 ? substr(rest, 0, slash_idx) : rest;
+            if (is_excluded_data_entry(top_entry))
+                has_excluded = true;
+        }
+    }
+    if (!has_excluded || !backup_archive_safe(members).ok)
+        return;
+    let stage = trim(command_output_from_args([ "mktemp", "-d", "/tmp/tachyon-snapshot-compact.XXXXXX" ]));
+    if (stage == "")
+        return;
+    if (command_success_from_args([ "tar", "-xzf", archive_path, "-C", stage ])) {
+        strip_excluded_dirs(stage + "/" + CONFIG_NAME);
+        let tmp_archive = archive_path + ".compact";
+        let tar_args = [ "tar", "-czf", tmp_archive, "-C", stage ];
+        if (fs.stat(stage + "/config/" + CONFIG_NAME) != null)
+            push(tar_args, "config/" + CONFIG_NAME);
+        if (fs.stat(stage + "/" + CONFIG_NAME) != null)
+            push(tar_args, CONFIG_NAME);
+        if (length(tar_args) > 5 && command_success_from_args(tar_args)) {
+            command_success_from_args([ "chmod", "600", tmp_archive ]);
+            command_status(command_from_args([ "mv", "-f", tmp_archive, archive_path ]));
+        } else {
+            command_success_from_args([ "rm", "-f", tmp_archive ]);
+        }
+    }
+    command_status(command_from_args([ "rm", "-rf", stage ]));
+}
+
 function snapshot_save(name) {
     let safe = snapshot_name_safe(name);
     if (safe == null)
@@ -162,14 +259,9 @@ function snapshot_save(name) {
         return fail("unable to stage snapshot config");
     }
 
-    if (fs.stat(PERSISTENT_DIR) != null) {
-        if (!command_success_from_args([ "cp", "-a", PERSISTENT_DIR, staged_data_dir ])) {
-            command_status(command_from_args([ "rm", "-rf", stage ]));
-            return fail("unable to stage snapshot data");
-        }
-        strip_excluded_dirs(staged_data_dir);
-    } else {
-        command_success_from_args([ "mkdir", "-p", staged_data_dir ]);
+    if (!stage_filtered_data_dir(PERSISTENT_DIR, staged_data_dir)) {
+        command_status(command_from_args([ "rm", "-rf", stage ]));
+        return fail("unable to stage snapshot data");
     }
 
     let file = SNAPSHOTS_DIR + "/" + safe + "-" + snapshot_stamp() + ".tar.gz";
@@ -197,6 +289,7 @@ function snapshot_list() {
         if (line == "" || !snapshot_file_valid(line))
             continue;
         let full = SNAPSHOTS_DIR + "/" + line;
+        compact_bloated_snapshot_if_needed(full);
         let st = fs.stat(full);
         if (st == null)
             continue;
@@ -469,11 +562,40 @@ function snapshot_diff(file) {
 }
 
 function snapshot_export(file) {
+    let raw_arg = as_string(file || "");
+    if (substr(raw_arg, 0, 2) == "--")
+        raw_arg = substr(raw_arg, 2);
+    if (substr(raw_arg, 0, 11) == "read-chunk:") {
+        let rest = substr(raw_arg, 11);
+        let parts = split(rest, ":");
+        let offset = int(parts[0] || 0);
+        let len = int(parts[1] || 32768);
+        if (offset < 0)
+            offset = 0;
+        if (len <= 0 || len > 45000)
+            len = 32768;
+        let full_text = as_string(fs.readfile(EXPORT_TMP_FILE) || "");
+        if (full_text == "")
+            return fail("export file not found");
+        let total_len = length(full_text);
+        let chunk = offset < total_len ? substr(full_text, offset, len) : "";
+        print(sprintf("%J\n", {
+            success: true,
+            chunk: chunk,
+            offset: offset,
+            total: total_len,
+            eof: (offset + length(chunk) >= total_len)
+        }));
+        return 0;
+    }
+
     if (!snapshot_file_valid(file))
         return fail("invalid snapshot name");
     let archive = SNAPSHOTS_DIR + "/" + file;
     if (fs.stat(archive) == null)
         return fail("snapshot not found");
+
+    compact_bloated_snapshot_if_needed(archive);
 
     let members_out = command_output_from_args([ "tar", "-tzf", archive ]);
     let members = [];
@@ -532,11 +654,43 @@ function snapshot_export(file) {
         common.write_json_file(EXPORT_TMP_FILE, profile, 2);
         command_success_from_args([ "chmod", "600", EXPORT_TMP_FILE ]);
     }
+    let ui_state_dir = (getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon") + "/ui-state";
+    if (getenv("TACHYON_SNAPSHOT_EXPORT_FILE") == null) {
+        common.ensure_dir(ui_state_dir);
+        common.write_json_file(ui_state_dir + "/snapshot-export.json", profile, 2);
+    }
+
+    let stdout_profile = profile;
+    let chunked_only = false;
+    if (archive_b64 != "" && (length(archive_b64) + length(config_text)) > 42000) {
+        if (length(archive_b64) <= 50000) {
+            stdout_profile = {
+                format: "tachyon-profile-v1",
+                name: meta.name,
+                stamp: meta.stamp,
+                file: file,
+                created_at: profile.created_at,
+                config_text: "",
+                archive_base64: archive_b64
+            };
+        } else {
+            chunked_only = true;
+            stdout_profile = {
+                format: "tachyon-profile-v1",
+                name: meta.name,
+                stamp: meta.stamp,
+                file: file,
+                created_at: profile.created_at,
+                chunked_export: true
+            };
+        }
+    }
 
     print(sprintf("%J\n", {
         success: true,
         export_file: EXPORT_TMP_FILE,
-        profile: profile
+        chunked_export: chunked_only,
+        profile: stdout_profile
     }));
     return 0;
 }
@@ -545,6 +699,34 @@ function snapshot_import(source_arg) {
     source_arg = as_string(source_arg || "");
     if (source_arg == "")
         return fail("snapshot import payload or file path required");
+
+    let chunk_tmp_path = "/tmp/tachyon-snapshot-import.json";
+    let norm_arg = substr(source_arg, 0, 2) == "--" ? substr(source_arg, 2) : source_arg;
+    if (norm_arg == "chunk-init") {
+        try { fs.unlink(chunk_tmp_path); } catch (e) {}
+        fs.writefile(chunk_tmp_path, "");
+        command_success_from_args([ "chmod", "600", chunk_tmp_path ]);
+        print(sprintf("%J\n", { success: true }));
+        return 0;
+    }
+    if (substr(norm_arg, 0, 13) == "chunk-append:") {
+        let b64_part = substr(norm_arg, 13);
+        let decoded_part = null;
+        try {
+            decoded_part = b64dec(b64_part);
+        } catch (e) {
+            decoded_part = null;
+        }
+        if (decoded_part == null)
+            return fail("invalid base64 chunk");
+        let fp = fs.open(chunk_tmp_path, "a");
+        if (fp == null)
+            return fail("unable to open chunk buffer");
+        fp.write(decoded_part);
+        fp.close();
+        print(sprintf("%J\n", { success: true }));
+        return 0;
+    }
 
     let raw = "";
     if (source_arg == "-") {

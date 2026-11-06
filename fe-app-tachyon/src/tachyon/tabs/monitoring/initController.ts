@@ -21,10 +21,14 @@ import {
 } from '../../helpers/serviceAvailability';
 import {
   type MonitoringTabId,
+  type ConnectionSourceFilter,
+  type ClashConnection,
   type LocalDeviceChoices,
   type ClashConnectionsPayload,
   type MonitoredConnection,
   normalizeConnectionsPayload,
+  getConnectionDataSource,
+  mergeCoreAndConntrackConnections,
   isExcludedRoutingName,
   buildRouteDisplayNames,
   getRouteDisplayNameByTag,
@@ -113,8 +117,12 @@ let connectionsUpdatesId = 0;
 let renderSkippedForSelection = false;
 let pendingConnectionsPayload: ClashConnectionsPayload | null = null;
 let pollingConnections = false;
+let pollingConntrackSupplement = false;
+let conntrackSupplementTimer: ReturnType<typeof setInterval> | null = null;
+let latestConntrackConnections: ClashConnection[] = [];
 
 let activeTab: MonitoringTabId = 'active';
+let selectedDataSourceFilter: ConnectionSourceFilter = 'all';
 const selectedDeviceFilters = new Set<string>();
 const selectedRouteFilters = new Set<string>();
 const selectedNetworkFilters = new Set<string>();
@@ -196,6 +204,7 @@ function getCurrentTabConnections(): MonitoredConnection[] {
 
 function getVisibleConnections(): MonitoredConnection[] {
   return filterVisibleConnections({
+    dataSourceFilter: selectedDataSourceFilter,
     deviceFilters: selectedDeviceFilters,
     routeFilters: selectedRouteFilters,
     networkFilters: selectedNetworkFilters,
@@ -207,6 +216,15 @@ function getVisibleConnections(): MonitoredConnection[] {
     allFilterValue: ALL_FILTER_VALUE,
     pausedAt: monitoringPausedAt,
   });
+}
+
+function setDataSourceFilter(next: ConnectionSourceFilter) {
+  if (selectedDataSourceFilter === next) {
+    return;
+  }
+  selectedDataSourceFilter = next;
+  renderControls();
+  renderConnections();
 }
 
 function moveConnectionToClosed(connection: MonitoredConnection, now: number) {
@@ -237,9 +255,16 @@ function applyConnectionsPayload(payload: ClashConnectionsPayload) {
   const mountId = monitoringMountId;
   const now = Date.now();
   const incomingIds = new Set<string>();
-  const rawConnections = Array.isArray(payload.connections)
+  const baseConnections = Array.isArray(payload.connections)
     ? payload.connections
     : [];
+  const rawConnections =
+    latestConntrackConnections.length > 0
+      ? mergeCoreAndConntrackConnections(
+          baseConnections,
+          latestConntrackConnections,
+        )
+      : baseConnections;
 
   rawConnections.forEach((rawConnection) => {
     const id = normalizeString(rawConnection.id);
@@ -256,6 +281,7 @@ function applyConnectionsPayload(payload: ClashConnectionsPayload) {
         : parseStartedAt({ start: rawConnection.start, lastSeenAt: now });
     activeConnections.set(id, {
       ...rawConnection,
+      dataSource: getConnectionDataSource(rawConnection),
       id,
       lastSeenAt: now,
       startedAtMs,
@@ -475,7 +501,8 @@ function renderRouteFilterOptions() {
       'tachyon_monitoring-page__multiselect-trigger--active',
       selectedRouteFilters.size > 0,
     );
-    trigger.disabled = serviceAvailability === 'stopped';
+    trigger.disabled =
+      serviceAvailability === 'stopped' && selectedDataSourceFilter === 'core';
   }
 
   const signature = [
@@ -625,7 +652,8 @@ function renderDeviceFilterOptions() {
       'tachyon_monitoring-page__multiselect-trigger--active',
       selectedDeviceFilters.size > 0,
     );
-    trigger.disabled = serviceAvailability === 'stopped';
+    trigger.disabled =
+      serviceAvailability === 'stopped' && selectedDataSourceFilter === 'core';
   }
 
   const signature = [
@@ -746,7 +774,8 @@ function renderNetworkFilterControls() {
   if (!group) return;
 
   const netCounts = getNetworkConnectionCounts();
-  const isStopped = serviceAvailability === 'stopped';
+  const isStopped =
+    serviceAvailability === 'stopped' && selectedDataSourceFilter === 'core';
 
   group
     .querySelectorAll<HTMLLabelElement>('.tachyon_monitoring-page__proto-chip')
@@ -796,6 +825,48 @@ function renderTabButtonContent(label: string, count: number) {
   ];
 }
 
+function renderDataSourceFilterControls() {
+  const allBtn = document.getElementById(
+    'monitoring-datasource-all',
+  ) as HTMLButtonElement | null;
+  const coreBtn = document.getElementById(
+    'monitoring-datasource-core',
+  ) as HTMLButtonElement | null;
+  const ctBtn = document.getElementById(
+    'monitoring-datasource-conntrack',
+  ) as HTMLButtonElement | null;
+
+  const currentList = getCurrentTabConnections();
+  let coreCount = 0;
+  let ctCount = 0;
+  currentList.forEach((c) => {
+    if (getConnectionDataSource(c) === 'conntrack') {
+      ctCount++;
+    } else {
+      coreCount++;
+    }
+  });
+
+  if (allBtn) {
+    allBtn.replaceChildren(
+      ...renderTabButtonContent(_('All'), currentList.length),
+    );
+    setButtonActive(allBtn, selectedDataSourceFilter === 'all');
+  }
+  if (coreBtn) {
+    coreBtn.replaceChildren(
+      ...renderTabButtonContent(_('Tachyon Core'), coreCount),
+    );
+    setButtonActive(coreBtn, selectedDataSourceFilter === 'core');
+  }
+  if (ctBtn) {
+    ctBtn.replaceChildren(
+      ...renderTabButtonContent(_('Router Conntrack'), ctCount),
+    );
+    setButtonActive(ctBtn, selectedDataSourceFilter === 'conntrack');
+  }
+}
+
 function renderControls() {
   const activeButton = document.getElementById(
     'monitoring-tab-active',
@@ -809,29 +880,35 @@ function renderControls() {
   const pauseToggleButton = document.getElementById(
     'monitoring-pause-toggle',
   ) as HTMLButtonElement | null;
+  const isCoreOnlyStopped =
+    serviceAvailability === 'stopped' && selectedDataSourceFilter === 'core';
 
   if (activeButton) {
     activeButton.replaceChildren(
       ...renderTabButtonContent(_('Active'), activeConnections.size),
     );
-    activeButton.disabled = serviceAvailability === 'stopped';
+    activeButton.disabled = isCoreOnlyStopped;
   }
 
   if (closedButton) {
     closedButton.replaceChildren(
       ...renderTabButtonContent(_('Closed'), closedConnections.size),
     );
-    closedButton.disabled = serviceAvailability === 'stopped';
+    closedButton.disabled = isCoreOnlyStopped;
   }
 
   setButtonActive(activeButton, activeTab === 'active');
   setButtonActive(closedButton, activeTab === 'closed');
 
+  const hasActiveCoreConnections = Array.from(activeConnections.values()).some(
+    (c) => getConnectionDataSource(c) === 'core',
+  );
+
   if (closeAllButton) {
     closeAllButton.replaceChildren(renderXIcon24());
     closeAllButton.disabled =
       serviceAvailability === 'stopped' ||
-      activeConnections.size === 0 ||
+      !hasActiveCoreConnections ||
       closingAll;
   }
 
@@ -842,7 +919,7 @@ function renderControls() {
     );
     pauseToggleButton.title = title;
     pauseToggleButton.setAttribute('aria-label', title);
-    pauseToggleButton.disabled = serviceAvailability === 'stopped';
+    pauseToggleButton.disabled = isCoreOnlyStopped;
     pauseToggleButton.classList.toggle(
       'tachyon_monitoring-page__icon-button--active',
       monitoringPaused,
@@ -856,6 +933,7 @@ function renderControls() {
     searchIcon.replaceChildren(renderSearchIcon24());
   }
 
+  renderDataSourceFilterControls();
   renderDeviceFilterOptions();
   renderRouteFilterOptions();
   renderNetworkFilterControls();
@@ -865,7 +943,7 @@ function renderControls() {
   ) as HTMLInputElement | null;
 
   if (searchInput) {
-    searchInput.disabled = serviceAvailability === 'stopped';
+    searchInput.disabled = isCoreOnlyStopped;
   }
 }
 
@@ -943,8 +1021,9 @@ function renderConnectionRow(connection: MonitoredConnection) {
   const target = getTargetCellParts(connection);
   const source = getLocalSourceCellParts(connection);
   const isClosing = closingConnectionIds.has(connection.id);
+  const isConntrack = getConnectionDataSource(connection) === 'conntrack';
   const closeButton =
-    activeTab === 'active'
+    activeTab === 'active' && !isConntrack
       ? E(
           'button',
           {
@@ -1100,7 +1179,10 @@ function renderConnections(options: { force?: boolean } = {}) {
   renderSkippedForSelection = false;
   const previousScrollLeft = container.scrollLeft;
 
-  if (serviceAvailability === 'stopped') {
+  if (
+    serviceAvailability === 'stopped' &&
+    selectedDataSourceFilter === 'core'
+  ) {
     container.replaceChildren(
       renderConnectionsTable([], {
         text: _(
@@ -1360,10 +1442,12 @@ async function closeAllConnections() {
     }
 
     const now = Date.now();
-    activeConnections.forEach((connection) => {
-      moveConnectionToClosed(connection, now);
+    Array.from(activeConnections.entries()).forEach(([id, connection]) => {
+      if (getConnectionDataSource(connection) === 'core') {
+        activeConnections.delete(id);
+        moveConnectionToClosed(connection, now);
+      }
     });
-    activeConnections.clear();
     pendingConnectionsPayload = null;
     trimClosedConnections();
   } catch (error) {
@@ -1411,6 +1495,11 @@ function handleDocumentKeyDown(event: KeyboardEvent) {
 function bindControls() {
   const activeButton = document.getElementById('monitoring-tab-active');
   const closedButton = document.getElementById('monitoring-tab-closed');
+  const dsAllButton = document.getElementById('monitoring-datasource-all');
+  const dsCoreButton = document.getElementById('monitoring-datasource-core');
+  const dsConntrackButton = document.getElementById(
+    'monitoring-datasource-conntrack',
+  );
   const deviceTrigger = document.getElementById(
     'monitoring-device-filter-trigger',
   );
@@ -1433,6 +1522,16 @@ function bindControls() {
 
   if (closedButton) {
     closedButton.onclick = () => setTab('closed');
+  }
+
+  if (dsAllButton) {
+    dsAllButton.onclick = () => setDataSourceFilter('all');
+  }
+  if (dsCoreButton) {
+    dsCoreButton.onclick = () => setDataSourceFilter('core');
+  }
+  if (dsConntrackButton) {
+    dsConntrackButton.onclick = () => setDataSourceFilter('conntrack');
   }
 
   if (closeAllButton) {
@@ -1561,12 +1660,47 @@ async function loadRouteDisplayNames() {
   }
 }
 
+async function pollConntrackSupplement() {
+  if (
+    pollingConntrackSupplement ||
+    !monitoringMounted ||
+    monitoringPaused ||
+    serviceAvailability !== 'running'
+  ) {
+    return;
+  }
+  pollingConntrackSupplement = true;
+  try {
+    const res = await TachyonShellMethods.getConntrackConnections();
+    if (res.success) {
+      const normalized = normalizeConnectionsPayload(res.data);
+      latestConntrackConnections = Array.isArray(normalized.connections)
+        ? normalized.connections
+        : [];
+    }
+  } catch (_err) {
+    // Ignore supplement polling errors
+  } finally {
+    pollingConntrackSupplement = false;
+  }
+}
+
+function startConntrackSupplementPolling() {
+  if (conntrackSupplementTimer) {
+    return;
+  }
+  void pollConntrackSupplement();
+  conntrackSupplementTimer = setInterval(() => {
+    void pollConntrackSupplement();
+  }, CONNECTIONS_RPC_POLL_INTERVAL_MS);
+}
+
 async function pollConnectionsSnapshot() {
   if (
     pollingConnections ||
     !monitoringMounted ||
     monitoringPaused ||
-    serviceAvailability !== 'running'
+    (serviceAvailability !== 'running' && serviceAvailability !== 'stopped')
   ) {
     return;
   }
@@ -1575,35 +1709,39 @@ async function pollConnectionsSnapshot() {
   pollingConnections = true;
 
   try {
-    const response = await TachyonShellMethods.getClashApiConnections();
+    const response =
+      serviceAvailability === 'stopped'
+        ? await TachyonShellMethods.getConntrackConnections()
+        : await TachyonShellMethods.getClashApiConnections();
 
     if (
       !monitoringMounted ||
       mountId !== monitoringMountId ||
-      serviceAvailability !== 'running'
+      (serviceAvailability !== 'running' && serviceAvailability !== 'stopped')
     ) {
       return;
     }
 
     if (!response.success) {
-      failed = true;
+      failed = serviceAvailability === 'running';
       loading = false;
       renderConnections();
       return;
     }
 
+    latestConntrackConnections = [];
     applyConnectionsPayload(normalizeConnectionsPayload(response.data));
   } catch (error) {
     if (
       !monitoringMounted ||
       mountId !== monitoringMountId ||
-      serviceAvailability !== 'running'
+      (serviceAvailability !== 'running' && serviceAvailability !== 'stopped')
     ) {
       return;
     }
 
     logger.error('[MONITORING]', 'connections polling failed', error);
-    failed = true;
+    failed = serviceAvailability === 'running';
     loading = false;
     renderConnections();
   } finally {
@@ -1637,6 +1775,7 @@ async function connectToConnectionsSocket(updatesId: number) {
 
   unsubscribeConnectionsSocket();
   connectionsSocketUrl = `${getClashWsUrl()}/connections?token=${clashApiSecret}`;
+  startConntrackSupplementPolling();
 
   trackConnectionsSocketSubscription(
     connectionsSocketUrl,
@@ -1678,12 +1817,22 @@ async function connectToConnectionsSocket(updatesId: number) {
         connectionsSocketUrl = '';
       }
 
+      if (conntrackSupplementTimer) {
+        clearInterval(conntrackSupplementTimer);
+        conntrackSupplementTimer = null;
+      }
+
       startConnectionsPolling();
     },
   );
 }
 
 function startConnectionsUpdates() {
+  if (serviceAvailability === 'stopped') {
+    startConnectionsPolling();
+    return;
+  }
+
   if (serviceAvailability !== 'running') {
     return;
   }
@@ -1703,6 +1852,11 @@ function stopConnectionsUpdates() {
   if (connectionsPollTimer) {
     clearInterval(connectionsPollTimer);
     connectionsPollTimer = null;
+  }
+
+  if (conntrackSupplementTimer) {
+    clearInterval(conntrackSupplementTimer);
+    conntrackSupplementTimer = null;
   }
 
   if (connectionsSocketUrl) {
@@ -1729,9 +1883,8 @@ function setServiceAvailability(next: ServiceAvailability) {
     if (next === 'stopped') {
       loading = false;
       failed = false;
-      activeConnections.clear();
-      closedConnections.clear();
       closingConnectionIds.clear();
+      startConnectionsUpdates();
     } else if (next === 'unavailable') {
       loading = false;
       failed = true;
@@ -1763,6 +1916,8 @@ function watchServiceState() {
 
 function resetMonitoringState() {
   activeTab = 'active';
+  selectedDataSourceFilter = 'all';
+  latestConntrackConnections = [];
   selectedDeviceFilters.clear();
   selectedRouteFilters.clear();
   selectedNetworkFilters.clear();
@@ -1853,7 +2008,7 @@ function pauseMonitoringUpdates() {
 function resumeMonitoringUpdates() {
   if (!monitoringMounted || !monitoringVisibilityPaused) return;
   monitoringVisibilityPaused = false;
-  if (serviceAvailability === 'running') {
+  if (serviceAvailability === 'running' || serviceAvailability === 'stopped') {
     startConnectionsUpdates();
   }
   if (!renderTimer) {

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-06 12:47+0300\n"
-"PO-Revision-Date: 2026-11-06 12:47+0300\n"
+"POT-Creation-Date: 2026-11-06 18:42+0300\n"
+"PO-Revision-Date: 2026-11-06 18:42+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -2617,6 +2617,9 @@ msgstr "Вид дашборда:"
 
 msgid "Data Cipher"
 msgstr "Шифр данных (Data Cipher)"
+
+msgid "Data source"
+msgstr "Источник данных"
 
 msgid "Data transfer verified: streamed >= 32KB without throttling or disconnect"
 msgstr "Передача данных подтверждена: передано >= 32 КБ без троттлинга и обрывов"
@@ -7957,6 +7960,9 @@ msgstr "Серверы маршрутизированного DNS"
 
 msgid "Router (WAN)"
 msgstr "Роутер (WAN)"
+
+msgid "Router Conntrack"
+msgstr "Conntrack роутера"
 
 msgid "Router DNS (127.0.0.1)"
 msgstr "DNS роутера (127.0.0.1)"

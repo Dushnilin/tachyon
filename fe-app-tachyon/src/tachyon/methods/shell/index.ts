@@ -338,13 +338,50 @@ export const TachyonShellMethods = {
       [],
       { allowNonZeroWithStdout: true },
     ),
-  getClashApiProxies: async () =>
-    callBaseMethod<ClashAPI.Proxies>(Tachyon.AvailableMethods.CLASH_API, [
-      Tachyon.AvailableClashAPIMethods.GET_PROXIES,
-    ]),
+  getClashApiProxies: async () => {
+    const res = await callBaseMethod<ClashAPI.Proxies>(
+      Tachyon.AvailableMethods.CLASH_API,
+      [Tachyon.AvailableClashAPIMethods.GET_PROXIES],
+    );
+    if (res.success && res.data?.proxies) {
+      return res;
+    }
+    try {
+      if (typeof fs !== 'undefined') {
+        const fsWithDirect = fs as unknown as {
+          read_direct?: (path: string, type?: string) => Promise<string>;
+        };
+        const readFn =
+          typeof fsWithDirect.read_direct === 'function'
+            ? (p: string) => fsWithDirect.read_direct!(p, 'text')
+            : typeof fs.read === 'function'
+              ? (p: string) => fs.read(p)
+              : null;
+        if (readFn) {
+          const raw = await readFn(
+            '/var/run/tachyon/ui-state/clash-proxies.json',
+          );
+          const parsed = parseJsonObjectOutput<ClashAPI.Proxies>(
+            typeof raw === 'string' ? raw : '',
+          );
+          if (parsed?.proxies) {
+            return { success: true as const, data: parsed };
+          }
+        }
+      }
+    } catch (_error) {
+      // Fallback file unavailable
+    }
+    return res;
+  },
   getClashApiConnections: async () =>
     callBaseMethod<unknown>(Tachyon.AvailableMethods.CLASH_API, [
       Tachyon.AvailableClashAPIMethods.GET_CONNECTIONS,
+    ]),
+  getConntrackConnections: async () =>
+    callBaseMethod<unknown>(Tachyon.AvailableMethods.CLASH_API, [
+      Tachyon.AvailableClashAPIMethods.GET_CONNECTIONS,
+      'conntrack',
     ]),
   getClashApiProxyLatency: async (
     tag: string,

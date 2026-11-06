@@ -486,7 +486,7 @@ function loadGlobalPoolChoices() {
         let matchedSources = sc.url && urlToSources.get(sc.url);
         if (!matchedSources && sc.base) {
           const baseMatch = String(sc.base).match(
-            /^src-(.+)-subscription-\d+$/,
+            /^(?:src-|Pool_)(.+)-subscription-\d+$/,
           );
           if (baseMatch && sidToSource.has(baseMatch[1])) {
             matchedSources = [sidToSource.get(baseMatch[1])];
@@ -2940,6 +2940,9 @@ function configureOutboundsSection(sectionRef) {
     const last = sources[sources.length - 1];
     if (last && last['.name']) {
       const sid = last['.name'];
+      if (!last.enabled) {
+        uci.set(UCI_PACKAGE, sid, 'enabled', '1');
+      }
       if (!last.name) {
         uci.set(UCI_PACKAGE, sid, 'name', rawArg || sid);
       }

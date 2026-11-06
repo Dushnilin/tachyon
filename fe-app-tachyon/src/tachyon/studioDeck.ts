@@ -625,6 +625,38 @@ function resolveSectionTelemetry(sid: string): {
   };
 }
 
+function syncHiddenGridEnabledCheckbox(
+  sid: string,
+  enabled: boolean,
+  sectionRef: any,
+): void {
+  try {
+    const fieldId = `cbid.${UCI_PACKAGE}.${sid}.enabled`;
+    const candidates = [
+      document.getElementById(`widget.${fieldId}`),
+      document.getElementById(fieldId),
+      document.querySelector(
+        `#cbi-${UCI_PACKAGE}-${sid} [data-field="${fieldId}"] input[type="checkbox"]`,
+      ),
+      document.querySelector(
+        `#cbi-${UCI_PACKAGE}-${sid} input[type="checkbox"]`,
+      ),
+      document.querySelector(
+        `#cbi-${UCI_PACKAGE}-${sectionRef?.sectiontype || ''} tr[data-sid="${sid}"] input[type="checkbox"]`,
+      ),
+    ];
+    candidates.forEach((node) => {
+      const cb = node as HTMLInputElement | null;
+      if (cb && cb.type === 'checkbox' && cb.checked !== enabled) {
+        cb.checked = enabled;
+        cb.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    });
+  } catch {
+    // ignore
+  }
+}
+
 function createStudioToggleSwitch(
   sid: string,
   enabled: boolean,
@@ -647,17 +679,7 @@ function createStudioToggleSwitch(
         const cur = uci.get(UCI_PACKAGE, sid, 'enabled') !== '0';
         const next = !cur;
         uci.set(UCI_PACKAGE, sid, 'enabled', next ? '1' : '0');
-        try {
-          const rowCheckbox = document.querySelector(
-            `#cbi-tachyon-${sectionRef?.sectiontype || ''} tr[data-sid="${sid}"] input[type="checkbox"]`,
-          ) as HTMLInputElement | null;
-          if (rowCheckbox && rowCheckbox.checked !== next) {
-            rowCheckbox.checked = next;
-            rowCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
-          }
-        } catch {
-          // ignore
-        }
+        syncHiddenGridEnabledCheckbox(sid, next, sectionRef);
         notifyUciChanged();
         onChanged();
       },
@@ -2542,6 +2564,13 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
     const enabledCount = sids.filter(
       (sid) => uci.get(UCI_PACKAGE, sid, 'enabled') !== '0',
     ).length;
+    sids.forEach((sid) => {
+      syncHiddenGridEnabledCheckbox(
+        sid,
+        uci.get(UCI_PACKAGE, sid, 'enabled') !== '0',
+        sectionRef,
+      );
+    });
 
     toolbarEl.innerHTML = '';
     const filterPills = meta.filters.map((f) =>

@@ -2,6 +2,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   normalizeConnectionsPayload,
+  getConnectionDataSource,
+  getConnectionTupleKey,
+  mergeCoreAndConntrackConnections,
   getListValues,
   getUrlTestIds,
   getUrlTestTag,
@@ -493,5 +496,99 @@ describe('monitoring filters and resolution', () => {
       closedConnections: [],
     });
     expect(byQuicAndTcp.map((c) => c.id)).toEqual(['c1', 'c2', 'c3']);
+  });
+
+  it('deduplicates core and conntrack connections by 5-tuple and filters by dataSourceFilter', () => {
+    const coreConns = [
+      {
+        id: 'core-1',
+        metadata: {
+          network: 'tcp',
+          sourceIP: '192.168.1.50',
+          sourcePort: '54321',
+          destinationIP: '142.250.74.110',
+          destinationPort: '443',
+          host: 'www.youtube.com',
+        },
+        chains: ['youtube-out'],
+      },
+    ];
+    const conntrackConns = [
+      {
+        // Duplicate 5-tuple of core-1 -> must be deduplicated
+        id: 'ct:tcp:192.168.1.50:54321:142.250.74.110:443',
+        dataSource: 'conntrack' as const,
+        metadata: {
+          network: 'tcp',
+          type: 'conntrack',
+          sourceIP: '192.168.1.50',
+          sourcePort: '54321',
+          destinationIP: '142.250.74.110',
+          destinationPort: '443',
+        },
+        chains: ['direct-out'],
+      },
+      {
+        // Unique conntrack session bypassing core -> must be preserved
+        id: 'ct:udp:192.168.1.50:60123:1.1.1.1:443',
+        dataSource: 'conntrack' as const,
+        metadata: {
+          network: 'udp',
+          type: 'conntrack',
+          sourceIP: '192.168.1.50',
+          sourcePort: '60123',
+          destinationIP: '1.1.1.1',
+          destinationPort: '443',
+        },
+        chains: ['zapret2-out'],
+      },
+    ];
+
+    expect(getConnectionTupleKey(coreConns[0])).toBe(
+      'tcp|192.168.1.50|54321|142.250.74.110|443',
+    );
+    const merged = mergeCoreAndConntrackConnections(coreConns, conntrackConns);
+    expect(merged.map((c) => c.id)).toEqual([
+      'core-1',
+      'ct:udp:192.168.1.50:60123:1.1.1.1:443',
+    ]);
+    expect(getConnectionDataSource(merged[0])).toBe('core');
+    expect(getConnectionDataSource(merged[1])).toBe('conntrack');
+
+    const monitored = merged.map((c, idx) => ({
+      ...c,
+      id: c.id || String(idx),
+      lastSeenAt: 1000,
+    }));
+
+    expect(
+      filterVisibleConnections({
+        dataSourceFilter: 'all',
+        searchQuery: '',
+        tab: 'active',
+        activeConnections: monitored,
+        closedConnections: [],
+      }).map((c) => c.id),
+    ).toEqual(['core-1', 'ct:udp:192.168.1.50:60123:1.1.1.1:443']);
+
+    expect(
+      filterVisibleConnections({
+        dataSourceFilter: 'core',
+        searchQuery: '',
+        tab: 'active',
+        activeConnections: monitored,
+        closedConnections: [],
+      }).map((c) => c.id),
+    ).toEqual(['core-1']);
+
+    expect(
+      filterVisibleConnections({
+        dataSourceFilter: 'conntrack',
+        searchQuery: '',
+        tab: 'active',
+        activeConnections: monitored,
+        closedConnections: [],
+      }).map((c) => c.id),
+    ).toEqual(['ct:udp:192.168.1.50:60123:1.1.1.1:443']);
   });
 });

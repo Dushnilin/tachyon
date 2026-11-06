@@ -10,6 +10,8 @@ import {
 } from './formatters';
 
 export type MonitoringTabId = 'active' | 'closed';
+export type ConnectionDataSource = 'core' | 'conntrack';
+export type ConnectionSourceFilter = 'all' | 'core' | 'conntrack';
 
 export type LocalDeviceChoices = Record<string, string>;
 
@@ -30,6 +32,7 @@ export interface ClashConnectionMetadata {
 
 export interface ClashConnection {
   chains?: string[];
+  dataSource?: ConnectionDataSource;
   download?: number;
   id?: string;
   metadata?: ClashConnectionMetadata;
@@ -48,6 +51,69 @@ export interface MonitoredConnection extends ClashConnection {
   closedAt?: number;
   lastSeenAt: number;
   startedAtMs?: number;
+}
+
+export function getConnectionDataSource(
+  connection: ClashConnection,
+): ConnectionDataSource {
+  if (
+    connection.dataSource === 'conntrack' ||
+    normalizeString(connection.id).startsWith('ct:') ||
+    normalizeString(connection.metadata?.type).toLowerCase() === 'conntrack'
+  ) {
+    return 'conntrack';
+  }
+  return 'core';
+}
+
+export function getConnectionTupleKey(connection: ClashConnection): string {
+  const meta = connection.metadata || {};
+  const proto = normalizeString(meta.network || 'tcp').toLowerCase();
+  const src = normalizeString(meta.sourceIP);
+  const sport = normalizeString(meta.sourcePort);
+  const dst = normalizeString(meta.destinationIP);
+  const dport = normalizeString(meta.destinationPort);
+  if (!src || !sport || !dst || !dport) {
+    return '';
+  }
+  return `${proto}|${src}|${sport}|${dst}|${dport}`;
+}
+
+export function mergeCoreAndConntrackConnections(
+  coreConnections: ClashConnection[] = [],
+  conntrackConnections: ClashConnection[] = [],
+): ClashConnection[] {
+  const result: ClashConnection[] = [];
+  const seenTuples = new Set<string>();
+  const seenIds = new Set<string>();
+
+  for (const conn of coreConnections) {
+    if (!conn || typeof conn !== 'object') continue;
+    const id = normalizeString(conn.id);
+    if (id) seenIds.add(id);
+    const tkey = getConnectionTupleKey(conn);
+    if (tkey) seenTuples.add(tkey);
+    result.push({
+      ...conn,
+      dataSource: getConnectionDataSource(conn),
+    });
+  }
+
+  for (const ct of conntrackConnections) {
+    if (!ct || typeof ct !== 'object') continue;
+    const id = normalizeString(ct.id);
+    if (id && seenIds.has(id)) continue;
+    const tkey = getConnectionTupleKey(ct);
+    if (tkey && seenTuples.has(tkey)) continue;
+    if (id) seenIds.add(id);
+    if (tkey) seenTuples.add(tkey);
+    result.push({
+      ...ct,
+      dataSource: 'conntrack',
+    });
+  }
+
+  return result;
 }
 
 export function normalizeConnectionsPayload(
@@ -206,6 +272,8 @@ export function buildRouteDisplayNames(sections: Tachyon.ConfigSection[]): {
     'fallback-dns-server': 'DNS',
     'fakeip-dns-server': 'DNS',
     'tachyon-failover': 'Failover',
+    'zapret-out': 'Zapret',
+    'zapret2-out': 'Zapret2',
   };
   const serverMap: Record<string, string> = {};
   const routeSectionItems: Array<{ sectionName: string; displayName: string }> =
@@ -650,9 +718,12 @@ export function getSearchValues(
   );
 
   const net = getNetwork(connection);
+  const dstPort = normalizeString(connection.metadata?.destinationPort);
   return [
     connection.id,
+    getConnectionDataSource(connection),
     target.primary,
+    dstPort,
     net,
     net === 'quic' ? 'udp' : '',
     getRoute(connection),
@@ -667,6 +738,7 @@ export function getSearchValues(
 }
 
 export interface FilterConnectionsOptions {
+  dataSourceFilter?: ConnectionSourceFilter;
   deviceFilter?: string;
   routeFilter?: string;
   deviceFilters?: Iterable<string>;
@@ -704,6 +776,7 @@ export function filterVisibleConnections(
   options: FilterConnectionsOptions,
 ): MonitoredConnection[] {
   const {
+    dataSourceFilter = 'all',
     deviceFilter,
     routeFilter,
     deviceFilters,
@@ -717,6 +790,11 @@ export function filterVisibleConnections(
     allFilterValue = 'all',
     pausedAt,
   } = options;
+
+  const normalizedSourceFilter: ConnectionSourceFilter =
+    dataSourceFilter === 'core' || dataSourceFilter === 'conntrack'
+      ? dataSourceFilter
+      : 'all';
 
   const activeDeviceSet = normalizeMultiFilterSet(
     deviceFilters,
@@ -744,6 +822,13 @@ export function filterVisibleConnections(
   const normalizedSearch = normalizeSearchValue(searchQuery);
 
   return sorted.filter((connection) => {
+    if (
+      normalizedSourceFilter !== 'all' &&
+      getConnectionDataSource(connection) !== normalizedSourceFilter
+    ) {
+      return false;
+    }
+
     const sourceIp = getConnectionSourceIp(connection);
     const isMatchingDevice =
       activeDeviceSet.size === 0 || activeDeviceSet.has(sourceIp);

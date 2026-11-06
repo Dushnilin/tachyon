@@ -69,7 +69,7 @@ run_uc() {
   TACHYON_SNAPSHOT_VALIDATE_BIN="${VALIDATE_BIN:-$WORK_DIR/fake-validate}" \
   TACHYON_SNAPSHOT_EXPORT_FILE="$WORK_DIR/export-tmp.json" \
   TACHYON_SNAPSHOT_BIN_LOG="$WORK_DIR/bin.log" \
-    ucode -L "$WORK_DIR/lib" -L "$TACHYON_LIB" "$SNAPSHOT_UC" "$mode" "$@"
+    ucode -L "$WORK_DIR/lib" -L "$TACHYON_LIB" -- "$SNAPSHOT_UC" "$mode" "$@"
 }
 
 # ---- snapshot-save: creates a tar.gz with the Telegram backup member layout
@@ -320,5 +320,35 @@ grep -Fq '"success": true' "$WORK_DIR/bb-export.json" ||
 PATH="$WORK_DIR/fakebin:$PATH" run_uc snapshot-import "$WORK_DIR/bb-export.json" >"$WORK_DIR/bb-import.json"
 grep -Fq '"success": true' "$WORK_DIR/bb-import.json" ||
   fail "snapshot-import must accept BusyBox tar -tzf output where directory member is 'tachyon' without trailing slash"
+
+# ---- Chunked snapshot export (read-chunk) and chunked snapshot import (chunk-init / chunk-append)
+run_uc snapshot-export "read-chunk:0:128" >"$WORK_DIR/chunk-read.json"
+grep -Fq '"success": true' "$WORK_DIR/chunk-read.json" ||
+  fail "snapshot-export read-chunk must succeed"
+grep -Fq '"chunk":' "$WORK_DIR/chunk-read.json" ||
+  fail "snapshot-export read-chunk must include chunk string"
+
+run_uc snapshot-import "chunk-init" >"$WORK_DIR/chunk-init.json"
+grep -Fq '"success": true' "$WORK_DIR/chunk-init.json" ||
+  fail "snapshot-import chunk-init must succeed"
+B64_PAYLOAD="$(ucode -e "let fs = require('fs'); print(b64enc(fs.readfile('$WORK_DIR/export-tmp.json')));")"
+HALF_LEN=$(( ${#B64_PAYLOAD} / 2 ))
+# Ensure first chunk length is a multiple of 4 for base64 decoding
+HALF_LEN=$(( (HALF_LEN / 4) * 4 ))
+CHUNK1="${B64_PAYLOAD:0:$HALF_LEN}"
+CHUNK2="${B64_PAYLOAD:$HALF_LEN}"
+run_uc snapshot-import "chunk-append:$CHUNK1" >"$WORK_DIR/chunk-app1.json"
+grep -Fq '"success": true' "$WORK_DIR/chunk-app1.json" ||
+  fail "snapshot-import chunk-append first chunk must succeed"
+run_uc snapshot-import "chunk-append:$CHUNK2" >"$WORK_DIR/chunk-app2.json"
+grep -Fq '"success": true' "$WORK_DIR/chunk-app2.json" ||
+  fail "snapshot-import chunk-append second chunk must succeed"
+run_uc snapshot-import "/tmp/tachyon-snapshot-import.json" >"$WORK_DIR/chunk-finish.json"
+grep -Fq '"success": true' "$WORK_DIR/chunk-finish.json" ||
+  fail "snapshot-import from assembled chunk file must succeed"
+
+ACL_FILE="$ROOT_DIR/tachyon/files/usr/share/rpcd/acl.d/luci-app-tachyon.json"
+grep -Fq '"cgi-io"' "$ACL_FILE" ||
+  fail "luci-app-tachyon ACL must grant cgi-io permissions for LuCI fs.read/fs.write"
 
 printf 'snapshot contract checks passed\n'

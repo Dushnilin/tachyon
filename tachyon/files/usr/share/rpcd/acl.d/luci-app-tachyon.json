@@ -96,9 +96,15 @@
         ],
         "/usr/bin/nslookup": [
           "exec"
+        ],
+        "/proc/net/nf_conntrack": [
+          "read"
         ]
       },
       "ubus": {
+        "luci": [
+          "getConntrackList"
+        ],
         "luci-rpc": [
           "getDHCPLeases",
           "getHostHints"
@@ -112,6 +118,9 @@
       },
       "uci": [
         "tachyon"
+      ],
+      "cgi-io": [
+        "download"
       ]
     },
     "write": {
@@ -143,6 +152,9 @@
       },
       "uci": [
         "tachyon"
+      ],
+      "cgi-io": [
+        "upload"
       ]
     }
   }

@@ -244,6 +244,100 @@ describe('dashboard initController', () => {
     expect(customProxyLatencies.get('server-old')).toBe(-1);
   });
 
+  it('expands URLTest child outbounds when leaf nodes are hidden in latencyTestCodes', async () => {
+    const {
+      extractTestedTags,
+      applyTestedLatenciesResults,
+      customProxyLatencies,
+    } = await import('../initController');
+    const { store } = await import('../../../services/store.service');
+    const { TachyonShellMethods } = await import('../../../methods');
+
+    store.set({
+      sectionsWidget: {
+        loading: false,
+        failed: false,
+        latencyFetchingSections: {},
+        latencyProgressSections: {},
+        subscriptionUpdatingSections: {},
+        selectorSwitchingSections: {},
+        data: [
+          {
+            code: 'Discord-out',
+            sectionName: 'Discord',
+            displayName: 'Discord',
+            withTagSelect: true,
+            latencyTestCodes: ['Discord-urltest-out'],
+            outbounds: [
+              {
+                code: 'Discord-urltest-out',
+                displayName: 'Discord (URLTest)',
+                type: 'URLTest',
+                latency: 0,
+                selected: true,
+                urlTestInfo: {
+                  tag: 'Discord-urltest-out',
+                  url: 'https://discordapp.com/',
+                  interval: '3m',
+                  tolerance: 50,
+                  idleTimeout: '30m',
+                  interruptExistConnections: false,
+                  outbounds: [
+                    {
+                      code: 'shadow-fi-1',
+                      displayName: 'Finland | Hysteria',
+                      type: 'Hysteria2',
+                      latency: 0,
+                      selected: false,
+                    },
+                    {
+                      code: 'shadow-nl-1',
+                      displayName: 'Netherlands | VLESS',
+                      type: 'VLESS',
+                      latency: 0,
+                      selected: false,
+                    },
+                  ],
+                },
+              },
+            ],
+          } as any,
+        ],
+      },
+    });
+
+    const tags = extractTestedTags('proxy_list', 'Discord', '@section:Discord');
+    expect(tags).toEqual(['Discord-urltest-out', 'shadow-fi-1', 'shadow-nl-1']);
+
+    const now = Date.now();
+    vi.spyOn(TachyonShellMethods, 'getClashApiProxies').mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'Discord-urltest-out': {
+            type: 'URLTest',
+            now: 'shadow-fi-1',
+            all: ['shadow-fi-1', 'shadow-nl-1'],
+            history: [],
+          },
+          'shadow-fi-1': {
+            type: 'Hysteria2',
+            history: [{ time: new Date(now).toISOString(), delay: 58 }],
+          },
+          'shadow-nl-1': {
+            type: 'VLESS',
+            history: [{ time: new Date(now).toISOString(), delay: 112 }],
+          },
+        },
+      } as any,
+    });
+
+    await applyTestedLatenciesResults(tags, now);
+    expect(customProxyLatencies.get('shadow-fi-1')).toBe(58);
+    expect(customProxyLatencies.get('shadow-nl-1')).toBe(112);
+    expect(customProxyLatencies.get('Discord-urltest-out')).toBe(58);
+  });
+
   describe('getSectionConnectionStats', () => {
     it('returns totals directly when totalProxySections <= 1', async () => {
       const { getSectionConnectionStats } = await import('../initController');

@@ -203,7 +203,37 @@ async function getClashApiProxies(
     }
   }
 
-  return TachyonShellMethods.getClashApiProxies();
+  const rpcRes = await TachyonShellMethods.getClashApiProxies();
+  if (rpcRes.success && rpcRes.data?.proxies) {
+    return rpcRes;
+  }
+
+  // Fallback for large /proxies payloads (>64 KB) truncated by ubus/rpcd stdout buffer
+  const clashProxiesStateFile = '/var/run/tachyon/ui-state/clash-proxies.json';
+  try {
+    const raw = await fs.read(clashProxiesStateFile).catch(async () => {
+      const directFs = fs as unknown as {
+        read_direct?: (p: string, type?: string) => Promise<string>;
+      };
+      if (typeof directFs.read_direct === 'function') {
+        return directFs.read_direct(clashProxiesStateFile, 'text');
+      }
+      return '';
+    });
+    if (raw) {
+      const parsed = JSON.parse(raw) as ClashAPI.Proxies;
+      if (parsed && typeof parsed.proxies === 'object') {
+        return {
+          success: true,
+          data: parsed,
+        };
+      }
+    }
+  } catch (_err) {
+    // ignore fallback read error
+  }
+
+  return rpcRes;
 }
 
 function getListValues(value?: string[] | string) {
@@ -1861,14 +1891,47 @@ function getConfiguredSubscriptionPrefixStyles(section: Tachyon.ConfigSection) {
   return styles;
 }
 
+function stripDedupTagSuffix(tag: string) {
+  return tag.replace(/-\d+$/, '');
+}
+
+function lookupMetadataField(
+  map: Record<string, string> | undefined,
+  code: string,
+): string | undefined {
+  if (!map) return undefined;
+  if (map[code] !== undefined) return map[code];
+  const base = stripDedupTagSuffix(code);
+  if (base !== code && map[base] !== undefined) return map[base];
+  return undefined;
+}
+
+function inferProtocolFromLink(link?: string): string {
+  if (!link) return '';
+  const m = link.trim().match(/^([a-z0-9+.-]+):\/\//i);
+  if (!m) return '';
+  const scheme = m[1].toLowerCase();
+  if (scheme === 'ss') return 'shadowsocks';
+  if (scheme === 'hy2' || scheme === 'hysteria2') return 'hysteria2';
+  if (scheme === 'socks5' || scheme === 'socks5h' || scheme === 'socks') {
+    return 'socks';
+  }
+  if (scheme === 'https') return 'http';
+  if (scheme === 'wg') return 'wireguard';
+  if (scheme === 'awg' || scheme === 'vpn') return 'amneziawg';
+  return scheme;
+}
+
 function dashboardOutboundType(
   code: string,
   runtimeType: string | undefined,
   outboundMetadata?: Tachyon.GetOutboundMetadata,
+  link?: string,
 ) {
   const proto = (
-    outboundMetadata?.protocols?.[code] ||
+    lookupMetadataField(outboundMetadata?.protocols, code) ||
     runtimeType ||
+    inferProtocolFromLink(link) ||
     ''
   ).toLowerCase();
   if (proto === 'amneziawg') return 'AmneziaWG';
@@ -1889,8 +1952,23 @@ function dashboardOutboundType(
   if (proto === 'openvpn' || proto === 'openvpn-client') return 'OpenVPN';
   if (proto === 'tailscale') return 'Tailscale';
   if (proto === 'interface') return 'Interface';
+  if (proto === 'vless') return 'VLESS';
+  if (proto === 'vmess') return 'VMess';
+  if (proto === 'trojan') return 'Trojan';
+  if (proto === 'shadowsocks' || proto === 'ss') return 'Shadowsocks';
+  if (proto === 'hysteria2' || proto === 'hy2') return 'Hysteria2';
+  if (proto === 'hysteria') return 'Hysteria';
+  if (proto === 'tuic') return 'TUIC';
+  if (proto === 'socks' || proto === 'socks5') return 'SOCKS5';
+  if (proto === 'http') return 'HTTP';
+  if (proto === 'ssh') return 'SSH';
+  if (proto === 'mtproto') return 'MTProto';
+  if (proto === 'urltest') return 'URLTest';
+  if (proto === 'selector') return 'Selector';
   if ((proto === 'direct' || !proto) && /-interface-\d+-out$/i.test(code)) {
-    const rawName = (outboundMetadata?.names?.[code] || '').toLowerCase();
+    const rawName = (
+      lookupMetadataField(outboundMetadata?.names, code) || ''
+    ).toLowerCase();
     if (rawName === 'tailscale0' || rawName.startsWith('tailscale')) {
       return 'Tailscale';
     }
@@ -1906,8 +1984,8 @@ function buildOutboundDetails(
   code: string,
   outboundMetadata?: Tachyon.GetOutboundMetadata,
 ): string | undefined {
-  const rawDetails = outboundMetadata?.details?.[code];
-  const sec = outboundMetadata?.securities?.[code];
+  const rawDetails = lookupMetadataField(outboundMetadata?.details, code);
+  const sec = lookupMetadataField(outboundMetadata?.securities, code);
   const hasSec =
     sec &&
     sec !== 'none' &&
@@ -1941,7 +2019,7 @@ function resolveOutboundNameAndPrefix({
     link.startsWith('fptnb:') ||
     link.startsWith('fptn://') ||
     link.startsWith('fptnb://');
-  const metadataName = outboundMetadata?.names?.[code];
+  const metadataName = lookupMetadataField(outboundMetadata?.names, code);
   const proxyUrlName = isFptn ? '' : getProxyUrlName(link);
   const fallbackServerName = code.includes('/')
     ? code.split('/').pop()
@@ -1954,7 +2032,7 @@ function resolveOutboundNameAndPrefix({
     code;
 
   let prefix =
-    outboundMetadata?.prefixes?.[code]?.trim() ||
+    lookupMetadataField(outboundMetadata?.prefixes, code)?.trim() ||
     (link ? manualLinkPrefixMap.get(link) || '' : '');
 
   if (!prefix && configuredPrefixes.length > 0) {
@@ -2009,6 +2087,28 @@ function resolveOutboundNameAndPrefix({
   };
 }
 
+function findProxyEntryForMember(
+  proxyByCode: Map<string, ClashProxyEntry>,
+  childCode: string,
+  runtimeAllCodes?: string[],
+): ClashProxyEntry | undefined {
+  const exact = proxyByCode.get(childCode);
+  if (exact) return exact;
+  const base = stripDedupTagSuffix(childCode);
+  if (Array.isArray(runtimeAllCodes)) {
+    for (const rtCode of runtimeAllCodes) {
+      if (stripDedupTagSuffix(rtCode) === base) {
+        const found = proxyByCode.get(rtCode);
+        if (found) return found;
+      }
+    }
+  }
+  if (base !== childCode) {
+    return proxyByCode.get(base);
+  }
+  return undefined;
+}
+
 function buildUrlTestInfo({
   code,
   displayName,
@@ -2038,10 +2138,9 @@ function buildUrlTestInfo({
   selectorCodes?: string[];
   configuredPrefixes?: string[];
 }): Tachyon.UrlTestInfo {
+  const runtimeAllCodes = entry?.value.all || [];
   const childCodes = uniqueCodes(
-    groupCache?.outbounds?.length
-      ? groupCache.outbounds
-      : entry?.value.all || [],
+    groupCache?.outbounds?.length ? groupCache.outbounds : runtimeAllCodes,
   );
   const isChildSelectedInSelector = Boolean(
     selectorNow &&
@@ -2056,10 +2155,17 @@ function buildUrlTestInfo({
 
   const outbounds = sortUrlTestMembers(
     childCodes.flatMap((childCode) => {
-      const childEntry = proxyByCode.get(childCode);
+      const childEntry = findProxyEntryForMember(
+        proxyByCode,
+        childCode,
+        runtimeAllCodes,
+      );
+      const effectiveCode = childEntry?.code || childCode;
       const link =
         findManualLink(manualLinkByCode, childCode) ||
+        findManualLink(manualLinkByCode, effectiveCode) ||
         cachedProxyLinks.get(childCode) ||
+        cachedProxyLinks.get(effectiveCode) ||
         '';
       const canCopyLink = isCopyableProxyLink(link);
       const resolved = resolveOutboundNameAndPrefix({
@@ -2067,13 +2173,15 @@ function buildUrlTestInfo({
         entry: childEntry,
         link,
         outboundMetadata,
-        preferMetadata: cachedProxyLinks.has(childCode),
+        preferMetadata:
+          cachedProxyLinks.has(childCode) ||
+          cachedProxyLinks.has(effectiveCode),
         configuredPrefixes,
       });
 
       return [
         {
-          code: childCode,
+          code: effectiveCode,
           displayName: resolved.displayName,
           prefix: resolved.prefix,
           latency: childEntry?.value?.history?.[0]?.delay || 0,
@@ -2081,18 +2189,22 @@ function buildUrlTestInfo({
             childCode,
             childEntry?.value?.type,
             outboundMetadata,
+            link,
           ),
           transport:
-            outboundMetadata?.transports?.[childCode] ||
+            lookupMetadataField(outboundMetadata?.transports, childCode) ||
             getProxyUrlTransport(link),
           details: buildOutboundDetails(childCode, outboundMetadata),
-          selected: selectedCode === childCode,
+          selected:
+            selectedCode === childCode || selectedCode === effectiveCode,
           link,
           canCopyLink,
           country: showDetectedCountries
-            ? outboundMetadata?.countries?.[childCode]
+            ? lookupMetadataField(outboundMetadata?.countries, childCode)
             : undefined,
-          telemetry: entry?.value.telemetry?.[childCode],
+          telemetry:
+            entry?.value.telemetry?.[childCode] ||
+            entry?.value.telemetry?.[effectiveCode],
         },
       ];
     }),
@@ -2240,12 +2352,20 @@ function buildPriorityInfo({
     : entry?.value.now || '';
   const isManualSelection = isChildSelectedInSelector;
 
+  const runtimeAllCodes = entry?.value.all || [];
   const outbounds = levels.flatMap((level, levelIndex) => {
     const members = uniqueCodes(level.outbounds || []).map((childCode) => {
-      const childEntry = proxyByCode.get(childCode);
+      const childEntry = findProxyEntryForMember(
+        proxyByCode,
+        childCode,
+        runtimeAllCodes,
+      );
+      const effectiveCode = childEntry?.code || childCode;
       const link =
         findManualLink(manualLinkByCode, childCode) ||
+        findManualLink(manualLinkByCode, effectiveCode) ||
         cachedProxyLinks.get(childCode) ||
+        cachedProxyLinks.get(effectiveCode) ||
         '';
       const canCopyLink = isCopyableProxyLink(link);
       const resolved = resolveOutboundNameAndPrefix({
@@ -2253,12 +2373,14 @@ function buildPriorityInfo({
         entry: childEntry,
         link,
         outboundMetadata,
-        preferMetadata: cachedProxyLinks.has(childCode),
+        preferMetadata:
+          cachedProxyLinks.has(childCode) ||
+          cachedProxyLinks.has(effectiveCode),
         configuredPrefixes,
       });
 
       return {
-        code: childCode,
+        code: effectiveCode,
         displayName: resolved.displayName,
         prefix: resolved.prefix,
         latency: childEntry?.value?.history?.[0]?.delay || 0,
@@ -2266,16 +2388,17 @@ function buildPriorityInfo({
           childCode,
           childEntry?.value?.type,
           outboundMetadata,
+          link,
         ),
         transport:
-          outboundMetadata?.transports?.[childCode] ||
+          lookupMetadataField(outboundMetadata?.transports, childCode) ||
           getProxyUrlTransport(link),
         details: buildOutboundDetails(childCode, outboundMetadata),
-        selected: selectedCode === childCode,
+        selected: selectedCode === childCode || selectedCode === effectiveCode,
         link,
         canCopyLink,
         country: showDetectedCountries
-          ? outboundMetadata?.countries?.[childCode]
+          ? lookupMetadataField(outboundMetadata?.countries, childCode)
           : undefined,
         levelIndex,
         levelName: level.displayName,
