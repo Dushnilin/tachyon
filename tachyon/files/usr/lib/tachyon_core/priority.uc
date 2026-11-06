@@ -479,12 +479,23 @@ function fixture_probe(latencies, tag_name, group) {
             if (v != null && as_string(v) != "" && int(v, 10) >= 0)
                 delays_by_url[u] = int(v, 10);
         }
+        if (group != null && type(group) == "object") {
+            if (type(group._url_delays) != "object")
+                group._url_delays = {};
+            group._url_delays[as_string(tag_name)] = delays_by_url;
+        }
         return evaluate_multi_url_delays(delays_by_url, urls, strategy);
     }
 
     if (raw == null || as_string(raw) == "" || int(raw, 10) < 0)
         return { alive: false, delay: 0, passed: 0, total: length(urls), full_pass: false };
     let d = int(raw, 10);
+    if (group != null && type(group) == "object") {
+        if (type(group._url_delays) != "object")
+            group._url_delays = {};
+        let primary_url = length(urls) > 0 ? as_string(urls[0]) : "https://www.gstatic.com/generate_204";
+        group._url_delays[as_string(tag_name)] = { [primary_url]: d };
+    }
     return { alive: true, delay: d, passed: length(urls), total: length(urls), full_pass: true };
 }
 
@@ -863,6 +874,40 @@ function init_group_state(group) {
     };
 }
 
+function warm_inactive_group_members(group, active_level_index, active_tag, probe, force_all, skip_active_level) {
+    if (type(group) != "object" || group.kind == "urltest")
+        return 0;
+
+    let levels = array_or_empty(group.levels);
+    let existing_delays = type(group._url_delays) == "object" ? group._url_delays : {};
+    let snapshot = !force_all ? object_or_empty(clash_delays_snapshot()) : {};
+    let seen = {};
+    if (active_tag != null && as_string(active_tag) != "")
+        seen[as_string(active_tag)] = true;
+
+    let probed = 0;
+    for (let i = 0; i < length(levels); i++) {
+        if (skip_active_level && i == active_level_index)
+            continue;
+        let level = levels[i];
+        if (type(level) != "object" || level.direct)
+            continue;
+        for (let raw_tag in array_or_empty(level.outbounds)) {
+            let tag_name = as_string(raw_tag);
+            if (tag_name == "" || tag_name == "direct-out" || seen[tag_name] == true)
+                continue;
+            seen[tag_name] = true;
+            if (!force_all && (existing_delays[tag_name] != null || snapshot[tag_name] != null))
+                continue;
+            probe(tag_name, group);
+            probed++;
+        }
+    }
+    if (probed > 0)
+        cached_delays_mtime = -1;
+    return probed;
+}
+
 function tick_group(state, group) {
     let now = now_seconds();
 
@@ -881,6 +926,8 @@ function tick_group(state, group) {
             state.guard.escalated_at = now;
             state.guard.ok_streak = 0;
         }
+        if (state.active != "" && warm_inactive_group_members(group, state.levelIndex, state.active, clash_probe, false, false) > 0)
+            write_group_status(group, state, selected);
         state.nextActiveCheck = now + duration_to_seconds(group.active_check_interval, 5);
         return;
     }
@@ -945,12 +992,23 @@ function tick_group(state, group) {
         state.nextRecoveryCheck = now + duration_to_seconds(group.recovery_check_interval, 15);
     }
 
-    if (state.active != "" && group.switch_to_faster_same_priority && now >= state.nextFastestCheck) {
-        let min_hold = duration_to_seconds(group.min_hold_time, 15);
-        if (state.lastSwitchAt <= 0 || (now - state.lastSwitchAt) >= min_hold) {
-            let selected = choose_fastest_same_level(group, state.levelIndex, state.active, clash_probe);
-            if (selected != null)
-                switch_group(state, group, selected, "faster_same_tier");
+    if (state.active != "" && now >= state.nextFastestCheck) {
+        let same_level_probed = false;
+        if (group.switch_to_faster_same_priority) {
+            let min_hold = duration_to_seconds(group.min_hold_time, 15);
+            if (state.lastSwitchAt <= 0 || (now - state.lastSwitchAt) >= min_hold) {
+                same_level_probed = true;
+                let selected = choose_fastest_same_level(group, state.levelIndex, state.active, clash_probe);
+                if (selected != null)
+                    switch_group(state, group, selected, "faster_same_tier");
+            }
+        }
+        if (warm_inactive_group_members(group, state.levelIndex, state.active, clash_probe, true, same_level_probed) > 0) {
+            write_group_status(group, state, {
+                tag: state.active,
+                levelIndex: state.levelIndex,
+                delay: state.activeDelay
+            });
         }
         state.nextFastestCheck = now + duration_to_seconds(group.fastest_check_interval, 180);
     }
@@ -1035,6 +1093,23 @@ function select_faster_fixture(group_path, latency_path, level_index, active_tag
     write_json(selected == null ? {} : selected);
 }
 
+function warm_fixture(group_path, latency_path) {
+    let group = normalize_group(read_json_file(group_path), "fixture");
+    let latencies = object_or_empty(read_json_file(latency_path));
+    let probe = function(tag_name, grp) {
+        return fixture_probe(latencies, tag_name, grp);
+    };
+    let selected = choose_from_level_range(group, 0, length(group.levels) - 1, probe);
+    let active_level = selected != null ? int(selected.levelIndex) : -1;
+    let active_tag = selected != null ? as_string(selected.tag) : "";
+    let probed = warm_inactive_group_members(group, active_level, active_tag, probe, false, false);
+    write_json({
+        selected: selected == null ? {} : selected,
+        probed_inactive: probed,
+        url_delays: type(group._url_delays) == "object" ? group._url_delays : {}
+    });
+}
+
 let mode = ARGV[0] || "";
 
 if (mode == "start-runtime")
@@ -1047,7 +1122,9 @@ else if (mode == "select-fixture")
     select_fixture(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5]);
 else if (mode == "select-faster-fixture")
     select_faster_fixture(ARGV[1], ARGV[2], ARGV[3], ARGV[4]);
+else if (mode == "warm-fixture")
+    warm_fixture(ARGV[1], ARGV[2]);
 else {
-    warn("Usage: singbox/priority.uc <start-runtime|stop-runtime|worker|select-fixture|select-faster-fixture>\n");
+    warn("Usage: singbox/priority.uc <start-runtime|stop-runtime|worker|select-fixture|select-faster-fixture|warm-fixture>\n");
     exit(1);
 }

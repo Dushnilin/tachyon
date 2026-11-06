@@ -301,6 +301,92 @@ if (
   });
 }
 
+const probedPriorityMemberTags = new Set<string>();
+let warmingPriorityLatencies = false;
+
+function warmPrioritySectionLatencies(
+  sections: Tachyon.OutboundGroup[],
+  mountId: number,
+) {
+  if (warmingPriorityLatencies || !dashboardMounted) {
+    return;
+  }
+
+  const pendingGroups: Array<{
+    healthUrl?: string;
+    members: Tachyon.PriorityMember[];
+  }> = [];
+
+  for (const section of sections) {
+    if (isServiceGroup(section)) continue;
+    for (const outbound of section.outbounds || []) {
+      const info = outbound.priorityInfo;
+      if (!info?.outbounds?.length) continue;
+      const missingMembers = info.outbounds.filter((member) => {
+        const code = String(member.code || '').trim();
+        if (!code || code === 'direct-out') return false;
+        if (probedPriorityMemberTags.has(code)) return false;
+        if (customProxyLatencies.has(code)) return false;
+        return !member.latency || member.latency === 0;
+      });
+      if (missingMembers.length > 0) {
+        for (const m of missingMembers) {
+          probedPriorityMemberTags.add(String(m.code || '').trim());
+        }
+        capSetSize(probedPriorityMemberTags);
+        pendingGroups.push({
+          healthUrl: info.healthUrl,
+          members: missingMembers,
+        });
+      }
+    }
+  }
+
+  if (pendingGroups.length === 0) {
+    return;
+  }
+
+  warmingPriorityLatencies = true;
+  void (async () => {
+    try {
+      let anyMeasured = false;
+      for (const group of pendingGroups) {
+        if (
+          !dashboardMounted ||
+          mountId !== dashboardMountId ||
+          getDashboardServiceAvailability() === 'stopped'
+        ) {
+          return;
+        }
+        const measured = await measurePriorityLatencies(group.members, {
+          healthUrl: group.healthUrl,
+          existing: customProxyLatencies,
+          probe: (tag, timeout) =>
+            TachyonShellMethods.getClashApiProxyLatency(tag, timeout),
+        });
+        if (measured.size > 0) {
+          anyMeasured = true;
+          measured.forEach((delay, tag) => {
+            customProxyLatencies.set(tag, delay);
+          });
+          capMapSize(customProxyLatencies);
+        }
+      }
+      if (
+        anyMeasured &&
+        dashboardMounted &&
+        mountId === dashboardMountId &&
+        getDashboardServiceAvailability() !== 'stopped'
+      ) {
+        void renderSectionsWidget();
+        void fetchDashboardSections({ force: true });
+      }
+    } finally {
+      warmingPriorityLatencies = false;
+    }
+  })();
+}
+
 // Fetchers
 
 async function fetchDashboardSectionsOnce(mountId: number) {
@@ -347,6 +433,8 @@ async function fetchDashboardSectionsOnce(mountId: number) {
         data,
       },
     });
+
+    warmPrioritySectionLatencies(data, mountId);
 
     return true;
   } catch (error) {
@@ -2406,8 +2494,19 @@ function applyPriorityDaemonStatusToInfo(
       const mDelays = delaysMap[member.code];
       if (mDelays && typeof mDelays === 'object') {
         changed = true;
+        const positive = Object.values(mDelays).filter(
+          (d): d is number => typeof d === 'number' && d > 0,
+        );
+        const derivedLatency =
+          (!member.latency || member.latency === 0) && positive.length > 0
+            ? Math.max(...positive)
+            : member.latency;
+        if (derivedLatency && derivedLatency > 0) {
+          customProxyLatencies.set(member.code, derivedLatency);
+        }
         return {
           ...member,
+          latency: derivedLatency,
           urlDelays: { ...(member.urlDelays || {}), ...mDelays },
         };
       }
@@ -6404,6 +6503,8 @@ function onPageUnmount() {
   stopActionStateWatcher();
   sectionsRefreshQueued = false;
   sectionsRefreshPromise = null;
+  probedPriorityMemberTags.clear();
+  warmingPriorityLatencies = false;
   store.unsubscribe(onStoreUpdate);
   store.reset(['bandwidthWidget', 'trafficTotalWidget', 'systemInfoWidget']);
 }

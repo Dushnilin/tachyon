@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-05 00:48+0300\n"
-"PO-Revision-Date: 2026-11-05 00:48+0300\n"
+"POT-Creation-Date: 2026-11-06 09:04+0300\n"
+"PO-Revision-Date: 2026-11-06 09:04+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -57,7 +57,7 @@ msgid "+ add"
 msgstr "+ добавить"
 
 msgid "-- Add tier from this section --"
-msgstr "-- ???????? ??????? ?? ???? ?????? --"
+msgstr "-- Добавить ступень из этой секции --"
 
 msgid "-- Select --"
 msgstr "-- Выбрать --"
@@ -66,19 +66,19 @@ msgid "-- Select Inbound Server --"
 msgstr "-- Выберите входящий сервер --"
 
 msgid "-- Select connection of this section --"
-msgstr "-- ???????? ??????????? ???? ?????? --"
+msgstr "-- Выберите подключение этой секции --"
 
 msgid "-- Select or type port/range --"
 msgstr "-- Выберите или введите порт/диапазон --"
 
 msgid "-- Select server of this section --"
-msgstr "-- ???????? ?????? ???? ?????? --"
+msgstr "-- Выберите сервер этой секции --"
 
 msgid ".lst Lists"
 msgstr "Списки .lst"
 
 msgid "0 (server)"
-msgstr "0 (??????)"
+msgstr "0 (сервер)"
 
 msgid "0 servers cached"
 msgstr "0 серверов в кэше"
@@ -87,7 +87,7 @@ msgid "1 (Byte 1 after header)"
 msgstr "1 (Байт 1 после заголовка)"
 
 msgid "1 (client)"
-msgstr "1 (??????)"
+msgstr "1 (клиент)"
 
 msgid "1,midsld (Byte 1 + MidSLD)"
 msgstr "1,midsld (1-й байт + середина домена MidSLD)"
@@ -276,7 +276,7 @@ msgid "Accept routes"
 msgstr "Принимать маршруты"
 
 msgid "Accept-Language Header"
-msgstr "????????? Accept-Language"
+msgstr "Заголовок Accept-Language"
 
 msgid "Access Token (FPTN)"
 msgstr "Токен доступа (FPTN)"
@@ -630,10 +630,10 @@ msgid "All remaining servers means every server not already assigned to a higher
 msgstr "Все остальные серверы — это все серверы, не назначенные на уровень с более высоким приоритетом."
 
 msgid "All section connections"
-msgstr "??? ??????????? ??????"
+msgstr "Все подключения секции"
 
 msgid "All section servers"
-msgstr "??? ??????? ??????"
+msgstr "Все серверы секции"
 
 msgid "All servers"
 msgstr "Все серверы"
@@ -840,7 +840,7 @@ msgid "AnyTLS Password"
 msgstr "Пароль AnyTLS"
 
 msgid "App Version"
-msgstr "?????? ??????????"
+msgstr "Версия приложения"
 
 msgid "Applied"
 msgstr "Применено"
@@ -1164,7 +1164,7 @@ msgid "Balancer Name"
 msgstr "Название балансировщика"
 
 msgid "Balancer Server Selection in Section"
-msgstr "????? ???????? ?????????????? ? ??????"
+msgstr "Выбор серверов балансировщика в секции"
 
 msgid "Balancer Type"
 msgstr "Тип балансировщика"
@@ -1344,7 +1344,7 @@ msgid "Browser is using FakeIP correctly"
 msgstr "Браузер использует FakeIP"
 
 msgid "Browsing"
-msgstr "???-??????? (Browsing)"
+msgstr "Веб-серфинг (Browsing)"
 
 msgid "Bug report downloaded"
 msgstr "Отчёт об ошибке загружен"
@@ -1362,7 +1362,7 @@ msgid "Built-in rule sets"
 msgstr "Встроенные наборы правил"
 
 msgid "Bulk"
-msgstr "??????? ???????? (Bulk)"
+msgstr "Фоновая передача (Bulk)"
 
 msgid "Bulk Paste Share Links (Multiline)"
 msgstr "Массовая вставка ссылок (по одной на строку)"
@@ -1476,7 +1476,7 @@ msgid "CS2 / Faceit + Discord (Games + UDP)"
 msgstr "CS2 / Faceit + Discord (Игры + UDP)"
 
 msgid "CS2 / Faceit / Cybershoke (Web + API + UDP)"
-msgstr "CS2 / Faceit / Cybershoke (??? + API + UDP)"
+msgstr "CS2 / Faceit / Cybershoke (Веб + API + UDP)"
 
 msgid "CUSTOM DNS → DIRECT"
 msgstr "ПОЛЬЗОВАТЕЛЬСКИЙ DNS → НАПРЯМУЮ"
@@ -1686,7 +1686,7 @@ msgid "Choose which routing sections to apply this schedule to."
 msgstr "Выберите секции маршрутизации, к которым применяется данное расписание."
 
 msgid "Choose which servers from the connections added to this section participate in this balancer."
-msgstr "????????, ????? ??????? ?? ??????????? ? ??? ?????? ??????????? ????????? ? ?????? ??????? ??????????????."
+msgstr "Выберите, какие серверы из добавленных в эту секцию подключений участвуют в работе данного балансировщика."
 
 msgid "Chrome (Recommended for REALITY + ML-KEM)"
 msgstr "Chrome (рекомендуется для REALITY + ML-KEM)"
@@ -2106,7 +2106,7 @@ msgid "Content Padding Addition"
 msgstr "Дополнительный паддинг контента"
 
 msgid "ContentPaddingAddition"
-msgstr "?????????????? ??????? ??????????? (ContentPaddingAddition)"
+msgstr "Дополнительный паддинг содержимого (ContentPaddingAddition)"
 
 msgid "Continuously probe servers and route traffic through the lowest-latency alive node"
 msgstr "Регулярное измерение пинга и автоматическое переключение на самый быстрый сервер"
@@ -2742,13 +2742,13 @@ msgid "Device / Host"
 msgstr "Устройство / Хост"
 
 msgid "Device Locale (x-device-locale)"
-msgstr "?????? ?????????? (x-device-locale)"
+msgstr "Локаль устройства (x-device-locale)"
 
 msgid "Device Model (x-device-model)"
-msgstr "?????? ?????????? (x-device-model)"
+msgstr "Модель устройства (x-device-model)"
 
 msgid "Device OS (x-device-os)"
-msgstr "?? ?????????? (x-device-os)"
+msgstr "ОС устройства (x-device-os)"
 
 msgid "Device does not broadcast its hostname via DHCP when privacy protection is enabled (Private Wi-Fi address)."
 msgstr "Устройство не передаёт своё имя по DHCP при включённой защите приватности (частный адрес Wi-Fi)."
@@ -2934,7 +2934,7 @@ msgid "Do not panic, everything can be fixed, just..."
 msgstr "Не паникуйте, всё можно исправить, просто..."
 
 msgid "Do not test servers from the selected connections of this section."
-msgstr "?? ???????????? ??????? ?? ????????? ??????????? ???? ??????."
+msgstr "Не использовать серверы из выбранных подключений этой секции."
 
 msgid "Do not test servers from these countries."
 msgstr "Не тестировать серверы из этих стран."
@@ -2955,7 +2955,7 @@ msgid "Do not test servers with one of the selected transports."
 msgstr "Не тестировать серверы с одним из выбранных транспортов."
 
 msgid "Do not test specified servers from this section."
-msgstr "?? ???????????? ????????? ??????? ?? ???? ??????."
+msgstr "Не использовать указанные серверы из этой секции."
 
 msgid "Do not test specified servers."
 msgstr "Не тестировать указанные серверы."
@@ -3453,7 +3453,7 @@ msgid "Exclude Subscription Prefixes"
 msgstr "Исключить префиксы подписок"
 
 msgid "Exclude Subscriptions / Connections (by Prefix)"
-msgstr "????????? ???????? / ??????????? (?? ????????)"
+msgstr "Исключить подписки / подключения (по префиксу)"
 
 msgid "Exclude Transports"
 msgstr "Исключить транспорты"
@@ -3993,13 +3993,13 @@ msgid "Filter:"
 msgstr "Фильтр:"
 
 msgid "Filtered (exclude)"
-msgstr "?????? (??????????)"
+msgstr "Фильтр (исключение)"
 
 msgid "Filtered (include)"
-msgstr "?????? (?????????)"
+msgstr "Фильтр (включение)"
 
 msgid "Filtered (mixed)"
-msgstr "?????? (????????? ????? ??????????)"
+msgstr "Фильтр (включение плюс исключение)"
 
 msgid "Filtered Server Groups from Pool (Optional)"
 msgstr "Группы серверов из пула (опционально)"
@@ -4269,16 +4269,16 @@ msgid "Guest mode isolates guest devices from local LAN and router administratio
 msgstr "Гостевой режим изолирует гостевые устройства от локальной сети и панели управления роутером, сохраняя доступ в интернет с дневными квотами и расписанием."
 
 msgid "H1 (Init Header)"
-msgstr "H1 (????????? ?????????????)"
+msgstr "H1 (заголовок инициализации)"
 
 msgid "H2 (Response Header)"
-msgstr "H2 (????????? ??????)"
+msgstr "H2 (заголовок ответа)"
 
 msgid "H3 (Cookie Header)"
-msgstr "H3 (????????? Cookie)"
+msgstr "H3 (заголовок Cookie)"
 
 msgid "H4 (Transport Header)"
-msgstr "H4 (???????????? ?????????)"
+msgstr "H4 (транспортный заголовок)"
 
 msgid "HEDGED • HAPPY EYEBALLS"
 msgstr "HEDGED • ПАРАЛЛЕЛЬНЫЙ РЕЗЕРВ"
@@ -4332,7 +4332,7 @@ msgid "Header Protection Key"
 msgstr "Ключ защиты заголовка"
 
 msgid "HeaderProtectionKey (Base64)"
-msgstr "???? ?????? ?????????? HeaderProtectionKey (Base64)"
+msgstr "Ключ защиты заголовков HeaderProtectionKey (Base64)"
 
 msgid "Health Check URL"
 msgstr "URL проверки доступности"
@@ -4434,7 +4434,7 @@ msgid "Hide widget from dashboard"
 msgstr "Скрыть виджет с дашборда"
 
 msgid "High"
-msgstr "???????"
+msgstr "Высокий"
 
 msgid "High-throughput QUIC proxy ideal for congested or lossy mobile networks"
 msgstr "Скоростной QUIC-сервер для мобильных сетей и каналов с потерями пакетов"
@@ -4509,19 +4509,19 @@ msgid "Human-readable name of this reusable condition."
 msgstr "Понятное название этого переиспользуемого условия."
 
 msgid "I1 (Signature Packet 1)"
-msgstr "I1 (??????????? ????? 1)"
+msgstr "I1 (сигнатурный пакет 1)"
 
 msgid "I2 (Signature Packet 2)"
-msgstr "I2 (??????????? ????? 2)"
+msgstr "I2 (сигнатурный пакет 2)"
 
 msgid "I3 (Signature Packet 3)"
-msgstr "I3 (??????????? ????? 3)"
+msgstr "I3 (сигнатурный пакет 3)"
 
 msgid "I4 (Signature Packet 4)"
-msgstr "I4 (??????????? ????? 4)"
+msgstr "I4 (сигнатурный пакет 4)"
 
 msgid "I5 (Signature Packet 5)"
-msgstr "I5 (??????????? ????? 5)"
+msgstr "I5 (сигнатурный пакет 5)"
 
 msgid "ICMP"
 msgstr "ICMP"
@@ -4740,7 +4740,7 @@ msgid "Include Subscription Prefixes"
 msgstr "Включить префиксы подписок"
 
 msgid "Include Subscriptions / Connections (by Prefix)"
-msgstr "???????? ???????? / ??????????? (?? ????????)"
+msgstr "Включить подписки / подключения (по префиксу)"
 
 msgid "Include Transports"
 msgstr "Включить транспорты"
@@ -5247,16 +5247,16 @@ msgid "Issues detected. Review the diagnosis above."
 msgstr "Обнаружены неполадки. Ознакомьтесь с анализом выше."
 
 msgid "Itime (Signature Timeout)"
-msgstr "Itime (??????? ?????????)"
+msgstr "Itime (таймаут сигнатуры)"
 
 msgid "J1 (Custom Junk 1)"
-msgstr "J1 (???????????? ??????? ????? 1)"
+msgstr "J1 (произвольный шумовой пакет 1)"
 
 msgid "J2 (Custom Junk 2)"
-msgstr "J2 (???????????? ??????? ????? 2)"
+msgstr "J2 (произвольный шумовой пакет 2)"
 
 msgid "J3 (Custom Junk 3)"
-msgstr "J3 (???????????? ??????? ????? 3)"
+msgstr "J3 (произвольный шумовой пакет 3)"
 
 msgid "JSON Outbounds"
 msgstr "JSON-аутбаунды"
@@ -5283,7 +5283,7 @@ msgid "Japan (jp)"
 msgstr "Япония (jp)"
 
 msgid "Jc (Junk Packet Count)"
-msgstr "Jc (?????????? ??????? ???????)"
+msgstr "Jc (количество шумовых пакетов)"
 
 msgid "Jitsi"
 msgstr "Jitsi"
@@ -5292,10 +5292,10 @@ msgid "Jitter"
 msgstr "Джиттер"
 
 msgid "Jmax (Junk Max Size)"
-msgstr "Jmax (????. ?????? ???????? ??????)"
+msgstr "Jmax (макс. размер шумового пакета)"
 
 msgid "Jmin (Junk Min Size)"
-msgstr "Jmin (???. ?????? ???????? ??????)"
+msgstr "Jmin (мин. размер шумового пакета)"
 
 msgid "Junk Max Size (Jmax)"
 msgstr "Макс. размер мусора (Jmax)"
@@ -5358,7 +5358,7 @@ msgid "Keepalive Timeout"
 msgstr "Таймаут Keepalive"
 
 msgid "KeepaliveTimeout (s)"
-msgstr "??????? Keepalive (?)"
+msgstr "Таймаут Keepalive (с)"
 
 msgid "Keeps FakeIP cache persistent across reboots and pre-resolves popular blocked domains on startup so first-visit latency is 0 ms."
 msgstr "Сохраняет FakeIP-кэш между перезагрузками и заранее резолвит популярные заблокированные домены при старте — задержка при первом визите 0 мс."
@@ -5406,7 +5406,7 @@ msgid "LINKS"
 msgstr "ССЫЛКИ"
 
 msgid "LIVE CONNECTIVITY PROBER"
-msgstr "???????? ??????????? ? ???????? ???????"
+msgstr "Проверка доступности в реальном времени"
 
 msgid "LM Studio (Local PC / Server)"
 msgstr "LM Studio (локальный ПК / сервер)"
@@ -5652,7 +5652,7 @@ msgid "Loss"
 msgstr "Потери"
 
 msgid "Low"
-msgstr "??????"
+msgstr "Низкий"
 
 msgid "LuCI Web UI"
 msgstr "Веб-интерфейс LuCI"
@@ -5781,7 +5781,7 @@ msgid "Max reconnects per hour before alert (default 10)."
 msgstr "Макс. переподключений в час до оповещения (по умолчанию 10)."
 
 msgid "MaxHandshakeAttempts"
-msgstr "????. ????? ??????? ??????????? (MaxHandshakeAttempts)"
+msgstr "Макс. число попыток рукопожатия (MaxHandshakeAttempts)"
 
 msgid "Maximum"
 msgstr "Максимум"
@@ -5838,7 +5838,7 @@ msgid "MiB"
 msgstr "МиБ"
 
 msgid "Middle"
-msgstr "???????"
+msgstr "Средний"
 
 msgid "Mieru Server Address"
 msgstr "Адрес сервера Mieru"
@@ -6027,7 +6027,7 @@ msgid "Native Desync (tachyon-core)"
 msgstr "Встроенный Desync (tachyon-core)"
 
 msgid "Native Desync (tachyon-core) Matrix Patterns"
-msgstr "??????? ???????? ???????? ??????????????? (tachyon-core)"
+msgstr "Матрица шаблонов нативной десинхронизации (tachyon-core)"
 
 msgid "Native Rust kernel balancing mode for URLTest pools: Stability filters out jittery/lossy nodes, Sticky pins flows via Rendezvous HRW hashing, Least Load spreads concurrent streams, Weighted distributes proportionally to 1/RTT², Passive quarantines nodes dropping streams early (< 64 KiB), and Hedged races a backup node when handshake stalls."
 msgstr "Встроенный алгоритм балансировки ядра Rust для пулов URLTest: «Стабильность» отсеивает узлы с джиттером и потерями, «Привязка потока» закрепляет сессии через хэш Rendezvous HRW, «Наименьшая нагрузка» распределяет параллельные потоки, «Взвешенный» делит трафик пропорционально 1/RTT², «Пассивный предохранитель» отправляет в карантин узлы при раннем обрыве (< 64 КиБ), а «Параллельный резерв» подключает запасной узел при задержке рукопожатия."
@@ -6117,7 +6117,7 @@ msgid "No URL configured"
 msgstr "URL не указан"
 
 msgid "No Wait (0-RTT)"
-msgstr "??? ???????? (0-RTT)"
+msgstr "Без ожидания (0-RTT)"
 
 msgid "No active DHCP clients found on local network."
 msgstr "Активные устройства в локальной сети не найдены."
@@ -6402,7 +6402,7 @@ msgid "OS"
 msgstr "ОС"
 
 msgid "OS Version (x-ver-os)"
-msgstr "?????? ?? (x-ver-os)"
+msgstr "Версия ОС (x-ver-os)"
 
 msgid "Obfs Host Domain"
 msgstr "Хост обфускации (Obfs Host)"
@@ -6684,7 +6684,7 @@ msgid "Orange"
 msgstr "Оранжевый"
 
 msgid "Order of failover strictly from connections and servers added to this section. Top item is primary (Tier 1), next is backup (Tier 2), etc."
-msgstr "??????? ?????????????? ?????? ?? ??????????? ? ????????, ??????????? ? ??? ??????. ?????? ??????? ? ???????? (??????? 1), ????????? ? ????????? (??????? 2) ? ?.?."
+msgstr "Порядок резервирования строго из подключений и серверов, добавленных в эту секцию. Первый элемент — основной (ступень 1), следующий — резервный (ступень 2) и т.д."
 
 msgid "Ordered list of Outbound Groups, Sources, individual Servers from subscriptions/pool, or 'direct' for direct fallback. Tier 1 is tried first, then Tier 2, etc."
 msgstr "Упорядоченный список групп серверов, источников, отдельных серверов из подписок/пула или «direct» для резервного прямого выхода. Сначала проверяется ступень 1, затем ступень 2 и т.д."
@@ -6933,7 +6933,7 @@ msgid "Ping / Stability"
 msgstr "Пинг / Стабильность"
 
 msgid "Pink"
-msgstr "???????"
+msgstr "Розовый"
 
 msgid "Pinning"
 msgstr "Привязка сертификата"
@@ -7188,7 +7188,7 @@ msgid "Priority Failover (2nd activates only after 1st fails)"
 msgstr "По приоритету с отказоустойчивостью (2-е только после отказа 1-го)"
 
 msgid "Priority Tiers (Connections & Servers of This Section)"
-msgstr "??????? ?????????? (??????????? ? ??????? ???? ??????)"
+msgstr "Ступени приоритета (подключения и серверы этой секции)"
 
 msgid "Priority Tiers (Groups / Sources / Servers)"
 msgstr "Ступени приоритета (группы / источники / серверы)"
@@ -7455,10 +7455,10 @@ msgid "ROUND-ROBIN • POOL"
 msgstr "ROUND-ROBIN • ПО КРУГУ"
 
 msgid "RULE SIMULATION & SEARCH"
-msgstr "????????????? ? ????? ??????"
+msgstr "Моделирование и поиск правил"
 
 msgid "Random"
-msgstr "?????????"
+msgstr "Случайный"
 
 msgid "Random Trailers"
 msgstr "Случайные трейлеры (Random Trailers)"
@@ -7470,7 +7470,7 @@ msgid "Randomize the URLTest interval across groups and reboots (e.g. 15%, 25%, 
 msgstr "Добавляет случайный разброс к интервалу проверки URLTest между группами и перезагрузками (например, 15%, 25% или 30s), чтобы избежать синхронных всплесков проверочных запросов."
 
 msgid "Randomized"
-msgstr "?????????????????"
+msgstr "Рандомизированный"
 
 msgid "Rank"
 msgstr "Место"
@@ -7569,7 +7569,7 @@ msgid "Recovery Check Interval"
 msgstr "Интервал проверки восстановления"
 
 msgid "Red"
-msgstr "???????"
+msgstr "Красный"
 
 msgid "Refill"
 msgstr "Сброс"
@@ -7617,7 +7617,7 @@ msgid "Reject traffic"
 msgstr "Отклонение трафика"
 
 msgid "RejectAfterTime (s)"
-msgstr "????? ?????????? ?????? RejectAfterTime (?)"
+msgstr "Время отклонения сессии RejectAfterTime (с)"
 
 msgid "Rekey After Time"
 msgstr "Интервал смены ключа (Rekey After Time)"
@@ -7626,10 +7626,10 @@ msgid "Rekey Timeout"
 msgstr "Таймаут смены ключа (Rekey Timeout)"
 
 msgid "RekeyAfterTime (s)"
-msgstr "????? ????? ?????? RekeyAfterTime (?)"
+msgstr "Время смены ключей RekeyAfterTime (с)"
 
 msgid "RekeyTimeout (s)"
-msgstr "??????? ????? ?????? RekeyTimeout (?)"
+msgstr "Таймаут смены ключей RekeyTimeout (с)"
 
 msgid "Reload now"
 msgstr "Перезагрузить сейчас"
@@ -8115,16 +8115,16 @@ msgid "Russia (ru)"
 msgstr "Россия (ru)"
 
 msgid "S1 (Init Padding)"
-msgstr "S1 (??????? ?????????????)"
+msgstr "S1 (паддинг инициализации)"
 
 msgid "S2 (Response Padding)"
-msgstr "S2 (??????? ??????)"
+msgstr "S2 (паддинг ответа)"
 
 msgid "S3 (Cookie Padding)"
-msgstr "S3 (??????? Cookie)"
+msgstr "S3 (паддинг Cookie)"
 
 msgid "S4 (Transport Padding)"
-msgstr "S4 (???????????? ???????)"
+msgstr "S4 (транспортный паддинг)"
 
 msgid "SAFE"
 msgstr "БЕЗОПАСНО"
@@ -8631,7 +8631,7 @@ msgid "Server Public Key (Base64 / PEM)"
 msgstr "Публичный ключ сервера (Base64 / PEM)"
 
 msgid "Server Selection in This Section"
-msgstr "????? ???????? ? ???? ??????"
+msgstr "Выбор серверов в этой секции"
 
 msgid "Server VPN IP address and subnet (e.g. 10.0.0.1/24)"
 msgstr "VPN IP-адрес и подсеть сервера (например, 10.0.0.1/24)"
@@ -9759,7 +9759,7 @@ msgid "Telegram"
 msgstr "Telegram"
 
 msgid "Telegram (Web + Bot API)"
-msgstr "Telegram (??? + Bot API)"
+msgstr "Telegram (Веб + Bot API)"
 
 msgid "Telegram Alerts"
 msgstr "Оповещения в Telegram"
@@ -9798,13 +9798,13 @@ msgid "Test node latency"
 msgstr "Проверить задержку ноды"
 
 msgid "Test only selected servers from this section."
-msgstr "???????????? ?????? ????????? ??????? ?? ???? ??????."
+msgstr "Использовать только выбранные серверы из этой секции."
 
 msgid "Test only selected servers."
 msgstr "Тестировать только выбранные серверы."
 
 msgid "Test only servers from the selected connections added to this section."
-msgstr "???????????? ?????? ??????? ?? ????????? ???????????, ??????????? ? ??? ??????."
+msgstr "Использовать только серверы из выбранных подключений, добавленных в эту секцию."
 
 msgid "Test only servers with one of the selected ports or port ranges (e.g. 443, 8443, 2000-3000)."
 msgstr "Тестировать только серверы с одним из выбранных портов или диапазонов портов (напр., 443, 8443, 2000-3000)."
@@ -10725,7 +10725,7 @@ msgid "Via section"
 msgstr "Через секцию"
 
 msgid "Video"
-msgstr "?????????? (Video)"
+msgstr "Видеопоток (Video)"
 
 msgid "Video streaming"
 msgstr "Видео"
@@ -11112,7 +11112,7 @@ msgid "dev."
 msgstr "устр."
 
 msgid "disorder (Out-of-order TCP Split)"
-msgstr "disorder (??????? TCP ? ???????? ???????)"
+msgstr "disorder (нарезка TCP в обратном порядке)"
 
 msgid "domains"
 msgstr "доменов"
@@ -11238,13 +11238,13 @@ msgid "failed"
 msgstr "с ошибкой"
 
 msgid "fake (Fake Packet Only)"
-msgstr "fake (?????? ???????? ?????)"
+msgstr "fake (только фейковый пакет)"
 
 msgid "fake_disorder (Fake + Out-of-order Split)"
-msgstr "fake_disorder (???? + ??????? ? ???????? ???????)"
+msgstr "fake_disorder (фейк + нарезка в обратном порядке)"
 
 msgid "fake_split (Fake + Split)"
-msgstr "fake_split (???? + ???????)"
+msgstr "fake_split (фейк + нарезка)"
 
 msgid "gRPC service"
 msgstr "Сервис gRPC"
@@ -11280,10 +11280,10 @@ msgid "ms"
 msgstr "мс"
 
 msgid "multi_disorder (TLSRec + Fake + 3-way Out-of-order Split)"
-msgstr "multi_disorder (TLSRec + ???? + 3-??????? ??????? ? ???????? ???????)"
+msgstr "multi_disorder (TLSRec + фейк + 3-частная нарезка в обратном порядке)"
 
 msgid "multi_split (3-way TLS Record + SNI + MidSLD)"
-msgstr "multi_split (3-??????? ??????? TLS Record + SNI + MidSLD)"
+msgstr "multi_split (3-частная нарезка TLS Record + SNI + MidSLD)"
 
 msgid "native (core)"
 msgstr "встроенный (core)"
@@ -11304,7 +11304,7 @@ msgid "online"
 msgstr "в сети"
 
 msgid "oob (TCP Urgent OOB)"
-msgstr "oob (??????????? ???? TCP Urgent OOB)"
+msgstr "oob (внеочередной байт TCP Urgent OOB)"
 
 msgid "outbounds must be a non-empty array of strings"
 msgstr "outbounds должен быть непустым массивом строк"
@@ -11337,7 +11337,7 @@ msgid "sniext+1 (1 byte into SNI extension)"
 msgstr "sniext+1 (1-й байт расширения SNI)"
 
 msgid "split (TCP Segment Split)"
-msgstr "split (??????? TCP-????????)"
+msgstr "split (нарезка TCP-сегмента)"
 
 msgid "srv"
 msgstr "серв."
@@ -11355,10 +11355,10 @@ msgid "tiny"
 msgstr "tiny"
 
 msgid "tlsrec (TLS Record Fragmentation)"
-msgstr "tlsrec (???????????? ??????? TLS)"
+msgstr "tlsrec (фрагментация записей TLS)"
 
 msgid "tun0 (Default)"
-msgstr "tun0 (?? ?????????)"
+msgstr "tun0 (по умолчанию)"
 
 msgid "uTLS Fingerprint"
 msgstr "Отпечаток uTLS"

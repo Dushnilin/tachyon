@@ -1955,4 +1955,204 @@ describe('getDashboardSections', () => {
     expect(result.data[0].subscriptionSourceCount).toBe(0);
     expect(result.data[0].subscriptionMetadata).toBeUndefined();
   });
+
+  it('keeps an unprobed secondary subscription in a Priority balancer visible under hide_na_servers until it is probed (#357)', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      {
+        '.name': 'Proxy',
+        '.type': 'section',
+        enabled: '1',
+        action: 'connection',
+        dashboard_hide_na_servers: '1',
+        outbound_source_refs: ['Cloud_VPN', 'Vitalik_VPN'],
+        balancer_refs: ['Priority'],
+        balancer_settings: JSON.stringify({
+          Priority: {
+            outbound_group_levels: ['Cloud_VPN', 'Vitalik_VPN'],
+          },
+        }),
+      },
+      {
+        '.name': 'Cloud_VPN',
+        '.type': 'outbound_source',
+        enabled: '1',
+        source_type: 'subscription',
+        name: 'Cloud VPN',
+        url: 'https://cloud.example/sub',
+        prefix_nodes: '1',
+        node_prefix: 'Cloud',
+      },
+      {
+        '.name': 'Vitalik_VPN',
+        '.type': 'outbound_source',
+        enabled: '1',
+        source_type: 'subscription',
+        name: 'Vitalik VPN',
+        url: 'https://vitalik.example/sub',
+        prefix_nodes: '1',
+        node_prefix: 'Vitalik',
+      },
+      {
+        '.name': 'Priority',
+        '.type': 'balancer',
+        enabled: '1',
+        balancer_type: 'priority',
+        name: 'Priority',
+      },
+    ]);
+    mocks.fsRead.mockResolvedValue(
+      JSON.stringify({
+        outboundMetadata: {
+          names: {
+            'Proxy-sub-1-out': 'Cloud DE',
+            'Proxy-sub-2-out': 'Cloud Dead',
+            'Proxy-sub-3-out': 'Vitalik NL',
+            'Proxy-sub-4-out': 'Vitalik FI',
+          },
+          sources: {
+            'Proxy-sub-1-out': 'sub:1',
+            'Proxy-sub-2-out': 'sub:1',
+            'Proxy-sub-3-out': 'sub:2',
+            'Proxy-sub-4-out': 'sub:2',
+          },
+        },
+        priorityGroups: {
+          'Proxy-priority-Priority-out': {
+            displayName: 'Priority',
+            outbounds: [
+              'Proxy-sub-1-out',
+              'Proxy-sub-2-out',
+              'Proxy-sub-3-out',
+              'Proxy-sub-4-out',
+            ],
+            levels: [
+              {
+                id: 'Priority_lvl_1',
+                displayName: 'Cloud VPN',
+                order: 0,
+                outbounds: ['Proxy-sub-1-out', 'Proxy-sub-2-out'],
+              },
+              {
+                id: 'Priority_lvl_2',
+                displayName: 'Vitalik VPN',
+                order: 1,
+                outbounds: ['Proxy-sub-3-out', 'Proxy-sub-4-out'],
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    // Before Vitalik_VPN (Level 1 / sub:2) has been probed at all:
+    // Cloud Dead (in sub:1) is hidden, while Vitalik NL & FI remain visible.
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'Proxy-out': proxy('Selector', {
+            name: 'Proxy-out',
+            now: 'Proxy-priority-Priority-out',
+            all: [
+              'Proxy-priority-Priority-out',
+              'Proxy-sub-1-out',
+              'Proxy-sub-2-out',
+              'Proxy-sub-3-out',
+              'Proxy-sub-4-out',
+            ],
+          }),
+          'Proxy-priority-Priority-out': proxy('Selector', {
+            name: 'Proxy-priority-Priority-out',
+            now: 'Proxy-sub-1-out',
+            all: [
+              'Proxy-sub-1-out',
+              'Proxy-sub-2-out',
+              'Proxy-sub-3-out',
+              'Proxy-sub-4-out',
+            ],
+          }),
+          'Proxy-sub-1-out': proxy('VLESS', {
+            name: 'Cloud DE',
+            history: [{ time: '2026-11-06T00:00:00Z', delay: 80 }],
+          }),
+          'Proxy-sub-2-out': proxy('VLESS', {
+            name: 'Cloud Dead',
+            history: [],
+          }),
+          'Proxy-sub-3-out': proxy('VLESS', {
+            name: 'Vitalik NL',
+            history: [],
+          }),
+          'Proxy-sub-4-out': proxy('VLESS', {
+            name: 'Vitalik FI',
+            history: [],
+          }),
+        },
+      },
+    });
+
+    const beforeProbe = await getDashboardSections();
+    expect(beforeProbe.success).toBe(true);
+    expect(beforeProbe.data[0].outbounds.map((o) => o.code)).toEqual([
+      'Proxy-priority-Priority-out',
+      'Proxy-sub-1-out',
+      'Proxy-sub-3-out',
+      'Proxy-sub-4-out',
+    ]);
+
+    // Once Vitalik_VPN is probed in the background (Vitalik NL responds, Vitalik FI is dead):
+    // Vitalik FI is hidden by hide_na_servers while Vitalik NL stays visible.
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'Proxy-out': proxy('Selector', {
+            name: 'Proxy-out',
+            now: 'Proxy-priority-Priority-out',
+            all: [
+              'Proxy-priority-Priority-out',
+              'Proxy-sub-1-out',
+              'Proxy-sub-2-out',
+              'Proxy-sub-3-out',
+              'Proxy-sub-4-out',
+            ],
+          }),
+          'Proxy-priority-Priority-out': proxy('Selector', {
+            name: 'Proxy-priority-Priority-out',
+            now: 'Proxy-sub-1-out',
+            all: [
+              'Proxy-sub-1-out',
+              'Proxy-sub-2-out',
+              'Proxy-sub-3-out',
+              'Proxy-sub-4-out',
+            ],
+          }),
+          'Proxy-sub-1-out': proxy('VLESS', {
+            name: 'Cloud DE',
+            history: [{ time: '2026-11-06T00:00:00Z', delay: 80 }],
+          }),
+          'Proxy-sub-2-out': proxy('VLESS', {
+            name: 'Cloud Dead',
+            history: [],
+          }),
+          'Proxy-sub-3-out': proxy('VLESS', {
+            name: 'Vitalik NL',
+            history: [{ time: '2026-11-06T00:00:05Z', delay: 115 }],
+          }),
+          'Proxy-sub-4-out': proxy('VLESS', {
+            name: 'Vitalik FI',
+            history: [],
+          }),
+        },
+      },
+    });
+
+    const afterProbe = await getDashboardSections();
+    expect(afterProbe.success).toBe(true);
+    expect(afterProbe.data[0].outbounds.map((o) => o.code)).toEqual([
+      'Proxy-priority-Priority-out',
+      'Proxy-sub-1-out',
+      'Proxy-sub-3-out',
+    ]);
+  });
 });

@@ -648,6 +648,7 @@ export namespace Tachyon {
     outbound_source_refs?: string | string[];
     outbound_group_refs?: string | string[];
     balancer_refs?: string | string[];
+    balancer_settings?: string;
     source_type?: string;
     proxy_links?: string | string[];
     proxy_links_text?: string;

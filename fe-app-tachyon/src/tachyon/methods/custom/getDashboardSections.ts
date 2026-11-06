@@ -835,19 +835,25 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
           'group',
           groupId,
         );
+        const balSettings = itemSettingsMap(next.balancer_settings)[groupId];
+        const balLevelRefs = getRawListValues(
+          balSettings?.outbound_group_levels as string[] | string,
+        );
         const secLevelRefs = getRawListValues(next.outbound_group_levels);
         const itemLevelRefs = getRawListValues(item.outbound_group_levels);
         const groupRefs =
-          secLevelRefs.length > 0
-            ? secLevelRefs
-            : itemLevelRefs.length > 0
-              ? itemLevelRefs
-              : legacyChildren.length === 0
-                ? [
-                    ...getListValues(next.outbound_group_refs),
-                    ...getListValues(next.outbound_source_refs),
-                  ]
-                : [];
+          balLevelRefs.length > 0
+            ? balLevelRefs
+            : secLevelRefs.length > 0
+              ? secLevelRefs
+              : itemLevelRefs.length > 0
+                ? itemLevelRefs
+                : legacyChildren.length === 0
+                  ? [
+                      ...getListValues(next.outbound_group_refs),
+                      ...getListValues(next.outbound_source_refs),
+                    ]
+                  : [];
         const levels: PriorityLevelConfig[] = groupRefs.length
           ? groupRefs.flatMap((rawRef, idx): PriorityLevelConfig[] => {
               const ref = rawRef.trim();
@@ -3211,11 +3217,83 @@ export async function getDashboardSections(
             );
 
           const hideNa = shouldHideNaServers(section);
-          const hasTestedServers = outbounds.some((o) => !isNaOutbound(o));
-          const filteredOutbounds =
-            hideNa && hasTestedServers
-              ? outbounds.filter((o) => !isNaOutbound(o))
-              : outbounds;
+          const leafOutbounds = outbounds.filter(
+            (o) => !o.urlTestInfo && !o.priorityInfo && !isSelectorOutbound(o),
+          );
+          const hasTestedServers = leafOutbounds.some((o) => !isNaOutbound(o));
+          const filteredOutbounds = (() => {
+            if (!hideNa || !hasTestedServers) {
+              return outbounds;
+            }
+            const proxyHistoryCodes = new Set(
+              proxies
+                .filter(
+                  (p) =>
+                    Array.isArray(p.value?.history) &&
+                    p.value.history.length > 0,
+                )
+                .map((p) => p.code),
+            );
+            const distinctSourceGroups = new Set(
+              leafOutbounds
+                .map((o) => o.sourceGroup)
+                .filter((g): g is string => Boolean(g)),
+            );
+            const testedSourceGroups = new Set(
+              leafOutbounds
+                .filter(
+                  (o) =>
+                    o.sourceGroup &&
+                    (!isNaOutbound(o) || proxyHistoryCodes.has(o.code)),
+                )
+                .map((o) => o.sourceGroup as string),
+            );
+            const untestedPriorityMemberCodes = new Set<string>();
+            for (const ob of outbounds) {
+              if (!ob.priorityInfo?.outbounds?.length) continue;
+              const membersByLevel = new Map<
+                number,
+                Tachyon.PriorityMember[]
+              >();
+              for (const m of ob.priorityInfo.outbounds) {
+                const lvl = typeof m.levelIndex === 'number' ? m.levelIndex : 0;
+                const list = membersByLevel.get(lvl) || [];
+                list.push(m);
+                membersByLevel.set(lvl, list);
+              }
+              for (const members of membersByLevel.values()) {
+                const levelTested = members.some(
+                  (m) =>
+                    (typeof m.latency === 'number' && m.latency > 0) ||
+                    m.latency === -1 ||
+                    proxyHistoryCodes.has(m.code),
+                );
+                if (!levelTested) {
+                  for (const m of members) {
+                    if (m.code) {
+                      untestedPriorityMemberCodes.add(m.code);
+                    }
+                  }
+                }
+              }
+            }
+
+            return outbounds.filter((o) => {
+              if (!isNaOutbound(o)) return true;
+              if (o.runtimeAvailable === false) return false;
+              if (
+                distinctSourceGroups.size > 1 &&
+                o.sourceGroup &&
+                !testedSourceGroups.has(o.sourceGroup)
+              ) {
+                return true;
+              }
+              if (untestedPriorityMemberCodes.has(o.code)) {
+                return true;
+              }
+              return false;
+            });
+          })();
 
           return {
             withTagSelect: true,

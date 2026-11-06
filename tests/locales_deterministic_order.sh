@@ -55,4 +55,12 @@ if command -v node >/dev/null 2>&1 && [ -d "$ROOT_DIR/fe-app-tachyon" ]; then
   fi
 fi
 
+# --- 4. no corrupted question-mark / replacement-char translations in PO ----
+for po_file in "$ROOT_DIR/fe-app-tachyon/locales/tachyon.ru.po" "$ROOT_DIR/luci-app-tachyon/po/ru/tachyon.po"; do
+  [ -f "$po_file" ] || fail "$po_file not found"
+  bad_lines="$(grep -nE '^msgstr ".*\?\?.*"' "$po_file" || true)"
+  [ -z "$bad_lines" ] || fail "corrupted question-mark translation in $po_file: $bad_lines"
+  ok
+done
+
 echo "locales_deterministic_order: $pass_count checks passed"

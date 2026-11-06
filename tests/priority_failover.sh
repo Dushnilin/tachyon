@@ -652,4 +652,11 @@ same_level="$(ucode -L "$TACHYON_LIB" "$PRIORITY_UC" select-faster-fixture \
 printf '%s\n' "$same_level" | grep -Fq '"tag": "b"' ||
   fail "same-level switching should compare candidates with the active delay from the same pass"
 
+warm_out="$(ucode -L "$TACHYON_LIB" "$PRIORITY_UC" warm-fixture \
+  "$WORK_DIR/select-first-live-group.json" "$WORK_DIR/select-first-live-latency.json")"
+printf '%s\n' "$warm_out" | grep -Fq '"tag": "b"' ||
+  fail "warm-fixture should select live node from top priority level"
+printf '%s\n' "$warm_out" | grep -Fq '"c": {' ||
+  fail "warm-fixture should probe inactive fallback priority level members so their latency is not N/A"
+
 printf 'Priority failover checks passed\n'
