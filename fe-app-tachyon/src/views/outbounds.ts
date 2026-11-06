@@ -119,7 +119,14 @@ function poolServerName(rawName, rawPrefix) {
   if (!name) return '';
   if (!prefix) return name;
   const fullPrefix = `${prefix}: `;
-  return name.startsWith(fullPrefix) ? name.slice(fullPrefix.length) : name;
+  if (name.startsWith(fullPrefix)) return name.slice(fullPrefix.length).trim();
+  const bracketPrefix = `[${prefix}]`;
+  if (name.startsWith(bracketPrefix))
+    return name.slice(bracketPrefix.length).trim();
+  const spacePrefix = `${prefix} `;
+  if (name.startsWith(spacePrefix))
+    return name.slice(spacePrefix.length).trim();
+  return name;
 }
 
 function serverNameList(val) {
@@ -293,11 +300,31 @@ function loadGlobalPoolChoices() {
       const countrySet = new Set();
       const prefixSet = new Set();
       const urlToSources = new Map();
+      const sidToSource = new Map();
 
       const upsertServer = (name, details) => {
-        const cleanName = String(name || '').trim();
+        let prefix = String(details.prefix || '').trim();
+        const cleanName = poolServerName(name, prefix);
         if (!cleanName) return;
-        const prefix = String(details.prefix || '').trim();
+
+        if (!prefix) {
+          for (const kp of prefixSet) {
+            if (kp && serverMap.has(`[${kp}] ${cleanName}`)) {
+              prefix = kp;
+              break;
+            }
+          }
+        } else if (serverMap.has(cleanName)) {
+          const unprefixed = serverMap.get(cleanName);
+          if (unprefixed && !unprefixed.prefix) {
+            serverMap.delete(cleanName);
+            const targetKey = `[${prefix}] ${cleanName}`;
+            if (!serverMap.has(targetKey)) {
+              serverMap.set(targetKey, unprefixed);
+            }
+          }
+        }
+
         const mapKey =
           prefix &&
           !cleanName.startsWith(`${prefix}: `) &&
@@ -366,6 +393,7 @@ function loadGlobalPoolChoices() {
         const pfx =
           src.prefix_nodes === '0' ? '' : String(src.node_prefix || '').trim();
         if (pfx) prefixSet.add(pfx);
+        if (sid) sidToSource.set(sid, { sid, prefix: pfx });
         const stype = String(src.source_type || 'subscription').toLowerCase();
 
         if (stype === 'subscription') {
@@ -455,9 +483,18 @@ function loadGlobalPoolChoices() {
 
       // 1. Add all unfiltered servers from /etc/tachyon/subscription-cache
       (subCaches || []).forEach((sc) => {
-        const matchedSources = (sc.url && urlToSources.get(sc.url)) || [
-          { sid: '', prefix: '' },
-        ];
+        let matchedSources = sc.url && urlToSources.get(sc.url);
+        if (!matchedSources && sc.base) {
+          const baseMatch = String(sc.base).match(
+            /^src-(.+)-subscription-\d+$/,
+          );
+          if (baseMatch && sidToSource.has(baseMatch[1])) {
+            matchedSources = [sidToSource.get(baseMatch[1])];
+          }
+        }
+        if (!matchedSources) {
+          matchedSources = [{ sid: '', prefix: '' }];
+        }
         const linkByTag = new Map();
         (sc.links || []).forEach((lnk) => {
           const hashIdx = lnk.indexOf('#');
@@ -584,7 +621,11 @@ function loadGlobalPoolChoices() {
           if (!pfx && rawStr) {
             for (let i = 0; i < knownPrefixes.length; i++) {
               const kp = knownPrefixes[i];
-              if (rawStr.startsWith(`${kp}: `)) {
+              if (
+                rawStr.startsWith(`${kp}: `) ||
+                rawStr.startsWith(`[${kp}] `) ||
+                rawStr.startsWith(`${kp} `)
+              ) {
                 pfx = kp;
                 break;
               }
@@ -2194,26 +2235,42 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
             ],
           ),
           matchedServers.length > 0
-            ? E('div', { class: 'tachyon-studio-server-table-wrap' }, [
-                E('table', { class: 'tachyon-studio-server-table' }, [
-                  E('thead', {}, [
-                    E('tr', {}, [
-                      E('th', {}, '#'),
-                      E('th', {}, _('Server')),
-                      E('th', {}, _('Protocol')),
-                      E('th', { style: 'text-align:right;' }, _('Proxy Link')),
-                    ]),
-                  ]),
-                  E(
-                    'tbody',
-                    {},
-                    matchedServers.map((srv, sIdx) => {
-                      const pUp = String(srv.proto || '').toUpperCase();
-                      const tUp = String(srv.trans || '').toUpperCase();
-                      const badge =
-                        pUp && tUp && pUp !== tUp
-                          ? `${pUp} • ${tUp}`
-                          : pUp || tUp || 'PROXY';
+            ? (() => {
+                let sortCol = 'idx';
+                let sortDir = 'asc';
+                const tbody = E('tbody', {});
+                const thIndicators = new Map();
+                const indexedItems = matchedServers.map((srv, sIdx) => {
+                  const pUp = String(srv.proto || '').toUpperCase();
+                  const tUp = String(srv.trans || '').toUpperCase();
+                  const badge =
+                    pUp && tUp && pUp !== tUp
+                      ? `${pUp} • ${tUp}`
+                      : pUp || tUp || 'PROXY';
+                  return {
+                    srv,
+                    origIdx: sIdx,
+                    name: String(srv.value || srv.label || ''),
+                    badge,
+                  };
+                });
+
+                const populateRows = () => {
+                  thIndicators.forEach((ind, col) => {
+                    ind.textContent =
+                      sortCol === col ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+                  });
+                  const sorted = [...indexedItems].sort((a, b) => {
+                    let cmp = 0;
+                    if (sortCol === 'idx') cmp = a.origIdx - b.origIdx;
+                    else if (sortCol === 'name')
+                      cmp = a.name.localeCompare(b.name, 'ru');
+                    else if (sortCol === 'proto')
+                      cmp = a.badge.localeCompare(b.badge, 'ru');
+                    return sortDir === 'asc' ? cmp : -cmp;
+                  });
+                  tbody.replaceChildren(
+                    ...sorted.map(({ srv, origIdx, badge }) => {
                       let resolvedLink = String(srv.link || '').trim();
                       if (!resolvedLink) {
                         try {
@@ -2255,7 +2312,7 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
                         E(
                           'td',
                           { class: 'tachyon-studio-server-table__idx' },
-                          String(sIdx + 1),
+                          String(origIdx + 1),
                         ),
                         E(
                           'td',
@@ -2313,9 +2370,53 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
                         ),
                       ]);
                     }),
-                  ),
-                ]),
-              ])
+                  );
+                };
+
+                const makeTh = (col, label) => {
+                  const ind = E('span', {
+                    style: 'font-size: 10px; opacity: 0.75;',
+                  });
+                  thIndicators.set(col, ind);
+                  return E(
+                    'th',
+                    {
+                      style: 'cursor: pointer; user-select: none;',
+                      click: (ev) => {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        if (sortCol === col) {
+                          sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+                        } else {
+                          sortCol = col;
+                          sortDir = 'asc';
+                        }
+                        populateRows();
+                      },
+                    },
+                    [E('span', {}, label), ind],
+                  );
+                };
+
+                populateRows();
+                return E('div', { class: 'tachyon-studio-server-table-wrap' }, [
+                  E('table', { class: 'tachyon-studio-server-table' }, [
+                    E('thead', {}, [
+                      E('tr', {}, [
+                        makeTh('idx', '#'),
+                        makeTh('name', _('Server')),
+                        makeTh('proto', _('Protocol')),
+                        E(
+                          'th',
+                          { style: 'text-align:right;' },
+                          _('Proxy Link'),
+                        ),
+                      ]),
+                    ]),
+                    tbody,
+                  ]),
+                ]);
+              })()
             : E(
                 'div',
                 { style: 'font-size: 12px; opacity: 0.68;' },

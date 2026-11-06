@@ -551,7 +551,7 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
 
             let curl_cmd = binaries.wrap_probe_cmd(
                 sprintf(
-                    "curl %s%s-x %s://127.0.0.1:%d -so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}\\t%%{size_download}' -L --connect-timeout 4 --max-time 6 %s 2>/dev/null; printf '\\t%%d\\n' $?",
+                    "curl %s%s-x %s://127.0.0.1:%d -so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}\\t%%{size_download}' --connect-timeout 4 --max-time 6 %s 2>/dev/null; printf '\\t%%d\\n' $?",
                     extra_flags,
                     target_flags,
                     proxy_scheme,

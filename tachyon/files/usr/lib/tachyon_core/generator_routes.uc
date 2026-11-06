@@ -2989,10 +2989,15 @@ function section_dns_server(section) {
 
 function section_is_ipv4_only_dpi(section) {
     let action = option(section, "action", "");
-    if (action != "zapret" && action != "zapret2")
+    let z2_src = connections.section_matching_provider_source(section, "zapret2");
+    let z1_src = connections.section_matching_provider_source(section, "zapret");
+    if (action != "zapret" && action != "zapret2" && z2_src == null && z1_src == null)
         return false;
-    let opt_key = action == "zapret2" ? "nfqws2_opt" : "nfqws_opt";
-    let raw = trim(option(section, opt_key, ""));
+    let is_z2 = action == "zapret2" || (action != "zapret" && z2_src != null);
+    let opt_key = is_z2 ? "nfqws2_opt" : "nfqws_opt";
+    let eff_sec = is_z2 ? (z2_src ? connections.merge_section_with_provider_source(section, z2_src) : section)
+                        : (z1_src ? connections.merge_section_with_provider_source(section, z1_src) : section);
+    let raw = trim(option(eff_sec, opt_key, ""));
     if (raw == "" || index(raw, "--filter-l3=ipv4") < 0)
         return false;
     return match(raw, /--filter-l3=[^[:space:]]*ipv6/) == null;
@@ -3619,7 +3624,9 @@ function push_section_dns_matcher_rule(config, section, rule, excluded_cidrs, do
     }
     let action = option(section, "action", "");
     let routed_tag = runtime_constants.tag(section[".name"], "routed-dns-server");
-    if ((action == "zapret" || action == "zapret2" || action == "byedpi") &&
+    let is_dpi_sec = action == "zapret" || action == "zapret2" || action == "byedpi" ||
+        connections.is_dpi_or_desync_only_section(section);
+    if (is_dpi_sec &&
         connections.routed_dns_enabled(section) && rule.server == routed_tag &&
         !connections.geoip_country_mode_is_closed(section) &&
         !rule.match_response && (rule.rule_set == null || length(domain_rule_set_tags) > 0)) {

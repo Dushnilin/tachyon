@@ -254,25 +254,28 @@ IMPORTED_FILE="$(sed -n 's/.*"file": "\([^"]*\)".*/\1/p' "$WORK_DIR/import.json"
 [ -f "$WORK_DIR/snapshots/$IMPORTED_FILE" ] ||
   fail "snapshot-import must create the archive in snapshots directory"
 
-# ---- heavy cache directories (rulesets, installer-backups, subscription-cache)
-# must be excluded from snapshot-save, preserved on snapshot-restore, and
-# stripped during snapshot-export of legacy bloated archives.
+# ---- heavy cache directories (rulesets, installer-backups, subscription-cache,
+# component-backups, hosts-lists) must be excluded from snapshot-save, preserved
+# on snapshot-restore, and stripped during snapshot-export of legacy bloated archives.
 
-mkdir -p "$WORK_DIR/tachyon/rulesets" "$WORK_DIR/tachyon/installer-backups" "$WORK_DIR/tachyon/subscription-cache"
+mkdir -p "$WORK_DIR/tachyon/rulesets" "$WORK_DIR/tachyon/installer-backups" "$WORK_DIR/tachyon/subscription-cache" "$WORK_DIR/tachyon/component-backups" "$WORK_DIR/tachyon/hosts-lists"
 printf '%s\n' 'compiled-srs-blob' >"$WORK_DIR/tachyon/rulesets/heavy.srs"
 printf '%s\n' 'old-ipk' >"$WORK_DIR/tachyon/installer-backups/old.ipk"
 printf '%s\n' 'sub-cache' >"$WORK_DIR/tachyon/subscription-cache/sub.json"
+printf '%s\n' 'heavy-binary-backup' >"$WORK_DIR/tachyon/component-backups/tachyon-core.bin"
+printf '%s\n' 'hosts-list-cache' >"$WORK_DIR/tachyon/hosts-lists/adblock.txt"
 printf '%s\n' 'user-custom-list' >"$WORK_DIR/tachyon/custom.lst"
 
 run_uc snapshot-save slim >"$WORK_DIR/result.json"
 SLIM_FILE="$(sed -n 's/.*"file": "\([^"]*\)".*/\1/p' "$WORK_DIR/result.json")"
-if tar -tzf "$WORK_DIR/snapshots/$SLIM_FILE" | grep -Eq '^tachyon/(rulesets|installer-backups|subscription-cache)(/|$)'; then
-  fail "snapshot-save must exclude rulesets, installer-backups, and subscription-cache"
+if tar -tzf "$WORK_DIR/snapshots/$SLIM_FILE" | grep -Eq '^tachyon/(rulesets|installer-backups|subscription-cache|component-backups|hosts-lists)(/|$)'; then
+  fail "snapshot-save must exclude rulesets, installer-backups, subscription-cache, component-backups, and hosts-lists"
 fi
 grep -Fxq 'tachyon/custom.lst' <(tar -tzf "$WORK_DIR/snapshots/$SLIM_FILE") ||
   fail "snapshot-save must preserve user files in /etc/tachyon"
 
 printf '%s\n' 'updated-srs-blob' >"$WORK_DIR/tachyon/rulesets/heavy.srs"
+printf '%s\n' 'updated-binary-backup' >"$WORK_DIR/tachyon/component-backups/tachyon-core.bin"
 rm -f "$WORK_DIR/tachyon/custom.lst"
 run_uc snapshot-restore "$SLIM_FILE" >"$WORK_DIR/result.json"
 grep -Fq '"success": true' "$WORK_DIR/result.json" ||
@@ -281,19 +284,41 @@ grep -Fq '"success": true' "$WORK_DIR/result.json" ||
   fail "snapshot-restore must restore user files"
 [ "$(cat "$WORK_DIR/tachyon/rulesets/heavy.srs")" = 'updated-srs-blob' ] ||
   fail "snapshot-restore must preserve existing rulesets directory on disk"
+[ "$(cat "$WORK_DIR/tachyon/component-backups/tachyon-core.bin")" = 'updated-binary-backup' ] ||
+  fail "snapshot-restore must preserve existing component-backups directory on disk"
 
-# Create a legacy bloated archive that still contains rulesets/ inside it
+# Create a legacy bloated archive that still contains rulesets/ and component-backups/ inside it
 tar -czf "$WORK_DIR/snapshots/legacy-20250101-010101.tar.gz" -C "$WORK_DIR" config/tachyon tachyon
 grep -Fxq 'tachyon/rulesets/heavy.srs' <(tar -tzf "$WORK_DIR/snapshots/legacy-20250101-010101.tar.gz") ||
   fail "legacy test archive must contain rulesets/heavy.srs"
+grep -Fxq 'tachyon/component-backups/tachyon-core.bin' <(tar -tzf "$WORK_DIR/snapshots/legacy-20250101-010101.tar.gz") ||
+  fail "legacy test archive must contain component-backups/tachyon-core.bin"
 
 run_uc snapshot-export "legacy-20250101-010101.tar.gz" >"$WORK_DIR/legacy-export.json"
 grep -Fq '"success": true' "$WORK_DIR/legacy-export.json" ||
   fail "snapshot-export of legacy archive must succeed"
 run_uc snapshot-import "$WORK_DIR/legacy-export.json" >"$WORK_DIR/legacy-import.json"
 LEGACY_IMPORTED="$(sed -n 's/.*"file": "\([^"]*\)".*/\1/p' "$WORK_DIR/legacy-import.json")"
-if tar -tzf "$WORK_DIR/snapshots/$LEGACY_IMPORTED" | grep -Eq '^tachyon/(rulesets|installer-backups|subscription-cache)(/|$)'; then
+if tar -tzf "$WORK_DIR/snapshots/$LEGACY_IMPORTED" | grep -Eq '^tachyon/(rulesets|installer-backups|subscription-cache|component-backups|hosts-lists)(/|$)'; then
   fail "snapshot-export must strip heavy cache directories from legacy archives"
 fi
+
+# ---- BusyBox tar -tzf lists top-level directory as "tachyon" (without trailing slash)
+mkdir -p "$WORK_DIR/fakebin"
+cat >"$WORK_DIR/fakebin/tar" <<'EOF'
+#!/bin/sh
+if [ "$1" = "-tzf" ]; then
+  /bin/tar "$@" | sed 's|^tachyon/$|tachyon|; s|^config/$|config|'
+else
+  exec /bin/tar "$@"
+fi
+EOF
+chmod +x "$WORK_DIR/fakebin/tar"
+PATH="$WORK_DIR/fakebin:$PATH" run_uc snapshot-export "$SLIM_FILE" >"$WORK_DIR/bb-export.json"
+grep -Fq '"success": true' "$WORK_DIR/bb-export.json" ||
+  fail "snapshot-export must accept BusyBox tar -tzf output where directory member is 'tachyon' without trailing slash"
+PATH="$WORK_DIR/fakebin:$PATH" run_uc snapshot-import "$WORK_DIR/bb-export.json" >"$WORK_DIR/bb-import.json"
+grep -Fq '"success": true' "$WORK_DIR/bb-import.json" ||
+  fail "snapshot-import must accept BusyBox tar -tzf output where directory member is 'tachyon' without trailing slash"
 
 printf 'snapshot contract checks passed\n'

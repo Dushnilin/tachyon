@@ -1496,6 +1496,10 @@ function clash_api(action, arg1, arg2, arg3) {
             return clash_json_error("group_tag required");
         let group_tag = as_string(arg1);
         let timeout_ms = as_string(arg2 || "3500");
+        let raw_arg3 = trim(as_string(arg3 || ""));
+        let is_custom_url = index(raw_arg3, "http://") == 0 || index(raw_arg3, "https://") == 0;
+        let group_test_url = is_custom_url ? raw_arg3 : test_url;
+        let progress_path = is_custom_url ? "" : raw_arg3;
         if (getenv("FAKE_CURL_LOG") == null && getenv("TACHYON_SEQUENTIAL_LATENCY") != "1") {
             let proxies = clash_proxy_info_map(base_url, auth);
             let grp = object_or_empty(proxies[group_tag]);
@@ -1520,7 +1524,7 @@ function clash_api(action, arg1, arg2, arg3) {
                         let retry_timeout = 2000;
                         common.write_json_file(r_req, {
                             names: failed_tags,
-                            url: test_url,
+                            url: group_test_url,
                             timeout: retry_timeout
                         });
                         let r_args = [ "curl", "-s", "-m", as_string(int((retry_timeout + 1999) / 1000) + 5), "-X", "POST", "-H", "Content-Type: application/json" ];
@@ -1547,7 +1551,6 @@ function clash_api(action, arg1, arg2, arg3) {
                     let count = 0;
                     let failed = 0;
                     let total = length(probe_tags);
-                    let progress_path = as_string(arg3 || "");
                     if (progress_path != "")
                         module_success(SERVICE_UI_UC, [ "latency-progress-state", progress_path, count, total, failed ]);
                     for (let w = 0; w < length(probe_tags); w += wave_step) {
@@ -1561,7 +1564,7 @@ function clash_api(action, arg1, arg2, arg3) {
                             let res_file = tmp_dir + "/gres_" + chunk_idx + ".json";
                             common.write_json_file(req_file, {
                                 names: c_tags,
-                                url: test_url,
+                                url: group_test_url,
                                 timeout: int(timeout_ms)
                             });
                             let b_args = [ "curl", "-s", "-m", as_string(max_time), "-X", "POST", "-H", "Content-Type: application/json" ];
@@ -1623,7 +1626,7 @@ function clash_api(action, arg1, arg2, arg3) {
         let args = [ "curl", "-G", "-s", base_url + "/group/" + clash_urlencode(arg1) + "/delay" ];
         for (let item in auth) push(args, item);
         push(args, "--data-urlencode");
-        push(args, "url=" + test_url);
+        push(args, "url=" + group_test_url);
         push(args, "--data-urlencode");
         push(args, "timeout=" + as_string(arg2 || "5000"));
         return clash_json_output(args);

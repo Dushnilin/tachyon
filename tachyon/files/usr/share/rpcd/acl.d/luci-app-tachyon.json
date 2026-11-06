@@ -79,6 +79,18 @@
         "/etc/tachyon/rulesets/*": [
           "read"
         ],
+        "/tmp/tachyon-snapshot-export.json": [
+          "read"
+        ],
+        "/tmp/tachyon-snapshot-import.json": [
+          "read"
+        ],
+        "/var/run/tachyon/priority/*": [
+          "read"
+        ],
+        "/tmp/run/tachyon/priority/*": [
+          "read"
+        ],
         "/bin/cat": [
           "exec"
         ],
@@ -123,6 +135,9 @@
           "write"
         ],
         "/tmp/run/tachyon/ui-state/latency-actions/*": [
+          "write"
+        ],
+        "/tmp/tachyon-snapshot-import.json": [
           "write"
         ]
       },

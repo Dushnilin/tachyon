@@ -918,11 +918,61 @@ function renderSubscriptionMetadata(
         ),
       ]),
       !isGroupCollapsed && metadata?.announce
-        ? E(
-            'blockquote',
-            { class: 'tachyon_dashboard-page__subscription-meta__announce' },
-            metadata.announce,
-          )
+        ? (() => {
+            const rawAnnounce = String(metadata.announce || '').trim();
+            const lines = rawAnnounce
+              .split(/\r?\n/)
+              .map((l) => l.trim())
+              .filter(Boolean);
+            const firstLine = lines[0] || rawAnnounce;
+            const isCollapsible = lines.length > 1 || rawAnnounce.length > 110;
+            const previewText =
+              firstLine.length > 110
+                ? `${firstLine.slice(0, 110)}…`
+                : lines.length > 1
+                  ? `${firstLine} …`
+                  : firstLine;
+            let expanded = false;
+            const textSpan = E(
+              'span',
+              { style: 'white-space: pre-line;' },
+              isCollapsible ? previewText : rawAnnounce,
+            );
+            const toggleHint = isCollapsible
+              ? E(
+                  'span',
+                  {
+                    style:
+                      'margin-left: 6px; font-size: 11px; opacity: 0.75; text-decoration: underline; cursor: pointer; white-space: nowrap;',
+                  },
+                  _('Show more'),
+                )
+              : '';
+            const block = E(
+              'blockquote',
+              {
+                class: 'tachyon_dashboard-page__subscription-meta__announce',
+                style: isCollapsible ? 'cursor: pointer;' : '',
+                title: isCollapsible ? rawAnnounce : undefined,
+                click: isCollapsible
+                  ? (ev: MouseEvent) => {
+                      ev.stopPropagation();
+                      expanded = !expanded;
+                      textSpan.textContent = expanded
+                        ? rawAnnounce
+                        : previewText;
+                      if (toggleHint && typeof toggleHint === 'object') {
+                        (toggleHint as HTMLElement).textContent = expanded
+                          ? _('Hide')
+                          : _('Show more');
+                      }
+                    }
+                  : undefined,
+              },
+              [textSpan, toggleHint],
+            );
+            return block;
+          })()
         : '',
     ],
   );

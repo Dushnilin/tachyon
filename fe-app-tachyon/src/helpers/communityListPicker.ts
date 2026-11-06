@@ -418,8 +418,44 @@ let floatingTooltipEl: HTMLElement | null = null;
 let floatingTooltipTitleEl: HTMLElement | null = null;
 let floatingTooltipBadgeEl: HTMLElement | null = null;
 let floatingTooltipDescEl: HTMLElement | null = null;
+let floatingTooltipGlobalListenersBound = false;
+
+function bindFloatingTooltipGlobalListeners() {
+  if (floatingTooltipGlobalListenersBound || typeof window === 'undefined') {
+    return;
+  }
+  floatingTooltipGlobalListenersBound = true;
+  window.addEventListener('scroll', () => hideFloatingTooltip(), {
+    capture: true,
+    passive: true,
+  });
+  window.addEventListener('resize', () => hideFloatingTooltip(), {
+    passive: true,
+  });
+  window.addEventListener('keydown', (ev: KeyboardEvent) => {
+    if (ev.key === 'Escape') {
+      hideFloatingTooltip();
+    }
+  });
+  window.addEventListener(
+    'pointerdown',
+    (ev: PointerEvent) => {
+      const target = ev.target as HTMLElement | null;
+      if (
+        !target ||
+        !target.closest(
+          '.tachyon-ruleset-picker__chip, .tachyon-wizard__chip, .tachyon-ruleset-picker__chip-info, .tachyon-ruleset-picker__floating-tooltip',
+        )
+      ) {
+        hideFloatingTooltip();
+      }
+    },
+    { capture: true, passive: true },
+  );
+}
 
 function ensureFloatingTooltip(): HTMLElement {
+  bindFloatingTooltipGlobalListeners();
   if (floatingTooltipEl && document.body.contains(floatingTooltipEl)) {
     return floatingTooltipEl;
   }
@@ -540,10 +576,15 @@ export function createInteractiveHintBanner(): {
     if (floatingTooltipDescEl) {
       floatingTooltipDescEl.textContent = `${subsumedPrefix}${parsed.description}`;
     }
-    tip.style.display = 'flex';
-    if (anchorEl) {
-      positionFloatingTooltip(anchorEl);
+    if (
+      !anchorEl ||
+      (anchorEl.isConnected === false && !document.body.contains(anchorEl))
+    ) {
+      hideFloatingTooltip();
+      return;
     }
+    tip.style.display = 'flex';
+    positionFloatingTooltip(anchorEl);
   }
 
   return { element: placeholderEl, showHint, hideHint: hideFloatingTooltip };

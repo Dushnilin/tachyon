@@ -214,6 +214,14 @@ function get_resolved_host_flags(url) {
     let safe_host = shell_quote(host);
     let ip = null;
 
+    if (host == "rr1.googlevideo.com") {
+        let gv_flags = get_resolved_host_flags("https://googlevideo.com/");
+        if (gv_flags == "") gv_flags = get_resolved_host_flags("https://www.youtube.com/");
+        let m_ip = match(gv_flags, /:443:([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
+        if (m_ip && m_ip[1])
+            ip = m_ip[1];
+    }
+
     // 1. Primary: query "наш DNS" (router bootstrap DNS & ISP upstream DNS) via UDP 53
     // MUST NEVER query 127.0.0.1 or ::1 to prevent resolving into FakeIP (198.18.x.x)
     let dns_candidates = [];
@@ -255,25 +263,27 @@ function get_resolved_host_flags(url) {
         }
     }
 
-    for (let srv in dns_candidates) {
-        let np = fs.popen(wrap_probe_cmd(sprintf("nslookup %s %s 2>/dev/null", safe_host, srv), 3), "r");
-        let nout = np ? np.read("all") : "";
-        if (np) np.close();
-        if (nout && nout != "") {
-            let lines = split(nout, "\n");
-            let name_seen = false;
-            for (let line in lines) {
-                if (index(line, "Name:") >= 0) { name_seen = true; continue; }
-                if (name_seen) {
-                    let nm = match(line, /Address:[ \t]+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
-                    if (nm && is_valid_public_ip(nm[1])) {
-                        ip = nm[1];
-                        break;
+    if (!ip) {
+        for (let srv in dns_candidates) {
+            let np = fs.popen(wrap_probe_cmd(sprintf("nslookup %s %s 2>/dev/null", safe_host, srv), 3), "r");
+            let nout = np ? np.read("all") : "";
+            if (np) np.close();
+            if (nout && nout != "") {
+                let lines = split(nout, "\n");
+                let name_seen = false;
+                for (let line in lines) {
+                    if (index(line, "Name:") >= 0) { name_seen = true; continue; }
+                    if (name_seen) {
+                        let nm = match(line, /Address:[ \t]+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
+                        if (nm && is_valid_public_ip(nm[1])) {
+                            ip = nm[1];
+                            break;
+                        }
                     }
                 }
             }
+            if (ip) break;
         }
-        if (ip) break;
     }
 
     // 2. Fallback: Google & Cloudflare DoH JSON (if UDP 53 was intercepted by ISP)
@@ -387,7 +397,12 @@ const KNOWN_BLOB_FILES = {
     quic_yt1: { file: "quic_initial_rr1---sn-xguxaxjvh-n8me_googlevideo_com_kyber_1.bin", size: 1230, desc: "GoogleVideo Kyber QUIC Initial" },
     quic_vk: { file: "quic_initial_vk_com.bin", size: 1357, desc: "VK QUIC Initial" },
     stun_fake: { file: "stun.bin", size: 100, desc: "STUN discovery packet" },
-    discord_udp: { file: "stun.bin", size: 100, desc: "Discord Voice UDP fake packet" }
+    discord_udp: { file: "stun.bin", size: 100, desc: "Discord Voice UDP fake packet" },
+    fake_discord: { file: "discord-ip-discovery-with-port.bin", size: 100, desc: "Discord IP discovery payload" },
+    discord_ip_discovery: { file: "discord-ip-discovery-with-port.bin", size: 100, desc: "Discord IP discovery payload" },
+    discord_ip_discovery_with_port: { file: "discord-ip-discovery-with-port.bin", size: 100, desc: "Discord IP discovery with port" },
+    discord_ip_discovery_without_port: { file: "discord-ip-discovery-without-port.bin", size: 100, desc: "Discord IP discovery without port" },
+    fake_default_quic: { file: "quic_initial_www_google_com.bin", size: 1200, desc: "Default QUIC Initial" }
 };
 
 function blob_candidate_dirs() {
@@ -414,6 +429,7 @@ function get_zapret2_blob_dir() {
 function resolve_zapret2_blobs(args_str) {
     if (!args_str || args_str == "") return "";
     let candidate_dirs = blob_candidate_dirs();
+    let nfqws_bin = get_zapret2_bin();
     let blob_flags = "";
     for (let name, info in KNOWN_BLOB_FILES) {
         if ((index(args_str, "blob=" + name) >= 0 || index(args_str, "seqovl_pattern=" + name) >= 0) &&
@@ -427,7 +443,7 @@ function resolve_zapret2_blobs(args_str) {
                     break;
                 }
             }
-            if (actual_path != null) {
+            if (actual_path != null && !common.nfqws_blob_is_builtin(nfqws_bin, name, actual_path)) {
                 blob_flags += sprintf("--blob=%s:@%s ", name, actual_path);
             }
         }
@@ -458,7 +474,7 @@ function probe_curl_cmd(extra_flags, target_flags, url, err_file) {
     let port_hi = port_lo + 7;
     let ef = shell_quote(err_file);
     return sprintf(
-        "curl -v --local-port %d-%d %s%s-so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}\\t%%{size_download}\\t%%{time_connect}' -L --connect-timeout 4 --max-time 6 %s 2>%s; _rc=$?; " +
+        "curl -v --local-port %d-%d %s%s-so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}\\t%%{size_download}\\t%%{time_connect}' --connect-timeout 4 --max-time 6 %s 2>%s; _rc=$?; " +
         "if grep -qE 'ALPN|Client hello|TLS handshake|SSL connection|Connected to|Established connection' %s 2>/dev/null; then _tcp=1; " +
         "elif [ -r /proc/net/nf_conntrack ]; then _tcp=$(awk -v a=%d -v b=%d '$3==\"tcp\"{sp=-1; for(i=7;i<=NF;i++) if($i ~ /^sport=/){sp=substr($i,7)+0; break} if(sp>=a && sp<=b){seen=1; if($6!=\"SYN_SENT\") up=1}} END{print up ? 1 : (seen ? 0 : 2)}' /proc/net/nf_conntrack 2>/dev/null); [ -n \"$_tcp\" ] || _tcp=2; " +
         "else _tcp=2; fi; rm -f %s; printf '\\t%%d\\t%%d\\n' $_tcp $_rc",

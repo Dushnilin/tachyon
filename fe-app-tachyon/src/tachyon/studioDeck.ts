@@ -3931,7 +3931,13 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
         : [
             E(
               'span',
-              { class: 'tachyon-studio-chip tachyon-studio-chip--muted' },
+              {
+                class: 'tachyon-studio-chip tachyon-studio-chip--muted',
+                title: tr(
+                  'Источник находится в глобальном пуле и не привязан напрямую к конкретной секции',
+                  'Source is in the global pool and not attached directly to a specific section',
+                ),
+              },
               tr('В пуле', 'In pool'),
             ),
           ];
@@ -4221,6 +4227,69 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                   'span',
                   { class: 'tachyon-studio-source-inspector__val' },
                   infoParts.join(' • '),
+                ),
+              ]),
+            );
+          }
+          if (md.announce && String(md.announce).trim()) {
+            const rawAnnounce = String(md.announce).trim();
+            const lines = rawAnnounce
+              .split(/\r?\n/)
+              .map((l) => l.trim())
+              .filter(Boolean);
+            const firstLine = lines[0] || rawAnnounce;
+            const isCollapsible = lines.length > 1 || rawAnnounce.length > 110;
+            const previewText =
+              firstLine.length > 110
+                ? `${firstLine.slice(0, 110)}…`
+                : lines.length > 1
+                  ? `${firstLine} …`
+                  : firstLine;
+            let expanded = false;
+            const textSpan = E(
+              'span',
+              { style: 'white-space: pre-line;' },
+              isCollapsible ? previewText : rawAnnounce,
+            );
+            const toggleBtn = isCollapsible
+              ? E(
+                  'span',
+                  {
+                    style:
+                      'margin-left: 6px; font-size: 11px; opacity: 0.75; text-decoration: underline; cursor: pointer; white-space: nowrap;',
+                  },
+                  tr('Ещё', 'Show more'),
+                )
+              : null;
+            inspectorRows.push(
+              E('div', { class: 'tachyon-studio-source-inspector__row' }, [
+                E(
+                  'span',
+                  { class: 'tachyon-studio-source-inspector__label' },
+                  tr('Объявление:', 'Announcement:'),
+                ),
+                E(
+                  'span',
+                  {
+                    class: 'tachyon-studio-source-inspector__val',
+                    style: isCollapsible ? 'cursor: pointer;' : '',
+                    title: isCollapsible ? rawAnnounce : undefined,
+                    click: isCollapsible
+                      ? (ev: MouseEvent) => {
+                          ev.stopPropagation();
+                          expanded = !expanded;
+                          textSpan.textContent = expanded
+                            ? rawAnnounce
+                            : previewText;
+                          if (toggleBtn) {
+                            toggleBtn.textContent = expanded
+                              ? tr('Свернуть', 'Hide')
+                              : tr('Ещё', 'Show more');
+                          }
+                        }
+                      : undefined,
+                  },
+                  toggleBtn ? [textSpan, toggleBtn] : [textSpan],
                 ),
               ]),
             );

@@ -53,7 +53,9 @@ const EXPORT_TMP_FILE = env("TACHYON_SNAPSHOT_EXPORT_FILE", "/tmp/tachyon-snapsh
 const SNAPSHOT_EXCLUDED_DIRS = [
     "rulesets",
     "installer-backups",
-    "subscription-cache"
+    "subscription-cache",
+    "component-backups",
+    "hosts-lists"
 ];
 
 function strip_excluded_dirs(data_dir) {
@@ -101,11 +103,13 @@ function snapshot_file_valid(file) {
 function backup_archive_safe(members) {
     let config_member = "config/" + CONFIG_NAME;
     let data_prefix = CONFIG_NAME + "/";
-    for (let m in members) {
-        if (substr(m, 0, 1) == "/") return { ok: false, reason: "absolute path: " + m };
-        if (match(m, /\.\./)) return { ok: false, reason: "path traversal: " + m };
-        if (m != config_member && substr(m, 0, length(data_prefix)) != data_prefix)
-            return { ok: false, reason: "unexpected member: " + m };
+    for (let raw_m in members) {
+        let m = replace(as_string(raw_m), /^\.\//, "");
+        if (m == "" || m == ".") continue;
+        if (substr(m, 0, 1) == "/") return { ok: false, reason: "absolute path: " + raw_m };
+        if (match(m, /(^|\/)\.\.(\/|$)/)) return { ok: false, reason: "path traversal: " + raw_m };
+        if (m != "config" && m != "config/" && m != config_member && m != CONFIG_NAME && substr(m, 0, length(data_prefix)) != data_prefix)
+            return { ok: false, reason: "unexpected member: " + raw_m };
     }
     return { ok: true };
 }
@@ -259,9 +263,8 @@ function snapshot_restore(file) {
         return fail("snapshot contains neither config nor data");
     }
 
-    let stamp = as_string(time()) + "-" + sprintf("%04x", clock()[1] & 0xFFFF);
-    let cfg_backup = SNAPSHOTS_DIR + "/restore_cfg_backup." + stamp;
-    let data_backup = SNAPSHOTS_DIR + "/restore_data_backup." + stamp;
+    let cfg_backup = stage + "/restore_cfg_backup";
+    let data_backup = stage + "/restore_data_backup";
     if (fs.stat(CONFIG_PATH) &&
         !command_success_from_args([ "cp", "-a", CONFIG_PATH, cfg_backup ])) {
         command_status(command_from_args([ "rm", "-rf", stage ]));
@@ -269,7 +272,6 @@ function snapshot_restore(file) {
     }
     if (fs.stat(PERSISTENT_DIR) &&
         !command_success_from_args([ "cp", "-a", PERSISTENT_DIR, data_backup ])) {
-        command_status(command_from_args([ "rm", "-f", cfg_backup ]));
         command_status(command_from_args([ "rm", "-rf", stage ]));
         return fail("unable to back up current data");
     }
@@ -285,13 +287,13 @@ function snapshot_restore(file) {
         command_success_from_args([ "chmod", "600", CONFIG_PATH ]);
         if (!command_success_from_args([ VALIDATE_BIN, "show", CONFIG_NAME ])) {
             restore_config_from_backup(cfg_backup);
-            command_status(command_from_args([ "rm", "-rf", stage, data_backup ]));
-            command_status(command_from_args([ "rm", "-f", cfg_backup ]));
+            command_status(command_from_args([ "rm", "-rf", stage ]));
             return fail("restored config failed validation; rolled back");
         }
     }
 
     if (had_data) {
+        strip_excluded_dirs(staged_data);
         command_status(command_from_args([ "rm", "-rf", PERSISTENT_DIR ]));
         if (!command_success_from_args([ "cp", "-a", staged_data, PERSISTENT_DIR ])) {
             command_status(command_from_args([ "rm", "-rf", PERSISTENT_DIR ]));
@@ -306,8 +308,6 @@ function snapshot_restore(file) {
     }
 
     command_status(command_from_args([ "rm", "-rf", stage ]));
-    command_status(command_from_args([ "rm", "-f", cfg_backup ]));
-    command_status(command_from_args([ "rm", "-rf", data_backup ]));
 
     log_message("Config snapshot restored: " + file);
     print(sprintf("%J\n", { success: true }));
@@ -555,6 +555,9 @@ function snapshot_import(source_arg) {
         if (fs.stat(source_arg) == null)
             return fail("import file not found");
         raw = as_string(fs.readfile(source_arg) || "");
+        if (source_arg == "/tmp/tachyon-snapshot-import.json") {
+            try { fs.unlink(source_arg); } catch (e) {}
+        }
     }
 
     let parsed = null;
@@ -629,6 +632,15 @@ function snapshot_import(source_arg) {
             command_status(command_from_args([ "rm", "-rf", stage ]));
             return fail("imported config does not look like a valid UCI file");
         }
+        let extracted_data = extract_dir + "/" + CONFIG_NAME;
+        strip_excluded_dirs(extracted_data);
+        let repack_args = [ "tar", "-czf", tmp_tar, "-C", extract_dir ];
+        if (fs.stat(extracted_cfg) != null)
+            push(repack_args, "config/" + CONFIG_NAME);
+        if (fs.stat(extracted_data) != null)
+            push(repack_args, CONFIG_NAME);
+        if (length(repack_args) > 5)
+            command_success_from_args(repack_args);
         if (!command_success_from_args([ "mv", "-f", tmp_tar, target_file ])) {
             command_status(command_from_args([ "rm", "-rf", stage ]));
             return fail("unable to save imported snapshot");

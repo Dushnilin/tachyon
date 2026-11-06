@@ -3621,7 +3621,7 @@ function merge_section_with_provider_source(section, src) {
         if (cur_empty) {
             merged[k] = v;
         } else if (k == "nfqws2_opt" || k == "nfqws_opt" || k == "byedpi_cmd_opts") {
-            if (!is_default_provider_strategy(k, v) && (is_conn_act || is_default_provider_strategy(k, cur)))
+            if (!is_default_provider_strategy(k, v))
                 merged[k] = v;
         } else if (is_conn_act) {
             merged[k] = v;

@@ -513,8 +513,13 @@ function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file
                     else if (stability_pct >= 66 && jitter_ms <= 200) conf = "medium";
                     cand.confidence = conf;
 
-                    // Composite Stage 2 Score: Stability (0-400) + Latency (0-300) + Speed p25 (0-150) + Data (20-50)
-                    cand.score = int((stability_pct * 4.0) + (max(0, 1000 - med_ttfb) * 0.3) + (min(500, int(p25_speed / 10.0)) * 0.3) + (data_verified ? 50 : 20));
+                    // Keep Stage 2 score on the same scale as Stage 1 (base 100 + latency 0..1000 + speed + data + stability bonus)
+                    let base_sc = (cand.http_code >= 200 && cand.http_code < 400) ? 100 : 85;
+                    let lat_sc = int(max(0, 1000 - med_ttfb) * (stability_pct / 100.0));
+                    let spd_sc = min(300, int(p25_speed / 10.0));
+                    let dat_sc = data_verified ? 50 : 20;
+                    let stab_bonus = stability_pct == 100 ? max(0, 80 - int(jitter_ms / 2.0)) : (int(stability_pct * 0.5) - 120);
+                    cand.score = max(1, base_sc + lat_sc + spd_sc + dat_sc + stab_bonus);
                 } else {
                     cand.score = 0;
                     cand.success = false;
@@ -538,9 +543,17 @@ function run_fuzzer_worker(engine, target, custom_url, rule_section, custom_file
         let best_verified = null;
         let highest_vscore = -1;
         for (let r in state.results) {
-            if (r.success && r.score > highest_vscore) {
+            if (r.success && r.verified && r.score > highest_vscore) {
                 highest_vscore = r.score;
                 best_verified = r;
+            }
+        }
+        if (!best_verified) {
+            for (let r in state.results) {
+                if (r.success && r.score > highest_vscore) {
+                    highest_vscore = r.score;
+                    best_verified = r;
+                }
             }
         }
         if (best_verified) {

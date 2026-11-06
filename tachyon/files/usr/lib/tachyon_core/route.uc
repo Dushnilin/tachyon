@@ -244,8 +244,9 @@ function has_resolve_matchers(rule) {
 
 function resolve_rule_for_section(section, route_rule) {
     let action = option(section, "action", "");
+    let is_dpi_only = connections.is_dpi_or_desync_only_section(section);
     let should_resolve = action == "byedpi" || action == "zapret" || action == "zapret2" ||
-        action == "wdtt" || action == "olcrtc" || action == "desync" ||
+        action == "wdtt" || action == "olcrtc" || action == "desync" || is_dpi_only ||
         (connections.is_connections_action(action) &&
             bool_option(section, "resolve_real_ip_for_routing", false));
 
@@ -267,9 +268,14 @@ function resolve_rule_for_section(section, route_rule) {
     resolve_rule.server = connections.routed_dns_enabled(section)
         ? runtime_constants.tag(section[".name"], "routed-dns-server")
         : runtime_constants.DNS_SERVER_TAG;
-    if (action == "zapret" || action == "zapret2") {
-        let opt_key = action == "zapret2" ? "nfqws2_opt" : "nfqws_opt";
-        let raw_opt = trim(option(section, opt_key, ""));
+    let z2_src = connections.section_matching_provider_source(section, "zapret2");
+    let z1_src = connections.section_matching_provider_source(section, "zapret");
+    if (action == "zapret" || action == "zapret2" || z2_src != null || z1_src != null) {
+        let is_z2 = action == "zapret2" || (action != "zapret" && z2_src != null);
+        let opt_key = is_z2 ? "nfqws2_opt" : "nfqws_opt";
+        let eff_sec = is_z2 ? (z2_src ? connections.merge_section_with_provider_source(section, z2_src) : section)
+                            : (z1_src ? connections.merge_section_with_provider_source(section, z1_src) : section);
+        let raw_opt = trim(option(eff_sec, opt_key, ""));
         if (raw_opt != "" && index(raw_opt, "--filter-l3=ipv4") >= 0 && match(raw_opt, /--filter-l3=[^[:space:]]*ipv6/) == null)
             resolve_rule.strategy = "ipv4_only";
     }

@@ -1189,8 +1189,38 @@ export async function applyTestedLatenciesResults(
       if (isNewMeasurement && delay > 0) {
         customProxyLatencies.set(tag, delay);
       } else {
-        // Tag was tested, but either timed out (no history / old history) or errored
-        customProxyLatencies.set(tag, -1);
+        const childTags: string[] = [];
+        if (typeof proxy?.now === 'string' && proxy.now.trim()) {
+          childTags.push(proxy.now.trim());
+        }
+        if (Array.isArray(proxy?.all)) {
+          for (const c of proxy.all) {
+            if (typeof c === 'string' && c.trim()) childTags.push(c.trim());
+          }
+        }
+        let derivedDelay = 0;
+        for (const cTag of childTags) {
+          const cCustom = customProxyLatencies.get(cTag);
+          if (typeof cCustom === 'number' && cCustom > 0) {
+            derivedDelay =
+              derivedDelay > 0 ? Math.min(derivedDelay, cCustom) : cCustom;
+            if (cTag === proxy?.now) {
+              derivedDelay = cCustom;
+              break;
+            }
+          }
+          const cLatest = proxies[cTag]?.history?.[0];
+          const cDelay = typeof cLatest?.delay === 'number' ? cLatest.delay : 0;
+          if (cDelay > 0) {
+            derivedDelay =
+              derivedDelay > 0 ? Math.min(derivedDelay, cDelay) : cDelay;
+            if (cTag === proxy?.now) {
+              derivedDelay = cDelay;
+              break;
+            }
+          }
+        }
+        customProxyLatencies.set(tag, derivedDelay > 0 ? derivedDelay : -1);
       }
     }
 
@@ -2032,7 +2062,48 @@ function renderCommonDetailsModal(
                   [
                     E(
                       'span',
-                      { class: getUrlTestLatencyClass(member.latency) },
+                      {
+                        class: getUrlTestLatencyClass(member.latency),
+                        style: 'cursor: pointer; user-select: none;',
+                        title: _('Click to test latency'),
+                        click: async (ev: MouseEvent) => {
+                          ev.preventDefault();
+                          ev.stopPropagation();
+                          const badgeEl =
+                            ev.currentTarget as HTMLElement | null;
+                          if (badgeEl) {
+                            badgeEl.textContent = '…';
+                          }
+                          const urls = normalizeDetailsUrlList(
+                            info.url || info.healthUrl,
+                            info.urls || info.healthUrls,
+                          );
+                          const probeUrls =
+                            urls.length > 0
+                              ? urls
+                              : ['https://www.gstatic.com/generate_204'];
+                          const perUrlMap = await probeModalMultiUrlLatencies(
+                            [member],
+                            probeUrls,
+                          );
+                          const mDelays = perUrlMap.get(member.code);
+                          if (mDelays) {
+                            const positive = Object.values(mDelays).filter(
+                              (d) => d > 0,
+                            );
+                            const nextLatency =
+                              positive.length > 0 ? Math.max(...positive) : -1;
+                            member.latency = nextLatency;
+                            member.urlDelays = {
+                              ...(member.urlDelays || {}),
+                              ...mDelays,
+                            };
+                            customProxyLatencies.set(member.code, nextLatency);
+                            capMapSize(customProxyLatencies);
+                          }
+                          populateModalRows();
+                        },
+                      },
                       formatUrlTestLatency(member.latency),
                     ),
                     ...(member.telemetry
@@ -2519,6 +2590,8 @@ function applyPriorityDaemonStatusToInfo(
 async function probeModalMultiUrlLatencies(
   members: Tachyon.UrlTestMember[],
   urls: string[],
+  groupTag?: string,
+  onProgress?: (partial: Map<string, Record<string, number>>) => void,
 ): Promise<Map<string, Record<string, number>>> {
   const result = new Map<string, Record<string, number>>();
   const cleanUrls = urls.map((u) => `${u || ''}`.trim()).filter(Boolean);
@@ -2526,10 +2599,102 @@ async function probeModalMultiUrlLatencies(
     return result;
   }
 
+  const memberTags = members
+    .map((m) => `${m.code || ''}`.trim())
+    .filter(Boolean);
+  const cleanGroupTag = `${groupTag || ''}`.trim();
+
+  if (cleanGroupTag && memberTags.length > 1) {
+    const fallbackTasks: Array<{ tag: string; url: string }> = [];
+    for (const url of cleanUrls) {
+      let batchMap: Record<string, number> | null = null;
+      try {
+        const batchRes = await TachyonShellMethods.getClashApiGroupLatency(
+          cleanGroupTag,
+          '3500',
+          url,
+        );
+        if (
+          batchRes.success &&
+          batchRes.data &&
+          typeof batchRes.data === 'object'
+        ) {
+          const rawData = batchRes.data as any;
+          const delaysObj =
+            rawData.delays && typeof rawData.delays === 'object'
+              ? rawData.delays
+              : rawData;
+          if (delaysObj && typeof delaysObj === 'object') {
+            batchMap = {};
+            for (const [k, v] of Object.entries(delaysObj)) {
+              if (k === 'success' || k === 'error') continue;
+              const num = Number(v);
+              if (Number.isFinite(num) && num > 0) {
+                batchMap[k] = num;
+              }
+            }
+          }
+        }
+      } catch {
+        batchMap = null;
+      }
+
+      if (batchMap && Object.keys(batchMap).length > 0) {
+        for (const tag of memberTags) {
+          const d = batchMap[tag];
+          if (typeof d === 'number' && d > 0) {
+            const mapForTag = result.get(tag) || {};
+            mapForTag[url] = d;
+            result.set(tag, mapForTag);
+          } else {
+            fallbackTasks.push({ tag, url });
+          }
+        }
+        onProgress?.(result);
+      } else {
+        for (const tag of memberTags) {
+          fallbackTasks.push({ tag, url });
+        }
+      }
+    }
+
+    if (fallbackTasks.length > 0) {
+      let fIdx = 0;
+      const fConc = Math.min(6, fallbackTasks.length);
+      const fWorker = async () => {
+        while (fIdx < fallbackTasks.length) {
+          const current = fallbackTasks[fIdx++];
+          try {
+            const res = await TachyonShellMethods.getClashApiProxyLatency(
+              current.tag,
+              '2500',
+              current.url,
+            );
+            const delayVal =
+              res.success &&
+              res.data &&
+              typeof (res.data as any).delay === 'number' &&
+              (res.data as any).delay > 0
+                ? Number((res.data as any).delay)
+                : -1;
+            const mapForTag = result.get(current.tag) || {};
+            mapForTag[current.url] = delayVal;
+            result.set(current.tag, mapForTag);
+          } catch {
+            const mapForTag = result.get(current.tag) || {};
+            mapForTag[current.url] = -1;
+            result.set(current.tag, mapForTag);
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: fConc }, fWorker));
+      onProgress?.(result);
+    }
+    return result;
+  }
+
   const tasks: Array<{ tag: string; url: string }> = [];
-  for (const member of members) {
-    const tag = `${member.code || ''}`.trim();
-    if (!tag) continue;
+  for (const tag of memberTags) {
     for (const url of cleanUrls) {
       tasks.push({ tag, url });
     }
@@ -2543,7 +2708,7 @@ async function probeModalMultiUrlLatencies(
       try {
         const res = await TachyonShellMethods.getClashApiProxyLatency(
           current.tag,
-          '2000',
+          '2500',
           current.url,
         );
         const delayVal =
@@ -2565,6 +2730,7 @@ async function probeModalMultiUrlLatencies(
   };
 
   await Promise.all(Array.from({ length: concurrency }, worker));
+  onProgress?.(result);
   return result;
 }
 
@@ -2675,22 +2841,16 @@ function handleShowUrlTestInfo(
     );
   };
 
-  const runLiveMultiUrlProbe = async () => {
-    const urls = normalizeDetailsUrlList(info.url, info.urls);
-    const probeUrls =
-      urls.length > 0 ? urls : ['https://www.gstatic.com/generate_204'];
-    if (!body.isConnected) return;
-    const perUrlMap = await probeModalMultiUrlLatencies(
-      info.outbounds || [],
-      probeUrls,
-    );
+  const applyPerUrlMapToInfo = (
+    perUrlMap: Map<string, Record<string, number>>,
+  ) => {
     if (!body.isConnected || perUrlMap.size === 0) return;
-
     info.updatedAt = Math.floor(Date.now() / 1000);
     info.outbounds = (info.outbounds || []).map((member) => {
       const mDelays = perUrlMap.get(member.code);
       if (!mDelays) return member;
-      const positive = Object.values(mDelays).filter((d) => d > 0);
+      const mergedUrlDelays = { ...(member.urlDelays || {}), ...mDelays };
+      const positive = Object.values(mergedUrlDelays).filter((d) => d > 0);
       const nextLatency =
         positive.length > 0
           ? Math.max(...positive)
@@ -2703,15 +2863,31 @@ function handleShowUrlTestInfo(
       return {
         ...member,
         latency: nextLatency,
-        urlDelays: { ...(member.urlDelays || {}), ...mDelays },
+        urlDelays: mergedUrlDelays,
       };
     });
     capMapSize(customProxyLatencies);
     repaintModal();
   };
 
+  const runLiveMultiUrlProbe = async () => {
+    const urls = normalizeDetailsUrlList(info.url, info.urls);
+    const probeUrls =
+      urls.length > 0 ? urls : ['https://www.gstatic.com/generate_204'];
+    if (!body.isConnected) return;
+    const perUrlMap = await probeModalMultiUrlLatencies(
+      info.outbounds || [],
+      probeUrls,
+      info.code,
+      (partial) => applyPerUrlMapToInfo(partial),
+    );
+    applyPerUrlMapToInfo(perUrlMap);
+  };
+
   if (typeof fs !== 'undefined' && typeof fs.read === 'function' && info.code) {
-    fs.read(`/var/run/tachyon/priority/${encodeURIComponent(info.code)}.json`)
+    const encCode = encodeURIComponent(info.code);
+    fs.read(`/var/run/tachyon/priority/${encCode}.json`)
+      .catch(() => fs.read(`/tmp/run/tachyon/priority/${encCode}.json`))
       .then((raw) => {
         if (!raw || !body.isConnected) return;
         const st = JSON.parse(raw);
@@ -2726,13 +2902,17 @@ function handleShowUrlTestInfo(
       .catch(() => {})
       .finally(() => {
         const urls = normalizeDetailsUrlList(info.url, info.urls);
-        const hasAnyUrlDelays = (info.outbounds || []).some(
-          (m) => m.urlDelays && Object.keys(m.urlDelays).length > 0,
-        );
+        const hasMissingUrlDelays =
+          urls.length > 1 &&
+          urls.some((u) =>
+            (info.outbounds || []).some(
+              (m) => !m.urlDelays || m.urlDelays[u] === undefined,
+            ),
+          );
         const hasMissingLatencies = (info.outbounds || []).some(
           (m) => !m.latency || m.latency === 0,
         );
-        if ((urls.length > 1 && !hasAnyUrlDelays) || hasMissingLatencies) {
+        if (hasMissingUrlDelays || hasMissingLatencies) {
           void runLiveMultiUrlProbe();
         }
       });
@@ -3009,7 +3189,9 @@ function handleShowPriorityInfo(
   };
 
   if (typeof fs !== 'undefined' && typeof fs.read === 'function' && info.code) {
-    fs.read(`/var/run/tachyon/priority/${encodeURIComponent(info.code)}.json`)
+    const encCode = encodeURIComponent(info.code);
+    fs.read(`/var/run/tachyon/priority/${encCode}.json`)
+      .catch(() => fs.read(`/tmp/run/tachyon/priority/${encCode}.json`))
       .then((raw) => {
         if (!raw || !body.isConnected) return;
         const st = JSON.parse(raw);
@@ -3243,8 +3425,9 @@ function updateLatencyProgressInline(
 let sectionsRenderFrame: number | null = null;
 function scheduleSectionsWidgetRender() {
   if (sectionsRenderFrame !== null) return;
-  const schedule =
-    typeof requestAnimationFrame !== 'undefined'
+  const schedule = isUserActivelyScrolling()
+    ? (cb: () => void) => setTimeout(cb, 250)
+    : typeof requestAnimationFrame !== 'undefined'
       ? requestAnimationFrame
       : (cb: () => void) => setTimeout(cb, 16);
   sectionsRenderFrame = schedule(() => {
@@ -3919,6 +4102,51 @@ function renderSectionAccordionBody(
           ),
         ]
       : []),
+    E(
+      'button',
+      {
+        type: 'button',
+        class:
+          'btn cbi-button tachyon-sec-accordion__action-btn tachyon-sec-accordion__action-btn--sm',
+        title: tr('Открыть в модальном окне', 'Open in modal'),
+        click: (e: MouseEvent) => {
+          e.preventDefault();
+          activeSectionModalTab = currentTab;
+          openSectionInspectorModal(section.code);
+        },
+      },
+      [renderArrowUpRightIcon(12)],
+    ),
+    E(
+      'button',
+      {
+        type: 'button',
+        class:
+          'btn cbi-button tachyon-sec-accordion__action-btn tachyon-sec-accordion__action-btn--sm',
+        title: tr('Настроить секцию и правила', 'Configure section & rules'),
+        click: (e: MouseEvent) => {
+          e.preventDefault();
+          const targetSecId = section.sectionName || section.code;
+          const openEntity = (globalThis as any).__tachyonOpenEntityModal;
+          if (typeof openEntity === 'function' && targetSecId) {
+            openEntity('section', targetSecId, 'sections');
+            return;
+          }
+          const navSub = document.querySelector<HTMLElement>(
+            '.tachyon-sidebar__subitem[data-nav-key="section:sections"]',
+          );
+          if (navSub) {
+            navSub.click();
+          } else {
+            const topTab = document.querySelector<HTMLElement>(
+              '.cbi-tabmenu > li[data-tab="cbi-tachyon-section"] a',
+            );
+            topTab?.click();
+          }
+        },
+      },
+      [renderSettingsIcon(12)],
+    ),
   ];
 
   const tabsBar = E('div', { class: 'tachyon-sec-accordion__header' }, [
@@ -4560,8 +4788,9 @@ function attachConnectionsWidgetHoverListeners(container: HTMLElement) {
 
 function scheduleConnectionsWidgetRender() {
   if (connectionsRenderFrame !== null) return;
-  const schedule =
-    typeof requestAnimationFrame !== 'undefined'
+  const schedule = isUserActivelyScrolling()
+    ? (cb: () => void) => setTimeout(cb, 250)
+    : typeof requestAnimationFrame !== 'undefined'
       ? requestAnimationFrame
       : (cb: () => void) => setTimeout(cb, 16);
   connectionsRenderFrame = schedule(() => {
@@ -5985,8 +6214,9 @@ export async function renderSystemServicesWidget() {
 let sectionWidgetsRenderFrame: number | null = null;
 function scheduleSectionDashboardWidgetsRender() {
   if (sectionWidgetsRenderFrame !== null) return;
-  const schedule =
-    typeof requestAnimationFrame !== 'undefined'
+  const schedule = isUserActivelyScrolling()
+    ? (cb: () => void) => setTimeout(cb, 250)
+    : typeof requestAnimationFrame !== 'undefined'
       ? requestAnimationFrame
       : (cb: () => void) => setTimeout(cb, 16);
   sectionWidgetsRenderFrame = schedule(() => {
@@ -6002,8 +6232,9 @@ function scheduleSectionDashboardWidgetsRender() {
 let systemServicesRenderFrame: number | null = null;
 function scheduleSystemServicesWidgetRender() {
   if (systemServicesRenderFrame !== null) return;
-  const schedule =
-    typeof requestAnimationFrame !== 'undefined'
+  const schedule = isUserActivelyScrolling()
+    ? (cb: () => void) => setTimeout(cb, 250)
+    : typeof requestAnimationFrame !== 'undefined'
       ? requestAnimationFrame
       : (cb: () => void) => setTimeout(cb, 16);
   systemServicesRenderFrame = schedule(() => {

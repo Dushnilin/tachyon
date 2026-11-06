@@ -4574,8 +4574,11 @@ export function openConnectionWizardModal(
   }
 
   function renderTachyonListsSelector() {
-    const { element: step3HintBanner, showHint: showStep3Hint } =
-      createInteractiveHintBanner();
+    const {
+      element: step3HintBanner,
+      showHint: showStep3Hint,
+      hideHint: hideStep3Hint,
+    } = createInteractiveHintBanner();
 
     const presetDomainSet = new Set<string>();
     for (const preset of TRAFFIC_PRESETS) {
@@ -4612,10 +4615,28 @@ export function openConnectionWizardModal(
               {
                 type: 'button',
                 class: `tachyon-wizard__chip ${active ? 'is-active' : ''}`,
-                mouseenter: () => {
-                  if (firstKey) showStep3Hint(firstKey);
+                mouseenter: (ev: Event) => {
+                  if (firstKey) {
+                    showStep3Hint(
+                      firstKey,
+                      undefined,
+                      ev.currentTarget as HTMLElement,
+                    );
+                  }
                 },
+                mouseleave: () => hideStep3Hint(),
+                focus: (ev: Event) => {
+                  if (firstKey) {
+                    showStep3Hint(
+                      firstKey,
+                      undefined,
+                      ev.currentTarget as HTMLElement,
+                    );
+                  }
+                },
+                blur: () => hideStep3Hint(),
                 click: () => {
+                  hideStep3Hint();
                   if (selectedPresets.has(preset.id)) {
                     selectedPresets.delete(preset.id);
                   } else {
@@ -4658,6 +4679,7 @@ export function openConnectionWizardModal(
                 class: 'btn cbi-button',
                 style: 'padding:3px 10px;font-size:12px;',
                 click: () => {
+                  hideStep3Hint();
                   showAllTachyonLists = !showAllTachyonLists;
                   rerender();
                 },
@@ -4724,13 +4746,30 @@ export function openConnectionWizardModal(
                           disabled: isSubsumed ? true : undefined,
                           'aria-disabled': isSubsumed ? 'true' : 'false',
                           title: hint,
-                          mouseenter: () => showStep3Hint(key, subsumedParents),
-                          focus: () => showStep3Hint(key, subsumedParents),
-                          click: () => {
+                          mouseenter: (ev: Event) =>
+                            showStep3Hint(
+                              key,
+                              subsumedParents,
+                              ev.currentTarget as HTMLElement,
+                            ),
+                          mouseleave: () => hideStep3Hint(),
+                          focus: (ev: Event) =>
+                            showStep3Hint(
+                              key,
+                              subsumedParents,
+                              ev.currentTarget as HTMLElement,
+                            ),
+                          blur: () => hideStep3Hint(),
+                          click: (ev: Event) => {
                             if (isSubsumed) {
-                              showStep3Hint(key, subsumedParents);
+                              showStep3Hint(
+                                key,
+                                subsumedParents,
+                                ev.currentTarget as HTMLElement,
+                              );
                               return;
                             }
+                            hideStep3Hint();
                             if (selectedIndividualLists.has(key)) {
                               selectedIndividualLists.delete(key);
                             } else {
@@ -4761,7 +4800,14 @@ export function openConnectionWizardModal(
                               click: (ev: Event) => {
                                 ev.preventDefault();
                                 ev.stopPropagation();
-                                showStep3Hint(key, subsumedParents);
+                                const targetEl =
+                                  ev.currentTarget as HTMLElement;
+                                showStep3Hint(
+                                  key,
+                                  subsumedParents,
+                                  (targetEl.closest('button') as HTMLElement) ||
+                                    targetEl,
+                                );
                               },
                             } as any,
                             'ⓘ',
@@ -5384,8 +5430,11 @@ export function openConnectionWizardModal(
                   ])
                 : '',
               (() => {
-                const { element: step4HintBanner, showHint: showStep4Hint } =
-                  createInteractiveHintBanner();
+                const {
+                  element: step4HintBanner,
+                  showHint: showStep4Hint,
+                  hideHint: hideStep4Hint,
+                } = createInteractiveHintBanner();
                 const step4SubsumedMap = getSubsumedCommunityLists(
                   selectedDirectBypassLists,
                 );
@@ -5429,14 +5478,30 @@ export function openConnectionWizardModal(
                           disabled: isSubsumed ? true : undefined,
                           'aria-disabled': isSubsumed ? 'true' : 'false',
                           title: hint,
-                          mouseenter: () =>
-                            showStep4Hint(item.key, subsumedParents),
-                          focus: () => showStep4Hint(item.key, subsumedParents),
-                          click: () => {
+                          mouseenter: (ev: Event) =>
+                            showStep4Hint(
+                              item.key,
+                              subsumedParents,
+                              ev.currentTarget as HTMLElement,
+                            ),
+                          mouseleave: () => hideStep4Hint(),
+                          focus: (ev: Event) =>
+                            showStep4Hint(
+                              item.key,
+                              subsumedParents,
+                              ev.currentTarget as HTMLElement,
+                            ),
+                          blur: () => hideStep4Hint(),
+                          click: (ev: Event) => {
                             if (isSubsumed) {
-                              showStep4Hint(item.key, subsumedParents);
+                              showStep4Hint(
+                                item.key,
+                                subsumedParents,
+                                ev.currentTarget as HTMLElement,
+                              );
                               return;
                             }
+                            hideStep4Hint();
                             if (selectedDirectBypassLists.has(item.key)) {
                               selectedDirectBypassLists.delete(item.key);
                             } else {
@@ -5476,7 +5541,14 @@ export function openConnectionWizardModal(
                               click: (ev: Event) => {
                                 ev.preventDefault();
                                 ev.stopPropagation();
-                                showStep4Hint(item.key, subsumedParents);
+                                const targetEl =
+                                  ev.currentTarget as HTMLElement;
+                                showStep4Hint(
+                                  item.key,
+                                  subsumedParents,
+                                  (targetEl.closest('button') as HTMLElement) ||
+                                    targetEl,
+                                );
                               },
                             } as any,
                             'i',
@@ -7498,6 +7570,7 @@ export function openConnectionWizardModal(
   }
 
   function rerender() {
+    createInteractiveHintBanner().hideHint();
     const header = E('div', { class: 'tachyon-wizard__header' }, [
       E('div', { class: 'tachyon-wizard__brand' }, [
         renderTachyonDuckMascotSvg(42),
@@ -7547,6 +7620,7 @@ export function openConnectionWizardModal(
           type: 'button',
           class: 'btn cbi-button',
           click: () => {
+            createInteractiveHintBanner().hideHint();
             stopDnsBenchPollTimer();
             uiObj.hideModal();
           },

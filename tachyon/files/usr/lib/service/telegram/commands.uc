@@ -1044,8 +1044,25 @@ function restore_config_from_backup(backup_path) {
 
 function exec_backup(token, chat_id) {
     send_message(token, chat_id, "⏳ <b>" + t("backup_collecting") + "</b>", "HTML");
-    let file_path = "/etc/.tachyon/backup.tar.gz";
-    command_status(command_from_args([ "tar", "-czf", file_path, "-C", "/etc", "config/tachyon", "tachyon" ]) + " 2>/dev/null");
+    let file_path = "/tmp/backup.tar.gz";
+    let stage = trim(command_output_from_args([ "mktemp", "-d", "/tmp/tachyon-tg-backup.XXXXXX" ]));
+    if (stage != "") {
+        command_status(command_from_args([ "mkdir", "-p", stage + "/config" ]));
+        if (fs.stat("/etc/config/tachyon") != null)
+            command_status(command_from_args([ "cp", "-a", "/etc/config/tachyon", stage + "/config/tachyon" ]));
+        if (fs.stat("/etc/tachyon") != null) {
+            command_status(command_from_args([ "cp", "-a", "/etc/tachyon", stage + "/tachyon" ]));
+            for (let ex_dir in [ "rulesets", "installer-backups", "subscription-cache", "component-backups", "hosts-lists" ]) {
+                let p = stage + "/tachyon/" + ex_dir;
+                if (fs.stat(p) != null)
+                    command_status(command_from_args([ "rm", "-rf", p ]));
+            }
+        } else {
+            command_status(command_from_args([ "mkdir", "-p", stage + "/tachyon" ]));
+        }
+        command_status(command_from_args([ "tar", "-czf", file_path, "-C", stage, "config/tachyon", "tachyon" ]) + " 2>/dev/null");
+        command_status(command_from_args([ "rm", "-rf", stage ]));
+    }
 
     if (fs.stat(file_path)) {
         send_document(token, chat_id, file_path);

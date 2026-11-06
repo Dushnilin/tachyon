@@ -2,13 +2,50 @@ let lastUserScrollTime = 0;
 let isProgrammaticScroll = false;
 let userScrollListenersAttached = false;
 let activeDocLocks = 0;
+let footstrapAnchorOverridden = false;
+let previousFootstrapAnchor: string | null = null;
 const containerLockCounts = new WeakMap<HTMLElement, number>();
+
+function disableFootstrapScrollAnchor() {
+  try {
+    if (typeof localStorage === 'undefined') {
+      return;
+    }
+    if (!footstrapAnchorOverridden) {
+      previousFootstrapAnchor = localStorage.getItem('fsAnchor');
+      footstrapAnchorOverridden = true;
+    }
+    if (previousFootstrapAnchor !== 'off') {
+      localStorage.setItem('fsAnchor', 'off');
+    }
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function restoreFootstrapScrollAnchor() {
+  try {
+    if (!footstrapAnchorOverridden || typeof localStorage === 'undefined') {
+      return;
+    }
+    if (previousFootstrapAnchor === null) {
+      localStorage.removeItem('fsAnchor');
+    } else {
+      localStorage.setItem('fsAnchor', previousFootstrapAnchor);
+    }
+    footstrapAnchorOverridden = false;
+    previousFootstrapAnchor = null;
+  } catch {
+    // ignore storage errors
+  }
+}
 
 export function ensureUserScrollTracking() {
   if (userScrollListenersAttached || typeof window === 'undefined') {
     return;
   }
   userScrollListenersAttached = true;
+  disableFootstrapScrollAnchor();
 
   const onUserInteraction = (e: Event) => {
     if (e.type === 'scroll' && isProgrammaticScroll) {
@@ -21,7 +58,15 @@ export function ensureUserScrollTracking() {
     passive: true,
     capture: true,
   });
+  window.addEventListener('touchstart', onUserInteraction, {
+    passive: true,
+    capture: true,
+  });
   window.addEventListener('touchmove', onUserInteraction, {
+    passive: true,
+    capture: true,
+  });
+  window.addEventListener('touchend', onUserInteraction, {
     passive: true,
     capture: true,
   });
@@ -29,6 +74,20 @@ export function ensureUserScrollTracking() {
     passive: true,
     capture: true,
   });
+  window.addEventListener(
+    'pagehide',
+    () => {
+      restoreFootstrapScrollAnchor();
+    },
+    { passive: true },
+  );
+  window.addEventListener(
+    'pageshow',
+    () => {
+      disableFootstrapScrollAnchor();
+    },
+    { passive: true },
+  );
   window.addEventListener(
     'keydown',
     (e: KeyboardEvent) => {
@@ -55,13 +114,14 @@ if (typeof window !== 'undefined') {
 }
 
 export function _resetUserScrollTrackingForTest() {
+  restoreFootstrapScrollAnchor();
   userScrollListenersAttached = false;
   lastUserScrollTime = 0;
   isProgrammaticScroll = false;
   activeDocLocks = 0;
 }
 
-export function isUserActivelyScrolling(thresholdMs = 1000): boolean {
+export function isUserActivelyScrolling(thresholdMs = 1200): boolean {
   return Date.now() - lastUserScrollTime < thresholdMs;
 }
 
@@ -71,6 +131,30 @@ const scheduleFrame = (cb: () => void) => {
   }
   return setTimeout(cb, 16);
 };
+
+function isContainerScroller(el: HTMLElement): boolean {
+  if (el.scrollTop > 0) {
+    return true;
+  }
+  try {
+    if (
+      typeof window !== 'undefined' &&
+      typeof window.getComputedStyle === 'function'
+    ) {
+      const overflowY = window.getComputedStyle(el)?.overflowY;
+      if (
+        overflowY === 'auto' ||
+        overflowY === 'scroll' ||
+        overflowY === 'overlay'
+      ) {
+        return true;
+      }
+    }
+  } catch {
+    // ignore style errors
+  }
+  return false;
+}
 
 function getScrollPosition(): {
   target: Window | HTMLElement | null;
@@ -95,7 +179,10 @@ function getScrollPosition(): {
   if (winTop > 0 || !mainContent) {
     return { target: window, top: winTop };
   }
-  return { target: mainContent, top: 0 };
+  if (isContainerScroller(mainContent)) {
+    return { target: mainContent, top: mainContent.scrollTop || 0 };
+  }
+  return { target: window, top: 0 };
 }
 
 export function preserveScrollForPage(
@@ -105,6 +192,7 @@ export function preserveScrollForPage(
   ensureUserScrollTracking();
 
   const pos = getScrollPosition();
+  const scrollTimeAtStart = lastUserScrollTime;
 
   // Only lock documentElement height when window itself is the scrolling element.
   // In container-scrolling themes (e.g. Footstrap's #maincontent), documentElement has a fixed
@@ -158,7 +246,10 @@ export function preserveScrollForPage(
     }
 
     // If the user has scrolled or interacted recently, do not fight the user's scroll gesture.
-    if (isUserActivelyScrolling(1000)) {
+    if (
+      lastUserScrollTime !== scrollTimeAtStart ||
+      isUserActivelyScrolling(1200)
+    ) {
       return;
     }
 

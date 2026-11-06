@@ -919,13 +919,22 @@ function createSnapshotsWidget() {
     execSnapshotJson(["snapshot_export", snap.file])
       .catch(function (err) {
         return fs
-          .read_direct("/tmp/tachyon-snapshot-export.json")
+          .read("/tmp/tachyon-snapshot-export.json")
+          .catch(function () {
+            return typeof fs.read_direct === "function"
+              ? fs.read_direct("/tmp/tachyon-snapshot-export.json", "text")
+              : Promise.reject(err);
+          })
           .then(function (raw) {
-            const parsed = JSON.parse(String(raw || "").trim());
-            if (!parsed || parsed.format !== "tachyon-profile-v1") {
+            const parsed =
+              raw && typeof raw === "object"
+                ? raw
+                : JSON.parse(String(raw || "").trim());
+            const prof = parsed && parsed.profile ? parsed.profile : parsed;
+            if (!prof || prof.format !== "tachyon-profile-v1") {
               throw err;
             }
-            return { success: true, profile: parsed };
+            return { success: true, profile: prof };
           })
           .catch(function () {
             throw err;
@@ -1301,7 +1310,41 @@ function createSnapshotsWidget() {
                 const raw = (textarea.value || "").trim();
                 if (!raw) return;
                 ui.hideModal();
-                execSnapshot(["snapshot_import", raw])
+                const tmpImportPath = "/tmp/tachyon-snapshot-import.json";
+                const buildSlimPayload = function (text) {
+                  try {
+                    const obj = JSON.parse(text);
+                    const prof = obj && obj.profile ? obj.profile : obj;
+                    if (
+                      prof &&
+                      prof.format === "tachyon-profile-v1" &&
+                      typeof prof.config_text === "string" &&
+                      prof.config_text.trim() !== "" &&
+                      typeof prof.archive_base64 === "string" &&
+                      prof.archive_base64.length > 65536
+                    ) {
+                      return JSON.stringify(
+                        Object.assign({}, prof, { archive_base64: "" }),
+                      );
+                    }
+                  } catch (_e) {}
+                  return text;
+                };
+                fs.write(tmpImportPath, raw)
+                  .catch(function () {
+                    const slim = buildSlimPayload(raw);
+                    if (slim !== raw) {
+                      return fs.write(tmpImportPath, slim);
+                    }
+                    throw new Error("write_failed");
+                  })
+                  .then(function () {
+                    return execSnapshot(["snapshot_import", tmpImportPath]);
+                  })
+                  .catch(function () {
+                    const slim = buildSlimPayload(raw);
+                    return execSnapshot(["snapshot_import", slim]);
+                  })
                   .then(function () {
                     loadSnapshots();
                   })

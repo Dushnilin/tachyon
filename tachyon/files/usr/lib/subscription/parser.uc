@@ -3263,7 +3263,7 @@ function decode_rfc2047(val) {
     return val;
 }
 
-function metadata_clean_text(value, max, decode_base64) {
+function metadata_clean_text(value, max, decode_base64, allow_newlines) {
     value = as_string(value);
     if (starts_with(value, "=?"))
         value = decode_rfc2047(value);
@@ -3280,7 +3280,20 @@ function metadata_clean_text(value, max, decode_base64) {
         value = decode_url_component(value);
     }
 
-    let cleaned = trim(replace(replace(value, /[\x01-\x1f\x7f]+/g, " "), / +/g, " "));
+    let cleaned = "";
+    if (allow_newlines) {
+        let norm = replace(replace(value, /\r\n/g, "\n"), /\r/g, "\n");
+        norm = replace(norm, /[\x01-\x09\x0b-\x1f\x7f]+/g, " ");
+        let lines = [];
+        for (let line in split(norm, "\n")) {
+            let cl = trim(replace(line, / +/g, " "));
+            if (cl != "")
+                push(lines, cl);
+        }
+        cleaned = join("\n", lines);
+    } else {
+        cleaned = trim(replace(replace(value, /[\x01-\x1f\x7f]+/g, " "), / +/g, " "));
+    }
     if (cleaned == "")
         return null;
     return length(cleaned) > max ? substr(cleaned, 0, max) : cleaned;
@@ -3393,7 +3406,7 @@ function metadata_ui_object(raw) {
     let title = metadata_clean_text(raw["profile-title"], 120, true);
     let web_page_url = metadata_clean_url(raw["profile-web-page-url"]);
     let support_url = metadata_clean_url(raw["support-url"]);
-    let announce = metadata_clean_text(raw["announce"], 500, true);
+    let announce = metadata_clean_text(raw["announce"], 500, true, true);
     let announce_url = metadata_clean_url(raw["announce-url"]);
     let refill_date = metadata_clean_number(raw["subscription-refill-date"]);
     let file_name = metadata_content_disposition_filename(raw["content-disposition"]);

@@ -369,10 +369,19 @@ export const TachyonShellMethods = {
         '5000',
       ],
     ),
-  getClashApiGroupLatency: async (tag: string) =>
+  getClashApiGroupLatency: async (
+    tag: string,
+    timeout = '10000',
+    url?: string,
+  ) =>
     callBaseMethod<Tachyon.GetClashApiGroupLatency>(
       Tachyon.AvailableMethods.CLASH_API,
-      [Tachyon.AvailableClashAPIMethods.GET_GROUP_LATENCY, tag, '10000'],
+      [
+        Tachyon.AvailableClashAPIMethods.GET_GROUP_LATENCY,
+        tag,
+        timeout,
+        ...(url ? [url] : []),
+      ],
     ),
   setClashApiGroupProxy: async (group: string, proxy: string) =>
     callBaseMethod<unknown>(Tachyon.AvailableMethods.CLASH_API, [

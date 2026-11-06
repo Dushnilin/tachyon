@@ -875,7 +875,7 @@ function init_group_state(group) {
 }
 
 function warm_inactive_group_members(group, active_level_index, active_tag, probe, force_all, skip_active_level) {
-    if (type(group) != "object" || group.kind == "urltest")
+    if (type(group) != "object" || (group.kind == "urltest" && length(array_or_empty(group.health_urls)) <= 1))
         return 0;
 
     let levels = array_or_empty(group.levels);
@@ -936,6 +936,8 @@ function tick_group(state, group) {
         let active = clash_probe(state.active, group);
         if (active.alive) {
             state.activeDelay = active.delay;
+            if (group.kind == "urltest" && length(array_or_empty(group.health_urls)) > 1)
+                warm_inactive_group_members(group, state.levelIndex, state.active, clash_probe, false, false);
             write_group_status(group, state, {
                 tag: state.active,
                 levelIndex: state.levelIndex,
