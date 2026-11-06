@@ -284,7 +284,7 @@ function github_to_jsdelivr(url) {
 // Unknown Happ schemes stay out of the manual proxy parser as well.
 function is_subscription_url(value) {
     value = replace(as_string(value), /^\s+|\s+$/g, "");
-    return match(value, /^(https?:\/\/|happ:\/\/|crypt([2-5])?\/)/i) != null;
+    return match(value, /^(https?:\/\/|happ:\/\/|v2raytun:\/\/|incy:\/\/|crypt([2-5])?\/)/i) != null;
 }
 
 function download_candidates(value) {

@@ -368,7 +368,7 @@ function cache_keep_sets(sections) {
         src = object_or_empty(src);
         let src_id = as_string(src[".name"] || "");
         let src_url = connections.outbound_source_subscription_url(src);
-        if (src_id == "" || src_url == "" || !match(lc(src_url), /^https?:\/\//))
+        if (src_id == "" || src_url == "" || (!match(lc(src_url), /^https?:\/\//) && !happ.is_encrypted(src_url)))
             continue;
         let pool_name = "Pool_" + src_id;
         if (cache_section_is_safe(pool_name)) {
@@ -1790,6 +1790,7 @@ function user_agent_candidates(configured_user_agent, preferred_user_agent, defa
 
     let result = [];
     let seen = {};
+
     let candidates = [ preferred_user_agent, default_user_agent ];
     for (let profile in auto_user_agent_profiles)
         push(candidates, profile);
@@ -1915,6 +1916,13 @@ function download_subscription(url, filepath, http_proxy_address, headers_filepa
             let http_status = response == null ? 0 : int(response.output);
             if (status == 0 && file_nonempty(tmpfile)) {
                 let downloaded_body = fs.readfile(tmpfile);
+                if (downloaded_body != null && headers_tmpfile != "" && file_nonempty(headers_tmpfile) && type(happ.decrypt_response_body) == "function") {
+                    let dec_body = happ.decrypt_response_body(downloaded_body, target_url, read_text(headers_tmpfile));
+                    if (dec_body != null && dec_body != "" && dec_body != downloaded_body) {
+                        fs.writefile(tmpfile, dec_body);
+                        downloaded_body = dec_body;
+                    }
+                }
                 if (downloaded_body != null && happ.is_encrypted(downloaded_body)) {
                     let dec = happ.decrypt(downloaded_body, effective_hwid, generate_hwid());
                     if (dec != null && dec != "")
@@ -2335,26 +2343,31 @@ function try_fetch_subscription_with_core(
             push(header_lines, "Profile-Web-Page-Url: " + as_string(md.web_page_url));
         if (clean_announce != "")
             push(header_lines, "Announce: " + clean_announce);
+        if (as_string(md.announce_url || "") != "")
+            push(header_lines, "Announce-Url: " + as_string(md.announce_url));
+        if (md.refill_date != null && as_string(md.refill_date) != "")
+            push(header_lines, "Subscription-Refill-Date: " + as_string(md.refill_date));
+        if (as_string(md.file_name || "") != "")
+            push(header_lines, "Content-Disposition: attachment; filename=\"" + replace(as_string(md.file_name), /"/g, "") + "\"");
     }
     write_file(headers_tmpfile, length(header_lines) > 0 ? (join("\r\n", header_lines) + "\r\n") : "");
 
     let raw_body = type(full_obj.raw_body) == "string" ? full_obj.raw_body : "";
+    let normalized_ok = false;
     if (raw_body != "") {
         write_file(raw_tmpfile, raw_body);
         parser.extract_ui_metadata_file(headers_tmpfile, raw_tmpfile, metadata_tmpfile) || unlink_path(metadata_tmpfile);
         copy_valid_metadata_output(metadata_tmpfile, metadata_output_path);
-        if (!parser.normalize_content_validated(raw_tmpfile, normalized_tmpfile, headers_tmpfile, "core")) {
+        normalized_ok = parser.normalize_content_validated(raw_tmpfile, normalized_tmpfile, headers_tmpfile, "core");
+    }
+    if (!normalized_ok) {
+        let fallback_peer = parser.extract_peer_params_from_headers_file(headers_tmpfile);
+        let outbounds = parser.normalize_sing_box_json_outbounds(full_obj.outbounds, fallback_peer);
+        if (length(outbounds) == 0) {
             unlink_path(raw_tmpfile);
             unlink_path(headers_tmpfile);
             unlink_path(normalized_tmpfile);
             unlink_path(metadata_tmpfile);
-            return -1;
-        }
-    } else {
-        let fallback_peer = parser.extract_peer_params_from_headers_file(headers_tmpfile);
-        let outbounds = parser.normalize_sing_box_json_outbounds(full_obj.outbounds, fallback_peer);
-        if (length(outbounds) == 0) {
-            unlink_path(headers_tmpfile);
             return -1;
         }
         let norm_payload = {
@@ -2363,13 +2376,17 @@ function try_fetch_subscription_with_core(
             outbounds: outbounds
         };
         if (!common.write_json_file(normalized_tmpfile, norm_payload) || !parser.validate_subscription(normalized_tmpfile)) {
+            unlink_path(raw_tmpfile);
             unlink_path(headers_tmpfile);
             unlink_path(normalized_tmpfile);
+            unlink_path(metadata_tmpfile);
             return -1;
         }
-        write_file(raw_tmpfile, "");
-        parser.extract_ui_metadata_file(headers_tmpfile, raw_tmpfile, metadata_tmpfile) || unlink_path(metadata_tmpfile);
-        copy_valid_metadata_output(metadata_tmpfile, metadata_output_path);
+        if (raw_body == "") {
+            write_file(raw_tmpfile, "");
+            parser.extract_ui_metadata_file(headers_tmpfile, raw_tmpfile, metadata_tmpfile) || unlink_path(metadata_tmpfile);
+            copy_valid_metadata_output(metadata_tmpfile, metadata_output_path);
+        }
     }
 
     return finalize_downloaded_subscription_cache(
@@ -2412,9 +2429,9 @@ function download_subscription_into_cache(section_name_value, subscription_url, 
     let effective_engine = lc(trim(as_string(subscription_engine_mode || connections.subscription_engine(find_section(sections, section_name_value), subscription_url))));
     let subscription_device_headers_signature = connections.device_headers_signature(subscription_device_headers, effective_engine);
 
-    if (effective_engine == "core" && !happ.is_encrypted(subscription_url) &&
-        as_string(service_proxy_address_value) == "" &&
-        !object_or_empty(subscription_device_headers).enabled) {
+    let can_use_core_fetch = as_string(service_proxy_address_value) == "" &&
+        !object_or_empty(subscription_device_headers).enabled;
+    if (effective_engine == "core" && can_use_core_fetch) {
         let core_res = try_fetch_subscription_with_core(
             section_name_value,
             subscription_url,
@@ -2535,6 +2552,32 @@ function download_subscription_into_cache(section_name_value, subscription_url, 
     unlink_path(headers_tmpfile);
     unlink_path(normalized_tmpfile);
     unlink_path(metadata_tmpfile);
+    if (effective_engine != "core" && can_use_core_fetch) {
+        let core_res = try_fetch_subscription_with_core(
+            section_name_value,
+            subscription_url,
+            subscription_json_path,
+            subscription_url_cache_path,
+            subscription_user_agent_cache_path,
+            subscription_hwid_cache_path,
+            subscription_device_headers_cache_path,
+            raw_tmpfile,
+            headers_tmpfile,
+            normalized_tmpfile,
+            metadata_tmpfile,
+            metadata_output_path,
+            subscription_user_agent,
+            subscription_hwid,
+            subscription_device_headers_signature,
+            source_index,
+            cache_section,
+            sections,
+            allow_insecure,
+            parser
+        );
+        if (core_res >= 0)
+            return core_res;
+    }
     if (deferred_proxy_fallback && sing_box_service_running()) {
         let fallback_proxy = SB_SERVICE_MIXED_INBOUND_ADDRESS + ":" + SB_SERVICE_MIXED_INBOUND_PORT;
         log_message("Direct subscription client profiles failed for rule '" + section_name_value + "'; retrying via active service proxy " + fallback_proxy, "info");
@@ -2954,7 +2997,7 @@ function subscription_update_request(force_value, target_section_name, target_so
         let src_url = connections.outbound_source_subscription_url(src);
         if (src_id == "" || as_string(src.enabled || "1") == "0")
             continue;
-        if ((stype == "subscription" || src_url != "") && match(lc(src_url), /^https?:\/\//) && covered_urls[src_url] !== true) {
+        if ((stype == "subscription" || src_url != "") && (match(lc(src_url), /^https?:\/\//) || happ.is_encrypted(src_url)) && covered_urls[src_url] !== true) {
             covered_urls[src_url] = true;
             let pool_sec = {
                 ".name": "Pool_" + src_id,
@@ -3125,8 +3168,40 @@ function prepare_subscription_caches(phase, already_prepared, no_refresh) {
         no_refresh: as_string(no_refresh) == "1"
     };
 
-    for (let section in sections)
+    let covered_urls = {};
+    for (let section in sections) {
+        for (let u in connections.subscription_urls(section))
+            covered_urls[trim(as_string(u || ""))] = true;
         prepare_subscription_cache_section(state, section);
+    }
+    for (let src in array_or_empty(uci_core.sections(CONFIG_NAME, "outbound_source"))) {
+        src = object_or_empty(src);
+        let src_id = as_string(src[".name"] || "");
+        let stype = lc(trim(as_string(src.source_type || "subscription")));
+        let src_url = connections.outbound_source_subscription_url(src);
+        if (src_id == "" || as_string(src.enabled || "1") == "0")
+            continue;
+        if ((stype == "subscription" || src_url != "") && (match(lc(src_url), /^https?:\/\//) || happ.is_encrypted(src_url)) && covered_urls[src_url] !== true) {
+            covered_urls[src_url] = true;
+            let pool_sec = {
+                ".name": "Pool_" + src_id,
+                "enabled": "1",
+                "action": "connection",
+                "proxy_config_type": "subscription",
+                "outbound_source_refs": [ src_id ]
+            };
+            let pool_state = {
+                phase: state.phase,
+                sections: state.sections,
+                settings: state.settings,
+                startup_blocked: false,
+                startup_blocked_sections: "",
+                unavailable_sources: "",
+                no_refresh: state.no_refresh
+            };
+            prepare_subscription_cache_section(pool_state, pool_sec);
+        }
+    }
     prune_stale_subscription_caches_for_sections(sections);
 
     if (state.startup_blocked)

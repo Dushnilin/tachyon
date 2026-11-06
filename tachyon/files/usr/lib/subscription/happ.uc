@@ -12,8 +12,56 @@ function trim(value) {
     return replace(common.as_string(value), /^\s+|\s+$/g, "");
 }
 
+function hex_nibble(code) {
+    if (code >= 48 && code <= 57)
+        return code - 48;
+    if (code >= 97 && code <= 102)
+        return code - 87;
+    if (code >= 65 && code <= 70)
+        return code - 55;
+    return -1;
+}
+
+function percent_decode(value) {
+    value = common.as_string(value);
+    if (index(value, "%") < 0)
+        return value;
+    let out = "";
+    let len = length(value);
+    for (let i = 0; i < len; i++) {
+        let code = ord(value, i);
+        if (code == 37 && i + 2 < len) {
+            let hi = hex_nibble(ord(value, i + 1));
+            let lo = hex_nibble(ord(value, i + 2));
+            if (hi >= 0 && lo >= 0) {
+                out += chr(hi * 16 + lo);
+                i += 2;
+                continue;
+            }
+        }
+        out += chr(code);
+    }
+    return out;
+}
+
+function unwrap_link(value) {
+    let s = trim(value);
+    for (let depth = 0; depth < 4; depth++) {
+        let m = match(s, /^(happ|v2raytun|incy):\/\/(add|import)\/(.+)$/i);
+        if (m == null)
+            break;
+        s = trim(m[3]);
+        if (index(s, "://") < 0 && match(s, /%[0-9A-Fa-f]{2}/) != null)
+            s = trim(percent_decode(s));
+    }
+    return s;
+}
+
 function is_encrypted(value) {
-    return match(trim(value), /^(happ:\/\/)?crypt([2-5])?\//i) != null;
+    let raw = trim(value);
+    if (match(raw, /^(happ:\/\/(add|import)\/|v2raytun:\/\/(import|add)\/|incy:\/\/(add|import)\/)/i) != null)
+        return true;
+    return match(unwrap_link(raw), /^((happ|v2raytun|incy):\/\/)?crypt([2-5])?\//i) != null;
 }
 
 function decode64(value) {
@@ -185,12 +233,78 @@ function decrypt_rsa(work, mode, payload) {
     return plain;
 }
 
+function find_core_bin() {
+    let bin = trim(getenv("TACHYON_CORE_BIN") || "/usr/bin/tachyon-core");
+    if (bin != "" && fs.access(bin, "x"))
+        return bin;
+    return "";
+}
+
+function decrypt_with_core(value, hwid_override) {
+    let bin = find_core_bin();
+    if (bin == "")
+        return null;
+    let argv = [ bin, "subscription", "decrypt" ];
+    if (type(hwid_override) == "string" && trim(hwid_override) != "") {
+        push(argv, "--hwid");
+        push(argv, trim(hwid_override));
+    }
+    push(argv, value);
+    let res = exec.run({ argv, timeout: 10 });
+    if (res.status != 0)
+        return null;
+    let out = trim(res.stdout);
+    if (out == "" || index(out, chr(0)) >= 0)
+        return null;
+    return out;
+}
+
+function decrypt_response_body(body, url, headers_text) {
+    body = common.as_string(body);
+    if (body == "")
+        return body;
+    let tag = "";
+    for (let line in split(common.as_string(headers_text), /\r?\n/)) {
+        let m = match(line, /^[ \t]*encrypt-tag[ \t]*:[ \t]*(.+)$/i);
+        if (m != null)
+            tag = trim(m[1]);
+    }
+    if (tag == "")
+        return body;
+    let bin = find_core_bin();
+    if (bin == "")
+        return body;
+    let tmp = trim(common.command_output_from_args([ "mktemp", "/tmp/tachyon-happ-body.XXXXXX" ]));
+    if (!match(tmp, /^\/tmp\/tachyon-happ-body\.[A-Za-z0-9]+$/))
+        return body;
+    let out = body;
+    if (write_private(tmp, body)) {
+        let res = exec.run({
+            argv: [ bin, "subscription", "decrypt", "--url", common.as_string(url), "--tag", tag, tmp ],
+            timeout: 15
+        });
+        if (res.status == 0 && trim(res.stdout) != "")
+            out = trim(res.stdout);
+    }
+    fs.unlink(tmp);
+    return out;
+}
+
 function decrypt(value, ...legacy_keys) {
-    value = trim(value);
-    let parsed = match(value, /^(happ:\/\/)?(crypt([2-5])?)\/(.+)$/i);
+    value = unwrap_link(value);
+    if (match(value, /^https?:\/\//i) != null && !is_encrypted(value))
+        return value;
+
+    let hwid_hint = (length(legacy_keys) > 0 && type(legacy_keys[0]) == "string") ? legacy_keys[0] : "";
+    let core_plain = decrypt_with_core(value, hwid_hint);
+    if (core_plain != null)
+        return core_plain;
+
+    let parsed = match(value, /^((happ|v2raytun|incy):\/\/)?(crypt([2-5])?)\/(.+)$/i);
     if (parsed == null)
         return null;
-    let mode = lc(parsed[2]);
+    let scheme_name = lc(parsed[2] || "happ");
+    let mode = scheme_name == "v2raytun" ? "v2raytun" : lc(parsed[3]);
     let plain = null;
     // Bound RSA processing, but let the legacy AES/HWID fallback handle larger
     // crypt4 subscription bodies as it did before the shared Happ decryptor.
@@ -198,7 +312,11 @@ function decrypt(value, ...legacy_keys) {
     if (length(value) <= MAX_LINK_BYTES)
         work = trim(common.command_output_from_args([ "mktemp", "-d", "/tmp/tachyon-happ.XXXXXX" ]));
     if (match(work, /^\/tmp\/tachyon-happ\.[A-Za-z0-9]+$/)) {
-        try { plain = decrypt_rsa(work, mode, parsed[4]); } catch (e) {}
+        try {
+            plain = decrypt_rsa(work, mode, parsed[5]);
+            if (plain == null && mode == "v2raytun")
+                plain = decrypt_rsa(work, "crypt", parsed[5]);
+        } catch (e) {}
         for (let path in (fs.glob(work + "/*") || []))
             fs.unlink(path);
         fs.rmdir(work);
@@ -212,4 +330,4 @@ function decrypt(value, ...legacy_keys) {
     return plain;
 }
 
-return { is_encrypted, decrypt };
+return { is_encrypted, unwrap_link, decrypt, decrypt_response_body };

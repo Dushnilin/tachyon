@@ -27,13 +27,19 @@ function is_supported_share_link(line) {
     return starts_with(line, "vpn://") ||
         starts_with(line, "amneziawg://") ||
         starts_with(line, "awg://") ||
+        starts_with(line, "wireguard://") ||
+        starts_with(line, "wg://") ||
         starts_with(line, "ss://") ||
         starts_with(line, "vmess://") ||
         starts_with(line, "vless://") ||
         starts_with(line, "trojan://") ||
+        starts_with(line, "trojan-go://") ||
         starts_with(line, "hysteria2://") ||
         starts_with(line, "hy2://") ||
+        starts_with(line, "hysteria://") ||
+        starts_with(line, "hy://") ||
         starts_with(line, "tuic://") ||
+        starts_with(line, "tuic5://") ||
         starts_with(line, "socks://") ||
         starts_with(line, "socks4://") ||
         starts_with(line, "socks4a://") ||
@@ -45,8 +51,12 @@ function is_supported_share_link(line) {
         starts_with(line, "fptn://") ||
         starts_with(line, "fptnb://") ||
         starts_with(line, "anytls://") ||
+        starts_with(line, "naive://") ||
         starts_with(line, "naive+https://") ||
+        starts_with(line, "naive+http2://") ||
+        starts_with(line, "naive+h2://") ||
         starts_with(line, "naive+quic://") ||
+        starts_with(line, "naive+h3://") ||
         starts_with(line, "snell://") ||
         starts_with(line, "mieru://") ||
         starts_with(line, "mierus://") ||
@@ -55,7 +65,12 @@ function is_supported_share_link(line) {
         starts_with(line, "tewfai://") ||
         starts_with(line, "trusttunnel://") ||
         starts_with(line, "masque://") ||
+        starts_with(line, "openconnect://") ||
+        starts_with(line, "anyconnect://") ||
         starts_with(line, "shadowtls://") ||
+        starts_with(line, "stls://") ||
+        starts_with(line, "sudoku://") ||
+        starts_with(line, "ssh://") ||
         happ.is_encrypted(line);
 }
 
@@ -1157,6 +1172,11 @@ function process_trojan(raw, url) {
     if (url.host == "" || is_dummy_server(url.host, url.port) || !valid_port(url.port) || url.userinfo == "")
         return null;
 
+    if (url.scheme == "trojan-go" && (url.query.type == null || url.query.type == "") &&
+        ((url.path || "") != "" || (url.query.path || "") != "" || (url.query.host || "") != "")) {
+        url.query.type = "ws";
+    }
+
     let outbound = {
         type: "trojan",
         tag: url.fragment != "" ? url.fragment : (url.host + ":" + url.port),
@@ -1836,6 +1856,34 @@ function from_amneziawg_share_link(line) {
     if (payload == "")
         return null;
 
+    if (index(payload, "?") >= 0 && index(payload, "@") >= 0) {
+        let u = parse_url(line);
+        if (u != null && u.host != "" && u.port != "" && !is_dummy_server(u.host, u.port)) {
+            let priv_k = trim(as_string(u.userinfo || u.query.privatekey || u.query.private_key || u.query.privateKey || ""));
+            let pub_k = trim(as_string(u.query.publickey || u.query.public_key || u.query.publicKey || u.query.peer_public_key || ""));
+            if (priv_k != "" && pub_k != "") {
+                let addr_v = trim(as_string(u.query.address || u.query.ip || "10.0.0.2/32"));
+                let ep_host = index(u.host, ":") >= 0 && substr(u.host, 0, 1) != "[" ? ("[" + u.host + "]") : u.host;
+                let synth = "[Interface]\nPrivateKey = " + priv_k + "\nAddress = " + addr_v + "\n";
+                if ((u.query.mtu || "") != "")
+                    synth += "MTU = " + as_string(u.query.mtu) + "\n";
+                for (let ak in [ "jc", "jmin", "jmax", "s1", "s2", "s3", "s4", "h1", "h2", "h3", "h4", "i1", "i2", "i3", "i4", "i5" ]) {
+                    let av = u.query[ak] != null ? u.query[ak] : u.query[uc(ak)];
+                    if (av != null && as_string(av) != "")
+                        synth += uc(ak) + " = " + as_string(av) + "\n";
+                }
+                synth += "\n[Peer]\nPublicKey = " + pub_k + "\nEndpoint = " + ep_host + ":" + as_string(u.port) + "\n";
+                let psk_v = trim(as_string(u.query.psk || u.query.presharedkey || u.query.pre_shared_key || ""));
+                if (psk_v != "")
+                    synth += "PresharedKey = " + psk_v + "\n";
+                synth += "AllowedIPs = 0.0.0.0/0, ::/0\n";
+                let ep_out = wireguard.from_conf(synth, line, name);
+                if (ep_out)
+                    return ep_out;
+            }
+        }
+    }
+
     let conf_text = base64_decode(payload);
     if (conf_text == null || conf_text == "") {
         if (index(payload, "[Interface]") >= 0 || index(payload, "[interface]") >= 0)
@@ -1915,7 +1963,7 @@ function process_naive(raw, url) {
         outbound.username = username;
     if (password != "")
         outbound.password = password;
-    if (url.scheme == "naive+quic" || is_true(url.query.quic))
+    if (url.scheme == "naive+quic" || url.scheme == "naive+h3" || is_true(url.query.quic))
         outbound.quic = true;
     if ((url.query.quic_congestion_control || "") != "")
         outbound.quic_congestion_control = url.query.quic_congestion_control;
@@ -2327,10 +2375,128 @@ function process_openconnect(raw, url) {
     return outbound;
 }
 
+function process_sudoku(raw, url) {
+    if (url.host == "" || is_dummy_server(url.host, url.port) || !valid_port(url.port))
+        return null;
+    let key = as_string(url.userinfo || url.query.key || url.query.password || "");
+    if (key == "")
+        return null;
+
+    let outbound = {
+        type: "sudoku",
+        tag: url.fragment != "" ? url.fragment : (url.host + ":" + url.port),
+        share_link: raw,
+        server: url.host,
+        server_port: int(url.port),
+        key: key
+    };
+    let aead = as_string(url.query.aead || url.query.cipher || url.query.method || "");
+    if (aead != "")
+        outbound.aead_method = aead;
+    if (is_integer_string(url.query.padding_min || ""))
+        outbound.padding_min = int(url.query.padding_min, 10);
+    if (is_integer_string(url.query.padding_max || ""))
+        outbound.padding_max = int(url.query.padding_max, 10);
+    let table_type = as_string(url.query.table_type || url.query.ascii || "");
+    if (table_type != "")
+        outbound.table_type = table_type;
+    if (url.query.enable_pure_downlink != null && url.query.enable_pure_downlink != "")
+        outbound.enable_pure_downlink = is_true(url.query.enable_pure_downlink);
+    if (url.query.http_mask != null && url.query.http_mask != "")
+        outbound.disable_http_mask = !is_true(url.query.http_mask);
+    else if (url.query.disable_http_mask != null && url.query.disable_http_mask != "")
+        outbound.disable_http_mask = is_true(url.query.disable_http_mask);
+    if ((url.query.http_mask_mode || "") != "")
+        outbound.http_mask_mode = url.query.http_mask_mode;
+    if ((url.query.http_mask_host || url.query.host || "") != "")
+        outbound.http_mask_host = url.query.http_mask_host || url.query.host;
+    if ((url.query.path_root || url.query.http_mask_path_root || "") != "")
+        outbound.path_root = url.query.path_root || url.query.http_mask_path_root;
+    if (url.query.http_mask_tls != null && url.query.http_mask_tls != "")
+        outbound.http_mask_tls = is_true(url.query.http_mask_tls);
+    if ((url.query.http_mask_multiplex || url.query.mux || "") != "")
+        outbound.http_mask_multiplex = url.query.http_mask_multiplex || url.query.mux;
+    return outbound;
+}
+
+function process_ssh(raw, url) {
+    let port = url.port;
+    if (port == null || port == "")
+        port = 22;
+    if (url.host == "" || is_dummy_server(url.host, port) || !valid_port(port))
+        return null;
+
+    let user = "root", password = "";
+    if (url.userinfo != "") {
+        let colon = index(url.userinfo, ":");
+        if (colon >= 0) {
+            let u = substr(url.userinfo, 0, colon);
+            if (u != "")
+                user = u;
+            password = substr(url.userinfo, colon + 1);
+        } else {
+            user = url.userinfo;
+        }
+    }
+
+    let outbound = {
+        type: "ssh",
+        tag: url.fragment != "" ? url.fragment : (url.host + ":" + port),
+        share_link: raw,
+        server: url.host,
+        server_port: int(port),
+        user: user
+    };
+    if (password != "")
+        outbound.password = password;
+    if ((url.query.private_key || "") != "")
+        outbound.private_key = url.query.private_key;
+    if ((url.query.private_key_path || "") != "")
+        outbound.private_key_path = url.query.private_key_path;
+    if ((url.query.private_key_passphrase || url.query.passphrase || "") != "")
+        outbound.private_key_passphrase = url.query.private_key_passphrase || url.query.passphrase;
+    if ((url.query.host_key || "") != "")
+        outbound.host_key = split_csv(url.query.host_key);
+    if ((url.query.host_key_algorithms || "") != "")
+        outbound.host_key_algorithms = split_csv(url.query.host_key_algorithms);
+    if ((url.query.client_version || "") != "")
+        outbound.client_version = url.query.client_version;
+    return outbound;
+}
+
+function process_hysteria1(raw, url) {
+    if (url.host == "" || is_dummy_server(url.host, url.port) || !valid_port(url.port))
+        return null;
+    let outbound = {
+        type: "hysteria",
+        tag: url.fragment != "" ? url.fragment : (url.host + ":" + url.port),
+        share_link: raw,
+        server: url.host,
+        server_port: int(url.port)
+    };
+    let auth = as_string(url.query.auth || url.userinfo || "");
+    if (auth != "")
+        outbound.auth_str = auth;
+    let up = parse_hysteria2_mbps(url.query.upmbps || url.query.up || "");
+    if (up != null)
+        outbound.up_mbps = up;
+    let down = parse_hysteria2_mbps(url.query.downmbps || url.query.down || "");
+    if (down != null)
+        outbound.down_mbps = down;
+    let obfs = as_string(url.query.obfsParam || url.query.obfs || "");
+    if (obfs != "" && obfs != "none" && obfs != "plain")
+        outbound.obfs = obfs;
+    let tls_result = add_tls(url, url.query.security || "", true);
+    if (tls_result[0])
+        outbound.tls = tls_result[0];
+    return outbound;
+}
+
 function parse_share_link(line) {
     if (starts_with(line, "vpn://"))
         return wireguard.from_vpn(line);
-    if (starts_with(line, "amneziawg://") || starts_with(line, "awg://"))
+    if (starts_with(line, "amneziawg://") || starts_with(line, "awg://") ||
+        starts_with(line, "wireguard://") || starts_with(line, "wg://"))
         return from_amneziawg_share_link(line);
     if (starts_with(line, "vmess://"))
         return process_vmess(line);
@@ -2352,15 +2518,18 @@ function parse_share_link(line) {
 
     if (url.scheme == "vless")
         return process_vless(line, url);
-    if (url.scheme == "trojan")
+    if (url.scheme == "trojan" || url.scheme == "trojan-go")
         return process_trojan(line, url);
     if (url.scheme == "hysteria2" || url.scheme == "hy2")
         return process_hysteria2(line, url);
-    if (url.scheme == "tuic")
+    if (url.scheme == "hysteria" || url.scheme == "hy")
+        return process_hysteria1(line, url);
+    if (url.scheme == "tuic" || url.scheme == "tuic5")
         return process_tuic(line, url);
     if (url.scheme == "anytls")
         return process_anytls(line, url);
-    if (url.scheme == "naive+https" || url.scheme == "naive+quic")
+    if (url.scheme == "naive" || url.scheme == "naive+https" || url.scheme == "naive+http2" ||
+        url.scheme == "naive+h2" || url.scheme == "naive+quic" || url.scheme == "naive+h3")
         return process_naive(line, url);
     if (url.scheme == "snell")
         return process_snell(line, url);
@@ -2368,8 +2537,12 @@ function parse_share_link(line) {
         return process_mieru(line, url);
     if (url.scheme == "tg" || url.scheme == "mtproto")
         return process_mtproto(line, url);
-    if (url.scheme == "shadowtls")
+    if (url.scheme == "shadowtls" || url.scheme == "stls")
         return process_shadowtls(line, url);
+    if (url.scheme == "sudoku")
+        return process_sudoku(line, url);
+    if (url.scheme == "ssh")
+        return process_ssh(line, url);
     if (url.scheme == "tewfai")
         return process_tewfai(line, url);
     if (url.scheme == "trusttunnel")
@@ -5181,6 +5354,11 @@ function normalize_content_data(data, output_file, depth, headers_file) {
             return normalize_sing_box_json_value(decoded_json, output_file, headers_file);
     }
 
+    if (index(lc(data), "[interface]") >= 0 && match(data, /(^|\n)[ \t]*\[[Ii]nterface\][ \t]*(\n|$)/) != null) {
+        if (normalize_sing_box_json_value({ config: data }, output_file, headers_file))
+            return true;
+    }
+
     if (index(data, "proxies:") >= 0 && content_is_clash_yaml(data)) {
         let tmp = temp_path("tachyon-subscription-clash");
         if (!fs.writefile(tmp, data))
@@ -5247,10 +5425,10 @@ function content_requires_ucode_normalizer(input_file, headers_file) {
     return false;
 }
 
-function try_normalize_with_core_cli(input_file, output_file, headers_file) {
+function try_normalize_with_core_cli(input_file, output_file, headers_file, force_allow) {
     if (!core_subscription_cli_supported())
         return false;
-    if (content_requires_ucode_normalizer(input_file, headers_file))
+    if (!force_allow && content_requires_ucode_normalizer(input_file, headers_file))
         return false;
 
     let core_tmp = temp_path("tachyon-subscription-core-parse");
@@ -5289,14 +5467,22 @@ function try_normalize_with_core_cli(input_file, output_file, headers_file) {
 function normalize_content_file(input_file, output_file, headers_file, engine_mode) {
     last_normalize_error_reason = "";
     let eff_engine = lc(trim(as_string(engine_mode || getenv("TACHYON_SUBSCRIPTION_ENGINE") || "")));
-    if (eff_engine == "core" && try_normalize_with_core_cli(input_file, output_file, headers_file))
+    if (eff_engine == "core" && try_normalize_with_core_cli(input_file, output_file, headers_file, false))
         return true;
 
+    let ok = false;
     if (file_looks_like_uri_list(input_file))
-        return normalize_uri_list_file(input_file, output_file, true);
-
-    let data = read_file(input_file);
-    return data == null ? false : normalize_content_data(data, output_file, 0, headers_file);
+        ok = normalize_uri_list_file(input_file, output_file, true);
+    else {
+        let data = read_file(input_file);
+        ok = data == null ? false : normalize_content_data(data, output_file, 0, headers_file);
+    }
+    if (ok && validate_subscription(output_file))
+        return true;
+    if (last_normalize_error_reason != "incomplete_awg_missing_peer" &&
+        try_normalize_with_core_cli(input_file, output_file, headers_file, true))
+        return true;
+    return ok;
 }
 
 function normalize_content_validated(input_file, output_file, headers_file, engine_mode) {
