@@ -96,7 +96,10 @@ const BUILTIN_SUBNET_URLS = {
     game_backends: [ getenv("SUBNETS_GAME_BACKENDS") || TACHYON_LISTS_SUBNETS_BASE + "/game_backends.lst" ],
     cs2_dota2: [ getenv("SUBNETS_CS2_DOTA2") || TACHYON_LISTS_SUBNETS_BASE + "/cs2_dota2.lst" ],
     doh_dot_dns: [ getenv("SUBNETS_DOH_DOT_DNS") || TACHYON_LISTS_SUBNETS_BASE + "/doh_dot_dns.lst" ],
-    vps_clouds: [ getenv("SUBNETS_VPS_CLOUDS") || TACHYON_LISTS_SUBNETS_BASE + "/vps_clouds.lst" ]
+    vps_clouds: [ getenv("SUBNETS_VPS_CLOUDS") || TACHYON_LISTS_SUBNETS_BASE + "/vps_clouds.lst" ],
+    et_spamhaus_block: [ getenv("SUBNETS_ET_SPAMHAUS_BLOCK") || TACHYON_LISTS_SUBNETS_BASE + "/et_spamhaus_block.lst" ],
+    hagezi_tif_ip_block: [ getenv("SUBNETS_HAGEZI_TIF_IP_BLOCK") || TACHYON_LISTS_SUBNETS_BASE + "/hagezi_tif_ip_block.lst" ],
+    botnet_attackers_ip_block: [ getenv("SUBNETS_BOTNET_ATTACKERS_IP_BLOCK") || TACHYON_LISTS_SUBNETS_BASE + "/botnet_attackers_ip_block.lst" ]
 };
 let rule_config = null;
 let routing_rulesets_module_value = null;

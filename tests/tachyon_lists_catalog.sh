@@ -71,4 +71,20 @@ assert_eq "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat
   "$(ucode -L "$TACHYON_LIB" -e 'let r = require("tachyon_core.rulesets"); print(r.fallback_community_url("ru_blocked"));')" \
   "ru_blocked fallback_community_url"
 
+assert_eq "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box/et_spamhaus_block.srs" \
+  "$(ucode -L "$TACHYON_LIB" -e 'let r = require("tachyon_core.rulesets"); print(r.community_url("et_spamhaus_block"));')" \
+  "et_spamhaus_block primary community_url"
+
+assert_eq "https://github.com/Dushnilin/tachyon-lists/releases/latest/download/et_spamhaus_block.srs" \
+  "$(ucode -L "$TACHYON_LIB" -e 'let r = require("tachyon_core.rulesets"); print(r.fallback_community_url("et_spamhaus_block"));')" \
+  "et_spamhaus_block fallback_community_url"
+
+assert_eq "subnets" \
+  "$(ucode -L "$TACHYON_LIB" -e 'let r = require("tachyon_core.rulesets"); print(r.community_kind("hagezi_tif_ip_block"));')" \
+  "hagezi_tif_ip_block community_kind"
+
+assert_eq "subnets" \
+  "$(ucode -L "$TACHYON_LIB" -e 'let r = require("tachyon_core.rulesets"); print(r.community_kind("botnet_attackers_ip_block"));')" \
+  "botnet_attackers_ip_block community_kind"
+
 printf 'tachyon_lists_catalog checks passed\n'

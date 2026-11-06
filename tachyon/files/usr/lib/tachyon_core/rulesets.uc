@@ -22,6 +22,7 @@ const SRS_GEOIP_US_URL = "https://raw.githubusercontent.com/MetaCubeX/meta-rules
 const SRS_GEOIP_CN_URL = "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/cn.srs";
 const SRS_TACHYON_LISTS_BASE = "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box";
 const TRS_TACHYON_LISTS_BASE = "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon";
+const SRS_TACHYON_LISTS_RELEASE_BASE = "https://github.com/Dushnilin/tachyon-lists/releases/latest/download";
 const SRS_ROSCOMVPN_GEOSITE_BASE = "https://raw.githubusercontent.com/hydraponique/roscomvpn-geosite/master/release/sing-box";
 const SRS_RUNETFREEDOM_GEOSITE_BASE = "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite";
 
@@ -300,7 +301,10 @@ const COMMUNITY_SERVICES = {
     android_ads_block: true,
     gambling_block: true,
     phishing_malware_block: true,
-    telemetry_mobile_block: true
+    telemetry_mobile_block: true,
+    et_spamhaus_block: true,
+    hagezi_tif_ip_block: true,
+    botnet_attackers_ip_block: true
 };
 
 // Classification of community rule-sets based on upstream rule-set generation.
@@ -341,7 +345,16 @@ const COMMUNITY_INFRASTRUCTURE_SERVICES = {
     hetzner: true,
     ovh: true,
     digitalocean: true,
-    vps_clouds: true
+    vps_clouds: true,
+    et_spamhaus_block: true,
+    hagezi_tif_ip_block: true,
+    botnet_attackers_ip_block: true
+};
+
+const TACHYON_LISTS_RELEASE_FALLBACK_SERVICES = {
+    et_spamhaus_block: true,
+    hagezi_tif_ip_block: true,
+    botnet_attackers_ip_block: true
 };
 
 const COMMUNITY_DOMAIN_SERVICES = {
@@ -611,6 +624,8 @@ function fallback_community_url(name) {
         return SRS_ROSCOMVPN_GEOSITE_BASE + "/" + ROSCOMVPN_GEOSITE_MAP[name] + ".srs";
     if (RUNETFREEDOM_GEOSITE_MAP[name] != null)
         return SRS_RUNETFREEDOM_GEOSITE_BASE + "/" + RUNETFREEDOM_GEOSITE_MAP[name] + ".srs";
+    if (TACHYON_LISTS_RELEASE_FALLBACK_SERVICES[name] === true)
+        return SRS_TACHYON_LISTS_RELEASE_BASE + "/" + name + ".srs";
 
     let geoip_match = match(name, /^geoip_([a-z]{2})$/);
     if (geoip_match)

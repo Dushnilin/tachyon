@@ -167,6 +167,10 @@ export const DOMAIN_LIST_OPTIONS = {
   telemetry_mobile_block: 'Телеметрия смартфонов и мобильных SDK (Block)',
   win_spy: 'Телеметрия Windows (Block)',
   xiaomi_smarttv_ads: 'Реклама Xiaomi HyperOS/MIUI и Smart TV (Block)',
+  et_spamhaus_block: 'Emerging Threats, Spamhaus DROP и Feodo C2 (Block)',
+  hagezi_tif_ip_block:
+    'HaGeZi Threat Intelligence IP и FireHOL Webclient (Block)',
+  botnet_attackers_ip_block: 'IPsum, CINS Army и Binary Defense (Block)',
 };
 
 export const DOMAIN_LIST_HINTS: Record<string, string> = {
@@ -437,6 +441,12 @@ export const DOMAIN_LIST_HINTS: Record<string, string> = {
     '[Маршрут: Блокировать (Block)] Серверы слежки, телеметрии, отчётов об ошибках и рекламы Windows 10/11',
   xiaomi_smarttv_ads:
     '[Маршрут: Блокировать (Block)] Вырезает встроенную системную рекламу и телеметрию в прошивках Xiaomi / Poco / Redmi (MIUI и HyperOS: api.ad.xiaomi.com, tracking.miui.com, mistat.xiaomi.com), а также рекламные баннеры и ACR-слежку на телевизорах Samsung Smart TV (Tizen) и LG webOS',
+  et_spamhaus_block:
+    '[Маршрут: Блокировать (Block)] Базовый исходящий IP-фильтр сетевых угроз без ложных срабатываний (аналог профилей threat, etcompromised, spamhaus, feodo и dshield в banIP): управляющие C2-серверы ботнетов Abuse.ch Feodo Tracker, скомпрометированные узлы Emerging Threats (ET Block & Compromised), похищенные подсети Spamhaus DROP / eDROP и активные сканеры SANS DShield.',
+  hagezi_tif_ip_block:
+    '[Маршрут: Блокировать (Block)] Расширенный исходящий список опасных IP-адресов и подсетей (аналог профилей hagezi и webclient в banIP): серверы распространения вредоносного ПО, крипто-дрейнеров, троянов, командные узлы C2 и вредоносные веб-узлы по данным HaGeZi Threat Intelligence IP Feed и FireHOL Webclient. Блокирует прямое подключение по IP даже при обращениях мимо системного DNS.',
+  botnet_attackers_ip_block:
+    '[Маршрут: Блокировать (Block)] Сводный список IP-адресов с подтверждённой вредоносной активностью по данным десятков независимых сенсоров и ханипотов (аналог профилей ipsum, cinsscore и binarydefense в banIP): IPsum (Level 3+), CINS Army (Sentinel IPS) и Binary Defense ATIF.',
 };
 
 export const DNS_SERVERS_BY_PROTOCOL: Record<string, Record<string, string>> = {

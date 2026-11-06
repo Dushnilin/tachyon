@@ -1118,6 +1118,9 @@ export function renderCommunityListServiceIcon(
       'phishing_malware_block',
       'win_spy',
       'xiaomi_smarttv_ads',
+      'et_spamhaus_block',
+      'hagezi_tif_ip_block',
+      'botnet_attackers_ip_block',
     ].includes(k)
   ) {
     return renderBanIcon(size);

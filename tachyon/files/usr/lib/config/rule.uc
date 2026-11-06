@@ -304,7 +304,10 @@ let community_subnet_lists = {
     game_backends: true,
     cs2_dota2: true,
     doh_dot_dns: true,
-    vps_clouds: true
+    vps_clouds: true,
+    et_spamhaus_block: true,
+    hagezi_tif_ip_block: true,
+    botnet_attackers_ip_block: true
 };
 
 function community_service_has_subnet_list(value) {
