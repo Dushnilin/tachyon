@@ -1368,7 +1368,10 @@ function resolve_outbound_node(matched_section, matched_action, uci_cfg) {
     }
 
     if (matched_action == "desync") {
-        let d_mode = matched_section ? lc(trim(as_string(matched_section.desync_mode || "split"))) : "split";
+        let d_preset = matched_section ? lc(trim(as_string(matched_section.desync_preset || ""))) : "";
+        let d_mode = (d_preset != "" && d_preset != "custom")
+            ? d_preset
+            : (matched_section ? lc(trim(as_string(matched_section.desync_mode || "auto"))) : "auto");
         return {
             group_tag: matched_section ? (matched_section[".name"] + "-out") : "desync-out",
             group_type: "desync",

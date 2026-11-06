@@ -62,11 +62,12 @@ const DEFAULT_PATTERNS = {
         ipfrags: [ "24" ]
     },
     desync: {
-        presets: [ "fake_split", "tlsrec", "disorder", "split", "fake", "oob", "auto" ],
-        modes: [ "fake_split", "tlsrec", "disorder", "split", "fake", "oob" ],
-        splits: [ "1", "2", "midsld", "sni" ],
+        presets: [ "auto", "fake_split", "fake_disorder", "multi_disorder", "multi_split", "tlsrec", "disorder", "split", "fake", "oob" ],
+        modes: [ "fake_split", "fake_disorder", "multi_disorder", "multi_split", "tlsrec", "disorder", "split", "fake", "oob" ],
+        splits: [ "midsld", "sni", "sniext+1", "host+1", "midsld-2", "endhost-1", "1", "2" ],
+        foolings: [ "md5", "md5_badack", "badack", "datanoack", "autottl", "timestamp", "badseq", "badsum", "badseq_badack_badsum", "hopbyhop" ],
         ttls: [ 3, 4, 5, 6, 8 ],
-        fake_snis: [ "www.google.com", "max.ru", "gosuslugi.ru", "sberbank.ru" ],
+        fake_snis: [ "www.google.com", "max.ru", "vk.com", "gosuslugi.ru", "rzd.ru", "ozon.ru", "padencap", "rndsni" ],
         repeats: [ 2, 4, 6, 8 ]
     },
     custom_strategies: []
@@ -1001,11 +1002,39 @@ const STRATEGIES_BYEDPI = [
 const STRATEGIES_DESYNC = [
     // ── 1. BUILT-IN CORE PRESETS ───────────────────────────────────────────────
     {
+        id: "ds_preset_auto",
+        name: "Native Desync Preset: Adaptive 2.0 Autopilot (16 recipes + cache.db)",
+        engine: "desync",
+        args: "preset=auto",
+        description: "Built-in tachyon-core 16-recipe autopilot with RST origin forensics, AutoTTL calibration, hedged probing, and UDP ladder."
+    },
+    {
         id: "ds_preset_fake_split",
-        name: "Native Desync Preset: Fake + Split (midsld, TTL=6, UDP Fake)",
+        name: "Native Desync Preset: Fake + Split (midsld, TCP MD5, UDP Fake)",
         engine: "desync",
         args: "preset=fake_split",
-        description: "Built-in tachyon-core default preset: low-TTL Fake ClientHello + mid-SLD TCP split + UDP QUIC/STUN fake."
+        description: "Built-in tachyon-core default preset: RAW Fake ClientHello + mid-SLD TCP split + UDP QUIC/STUN fake."
+    },
+    {
+        id: "ds_preset_fake_disorder",
+        name: "Native Desync Preset: Fake + Disorder (Out-of-order MidSLD)",
+        engine: "desync",
+        args: "preset=fake_disorder",
+        description: "Built-in tachyon-core RAW Fake ClientHello + out-of-order TCP segment delivery."
+    },
+    {
+        id: "ds_preset_multi_disorder",
+        name: "Native Desync Preset: Multi-Disorder (TLSRec + Fake + Multi-cut)",
+        engine: "desync",
+        args: "preset=multi_disorder",
+        description: "Built-in tachyon-core TLS record pre-split + RAW Fake + reverse multi-segment disorder."
+    },
+    {
+        id: "ds_preset_multi_split",
+        name: "Native Desync Preset: Multi-Split (TLSRec + SNI + MidSLD)",
+        engine: "desync",
+        args: "preset=multi_split",
+        description: "Built-in tachyon-core multi-point TCP segmentation without fake packets."
     },
     {
         id: "ds_preset_tlsrec",
@@ -1016,10 +1045,10 @@ const STRATEGIES_DESYNC = [
     },
     {
         id: "ds_preset_disorder",
-        name: "Native Desync Preset: TTL=1 Disorder (pos=1)",
+        name: "Native Desync Preset: Out-of-order Disorder (pos=midsld)",
         engine: "desync",
         args: "preset=disorder",
-        description: "Built-in tachyon-core TTL=1 first-segment drop forcing server retransmission disorder."
+        description: "Built-in tachyon-core out-of-order TCP segment delivery."
     },
     {
         id: "ds_preset_split",
@@ -1044,6 +1073,48 @@ const STRATEGIES_DESYNC = [
     },
 
     // ── 2. TUNED MODE & PARAMETER STRATEGIES ───────────────────────────────────
+    {
+        id: "ds_hostfakesplit_md5_badack_rzd",
+        name: "HostFakeSplit + Disorder (sni,endhost-1, md5_badack, rzd.ru, seqovl=4)",
+        engine: "desync",
+        args: "mode=fake_disorder split_pos=sni,endhost-1 fooling=md5_badack fake_sni=rzd.ru seqovl=4 repeats=2",
+        description: "In-band exact-length hostname replacement with valid-checksum TCP MD5 + BadAck + TS-Up combo."
+    },
+    {
+        id: "ds_multidisorder_7point_md5_badack",
+        name: "7-Point Multi-Disorder (md5_badack, rndsni, tlsrec_first)",
+        engine: "desync",
+        args: "mode=multi_disorder split_pos=1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1 fooling=md5_badack fake_sni=rndsni tlsrec_first=true repeats=2",
+        description: "Deep 7-point reverse disorder with TLS record pre-split and randomized same-length SNI."
+    },
+    {
+        id: "ds_fakedisorder_badack_padencap",
+        name: "Fake + Disorder (midsld+2, badack, padencap, seqovl=8)",
+        engine: "desync",
+        args: "mode=fake_disorder split_pos=midsld+2 fooling=badack fake_sni=padencap tlsrec_first=true seqovl=8 repeats=2",
+        description: "Exact-length TLS padding encapsulation (padencap) with BadAck + TS-Up and 8-byte sequence overlap."
+    },
+    {
+        id: "ds_fakesplit_datanoack_seqovl12",
+        name: "Fake + Split (sniext+1, datanoack, gosuslugi.ru, seqovl=12)",
+        engine: "desync",
+        args: "mode=fake_split split_pos=sniext+1 fooling=datanoack fake_sni=gosuslugi.ru tlsrec_first=true seqovl=12 repeats=2",
+        description: "Clears TCP ACK flag on decoy segments (datanoack) with 12-byte sequence overlap."
+    },
+    {
+        id: "ds_multidisorder_combo_7point",
+        name: "7-Point Multi-Disorder (badseq_badack_badsum, ozon.ru)",
+        engine: "desync",
+        args: "mode=multi_disorder split_pos=1,sniext+1,host+1,midsld-2,midsld,midsld+2,endhost-1 fooling=badseq_badack_badsum fake_sni=ozon.ru tlsrec_first=true seqovl=4 repeats=2",
+        description: "Compound BadSeq + BadAck + TS-Up + BadSum 7-point reverse disorder."
+    },
+    {
+        id: "ds_fakedisorder_autottl_max",
+        name: "HostFakeSplit + AutoTTL (sni,endhost-1, autottl, max.ru)",
+        engine: "desync",
+        args: "mode=fake_disorder split_pos=sni,endhost-1 fooling=autottl fake_sni=max.ru tlsrec_first=true repeats=2",
+        description: "Calibrated hop-distance AutoTTL decoy injection with in-band HostFakeSplit."
+    },
     {
         id: "ds_fake_split_midsld_ttl4_max",
         name: "Fake + Split (midsld, TTL=4, max.ru, repeats=6)",

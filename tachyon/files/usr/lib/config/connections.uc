@@ -1718,9 +1718,11 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
         let auto_tune_raw = trim(option(src, "desync_auto_tune", ""));
         if (auto_tune_raw != "")
             ds_obj.auto_tune = bool_option(src, "desync_auto_tune", false);
+        else if (lc(raw_preset) in ["discord", "youtube", "google_youtube", "general"])
+            ds_obj.auto_tune = true;
         if (bool_option(src, "desync_tlsrec_first", false))
             ds_obj.tlsrec_first = true;
-        if (lc(raw_preset) == "discord" && !bool_option(src, "desync_udp_fake", false))
+        if (lc(raw_preset) == "discord" && trim(option(src, "desync_udp_fake", "")) == "")
             ds_obj.udp_fake = true;
         if (ds_obj.preset == null && ds_obj.mode == null)
             ds_obj.preset = "auto";

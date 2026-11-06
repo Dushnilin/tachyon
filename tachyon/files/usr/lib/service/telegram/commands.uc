@@ -679,8 +679,10 @@ function view_section_editor(token, chat_id, msg_id, sec_name) {
         let detail = stype;
         if (stype == "zapret2" && src.zapret2_strategy)
             detail = stype + ":" + src.zapret2_strategy;
-        else if (stype == "desync" && src.desync_mode)
-            detail = stype + ":" + src.desync_mode;
+        else if (stype == "desync") {
+            let dp = (src.desync_preset && src.desync_preset != "custom") ? src.desync_preset : (src.desync_mode || src.desync_preset || "auto");
+            detail = stype + ":" + dp;
+        }
         else if (stype == "interface" && src.interface)
             detail = stype + ":" + src.interface;
         push(src_names, escape_html(sname) + " <i>(" + escape_html(detail) + ")</i>");
@@ -1690,6 +1692,10 @@ function view_sec_subs(token, chat_id, msg_id, sec_name) {
         text += icon + " <b>" + escape_html(src.label || src.name || sname) + "</b> <code>[" + escape_html(stype) + "]</code>";
         if (src.url) text += "\n   └ <code>" + escape_html(length(src.url) > 45 ? utf8_prefix(src.url, 45) + "..." : src.url) + "</code>";
         else if (src.zapret2_strategy) text += " (<code>" + escape_html(src.zapret2_strategy) + "</code>)";
+        else if (stype == "desync") {
+            let dp = (src.desync_preset && src.desync_preset != "custom") ? src.desync_preset : (src.desync_mode || src.desync_preset || "auto");
+            text += " (<code>" + escape_html(dp) + "</code>)";
+        }
         else if (src.desync_mode) text += " (<code>" + escape_html(src.desync_mode) + "</code>)";
         text += "\n";
 

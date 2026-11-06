@@ -114,6 +114,7 @@ function normalize_desync_preset(lv, outbound) {
     if (lv == "tls_rec" || lv == "tlsrec") return "tlsrec";
     if (lv == "split" || lv == "disorder" || lv == "fake" || lv == "oob") return lv;
     if (lv == "youtube" || lv == "google_youtube") {
+        if (outbound.auto_tune == null) outbound.auto_tune = true;
         if (outbound.split_pos == null) outbound.split_pos = "midsld";
         if (outbound.fake_ttl == null) outbound.fake_ttl = 6;
         if (outbound.fake_sni == null) outbound.fake_sni = "www.google.com";
@@ -121,6 +122,7 @@ function normalize_desync_preset(lv, outbound) {
         return "fake_split";
     }
     if (lv == "discord") {
+        if (outbound.auto_tune == null) outbound.auto_tune = true;
         if (outbound.split_pos == null) outbound.split_pos = "midsld";
         if (outbound.fake_ttl == null) outbound.fake_ttl = 6;
         if (outbound.udp_fake == null) outbound.udp_fake = true;
@@ -252,6 +254,10 @@ function parse_desync_outbound(args_val, tag_name) {
         if (eq <= 0)
             return null;
         let k = lc(trim(substr(tok, 0, eq)));
+        if (substr(k, 0, 2) == "--")
+            k = replace(substr(k, 2), /-/g, "_");
+        if (k == "split_delay")
+            k = "split_delay_ms";
         let v = trim(substr(tok, eq + 1));
         if (v == "")
             return null;

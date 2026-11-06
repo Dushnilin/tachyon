@@ -39,6 +39,7 @@ export function renderStrategyFuzzerModal(
   let selectedTarget: Tachyon.FuzzerTarget = 'youtube_suite';
   let customUrl = '';
   let selectedRuleSection = '';
+  let userChangedRuleSection = false;
   let selectedMode: Tachyon.FuzzerMode = 'presets';
   let selectedTimeout = 2700;
   let isRunning = false;
@@ -94,7 +95,7 @@ export function renderStrategyFuzzerModal(
   };
 
   const modalContainer = E('div', {
-    class: 'tachyon_fuzzer_modal',
+    class: 'tachyon_fuzzer_modal tachyon-strategy-fuzzer-modal',
     style:
       'display: flex; flex-direction: column; gap: 14px; width: 100%; box-sizing: border-box;',
   });
@@ -129,7 +130,7 @@ export function renderStrategyFuzzerModal(
     'div',
     {
       style:
-        'display: flex; gap: 8px; border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.12)); padding-bottom: 10px; flex-wrap: wrap;',
+        'display: flex; gap: 8px; border-bottom: 1px solid var(--tachyon-border-subtle, var(--border-color-medium, rgba(128,128,128,0.2))); padding-bottom: 10px; flex-wrap: wrap;',
     },
     [
       createTabButton('benchmark', renderZapIcon, _('Benchmark & Test')),
@@ -185,7 +186,7 @@ export function renderStrategyFuzzerModal(
 
   const selectStyle = 'width: 100%; height: 36px; font-size: 13px;';
   const labelStyle =
-    'font-size: 11px; font-weight: 600; color: var(--text-color-secondary, rgba(255,255,255,0.65)); letter-spacing: 0.02em;';
+    'font-size: 11px; font-weight: 600; color: var(--tachyon-text-secondary, var(--text-color-medium, #52525b)); letter-spacing: 0.02em;';
   const groupStyle = 'display: flex; flex-direction: column; gap: 5px;';
 
   // Rule Apply Target Select & Dynamic Filter
@@ -222,7 +223,10 @@ export function renderStrategyFuzzerModal(
     return normalizedRules;
   };
 
-  const populateRuleSelect = () => {
+  const selectedTargetSet = new Set<string>(['youtube_suite']);
+  const targetCheckboxes = new Map<string, HTMLInputElement>();
+
+  const populateRuleSelect = (autoMatchTarget = false) => {
     const applicable = getApplicableRules(selectedEngine);
     (ruleSelect as HTMLSelectElement).replaceChildren();
 
@@ -235,32 +239,50 @@ export function renderStrategyFuzzerModal(
       ruleSelect.appendChild(emptyOpt);
       selectedRuleSection = '';
     } else {
+      if (autoMatchTarget && !userChangedRuleSection) {
+        const targetKeywords = Array.from(selectedTargetSet)
+          .map((t) => t.replace(/_suite$/, '').toLowerCase())
+          .filter((k) => k && k !== 'custom');
+        for (const kw of targetKeywords) {
+          const found = applicable.find(
+            (r) =>
+              r.id.toLowerCase().includes(kw) ||
+              r.label.toLowerCase().includes(kw),
+          );
+          if (found) {
+            selectedRuleSection = found.id;
+            break;
+          }
+        }
+      }
       let matchedCurrent = false;
       applicable.forEach((r, idx) => {
         const actionTag = r.action ? ` [${r.action}]` : '';
         const isSelected = selectedRuleSection
           ? r.id === selectedRuleSection
           : idx === 0;
-        if (isSelected) matchedCurrent = true;
+        if (isSelected) {
+          matchedCurrent = true;
+          selectedRuleSection = r.id;
+        }
         const opt = E(
           'option',
-          { value: r.id, selected: isSelected },
+          isSelected ? { value: r.id, selected: true } : { value: r.id },
           `${r.label}${actionTag}`,
         );
         ruleSelect.appendChild(opt);
       });
       if (!matchedCurrent && applicable.length > 0) {
         selectedRuleSection = applicable[0].id;
-        (ruleSelect as HTMLSelectElement).value = selectedRuleSection;
-      } else if (matchedCurrent) {
-        (ruleSelect as HTMLSelectElement).value = selectedRuleSection;
       }
+      (ruleSelect as HTMLSelectElement).value = selectedRuleSection;
     }
   };
 
-  populateRuleSelect();
+  populateRuleSelect(true);
 
   ruleSelect.addEventListener('change', () => {
+    userChangedRuleSection = true;
     selectedRuleSection = (ruleSelect as HTMLSelectElement).value;
   });
 
@@ -339,16 +361,13 @@ export function renderStrategyFuzzerModal(
     },
   ];
 
-  const selectedTargetSet = new Set<string>(['youtube_suite']);
-  const targetCheckboxes = new Map<string, HTMLInputElement>();
-
   const customUrlInput = E('textarea', {
     class: 'cbi-input-text',
     placeholder:
       'https://www.faceit.com\nhttps://cybershoke.net\nudp://stun.l.google.com:19302',
     rows: 3,
     style:
-      'width: 100%; display: none; margin-top: 4px; resize: vertical; min-height: 64px; padding: 8px 10px; font-size: 12px; font-family: monospace; line-height: 1.5; border-radius: 4px; box-sizing: border-box; background: var(--background-color-secondary, rgba(0,0,0,0.18)); border: 1px solid var(--border-color, rgba(255,255,255,0.12)); color: var(--text-color, #fff);',
+      'width: 100%; display: none; margin-top: 4px; resize: vertical; min-height: 64px; padding: 8px 10px; font-size: 12px; font-family: monospace; line-height: 1.5; border-radius: 4px; box-sizing: border-box; background: var(--tachyon-bg-card-elevated, var(--background-color-low, rgba(128,128,128,0.08))); border: 1px solid var(--tachyon-border-subtle, var(--border-color-medium, rgba(128,128,128,0.2))); color: var(--tachyon-text-main, var(--text-color-high, inherit));',
   });
 
   const syncSelectedTargets = () => {
@@ -365,6 +384,9 @@ export function renderStrategyFuzzerModal(
     )
       ? 'block'
       : 'none';
+    if (!userChangedRuleSection) {
+      populateRuleSelect(true);
+    }
   };
 
   const applyQuickTargetPreset = (keys: string[]) => {
@@ -440,7 +462,7 @@ export function renderStrategyFuzzerModal(
     'div',
     {
       style:
-        'display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px 10px; padding: 8px 10px; border-radius: 6px; background: var(--background-color-secondary, rgba(0,0,0,0.16)); border: 1px solid var(--border-color, rgba(255,255,255,0.1));',
+        'display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px 10px; padding: 8px 10px; border-radius: 6px; background: var(--tachyon-bg-card-elevated, var(--background-color-low, rgba(128,128,128,0.06))); border: 1px solid var(--tachyon-border-subtle, var(--border-color-medium, rgba(128,128,128,0.18)));',
     },
     targetSuiteOptions.map((opt) => {
       const cb = E('input', {
@@ -591,7 +613,7 @@ export function renderStrategyFuzzerModal(
         'div',
         {
           style:
-            'font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 6px; color: var(--text-color-secondary, rgba(255,255,255,0.7));',
+            'font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 6px; color: var(--tachyon-text-secondary, var(--text-color-medium, #52525b));',
         },
         [autoApplyCheckbox, E('span', {}, _('Auto-apply best strategy'))],
       ),
@@ -611,7 +633,7 @@ export function renderStrategyFuzzerModal(
     'div',
     {
       style:
-        'display: none; flex-direction: column; gap: 6px; padding: 10px 14px; background: var(--background-color-secondary, rgba(0,0,0,0.18)); border-radius: 6px; border: 1px solid var(--border-color, rgba(255,255,255,0.08)); min-height: 62px; box-sizing: border-box;',
+        'display: none; flex-direction: column; gap: 6px; padding: 10px 14px; background: var(--tachyon-bg-card-elevated, var(--background-color-low, rgba(128,128,128,0.08))); border-radius: 6px; border: 1px solid var(--tachyon-border-subtle, var(--border-color-medium, rgba(128,128,128,0.18))); min-height: 62px; box-sizing: border-box;',
     },
     [
       E(
@@ -636,7 +658,7 @@ export function renderStrategyFuzzerModal(
         'div',
         {
           style:
-            'width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden;',
+            'width: 100%; height: 6px; background: rgba(128,128,128,0.2); border-radius: 3px; overflow: hidden;',
         },
         [
           E('div', {
@@ -740,7 +762,7 @@ export function renderStrategyFuzzerModal(
   // Results Table
   const resultsContainer = E('div', {
     style:
-      'max-height: 380px; overflow-y: auto; overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--border-color, rgba(255,255,255,0.1)); border-radius: 6px; width: 100%; box-sizing: border-box;',
+      'max-height: 380px; overflow-y: auto; overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--tachyon-border-subtle, var(--border-color-medium, rgba(128,128,128,0.18))); border-radius: 6px; width: 100%; box-sizing: border-box;',
   });
 
   const tableEl = E(
@@ -756,7 +778,7 @@ export function renderStrategyFuzzerModal(
         {
           class: 'cbi-section-table-titles',
           style:
-            'background: var(--background-color-secondary, #1a1a2e); position: sticky; top: 0; z-index: 2;',
+            'background: var(--tachyon-bg-surface-alt, var(--background-color-low, #f4f4f5)); color: var(--tachyon-text-main, var(--text-color-high, inherit)); position: sticky; top: 0; z-index: 2;',
         },
         [
           E('tr', { class: 'cbi-section-table-titles' }, [
@@ -915,7 +937,7 @@ export function renderStrategyFuzzerModal(
         'span',
         {
           style:
-            'display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; background: var(--background-color-secondary, rgba(255,255,255,0.08)); border: 1px solid var(--border-color, rgba(255,255,255,0.12)); border-radius: 4px; font-size: 11px; font-family: monospace;',
+            'display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; background: var(--tachyon-bg-card-elevated, var(--background-color-low, rgba(128,128,128,0.1))); border: 1px solid var(--tachyon-border-subtle, var(--border-color-medium, rgba(128,128,128,0.2))); border-radius: 4px; font-size: 11px; font-family: monospace;',
         },
         [
           E('span', {}, String(item)),
@@ -983,7 +1005,7 @@ export function renderStrategyFuzzerModal(
       'div',
       {
         style:
-          'padding: 12px; background: var(--background-color-secondary, rgba(0,0,0,0.15)); border-radius: 6px; border: 1px solid var(--border-color, rgba(255,255,255,0.1)); display: flex; flex-direction: column; gap: 10px;',
+          'padding: 12px; background: var(--tachyon-bg-card-elevated, var(--background-color-low, rgba(128,128,128,0.06))); border-radius: 6px; border: 1px solid var(--tachyon-border-subtle, var(--border-color-medium, rgba(128,128,128,0.18))); display: flex; flex-direction: column; gap: 10px;',
       },
       [
         E(
@@ -1031,7 +1053,7 @@ export function renderStrategyFuzzerModal(
       'div',
       {
         style:
-          'padding: 12px; background: var(--background-color-secondary, rgba(0,0,0,0.15)); border-radius: 6px; border: 1px solid var(--border-color, rgba(255,255,255,0.1)); display: flex; flex-direction: column; gap: 10px;',
+          'padding: 12px; background: var(--tachyon-bg-card-elevated, var(--background-color-low, rgba(128,128,128,0.06))); border-radius: 6px; border: 1px solid var(--tachyon-border-subtle, var(--border-color-medium, rgba(128,128,128,0.18))); display: flex; flex-direction: column; gap: 10px;',
       },
       [
         E(
@@ -1073,7 +1095,7 @@ export function renderStrategyFuzzerModal(
       'div',
       {
         style:
-          'padding: 12px; background: var(--background-color-secondary, rgba(0,0,0,0.15)); border-radius: 6px; border: 1px solid var(--border-color, rgba(255,255,255,0.1)); display: flex; flex-direction: column; gap: 10px;',
+          'padding: 12px; background: var(--tachyon-bg-card-elevated, var(--background-color-low, rgba(128,128,128,0.06))); border-radius: 6px; border: 1px solid var(--tachyon-border-subtle, var(--border-color-medium, rgba(128,128,128,0.18))); display: flex; flex-direction: column; gap: 10px;',
       },
       [
         E(
@@ -1127,7 +1149,7 @@ export function renderStrategyFuzzerModal(
       'div',
       {
         style:
-          'padding: 12px; background: var(--background-color-secondary, rgba(0,0,0,0.15)); border-radius: 6px; border: 1px solid var(--border-color, rgba(255,255,255,0.1)); display: flex; flex-direction: column; gap: 10px;',
+          'padding: 12px; background: var(--tachyon-bg-card-elevated, var(--background-color-low, rgba(128,128,128,0.06))); border-radius: 6px; border: 1px solid var(--tachyon-border-subtle, var(--border-color-medium, rgba(128,128,128,0.18))); display: flex; flex-direction: column; gap: 10px;',
       },
       [
         E(
@@ -1289,7 +1311,7 @@ export function renderStrategyFuzzerModal(
       'div',
       {
         style:
-          'padding: 12px; background: var(--background-color-secondary, rgba(0,0,0,0.15)); border-radius: 6px; border: 1px solid var(--border-color, rgba(255,255,255,0.1)); display: flex; flex-direction: column; gap: 8px;',
+          'padding: 12px; background: var(--tachyon-bg-card-elevated, var(--background-color-low, rgba(128,128,128,0.06))); border-radius: 6px; border: 1px solid var(--tachyon-border-subtle, var(--border-color-medium, rgba(128,128,128,0.18))); display: flex; flex-direction: column; gap: 8px;',
       },
       [
         E(
@@ -1313,7 +1335,7 @@ export function renderStrategyFuzzerModal(
       'div',
       {
         style:
-          'border: 1px solid var(--border-color, rgba(255,255,255,0.1)); border-radius: 6px; overflow: hidden;',
+          'border: 1px solid var(--tachyon-border-subtle, var(--border-color-medium, rgba(128,128,128,0.18))); border-radius: 6px; overflow: hidden;',
       },
       [
         E(
@@ -1466,7 +1488,7 @@ export function renderStrategyFuzzerModal(
     'div',
     {
       style:
-        'padding: 14px; background: var(--background-color-secondary, rgba(0,0,0,0.15)); border-radius: 6px; border: 1px solid var(--border-color, rgba(255,255,255,0.1)); display: flex; flex-direction: column; gap: 12px;',
+        'padding: 14px; background: var(--tachyon-bg-card-elevated, var(--background-color-low, rgba(128,128,128,0.06))); border-radius: 6px; border: 1px solid var(--tachyon-border-subtle, var(--border-color-medium, rgba(128,128,128,0.18))); display: flex; flex-direction: column; gap: 12px;',
     },
     [
       E(
@@ -1551,7 +1573,7 @@ export function renderStrategyFuzzerModal(
 
     const historyContainer = E('div', {
       style:
-        'border: 1px solid var(--border-color, rgba(255,255,255,0.1)); border-radius: 6px; overflow: hidden;',
+        'border: 1px solid var(--tachyon-border-subtle, var(--border-color-medium, rgba(128,128,128,0.18))); border-radius: 6px; overflow: hidden;',
     });
 
     try {
@@ -1762,7 +1784,7 @@ export function renderStrategyFuzzerModal(
             {
               style:
                 'font-size: 9px; margin-left: 6px; padding: 1px 5px; border-radius: 3px; ' +
-                'background: rgba(255,255,255,0.08); opacity: 0.75; font-family: monospace;',
+                'background: rgba(128,128,128,0.12); opacity: 0.75; font-family: monospace;',
               title: _('Strategy preset source'),
             },
             item.source,
@@ -1901,7 +1923,7 @@ export function renderStrategyFuzzerModal(
         'tr',
         {
           class: `cbi-section-table-row ${isBest ? 'cbi-rowstyle-1' : 'cbi-rowstyle-2'}`,
-          style: `border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.06)); ${
+          style: `border-bottom: 1px solid var(--tachyon-border-subtle, var(--border-color-low, rgba(128,128,128,0.12))); ${
             isBest
               ? 'background: var(--background-color-high, rgba(40, 167, 69, 0.08));'
               : ''
@@ -2620,6 +2642,9 @@ export function renderStrategyFuzzerModal(
   };
 
   const handleApplySingle = async (item: Tachyon.FuzzerStrategyResult) => {
+    if (!selectedRuleSection && (ruleSelect as HTMLSelectElement).value) {
+      selectedRuleSection = (ruleSelect as HTMLSelectElement).value;
+    }
     if (!selectedRuleSection) {
       showToast(
         _('Please select an applicable rule section to apply this strategy'),
@@ -2682,6 +2707,9 @@ export function renderStrategyFuzzerModal(
   };
 
   const handleApplyBest = async () => {
+    if (!selectedRuleSection && (ruleSelect as HTMLSelectElement).value) {
+      selectedRuleSection = (ruleSelect as HTMLSelectElement).value;
+    }
     if (!selectedRuleSection) {
       showToast(
         _('Please select an applicable rule section to apply this strategy'),

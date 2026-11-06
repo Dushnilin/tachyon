@@ -862,6 +862,7 @@ function apply_strategy(engine, args_val, target_rule) {
                 if (parsed_ds.repeats != null) uci.set(CONFIG_NAME, sid, "desync_repeats", as_string(parsed_ds.repeats));
                 if (parsed_ds.split_delay_ms != null) uci.set(CONFIG_NAME, sid, "desync_split_delay_ms", as_string(parsed_ds.split_delay_ms));
                 if (parsed_ds.udp_fake != null) uci.set(CONFIG_NAME, sid, "desync_udp_fake", parsed_ds.udp_fake ? "1" : "0");
+                else uci.set(CONFIG_NAME, sid, "desync_udp_fake", "1");
                 if (parsed_ds.udp_repeats != null) uci.set(CONFIG_NAME, sid, "desync_udp_repeats", as_string(parsed_ds.udp_repeats));
                 if (parsed_ds.udp_fake_ttl != null) uci.set(CONFIG_NAME, sid, "desync_udp_fake_ttl", as_string(parsed_ds.udp_fake_ttl));
                 if (parsed_ds.seqovl != null) uci.set(CONFIG_NAME, sid, "desync_seqovl", as_string(parsed_ds.seqovl));

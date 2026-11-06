@@ -3646,9 +3646,19 @@ function add_desync_outbound(config, section) {
     let auto_tune_raw = trim(option(section, "desync_auto_tune", ""));
     if (auto_tune_raw != "")
         outbound.auto_tune = bool_option(section, "desync_auto_tune", false);
+    else if (lc(raw_preset) in ["discord", "youtube", "google_youtube", "general"])
+        outbound.auto_tune = true;
     if (bool_option(section, "desync_tlsrec_first", false))
         outbound.tlsrec_first = true;
-    if (lc(raw_preset) == "discord" && !bool_option(section, "desync_udp_fake", false))
+    let has_discord_list = false;
+    for (let cl in list_option(section, "community_lists")) {
+        if (lc(trim(as_string(cl))) == "discord") {
+            has_discord_list = true;
+            break;
+        }
+    }
+    let udp_fake_raw = trim(option(section, "desync_udp_fake", ""));
+    if ((lc(raw_preset) == "discord" || has_discord_list) && udp_fake_raw == "")
         outbound.udp_fake = true;
     let split_pos = normalize_desync_split_pos_value(option(section, "desync_split_pos", ""));
     if (split_pos != null)

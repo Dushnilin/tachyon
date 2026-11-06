@@ -1892,8 +1892,10 @@ function resolve_section_route_type(s) {
         return "zapret2 (" + s.zapret2_strategy + ")";
     if (s.action == "byedpi" && s.byedpi_strategy)
         return "byedpi (" + s.byedpi_strategy + ")";
-    if (s.action == "desync" && s.desync_mode)
-        return "desync (" + s.desync_mode + ")";
+    if (s.action == "desync") {
+        let dp = (s.desync_preset && s.desync_preset != "custom") ? s.desync_preset : (s.desync_mode || s.desync_preset || "auto");
+        return "desync (" + dp + ")";
+    }
     if (s.action == "connection") {
         for (let src in (connections.section_effective_outbound_sources(s) || [])) {
             let st = lc(trim(as_string(src.source_type || "")));
@@ -1903,8 +1905,10 @@ function resolve_section_route_type(s) {
                 return src.zapret_strategy ? ("zapret (" + src.zapret_strategy + ")") : "zapret";
             if (st == "byedpi")
                 return src.byedpi_args ? ("byedpi (" + src.byedpi_args + ")") : "byedpi";
-            if (st == "desync")
-                return src.desync_mode ? ("desync (" + src.desync_mode + ")") : "desync";
+            if (st == "desync") {
+                let dp = (src.desync_preset && src.desync_preset != "custom") ? src.desync_preset : (src.desync_mode || src.desync_preset || "auto");
+                return "desync (" + dp + ")";
+            }
         }
     }
     return route_type;

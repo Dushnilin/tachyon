@@ -618,6 +618,8 @@ body.dark .tachyon-wizard {
 /* Wide modals: Strategy Fuzzer, Leak detection, Route Explainer, Stability */
 .modal:has(.tachyon-strategy-fuzzer-modal),
 .cbi-modal:has(.tachyon-strategy-fuzzer-modal),
+.modal:has(.tachyon_fuzzer_modal),
+.cbi-modal:has(.tachyon_fuzzer_modal),
 .modal:has(.tachyon-leak-check-modal),
 .cbi-modal:has(.tachyon-leak-check-modal),
 .modal:has(.tachyon-route-explain-modal),

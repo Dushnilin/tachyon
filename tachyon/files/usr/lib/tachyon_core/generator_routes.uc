@@ -4356,6 +4356,12 @@ function add_combined_route_for_clause(config, section) {
     }
 
     if (length(discord_cf_subnets) > 0 && !closed_geo) {
+        if (target.outbound) {
+            for (let outb in (config.outbounds || [])) {
+                if (as_string(outb.tag) == target.outbound && as_string(outb.type) == "desync" && outb.udp_fake !== false)
+                    outb.udp_fake = true;
+            }
+        }
         let voice_rule = create_section_route_rule();
         voice_rule.network = "udp";
         voice_rule.ip_cidr = discord_cf_subnets;
