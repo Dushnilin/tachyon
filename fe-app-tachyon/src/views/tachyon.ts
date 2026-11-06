@@ -591,16 +591,87 @@ function configureGridSection(sectionRef, type, title, addTitle) {
       res = saveTasks
         .then(() => this.handleModalCancel(targetMap, ev, true))
         .catch((err) => {
+          if (!err) return;
+          const errText = String(err.message || err);
+          const modalEl =
+            typeof document !== 'undefined'
+              ? document.querySelector('#modal_overlay .cbi-modal, .cbi-modal')
+              : null;
+          if (modalEl) {
+            const prevBanner = modalEl.querySelector(
+              '.tachyon-modal-save-error',
+            );
+            if (prevBanner) prevBanner.remove();
+            const errBanner = E(
+              'div',
+              {
+                class: 'alert-message danger tachyon-modal-save-error',
+                style:
+                  'margin:10px 0;padding:10px 14px;border-radius:8px;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;font-size:13px;',
+              },
+              [
+                E(
+                  'div',
+                  { style: 'white-space:pre-wrap;word-break:break-word;' },
+                  errText,
+                ),
+                E(
+                  'button',
+                  {
+                    type: 'button',
+                    class: 'btn cbi-button',
+                    style: 'padding:2px 8px;min-height:24px;font-size:11px;',
+                    click: (e) => {
+                      e.preventDefault();
+                      errBanner.remove();
+                    },
+                  },
+                  '✕',
+                ),
+              ],
+            );
+            const footerEl = modalEl.querySelector('.right');
+            if (footerEl && footerEl.parentNode) {
+              footerEl.parentNode.insertBefore(errBanner, footerEl);
+            } else {
+              modalEl.appendChild(errBanner);
+            }
+            const clearOnEdit = () => {
+              if (errBanner.isConnected) errBanner.remove();
+              modalEl.removeEventListener('input', clearOnEdit);
+              modalEl.removeEventListener('change', clearOnEdit);
+            };
+            modalEl.addEventListener('input', clearOnEdit);
+            modalEl.addEventListener('change', clearOnEdit);
+
+            const invalidField = modalEl.querySelector(
+              '.cbi-value-error, .cbi-input-invalid, .tachyon-duplicate-chip',
+            );
+            if (invalidField && typeof invalidField.closest === 'function') {
+              const tabPane = invalidField.closest('[data-tab]');
+              if (tabPane) {
+                const tabName = tabPane.getAttribute('data-tab');
+                const tabLink = modalEl.querySelector(
+                  `.cbi-tabmenu li[data-tab="${tabName}"] a`,
+                );
+                if (tabLink && typeof (tabLink as any).click === 'function') {
+                  (tabLink as any).click();
+                }
+              }
+              if (typeof invalidField.scrollIntoView === 'function') {
+                invalidField.scrollIntoView({
+                  behavior: 'smooth',
+                  block: 'center',
+                });
+              }
+            }
+            return;
+          }
           if (
             typeof ui !== 'undefined' &&
-            typeof ui.addNotification === 'function' &&
-            err
+            typeof ui.addNotification === 'function'
           ) {
-            ui.addNotification(
-              null,
-              E('p', {}, String(err.message || err)),
-              'danger',
-            );
+            ui.addNotification(null, E('p', {}, errText), 'danger');
           }
         });
     }

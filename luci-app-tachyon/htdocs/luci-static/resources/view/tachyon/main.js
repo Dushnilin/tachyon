@@ -7575,6 +7575,27 @@ header .dropdown-menu {
     box-shadow: 0 0 0 2px var(--tachyon-accent-soft, rgba(110, 120, 245, 0.14)) !important;
 }
 
+.fkp-annotated-textarea {
+    position: relative;
+    background-color: var(--tachyon-bg-card-elevated, #f5f7fa) !important;
+    border-radius: 9px !important;
+}
+
+[id^="cbi-${w}"] .fkp-annotated-textarea > textarea,
+[id^="cbi-${w}"] .fkp-annotated-textarea > .cbi-input-textarea,
+.tachyon-view .fkp-annotated-textarea > textarea,
+.tachyon-view .fkp-annotated-textarea > .cbi-input-textarea,
+#modal_overlay .fkp-annotated-textarea > textarea,
+#modal_overlay .fkp-annotated-textarea > .cbi-input-textarea,
+.cbi-modal .fkp-annotated-textarea > textarea,
+.cbi-modal .fkp-annotated-textarea > .cbi-input-textarea,
+.fkp-annotated-textarea > textarea {
+    position: relative !important;
+    z-index: 1 !important;
+    background: transparent !important;
+    background-color: transparent !important;
+}
+
 [id^="cbi-${w}"] textarea::-webkit-resizer,
 [id^="cbi-${w}"] .cbi-input-textarea::-webkit-resizer,
 .tachyon-view textarea::-webkit-resizer,

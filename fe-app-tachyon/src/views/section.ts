@@ -7838,12 +7838,19 @@ function ensureAnnotatedTextareaStyles() {
     `<style id="${ANNOTATED_TEXTAREA_STYLE_ID}">
       .fkp-annotated-textarea {
         position: relative;
+        background-color: var(--tachyon-bg-card-elevated, #f5f7fa) !important;
+        border-radius: 9px !important;
       }
 
-      .fkp-annotated-textarea > textarea {
-        position: relative;
-        z-index: 1;
+      .fkp-annotated-textarea > textarea,
+      #modal_overlay .fkp-annotated-textarea > textarea,
+      #modal_overlay .fkp-annotated-textarea > .cbi-input-textarea,
+      .cbi-modal .fkp-annotated-textarea > textarea,
+      .cbi-modal .fkp-annotated-textarea > .cbi-input-textarea {
+        position: relative !important;
+        z-index: 1 !important;
         background: transparent !important;
+        background-color: transparent !important;
       }
 
       .fkp-annotated-textarea__overlay {
@@ -7860,10 +7867,26 @@ function ensureAnnotatedTextareaStyles() {
       }
 
       .fkp-annotated-textarea__invalid {
+        background-color: rgba(239, 68, 68, 0.25);
+        border-radius: 3px;
+        box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.42);
         color: transparent;
         text-decoration-line: underline;
         text-decoration-style: wavy;
-        text-decoration-color: var(--error-color-medium, #d44);
+        text-decoration-color: var(--error-color-medium, #ef4444);
+        text-decoration-thickness: 1.5px;
+        text-underline-offset: 2px;
+        text-decoration-skip-ink: none;
+      }
+
+      .fkp-annotated-textarea__duplicate {
+        background-color: rgba(245, 158, 11, 0.28);
+        border-radius: 3px;
+        box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.48);
+        color: transparent;
+        text-decoration-line: underline;
+        text-decoration-style: wavy;
+        text-decoration-color: #f59e0b;
         text-decoration-thickness: 1.5px;
         text-underline-offset: 2px;
         text-decoration-skip-ink: none;
@@ -7957,10 +7980,12 @@ function syncAnnotatedTextareaOverlay(textarea, wrapper, overlay) {
 
   const style = window.getComputedStyle(textarea);
 
-  wrapper.style.backgroundColor = style.backgroundColor;
   wrapper.style.borderRadius = style.borderRadius;
 
   overlay.style.font = style.font;
+  overlay.style.fontFamily = style.fontFamily;
+  overlay.style.fontSize = style.fontSize;
+  overlay.style.fontWeight = style.fontWeight;
   overlay.style.lineHeight = style.lineHeight;
   overlay.style.letterSpacing = style.letterSpacing;
   overlay.style.paddingTop = style.paddingTop;
@@ -7989,12 +8014,20 @@ function createAnnotationKey(annotation) {
   return `${annotation.start}:${annotation.end}`;
 }
 
-function addAnnotationIssue(annotationMap, annotation, message) {
+function addAnnotationIssue(
+  annotationMap,
+  annotation,
+  message,
+  kind = 'invalid',
+) {
   const key = createAnnotationKey(annotation);
   const existing = annotationMap.get(key);
   if (existing) {
     if (!existing.messages.includes(message)) {
       existing.messages.push(message);
+    }
+    if (kind === 'invalid') {
+      existing.kind = 'invalid';
     }
     return;
   }
@@ -8003,6 +8036,7 @@ function addAnnotationIssue(annotationMap, annotation, message) {
     start: annotation.start,
     end: annotation.end,
     messages: [message],
+    kind,
   });
 }
 
@@ -8012,6 +8046,7 @@ function finalizeAnnotations(annotationMap) {
       start: annotation.start,
       end: annotation.end,
       message: annotation.messages.join('; '),
+      kind: annotation.kind || 'invalid',
     }))
     .sort((left, right) => left.start - right.start || left.end - right.end);
 }
@@ -8040,8 +8075,12 @@ function renderAnnotatedTextareaOverlay(value, annotations) {
       return;
     }
 
+    const cls =
+      annotation.kind === 'duplicate'
+        ? 'fkp-annotated-textarea__duplicate'
+        : 'fkp-annotated-textarea__invalid';
     html += escapeHtml(text.slice(cursor, annotation.start));
-    html += `<span class="fkp-annotated-textarea__invalid">${escapeHtml(
+    html += `<span class="${cls}">${escapeHtml(
       text.slice(annotation.start, annotation.end),
     )}</span>`;
     cursor = annotation.end;
@@ -8056,7 +8095,59 @@ function renderAnnotatedTextareaOverlay(value, annotations) {
   return html;
 }
 
-function attachAnnotatedTextarea(textarea, analyzer) {
+function deduplicateSectionTextListPreservingComments(value, normalizeFn) {
+  const lines = String(value || '').split(/\r\n|\r|\n/);
+  const seen = new Set();
+  const outLines = [];
+
+  lines.forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    if (trimmed.startsWith('//') || trimmed.startsWith('#')) {
+      outLines.push(line);
+      return;
+    }
+
+    const hashIdx = line.indexOf('#');
+    const slashIdx = line.indexOf('//');
+    let commentIdx = -1;
+    if (hashIdx >= 0 && slashIdx >= 0) commentIdx = Math.min(hashIdx, slashIdx);
+    else if (hashIdx >= 0) commentIdx = hashIdx;
+    else if (slashIdx >= 0) commentIdx = slashIdx;
+
+    const bodyPart = commentIdx >= 0 ? line.slice(0, commentIdx) : line;
+    const commentPart = commentIdx >= 0 ? line.slice(commentIdx) : '';
+
+    const tokens = bodyPart
+      .split(/[\s,]+/)
+      .map((t) => t.trim())
+      .filter(Boolean);
+    const uniqueTokens = [];
+    tokens.forEach((tok) => {
+      const key = normalizeFn ? normalizeFn(tok) : tok.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        uniqueTokens.push(tok);
+      }
+    });
+
+    if (uniqueTokens.length > 0) {
+      outLines.push(
+        uniqueTokens.join(', ') + (commentPart ? ' ' + commentPart.trim() : ''),
+      );
+    }
+  });
+
+  return outLines.join('\n');
+}
+
+function attachAnnotatedTextarea(
+  textarea,
+  analyzer,
+  option,
+  sectionId,
+  normalizeFn,
+) {
   if (!textarea || typeof analyzer !== 'function') {
     return;
   }
@@ -8065,46 +8156,217 @@ function attachAnnotatedTextarea(textarea, analyzer) {
 
   if (textarea.__tachyonAnnotatedTextareaController) {
     textarea.__tachyonAnnotatedTextareaController.analyzer = analyzer;
+    textarea.__tachyonAnnotatedTextareaController.ensureMounted();
     textarea.__tachyonAnnotatedTextareaController.update();
     return;
   }
 
-  const wrapper = textarea.parentNode;
-  if (!wrapper) {
-    return;
-  }
-
-  wrapper.classList.add('fkp-annotated-textarea');
-
   const overlay = document.createElement('div');
   overlay.className = 'fkp-annotated-textarea__overlay';
   overlay.setAttribute('aria-hidden', 'true');
-  wrapper.insertBefore(overlay, textarea.nextSibling);
+
+  const diagBar = E('div', {
+    class: 'tachyon-condition-textarea-diag',
+    style:
+      'display:none;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-top:6px;padding:6px 10px;border-radius:6px;font-size:12px;',
+  });
 
   const controller = {
     analyzer,
     textarea,
-    wrapper,
+    wrapper: null,
     overlay,
+    diagBar,
+    ensureMounted() {
+      const parent = this.textarea.parentNode;
+      if (!parent) {
+        return false;
+      }
+      if (
+        !parent.classList ||
+        !parent.classList.contains('fkp-annotated-textarea')
+      ) {
+        const innerWrap = document.createElement('div');
+        innerWrap.className = 'fkp-annotated-textarea';
+        parent.insertBefore(innerWrap, this.textarea);
+        innerWrap.appendChild(this.textarea);
+        this.wrapper = innerWrap;
+      } else {
+        this.wrapper = parent;
+      }
+
+      if (this.overlay.parentNode !== this.wrapper) {
+        this.wrapper.insertBefore(this.overlay, this.textarea.nextSibling);
+      }
+
+      const wrapperParent = this.wrapper.parentNode;
+      if (wrapperParent && this.diagBar.parentNode !== wrapperParent) {
+        wrapperParent.insertBefore(this.diagBar, this.wrapper.nextSibling);
+      }
+      return true;
+    },
     update() {
+      this.ensureMounted();
       const analysis = this.analyzer(this.textarea.value);
       this.overlay.innerHTML = renderAnnotatedTextareaOverlay(
         this.textarea.value,
         analysis.annotations,
       );
-      syncAnnotatedTextareaOverlay(this.textarea, this.wrapper, this.overlay);
+      if (this.wrapper) {
+        syncAnnotatedTextareaOverlay(this.textarea, this.wrapper, this.overlay);
+      }
+
+      if (
+        typeof analysis.duplicateCount !== 'number' ||
+        !this.textarea.value.trim()
+      ) {
+        this.diagBar.style.display = 'none';
+        return;
+      }
+
+      this.diagBar.style.display = 'flex';
+      this.diagBar.innerHTML = '';
+
+      if (analysis.valid) {
+        this.diagBar.style.background = 'rgba(39, 174, 96, 0.1)';
+        this.diagBar.style.border = '1px solid rgba(39, 174, 96, 0.3)';
+        this.diagBar.style.color = 'var(--success-color-high, #27ae60)';
+        this.diagBar.appendChild(
+          E(
+            'span',
+            {},
+            `✓ ${_('No errors or duplicates found')} (${analysis.validCount || 0})`,
+          ),
+        );
+      } else {
+        this.diagBar.style.background = 'rgba(212, 68, 68, 0.1)';
+        this.diagBar.style.border = '1px solid rgba(212, 68, 68, 0.35)';
+        this.diagBar.style.color = 'var(--error-color-medium, #d44)';
+        const parts = [];
+        if (analysis.duplicateCount > 0) {
+          parts.push(`${_('Duplicates')}: ${analysis.duplicateCount}`);
+        }
+        if (analysis.syntaxErrorCount > 0) {
+          parts.push(`${_('Syntax errors')}: ${analysis.syntaxErrorCount}`);
+        }
+
+        const leftGroup = E(
+          'div',
+          {
+            style:
+              'display:inline-flex;align-items:center;flex-wrap:wrap;gap:6px;',
+          },
+          [
+            E(
+              'span',
+              {
+                style:
+                  'font-weight:600;display:inline-flex;align-items:center;gap:4px;',
+              },
+              [
+                typeof main !== 'undefined' &&
+                typeof main.renderAlertTriangleIcon === 'function'
+                  ? main.renderAlertTriangleIcon(12)
+                  : null,
+                E(
+                  'span',
+                  {},
+                  parts.join(' • ') || _('Validation errors detected'),
+                ),
+              ].filter(Boolean),
+            ),
+          ],
+        );
+
+        const dupItems = Array.isArray(analysis.duplicateItems)
+          ? analysis.duplicateItems
+          : [];
+        if (dupItems.length > 0) {
+          dupItems.slice(0, 5).forEach((dup) => {
+            leftGroup.appendChild(
+              E(
+                'button',
+                {
+                  type: 'button',
+                  class: 'tachyon-duplicate-chip',
+                  title: _('Click to highlight in editor'),
+                  style:
+                    'padding:1px 6px;border-radius:4px;border:1px solid rgba(245, 158, 11, 0.55);background:rgba(245, 158, 11, 0.18);color:inherit;font-family:var(--tachyon-font-mono, monospace);font-size:11px;cursor:pointer;',
+                  click: (ev) => {
+                    ev.preventDefault();
+                    this.textarea.focus();
+                    if (typeof this.textarea.setSelectionRange === 'function') {
+                      this.textarea.setSelectionRange(dup.start, dup.end);
+                    }
+                  },
+                },
+                dup.value,
+              ),
+            );
+          });
+        }
+
+        this.diagBar.appendChild(leftGroup);
+
+        if (analysis.duplicateCount > 0) {
+          const cleanBtn = E(
+            'button',
+            {
+              type: 'button',
+              class: 'btn cbi-button cbi-button-action',
+              style:
+                'padding:3px 10px;min-height:26px;font-size:11px;font-weight:600;cursor:pointer;',
+              click: (ev) => {
+                ev.preventDefault();
+                this.textarea.value =
+                  deduplicateSectionTextListPreservingComments(
+                    this.textarea.value,
+                    normalizeFn,
+                  );
+                this.textarea.dispatchEvent(
+                  new Event('input', { bubbles: true }),
+                );
+                this.textarea.dispatchEvent(
+                  new Event('keyup', { bubbles: true }),
+                );
+                this.textarea.dispatchEvent(
+                  new Event('change', { bubbles: true }),
+                );
+                if (option && typeof option.getUIElement === 'function') {
+                  const uiEl = option.getUIElement(sectionId);
+                  if (uiEl && typeof uiEl.triggerValidation === 'function') {
+                    uiEl.triggerValidation();
+                  }
+                }
+                if (option && typeof option.triggerValidation === 'function') {
+                  option.triggerValidation(sectionId);
+                }
+                this.update();
+              },
+            },
+            `${_('Remove duplicates')} (${analysis.duplicateCount})`,
+          );
+          this.diagBar.appendChild(cleanBtn);
+        }
+      }
     },
   };
 
   textarea.__tachyonAnnotatedTextareaController = controller;
 
-  const updateAnnotatedTextarea = () => controller.update();
+  const updateAnnotatedTextarea = () => {
+    controller.update();
+    if (option && typeof option.triggerValidation === 'function') {
+      option.triggerValidation(sectionId);
+    }
+  };
   const syncAnnotatedScroll = () => {
     overlay.scrollTop = textarea.scrollTop;
     overlay.scrollLeft = textarea.scrollLeft;
   };
   textarea.addEventListener('input', updateAnnotatedTextarea);
   textarea.addEventListener('change', updateAnnotatedTextarea);
+  textarea.addEventListener('focus', () => controller.update());
   textarea.addEventListener('scroll', syncAnnotatedScroll, {
     passive: true,
   });
@@ -8123,6 +8385,15 @@ function attachAnnotatedTextarea(textarea, analyzer) {
   }
 
   controller.update();
+  if (
+    typeof window !== 'undefined' &&
+    typeof window.requestAnimationFrame === 'function'
+  ) {
+    window.requestAnimationFrame(() => {
+      controller.update();
+      window.setTimeout(() => controller.update(), 30);
+    });
+  }
 }
 
 function refreshAnnotatedTextareaValidation(option, section_id, textarea) {
@@ -8284,25 +8555,49 @@ function parseCommentAwareListTokens(value) {
 function analyzeTextListValue(value, validateItem, emptyMessage, options = {}) {
   const text = value ? `${value}` : '';
   if (!text.length) {
-    return { valid: true, message: '', annotations: [] };
+    return {
+      valid: true,
+      message: '',
+      annotations: [],
+      duplicateCount: 0,
+      duplicateItems: [],
+      syntaxErrorCount: 0,
+      validCount: 0,
+    };
   }
 
   const tokens = parseCommentAwareListTokens(text);
   if (!tokens.length) {
-    return { valid: false, message: emptyMessage, annotations: [] };
+    return {
+      valid: false,
+      message: emptyMessage,
+      annotations: [],
+      duplicateCount: 0,
+      duplicateItems: [],
+      syntaxErrorCount: 1,
+      validCount: 0,
+    };
   }
 
   const duplicateMessage = options.duplicateMessage || getDuplicateValueText();
   const annotationMap = new Map();
   const errors = [];
   const seen = new Set();
+  const firstTokenByNormalized = new Map();
+  const duplicateItems = [];
+  let duplicateCount = 0;
+  let syntaxErrorCount = 0;
+  let validCount = 0;
 
   tokens.forEach((token) => {
+    let itemValid = true;
     if (typeof validateItem === 'function') {
       const validation = validateItem(token.value);
       if (!validation.valid) {
         errors.push(`${token.value}: ${validation.message}`);
-        addAnnotationIssue(annotationMap, token, validation.message);
+        addAnnotationIssue(annotationMap, token, validation.message, 'invalid');
+        syntaxErrorCount += 1;
+        itemValid = false;
       }
     }
 
@@ -8316,21 +8611,53 @@ function analyzeTextListValue(value, validateItem, emptyMessage, options = {}) {
 
     if (seen.has(normalized)) {
       errors.push(`${token.value}: ${duplicateMessage}`);
-      addAnnotationIssue(annotationMap, token, duplicateMessage);
+      const firstToken = firstTokenByNormalized.get(normalized);
+      if (firstToken) {
+        addAnnotationIssue(
+          annotationMap,
+          firstToken,
+          duplicateMessage,
+          'duplicate',
+        );
+      }
+      addAnnotationIssue(annotationMap, token, duplicateMessage, 'duplicate');
+      duplicateCount += 1;
+      duplicateItems.push({
+        value: token.value,
+        normalized,
+        start: token.start,
+        end: token.end,
+      });
       return;
     }
 
     seen.add(normalized);
+    firstTokenByNormalized.set(normalized, token);
+    if (itemValid) {
+      validCount += 1;
+    }
   });
 
   if (!errors.length) {
-    return { valid: true, message: '', annotations: [] };
+    return {
+      valid: true,
+      message: '',
+      annotations: [],
+      duplicateCount: 0,
+      duplicateItems: [],
+      syntaxErrorCount: 0,
+      validCount,
+    };
   }
 
   return {
     valid: false,
     message: [getValidationHeaderText(), ...errors].join('\n'),
     annotations: finalizeAnnotations(annotationMap),
+    duplicateCount,
+    duplicateItems,
+    syntaxErrorCount,
+    validCount,
   };
 }
 
@@ -9859,7 +10186,12 @@ function analyzeByedpiStrategy(value) {
   };
 }
 
-function configureTextareaOption(option, analyzer, remoteValidationAttacher) {
+function configureTextareaOption(
+  option,
+  analyzer,
+  remoteValidationAttacher,
+  normalizeFn,
+) {
   const originalRenderWidget = option.renderWidget;
 
   option.renderWidget = function (section_id, option_index, cfgvalue) {
@@ -9877,7 +10209,13 @@ function configureTextareaOption(option, analyzer, remoteValidationAttacher) {
     if (textarea) {
       applyTextareaInputAttributes(textarea);
       if (typeof analyzer === 'function') {
-        attachAnnotatedTextarea(textarea, analyzer);
+        attachAnnotatedTextarea(
+          textarea,
+          analyzer,
+          this,
+          section_id,
+          normalizeFn,
+        );
       }
       if (typeof remoteValidationAttacher === 'function') {
         remoteValidationAttacher(this, section_id, textarea);
@@ -10135,7 +10473,12 @@ function addTextConditionField(section, config) {
   } else if (config.textValidate) {
     o.validate = config.textValidate;
   }
-  configureTextareaOption(o, config.textAnalyze);
+  configureTextareaOption(o, config.textAnalyze, undefined, (tok) => {
+    const lower = String(tok || '')
+      .trim()
+      .toLowerCase();
+    return lower.startsWith('domain:') ? lower.slice(7) : lower;
+  });
 
   o.load = function (section_id) {
     if (typeof config.loadText === 'function') {

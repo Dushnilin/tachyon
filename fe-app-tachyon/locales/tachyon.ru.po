@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-06 21:01+0300\n"
-"PO-Revision-Date: 2026-11-06 21:01+0300\n"
+"POT-Creation-Date: 2026-11-06 21:38+0300\n"
+"PO-Revision-Date: 2026-11-06 21:38+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -1747,6 +1747,9 @@ msgstr "Нажмите, чтобы развернуть узлы, баланси
 
 msgid "Click to hide"
 msgstr "Нажмите, чтобы скрыть"
+
+msgid "Click to highlight in editor"
+msgstr "Нажмите, чтобы выделить в поле ввода"
 
 msgid "Click to inspect auto-selection details"
 msgstr "Нажмите для просмотра деталей автовыбора"
