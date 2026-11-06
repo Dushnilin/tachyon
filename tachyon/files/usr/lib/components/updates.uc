@@ -309,10 +309,7 @@ function file_nonempty(path) {
 }
 
 function copy_file(source, target) {
-    let data = fs.readfile(as_string(source));
-    if (data == null)
-        return false;
-    return write_file(target, data);
+    return common.copy_file(source, target);
 }
 
 function ensure_parent_dir(path) {
@@ -2889,8 +2886,10 @@ function import_community_srs_file(service, settings, skip_flash_persist) {
                 } else if (sz > 524288) {
                     remove_file(persistent_trs_file);
                 }
-                copy_file(tmpfile, cached_trs_file);
-                remove_file(tmpfile);
+                if (!fs.rename(tmpfile, cached_trs_file)) {
+                    copy_file(tmpfile, cached_trs_file);
+                    remove_file(tmpfile);
+                }
                 remove_file(cached_file);
                 remove_file(persistent_file);
                 log_message("Successfully cached preset ruleset " + service + " (.trs) from " + trs_url, "info");

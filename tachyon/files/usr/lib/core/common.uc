@@ -640,6 +640,11 @@ function copy_file(source, target) {
     let slash = rindex(target, "/");
     if (slash > 0)
         ensure_dir(substr(target, 0, slash));
+    let stamp = clock();
+    let tmp = sprintf("%s.tmp.%d.%d", target, stamp[0], stamp[1]);
+    if (fs.writefile(tmp, data) != null && fs.rename(tmp, target))
+        return true;
+    remove_file(tmp);
     return fs.writefile(target, data) != null;
 }
 
@@ -661,6 +666,11 @@ function copy_file_stream(source, target) {
     let slash = rindex(target, "/");
     if (slash > 0)
         ensure_dir(substr(target, 0, slash));
+    let stamp = clock();
+    let tmp = sprintf("%s.tmp.%d.%d", target, stamp[0], stamp[1]);
+    if (command_success_from_args([ "cp", "-p", source, tmp ]) && fs.rename(tmp, target))
+        return true;
+    remove_file(tmp);
     return command_success_from_args([ "cp", "-p", source, target ]);
 }
 
