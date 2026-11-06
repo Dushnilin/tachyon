@@ -36,7 +36,13 @@
   "overrides": {
     "@humanfs/node": ">=0.16.8",
     "postcss": "8.5.23",
-    "js-yaml": "^5.4.1"
+    "js-yaml": "^5.4.1",
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "^11.0.5"
+    },
+    "sucrase": {
+      "glob": "^14.0.4"
+    }
   },
   "optionalDependencies": {
     "@esbuild/win32-x64": "^0.28.2",
