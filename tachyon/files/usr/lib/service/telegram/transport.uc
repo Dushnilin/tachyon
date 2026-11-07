@@ -261,13 +261,25 @@ function rotate_log_if_needed() {
 function tg_request_via(token, method, payload, proxy_args) {
     if (!token) return null;
     let url = "https://api.telegram.org/bot" + token + "/" + method;
-    let body = sprintf("%J", payload);
     let is_poll = (method == "getUpdates");
     let max_time = is_poll ? "65" : "12";
     let conn_timeout = is_poll ? "15" : "5";
-    let args = [ "curl", "-s", "-m", max_time, "--connect-timeout", conn_timeout,
-                 "-X", "POST", "-H", "Content-Type: application/json",
-                 "-d", body ];
+    let args = [ "curl", "-s", "-m", max_time, "--connect-timeout", conn_timeout ];
+
+    if (is_poll) {
+        // Telegram Bot API ignores `timeout` in JSON body on POST /getUpdates,
+        // returning immediately (timeout=0 short polling). Passing form-urlencoded
+        // parameters activates server-side long polling without altering the endpoint URL.
+        let parts = [];
+        if (payload && payload.offset != null) push(parts, "offset=" + as_string(payload.offset));
+        if (payload && payload.timeout != null) push(parts, "timeout=" + as_string(payload.timeout));
+        if (payload && payload.limit != null) push(parts, "limit=" + as_string(payload.limit));
+        let body = join("&", parts);
+        push(args, "-X", "POST", "-d", body);
+    } else {
+        let body = sprintf("%J", payload);
+        push(args, "-X", "POST", "-H", "Content-Type: application/json", "-d", body);
+    }
     for (let p in proxy_args) push(args, p);
     push(args, url);
     let res = command_capture(command_from_args(args));
