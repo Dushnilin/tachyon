@@ -268,14 +268,14 @@ function tg_request_via(token, method, payload, proxy_args) {
 
     if (is_poll) {
         // Telegram Bot API ignores `timeout` in JSON body on POST /getUpdates,
-        // returning immediately (timeout=0 short polling). Passing timeout and
-        // offset in query parameters enables true server-side long polling.
-        let q = [];
-        if (payload && payload.offset != null) push(q, "offset=" + as_string(payload.offset));
-        if (payload && payload.timeout != null) push(q, "timeout=" + as_string(payload.timeout));
-        if (payload && payload.limit != null) push(q, "limit=" + as_string(payload.limit));
-        if (length(q) > 0)
-            url += "?" + join("&", q);
+        // returning immediately (timeout=0 short polling). Passing form-urlencoded
+        // parameters activates server-side long polling without altering the endpoint URL.
+        let parts = [];
+        if (payload && payload.offset != null) push(parts, "offset=" + as_string(payload.offset));
+        if (payload && payload.timeout != null) push(parts, "timeout=" + as_string(payload.timeout));
+        if (payload && payload.limit != null) push(parts, "limit=" + as_string(payload.limit));
+        let body = join("&", parts);
+        push(args, "-X", "POST", "-d", body);
     } else {
         let body = sprintf("%J", payload);
         push(args, "-X", "POST", "-H", "Content-Type: application/json", "-d", body);
