@@ -1232,11 +1232,6 @@ function start_main() {
     module_success(PARENTAL_QUOTA_UC, [ "tick" ]);
 
     restore_selector_state(null);
-
-    try { fs.unlink("/var/run/tachyon/boot-sweep-done"); } catch (e) {}
-    module_background(UI_UC, [ "latency-boot-sweep" ]);
-    module_background(UPDATES_UC, [ "list-update" ]);
-    module_background(LIB_DIR + "/service/lifecycle.uc", [ "discover-awg-mtu" ]);
     return 0;
 }
 
@@ -1258,7 +1253,7 @@ function purge_legacy_steer_runtime() {
         command_success_from_args([ "nft", "delete", "table", "inet", "steer" ]);
 }
 
-function start_impl() {
+function start_impl(planned_restart) {
     fs.writefile("/var/run/tachyon/starting", as_string(time()));
     try { fs.unlink("/var/run/tachyon/section-fail-state.json"); } catch (e) {}
     purge_legacy_steer_runtime();
@@ -1266,7 +1261,7 @@ function start_impl() {
     // all tachyon temp files are created and deleted within seconds under normal operation.
     command_status("find /tmp -maxdepth 1 -name 'tachyon-*' -mmin +30 -delete 2>/dev/null; true");
 
-    if (config_get(CONFIG_NAME + ".settings.shutdown_correctly") == "0") {
+    if (!planned_restart && config_get(CONFIG_NAME + ".settings.shutdown_correctly") == "0") {
         log_message("Previous shutdown was unclean; restoring dnsmasq to failsafe before start", "warn");
         dnsmasq_restore_fail_safe();
     }
@@ -1320,6 +1315,10 @@ function start_impl() {
         return status;
     }
 
+    try { fs.unlink("/var/run/tachyon/boot-sweep-done"); } catch (e) {}
+    module_background(UI_UC, [ "latency-boot-sweep" ]);
+    module_background(UPDATES_UC, [ "list-update" ]);
+    module_background(LIB_DIR + "/service/lifecycle.uc", [ "discover-awg-mtu" ]);
     module_background(UI_UC, [ "get-ui-capabilities" ]);
     module_background(DIAGNOSTICS_UC, [ "get-system-info" ]);
     module_background(TELEGRAM_UC, [ "start-runtime" ]);
@@ -1511,7 +1510,7 @@ function restart_runtime_for_reload() {
     if (status != 0)
         return status;
 
-    status = start_impl();
+    status = start_impl(true);
     if (status != 0) {
         cleanup_failed_runtime();
         return status;
@@ -1960,7 +1959,7 @@ function restart() {
     if (status != 0)
         return status;
 
-    status = start_impl();
+    status = start_impl(true);
     if (status != 0) {
         cleanup_failed_runtime();
         return status;

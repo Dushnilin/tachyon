@@ -2224,63 +2224,80 @@ function latency_boot_sweep() {
     if (type(persistent_choices) != "object")
         persistent_choices = {};
 
-    for (let section in sections) {
-        if (!bool_option(section, "enabled", true))
-            continue;
-
-        let section_name = section[".name"];
-        let ut_list = connections.urltests(section);
-        for (let urltest_id in ut_list) {
-            let group_tag = (urltest_id == "urltest")
-                ? (section_name + "-urltest-out")
-                : (section_name + "-urltest-" + urltest_id + "-out");
-            let id = "boot-sweep-" + section_name + "-" + urltest_id;
-            let path = job_state_path_value(LATENCY_ACTION_DIR, id);
-            if (path == "")
+    for (let pass = 0; pass < 2; pass++) {
+        let retry_needed = false;
+        for (let section in sections) {
+            if (!bool_option(section, "enabled", true))
                 continue;
 
-            write_state_file(path, running_latency_action_value("group", section_name, group_tag, now_seconds()));
-            let method_plan = latency_clash_method("group");
-            command_status(command_from_args([ BIN_PATH, "clash_api", "get_group_latency", group_tag, method_plan.timeout, path ]) + " >/dev/null 2>&1");
-            if (fs.stat(path) != null)
-                write_finished_action_state(path, true, "Boot latency sweep completed", 0);
-        }
+            let section_name = section[".name"];
+            let ut_list = connections.urltests(section);
+            for (let urltest_id in ut_list) {
+                let group_tag = (urltest_id == "urltest")
+                    ? (section_name + "-urltest-out")
+                    : (section_name + "-urltest-" + urltest_id + "-out");
+                let id = "boot-sweep-" + section_name + "-" + urltest_id;
+                let path = job_state_path_value(LATENCY_ACTION_DIR, id);
+                if (path == "")
+                    continue;
 
-        if (option(section, "action", "connection") == "connection" &&
-            length(ut_list) == 0 &&
-            length(connections.priority_groups(section)) == 0 &&
-            persistent_choices[section_name + "-out"] == null) {
-            let selector_tag = section_name + "-out";
-            let sel_id = "boot-sweep-" + section_name + "-selector";
-            let sel_path = job_state_path_value(LATENCY_ACTION_DIR, sel_id);
-            let method_plan = latency_clash_method("group");
-            let raw_delays = command_output(command_from_args([ BIN_PATH, "clash_api", "get_group_latency", selector_tag, method_plan.timeout, sel_path ]) + " 2>/dev/null");
-            if (sel_path != "" && fs.stat(sel_path) != null)
-                write_finished_action_state(sel_path, true, "Boot selector latency sweep completed", 0);
-            try {
-                let delays = json(trim(as_string(raw_delays)));
-                if (type(delays) == "object") {
-                    let cache = common.read_json_file("/tmp/tachyon-core/subscriptions/" + section_name + ".json");
-                    let outbounds_map = (type(cache) == "object" && type(cache.outbounds) == "object") ? cache.outbounds : {};
-                    let candidates = keys(outbounds_map);
-                    if (length(candidates) > 0) {
-                        let first_tag = as_string(candidates[0]);
-                        if (int(delays[first_tag] || 0) <= 0) {
-                            let fallback_tag = "";
-                            for (let cand in candidates) {
-                                if (int(delays[cand] || 0) > 0) {
-                                    fallback_tag = as_string(cand);
-                                    break;
-                                }
+                write_state_file(path, running_latency_action_value("group", section_name, group_tag, now_seconds()));
+                let method_plan = latency_clash_method("group");
+                let rc = command_status(command_from_args([ BIN_PATH, "clash_api", "get_group_latency", group_tag, method_plan.timeout, path ]) + " >/dev/null 2>&1");
+                if (rc != 0)
+                    retry_needed = true;
+                if (fs.stat(path) != null)
+                    write_finished_action_state(path, true, "Boot latency sweep completed", 0);
+            }
+
+            if (option(section, "action", "connection") == "connection" &&
+                length(ut_list) == 0 &&
+                length(connections.priority_groups(section)) == 0 &&
+                persistent_choices[section_name + "-out"] == null) {
+                let selector_tag = section_name + "-out";
+                let sel_id = "boot-sweep-" + section_name + "-selector";
+                let sel_path = job_state_path_value(LATENCY_ACTION_DIR, sel_id);
+                let method_plan = latency_clash_method("group");
+                let raw_delays = command_output(command_from_args([ BIN_PATH, "clash_api", "get_group_latency", selector_tag, method_plan.timeout, sel_path ]) + " 2>/dev/null");
+                if (sel_path != "" && fs.stat(sel_path) != null)
+                    write_finished_action_state(sel_path, true, "Boot selector latency sweep completed", 0);
+                let any_positive = false;
+                try {
+                    let delays = json(trim(as_string(raw_delays)));
+                    if (type(delays) == "object") {
+                        for (let dk, dv in delays) {
+                            if (dk != "delay" && int(dv || 0) > 0) {
+                                any_positive = true;
+                                break;
                             }
-                            if (fallback_tag != "" && fallback_tag != first_tag) {
-                                command_status(command_from_args([ BIN_PATH, "clash_api", "set_group_proxy", selector_tag, fallback_tag, "ephemeral" ]) + " >/dev/null 2>&1");
+                        }
+                        let cache = common.read_json_file("/tmp/tachyon-core/subscriptions/" + section_name + ".json");
+                        let outbounds_map = (type(cache) == "object" && type(cache.outbounds) == "object") ? cache.outbounds : {};
+                        let candidates = keys(outbounds_map);
+                        if (length(candidates) > 0) {
+                            let first_tag = as_string(candidates[0]);
+                            if (int(delays[first_tag] || 0) <= 0) {
+                                let fallback_tag = "";
+                                for (let cand in candidates) {
+                                    if (int(delays[cand] || 0) > 0) {
+                                        fallback_tag = as_string(cand);
+                                        break;
+                                    }
+                                }
+                                if (fallback_tag != "" && fallback_tag != first_tag) {
+                                    command_status(command_from_args([ BIN_PATH, "clash_api", "set_group_proxy", selector_tag, fallback_tag, "ephemeral" ]) + " >/dev/null 2>&1");
+                                }
                             }
                         }
                     }
-                }
-            } catch (e) {}
+                } catch (e) {}
+                if (!any_positive)
+                    retry_needed = true;
+            }
         }
+        if (!retry_needed || pass > 0)
+            break;
+        command_status("sleep 10");
     }
 
     fs.writefile(guard_file, as_string(time()));

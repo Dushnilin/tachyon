@@ -513,11 +513,13 @@ function retry_start_on_wan_up_action(runtime_running_value, service_enabled_val
 }
 
 function retry_start_on_wan_up(owner_pid) {
-    if (file_exists(RUNTIME_STATE_DIR + "/reset-stopped"))
+    if (file_exists(RUNTIME_STATE_DIR + "/reset-stopped") || file_exists(RUNTIME_STATE_DIR + "/starting"))
+        return 0;
+    let retry_pending = start_retry_pending(START_RETRY_FILE);
+    if (!file_exists(BOOT_COMPLETED_FILE) && !retry_pending)
         return 0;
     let running = runtime_is_running();
     let enabled = service_is_enabled();
-    let retry_pending = start_retry_pending(START_RETRY_FILE);
     let shutdown_correctly = option(uci_settings(), "shutdown_correctly", "1");
     let action = retry_start_on_wan_up_action(
         running ? "1" : "0",
@@ -652,7 +654,7 @@ function boot_service(owner_pid) {
     ensure_parent_dir(BOOT_COMPLETED_FILE);
     write_text_file(BOOT_COMPLETED_FILE, "1\n");
     let settings = uci_settings();
-    if (option(settings, "shutdown_correctly", "1") == "0") {
+    if (!runtime_is_running() && !file_exists(RUNTIME_STATE_DIR + "/starting") && option(settings, "shutdown_correctly", "1") == "0") {
         command_success_from_args([ "logger", "-t", SERVICE_NAME, "[warn] Unclean reboot detected; restoring dnsmasq to failsafe" ]);
         restore_dnsmasq_failsafe();
     }
