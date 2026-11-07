@@ -138,8 +138,17 @@ let fixture = {
             enabled: "1",
             action: "connection",
             outbound_source_refs: [ "src_sub_1", "SoftPortal", "test_grpc" ],
-            outbound_group_refs: [ "Germany", "grp_awg", "grp_fptn" ],
+            outbound_group_refs: [ "Germany" ],
             balancer_refs: [ "Stability", "Priority", "PriorityTiers" ]
+        },
+        {
+            ".name": "FilteredSec",
+            ".type": "section",
+            enabled: "1",
+            action: "connection",
+            outbound_source_refs: [ "src_sub_1" ],
+            outbound_group_refs: [ "Germany" ],
+            balancer_refs: [ "Stability" ]
         }
     ]
 };
@@ -217,6 +226,25 @@ assert(length(tier0) == 2 && index(tier0, "cloud-de-mega") >= 0 && index(tier0, 
 let tier1 = prio_tiers.levels[1].outbounds;
 assert(length(tier1) == 1 && tier1[0] == "fsoft-de-8",
     "PriorityTiers level 1 (grp_fptn with filter_mode=exclude and source_refs=[SoftPortal]) must only include remaining SoftPortal node, got: " + sprintf("%J", tier1));
+
+// 1d. Section with outbound_source_refs=['src_sub_1'] and outbound_group_refs=['Germany'] (without Priority level referencing src_sub_1)
+// must filter its pool to ONLY nodes matching Germany ('cloud-de-mega'), excluding 'cloud-nl-1'
+let state_filt = subscription.new_section_state("FilteredSec");
+state_filt.outboundMetadata = state.outboundMetadata;
+let cfg_filt = { outbounds: [], route: { rules: [] }, dns: { servers: [], rules: [] } };
+let filt_candidates = [ "cloud-de-mega", "cloud-nl-1" ];
+routes.add_proxy_selector(cfg_filt, fixture.section[1], filt_candidates, filt_candidates, state_filt, "");
+let filt_by_tag = {};
+for (let o in cfg_filt.outbounds)
+    filt_by_tag[o.tag] = o;
+let filt_sel = filt_by_tag["FilteredSec-out"];
+let filt_ut = filt_by_tag["FilteredSec-urltest-Stability-out"];
+assert(filt_sel != null && index(filt_sel.outbounds, "cloud-de-mega") >= 0 && index(filt_sel.outbounds, "cloud-nl-1") < 0,
+    "FilteredSec-out must only include 'cloud-de-mega' from attached Germany group and exclude 'cloud-nl-1', got: " + sprintf("%J", filt_sel ? filt_sel.outbounds : null));
+assert(filt_ut != null && length(filt_ut.outbounds) == 1 && filt_ut.outbounds[0] == "cloud-de-mega",
+    "FilteredSec-urltest-Stability-out must only include 'cloud-de-mega', got: " + sprintf("%J", filt_ut ? filt_ut.outbounds : null));
+assert(state_filt.hiddenOutboundTags["cloud-nl-1"] == true,
+    "FilteredSec must mark 'cloud-nl-1' hidden in state.hiddenOutboundTags");
 
 // 2. Stability balancer must default to interrupt_exist_connections === false, while Main-out selector keeps true
 let stab_out = by_tag["Main-urltest-Stability-out"];

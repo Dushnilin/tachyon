@@ -1886,6 +1886,28 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
         has_section_filter = true;
         let union_selector = [];
         let union_cand = [];
+        let covered_all = false;
+        let covered_src_set = {};
+        for (let grp_id in group_refs) {
+            let grp = connections.outbound_group_section(grp_id);
+            if (grp == null || !bool_option(grp, "enabled", true))
+                continue;
+            let g_srcs = list_option(grp, "source_refs");
+            if (length(g_srcs) == 0 || g_srcs[0] == "*") {
+                covered_all = true;
+            } else {
+                for (let gs in g_srcs)
+                    covered_src_set[as_string(gs)] = true;
+            }
+        }
+        let priority_level_src_set = {};
+        for (let pg_id in connections.priority_groups(section)) {
+            for (let lvl_obj in connections.priority_level_items(pg_id, section)) {
+                let ref_id = type(lvl_obj) == "object" ? as_string(lvl_obj.outbound_group_ref || "") : "";
+                if (ref_id != "" && connections.outbound_source_section(ref_id) != null)
+                    priority_level_src_set[ref_id] = true;
+            }
+        }
         let explicit_src_refs = connections.section_outbound_source_refs(section);
         if (length(explicit_src_refs) > 0 && state && state.outboundMetadata) {
             let meta_sources = object_or_empty(state.outboundMetadata.sources);
@@ -1894,6 +1916,9 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
             let explicit_src_set = {};
             let explicit_sub_markers = {};
             for (let src_id in explicit_src_refs) {
+                src_id = as_string(src_id);
+                if (!priority_level_src_set[src_id] && (covered_all || covered_src_set[src_id]))
+                    continue;
                 let src = connections.outbound_source_section(src_id);
                 let stype = src != null ? option(src, "source_type", "") : "";
                 if (connections.is_dpi_or_desync_source_type && connections.is_dpi_or_desync_source_type(stype))

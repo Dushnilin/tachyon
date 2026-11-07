@@ -2259,10 +2259,26 @@ function section_combined_pool_tier_refs(owner_sec) {
         return [];
     let combined = [];
     let seen = {};
-    for (let gid in section_outbound_group_refs(owner_sec))
+    let covered_all = false;
+    let covered_src_set = {};
+    for (let gid in section_outbound_group_refs(owner_sec)) {
         push_unique_str(combined, seen, gid);
-    for (let sid in section_outbound_source_refs(owner_sec))
+        let grp = outbound_group_section(gid);
+        if (grp != null && bool_option(grp, "enabled", true)) {
+            let g_srcs = whitespace_list_value(grp, "source_refs");
+            if (length(g_srcs) == 0 || g_srcs[0] == "*")
+                covered_all = true;
+            else
+                for (let gs in g_srcs)
+                    covered_src_set[as_string(gs)] = true;
+        }
+    }
+    for (let sid in section_outbound_source_refs(owner_sec)) {
+        sid = as_string(sid);
+        if (covered_all || covered_src_set[sid])
+            continue;
         push_unique_str(combined, seen, sid);
+    }
     return combined;
 }
 
