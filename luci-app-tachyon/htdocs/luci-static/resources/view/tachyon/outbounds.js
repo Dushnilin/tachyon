@@ -2560,6 +2560,59 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
                   "button",
                   {
                     type: "button",
+                    class: "tachyon-studio-action-btn",
+                    title: _("Clone"),
+                    click: (ev) => {
+                      ev.stopPropagation();
+                      const base = `${gid || "grp"}`.replace(
+                        /[^A-Za-z0-9_]/g,
+                        "_",
+                      );
+                      let newGid = `${base}_copy`;
+                      let idx = 1;
+                      while (uci.get(UCI_PACKAGE, newGid)) {
+                        idx += 1;
+                        newGid = `${base}_copy${idx}`;
+                      }
+                      if (!uci.add(UCI_PACKAGE, "outbound_group", newGid))
+                        return;
+                      Object.entries(grp || {}).forEach(([k, v]) => {
+                        if (k.startsWith(".")) return;
+                        if (v === undefined || v === null) return;
+                        uci.set(UCI_PACKAGE, newGid, k, v);
+                      });
+                      const baseName = grp.name || grp.label || gid;
+                      uci.set(
+                        UCI_PACKAGE,
+                        newGid,
+                        "name",
+                        `${baseName} (Copy)`,
+                      );
+                      renderGroupsRows();
+                      refreshProberGroupOptions();
+                      Promise.resolve(uci.save())
+                        .then(() => {
+                          if (
+                            ui &&
+                            ui.changes &&
+                            typeof ui.changes.init === "function"
+                          )
+                            ui.changes.init();
+                        })
+                        .catch(() => {});
+                    },
+                  },
+                  [
+                    typeof main.renderCopyIcon === "function"
+                      ? main.renderCopyIcon(13)
+                      : null,
+                    E("span", {}, _("Clone")),
+                  ].filter(Boolean),
+                ),
+                E(
+                  "button",
+                  {
+                    type: "button",
                     class:
                       "tachyon-studio-action-btn tachyon-studio-action-btn--primary",
                     click: (ev) => {
@@ -3007,6 +3060,17 @@ function configureOutboundsSection(sectionRef) {
         else uci.unset(UCI_PACKAGE, sid, "outbound_source_refs");
       }
       if (hasRef || isLegacyChild) {
+        try {
+          if (
+            typeof fs !== "undefined" &&
+            fs &&
+            typeof fs.remove === "function"
+          ) {
+            fs.remove(`/var/run/tachyon/section-cache/${sid}.json`).catch(
+              () => null,
+            );
+          }
+        } catch (_e) {}
         if (srcType === "links" || srcType === "proxy_links") {
           uci.unset(UCI_PACKAGE, sid, "selector_proxy_links");
           uci.unset(UCI_PACKAGE, sid, "selector_proxy_links_text");

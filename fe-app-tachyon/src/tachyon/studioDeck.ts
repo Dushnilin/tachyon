@@ -4625,6 +4625,57 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                 'button',
                 {
                   type: 'button',
+                  class: 'tachyon-studio-action-btn',
+                  title: tr('Клонировать источник', 'Clone Source'),
+                  click: (ev: MouseEvent) => {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    const base = `${sid || 'src'}`.replace(
+                      /[^A-Za-z0-9_]/g,
+                      '_',
+                    );
+                    let newSid = `${base}_copy`;
+                    let idx = 1;
+                    while (uci.get(UCI_PACKAGE, newSid)) {
+                      idx += 1;
+                      newSid = `${base}_copy${idx}`;
+                    }
+                    if (!uci.add(UCI_PACKAGE, 'outbound_source', newSid)) {
+                      return;
+                    }
+                    Object.entries(raw || {}).forEach(([k, v]) => {
+                      if (k.startsWith('.')) return;
+                      if (v === undefined || v === null) return;
+                      uci.set(UCI_PACKAGE, newSid, k, v as any);
+                    });
+                    const baseName = String(raw.name || raw.label || sid);
+                    uci.set(UCI_PACKAGE, newSid, 'name', `${baseName} (Copy)`);
+                    if (raw.label) {
+                      uci.set(
+                        UCI_PACKAGE,
+                        newSid,
+                        'label',
+                        `${raw.label} (Copy)`,
+                      );
+                    }
+                    if (raw.node_prefix) {
+                      uci.set(
+                        UCI_PACKAGE,
+                        newSid,
+                        'node_prefix',
+                        `${raw.node_prefix}_copy${idx > 1 ? idx : ''}`,
+                      );
+                    }
+                    notifyUciChanged();
+                    renderDeck();
+                  },
+                },
+                [renderCopyIcon(13), E('span', {}, tr('Клон', 'Clone'))],
+              ),
+              E(
+                'button',
+                {
+                  type: 'button',
                   class:
                     'tachyon-studio-action-btn tachyon-studio-action-btn--primary',
                   click: openEditModal,

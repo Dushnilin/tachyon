@@ -42,23 +42,50 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Cache OpenWrt host packaging tools
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ~/.cache/tachyon/openwrt-sdk/host-tools-v1
+          key: openwrt-host-tools-v1-25.12.3
+          restore-keys: |
+            openwrt-host-tools-v1-
+
+      - name: Cache ucode build
+        id: cache-ucode
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ~/.cache/tachyon/ucode-v0.0.20250529
+          key: ucode-ubuntu-24.04-v0.0.20250529
+
       - name: Build ucode
         shell: bash
         run: |
           sudo rm -f /etc/apt/sources.list.d/google-chrome.list
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake git libjson-c-dev pkg-config nodejs curl nftables openssl
-          git clone --depth 1 --branch v0.0.20250529 https://github.com/jow-/ucode.git /tmp/ucode
-          cmake -S /tmp/ucode -B /tmp/ucode/build \
-            -DUBUS_SUPPORT=OFF \
-            -DUCI_SUPPORT=OFF \
-            -DULOOP_SUPPORT=OFF
-          cmake --build /tmp/ucode/build --parallel
-          sudo cmake --install /tmp/ucode/build
+          sudo apt-get install -y build-essential cmake git libjson-c-dev pkg-config nodejs curl nftables openssl zstd
+          UCODE_CACHE="$HOME/.cache/tachyon/ucode-v0.0.20250529"
+          if [ ! -x "$UCODE_CACHE/bin/ucode" ]; then
+            git clone --depth 1 --branch v0.0.20250529 https://github.com/jow-/ucode.git /tmp/ucode
+            cmake -S /tmp/ucode -B /tmp/ucode/build \
+              -DCMAKE_INSTALL_PREFIX="$UCODE_CACHE" \
+              -DUBUS_SUPPORT=OFF \
+              -DUCI_SUPPORT=OFF \
+              -DULOOP_SUPPORT=OFF
+            cmake --build /tmp/ucode/build --parallel
+            cmake --install /tmp/ucode/build
+          fi
+          sudo cp -af "$UCODE_CACHE/bin/"* /usr/local/bin/
+          sudo cp -af "$UCODE_CACHE/lib/"* /usr/local/lib/ 2>/dev/null || true
           sudo ldconfig
-          sudo ln -sf "$(command -v ucode)" /usr/bin/ucode
+          sudo ln -sf /usr/local/bin/ucode /usr/bin/ucode
           command -v ucode
           ucode -e 'print("ucode ready\n")'
+
+      - name: Warm OpenWrt host packaging tools cache
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          bash -c 'source ./build.sh && ensure_host_tools >/dev/null'
 
       - name: Static guards (no new raw shell / system / uci commit)
         shell: bash

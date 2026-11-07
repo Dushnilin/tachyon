@@ -224,6 +224,7 @@ ensure_po2lmo() {
     return 0
   fi
 
+  mkdir -p "$ipk_sdk_dir"
   (
     cd "$ipk_sdk_dir"
     if [[ ! -d feeds/luci/modules/luci-base/src ]]; then
@@ -231,7 +232,13 @@ ensure_po2lmo() {
       # re-clone from scratch rather than compiling against missing sources.
       rm -rf feeds/luci
       mkdir -p feeds
-      git clone --depth 1 https://github.com/openwrt/luci.git feeds/luci >&2 || true
+      if ! (
+        git clone --depth 1 --filter=blob:none --sparse https://github.com/openwrt/luci.git feeds/luci >&2 &&
+        git -C feeds/luci sparse-checkout set modules/luci-base/src >&2
+      ); then
+        rm -rf feeds/luci
+        git clone --depth 1 https://github.com/openwrt/luci.git feeds/luci >&2 || true
+      fi
     fi
   )
 
@@ -256,6 +263,73 @@ ensure_po2lmo() {
   # later with a confusing permission/not-found error.
   echo "po2lmo compilation failed; cannot build LuCI i18n package" >&2
   return 1
+}
+
+ensure_host_tools() {
+  local host_tools_dir="$SDK_CACHE_DIR/host-tools-v1"
+  local marker_file="$host_tools_dir/.tachyon-sdk-url"
+  local apk_archive
+  local temp_dir
+  local extracted_root
+  local built_po2lmo
+
+  mkdir -p "$host_tools_dir/bin" "$host_tools_dir/lib"
+
+  if [[ ! -x "$host_tools_dir/bin/ipkg-build" || ! -x "$host_tools_dir/bin/apk" || ! -x "$host_tools_dir/bin/.apk.bin" || ! -f "$host_tools_dir/lib/ld-linux-x86-64.so.2" || ! -f "$host_tools_dir/lib/runas.so" || ! -f "$marker_file" ]] || [[ "$(cat "$marker_file")" != "$APK_SDK_URL" ]]; then
+    if [[ -x "$SDK_WORK_DIR/apk/scripts/ipkg-build" && -x "$SDK_WORK_DIR/apk/staging_dir/host/bin/apk" && -x "$SDK_WORK_DIR/apk/staging_dir/host/bin/.apk.bin" ]]; then
+      cp -f "$SDK_WORK_DIR/apk/scripts/ipkg-build" "$host_tools_dir/bin/ipkg-build"
+      cp -f "$SDK_WORK_DIR/apk/staging_dir/host/bin/apk" "$host_tools_dir/bin/apk"
+      cp -f "$SDK_WORK_DIR/apk/staging_dir/host/bin/.apk.bin" "$host_tools_dir/bin/.apk.bin"
+      cp -af "$SDK_WORK_DIR/apk/staging_dir/host/lib"/ld-linux* \
+        "$SDK_WORK_DIR/apk/staging_dir/host/lib"/runas.so \
+        "$SDK_WORK_DIR/apk/staging_dir/host/lib"/libc.so* \
+        "$SDK_WORK_DIR/apk/staging_dir/host/lib"/libpthread.so* \
+        "$SDK_WORK_DIR/apk/staging_dir/host/lib"/libdl.so* \
+        "$SDK_WORK_DIR/apk/staging_dir/host/lib"/librt.so* \
+        "$SDK_WORK_DIR/apk/staging_dir/host/lib"/libm.so* \
+        "$SDK_WORK_DIR/apk/staging_dir/host/lib"/libgcc_s.so* \
+        "$host_tools_dir/lib/"
+    else
+      apk_archive="$(download_sdk_archive "$APK_SDK_URL")"
+      mkdir -p "$SDK_WORK_DIR"
+      temp_dir="$(mktemp -d "$SDK_WORK_DIR/.host-tools.XXXXXX")"
+      tar --zstd -xf "$apk_archive" -C "$temp_dir" --wildcards \
+        '*/scripts/ipkg-build' \
+        '*/staging_dir/host/bin/apk' \
+        '*/staging_dir/host/bin/.apk.bin' \
+        '*/staging_dir/host/lib/ld-linux*' \
+        '*/staging_dir/host/lib/runas.so' \
+        '*/staging_dir/host/lib/libc.so*' \
+        '*/staging_dir/host/lib/libpthread.so*' \
+        '*/staging_dir/host/lib/libdl.so*' \
+        '*/staging_dir/host/lib/librt.so*' \
+        '*/staging_dir/host/lib/libm.so*' \
+        '*/staging_dir/host/lib/libgcc_s.so*'
+      extracted_root="$(find "$temp_dir" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+      cp -f "$extracted_root/scripts/ipkg-build" "$host_tools_dir/bin/ipkg-build"
+      cp -f "$extracted_root/staging_dir/host/bin/apk" "$host_tools_dir/bin/apk"
+      cp -f "$extracted_root/staging_dir/host/bin/.apk.bin" "$host_tools_dir/bin/.apk.bin"
+      cp -af "$extracted_root/staging_dir/host/lib/"* "$host_tools_dir/lib/"
+      rm -rf "$temp_dir"
+      if [[ "${CI:-}" == "true" && "${KEEP_SDK_ARCHIVES:-0}" != "1" ]]; then
+        rm -f "$apk_archive"
+      fi
+    fi
+    chmod 0755 "$host_tools_dir/bin/ipkg-build" "$host_tools_dir/bin/apk" "$host_tools_dir/bin/.apk.bin"
+    printf '%s\n' "$APK_SDK_URL" > "$marker_file"
+  fi
+
+  if [[ ! -x "$host_tools_dir/bin/po2lmo" ]]; then
+    if [[ -x "$SDK_WORK_DIR/ipk/feeds/luci/modules/luci-base/src/po2lmo" ]]; then
+      cp -f "$SDK_WORK_DIR/ipk/feeds/luci/modules/luci-base/src/po2lmo" "$host_tools_dir/bin/po2lmo"
+    else
+      built_po2lmo="$(ensure_po2lmo "$SDK_WORK_DIR/po2lmo-build")"
+      cp -f "$built_po2lmo" "$host_tools_dir/bin/po2lmo"
+    fi
+    chmod 0755 "$host_tools_dir/bin/po2lmo"
+  fi
+
+  printf '%s\n' "$host_tools_dir"
 }
 
 make_dir() {
@@ -1275,10 +1349,7 @@ print_summary() {
 
 main() {
   local output_dir
-  local ipk_archive
-  local apk_archive
-  local ipk_sdk_dir
-  local apk_sdk_dir
+  local host_tools_dir
   local po2lmo_bin
   local ipkg_build_bin
   local apk_bin
@@ -1302,14 +1373,11 @@ main() {
   mkdir -p "$output_dir"
   rm -f "$output_dir"/tachyon_* "$output_dir"/luci-app-tachyon_* "$output_dir"/luci-i18n-tachyon-ru_*
 
-  ipk_archive="$(download_sdk_archive "$IPK_SDK_URL")"
-  apk_archive="$(download_sdk_archive "$APK_SDK_URL")"
-  ipk_sdk_dir="$(extract_sdk ipk "$ipk_archive" "$IPK_SDK_URL")"
-  apk_sdk_dir="$(extract_sdk apk "$apk_archive" "$APK_SDK_URL")"
-
-  po2lmo_bin="$(ensure_po2lmo "$ipk_sdk_dir")"
-  ipkg_build_bin="$ipk_sdk_dir/scripts/ipkg-build"
-  apk_bin="$apk_sdk_dir/staging_dir/host/bin/apk"
+  host_tools_dir="$(ensure_host_tools)"
+  po2lmo_bin="$host_tools_dir/bin/po2lmo"
+  ipkg_build_bin="$host_tools_dir/bin/ipkg-build"
+  apk_bin="$host_tools_dir/bin/apk"
+  [[ -x "$po2lmo_bin" ]] || { echo "po2lmo not found at $po2lmo_bin" >&2; exit 1; }
   [[ -x "$ipkg_build_bin" ]] || { echo "ipkg-build not found at $ipkg_build_bin" >&2; exit 1; }
   [[ -x "$apk_bin" ]] || { echo "apk host tool not found at $apk_bin" >&2; exit 1; }
 

@@ -7367,9 +7367,88 @@ function getSectionOrLinkedConditionOption(section_id, key) {
   return direct;
 }
 
+function detachSharedLinkedConditionIds(section_id) {
+  const condIds = getLinkedSectionConditionIds(section_id);
+  if (!condIds.length) return condIds;
+  const allSections = uci.sections(UCI_PACKAGE, "section") || [];
+  const allConds = uci.sections(UCI_PACKAGE, "condition") || [];
+  let changedRefs = false;
+  const rawRefs = uci.get(UCI_PACKAGE, section_id, "condition_refs");
+  const currentRefs = Array.isArray(rawRefs)
+    ? rawRefs.map((x) => String(x || "").trim()).filter(Boolean)
+    : rawRefs
+      ? String(rawRefs)
+          .trim()
+          .split(/[\s,]+/)
+          .filter(Boolean)
+      : [];
+  const nextRefs = [...currentRefs];
+  let expr = String(
+    uci.get(UCI_PACKAGE, section_id, "condition_expression") || "",
+  );
+  let exprChanged = false;
+
+  const resultIds = condIds.map((condId) => {
+    const ownedByOtherName =
+      condId.startsWith("cond_") &&
+      condId !== `cond_${section_id}` &&
+      Boolean(uci.get(UCI_PACKAGE, condId.slice(5)));
+    const sharedWithOtherSection =
+      ownedByOtherName ||
+      allSections.some((sec) => {
+        const sid = sec?.[".name"];
+        if (!sid || sid === section_id) return false;
+        return getLinkedSectionConditionIds(sid).includes(condId);
+      });
+    if (!sharedWithOtherSection) return condId;
+
+    const sourceCond = allConds.find((c) => c?.[".name"] === condId);
+    const newCondId = makeUniqueSectionId(`cond_${section_id}`);
+    if (!uci.add(UCI_PACKAGE, "condition", newCondId)) return condId;
+
+    if (sourceCond) {
+      Object.entries(sourceCond).forEach(([k, v]) => {
+        if (k.startsWith(".")) return;
+        if (v === undefined || v === null) return;
+        uci.set(UCI_PACKAGE, newCondId, k, v);
+      });
+    }
+    const secLabel =
+      uci.get(UCI_PACKAGE, section_id, "label") ||
+      uci.get(UCI_PACKAGE, section_id, "name") ||
+      section_id;
+    uci.set(UCI_PACKAGE, newCondId, "name", `${secLabel} Rules`);
+    if (!uci.get(UCI_PACKAGE, newCondId, "enabled")) {
+      uci.set(UCI_PACKAGE, newCondId, "enabled", "1");
+    }
+
+    const refIdx = nextRefs.indexOf(condId);
+    if (refIdx >= 0) {
+      nextRefs[refIdx] = newCondId;
+      changedRefs = true;
+    } else if (!nextRefs.includes(newCondId)) {
+      nextRefs.push(newCondId);
+      changedRefs = true;
+    }
+    if (expr && expr.includes(condId)) {
+      expr = expr.split(condId).join(newCondId);
+      exprChanged = true;
+    }
+    return newCondId;
+  });
+
+  if (changedRefs) {
+    uci.set(UCI_PACKAGE, section_id, "condition_refs", nextRefs);
+  }
+  if (exprChanged) {
+    uci.set(UCI_PACKAGE, section_id, "condition_expression", expr);
+  }
+  return resultIds;
+}
+
 function syncLinkedConditionOption(section_id, key, value) {
   if (!LINKED_CONDITION_OPTION_KEYS.has(key)) return;
-  const condIds = getLinkedSectionConditionIds(section_id);
+  const condIds = detachSharedLinkedConditionIds(section_id);
   if (!condIds.length) return;
   condIds.forEach((condId, idx) => {
     const existing = uci.get(UCI_PACKAGE, condId, key);
@@ -20761,6 +20840,7 @@ function cloneSection(section_id) {
     name: `${sourceName} (Copy)`,
   });
   copyChildSections(section_id, targetId);
+  detachSharedLinkedConditionIds(targetId);
 
   return targetId;
 }

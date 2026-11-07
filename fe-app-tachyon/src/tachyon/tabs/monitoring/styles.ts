@@ -493,18 +493,26 @@ body.dark .tachyon_monitoring-page {
 }
 
 .tachyon_monitoring-page__checkbox {
+    appearance: checkbox !important;
+    -webkit-appearance: checkbox !important;
     width: 14px !important;
     height: 14px !important;
+    min-width: 14px !important;
+    min-height: 14px !important;
     margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
     flex: 0 0 14px;
     accent-color: var(--tachyon-accent);
     cursor: pointer;
 }
 
-.tachyon_monitoring-page__checkbox::before {
-    width: 14px !important;
-    height: 14px !important;
-    box-sizing: border-box !important;
+.tachyon_monitoring-page__checkbox::before,
+.tachyon_monitoring-page__checkbox::after {
+    display: none !important;
+    content: none !important;
 }
 
 .tachyon_monitoring-page__check-label {
@@ -576,18 +584,21 @@ body.dark .tachyon_monitoring-page {
 }
 
 .tachyon_monitoring-page__proto-checkbox {
-    width: 14px !important;
-    height: 14px !important;
+    position: absolute !important;
+    width: 0 !important;
+    height: 0 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
     margin: 0 !important;
-    flex: 0 0 14px;
-    accent-color: var(--tachyon-accent);
-    cursor: pointer;
+    padding: 0 !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
 }
 
-.tachyon_monitoring-page__proto-checkbox::before {
-    width: 14px !important;
-    height: 14px !important;
-    box-sizing: border-box !important;
+.tachyon_monitoring-page__proto-checkbox::before,
+.tachyon_monitoring-page__proto-checkbox::after {
+    display: none !important;
+    content: none !important;
 }
 
 .tachyon_monitoring-page__proto-count {
