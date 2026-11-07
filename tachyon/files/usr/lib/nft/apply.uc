@@ -4452,7 +4452,7 @@ function source_aware_dns_values(sections, deferred_sections) {
             }
         }
 
-        if (action == "bypass" || action == "dns") {
+        if (action == "dns" || connections.routed_dns_enabled(section)) {
             for (let value in section_leaf_list_option(section, "fully_routed_ips")) {
                 value = trim(as_string(value));
                 if (value == "") continue;
@@ -4468,27 +4468,6 @@ function source_aware_dns_values(sections, deferred_sections) {
                     push(values, value);
                 }
             }
-        }
-
-        if (action == "bypass" || action == "dns") {
-            for (let value in nft_csv_values(section_source_ip_values(section))) {
-                if (!seen[value]) {
-                    seen[value] = true;
-                    push(values, value);
-                }
-            }
-        }
-
-        if (action == "dns") {
-            for (let value in nft_csv_values(section_source_ip_values(section))) {
-                if (!seen[value]) {
-                    seen[value] = true;
-                    push(values, value);
-                }
-            }
-        }
-
-        if (connections.routed_dns_enabled(section)) {
             for (let value in nft_csv_values(section_source_ip_values(section))) {
                 if (!seen[value]) {
                     seen[value] = true;

@@ -512,12 +512,26 @@ function tag_name_filter_matches(tag, names, name_filter, regex_set, metadata, n
             array_contains(name_filter, stored_prefix + " " + name) ||
             array_contains(name_filter, "[" + stored_prefix + "] " + name))
             return true;
-        if (index(name, stored_prefix + ": ") == 0 &&
-            array_contains(name_filter, trim(substr(name, length(stored_prefix) + 2))))
-            return true;
-        if (index(name, stored_prefix + " ") == 0 &&
-            array_contains(name_filter, trim(substr(name, length(stored_prefix) + 1))))
-            return true;
+        let unprefixed = "";
+        if (index(name, stored_prefix + ": ") == 0)
+            unprefixed = trim(substr(name, length(stored_prefix) + 2));
+        else if (index(name, stored_prefix + " ") == 0)
+            unprefixed = trim(substr(name, length(stored_prefix) + 1));
+        if (unprefixed != "") {
+            let bracketed = "[" + stored_prefix + "] " + unprefixed;
+            if (array_contains(name_filter, unprefixed) ||
+                array_contains(name_filter, bracketed) ||
+                array_contains(name_filter, stored_prefix + ": " + unprefixed) ||
+                array_contains(name_filter, stored_prefix + " " + unprefixed))
+                return true;
+            let proto = object_or_empty(object_or_empty(metadata).protocols)[tag];
+            let trans = object_or_empty(object_or_empty(metadata).transports)[tag];
+            let label = format_outbound_type_label(proto, trans);
+            if (label != "" &&
+                (array_contains(name_filter, unprefixed + " [" + label + "]") ||
+                 array_contains(name_filter, bracketed + " [" + label + "]")))
+                return true;
+        }
     }
     if (name_with_type_indexed != null && array_contains(name_filter, name_with_type_indexed))
         return true;
@@ -1871,6 +1885,44 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
         has_section_filter = true;
         let union_selector = [];
         let union_cand = [];
+        let explicit_src_refs = connections.section_outbound_source_refs(section);
+        if (length(explicit_src_refs) > 0 && state && state.outboundMetadata) {
+            let meta_sources = object_or_empty(state.outboundMetadata.sources);
+            let meta_source_ids = object_or_empty(state.outboundMetadata.source_ids);
+            let sub_urls = connections.subscription_urls(section);
+            let explicit_src_set = {};
+            let explicit_sub_markers = {};
+            for (let src_id in explicit_src_refs) {
+                let src = connections.outbound_source_section(src_id);
+                let stype = src != null ? option(src, "source_type", "") : "";
+                if (connections.is_dpi_or_desync_source_type && connections.is_dpi_or_desync_source_type(stype))
+                    continue;
+                explicit_src_set[src_id] = true;
+                let src_url = src != null ? trim(option(src, "url", "")) : "";
+                if (src_url != "") {
+                    for (let u_idx = 0; u_idx < length(sub_urls); u_idx++) {
+                        if (trim(as_string(sub_urls[u_idx])) == src_url) {
+                            explicit_sub_markers["sub:" + (u_idx + 1)] = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            let matches_explicit_src = function(t) {
+                let m_src = as_string(meta_sources[t] || "");
+                let m_src_id = as_string(meta_source_ids[t] || "");
+                return (m_src != "" && (explicit_src_set[m_src] || explicit_sub_markers[m_src])) ||
+                    (m_src_id != "" && explicit_src_set[m_src_id]);
+            };
+            for (let t in selector_tags) {
+                if (matches_explicit_src(t))
+                    push(union_selector, t);
+            }
+            for (let t in urltest_candidate_tags) {
+                if (matches_explicit_src(t))
+                    push(union_cand, t);
+            }
+        }
         for (let grp_id in group_refs) {
             let gspec = connections.outbound_group_filter_spec(grp_id, section);
             if (gspec == null)
@@ -4429,8 +4481,11 @@ function add_combined_route_for_clause(config, section) {
         }
     }
 
-    let rewrite_ttl = int_option(ctx.runtime_settings ? ctx.runtime_settings() : {}, "dns_rewrite_ttl", "15");
+    let r_settings = ctx.runtime_settings ? ctx.runtime_settings() : {};
+    let explicit_rewrite_ttl = trim(option(r_settings, "dns_rewrite_ttl", "")) != "";
+    let rewrite_ttl = int_option(r_settings, "dns_rewrite_ttl", "15");
     let dns_server_tag = section_dns_server(section);
+    let use_rewrite_ttl = dns_server_tag != runtime_constants.DNS_SERVER_TAG || explicit_rewrite_ttl;
     let ipv4_only_dpi = section_is_ipv4_only_dpi(section) &&
         dns_server_tag == runtime_constants.FAKEIP_DNS_SERVER_TAG;
     if (length(domain) > 0 || length(domain_suffix) > 0 || length(domain_keyword) > 0 || length(domain_regex) > 0) {
@@ -4447,9 +4502,10 @@ function add_combined_route_for_clause(config, section) {
                 continue;
             let dns_rule = {
                 action: "route",
-                server: dns_server_tag,
-                rewrite_ttl
+                server: dns_server_tag
             };
+            if (use_rewrite_ttl)
+                dns_rule.rewrite_ttl = rewrite_ttl;
             add_fakeip_query_type(dns_rule, dns_server_tag, ipv4_only_dpi);
             add_domain_array(dns_rule, key, values);
             add_source_dns_matchers(dns_rule, source_ip_cidr);
@@ -4480,9 +4536,10 @@ function add_combined_route_for_clause(config, section) {
             let dns_rule = {
                 action: "route",
                 server: dns_server_tag,
-                rewrite_ttl,
                 rule_set: single_or_array(dns_query_rule_set_tags)
             };
+            if (use_rewrite_ttl)
+                dns_rule.rewrite_ttl = rewrite_ttl;
             add_fakeip_query_type(dns_rule, dns_server_tag, ipv4_only_dpi);
             add_source_dns_matchers(dns_rule, source_ip_cidr);
             push_section_dns_matcher_rule(config, section, dns_rule, excluded_cidrs, domain_only_dns_tags);
@@ -4508,10 +4565,11 @@ function add_combined_route_for_clause(config, section) {
             let dns_rule = {
                 action: "route",
                 server: dns_server_tag,
-                rewrite_ttl,
                 rule_set: single_or_array(dns_response_rule_set_tags),
                 match_response: true
             };
+            if (use_rewrite_ttl)
+                dns_rule.rewrite_ttl = rewrite_ttl;
             add_source_dns_matchers(dns_rule, source_ip_cidr);
             if (config.__defer_dns_response_rules) {
                 if (type(config.__deferred_dns_response_rules) != "array")
@@ -4540,9 +4598,10 @@ function add_combined_route_for_clause(config, section) {
             let dns_rule = {
                 action: "route",
                 server: dns_server_tag,
-                rewrite_ttl,
                 rule_set: single_or_array(all_dns_tags)
             };
+            if (use_rewrite_ttl)
+                dns_rule.rewrite_ttl = rewrite_ttl;
             add_fakeip_query_type(dns_rule, dns_server_tag, ipv4_only_dpi);
             add_source_dns_matchers(dns_rule, source_ip_cidr);
             push_section_dns_matcher_rule(config, section, dns_rule, excluded_cidrs, domain_only_dns_tags);

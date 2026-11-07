@@ -4231,8 +4231,11 @@ function urltest_testing_url(section, value) {
 
 function urltest_active_check_interval(section, value) {
     let child = urltest_child(section, value);
-    if (child != null)
+    if (child != null) {
+        if (child[".type"] == "balancer")
+            return trim(child_option(child, "urltest_active_check_interval", ""));
         return trim(child_option_alias(child, [ "urltest_active_check_interval", "active_check_interval" ], ""));
+    }
     let fallback = option(section, "urltest_active_check_interval", "");
     return trim(item_option(section, "urltest_settings", value, "urltest_active_check_interval", fallback));
 }
@@ -4284,14 +4287,6 @@ function urltest_idle_timeout(section, value) {
     return item_option(section, "urltest_settings", value, "idle_timeout", fallback);
 }
 
-function urltest_interrupt_exist_connections(section, value) {
-    let child = urltest_child(section, value);
-    if (child != null)
-        return child_bool(child, "interrupt_exist_connections", true);
-    let fallback = bool_option(section, "interrupt_exist_connections", bool_option(section, "urltest_interrupt_exist_connections", true));
-    return item_bool(section, "urltest_settings", value, "interrupt_exist_connections", fallback);
-}
-
 function urltest_mode(section, value) {
     let child = urltest_child(section, value);
     let raw = child != null
@@ -4303,6 +4298,20 @@ function urltest_mode(section, value) {
         raw == "throughput" || raw == "quota")
         return raw;
     return "";
+}
+
+function is_non_interrupting_balancer_mode(mode) {
+    return mode == "stability" || mode == "least_load" || mode == "round_robin" ||
+        mode == "sticky" || mode == "weighted" || mode == "throughput" || mode == "hedged";
+}
+
+function urltest_interrupt_exist_connections(section, value) {
+    let default_val = !is_non_interrupting_balancer_mode(urltest_mode(section, value));
+    let child = urltest_child(section, value);
+    if (child != null)
+        return child_bool(child, "interrupt_exist_connections", default_val);
+    let fallback = bool_option(section, "interrupt_exist_connections", bool_option(section, "urltest_interrupt_exist_connections", default_val));
+    return item_bool(section, "urltest_settings", value, "interrupt_exist_connections", fallback);
 }
 
 function urltest_sticky_hash(section, value) {
@@ -4643,7 +4652,8 @@ function section_interrupt_exist_connections(section) {
         }
     }
     for (let ut_id in urltests(section)) {
-        if (!urltest_interrupt_exist_connections(section, ut_id))
+        if (!is_non_interrupting_balancer_mode(urltest_mode(section, ut_id)) &&
+            !urltest_interrupt_exist_connections(section, ut_id))
             return false;
     }
     for (let pg_id in priority_groups(section)) {

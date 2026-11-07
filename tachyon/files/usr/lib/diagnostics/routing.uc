@@ -1157,25 +1157,49 @@ function build_conntrack_mark_map() {
     let z1_base = int(as_string(constants.ZAPRET_ROUTE_MARK_BASE || "0x01000000"), 0) || 0x01000000;
     let z2_base = int(as_string(constants.ZAPRET2_ROUTE_MARK_BASE || "0x02000000"), 0) || 0x02000000;
 
-    for (let sec in uci_sections("section")) {
+    let secs = uci_sections("section");
+    let connections = null;
+    try { connections = require("config.connections"); } catch (e) {}
+    let z1_secs = (connections && connections.active_provider_sections)
+        ? connections.active_provider_sections("zapret", secs)
+        : [];
+    let z2_secs = (connections && connections.active_provider_sections)
+        ? connections.active_provider_sections("zapret2", secs)
+        : [];
+    if (length(z1_secs) == 0 && length(z2_secs) == 0) {
+        for (let sec in secs) {
+            if (option(sec, "enabled", "1") == "0")
+                continue;
+            let act = lc(option(sec, "action", ""));
+            if (act == "zapret")
+                push(z1_secs, sec);
+            else if (act == "zapret2")
+                push(z2_secs, sec);
+        }
+    }
+    for (let sec in z1_secs) {
         if (option(sec, "enabled", "1") == "0")
             continue;
         let sec_name = as_string(sec[".name"]);
         if (sec_name == "")
             continue;
-        let act = lc(option(sec, "action", ""));
         let tag = sec_name + "-out";
-        if (act == "zapret") {
-            z1_idx++;
-            marks[as_string(z1_base + z1_idx)] = tag;
-            if (default_zapret == "")
-                default_zapret = tag;
-        } else if (act == "zapret2") {
-            z2_idx++;
-            marks[as_string(z2_base + z2_idx)] = tag;
-            if (default_zapret2 == "")
-                default_zapret2 = tag;
-        }
+        z1_idx++;
+        marks[as_string(z1_base + z1_idx)] = tag;
+        if (default_zapret == "")
+            default_zapret = tag;
+    }
+    for (let sec in z2_secs) {
+        if (option(sec, "enabled", "1") == "0")
+            continue;
+        let sec_name = as_string(sec[".name"]);
+        if (sec_name == "")
+            continue;
+        let tag = sec_name + "-out";
+        z2_idx++;
+        marks[as_string(z2_base + z2_idx)] = tag;
+        if (default_zapret2 == "")
+            default_zapret2 = tag;
     }
 
     for (let cfg_path in [ TMP_SING_BOX_FOLDER + "/config.json", "/etc/tachyon-core/config.json" ]) {

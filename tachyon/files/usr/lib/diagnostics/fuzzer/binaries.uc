@@ -214,6 +214,13 @@ function get_resolved_host_flags(url) {
 
     let safe_host = shell_quote(host);
     let ip = null;
+    if (match(host, /^rr[0-9]+\.googlevideo\.com$/) != null) {
+        let gv_flags = get_resolved_host_flags("https://googlevideo.com/");
+        if (gv_flags == "") gv_flags = get_resolved_host_flags("https://www.youtube.com/");
+        let m_ip = match(gv_flags, /:443:([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
+        if (m_ip && m_ip[1])
+            ip = m_ip[1];
+    }
 
     // 1. Primary: query router bootstrap DNS & ISP upstream DNS via UDP 53
     // MUST NEVER query 127.0.0.1 or ::1 to prevent resolving into FakeIP (198.18.x.x)

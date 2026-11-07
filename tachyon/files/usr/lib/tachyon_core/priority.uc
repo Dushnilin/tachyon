@@ -277,6 +277,47 @@ function urlencode_segment(value) {
 let recent_probe_cache = {};
 const PROBE_DEDUP_TTL_S = 3;
 
+function clear_probe_cache_for_tag(tag_name) {
+    let prefix = as_string(tag_name || "") + "|";
+    let p_len = length(prefix);
+    let next_cache = {};
+    for (let k, v in recent_probe_cache) {
+        if (substr(k, 0, p_len) != prefix)
+            next_cache[k] = v;
+    }
+    recent_probe_cache = next_cache;
+}
+
+function parse_delay_output(output) {
+    let value = null;
+    try {
+        value = json(output);
+    }
+    catch (e) {
+        return null;
+    }
+
+    if (type(value) != "object")
+        return null;
+
+    let delay = value.delay;
+    if (delay == null || as_string(delay) == "") {
+        let min_d = null;
+        for (let k, v in value) {
+            if (k == "message" || k == "error")
+                continue;
+            if (type(v) == "int" && v > 0) {
+                if (min_d == null || v < min_d)
+                    min_d = v;
+            }
+        }
+        return min_d;
+    }
+
+    delay = int(delay, 10);
+    return delay >= 0 ? delay : null;
+}
+
 function module_capture(args) {
     let is_latency_probe = type(args) == "array" && length(args) > 0 && as_string(args[0] || "") == "get_proxy_latency";
     let probe_cache_key = "";
@@ -311,7 +352,8 @@ function module_capture(args) {
             push(curl_args, "--data-urlencode");
             push(curl_args, "timeout=" + timeout_ms);
             let res = common.command_capture(command_from_args(curl_args));
-            recent_probe_cache[probe_cache_key] = { at: now_s, res };
+            if (res.status == 0 && parse_delay_output(res.output) != null)
+                recent_probe_cache[probe_cache_key] = { at: now_s, res };
             return res;
         }
         if (action == "set_group_proxy") {
@@ -341,39 +383,9 @@ function module_capture(args) {
         command += " " + shell_quote(arg);
 
     let res = common.command_capture(command);
-    if (is_latency_probe && probe_cache_key != "")
+    if (is_latency_probe && probe_cache_key != "" && res.status == 0 && parse_delay_output(res.output) != null)
         recent_probe_cache[probe_cache_key] = { at: now_s, res };
     return res;
-}
-
-function parse_delay_output(output) {
-    let value = null;
-    try {
-        value = json(output);
-    }
-    catch (e) {
-        return null;
-    }
-
-    if (type(value) != "object")
-        return null;
-
-    let delay = value.delay;
-    if (delay == null || as_string(delay) == "") {
-        let min_d = null;
-        for (let k, v in value) {
-            if (k == "message" || k == "error")
-                continue;
-            if (type(v) == "int" && v > 0) {
-                if (min_d == null || v < min_d)
-                    min_d = v;
-            }
-        }
-        return min_d;
-    }
-
-    delay = int(delay, 10);
-    return delay >= 0 ? delay : null;
 }
 
 function evaluate_multi_url_delays(delays_by_url, urls, strategy) {
@@ -743,8 +755,10 @@ function choose_fastest_same_level(group, level_index, active_tag, probe) {
 
     if (best == null || best.tag == active_tag)
         return null;
-    if (active == null || !active.alive || best.delay + tol <= active.delay)
+    if (active == null || !active.alive || best.delay + tol <= active.delay) {
+        best.activeDelay = active != null && active.alive ? active.delay : 0;
         return best;
+    }
     return null;
 }
 
@@ -923,11 +937,19 @@ function warm_inactive_group_members(group, active_level_index, active_tag, prob
 function tick_group(state, group) {
     let now = now_seconds();
 
-    if (group.kind == "urltest" && state.active == "") {
+    if (state.active == "") {
         let current_now = current_group_selected(group.tag);
         if (current_now != "") {
-            state.active = current_now;
-            state.levelIndex = 0;
+            if (group.kind == "urltest") {
+                state.active = current_now;
+                state.levelIndex = 0;
+            } else {
+                let lvl0 = object_or_empty(array_or_empty(group.levels)[0]);
+                if (index(array_or_empty(lvl0.outbounds), current_now) >= 0) {
+                    state.active = current_now;
+                    state.levelIndex = 0;
+                }
+            }
         }
     }
 
@@ -965,6 +987,10 @@ function tick_group(state, group) {
 
     if (state.active != "" && now >= state.nextActiveCheck) {
         let active = clash_probe(state.active, group);
+        if (!active.alive && fixture_delays_path == "") {
+            clear_probe_cache_for_tag(state.active);
+            active = clash_probe(state.active, group);
+        }
         if (active.alive) {
             state.activeDelay = active.delay;
             if (group.kind == "urltest" && length(array_or_empty(group.health_urls)) > 1)
@@ -1032,11 +1058,29 @@ function tick_group(state, group) {
             if (state.lastSwitchAt <= 0 || (now - state.lastSwitchAt) >= min_hold) {
                 same_level_probed = true;
                 let selected = choose_fastest_same_level(group, state.levelIndex, state.active, clash_probe);
-                if (selected != null)
-                    switch_group(state, group, selected, "faster_same_tier");
+                if (selected != null) {
+                    let tol = group && group.tolerance != null && int(group.tolerance, 10) > 0
+                        ? int(group.tolerance, 10)
+                        : FASTEST_SWITCH_TOLERANCE_MS;
+                    if (state.activeDelay > 0 && selected.activeDelay > 0 && selected.delay + tol > state.activeDelay) {
+                        clear_probe_cache_for_tag(state.active);
+                        let recheck = clash_probe(state.active, group);
+                        if (recheck.alive && selected.delay + tol > recheck.delay) {
+                            state.activeDelay = recheck.delay;
+                            selected = null;
+                        } else if (recheck.alive) {
+                            state.activeDelay = recheck.delay;
+                        }
+                    } else if (selected.activeDelay > 0) {
+                        state.activeDelay = selected.activeDelay;
+                    }
+                    if (selected != null)
+                        switch_group(state, group, selected, "faster_same_tier");
+                }
             }
         }
-        if (warm_inactive_group_members(group, state.levelIndex, state.active, clash_probe, true, same_level_probed) > 0) {
+        let warm_force_all = length(array_or_empty(group.health_urls)) > 1;
+        if (warm_inactive_group_members(group, state.levelIndex, state.active, clash_probe, warm_force_all, same_level_probed) > 0) {
             write_group_status(group, state, {
                 tag: state.active,
                 levelIndex: state.levelIndex,
@@ -1141,6 +1185,15 @@ function warm_fixture(group_path, latency_path) {
         probed_inactive: probed,
         url_delays: type(group._url_delays) == "object" ? group._url_delays : {}
     });
+}
+
+if (length(ARGV) == 0) {
+    return {
+        choose_fastest_same_level,
+        warm_inactive_group_members,
+        init_group_state,
+        tick_group
+    };
 }
 
 let mode = ARGV[0] || "";

@@ -1108,11 +1108,17 @@ for (let inbound in dns_config.inbounds)
     runtime_context.default_domain_resolver = runtime_dns.default_domain_resolver(settings);
     runtime_context.client_inbounds = tproxy_inbound_matcher();
 
+    let raw_ipv6_opt = lc(trim(option(settings, "ipv6_enabled", "")));
+    let eff_dns_strategy = option(settings, "dns_strategy", "prefer_ipv4");
+    if ((raw_ipv6_opt == "0" || raw_ipv6_opt == "false") &&
+        eff_dns_strategy != "prefer_ipv6" && eff_dns_strategy != "ipv6_only")
+        eff_dns_strategy = "ipv4_only";
+
     let dns_section = {
         servers: dns_servers,
         rules: dns_rules,
         final: runtime_constants.DNS_SERVER_TAG,
-        strategy: option(settings, "dns_strategy", "prefer_ipv4"),
+        strategy: eff_dns_strategy,
         reverse_mapping: bool_option(settings, "dns_reverse_mapping", true)
     };
 
@@ -1878,7 +1884,7 @@ function source_aware_dns_sources(sections, settings) {
             }
         }
 
-        if (action == "bypass" || action == "dns") {
+        if (action == "dns" || connections.routed_dns_enabled(section)) {
             for (let ip in core_ip.normalize_to_cidrs(list_option(section, "fully_routed_ips")))
                 add_source(ip);
             for (let cond in connections.section_leaf_conditions(section)) {
@@ -1959,15 +1965,14 @@ function add_source_aware_dns_fallback(config, source_aware_dns) {
         return;
 
     let settings = runtime_settings_cache || {};
-    let rewrite_ttl = int_option(settings, "dns_rewrite_ttl", "15");
-
     let rule = {
         action: "route",
         server: runtime_constants.DNSMASQ_DNS_SERVER_TAG,
         inbound: [ runtime_constants.SOURCE_DNS_INBOUND_TAG ],
-        source_ip_cidr: single_or_array(core_ip.expand_ipv4_mapped_cidrs(source_aware_dns)),
-        rewrite_ttl
+        source_ip_cidr: single_or_array(core_ip.expand_ipv4_mapped_cidrs(source_aware_dns))
     };
+    if (trim(option(settings, "dns_rewrite_ttl", "")) != "")
+        rule.rewrite_ttl = int_option(settings, "dns_rewrite_ttl", "15");
     push(config.dns.rules, rule);
 }
 
@@ -1976,14 +1981,15 @@ function add_excluded_clients_dns_rule(config, settings) {
     if (length(excluded_cidrs) == 0)
         return;
 
-    let rewrite_ttl = int_option(settings, "dns_rewrite_ttl", "15");
-    unshift(config.dns.rules, {
+    let rule = {
         action: "route",
         server: runtime_constants.DNSMASQ_DNS_SERVER_TAG,
         inbound: [ runtime_constants.SOURCE_DNS_INBOUND_TAG ],
-        source_ip_cidr: single_or_array(core_ip.expand_ipv4_mapped_cidrs(excluded_cidrs)),
-        rewrite_ttl
-    });
+        source_ip_cidr: single_or_array(core_ip.expand_ipv4_mapped_cidrs(excluded_cidrs))
+    };
+    if (trim(option(settings, "dns_rewrite_ttl", "")) != "")
+        rule.rewrite_ttl = int_option(settings, "dns_rewrite_ttl", "15");
+    unshift(config.dns.rules, rule);
 }
 
 function add_excluded_clients_route_rule(config, settings) {

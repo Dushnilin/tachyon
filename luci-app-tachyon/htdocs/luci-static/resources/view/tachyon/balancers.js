@@ -846,29 +846,19 @@ function createBalancersContent(section) {
   o.depends("balancer_type", "urltest");
   o.cfgvalue = function (sectionId) {
     return (
-      uci.get(UCI_PACKAGE, sectionId, "urltest_active_check_interval") ||
-      uci.get(UCI_PACKAGE, sectionId, "active_check_interval") ||
-      ""
+      uci.get(UCI_PACKAGE, sectionId, "urltest_active_check_interval") || ""
     );
   };
   o.write = function (sectionId, value) {
     const trimmed = String(value || "").trim();
     if (trimmed) {
       uci.set(UCI_PACKAGE, sectionId, "urltest_active_check_interval", trimmed);
-      uci.set(UCI_PACKAGE, sectionId, "active_check_interval", trimmed);
     } else {
       uci.unset(UCI_PACKAGE, sectionId, "urltest_active_check_interval");
-      uci.unset(UCI_PACKAGE, sectionId, "active_check_interval");
     }
   };
   o.remove = function (sectionId) {
     uci.unset(UCI_PACKAGE, sectionId, "urltest_active_check_interval");
-    if (
-      (uci.get(UCI_PACKAGE, sectionId, "balancer_type") || "urltest") ===
-      "urltest"
-    ) {
-      uci.unset(UCI_PACKAGE, sectionId, "active_check_interval");
-    }
   };
 
   o = section.taboption(
@@ -976,6 +966,37 @@ function createBalancersContent(section) {
   );
   o.modalonly = true;
   o.default = "1";
+  o.cfgvalue = function (sectionId) {
+    const explicit = uci.get(
+      UCI_PACKAGE,
+      sectionId,
+      "interrupt_exist_connections",
+    );
+    if (explicit !== null && explicit !== undefined && explicit !== "") {
+      return explicit;
+    }
+    const btype = String(
+      uci.get(UCI_PACKAGE, sectionId, "balancer_type") || "urltest",
+    ).toLowerCase();
+    const bmode = String(
+      uci.get(UCI_PACKAGE, sectionId, "mode") || "least_test",
+    ).toLowerCase();
+    if (
+      btype === "urltest" &&
+      [
+        "stability",
+        "sticky",
+        "least_load",
+        "weighted",
+        "hedged",
+        "throughput",
+        "round_robin",
+      ].includes(bmode)
+    ) {
+      return "0";
+    }
+    return "1";
+  };
 }
 
 return baseclass.extend({

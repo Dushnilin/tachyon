@@ -120,6 +120,7 @@ let pollingConnections = false;
 let pollingConntrackSupplement = false;
 let conntrackSupplementTimer: ReturnType<typeof setInterval> | null = null;
 let latestConntrackConnections: ClashConnection[] = [];
+let latestCoreConnections: ClashConnection[] = [];
 
 let activeTab: MonitoringTabId = 'active';
 let selectedDataSourceFilter: ConnectionSourceFilter = 'all';
@@ -197,8 +198,15 @@ function getLocalSourceCellParts(connection: MonitoredConnection) {
 }
 
 function getCurrentTabConnections(): MonitoredConnection[] {
-  return Array.from(
+  const all = Array.from(
     (activeTab === 'active' ? activeConnections : closedConnections).values(),
+  );
+  if (selectedDataSourceFilter === 'all') {
+    return all;
+  }
+  return all.filter(
+    (c) =>
+      (c.dataSource || getConnectionDataSource(c)) === selectedDataSourceFilter,
   );
 }
 
@@ -258,6 +266,7 @@ function applyConnectionsPayload(payload: ClashConnectionsPayload) {
   const baseConnections = Array.isArray(payload.connections)
     ? payload.connections
     : [];
+  latestCoreConnections = baseConnections;
   const rawConnections =
     latestConntrackConnections.length > 0
       ? mergeCoreAndConntrackConnections(
@@ -1677,6 +1686,14 @@ async function pollConntrackSupplement() {
       latestConntrackConnections = Array.isArray(normalized.connections)
         ? normalized.connections
         : [];
+      if (
+        monitoringMounted &&
+        !monitoringPaused &&
+        serviceAvailability === 'running' &&
+        connectionsSocketUrl
+      ) {
+        applyConnectionsPayload({ connections: latestCoreConnections });
+      }
     }
   } catch (_err) {
     // Ignore supplement polling errors
