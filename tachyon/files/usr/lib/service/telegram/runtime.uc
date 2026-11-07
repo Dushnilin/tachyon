@@ -486,6 +486,8 @@ function process_updates(token, admin_ids) {
             let retry_after = int(params.retry_after || 0);
             if (retry_after > 0 && retry_after <= 60)
                 sleep(retry_after * 1000);
+        } else if (error_code == 409) {
+            sleep(10000);
         }
         command_success_from_args(["logger", "-t", "tachyon-telegram",
             "[info] Telegram declined getUpdates (" + as_string(res.error_code || "?") + " " + as_string(res.description || "") + "), not counted as a poll failure"]);
