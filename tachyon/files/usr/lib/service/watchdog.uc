@@ -50,6 +50,7 @@ const SMART_DETECT_SEEN_FILE = "/etc/tachyon/smart_detect_seen.json";
 let as_string = common.as_string;
 let shell_quote = common.shell_quote;
 let command_status_from_args = common.command_status_from_args;
+let option = common.option;
 
 let proxy_restart_count = 0;
 let proxy_restart_window_start = time();
@@ -3596,6 +3597,50 @@ function check_watchdog_outdated() {
     bg_system("/etc/init.d/tachyon restart >/dev/null 2>&1");
 }
 
+function check_cache_storage_guard() {
+    let cfg = (current_ctx && current_ctx.settings) ? current_ctx.settings : settings();
+    let cache_path = option(cfg, "cache_path", "/usr/share/tachyon-core/cache.db");
+    let cstat = fs.stat(cache_path);
+    if (!cstat && cache_path != "/etc/tachyon-core/cache.db")
+        cstat = fs.stat("/etc/tachyon-core/cache.db");
+    if (!cstat && cache_path != "/usr/share/tachyon-core/cache.db")
+        cstat = fs.stat("/usr/share/tachyon-core/cache.db");
+    if (!cstat && cache_path != "/tmp/tachyon-core/cache.db")
+        cstat = fs.stat("/tmp/tachyon-core/cache.db");
+
+    let cache_bytes = (cstat && cstat.type == "file") ? int(cstat.size) : 0;
+    if (cache_bytes == 0)
+        return;
+
+    let max_cache_bytes = 15 * 1024 * 1024; // 15 MB
+    let preflight_mod = require("core.preflight");
+    let storage = preflight_mod ? preflight_mod.check_storage("/overlay") : null;
+    if (!storage || !storage.ok || storage.available_kb == 0)
+        storage = preflight_mod ? preflight_mod.check_storage("/") : null;
+
+    let free_kb = (storage && storage.available_kb) ? int(storage.available_kb) : 100000;
+    let should_purge = false;
+    let reason = "";
+
+    if (cache_bytes > max_cache_bytes) {
+        should_purge = true;
+        reason = sprintf("cache.db size (%d KB) exceeded limit (15 MB)", int(cache_bytes / 1024));
+    } else if (free_kb < 8 * 1024 && cache_bytes > 4 * 1024 * 1024) {
+        should_purge = true;
+        reason = sprintf("low disk space (%d KB free) with cache.db at %d KB", free_kb, int(cache_bytes / 1024));
+    }
+
+    if (should_purge) {
+        log_message("Cache storage guard triggered: " + reason + "; purging cache.db and restarting core", "warn");
+        for (let p in [ "/etc/tachyon-core/cache.db", "/usr/share/tachyon-core/cache.db", "/tmp/tachyon-core/cache.db", "/usr/share/sing-box/cache.db" ]) {
+            remove_file(p);
+            remove_file(p + "-lock");
+            remove_file(p + ".lock");
+        }
+        safe_proxy_restart("cache_storage_guard", ESCALATION_LIGHT);
+    }
+}
+
 function perform_slow_checks() {
     let cfg = (current_ctx && current_ctx.settings) ? current_ctx.settings : settings();
     if (is_lite_data_plane_busy(cfg)) {
@@ -3612,6 +3657,7 @@ function perform_slow_checks() {
     safe_call(check_section_failover, "check_section_failover");
     safe_call(reap_dead_jobs, "reap_dead_jobs");
     safe_call(trim_runtime_logs, "trim_runtime_logs");
+    safe_call(check_cache_storage_guard, "check_cache_storage_guard");
     safe_call(check_watchdog_outdated, "check_watchdog_outdated");
 }
 
