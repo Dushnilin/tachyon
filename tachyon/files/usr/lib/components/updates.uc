@@ -3560,10 +3560,14 @@ function import_rule_sets_with_subnets_from_rule(section, settings) {
                 } else {
                     if (download_to_file(reference, tmpfile, service_proxy_address(settings, "lists"), true) && file_exists_value(tmpfile)) {
                         convert_crlf_to_lf(tmpfile);
-                        if (!add_plain_subnet_file_to_nft_for_section(section, tmpfile))
+                        if (!add_plain_subnet_file_to_nft_for_section(section, tmpfile)) {
+                            log_message("Failed to populate nftables set from remote plain list " + reference + " for '" + section_name(section) + "'", "warn");
                             ok = false;
-                        if (cache_refreshed_plain_ruleset(reference, tmpfile) == null)
+                        }
+                        if (cache_refreshed_plain_ruleset(reference, tmpfile) == null) {
+                            log_message("Failed to compile or cache remote plain list " + reference, "warn");
                             ok = false;
+                        }
                     } else {
                         log_message("Failed to download remote plain list " + reference + "; keeping existing cache", "warn");
                         if (list_nft_batch != "") ok = false;
@@ -3612,10 +3616,14 @@ function update_remote_plain_rulesets_from_rule(section, settings) {
         if (download_to_file(reference, tmpfile, service_proxy_address(settings, "lists"), true) && file_exists_value(tmpfile)) {
             convert_crlf_to_lf(tmpfile);
             let res = cache_refreshed_plain_ruleset(reference, tmpfile);
-            if (res == null)
+            if (res == null) {
+                log_message("Failed to compile or cache remote plain rule set " + reference, "warn");
                 ok = false;
-            else if (res.has_ips && !add_plain_subnet_file_to_nft_for_section(section, tmpfile))
+            }
+            else if (res.has_ips && !add_plain_subnet_file_to_nft_for_section(section, tmpfile)) {
+                log_message("Failed to populate nftables set from remote plain rule set " + reference + " for '" + section_name(section) + "'", "warn");
                 ok = false;
+            }
         }
         else {
             log_message("Failed to download remote plain rule set " + reference + "; keeping existing cache", "warn");

@@ -2571,7 +2571,7 @@ function nft_trimmed_lines(path) {
 
     let result = [];
     for (let line in split(as_string(data), "\n")) {
-        line = trim(replace(as_string(line), /\r/g, ""));
+        line = trim(replace(strip_list_comment(line), /\r/g, ""));
         if (line != "")
             push(result, line);
     }
@@ -2715,8 +2715,10 @@ function nft_log_invalid_elements(invalid) {
 
 function nft_add_chunks_to_set(table, set_name, chunks, invalid) {
     nft_log_invalid_elements(invalid);
-    if (NFT_BATCH_FILE != "" && length(invalid) > 0)
+    if (NFT_BATCH_FILE != "" && length(invalid) > 0) {
+        log_warn("Refusing nft set batch update for " + as_string(set_name) + ": " + length(invalid) + " invalid element(s)");
         return false;
+    }
 
     for (let item in chunks) {
         let separator = index(item, "\t");
