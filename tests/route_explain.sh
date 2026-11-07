@@ -147,6 +147,36 @@ if command -v ucode >/dev/null 2>&1; then
     print(sprintf("4pda:%s,yandex:%s", m1 ? m1.rule_type : "none", m2 ? m2.rule_type : "none"));
   ')
   assert_eq "$geoip_test_out" "4pda:geoip_exclude,yandex:none" "GeoIP exclusion matching in route_explain"
+
+  # 4.9 WireGuard endpoint resolution in sb_cfg.endpoints and no cross-section fallback
+  wg_ep_out=$(ucode -L "$TACHYON_LIB" -e '
+    let r = require("diagnostics.route_explain");
+    let sec = { ".name": "AWG_HL", enabled: "1", action: "connection" };
+    let res = r.resolve_outbound_node(sec, "connection", {
+      _clash_proxies: {},
+      _sb_cfg: {
+        outbounds: [
+          { type: "desync", tag: "YTB-desync-out", mode: "disorder" },
+          { type: "selector", tag: "AWG_HL-out", outbounds: [ "AWG_HL-1-out" ], "default": "AWG_HL-1-out" }
+        ],
+        endpoints: [
+          { type: "wireguard", tag: "AWG_HL-1-out", jc: 4, peers: [ { address: "198.51.100.10", port: 51820 } ] }
+        ]
+      }
+    });
+    let miss = r.resolve_outbound_node(sec, "connection", {
+      _clash_proxies: {},
+      _sb_cfg: {
+        outbounds: [
+          { type: "desync", tag: "YTB-desync-out", mode: "disorder" },
+          { type: "selector", tag: "AWG_HL-out", outbounds: [ "AWG_HL-missing-out" ], "default": "AWG_HL-missing-out" }
+        ],
+        endpoints: []
+      }
+    });
+    print(sprintf("%s|%s|%s|%s", res.selected_node, res.node_type, miss.selected_node, miss.node_type));
+  ')
+  assert_eq "$wg_ep_out" "AWG_HL-1-out|wireguard|AWG_HL-missing-out|unresolved" "WireGuard endpoint resolution and no foreign section fallback"
 fi
 
 echo "All route_explain tests passed successfully!"

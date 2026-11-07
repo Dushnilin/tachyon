@@ -1445,24 +1445,66 @@ function resolve_outbound_node(matched_section, matched_action, uci_cfg) {
     let selector_state = common.read_json_file("/etc/tachyon/selector_state.json") ||
                          common.read_json_file("/tmp/tachyon_selector_state.json") || {};
 
-    let sb_config_raw = fs.readfile("/etc/tachyon-core/config.json") || fs.readfile("/etc/sing-box/config.json");
-    if (sb_config_raw) {
+    let cfg_path = getenv("TACHYON_CORE_CONFIG_PATH") ||
+                   ((uci_cfg && type(uci_cfg.settings) == "object" && uci_cfg.settings.config_path) ? as_string(uci_cfg.settings.config_path) : "");
+    let sb_config_raw = (cfg_path != "" ? fs.readfile(cfg_path) : null) ||
+                        fs.readfile("/etc/tachyon-core/config.json") ||
+                        fs.readfile("/etc/sing-box/config.json");
+    let sb_cfg_inline = (uci_cfg && type(uci_cfg._sb_cfg) == "object") ? uci_cfg._sb_cfg : null;
+    if (sb_config_raw || sb_cfg_inline) {
         try {
-            let sb_cfg = json(sb_config_raw);
+            let sb_cfg = sb_cfg_inline || json(sb_config_raw);
             let outbounds_by_tag = {};
             for (let ob in (sb_cfg.outbounds || [])) {
                 if (type(ob) == "object" && ob.tag)
                     outbounds_by_tag[ob.tag] = ob;
             }
+            for (let ep in (sb_cfg.endpoints || [])) {
+                if (type(ep) == "object" && ep.tag)
+                    outbounds_by_tag[ep.tag] = ep;
+            }
 
-            let clash_proxies = query_clash_proxies_map();
+            let clash_proxies = (uci_cfg && type(uci_cfg._clash_proxies) == "object")
+                ? uci_cfg._clash_proxies
+                : query_clash_proxies_map();
             let curr_tag = group_tag;
-            if (!outbounds_by_tag[curr_tag] && type(sb_cfg.route) == "object" && sb_cfg.route.final)
+            if (!outbounds_by_tag[curr_tag] && type(sb_cfg.route) == "object" && sb_cfg.route.final && outbounds_by_tag[sb_cfg.route.final])
                 curr_tag = sb_cfg.route.final;
 
             let visited = {};
             let resolved_group_type = group_type;
             let resolved_group_tag = curr_tag;
+
+            let build_leaf_result = function(ob, fallback_tag, grp_tag, grp_type) {
+                let otype = lc(as_string(ob.type || ""));
+                let peer0 = (type(ob.peers) == "array" && length(ob.peers) > 0 && type(ob.peers[0]) == "object") ? ob.peers[0] : null;
+                let transport = "plain";
+                if (type(ob.tls) == "object" && ob.tls.enabled)
+                    transport = (type(ob.tls.reality) == "object" && ob.tls.reality.enabled) ? "reality" : "tls";
+                else if (type(ob.transport) == "object" && ob.transport.type)
+                    transport = as_string(ob.transport.type);
+                else if (otype == "desync")
+                    transport = as_string(ob.preset || ob.mode || "desync");
+                else if (otype == "wireguard")
+                    transport = (ob.jc || ob.s1 || (peer0 && (peer0.jc || peer0.s1))) ? "awg" : "udp";
+                else if (otype == "fptn" || otype == "hysteria2" || otype == "tuic" || otype == "anytls" || otype == "naive" || otype == "masque")
+                    transport = "tls";
+
+                let srv_addr = ob.server || ob.address || (peer0 ? (peer0.address || peer0.server) : null) || "127.0.0.1";
+                if (type(srv_addr) == "array")
+                    srv_addr = length(srv_addr) > 0 ? as_string(srv_addr[0]) : "127.0.0.1";
+                let srv_port = int(ob.server_port || ob.port || (peer0 ? (peer0.port || peer0.server_port) : 0) || (otype == "wireguard" ? 51820 : 443));
+
+                return {
+                    group_tag: grp_tag,
+                    group_type: grp_type,
+                    selected_node: ob.tag || fallback_tag,
+                    node_type: otype || "proxy",
+                    server_address: as_string(srv_addr),
+                    server_port: srv_port,
+                    transport: transport
+                };
+            };
 
             for (let depth = 0; depth < 8; depth++) {
                 if (!curr_tag || visited[curr_tag])
@@ -1489,41 +1531,39 @@ function resolve_outbound_node(matched_section, matched_action, uci_cfg) {
                     continue;
                 }
 
-                // Leaf outbound reached
-                let transport = "plain";
-                if (type(ob.tls) == "object" && ob.tls.enabled)
-                    transport = (type(ob.tls.reality) == "object" && ob.tls.reality.enabled) ? "reality" : "tls";
-                else if (type(ob.transport) == "object" && ob.transport.type)
-                    transport = as_string(ob.transport.type);
-                else if (otype == "desync")
-                    transport = as_string(ob.preset || ob.mode || "desync");
-                else if (otype == "fptn" || otype == "hysteria2" || otype == "tuic" || otype == "anytls" || otype == "naive" || otype == "masque")
-                    transport = "tls";
-
-                return {
-                    group_tag: resolved_group_tag,
-                    group_type: resolved_group_type,
-                    selected_node: ob.tag || curr_tag,
-                    node_type: otype || "proxy",
-                    server_address: ob.server || "127.0.0.1",
-                    server_port: int(ob.server_port || 443),
-                    transport: transport
-                };
+                // Leaf outbound or endpoint reached
+                return build_leaf_result(ob, curr_tag, resolved_group_tag, resolved_group_type);
             }
 
-            // Fallback to first concrete proxy outbound in config
-            for (let outb in (sb_cfg.outbounds || [])) {
-                if (outb.type != "direct" && outb.type != "dns" && outb.type != "block" && outb.type != "selector" && outb.type != "urltest") {
-                    return {
-                        group_tag: group_tag,
-                        group_type: group_type,
-                        selected_node: outb.tag || "Proxy-Node",
-                        node_type: outb.type || "proxy",
-                        server_address: outb.server || "unknown",
-                        server_port: int(outb.server_port || 443),
-                        transport: outb.tls ? (outb.tls.reality ? "reality" : "tls") : "plain"
-                    };
+            // Scoped fallback: only consider concrete outbounds/endpoints belonging to the matched section prefix
+            let sec_prefix = sec_name + "-";
+            let all_runtime_nodes = [];
+            for (let outb in (sb_cfg.outbounds || []))
+                push(all_runtime_nodes, outb);
+            for (let ep in (sb_cfg.endpoints || []))
+                push(all_runtime_nodes, ep);
+
+            for (let outb in all_runtime_nodes) {
+                if (type(outb) != "object")
+                    continue;
+                let otype = lc(as_string(outb.type || ""));
+                let otag = as_string(outb.tag || "");
+                if (otype != "direct" && otype != "dns" && otype != "block" && otype != "selector" && otype != "urltest" &&
+                    substr(otag, 0, length(sec_prefix)) == sec_prefix) {
+                    return build_leaf_result(outb, otag, resolved_group_tag || group_tag, resolved_group_type || group_type);
                 }
+            }
+
+            if (length(all_runtime_nodes) > 0 && outbounds_by_tag[group_tag] != null) {
+                return {
+                    group_tag: resolved_group_tag || group_tag,
+                    group_type: resolved_group_type || group_type,
+                    selected_node: curr_tag != "" ? curr_tag : (group_tag + " (unresolved)"),
+                    node_type: "unresolved",
+                    server_address: "unresolved",
+                    server_port: 0,
+                    transport: "unknown"
+                };
             }
         } catch (e) {}
     }
@@ -2278,6 +2318,42 @@ function selftest() {
     let m_udp_443 = evaluate_section_match(sec_udp_ports, dummy_client, { host: "34.6.146.185", type: "ipv4" }, 443, "udp");
     assert(m_udp_443 == null, "UDP 443 does not match 7600/7777 port+protocol section");
 
+    // Test 12: WireGuard endpoint resolution in sb_cfg.endpoints without cross-section fallback
+    let wg_sec = { ".name": "AWG_HL", enabled: "1", action: "connection" };
+    let wg_res = resolve_outbound_node(wg_sec, "connection", {
+        _clash_proxies: {},
+        _sb_cfg: {
+            outbounds: [
+                { type: "desync", tag: "YTB-desync-out", mode: "disorder" },
+                { type: "selector", tag: "AWG_HL-out", outbounds: [ "AWG_HL-1-out" ], "default": "AWG_HL-1-out" }
+            ],
+            endpoints: [
+                {
+                    type: "wireguard",
+                    tag: "AWG_HL-1-out",
+                    jc: 4,
+                    peers: [ { address: "198.51.100.10", port: 51820 } ]
+                }
+            ]
+        }
+    });
+    assert(wg_res.group_tag == "AWG_HL-out", "WireGuard endpoint group_tag is AWG_HL-out");
+    assert(wg_res.selected_node == "AWG_HL-1-out", "WireGuard endpoint selected_node is AWG_HL-1-out (not YTB-desync-out)");
+    assert(wg_res.node_type == "wireguard", "WireGuard endpoint node_type is wireguard");
+    assert(wg_res.server_address == "198.51.100.10" && wg_res.server_port == 51820, "WireGuard peer address and port extracted");
+
+    let missing_res = resolve_outbound_node(wg_sec, "connection", {
+        _clash_proxies: {},
+        _sb_cfg: {
+            outbounds: [
+                { type: "desync", tag: "YTB-desync-out", mode: "disorder" },
+                { type: "selector", tag: "AWG_HL-out", outbounds: [ "AWG_HL-missing-out" ], "default": "AWG_HL-missing-out" }
+            ],
+            endpoints: []
+        }
+    });
+    assert(missing_res.node_type == "unresolved" && missing_res.selected_node == "AWG_HL-missing-out", "Missing node reports unresolved instead of picking foreign section YTB-desync-out");
+
     print(sprintf("Route explain selftest: %d passed, %d failed\n", passed, failed));
     return failed == 0 ? 0 : 1;
 }
@@ -2328,5 +2404,6 @@ return {
     check_community_ip_match,
     target_matches_country,
     evaluate_section_match,
+    resolve_outbound_node,
     selftest
 };
