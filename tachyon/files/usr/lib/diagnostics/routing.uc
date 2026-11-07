@@ -1204,14 +1204,22 @@ function build_conntrack_mark_map() {
 
     for (let cfg_path in [ TMP_SING_BOX_FOLDER + "/config.json", "/etc/tachyon-core/config.json" ]) {
         let cfg = common.read_json_file(cfg_path);
-        if (type(cfg) == "object" && type(cfg.outbounds) == "array") {
-            for (let ob in cfg.outbounds) {
+        if (type(cfg) == "object" && (type(cfg.outbounds) == "array" || type(cfg.endpoints) == "array")) {
+            for (let ob in (cfg.outbounds || [])) {
                 if (type(ob) != "object")
                     continue;
                 let rmark = int(as_string(ob.routing_mark || "0"), 0) || 0;
                 let ob_tag = as_string(ob.tag || "");
                 if (rmark > 0 && ob_tag != "")
                     marks[as_string(rmark)] = ob_tag;
+            }
+            for (let ep in (cfg.endpoints || [])) {
+                if (type(ep) != "object")
+                    continue;
+                let rmark = int(as_string(ep.routing_mark || "0"), 0) || 0;
+                let ep_tag = as_string(ep.tag || "");
+                if (rmark > 0 && ep_tag != "")
+                    marks[as_string(rmark)] = ep_tag;
             }
             break;
         }
@@ -1292,7 +1300,7 @@ function read_conntrack_connections(mark_info, existing_tuples) {
 
         if (orig_src == "" || orig_dst == "" || orig_sport == "" || orig_dport == "")
             continue;
-        if (!valid_public_ip(orig_dst))
+        if (!valid_public_ip(orig_dst) || valid_public_ip(orig_src) || substr(orig_src, 0, 4) == "127." || orig_src == "::1")
             continue;
         if ((mark_val & 0x08000000) != 0)
             continue;

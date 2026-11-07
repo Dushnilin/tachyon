@@ -106,6 +106,7 @@ ipv4     2 udp      17 170 src=192.168.1.50 dst=1.1.1.1 sport=60123 dport=443 pa
 ipv4     2 tcp      6 15 TIME_WAIT src=192.168.1.50 dst=8.8.8.8 sport=50000 dport=443 packets=4 bytes=240 src=8.8.8.8 dst=95.24.100.12 sport=443 dport=50000 packets=4 bytes=240 [ASSURED] mark=0 zone=0 use=2
 ipv4     2 tcp      6 300 ESTABLISHED src=192.168.1.50 dst=192.168.1.1 sport=55555 dport=80 packets=10 bytes=1200 src=192.168.1.1 dst=192.168.1.50 sport=80 dport=55555 packets=10 bytes=4500 [ASSURED] mark=0 zone=0 use=2
 ipv4     2 tcp      6 300 ESTABLISHED src=95.24.100.12 dst=185.199.108.153 sport=41234 dport=443 packets=10 bytes=1500 src=185.199.108.153 dst=95.24.100.12 sport=443 dport=41234 packets=10 bytes=8500 [ASSURED] mark=134217728 zone=0 use=2
+ipv4     2 tcp      6 300 ESTABLISHED src=37.143.105.83 dst=95.85.224.159 sport=45120 dport=443 packets=12 bytes=20400 src=95.85.224.159 dst=37.143.105.83 sport=443 dport=45120 packets=10 bytes=60 [ASSURED] mark=0 zone=0 use=2
 CT
 
 ct_json="$(TACHYON_CONNTRACK_FILE="$WORK_DIR/nf_conntrack" ucode -L "$TACHYON_LIB" -e '
