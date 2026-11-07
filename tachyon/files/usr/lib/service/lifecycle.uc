@@ -1253,7 +1253,11 @@ function purge_legacy_steer_runtime() {
         command_success_from_args([ "nft", "delete", "table", "inet", "steer" ]);
 }
 
-function start_impl(planned_restart) {
+let planned_restart_active = false;
+
+function start_impl() {
+    let is_planned_restart = planned_restart_active;
+    planned_restart_active = false;
     fs.writefile("/var/run/tachyon/starting", as_string(time()));
     try { fs.unlink("/var/run/tachyon/section-fail-state.json"); } catch (e) {}
     purge_legacy_steer_runtime();
@@ -1261,7 +1265,7 @@ function start_impl(planned_restart) {
     // all tachyon temp files are created and deleted within seconds under normal operation.
     command_status("find /tmp -maxdepth 1 -name 'tachyon-*' -mmin +30 -delete 2>/dev/null; true");
 
-    if (!planned_restart && config_get(CONFIG_NAME + ".settings.shutdown_correctly") == "0") {
+    if (!is_planned_restart && config_get(CONFIG_NAME + ".settings.shutdown_correctly") == "0") {
         log_message("Previous shutdown was unclean; restoring dnsmasq to failsafe before start", "warn");
         dnsmasq_restore_fail_safe();
     }
@@ -1510,7 +1514,8 @@ function restart_runtime_for_reload() {
     if (status != 0)
         return status;
 
-    status = start_impl(true);
+    planned_restart_active = true;
+    status = start_impl();
     if (status != 0) {
         cleanup_failed_runtime();
         return status;
@@ -1959,7 +1964,8 @@ function restart() {
     if (status != 0)
         return status;
 
-    status = start_impl(true);
+    planned_restart_active = true;
+    status = start_impl();
     if (status != 0) {
         cleanup_failed_runtime();
         return status;
