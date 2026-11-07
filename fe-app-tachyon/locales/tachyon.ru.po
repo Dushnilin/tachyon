@@ -1,15 +1,15 @@
 # RU translations for TACHYON package.
 # Copyright (C) 2026 THE TACHYON COPYRIGHT HOLDER
 # This file is distributed under the same license as the TACHYON package.
-# Dushnilin, 2026.
+# lQwestl, 2026.
 #
 msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-07 14:04+0300\n"
-"PO-Revision-Date: 2026-11-07 14:04+0300\n"
-"Last-Translator: Dushnilin\n"
+"POT-Creation-Date: 2026-11-07 15:43+0300\n"
+"PO-Revision-Date: 2026-11-07 15:43+0300\n"
+"Last-Translator: lQwestl\n"
 "Language-Team: none\n"
 "Language: ru\n"
 "MIME-Version: 1.0\n"
@@ -4496,6 +4496,9 @@ msgstr "Интервал обновления списков Hosts"
 msgid "How combined latency is calculated across multiple URLs when selecting the best server. Note: background probe count scales with URL count (N servers × M URLs); if no server passes 100% of URLs, automatic partial-match Fallback is activated."
 msgstr "Способ расчёта итоговой задержки по нескольким URL при выборе лучшего сервера. Примечание: число фоновых проверок растёт пропорционально числу ссылок (N серверов × M ссылок); если ни один сервер не проходит 100% проверок, автоматически включается резервный режим частичного совпадения (Fallback)."
 
+msgid "How long sing-box retains DNS records in optimistic cache. Lower values keep cache.db compact and reduce stale records."
+msgstr ""
+
 msgid "How many hours of metrics to keep (default 24)."
 msgstr "Сколько часов хранить метрики (по умолчанию 24)."
 
@@ -6614,6 +6617,9 @@ msgstr "Операция запущена. Ожидание вывода лог�
 msgid "Operation timed out"
 msgstr "Время ожидания истекло"
 
+msgid "Optimistic DNS Cache Timeout"
+msgstr ""
+
 msgid "Optimize AWG MTU"
 msgstr "Оптимизировать MTU AWG"
 
@@ -6916,6 +6922,9 @@ msgstr "Периодически проверять текущий уровен�
 
 msgid "Periodically checks if the proxy is responding. Restarts Tachyon after consecutive failures."
 msgstr "Периодически проверяет, отвечает ли прокси. Перезапускает Tachyon после последовательных ошибок."
+
+msgid "Persist raw DNS query responses into cache.db. WARNING: This causes cache.db to rapidly grow and may exhaust storage on routers with ≤128 MB Flash. Keep disabled unless you have ample storage."
+msgstr ""
 
 msgid "Persistent Keepalive"
 msgstr "Постоянный Keepalive"
@@ -9232,6 +9241,9 @@ msgstr "Остановка..."
 
 msgid "Stopping…"
 msgstr "Остановка…"
+
+msgid "Store DNS Responses in Cache File"
+msgstr ""
 
 msgid "Store auto-detected domains in /etc instead of /tmp to survive reboots."
 msgstr "Хранить автоопределённые домены в /etc вместо /tmp для сохранения после перезагрузки."

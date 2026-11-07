@@ -6,6 +6,7 @@ let core_profile = require("tachyon_core.core_profile");
 let variant_state = require("tachyon_core.variant_state");
 let core_ip = require("core.ip");
 let uci_core = require("core.uci");
+let preflight = require("core.preflight");
 let runtime_constants = require("tachyon_core.constants");
 let runtime_country = require("tachyon_core.country");
 let runtime_dns = require("tachyon_core.dns");
@@ -955,10 +956,26 @@ function base_config(settings, service_address, runtime_context) {
     // run /usr/share/sing-box/cache.db, so this also matches what is deployed.
     let cache_path = option(settings, "cache_path", "/usr/share/tachyon-core/cache.db");
     if (turbo_cache && (cache_path == "" || cache_path == "/usr/share/tachyon-core/cache.db" ||
-                        cache_path == "/usr/share/sing-box/cache.db" ||
-                        cache_path == "/tmp/tachyon-core/cache.db" ||
-                        cache_path == "/tmp/sing-box/cache.db"))
+                        cache_path == "/usr/share/sing-box/cache.db"))
         cache_path = "/etc/tachyon-core/cache.db";
+
+    // Auto-fallback: if cache is on default Flash storage (/usr/share or /etc)
+    // but available overlay space is low (< 60 MB, typical on 128 MB flash routers),
+    // automatically route to tmpfs to prevent 100% overlay exhaustion and system crash.
+    let is_default_flash_cache = (cache_path == "/usr/share/tachyon-core/cache.db" ||
+                                  cache_path == "/usr/share/sing-box/cache.db" ||
+                                  cache_path == "/etc/tachyon-core/cache.db");
+    if (is_default_flash_cache) {
+        let storage_check = preflight.check_storage("/overlay");
+        if (!storage_check || !storage_check.ok || storage_check.available_kb == 0)
+            storage_check = preflight.check_storage("/");
+        if (storage_check && storage_check.available_kb > 0 && storage_check.available_kb < 60 * 1024) {
+            let free_mb = int(storage_check.available_kb / 1024);
+            generator_log("Available flash storage is low (" + free_mb + " MB < 60 MB): " +
+                "routing cache_file to RAM (/tmp/tachyon-core/cache.db) to prevent overlay exhaustion", "warn");
+            cache_path = "/tmp/tachyon-core/cache.db";
+        }
+    }
 
     // Say it out loud rather than degrading quietly: a deliberately volatile
     // cache is a legitimate choice, it just has a cost the user has to know.
@@ -1137,9 +1154,10 @@ for (let inbound in dns_config.inbounds)
         route_section.default_http_client = "ruleset-http";
 
     if (is_sb_1_14_plus) {
+        let optimistic_timeout = option(settings, "dns_optimistic_timeout", "6h");
         dns_section.optimistic = {
             enabled: true,
-            timeout: "3d"
+            timeout: optimistic_timeout
         };
     }
 
@@ -1148,10 +1166,13 @@ for (let inbound in dns_config.inbounds)
         path: cache_path,
         store_fakeip: true
     };
-    if (use_legacy_rdrc)
-        cache_file_section.store_rdrc = true;
-    else
-        cache_file_section.store_dns = true;
+    let store_dns = bool_option(settings, "dns_cache_store_disk", false);
+    if (store_dns) {
+        if (use_legacy_rdrc)
+            cache_file_section.store_rdrc = true;
+        else
+            cache_file_section.store_dns = true;
+    }
 
     if (is_sb_1_15_plus) {
         cache_file_section.buffer_size = option(settings, "cache_buffer_size", "16KB");

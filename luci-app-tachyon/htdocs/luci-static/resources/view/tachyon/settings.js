@@ -4218,6 +4218,35 @@ function createSettingsContent(section, capabilities) {
 
   o = section.taboption(
     "advanced",
+    form.Flag,
+    "dns_cache_store_disk",
+    _("Store DNS Responses in Cache File"),
+    _(
+      "Persist raw DNS query responses into cache.db. WARNING: This causes cache.db to rapidly grow and may exhaust storage on routers with ≤128 MB Flash. Keep disabled unless you have ample storage.",
+    ),
+  );
+  o.default = "0";
+  o.rmempty = false;
+
+  o = section.taboption(
+    "advanced",
+    form.ListValue,
+    "dns_optimistic_timeout",
+    _("Optimistic DNS Cache Timeout"),
+    _(
+      "How long sing-box retains DNS records in optimistic cache. Lower values keep cache.db compact and reduce stale records.",
+    ),
+  );
+  o.value("2h", "2 hours");
+  o.value("6h", "6 hours (Recommended)");
+  o.value("12h", "12 hours");
+  o.value("1d", "1 day");
+  o.value("3d", "3 days");
+  o.default = "6h";
+  o.rmempty = false;
+
+  o = section.taboption(
+    "advanced",
     form.ListValue,
     "log_level",
     _("Log Level"),
