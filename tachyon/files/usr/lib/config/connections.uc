@@ -4828,7 +4828,7 @@ function outbound_group_filter_spec(group_or_id, section) {
     let grp = type(group_or_id) == "object" ? group_or_id : outbound_group_section(group_or_id);
     if (grp == null)
         return null;
-    let inc_prefixes = child_effective_include_prefixes(grp, section, false);
+    let inc_prefixes = child_effective_include_prefixes(grp, section, true);
     let inc_countries = list_value(grp, "include_countries");
     let inc_outbounds = list_value(grp, "include_outbounds");
     let inc_regex = list_value(grp, "include_regex");
@@ -5968,15 +5968,15 @@ function probe_outbound_url(target_url, group_id, timeout_ms) {
                     let tname = names_map[t] || t;
                     let tc = countries_map[t] || "";
                     let tp = protocols_map[t] || "";
+                    if (length(gspec.include_prefixes || []) > 0) {
+                        let p_ok = false;
+                        for (let pfx in gspec.include_prefixes)
+                            if (lc(prefixes_map[t] || "") == lc(pfx) || index(lc(tname), lc(pfx)) == 0)
+                                p_ok = true;
+                        if (!p_ok) continue;
+                    }
                     if (gspec.mode == "include" || gspec.mode == "mixed") {
                         if (length(keys(inc_p)) > 0 && !inc_p[tp]) continue;
-                        if (length(gspec.include_prefixes || []) > 0) {
-                            let p_ok = false;
-                            for (let pfx in gspec.include_prefixes)
-                                if (lc(prefixes_map[t] || "") == lc(pfx) || index(lc(tname), lc(pfx)) == 0)
-                                    p_ok = true;
-                            if (!p_ok) continue;
-                        }
                         if (has_base_inc) {
                             let c_ok = has_inc_c && (inc_c[tc] == true);
                             let o_ok = has_inc_o && (inc_o[lc(trim(as_string(t)))] == true || inc_o[lc(trim(as_string(tname)))] == true);

@@ -83,6 +83,23 @@ let fixture = {
                 "[Clouds] 🇩🇪  Германия (MEGA)",
                 "🇩🇪 GERMANY XHTTP #8"
             ]
+        },
+        {
+            ".name": "grp_awg",
+            ".type": "outbound_group",
+            enabled: "1",
+            name: "AWG Group",
+            source_refs: [ "src_sub_1" ],
+            filter_mode: "disabled"
+        },
+        {
+            ".name": "grp_fptn",
+            ".type": "outbound_group",
+            enabled: "1",
+            name: "FPTN Group",
+            source_refs: [ "SoftPortal" ],
+            filter_mode: "exclude",
+            exclude_outbounds: [ "🇫🇮 FINLAND XHTTP #1" ]
         }
     ],
     balancer: [
@@ -104,6 +121,14 @@ let fixture = {
             name: "Priority",
             balancer_type: "priority",
             outbound_group_levels: [ "Germany", "src_sub_1", "SoftPortal", "test_grpc" ]
+        },
+        {
+            ".name": "PriorityTiers",
+            ".type": "balancer",
+            enabled: "1",
+            name: "PriorityTiers",
+            balancer_type: "priority",
+            outbound_group_levels: [ "grp_awg", "grp_fptn" ]
         }
     ],
     section: [
@@ -113,8 +138,8 @@ let fixture = {
             enabled: "1",
             action: "connection",
             outbound_source_refs: [ "src_sub_1", "SoftPortal", "test_grpc" ],
-            outbound_group_refs: [ "Germany" ],
-            balancer_refs: [ "Stability", "Priority" ]
+            outbound_group_refs: [ "Germany", "grp_awg", "grp_fptn" ],
+            balancer_refs: [ "Stability", "Priority", "PriorityTiers" ]
         }
     ]
 };
@@ -181,6 +206,17 @@ assert(prio_cached != null && length(prio_cached.levels) == 4,
 let lvl0_outbounds = prio_cached.levels[0].outbounds;
 assert(index(lvl0_outbounds, "cloud-de-mega") >= 0 && index(lvl0_outbounds, "fsoft-de-8") >= 0,
     "Priority level 0 (Germany) must include both 'cloud-de-mega' and 'fsoft-de-8', got: " + sprintf("%J", lvl0_outbounds));
+
+// 1c. Outbound groups with filter_mode='disabled' or 'exclude' must strictly scope by source_refs in Priority levels
+let prio_tiers = state.priorityGroups["Main-priority-PriorityTiers-out"];
+assert(prio_tiers != null && length(prio_tiers.levels) == 2,
+    "PriorityTiers must have 2 levels (grp_awg -> grp_fptn), got: " + sprintf("%J", prio_tiers));
+let tier0 = prio_tiers.levels[0].outbounds;
+assert(length(tier0) == 2 && index(tier0, "cloud-de-mega") >= 0 && index(tier0, "cloud-nl-1") >= 0,
+    "PriorityTiers level 0 (grp_awg with filter_mode=disabled and source_refs=[src_sub_1]) must only include src_sub_1 nodes, got: " + sprintf("%J", tier0));
+let tier1 = prio_tiers.levels[1].outbounds;
+assert(length(tier1) == 1 && tier1[0] == "fsoft-de-8",
+    "PriorityTiers level 1 (grp_fptn with filter_mode=exclude and source_refs=[SoftPortal]) must only include remaining SoftPortal node, got: " + sprintf("%J", tier1));
 
 // 2. Stability balancer must default to interrupt_exist_connections === false, while Main-out selector keeps true
 let stab_out = by_tag["Main-urltest-Stability-out"];

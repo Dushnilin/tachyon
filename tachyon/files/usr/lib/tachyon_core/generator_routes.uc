@@ -817,7 +817,9 @@ function filter_tags_by_group_spec(candidate_tags, spec, state) {
     let mode = as_string(spec.mode || "disabled");
     let all_tags = unique_string_array(candidate_tags);
     let hidden_tags = object_or_empty(state ? state.hiddenOutboundTags : null);
-    if (mode == "" || mode == "disabled") {
+    let inc_prefixes = array_or_empty(spec.include_prefixes);
+    let has_inc_prefix = length(inc_prefixes) > 0;
+    if ((mode == "" || mode == "disabled") && !has_inc_prefix) {
         if (length(keys(hidden_tags)) > 0) {
             let vis = [];
             for (let t in all_tags)
@@ -833,7 +835,6 @@ function filter_tags_by_group_spec(candidate_tags, spec, state) {
     let names = object_or_empty(metadata.names);
     let countries = country_metadata_for_method(as_string(spec.country_mode || "flag_emoji"), state || {});
 
-    let inc_prefixes = array_or_empty(spec.include_prefixes);
     let inc_countries = runtime_urltest.normalized_country_list(spec.include_countries);
     let inc_names = array_or_empty(spec.include_outbounds);
     let inc_regex = array_or_empty(spec.include_regex);
@@ -845,11 +846,10 @@ function filter_tags_by_group_spec(candidate_tags, spec, state) {
         length(array_or_empty(spec.include_ports)) > 0
     );
 
-    let has_inc_prefix = length(inc_prefixes) > 0;
     let has_inc_country = length(inc_countries) > 0;
     let has_inc_name_regex = length(inc_names) > 0 || length(inc_regex) > 0;
     let has_inc_base = has_inc_country || has_inc_name_regex;
-    let any_inc_category = has_inc_prefix || has_inc_base || inc_params;
+    let any_inc_category = has_inc_base || inc_params;
 
     if (!has_inc_name_regex && length(keys(hidden_tags)) > 0) {
         let vis = [];
@@ -886,9 +886,10 @@ function filter_tags_by_group_spec(candidate_tags, spec, state) {
         let p_count = seen_prefixed_type_counts[prefixed_with_type];
         let prefixed_with_type_indexed = p_count > 1 ? (prefixed_with_type + " (#" + p_count + ")") : prefixed_with_type;
 
+        if (has_inc_prefix && !tag_prefix_filter_matches(t, names, metadata, inc_prefixes))
+            continue;
+
         if ((mode == "include" || mode == "mixed") && any_inc_category) {
-            if (has_inc_prefix && !tag_prefix_filter_matches(t, names, metadata, inc_prefixes))
-                continue;
             if (has_inc_base) {
                 let base_matches = (has_inc_country && tag_country_filter_matches(t, countries, inc_countries)) ||
                     (has_inc_name_regex && tag_name_filter_matches(t, names, inc_names, inc_regex_set, metadata, name_with_type_indexed, prefixed_with_type_indexed, count == 1, p_count == 1));
