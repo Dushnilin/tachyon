@@ -21,15 +21,80 @@ export function clearExpandedCheckCards() {
   collapsedByUserCheckCards.clear();
 }
 
+export function expandAllCheckCards(codes: string[]) {
+  collapsedByUserCheckCards.clear();
+  codes.forEach((code) => expandedCheckCards.add(code));
+}
+
+export function collapseHealthyCheckCards(
+  checks: IDiagnosticsChecksStoreItem[],
+) {
+  collapsedByUserCheckCards.clear();
+  expandedCheckCards.clear();
+  checks.forEach((check) => {
+    if (check.state === 'error' && check.items.length > 0) {
+      expandedCheckCards.add(check.code);
+    }
+  });
+}
+
+export function areAllCheckCardsExpanded(
+  checks: IDiagnosticsChecksStoreItem[],
+): boolean {
+  const collapsible = checks.filter(
+    (c) => c.items.length > 0 && c.state !== 'loading' && c.state !== 'skipped',
+  );
+  if (!collapsible.length) {
+    return false;
+  }
+  return collapsible.every((c) => expandedCheckCards.has(c.code));
+}
+
 function shouldAutoExpandCheckCard(props: IRenderCheckSectionProps): boolean {
   if (!props.items.length || collapsedByUserCheckCards.has(props.code)) {
     return false;
   }
-  if (props.state === 'error' || props.state === 'warning') {
-    return true;
+  return props.state === 'error';
+}
+
+function getItemSeverityRank(
+  state: IRenderCheckSectionProps['items'][number]['state'],
+): number {
+  if (state === 'error') return 0;
+  if (state === 'warning') return 1;
+  return 2;
+}
+
+function renderCheckCountsBadge(
+  props: IRenderCheckSectionProps,
+): HTMLElement | null {
+  if (
+    !props.items.length ||
+    props.state === 'loading' ||
+    props.state === 'skipped'
+  ) {
+    return null;
   }
-  return props.items.some(
-    (item) => item.state === 'error' || item.state === 'warning',
+  const total = props.items.length;
+  const okCount = props.items.filter((i) => i.state === 'success').length;
+  const warnCount = props.items.filter((i) => i.state === 'warning').length;
+  const errCount = props.items.filter((i) => i.state === 'error').length;
+
+  const parts: string[] = [];
+  if (errCount > 0) {
+    parts.push(`${tr('Ошибок', 'Err')}: ${errCount}`);
+  }
+  if (warnCount > 0) {
+    parts.push(`${tr('Пред.', 'Warn')}: ${warnCount}`);
+  }
+  parts.push(`${okCount}/${total} OK`);
+
+  return E(
+    'span',
+    {
+      class: `tachyon_diagnostic_alert__counts-badge tachyon_diagnostic_alert__counts-badge--${props.state}`,
+    },
+    parts.join(' · '),
   );
 }
 
@@ -43,7 +108,16 @@ function renderCheckSummary(
 
   const isExpanded = expandedCheckCards.has(code);
 
-  const renderedItems = items.map((item) => {
+  const sortedItems = items
+    .map((item, idx) => ({ item, idx }))
+    .sort((a, b) => {
+      const rankDiff =
+        getItemSeverityRank(a.item.state) - getItemSeverityRank(b.item.state);
+      return rankDiff !== 0 ? rankDiff : a.idx - b.idx;
+    })
+    .map((entry) => entry.item);
+
+  const renderedItems = sortedItems.map((item) => {
     function getIcon() {
       const iconWrap = E('span', {
         class: 'tachyon_diagnostic_alert__summary__item__icon',
@@ -104,6 +178,12 @@ function attachCardExpandHandler(
 
   const contentEl = card.querySelector('.tachyon_diagnostic_alert__content');
   if (contentEl) {
+    const titleEl = contentEl.querySelector('.tachyon_diagnostic_alert__title');
+    const badgeEl = renderCheckCountsBadge(props);
+    if (titleEl && badgeEl) {
+      titleEl.appendChild(badgeEl);
+    }
+
     const toggleHint = E(
       'span',
       { class: 'tachyon_diagnostic_alert__toggle-hint' },

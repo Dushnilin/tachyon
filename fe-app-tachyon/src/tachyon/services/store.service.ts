@@ -289,6 +289,23 @@ export interface StoreType {
     torrserver_direct_active?: number;
     openwrt_version: string;
     device_model: string;
+    kernel_version?: string;
+    cpu_arch?: string;
+    uptime_seconds?: number;
+    load_avg?: string;
+    mem_total_mb?: number;
+    mem_used_mb?: number;
+    mem_free_mb?: number;
+    mem_used_pct?: number;
+    conntrack_count?: number;
+    conntrack_max?: number;
+    dns_type?: string;
+    fakeip_enabled?: number;
+    inbound_mode?: string;
+    active_sections_count?: number;
+    total_sections_count?: number;
+    quarantined_sections_count?: number;
+    deferred_sections_count?: number;
   };
   updatesActions: {
     tachyonCheck: { loading: boolean };

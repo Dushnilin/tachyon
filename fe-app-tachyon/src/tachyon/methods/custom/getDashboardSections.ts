@@ -578,7 +578,7 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
           awgCfgs.push(entry);
         });
         const confText = (src.amnezia_conf_text || '').trim();
-        if (confText && awgCfgs.length === 0) {
+        if (confText) {
           const body = extractConfBody(confText);
           if (!body || !seenBodies.has(body)) {
             if (body) seenBodies.add(body);
@@ -592,8 +592,18 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
           'AmneziaWG'
         ).trim();
         if (awgCfgs.length) {
-          awgCfgs.forEach((c) => {
+          awgCfgs.forEach((c, idx) => {
             extraAmneziaConfigs.push(c);
+            const trimmedC = String(c || '').trim();
+            if (trimmedC.startsWith('vpn://')) {
+              if (next.action !== 'awg') {
+                const withFrag = trimmedC.includes('#')
+                  ? trimmedC
+                  : `${trimmedC}#${encodeURIComponent(awgCfgs.length > 1 ? `${aname} (${idx + 1})` : aname)}`;
+                pushSourceLink(src, withFrag);
+              }
+              return;
+            }
             let cname = aname;
             try {
               const parsed = JSON.parse(c) as { name?: string };
@@ -604,7 +614,11 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
               // Raw .conf text uses aname
             }
             if (next.action !== 'awg') {
-              pushSourceLink(src, `wireguard://${src['.name']}#${cname}`);
+              const hostPart =
+                awgCfgs.length > 1
+                  ? `${src['.name']}-${idx + 1}`
+                  : src['.name'];
+              pushSourceLink(src, `wireguard://${hostPart}#${cname}`);
             }
           });
         } else if (

@@ -847,18 +847,24 @@ function check_nft() {
 function nft_chain_counter_status(chain) {
     let output = command_output_from_args([ "nft", "list", "chain", "inet", NFT_TABLE_NAME, chain ]);
     if (output == null || output == "")
-        return [ 0, 0 ];
+        return [ 0, 0, 0, 0 ];
     let rules_exist = 0;
     let counters = 0;
+    let rule_count = 0;
+    let total_packets = 0;
     for (let line in split(output, "\n")) {
         line = as_string(line);
         if (index(line, "counter") < 0)
             continue;
         rules_exist = 1;
+        rule_count++;
         if (index(line, "packets 0 bytes 0") < 0)
             counters = 1;
+        let m = match(line, /packets[ \t]+([0-9]+)/);
+        if (m && m[1])
+            total_packets += int(m[1] || 0);
     }
-    return [ rules_exist, counters ];
+    return [ rules_exist, counters, rule_count, total_packets ];
 }
 
 // Tachyon installs marking rules of its own outside TachyonTable: two rules in
@@ -931,10 +937,16 @@ function check_nft_rules() {
     let table_exist = 0;
     let rules_mangle_exist = 0;
     let rules_mangle_counters = 0;
+    let mangle_rules_count = 0;
+    let mangle_packets = 0;
     let rules_mangle_output_exist = 0;
     let rules_mangle_output_counters = 0;
+    let mangle_output_rules_count = 0;
+    let mangle_output_packets = 0;
     let rules_proxy_exist = 0;
     let rules_proxy_counters = 0;
+    let proxy_rules_count = 0;
+    let proxy_packets = 0;
     let rules_other_mark_exist = 0;
 
     if (command_success_from_args([ "nft", "list", "table", "inet", NFT_TABLE_NAME ])) {
@@ -943,16 +955,22 @@ function check_nft_rules() {
             let status = nft_chain_counter_status("mangle");
             rules_mangle_exist = status[0];
             rules_mangle_counters = (status[1] || rules_mangle_exist) ? 1 : 0;
+            mangle_rules_count = status[2];
+            mangle_packets = status[3];
         }
         if (command_success_from_args([ "nft", "list", "chain", "inet", NFT_TABLE_NAME, "mangle_output" ])) {
             let status = nft_chain_counter_status("mangle_output");
             rules_mangle_output_exist = status[0];
             rules_mangle_output_counters = (status[1] || rules_mangle_output_exist) ? 1 : 0;
+            mangle_output_rules_count = status[2];
+            mangle_output_packets = status[3];
         }
         if (command_success_from_args([ "nft", "list", "chain", "inet", NFT_TABLE_NAME, "proxy" ])) {
             let status = nft_chain_counter_status("proxy");
             rules_proxy_exist = status[0];
             rules_proxy_counters = (status[1] || rules_proxy_exist) ? 1 : 0;
+            proxy_rules_count = status[2];
+            proxy_packets = status[3];
         }
     }
 
@@ -979,12 +997,19 @@ function check_nft_rules() {
 
     write_json({
         table_exist,
+        table_name: "inet " + NFT_TABLE_NAME,
         rules_mangle_exist,
         rules_mangle_counters,
+        mangle_rules_count,
+        mangle_packets,
         rules_mangle_output_exist,
         rules_mangle_output_counters,
+        mangle_output_rules_count,
+        mangle_output_packets,
         rules_proxy_exist,
         rules_proxy_counters,
+        proxy_rules_count,
+        proxy_packets,
         rules_other_mark_exist,
         engine: active_engine_name()
     });

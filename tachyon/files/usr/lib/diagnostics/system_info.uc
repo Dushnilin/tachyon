@@ -566,6 +566,99 @@ function is_fptn_supported() {
     return false;
 }
 
+function detect_primary_arch() {
+    let candidates = words(get_system_arch_candidates());
+    return length(candidates) > 0 ? as_string(candidates[0]) : "unknown";
+}
+
+function collect_system_telemetry() {
+    let kernel_version = first_line_value("/proc/sys/kernel/osrelease", "unknown");
+    let uptime_raw = first_line_value("/proc/uptime", "");
+    let uptime_parts = words(uptime_raw);
+    let uptime_seconds = length(uptime_parts) > 0 ? int(split(as_string(uptime_parts[0]), ".")[0] || 0) : 0;
+
+    let load_raw = first_line_value("/proc/loadavg", "");
+    let load_parts = words(load_raw);
+    let load_avg = length(load_parts) >= 3
+        ? (as_string(load_parts[0]) + " / " + as_string(load_parts[1]) + " / " + as_string(load_parts[2]))
+        : "";
+
+    let mem_total_kb = 0;
+    let mem_avail_kb = 0;
+    let mem_free_kb = 0;
+    let mem_buffers_kb = 0;
+    let mem_cached_kb = 0;
+    let meminfo = fs.readfile("/proc/meminfo");
+    if (meminfo != null) {
+        for (let line in split(as_string(meminfo), "\n")) {
+            let parts = words(line);
+            if (length(parts) < 2)
+                continue;
+            let k = as_string(parts[0]);
+            let v = int(parts[1] || 0);
+            if (k == "MemTotal:")
+                mem_total_kb = v;
+            else if (k == "MemAvailable:")
+                mem_avail_kb = v;
+            else if (k == "MemFree:")
+                mem_free_kb = v;
+            else if (k == "Buffers:")
+                mem_buffers_kb = v;
+            else if (k == "Cached:")
+                mem_cached_kb = v;
+        }
+    }
+    if (mem_avail_kb <= 0 && mem_total_kb > 0)
+        mem_avail_kb = mem_free_kb + mem_buffers_kb + mem_cached_kb;
+    let mem_used_kb = mem_total_kb > mem_avail_kb ? (mem_total_kb - mem_avail_kb) : 0;
+    let mem_used_pct = mem_total_kb > 0 ? int((mem_used_kb * 100) / mem_total_kb) : 0;
+
+    let conntrack_count = int(first_line_value("/proc/sys/net/netfilter/nf_conntrack_count", "0") || 0);
+    let conntrack_max = int(first_line_value("/proc/sys/net/netfilter/nf_conntrack_max", "0") || 0);
+
+    let cfg = settings();
+    let dns_type = option(cfg, "dns_type", "doh");
+    let fakeip_enabled = bool_option(cfg, "fakeip", true) ? 1 : 0;
+    let inbound_mode = option(cfg, "inbound_mode", "tproxy");
+
+    let sections_total_count = 0;
+    let sections_enabled_count = 0;
+    let sec_objs = uci_core.section_objects(CONFIG_NAME, "section");
+    for (let s in sec_objs) {
+        sections_total_count++;
+        if (as_string(s.enabled) != "0" && as_string(s.enabled) != "false")
+            sections_enabled_count++;
+    }
+
+    let q_path = getenv("TACHYON_QUARANTINED_SECTIONS_FILE") || "/var/run/tachyon/quarantined-sections.state";
+    let d_path = getenv("TACHYON_SUBSCRIPTION_DEFERRED_SECTIONS_FILE") || "/var/run/tachyon/subscription-deferred-sections.state";
+    let quarantined_sections_count = length(words(as_string(fs.readfile(q_path) || "")));
+    let deferred_sections_count = length(words(as_string(fs.readfile(d_path) || "")));
+
+    return {
+        kernel_version,
+        uptime_seconds,
+        load_avg,
+        mem_total_kb,
+        mem_available_kb: mem_avail_kb,
+        mem_total_mb: int((mem_total_kb + 512) / 1024),
+        mem_used_mb: int((mem_used_kb + 512) / 1024),
+        mem_free_mb: int((mem_avail_kb + 512) / 1024),
+        mem_used_pct,
+        conntrack_count,
+        conntrack_max,
+        dns_type,
+        fakeip_enabled,
+        inbound_mode,
+        sections_total_count,
+        sections_enabled_count,
+        total_sections_count: sections_total_count,
+        active_sections_count: sections_enabled_count,
+        quarantined_sections_count,
+        deferred_sections_count
+    };
+}
+
 function build_system_info() {
     let tachyon_latest_version = first_line_value("/tmp/tachyon.latest-version.cache", "unknown");
     let luci_app_version = get_luci_app_version();
@@ -734,12 +827,22 @@ function build_system_info() {
         })(),
         openwrt_version: openwrt_release(),
         device_model,
+        cpu_arch: detect_primary_arch(),
+        ...collect_system_telemetry(),
         generated_at: int(clock()[0])
     };
 }
 
 function get_system_info() {
     if (system_info_cache_is_valid()) {
+        let cached = read_json_file(SYSTEM_INFO_CACHE_FILE);
+        if (type(cached) == "object") {
+            let live = collect_system_telemetry();
+            for (let k in live)
+                cached[k] = live[k];
+            print(sprintf("%J\n", cached));
+            return 0;
+        }
         print(as_string(fs.readfile(SYSTEM_INFO_CACHE_FILE)));
         return 0;
     }
@@ -959,6 +1062,7 @@ function check_sing_box() {
     let sing_box_autostart_disabled = 0;
     let sing_box_process_running = 0;
     let sing_box_ports_listening = 0;
+    let sing_box_version = "";
 
     if (command_exists("tachyon-core") || command_exists("sing-box")) {
         sing_box_installed = 1;
@@ -979,6 +1083,7 @@ function check_sing_box() {
             sing_box_cert_pin = flags.cert_pin;
             sing_box_tachyon_core = flags.tachyon_core;
         }
+        sing_box_version = version;
 
         if (sing_box_tachyon_core == 1) {
             sing_box_version_ok = 1;
@@ -1010,7 +1115,11 @@ function check_sing_box() {
         sing_box_service_exist,
         sing_box_autostart_disabled,
         sing_box_process_running,
-        sing_box_ports_listening
+        sing_box_ports_listening,
+        sing_box_version,
+        sing_box_bin_path: command_exists("tachyon-core") ? "/usr/bin/tachyon-core" : "/usr/bin/sing-box",
+        sing_box_init_path: "/etc/init.d/tachyon-core",
+        sing_box_listen_ports: "53, 1602, 1603, 9090"
     });
     return 0;
 }

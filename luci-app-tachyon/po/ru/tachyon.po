@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-08 00:49+0300\n"
-"PO-Revision-Date: 2026-11-08 00:49+0300\n"
+"POT-Creation-Date: 2026-11-08 02:56+0300\n"
+"PO-Revision-Date: 2026-11-08 02:56+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -325,6 +325,9 @@ msgstr "Активно (DPI)"
 
 msgid "Active (Direct)"
 msgstr "Активно (Напрямую)"
+
+msgid "Active (TProxy :1602)"
+msgstr "Активны (TProxy :1602)"
 
 msgid "Active Bootstrap DNS"
 msgstr "Активный Bootstrap DNS"
@@ -1124,6 +1127,15 @@ msgstr "Автовыбор самого быстрого узла уровня"
 msgid "Automatically update remote hosts lists on schedule"
 msgstr "Автоматически обновлять удалённые списки Hosts по расписанию"
 
+msgid "Autostart: off"
+msgstr "Автостарт: выкл"
+
+msgid "Autostart: on"
+msgstr "Автостарт: вкл"
+
+msgid "Avail"
+msgstr "Доступно"
+
 msgid "Available"
 msgstr "Доступно"
 
@@ -1622,14 +1634,14 @@ msgstr "Таймаут проверки, после которого серве�
 msgid "Check update"
 msgstr "Проверить обновление"
 
+msgid "Checking"
+msgstr "Проверяется"
+
 msgid "Checking Connection..."
 msgstr "Проверка соединения..."
 
 msgid "Checking for updates..."
 msgstr "Проверка обновлений..."
-
-msgid "Checking subsystems, please wait..."
-msgstr "Проверка подсистем, пожалуйста подождите..."
 
 msgid "Checking transfer code..."
 msgstr "Проверка кода переноса..."
@@ -1708,6 +1720,9 @@ msgstr "Шифр"
 
 msgid "Circular condition reference detected: %s"
 msgstr "Обнаружена циклическая ссылка в условиях: %s"
+
+msgid "Clean"
+msgstr "Чисто"
 
 msgid "Clean Comments"
 msgstr "Очистить комментарии"
@@ -1900,6 +1915,9 @@ msgstr "Тип кода"
 
 msgid "Collapse menu to icons"
 msgstr "Свернуть меню в значки"
+
+msgid "Collapse non-errors"
+msgstr "Свернуть без ошибок"
 
 msgid "Collapse top toolbar"
 msgstr "Свернуть панель инструментов"
@@ -2186,6 +2204,9 @@ msgstr "Копировать лог"
 msgid "Copy proxy link"
 msgstr "Скопировать ссылку прокси"
 
+msgid "Copy report"
+msgstr "Скопировать отчёт"
+
 msgid "Copy to Clipboard"
 msgstr "Скопировать в буфер"
 
@@ -2404,6 +2425,9 @@ msgstr "DNS"
 
 msgid "DNS & Games / Direct"
 msgstr "DNS и Игры / РФ"
+
+msgid "DNS & Intercept"
+msgstr "DNS и перехват"
 
 msgid "DNS Auto-Tune completed! Optimal stack selected."
 msgstr "Автоподбор DNS завершён! Оптимальная связка выбрана."
@@ -2825,8 +2849,8 @@ msgstr "Не удалось завершить диагностическую п
 msgid "Diagnostics"
 msgstr "Диагностика"
 
-msgid "Diagnostics in progress"
-msgstr "Выполняется диагностика"
+msgid "Diagnostics finished with warnings"
+msgstr "Диагностика завершена с предупреждениями"
 
 msgid "Diff"
 msgstr "Сравнить"
@@ -3428,6 +3452,9 @@ msgstr "Введите URL подписки"
 msgid "Enter valid domain names, one per line."
 msgstr "Введите корректные домены, по одному на строку."
 
+msgid "Err"
+msgstr "Ошибок"
+
 msgid "Error"
 msgstr "Ошибка"
 
@@ -3554,6 +3581,9 @@ msgstr "Исключенные из Smart Detect домены"
 msgid "Excluded servers"
 msgstr "Исключённые серверы"
 
+msgid "Expand all"
+msgstr "Развернуть все"
+
 msgid "Expand detected subdomains to root domain"
 msgstr "Расширять обнаруженные поддомены до корневого домена"
 
@@ -3598,6 +3628,9 @@ msgstr "Внешний (WAN)"
 
 msgid "External NFQUEUE rules overlap with Tachyon"
 msgstr "Внешние правила NFQUEUE перекрываются с Tachyon"
+
+msgid "External fwmark"
+msgstr "Внешний fwmark"
 
 msgid "External nfqws config files bypass Tachyon queue management and explicit validation."
 msgstr "Внешние файлы конфигурации nfqws обходят управление очередями Tachyon и явную проверку."
@@ -4844,6 +4877,9 @@ msgstr "Доступен в группе (все источники)"
 msgid "Includes TLS Certificate Pinning (pcs / certificate_sha256), XHTTP, and AWG 3.x"
 msgstr "Включает привязку TLS-сертификатов (pcs / certificate_sha256), XHTTP и AmneziaWG 3.x"
 
+msgid "Incompatible"
+msgstr "Несовместима"
+
 msgid "Independent DoH/TLS probe"
 msgstr "Независимая проверка DoH/TLS"
 
@@ -4894,6 +4930,9 @@ msgstr "Полезный груз init (I1)"
 
 msgid "Init timeout (Itime)"
 msgstr "Таймаут init (Itime)"
+
+msgid "Init.d conflict"
+msgstr "Конфликт init.d"
 
 msgid "Initializing benchmark in sandbox..."
 msgstr "Инициализация тестирования в песочнице..."
@@ -5606,6 +5645,9 @@ msgstr "Live-проверка"
 msgid "Live filter preview"
 msgstr "Предпросмотр фильтра в реальном времени"
 
+msgid "Load & Uptime"
+msgstr "Нагрузка и аптайм"
+
 msgid "Load .conf"
 msgstr "Загрузить .conf"
 
@@ -5765,6 +5807,9 @@ msgstr "Управление жизненным циклом службы Tachyo
 msgid "Managed Daemons Status"
 msgstr "Статус управляемых демонов"
 
+msgid "Managed by Tachyon"
+msgstr "Управляется Tachyon"
+
 msgid "Manual"
 msgstr "Вручную"
 
@@ -5876,6 +5921,9 @@ msgstr "Медиана; успешные запросы: %s / %s. Нажмите
 msgid "Member Conditions"
 msgstr "Входящие условия"
 
+msgid "Memory (RAM)"
+msgstr "Память (RAM)"
+
 msgid "Memory Limit (MB)"
 msgstr "Лимит памяти (МБ)"
 
@@ -5935,6 +5983,12 @@ msgstr "Минимальная разница пинга в мс для пере
 
 msgid "Minimum size of junk packets"
 msgstr "Минимальный размер мусорных пакетов"
+
+msgid "Misconfigured"
+msgstr "Требует настройки"
+
+msgid "Missing"
+msgstr "Отсутствует"
 
 msgid "Mixed Proxy Password"
 msgstr "Пароль смешанного прокси"
@@ -6173,6 +6227,9 @@ msgstr "DHCP-клиенты не обнаружены"
 msgid "No DNS resolvers recorded"
 msgstr "DNS-резолверы не зафиксированы"
 
+msgid "No FakeIP"
+msgstr "Без FakeIP"
+
 msgid "No Filter (All nodes from selected sources)"
 msgstr "Без фильтра (все серверы из выбранных источников)"
 
@@ -6386,11 +6443,17 @@ msgstr "Не подключено"
 msgid "Not detected"
 msgstr "Не обнаружено"
 
+msgid "Not found"
+msgstr "Не найден"
+
 msgid "Not implement yet"
 msgstr "Ещё не реализовано"
 
 msgid "Not installed"
 msgstr "Не установлено"
+
+msgid "Not listening"
+msgstr "Не слушает"
 
 msgid "Not public"
 msgstr "Не публичный"
@@ -6854,6 +6917,9 @@ msgstr "Обработанные записи:"
 msgid "Partial presence match — other AND conditions not supplied"
 msgstr "Частичное вхождение — остальные операнды И (AND) не указаны"
 
+msgid "Passed"
+msgstr "Успешно"
+
 msgid "Passive Circuit Breaker (Early-Abort Quarantine)"
 msgstr "Пассивный предохранитель (карантин при раннем обрыве)"
 
@@ -7048,6 +7114,9 @@ msgstr "Выберите подходящую секцию правил, что�
 
 msgid "Please specify strategy name and arguments"
 msgstr "Пожалуйста, укажите имя стратегии и аргументы"
+
+msgid "Please wait..."
+msgstr "Пожалуйста, подождите..."
 
 msgid "Plus"
 msgstr "Plus"
@@ -7564,6 +7633,9 @@ msgstr "Повторить проверку утечек"
 
 msgid "Re-run Trace"
 msgstr "Повторить трассировку"
+
+msgid "Re-run diagnostics"
+msgstr "Перезапустить диагностику"
 
 msgid "Re-test"
 msgstr "Замерить"
@@ -8201,6 +8273,9 @@ msgstr "Выполняется тестирование..."
 msgid "Running diagnostics…"
 msgstr "Выполняется диагностика…"
 
+msgid "Running subsystem diagnostics"
+msgstr "Выполняется диагностика подсистем"
+
 msgid "Russia (ru)"
 msgstr "Россия (ru)"
 
@@ -8410,6 +8485,9 @@ msgstr "Секция для регистрации Cloudflare WARP API. Если
 
 msgid "Sections"
 msgstr "Секции"
+
+msgid "Sections & Sessions"
+msgstr "Секции и сессии"
 
 msgid "Sections merged into one flat URLTest group: their rules keep matching traffic, but all their servers are selected together by one URLTest. DPI, marker and route-only sections cannot be members."
 msgstr "Секции, объединённые в одну плоскую группу URLTest: их правила продолжают матчить трафик, но все их серверы выбираются одним общим URLTest. Секции DPI, маркеры и секции, управляющие только маршрутизацией, не могут быть участниками."
@@ -9410,6 +9488,9 @@ msgstr "Подписки обновлены"
 msgid "Subscriptions, one-time donations and exclusives"
 msgstr "Подписки, разовые донаты и эксклюзивный контент"
 
+msgid "Subsystem errors detected"
+msgstr "Обнаружены ошибки в подсистемах"
+
 msgid "Success"
 msgstr "Успех"
 
@@ -9478,6 +9559,9 @@ msgstr "Система и бэкап"
 
 msgid "System & Services"
 msgstr "Система и сервисы"
+
+msgid "System & Subsystem Diagnostics"
+msgstr "Диагностика состояния и подсистем"
 
 msgid "System FDs allocated:"
 msgstr "Выделено системных FD:"
@@ -10967,6 +11051,9 @@ msgstr "Ожидание менеджера пакетов"
 msgid "Waiting for router services to restart..."
 msgstr "Ожидание перезапуска служб роутера..."
 
+msgid "Warn"
+msgstr "Пред."
+
 msgid "Warning: current filter excludes all servers!"
 msgstr "Внимание: текущий фильтр исключает все серверы!"
 
@@ -10981,6 +11068,12 @@ msgstr "Watchdog проверяет каждую Connection-секцию; есл
 
 msgid "Watchdog recoveries:"
 msgstr "Восстановлений watchdog:"
+
+msgid "Watchdog: active"
+msgstr "Watchdog: активен"
+
+msgid "Watchdog: off"
+msgstr "Watchdog: выкл"
 
 msgid "WebRTC Leak Protection"
 msgstr "Защита от утечек WebRTC"
@@ -11207,6 +11300,12 @@ msgstr "соединений"
 msgid "conns"
 msgstr "соед."
 
+msgid "d"
+msgstr "д"
+
+msgid "deferred"
+msgstr "отложено"
+
 msgid "detour must be a non-empty string"
 msgstr "detour должен быть непустой строкой"
 
@@ -11333,6 +11432,9 @@ msgstr "endhost-1 (за 1 байт до конца имени хоста)"
 msgid "endpoints OK"
 msgstr "эндпоинтов доступно"
 
+msgid "entries"
+msgstr "записей"
+
 msgid "extended"
 msgstr "расширенная"
 
@@ -11354,6 +11456,9 @@ msgstr "fake_split (фейк + нарезка)"
 msgid "gRPC service"
 msgstr "Сервис gRPC"
 
+msgid "h"
+msgstr "ч"
+
 msgid "host+1 (1 byte into hostname)"
 msgstr "host+1 (1-й байт имени хоста)"
 
@@ -11365,6 +11470,9 @@ msgstr "недоступно"
 
 msgid "lx"
 msgstr "lx"
+
+msgid "m"
+msgstr "м"
 
 msgid "midsld (Middle of SLD domain)"
 msgstr "midsld (середина домена второго уровня)"
@@ -11402,9 +11510,6 @@ msgstr "нет устройств"
 msgid "not installed"
 msgstr "не установлен"
 
-msgid "of"
-msgstr "из"
-
 msgid "online"
 msgstr "в сети"
 
@@ -11420,14 +11525,23 @@ msgstr ""
 msgid "padencap (max.ru + exact-length TLS Padding)"
 msgstr "padencap (max.ru + TLS Padding 1:1 по длине)"
 
+msgid "pkts"
+msgstr "пакетов"
+
 msgid "pre-release"
 msgstr "пре-релиз"
+
+msgid "quarantine"
+msgstr "карантин"
 
 msgid "rndsni (Random same-length ASCII SNI)"
 msgstr ""
 
 msgid "rndsni (random same-length SNI)"
 msgstr "rndsni (случайный SNI той же длины)"
+
+msgid "rules"
+msgstr "правил"
 
 msgid "s"
 msgstr "с"
@@ -11464,6 +11578,9 @@ msgstr "серв."
 
 msgid "stability (3x)"
 msgstr "стабильность (3x)"
+
+msgid "stopped"
+msgstr "остановлен"
 
 msgid "strategy to section configured for"
 msgstr "стратегия настроена для секции с действием"
@@ -11701,6 +11818,24 @@ msgstr "🇱🇻 Латвия (lv)"
 
 msgid "🇵🇱 Poland (pl)"
 msgstr "🇵🇱 Польша (pl)"
+
+msgid "Checking subsystems, please wait..."
+msgstr "Проверка подсистем, пожалуйста подождите..."
+
+msgid "Diagnostics in progress"
+msgstr "Выполняется диагностика"
+
+msgid "Hide cards"
+msgstr "Скрыть карточки"
+
+msgid "Show cards"
+msgstr "Показать карточки"
+
+msgid "of"
+msgstr "из"
+
+msgid "Collapse healthy"
+msgstr "Свернуть исправные"
 
 msgid "Order of failover strictly from connections and servers added to this section. Top item is primary (Tier 1), next is backup (Tier 2), etc."
 msgstr "Порядок резервирования строго из подключений и серверов, добавленных в эту секцию. Первый элемент — основной (ступень 1), следующий — резервный (ступень 2) и т.д."
@@ -13414,9 +13549,6 @@ msgstr "Проверка доступности сервисов"
 
 msgid "Total Targets"
 msgstr "Всего целей"
-
-msgid "Passed"
-msgstr "Успешно"
 
 msgid "Failed"
 msgstr "Ошибки"

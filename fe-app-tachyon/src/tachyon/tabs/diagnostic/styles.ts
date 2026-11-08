@@ -22,10 +22,9 @@ export const styles = `
 }
 
 .tachyon_diagnostic-page {
-    display: grid;
-    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+    display: flex;
+    flex-direction: column;
     gap: 16px;
-    align-items: start;
 }
 
 .tachyon_diagnostic-page__left-bar {
@@ -45,8 +44,6 @@ export const styles = `
     justify-content: space-between;
     gap: 14px;
     flex-wrap: wrap;
-    padding-bottom: 14px;
-    border-bottom: 1px solid var(--tachyon-border-subtle, rgba(148, 163, 184, 0.16));
 }
 
 .tachyon_diagnostic-page__left-bar__header-titles {
@@ -79,7 +76,7 @@ export const styles = `
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
     gap: 10px;
-    align-items: stretch;
+    align-items: start;
 }
 
 .tachyon_diagnostic-summary-banner {
@@ -146,6 +143,13 @@ export const styles = `
     line-height: 1.35;
 }
 
+.tachyon_diagnostic-summary-banner__actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
 .tachyon_diagnostic-summary-banner__toggle {
     font-size: 11.5px;
     font-weight: 600;
@@ -172,9 +176,10 @@ export const styles = `
 }
 
 .tachyon_diagnostic-page__right-bar__actions {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 16px;
+    align-items: stretch;
 }
 
 .tachyon_diagnostic-action-group {
@@ -295,6 +300,15 @@ export const styles = `
     word-break: break-word;
 }
 
+.tachyon_diagnostic-page__right-bar__system-info__row__sub {
+    font-size: 11px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    color: var(--tachyon-text-muted, #94a3b8);
+    line-height: 1.3;
+    word-break: break-word;
+}
+
 .tachyon_diagnostic-page__right-bar__system-info__row__tag {
     display: none;
 }
@@ -330,7 +344,7 @@ export const styles = `
 /* Wiki / Troubleshooting & Support Bento Card */
 .tachyon_diagnostic-page__right-bar__wiki {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 10px;
     padding: 16px 18px;
     border-radius: var(--tachyon-radius-card, 14px);
@@ -373,7 +387,6 @@ export const styles = `
 
 .tachyon_diagnostic-page__right-bar__wiki > .tachyon_diagnostic-wiki-btn--support,
 .tachyon_diagnostic-page__right-bar__wiki > button:last-child {
-    grid-column: 1 / -1;
     border-color: var(--tachyon-border-subtle, rgba(148, 163, 184, 0.24)) !important;
     background: var(--tachyon-bg-surface-alt, rgba(148, 163, 184, 0.08)) !important;
     color: var(--tachyon-text-main, inherit) !important;
@@ -470,11 +483,43 @@ export const styles = `
 }
 
 .tachyon_diagnostic_alert__title {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
     font-size: 13.5px;
     font-weight: 600;
     color: var(--tachyon-text-main, inherit);
     line-height: 1.25;
+}
+
+.tachyon_diagnostic_alert__counts-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 7px;
+    border-radius: 5px;
+    font-family: var(--tachyon-font-mono, monospace);
+    font-size: 10.5px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    background: rgba(148, 163, 184, 0.14);
+    color: var(--tachyon-text-secondary, inherit);
+}
+
+.tachyon_diagnostic_alert__counts-badge--success {
+    background: var(--tachyon-success-soft, rgba(16, 185, 129, 0.15));
+    color: var(--tachyon-success-text, #10b981);
+}
+
+.tachyon_diagnostic_alert__counts-badge--warning {
+    background: var(--tachyon-warning-soft, rgba(245, 158, 11, 0.15));
+    color: var(--tachyon-warning-text, #f59e0b);
+}
+
+.tachyon_diagnostic_alert__counts-badge--error {
+    background: var(--tachyon-danger-soft, rgba(239, 68, 68, 0.15));
+    color: var(--tachyon-danger-text, #ef4444);
 }
 
 .tachyon_diagnostic_alert__description {
@@ -508,6 +553,9 @@ export const styles = `
 
 .tachyon_diagnostic_alert__summary--expanded {
     display: flex;
+    max-height: 260px;
+    overflow-y: auto;
+    padding-right: 4px;
 }
 
 .tachyon_diagnostic_alert__summary:empty {
@@ -617,9 +665,66 @@ export const styles = `
     opacity: 0.85;
 }
 
+/* Diagnostics Modal */
+.modal:has(.tachyon_diagnostic-modal) {
+    width: min(920px, 95vw) !important;
+    max-width: min(920px, 95vw) !important;
+}
+
+.tachyon_diagnostic-modal {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.tachyon_diagnostic-modal__toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.tachyon_diagnostic-modal__progress-track {
+    width: 100%;
+    height: 6px;
+    border-radius: 3px;
+    background: rgba(148, 163, 184, 0.18);
+    overflow: hidden;
+}
+
+.tachyon_diagnostic-modal__progress-bar {
+    height: 100%;
+    border-radius: 3px;
+    background: var(--tachyon-accent, #5b8af0);
+    transition: width 0.25s ease;
+}
+
+.tachyon_diagnostic-modal__checks-grid {
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    max-height: 62vh;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.tachyon_diagnostic-modal__footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    padding-top: 10px;
+    border-top: 1px solid var(--tachyon-border-subtle, rgba(148, 163, 184, 0.18));
+}
+
 @media (max-width: 1024px) {
-    .tachyon_diagnostic-page {
+    .tachyon_diagnostic-page__right-bar__actions {
         grid-template-columns: 1fr;
+    }
+    .tachyon_diagnostic-modal {
+        min-width: 0;
     }
 }
 

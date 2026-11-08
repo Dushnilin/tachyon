@@ -785,8 +785,10 @@ function normalize_amnezia_config_entry(raw_val, fallback_name) {
         return val;
     if (substr(val, 0, 6) == "vpn://" && index(val, "#") < 0) {
         let nm = trim(as_string(fallback_name || ""));
-        if (nm != "" && nm != "AmneziaWG")
-            return val + "#" + nm;
+        if (nm != "" && nm != "AmneziaWG") {
+            let safe_nm = replace(replace(nm, /#/g, "%23"), /\s+/g, "%20");
+            return val + "#" + safe_nm;
+        }
     }
     if (index(val, "[Interface]") >= 0 && index(val, "[Peer]") >= 0) {
         let nm = trim(as_string(fallback_name || "AmneziaWG"));
@@ -795,6 +797,51 @@ function normalize_amnezia_config_entry(raw_val, fallback_name) {
         return sprintf("%J", { name: nm, config: val });
     }
     return val;
+}
+
+function expand_amnezia_config_entries(raw_val, fallback_name) {
+    let val = trim(as_string(raw_val));
+    if (val == "")
+        return [];
+    let eff_name = fallback_name;
+    let text_body = val;
+    if (substr(val, 0, 1) == "{") {
+        let parsed = null;
+        try { parsed = json(val); } catch (e) {}
+        if (type(parsed) != "object" || type(parsed.config) != "string")
+            return [ val ];
+        if (type(parsed.name) == "string" && trim(parsed.name) != "")
+            eff_name = trim(parsed.name);
+        text_body = trim(parsed.config);
+        if (index(text_body, "vpn://") < 0)
+            return [ val ];
+    } else if (index(val, "\n") < 0 || index(val, "vpn://") < 0) {
+        let single = normalize_amnezia_config_entry(val, eff_name);
+        return single != "" ? [ single ] : [];
+    }
+    let vpn_links = [];
+    let conf_lines = [];
+    for (let line in split(replace(text_body, /\r\n?/g, "\n"), "\n")) {
+        let tline = trim(line);
+        if (substr(tline, 0, 6) == "vpn://")
+            push(vpn_links, tline);
+        else
+            push(conf_lines, line);
+    }
+    if (length(vpn_links) == 0)
+        return [ substr(val, 0, 1) == "{" ? val : normalize_amnezia_config_entry(val, eff_name) ];
+    let out = [];
+    let conf_rem = trim(join("\n", conf_lines));
+    if (conf_rem != "" && index(lc(conf_rem), "[interface]") >= 0 && index(lc(conf_rem), "[peer]") >= 0) {
+        let nm = trim(as_string(eff_name || "AmneziaWG")) || "AmneziaWG";
+        push(out, sprintf("%J", { name: nm, config: conf_rem }));
+    }
+    for (let vlink in vpn_links) {
+        let norm_v = normalize_amnezia_config_entry(vlink, eff_name);
+        if (norm_v != "")
+            push(out, norm_v);
+    }
+    return out;
 }
 
 function synthesize_awg_conf_from_source(src) {
@@ -923,15 +970,15 @@ function raw_amnezia_configs_from_obj(obj) {
     if (configs != null && configs != "") {
         let arr = type(configs) == "array" ? configs : [configs];
         for (let c in arr) {
-            let norm = normalize_amnezia_config_entry(c, fallback_name);
-            if (norm != "")
-                push_unique_amnezia_cfg(result, seen, seen_bodies, norm);
+            for (let norm in expand_amnezia_config_entries(c, fallback_name)) {
+                if (norm != "")
+                    push_unique_amnezia_cfg(result, seen, seen_bodies, norm);
+            }
         }
     }
-    if (length(result) == 0) {
-        let raw_conf_text = trim(option(obj, "amnezia_conf_text", ""));
-        if (raw_conf_text != "") {
-            let norm_text = normalize_amnezia_config_entry(raw_conf_text, fallback_name);
+    let raw_conf_text = trim(option(obj, "amnezia_conf_text", ""));
+    if (raw_conf_text != "") {
+        for (let norm_text in expand_amnezia_config_entries(raw_conf_text, fallback_name)) {
             if (norm_text != "")
                 push_unique_amnezia_cfg(result, seen, seen_bodies, norm_text);
         }
@@ -1002,15 +1049,25 @@ function connection_urls(section) {
     for (let l in whitespace_list_value(section, "connection_urls"))
         push_unique_str(links, seen, l);
     let importer = require("subscription.amnezia_config");
-    for (let value in amnezia_configs(section)) {
+    let all_amnezia_cfgs = amnezia_configs(section);
+    for (let value in all_amnezia_cfgs) {
         let trimmed_val = trim(as_string(value));
         if (substr(trimmed_val, 0, 6) == "vpn://") {
+            let wg = require("subscription.wireguard");
+            if (wg.from_vpn_endpoints(trimmed_val) == null) {
+                let sp = require("subscription.parser");
+                if (sp.parse_share_link(trimmed_val) == null) {
+                    if (length(outbound_source_sections()) == 0 && length(all_amnezia_cfgs) <= 1)
+                        die("Invalid imported Amnezia configuration");
+                    continue;
+                }
+            }
             push_unique_str(links, seen, trimmed_val);
             continue;
         }
         let item = importer.parse(value);
         if (item == null) {
-            if (length(outbound_source_sections()) == 0)
+            if (length(outbound_source_sections()) == 0 && length(all_amnezia_cfgs) <= 1)
                 die("Invalid imported Amnezia configuration");
             continue;
         }

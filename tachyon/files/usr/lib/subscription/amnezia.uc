@@ -134,7 +134,10 @@ function object(value) {
 let awg_json_keys = [
     'Jc', 'Jmin', 'Jmax', 'S1', 'S2', 'S3', 'S4',
     'H1', 'H2', 'H3', 'H4', 'I1', 'I2', 'I3', 'I4', 'I5',
-    'J1', 'J2', 'J3', 'Itime', 'mtu'
+    'J1', 'J2', 'J3', 'Itime', 'mtu',
+    'HeaderProtectionKey', 'ContentPaddingAddition', 'RekeyAfterTime',
+    'RekeyTimeout', 'RejectAfterTime', 'KeepaliveTimeout',
+    'MaxHandshakeAttempts', 'RandomTrailers', 'DisableCookies'
 ];
 function inject_awg_fields(conf_text, source_obj) {
     if (type(conf_text) != 'string' || type(source_obj) != 'object')
@@ -142,24 +145,37 @@ function inject_awg_fields(conf_text, source_obj) {
     let present = {};
     for (let line in split(conf_text, '\n')) {
         let eq = index(line, '=');
-        if (eq > 0)
-            present[lc(trim(substr(line, 0, eq)))] = true;
+        if (eq > 0) {
+            let k = lc(trim(substr(line, 0, eq)));
+            let v = trim(substr(line, eq + 1));
+            if (v != '' && substr(v, 0, 1) != '$')
+                present[k] = true;
+        }
     }
     let extra = [];
+    let replaced_keys = {};
     for (let key in awg_json_keys) {
         let lk = lc(key);
         if (present[lk]) continue;
         let val = source_obj[key] != null ? source_obj[key] : source_obj[lk];
         if (val == null) continue;
         let sval = trim('' + val);
-        if (sval == '' || index(sval, '\n') >= 0 || index(sval, '\r') >= 0) continue;
+        if (sval == '' || substr(sval, 0, 1) == '$' || index(sval, '\n') >= 0 || index(sval, '\r') >= 0) continue;
         push(extra, (lk == 'mtu' ? 'MTU' : key) + ' = ' + sval);
         present[lk] = true;
+        replaced_keys[lk] = true;
     }
     if (!length(extra))
         return conf_text;
     let out = [], injected = false;
     for (let line in split(conf_text, '\n')) {
+        let eq = index(line, '=');
+        if (eq > 0) {
+            let k = lc(trim(substr(line, 0, eq)));
+            let v = trim(substr(line, eq + 1));
+            if (replaced_keys[k] && (v == '' || substr(v, 0, 1) == '$'))
+                continue;
+        }
         push(out, line);
         if (!injected && lc(trim(line)) == '[interface]') {
             for (let item in extra) push(out, item);
@@ -230,8 +246,6 @@ function extract(text) {
         return {text:direct_conf, name:clean_name, awg:has_awg_hint};
     }
     if (!length(data.containers) || length(data.containers) > 16) return null;
-    let supported_kinds = ['amnezia-awg', 'amnezia-awg2', 'amnezia-awg-v2', 'amnezia-awg1.5', 'awg', 'amnezia-wireguard', 'wireguard', 'wg'];
-    if (data.defaultContainer && index(supported_kinds, data.defaultContainer) < 0) return null;
     let choices = [], selected = null;
     for (let container in data.containers) {
         if (type(container) != 'object') return null;
@@ -250,8 +264,14 @@ function extract(text) {
         }
     }
     if (!selected) {
-        if (length(choices) != 1) return null;
-        selected = choices[0];
+        if (!length(choices)) return null;
+        for (let choice in choices) {
+            if (choice.awg) {
+                selected = choice;
+                break;
+            }
+        }
+        if (!selected) selected = choices[0];
     }
     let name = '';
     if (length(selected.name) > 200) selected.name = '';
@@ -261,6 +281,30 @@ function extract(text) {
     }
     selected.name = name;
     return selected;
+}
+function decompress(raw) {
+    if (type(raw) != 'string' || substr(raw, 0, 6) != 'vpn://') return null;
+    let payload = split(substr(raw, 6), '#')[0];
+    if (length(payload) > 131072) return null;
+    payload = replace(payload, /%([0-9A-Fa-f]{2})/g, (all, n) => chr(hex(n)));
+    payload = replace(payload, /[\r\n\t ]+/g, '');
+    payload = replace(replace(payload, /-/g, '+'), /_/g, '/');
+    if (!match(payload, /^[A-Za-z0-9+\/]*={0,2}$/) || length(payload) % 4 == 1) return null;
+    while (length(payload) % 4) payload += '=';
+    let data = null;
+    try { data = b64dec(payload); } catch(e) {}
+    if (data == null) return null;
+    try {
+        if (length(data) >= 6 && byte(data, 0) == 0)
+            data = inflate_stream(data, true);
+        else if (length(data) >= 8 && substr(trim(data), 0, 1) != '{' && substr(trim(data), 0, 1) != '[' && substr(trim(data), 0, 1) != '#') {
+            let cmf = byte(data, 0), flg = byte(data, 1);
+            if ((cmf & 15) == 8 && (cmf >> 4) <= 7 && !(flg & 32) && (cmf * 256 + flg) % 31 == 0)
+                data = inflate_stream(data, false);
+        }
+        if (length(data) > max_size || index(data, '\u0000') >= 0) return null;
+        return data;
+    } catch (e) { return null; }
 }
 function decode(data) {
     try {
@@ -274,4 +318,4 @@ function decode(data) {
         return extract(data);
     } catch (e) { return null; }
 }
-return {decode};
+return {decode, decompress};

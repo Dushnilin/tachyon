@@ -52,4 +52,25 @@ try { connections.connection_urls({selector_amnezia_configs:["invalid"]}); } cat
 check(failed,"invalid stored import fails closed");
 let hooks=importer.parse(sprintf("%J",{name:"Hooks",config:replace(base,"[Peer]","DNS = 1.1.1.1\nPostUp = touch /tmp/never-run\n[Peer]")}));
 check(hooks && wg.from_vpn(hooks.link).dns == null && wg.from_vpn(hooks.link).post_up == null,"DNS and command hooks are not executed or applied");
+let vpn_link = "vpn://" + replace(replace(replace(b64enc(replace(base,"[Peer]","Jc = 4\nH1 = 100-200\n[Peer]")), /\+/g, "-"), /\//g, "_"), /=+$/, "");
+connections.set_item_sections_from_data({
+    outbound_source: [{
+        ".name": "src_amnezia_combo",
+        ".type": "outbound_source",
+        enabled: "1",
+        name: "My Node",
+        source_type: "amnezia_config",
+        amnezia_configs: [ vpn_link, "vpn://broken_invalid_link" ],
+        amnezia_conf_text: replace(base, "51820", "51821")
+    }]
+});
+let combo_urls = connections.connection_urls({
+    ".name": "Main",
+    ".type": "section",
+    enabled: "1",
+    action: "connection",
+    outbound_source_refs: [ "src_amnezia_combo" ]
+});
+check(length(combo_urls) == 2, "outbound_source combines amnezia_conf_text (.conf) and valid vpn:// in amnezia_configs while skipping invalid vpn://");
+connections.set_item_sections_from_data({});
 print("PASS: ",count," named Amnezia import checks\n");

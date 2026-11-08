@@ -18,8 +18,11 @@ function parse(value) {
     let trimmed_cfg = trim(data.config);
     if (substr(trimmed_cfg, 0, 6) == "vpn://") {
         let eps = wireguard.from_vpn_endpoints(trimmed_cfg);
-        if (eps == null || length(eps) == 0)
-            return null;
+        if (eps == null || length(eps) == 0) {
+            let parser = require("subscription.parser");
+            if (parser.parse_share_link(trimmed_cfg) == null)
+                return null;
+        }
         return { name, config: data.config, link: trimmed_cfg };
     }
 

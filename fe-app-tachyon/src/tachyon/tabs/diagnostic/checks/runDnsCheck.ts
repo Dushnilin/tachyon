@@ -4,6 +4,7 @@ import { TachyonShellMethods } from '../../../methods';
 import type { IDiagnosticsChecksItem } from '../../../services';
 import { updateCheckStore } from './updateCheckStore';
 import { getDnsCheckPresentation } from './getDnsCheckPresentation';
+import { tr } from '../../../helpers/i18n';
 
 export async function runDnsCheck() {
   const { order, title, code } = DIAGNOSTICS_CHECKS_MAP.DNS;
@@ -73,12 +74,18 @@ export async function runDnsCheck() {
       {
         state: data.dns_on_router ? 'success' : 'error',
         key: _('DNS on router'),
-        value: '',
+        value: data.dns_on_router
+          ? '127.0.0.1:53 → 127.0.0.42:53'
+          : tr('Не отвечает', 'Not responding'),
       },
       {
         state: dhcpItemState,
         key: dhcpItemKey,
-        value: '',
+        value: data.dont_touch_dhcp
+          ? 'dont_touch_dhcp=1'
+          : data.dhcp_config_status
+            ? 'dnsmasq → 127.0.0.42#53'
+            : tr('Требует настройки', 'Misconfigured'),
       },
     ],
   });

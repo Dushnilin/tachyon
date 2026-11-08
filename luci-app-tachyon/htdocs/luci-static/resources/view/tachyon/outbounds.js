@@ -4012,35 +4012,58 @@ function createOutboundsContent(section) {
       (section._loadedAmneziaConfigs &&
         section._loadedAmneziaConfigs[sectionId]) ||
       [];
-    const cur = loaded.length
-      ? loaded
-      : asRawList(uci.get(UCI_PACKAGE, sectionId, "amnezia_configs"));
-    const name = uci.get(UCI_PACKAGE, sectionId, "name") || sectionId;
-    const serialized = JSON.stringify({ name, config: trimmed });
-    const alreadyExists = cur.some((entry) => {
-      const normEntry = String(entry || "")
-        .replace(/\r\n?/g, "\n")
-        .trim();
-      if (normEntry === serialized || normEntry === trimmed) return true;
-      try {
-        const parsed = JSON.parse(entry);
-        return (
-          parsed &&
-          String(parsed.config || "")
-            .replace(/\r\n?/g, "\n")
-            .trim() === trimmed
-        );
-      } catch (_e) {
-        return false;
-      }
+    const fromUci = asRawList(
+      uci.get(UCI_PACKAGE, sectionId, "amnezia_configs"),
+    );
+    const cur = [...fromUci];
+    loaded.forEach((entry) => {
+      if (!cur.includes(entry)) cur.push(entry);
     });
-    if (!alreadyExists) {
-      uci.set(UCI_PACKAGE, sectionId, "amnezia_configs", [...cur, serialized]);
+    const name = uci.get(UCI_PACKAGE, sectionId, "name") || sectionId;
+    const vpnLines = [];
+    const confLines = [];
+    trimmed.split("\n").forEach((line) => {
+      const t = line.trim();
+      if (t.startsWith("vpn://")) vpnLines.push(t);
+      else confLines.push(line);
+    });
+    const confBody = confLines.join("\n").trim();
+    const candidates = [];
+    if (confBody) {
+      candidates.push(JSON.stringify({ name, config: confBody }));
     }
-    if (cur.length > 0 || alreadyExists) {
+    vpnLines.forEach((v) => candidates.push(v));
+
+    const next = [...cur];
+    candidates.forEach((candidate) => {
+      const alreadyExists = next.some((entry) => {
+        const normEntry = String(entry || "")
+          .replace(/\r\n?/g, "\n")
+          .trim();
+        if (normEntry === candidate || normEntry === confBody) return true;
+        try {
+          const parsed = JSON.parse(entry);
+          return (
+            parsed &&
+            confBody &&
+            String(parsed.config || "")
+              .replace(/\r\n?/g, "\n")
+              .trim() === confBody
+          );
+        } catch (_e) {
+          return false;
+        }
+      });
+      if (!alreadyExists) next.push(candidate);
+    });
+
+    if (next.length) {
+      uci.set(UCI_PACKAGE, sectionId, "amnezia_configs", next);
+    }
+    if (cur.length > 0 || vpnLines.length > 0 || next.length > 1) {
       uci.unset(UCI_PACKAGE, sectionId, "amnezia_conf_text");
-    } else {
-      uci.set(UCI_PACKAGE, sectionId, "amnezia_conf_text", trimmed);
+    } else if (confBody) {
+      uci.set(UCI_PACKAGE, sectionId, "amnezia_conf_text", confBody);
     }
   };
 

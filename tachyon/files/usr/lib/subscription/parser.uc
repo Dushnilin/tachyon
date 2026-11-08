@@ -2572,9 +2572,15 @@ function process_hysteria1(raw, url) {
     return outbound;
 }
 
+let parse_amnezia_vpn_container;
+
 function parse_share_link(line) {
-    if (starts_with(line, "vpn://"))
-        return wireguard.from_vpn(line);
+    if (starts_with(line, "vpn://")) {
+        let wg_out = wireguard.from_vpn(line);
+        if (wg_out != null)
+            return wg_out;
+        return parse_amnezia_vpn_container ? parse_amnezia_vpn_container(line) : null;
+    }
     if (starts_with(line, "amneziawg://") || starts_with(line, "awg://") ||
         starts_with(line, "wireguard://") || starts_with(line, "wg://"))
         return from_amneziawg_share_link(line);
@@ -5136,6 +5142,102 @@ function sing_box_urltest_group(outbound) {
 function sing_box_outbound_tag(outbound) {
     return type(outbound) == "object" ? as_string(outbound.tag || "") : "";
 }
+
+parse_amnezia_vpn_container = function(line) {
+    let amnezia = require("subscription.amnezia");
+    if (type(amnezia) != "object" || type(amnezia.decompress) != "function")
+        return null;
+    let text = amnezia.decompress(line);
+    if (type(text) != "string" || substr(trim(text), 0, 1) != "{")
+        return null;
+    let data = json_decode_text(text);
+    if (type(data) != "object" || type(data.containers) != "array" || length(data.containers) == 0 || length(data.containers) > 16)
+        return null;
+    let host_fallback = trim(as_string(data.hostName || data.host || ""));
+    let desc_name = trim(as_string(data.description || data.name || ""));
+    let clean_desc = "";
+    if (length(desc_name) <= 200) {
+        for (let i = 0; i < length(desc_name); i++) {
+            let n = ord(substr(desc_name, i, 1));
+            if (n >= 32 && n != 127)
+                clean_desc += chr(n);
+        }
+    }
+    let hash_pos = index(line, "#");
+    let frag = hash_pos >= 0 ? trim(urldecode_fragment(substr(line, hash_pos + 1))) : "";
+    let def_kind = as_string(data.defaultContainer || "");
+    let candidates = [];
+    for (let c in data.containers) {
+        if (type(c) == "object" && as_string(c.container || "") == def_kind)
+            push(candidates, c);
+    }
+    for (let c in data.containers) {
+        if (type(c) == "object" && as_string(c.container || "") != def_kind)
+            push(candidates, c);
+    }
+    for (let container in candidates) {
+        let kind = lc(trim(as_string(container.container || "")));
+        if (kind == "amnezia-xray" || kind == "xray") {
+            let xray_sec = json_decode_text(container.xray) || json_decode_text(container["amnezia-xray"]) || json_decode_text(container.params);
+            if (type(xray_sec) != "object")
+                continue;
+            let raw_last = xray_sec.last_config != null ? xray_sec.last_config : xray_sec.config;
+            let last_cfg = json_decode_text(raw_last) || xray_sec;
+            if (!is_xray_config(last_cfg))
+                continue;
+            let outbounds = normalize_xray_configs([ last_cfg ]);
+            for (let ob in outbounds) {
+                if (type(ob) != "object" || ob.__tachyon_hidden || sing_box_urltest_group(ob))
+                    continue;
+                if ((as_string(ob.server || "") == "" || ob.server == "$REMOTE_HOST") && host_fallback != "")
+                    ob.server = host_fallback;
+                if (ob.type == "vless" && ob.flow != null) {
+                    let nf = normalize_vless_flow(ob.flow);
+                    if (nf == null)
+                        continue;
+                    if (nf == "")
+                        delete ob.flow;
+                    else
+                        ob.flow = nf;
+                }
+                ob = normalize_sing_box_xhttp_transport(ob);
+                let tag_nm = frag != "" ? frag : (clean_desc != "" ? clean_desc : as_string(ob.remark || ob.tag || "Amnezia-Xray"));
+                ob.tag = tag_nm;
+                ob.remark = tag_nm;
+                ob.share_link = line;
+                return ob;
+            }
+        } else if (kind == "amnezia-shadowsocks" || kind == "shadowsocks" || kind == "amnezia-ss" || kind == "ss") {
+            let ss_sec = json_decode_text(container.shadowsocks) || json_decode_text(container["amnezia-shadowsocks"]) || json_decode_text(container.ss) || json_decode_text(container.params);
+            if (type(ss_sec) != "object")
+                continue;
+            let raw_last = ss_sec.last_config != null ? ss_sec.last_config : ss_sec.config;
+            let last_cfg = json_decode_text(raw_last) || ss_sec;
+            if (type(last_cfg) != "object")
+                continue;
+            let srv = trim(as_string(last_cfg.server || last_cfg.hostName || last_cfg.host || host_fallback));
+            if (srv == "$REMOTE_HOST")
+                srv = host_fallback;
+            let prt = int(last_cfg.server_port || last_cfg.port || ss_sec.port || data.port || 0);
+            let pw = as_string(last_cfg.password || ss_sec.password || "");
+            let method = trim(as_string(last_cfg.method || last_cfg.cipher || ss_sec.method || ss_sec.cipher || "chacha20-ietf-poly1305"));
+            if (srv != "" && !is_dummy_server(srv, prt) && valid_port(prt) && pw != "") {
+                let tag_nm = frag != "" ? frag : (clean_desc != "" ? clean_desc : (srv + ":" + prt));
+                return {
+                    type: "shadowsocks",
+                    tag: tag_nm,
+                    remark: tag_nm,
+                    share_link: line,
+                    server: srv,
+                    server_port: prt,
+                    method: method,
+                    password: pw
+                };
+            }
+        }
+    }
+    return null;
+};
 
 function decode_base64_or_raw_conf_text(raw_config) {
     let text = trim(as_string(raw_config));

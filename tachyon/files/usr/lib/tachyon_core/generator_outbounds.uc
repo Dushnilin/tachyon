@@ -1307,6 +1307,8 @@ function manual_link_outbound(link, tag_name, display_info) {
         ensure_imported_vpn_lx();
         let endpoint = subscription_wireguard.from_vpn(link);
         if (endpoint == null)
+            endpoint = subscription_parser.parse_share_link(link);
+        if (endpoint == null)
             ctx.runtime_generate_unsupported("invalid vpn:// export: expected a valid WG/AWG .conf or Amnezia WG/AWG container");
         if (type(display_info) == "object")
             display_info.name = subscription_outbound_display_name(endpoint);
@@ -1551,8 +1553,10 @@ function add_manual_proxy_link(config, state, section_name, manual_index, link, 
     let display_info = {};
     let outbound = manual_link_outbound(link, tag_name, display_info);
     let display_name = url_fragment(link);
-    if (display_name == "")
-        display_name = as_string(display_info.name || tag_name);
+    let info_name = trim(as_string(display_info.name || ""));
+    let src_fallback_name = src_obj != null ? trim(option(src_obj, "name", section_name)) : "";
+    if (display_name == "" || (info_name != "" && info_name != "AmneziaWG" && info_name != "WireGuard" && display_name == src_fallback_name))
+        display_name = info_name != "" ? info_name : tag_name;
     ensure_explicit_outbound_supported(outbound, "manual outbound", display_name);
     let manual_override_iface = match_server_interface_override(src_srv_overrides, [
         tag_name,
@@ -2905,16 +2909,42 @@ function add_awg_config_members(config, section) {
     taken[tag] = true;
     let detour = outbound_detour_tag_for_section(section);
 
-    for (let value in connections.amnezia_configs(section)) {
+    let all_awg_cfgs = connections.amnezia_configs(section);
+    for (let value in all_awg_cfgs) {
         let trimmed_val = trim(as_string(value));
         let item = substr(trimmed_val, 0, 6) == "vpn://"
             ? { name: url_fragment(trimmed_val) || option(section, "label", section_name) || "AmneziaWG", link: trimmed_val }
             : subscription_amnezia.parse(value);
-        if (item == null)
+        if (item == null) {
+            if (length(all_awg_cfgs) > 1)
+                continue;
             ctx.runtime_generate_unsupported("Invalid imported Amnezia configuration");
+        }
         let endpoints = subscription_wireguard.from_vpn_endpoints(item.link);
-        if (endpoints == null)
+        if (endpoints == null) {
+            let alt_outbound = subscription_parser.parse_share_link(item.link);
+            if (alt_outbound != null) {
+                let display_name = as_string(alt_outbound.remark || alt_outbound.tag || item.name);
+                let member_tag = unique_tag(tag + "/" + display_name, taken);
+                taken[member_tag] = true;
+                let member = copy_subscription_outbound(alt_outbound, member_tag);
+                if (detour != "")
+                    member.detour = detour;
+                push(config.outbounds, member);
+                push(selector_tags, member_tag);
+                push(urltest_candidate_tags, member_tag);
+                state.links[member_tag] = as_string(item.link || "");
+                runtime_subscription.remember_outbound_metadata(state, member_tag, display_name, member);
+                let src_id = (connections && connections.source_id_for_manual_item)
+                    ? connections.source_id_for_manual_item(section, value)
+                    : "";
+                state.outboundMetadata.sources[member_tag] = src_id != "" ? src_id : "manual";
+                continue;
+            }
+            if (length(all_awg_cfgs) > 1)
+                continue;
             ctx.runtime_generate_unsupported("invalid imported Amnezia configuration: " + as_string(item.name));
+        }
         // Every peer of the .conf is its own member: a multi-peer file behaves
         // like several configs, and each server joins the urltest pool.
         for (let i = 0; i < length(endpoints); i++) {

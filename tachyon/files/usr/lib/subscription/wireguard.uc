@@ -86,24 +86,24 @@ function build(input, host, port, name, raw) {
         if (peer.persistent_keepalive_interval == null) return null;
     }
     let endpoint = {type:'wireguard', private_key, address:addresses, peers:[peer], mtu:1280};
-    if (v.mtu != null && v.mtu != '' && v.mtu != '0') {
+    if (v.mtu != null && v.mtu != '' && v.mtu != '0' && substr(v.mtu, 0, 1) != '$') {
         if (!match(v.mtu, /^[0-9]+$/)) return null;
         endpoint.mtu = int(v.mtu, 10);
         if (endpoint.mtu < 576 || endpoint.mtu > 65535) return null;
     }
     for (let k in numbers) {
-        if (v[k] == null || v[k] == '') continue;
+        if (v[k] == null || v[k] == '' || substr(v[k], 0, 1) == '$') continue;
         let n = range(v[k]);
         if (type(n) != 'int') return null;
         endpoint[k] = n;
     }
     for (let k in ranges) {
-        if (v[k] == null || v[k] == '') continue;
+        if (v[k] == null || v[k] == '' || substr(v[k], 0, 1) == '$') continue;
         endpoint[k] = range(v[k], index(['h1', 'h2', 'h3', 'h4'], k) >= 0);
         if (endpoint[k] == null) return null;
     }
     for (let k in strings) {
-        if (v[k] != null && v[k] != '') endpoint[k] = v[k];
+        if (v[k] != null && v[k] != '' && substr(v[k], 0, 1) != '$') endpoint[k] = v[k];
     }
     if (endpoint.header_protection_key != null) {
         endpoint.header_protection_key = key32(endpoint.header_protection_key);
@@ -114,7 +114,7 @@ function build(input, host, port, name, raw) {
         }
     }
     for (let k in flags) {
-        if (v[k] == null || v[k] == '') continue;
+        if (v[k] == null || v[k] == '' || substr(v[k], 0, 1) == '$') continue;
         let value = lc(v[k]);
         if (index(['1','true','on','yes','0','false','off','no'], value) < 0) return null;
         endpoint[k] = index(['1','true','on','yes'], value) >= 0;
@@ -173,7 +173,9 @@ function from_conf(text, raw, name) {
     return length(endpoints) ? endpoints[0] : null;
 }
 function from_vpn_endpoints(raw) {
-    let payload = split(substr(raw, 6), '#')[0];
+    let parts = split(substr(raw, 6), '#');
+    let payload = parts[0];
+    let frag_name = length(parts) > 1 ? trim(replace(parts[1], /%([0-9A-Fa-f]{2})/g, (all, n) => chr(hex(n)))) : '';
     if (length(payload) > 131072) return null;
     payload = replace(payload, /%([0-9A-Fa-f]{2})/g, (all, n) => chr(hex(n)));
     payload = replace(payload, /[\r\n\t ]+/g, '');
@@ -185,7 +187,7 @@ function from_vpn_endpoints(raw) {
     if (text == null) return null;
     let decoded = amnezia.decode(text);
     if (!decoded) return null;
-    let endpoints = from_conf_endpoints(decoded.text, raw, decoded.name);
+    let endpoints = from_conf_endpoints(decoded.text, raw, decoded.name != '' ? decoded.name : frag_name);
     if (!length(endpoints)) return null;
     // An AWG export without obfuscation fields must not silently become WG.
     if (decoded.awg && !has_awg(endpoints[0])) return null;

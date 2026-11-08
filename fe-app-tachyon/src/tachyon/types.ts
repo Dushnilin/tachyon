@@ -873,6 +873,13 @@ export namespace Tachyon {
     rules_proxy_exist: 0 | 1;
     rules_proxy_counters: 0 | 1;
     rules_other_mark_exist: 0 | 1;
+    table_name?: string;
+    mangle_rules_count?: number;
+    mangle_packets?: number;
+    mangle_output_rules_count?: number;
+    mangle_output_packets?: number;
+    proxy_rules_count?: number;
+    proxy_packets?: number;
   }
 
   export interface SingBoxCheckResult {
@@ -885,6 +892,10 @@ export namespace Tachyon {
     sing_box_extended?: 0 | 1;
     sing_box_cert_pin?: 0 | 1;
     sing_box_tachyon_core?: 0 | 1;
+    sing_box_version?: string;
+    sing_box_bin_path?: string;
+    sing_box_init_path?: string;
+    sing_box_listen_ports?: string;
   }
 
   export interface InboundCheckItem {
@@ -1074,6 +1085,23 @@ export namespace Tachyon {
     dashboard_hide_na_servers?: 0 | 1;
     openwrt_version: string;
     device_model: string;
+    kernel_version?: string;
+    cpu_arch?: string;
+    uptime_seconds?: number;
+    load_avg?: string;
+    mem_total_mb?: number;
+    mem_used_mb?: number;
+    mem_free_mb?: number;
+    mem_used_pct?: number;
+    conntrack_count?: number;
+    conntrack_max?: number;
+    dns_type?: string;
+    fakeip_enabled?: number;
+    inbound_mode?: string;
+    active_sections_count?: number;
+    total_sections_count?: number;
+    quarantined_sections_count?: number;
+    deferred_sections_count?: number;
     generated_at?: number;
   }
 

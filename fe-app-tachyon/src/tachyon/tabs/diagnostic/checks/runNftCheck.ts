@@ -2,6 +2,7 @@ import { DIAGNOSTICS_CHECKS_MAP } from './constants';
 import { RemoteFakeIPMethods, TachyonShellMethods } from '../../../methods';
 import { updateCheckStore } from './updateCheckStore';
 import { getMeta } from '../helpers/getMeta';
+import { tr } from '../../../helpers/i18n';
 
 export async function runNftCheck() {
   const { order, title, code } = DIAGNOSTICS_CHECKS_MAP.NFT;
@@ -90,44 +91,80 @@ export async function runNftCheck() {
       {
         state: data.table_exist ? 'success' : 'error',
         key: _('Table exist'),
-        value: '',
+        value:
+          data.table_name ||
+          (data.table_exist
+            ? 'inet TachyonTable'
+            : tr('Отсутствует', 'Missing')),
       },
       {
         state: data.rules_mangle_exist ? 'success' : 'error',
         key: _('Rules mangle exist'),
-        value: '',
+        value:
+          typeof data.mangle_rules_count === 'number'
+            ? `${data.mangle_rules_count} ${tr('правил', 'rules')}`
+            : data.rules_mangle_exist
+              ? tr('Активны', 'Active')
+              : tr('Отсутствуют', 'Missing'),
       },
       {
         state: data.rules_mangle_counters ? 'success' : 'warning',
         key: _('Rules mangle counters'),
-        value: '',
+        value:
+          typeof data.mangle_packets === 'number'
+            ? `${data.mangle_packets.toLocaleString()} ${tr('пакетов', 'pkts')}`
+            : data.rules_mangle_counters
+              ? '> 0 pkts'
+              : '0 pkts',
       },
       {
         state: data.rules_mangle_output_exist ? 'success' : 'error',
         key: _('Rules mangle output exist'),
-        value: '',
+        value:
+          typeof data.mangle_output_rules_count === 'number'
+            ? `${data.mangle_output_rules_count} ${tr('правил', 'rules')}`
+            : data.rules_mangle_output_exist
+              ? tr('Активны', 'Active')
+              : tr('Отсутствуют', 'Missing'),
       },
       {
         state: data.rules_mangle_output_counters ? 'success' : 'error',
         key: _('Rules mangle output counters'),
-        value: '',
+        value:
+          typeof data.mangle_output_packets === 'number'
+            ? `${data.mangle_output_packets.toLocaleString()} ${tr('пакетов', 'pkts')}`
+            : data.rules_mangle_output_counters
+              ? '> 0 pkts'
+              : '0 pkts',
       },
       {
         state: data.rules_proxy_exist ? 'success' : 'error',
         key: _('Rules proxy exist'),
-        value: '',
+        value:
+          typeof data.proxy_rules_count === 'number'
+            ? `${data.proxy_rules_count} ${tr('правил', 'rules')}`
+            : data.rules_proxy_exist
+              ? tr('Активны (TProxy :1602)', 'Active (TProxy :1602)')
+              : tr('Отсутствуют', 'Missing'),
       },
       {
         state: data.rules_proxy_counters ? 'success' : 'error',
         key: _('Rules proxy counters'),
-        value: '',
+        value:
+          typeof data.proxy_packets === 'number'
+            ? `${data.proxy_packets.toLocaleString()} ${tr('пакетов', 'pkts')}`
+            : data.rules_proxy_counters
+              ? '> 0 pkts'
+              : '0 pkts',
       },
       {
         state: !data.rules_other_mark_exist ? 'success' : 'warning',
         key: !data.rules_other_mark_exist
           ? _('No other marking rules found')
           : _('Additional marking rules found'),
-        value: '',
+        value: !data.rules_other_mark_exist
+          ? tr('Чисто', 'Clean')
+          : tr('Внешний fwmark', 'External fwmark'),
       },
     ],
   });

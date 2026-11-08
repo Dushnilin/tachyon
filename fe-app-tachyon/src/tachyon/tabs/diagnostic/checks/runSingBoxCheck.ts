@@ -3,6 +3,7 @@ import { TachyonShellMethods } from '../../../methods';
 import { updateCheckStore } from './updateCheckStore';
 import { getMeta } from '../helpers/getMeta';
 import { getCheckTitle } from '../helpers/getCheckTitle';
+import { tr } from '../../../helpers/i18n';
 import { IDiagnosticsChecksItem, store } from '../../../services';
 
 export async function runSingBoxCheck() {
@@ -63,6 +64,29 @@ export async function runSingBoxCheck() {
     Boolean(data.sing_box_ports_listening);
 
   const { state, description } = getMeta({ atLeastOneGood, allGood });
+  const svcData = store?.get()?.servicesInfoWidget?.data;
+  const pidInfo =
+    data.sing_box_process_running && svcData?.singboxPid
+      ? `PID ${svcData.singboxPid}${
+          typeof svcData.singboxMemoryMb === 'number' &&
+          svcData.singboxMemoryMb > 0
+            ? ` · ${svcData.singboxMemoryMb.toFixed(1)} MB`
+            : ''
+        }${svcData.singboxUptimePretty ? ` · ${svcData.singboxUptimePretty}` : ''}`
+      : data.sing_box_process_running
+        ? tr('Активен', 'Running')
+        : tr('Остановлен', 'Stopped');
+
+  const versionValue =
+    data.sing_box_version && data.sing_box_version !== 'unknown'
+      ? data.sing_box_version
+      : storeSystemInfo?.sing_box_version &&
+          storeSystemInfo.sing_box_version !== 'loading' &&
+          storeSystemInfo.sing_box_version !== 'unknown'
+        ? storeSystemInfo.sing_box_version
+        : data.sing_box_version_ok
+          ? 'OK'
+          : tr('Несовместима', 'Incompatible');
 
   const items: Array<IDiagnosticsChecksItem> = [
     {
@@ -70,42 +94,60 @@ export async function runSingBoxCheck() {
       key: isTachyonCore
         ? _('Tachyon Core installed')
         : _('Sing-box installed'),
-      value: '',
+      value:
+        data.sing_box_bin_path ||
+        (data.sing_box_installed
+          ? isTachyonCore
+            ? '/usr/bin/tachyon-core'
+            : '/usr/bin/sing-box'
+          : tr('Не найден', 'Not found')),
     },
     {
       state: data.sing_box_version_ok ? 'success' : 'error',
       key: isTachyonCore
         ? _('Tachyon Core version is compatible')
         : _('Sing-box version is compatible (newer than 1.12.4)'),
-      value: '',
+      value: versionValue,
     },
     {
       state: data.sing_box_service_exist ? 'success' : 'error',
       key: isTachyonCore
         ? _('Tachyon Core service exist')
         : _('Sing-box service exist'),
-      value: '',
+      value:
+        data.sing_box_init_path ||
+        (data.sing_box_service_exist
+          ? isTachyonCore
+            ? '/etc/init.d/tachyon-core'
+            : '/etc/init.d/sing-box'
+          : tr('Отсутствует', 'Missing')),
     },
     {
       state: data.sing_box_autostart_disabled ? 'success' : 'error',
       key: isTachyonCore
         ? _('Tachyon Core autostart disabled')
         : _('Sing-box autostart disabled'),
-      value: '',
+      value: data.sing_box_autostart_disabled
+        ? tr('Управляется Tachyon', 'Managed by Tachyon')
+        : tr('Конфликт init.d', 'Init.d conflict'),
     },
     {
       state: data.sing_box_process_running ? 'success' : 'error',
       key: isTachyonCore
         ? _('Tachyon Core process running')
         : _('Sing-box process running'),
-      value: '',
+      value: pidInfo,
     },
     {
       state: data.sing_box_ports_listening ? 'success' : 'error',
       key: isTachyonCore
         ? _('Tachyon Core listening ports')
         : _('Sing-box listening ports'),
-      value: '',
+      value:
+        data.sing_box_listen_ports ||
+        (data.sing_box_ports_listening
+          ? '53, 1602, 1603, 9090'
+          : tr('Не слушает', 'Not listening')),
     },
   ];
 

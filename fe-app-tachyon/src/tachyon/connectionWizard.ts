@@ -6123,18 +6123,27 @@ export function openConnectionWizardModal(
         .filter(Boolean);
       uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'proxy_links', links);
     } else if (outboundMethod === 'amnezia_config') {
-      const trimmed = amneziaText.trim();
-      if (trimmed.startsWith('vpn://')) {
-        const links = trimmed
-          .split(/\r?\n/)
-          .map((l) => l.trim())
-          .filter(Boolean);
-        uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'amnezia_configs', links);
+      const trimmed = amneziaText.replace(/\r\n?/g, '\n').trim();
+      const vpnLines: string[] = [];
+      const confLines: string[] = [];
+      trimmed.split('\n').forEach((line) => {
+        const t = line.trim();
+        if (t.startsWith('vpn://')) vpnLines.push(t);
+        else confLines.push(line);
+      });
+      const confBody = confLines.join('\n').trim();
+      const items: string[] = [];
+      if (confBody) {
+        items.push(JSON.stringify({ name: finalName, config: confBody }));
+      }
+      vpnLines.forEach((v) => items.push(v));
+      if (items.length) {
+        uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'amnezia_configs', items);
+      }
+      if (confBody && vpnLines.length === 0) {
+        uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'amnezia_conf_text', confBody);
       } else {
-        uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'amnezia_conf_text', trimmed);
-        uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'amnezia_configs', [
-          JSON.stringify({ name: finalName, config: trimmed }),
-        ]);
+        uciObj.unset(TACHYON_UCI_PACKAGE, srcId, 'amnezia_conf_text');
       }
     } else if (outboundMethod === 'warp') {
       if (!warpPrivateKey.trim()) {
