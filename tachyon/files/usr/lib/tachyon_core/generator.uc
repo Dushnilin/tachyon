@@ -167,7 +167,7 @@ function fixture_get_section(section_name) {
     if (section_name == "settings" && type(fixture.settings) == "object")
         return fixture.settings;
 
-    for (let type_name in [ "settings", "server", "section", "subscription_url", "section_interface", "urltest", "priority_group", "priority_level" ]) {
+    for (let type_name in [ "settings", "telegram", "server", "section", "subscription_url", "section_interface", "urltest", "priority_group", "priority_level" ]) {
         for (let section in fixture_section_list(type_name)) {
             if (as_string(section[".name"]) == section_name)
                 return section;
@@ -1314,7 +1314,7 @@ function add_direct_bypass_proxy(config, settings, service_address) {
     });
 }
 
-function add_service_mixed_proxy_inbound(config, tag_name, listen_port, outbound) {
+function add_service_mixed_proxy_inbound(config, tag_name, listen_port, outbound, bot_target) {
     push(config.inbounds, {
         type: "mixed",
         tag: tag_name,
@@ -1332,6 +1332,18 @@ function add_service_mixed_proxy_inbound(config, tag_name, listen_port, outbound
         ip_is_private: true,
         outbound: runtime_constants.DIRECT_OUTBOUND_TAG
     });
+    // The Telegram bot reaches the Bot API through this mixed inbound, so the
+    // section picked in Telegram settings has to win over the default section.
+    // bot_target is resolved by the caller from the live section list.
+    if (tag_name == runtime_constants.SERVICE_MIXED_INBOUND_TAG && bot_target != "" &&
+        bot_target != outbound && generator_routes.is_valid_detour(config, bot_target)) {
+        generator_routes.push_section_route_rule(config, {
+            action: "route",
+            inbound: tag_name,
+            domain_suffix: [ "api.telegram.org", "telegram.org", "t.me" ],
+            outbound: bot_target
+        }, bot_target);
+    }
     generator_routes.push_section_route_rule(config, {
         action: "route",
         inbound: tag_name,
@@ -1350,7 +1362,7 @@ function service_mixed_proxy_port_for_purpose(purpose) {
         (as_string(purpose || "lists") == "components" ? 1 : 0);
 }
 
-function add_global_download_service_mixed_proxy(config, settings, purpose) {
+function add_global_download_service_mixed_proxy(config, settings, purpose, bot_target) {
     let outbound = download_detour_tag(settings, purpose);
     if (outbound == "")
         return;
@@ -1359,7 +1371,8 @@ function add_global_download_service_mixed_proxy(config, settings, purpose) {
         config,
         service_mixed_proxy_inbound_tag_for_purpose(purpose),
         service_mixed_proxy_port_for_purpose(purpose),
-        outbound
+        outbound,
+        bot_target || ""
     );
 }
 
@@ -1415,8 +1428,19 @@ function add_service_mixed_proxy(config, settings, sections) {
         default_proxy_tag = fallback_dpi_tag;
     }
 
+    // Section selected in Telegram settings (telegram.bot_proxy_section).
+    // Empty or unresolvable means "keep using the default section".
+    let bot_target = "";
+    let bot_cfg = object_or_empty(uci_cursor().get_all(CONFIG_NAME, "telegram"));
+    let bot_sec = trim(as_string(bot_cfg.bot_proxy_section || ""));
+    if (bot_sec != "" && !(ctx.deferred_sections && ctx.deferred_sections[bot_sec])) {
+        let bot_section = generator_routes.section_by_name(sections, bot_sec);
+        if (bot_section && bot_section.enabled != "0")
+            bot_target = generator_routes.group_outbound_tag_for_section(bot_section) || outbound_tag(bot_sec);
+    }
+
     if (download_via_proxy_enabled(settings, "lists")) {
-        add_global_download_service_mixed_proxy(config, settings, "lists");
+        add_global_download_service_mixed_proxy(config, settings, "lists", bot_target);
         if (download_detour_tag(settings, "lists") == "")
             runtime_generate_unsupported("download lists via proxy section is not set");
     } else if (has_any_proxy && default_proxy_tag != "") {
@@ -1424,7 +1448,8 @@ function add_service_mixed_proxy(config, settings, sections) {
             config,
             runtime_constants.SERVICE_MIXED_INBOUND_TAG,
             runtime_constants.SERVICE_MIXED_INBOUND_PORT,
-            default_proxy_tag
+            default_proxy_tag,
+            bot_target
         );
     }
 

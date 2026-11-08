@@ -10,7 +10,6 @@ let common = require("core.common");
 let uci_core = require("core.uci");
 let constants = require("core.constants");
 let helpers = require("core.helpers");
-let api = require("service.api");
 let i18n = require("service.i18n");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
@@ -48,8 +47,6 @@ function utf8_prefix(text, limit) {
 let cb_map_cache = null;
 let mixed_port_alive_cached = null;
 let mixed_port_checked_at = 0;
-let last_bot_global_tag = "";
-let last_bot_global_set_at = 0;
 
 function get_t() {
     let cfg = object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
@@ -213,18 +210,6 @@ function get_proxy_args() {
             if (direct_fallback_enabled())
                 return [];
             return [ "--proxy", "http://" + ep ];
-        }
-        let bot_section = cfg.bot_proxy_section ? trim(cfg.bot_proxy_section) : "";
-        if (bot_section != "") {
-            let tag = bot_section + "-out";
-            let now = time();
-            if (tag != last_bot_global_tag || (now - last_bot_global_set_at) >= 300) {
-                let res = api.clash_request("PUT", "proxies/GLOBAL", { name: tag });
-                if (res && res.ok) {
-                    last_bot_global_tag = tag;
-                    last_bot_global_set_at = now;
-                }
-            }
         }
         return [ "--proxy", "http://" + ep ];
     }
