@@ -541,6 +541,12 @@ cat >"$WORK_DIR/download-via-proxy-fixture.json" <<'JSON'
     "download_lists_via_proxy_section": "proxy",
     "download_components_via_proxy_section": "components_proxy"
   },
+  "telegram": {
+    ".name": "telegram",
+    ".type": "telegram",
+    "enabled": "1",
+    "bot_proxy_section": "components_proxy"
+  },
   "section": [
     {
       ".name": "proxy",
@@ -1408,6 +1414,7 @@ assert(dns_rule(vpn, r => contains(r.domain_suffix, "vpn.example")) != null, "re
 let download = cfg("download");
 assert(inbound(download, "service-mixed-in") != null, "service mixed inbound");
 assert(route_rule(download, r => r.inbound == "service-mixed-in" && r.outbound == "proxy-out") != null, "service mixed route");
+assert(route_rule(download, r => r.inbound == "service-mixed-in" && r.outbound == "components_proxy-out" && contains(r.domain_suffix, "api.telegram.org")) != null, "bot proxy route on service-mixed-in");
 assert(inbound(download, "service-components-in") != null, "components service mixed inbound");
 assert(route_rule(download, r => r.inbound == "service-components-in" && r.outbound == "components_proxy-out") != null, "components service mixed route");
 assert_downloads_via(download, ruleset(download, "proxy-discord-community-ruleset"), "proxy-out", "community ruleset downloads via proxy-out");
