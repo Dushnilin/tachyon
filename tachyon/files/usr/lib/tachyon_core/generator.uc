@@ -1441,7 +1441,7 @@ function add_service_mixed_proxy(config, settings, sections) {
 
     if (download_via_proxy_enabled(settings, "lists")) {
         add_global_download_service_mixed_proxy(config, settings, "lists", bot_target);
-        if (download_detour_tag(settings, "lists") == "")
+        if (download_detour_tag(settings, "lists") == "" && length(keys(ctx.deferred_sections || {})) == 0)
             runtime_generate_unsupported("download lists via proxy section is not set");
     } else if (has_any_proxy && default_proxy_tag != "") {
         add_service_mixed_proxy_inbound(
@@ -1455,7 +1455,7 @@ function add_service_mixed_proxy(config, settings, sections) {
 
     if (download_via_proxy_enabled(settings, "components")) {
         add_global_download_service_mixed_proxy(config, settings, "components");
-        if (download_detour_tag(settings, "components") == "")
+        if (download_detour_tag(settings, "components") == "" && length(keys(ctx.deferred_sections || {})) == 0)
             runtime_generate_unsupported("download components via proxy section is not set");
     }
 

@@ -1876,6 +1876,8 @@ function reload(reason) {
             cleanup_failed_runtime();
             return status;
         }
+        if (subscription_deferred_sections != "")
+            module_background(SUBSCRIPTION_CACHE_UC, [ "run-deferred-bootstrap", subscription_deferred_sections ]);
     }
     else if (plan.needs_nft_rebuild == 1 && nft_populate_enabled == 1) {
         status = nft_populate_runtime_sets();

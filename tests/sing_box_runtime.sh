@@ -1559,4 +1559,11 @@ assert(outbound(filter_cfg, "nl-ads") == null, "exclude keyword drops node even 
 assert(outbound(filter_cfg, "us-proxy") == null, "unmatched include keyword drops node");
 ' "$WORK_DIR"
 
+sig_with_bot_proxy="$(ucode -L "$TACHYON_LIB" "$TACHYON_LIB/service/state.uc" sing-box-signature-fixture "$WORK_DIR/download-via-proxy-fixture.json")"
+sed 's/"bot_proxy_section": "components_proxy"/"bot_proxy_section": "proxy"/' \
+  "$WORK_DIR/download-via-proxy-fixture.json" >"$WORK_DIR/download-via-proxy-bot-changed.json"
+sig_changed_bot_proxy="$(ucode -L "$TACHYON_LIB" "$TACHYON_LIB/service/state.uc" sing-box-signature-fixture "$WORK_DIR/download-via-proxy-bot-changed.json")"
+[ "$sig_with_bot_proxy" != "$sig_changed_bot_proxy" ] ||
+  fail "sing-box-signature must change when telegram.bot_proxy_section changes"
+
 printf 'sing-box runtime checks passed\n'

@@ -561,10 +561,679 @@ function snapshot_diff(file) {
     return 0;
 }
 
+const ROUTE_BLOCK_TYPES = {
+    section: true,
+    condition: true,
+    balancer: true,
+    outbound_source: true,
+    outbound_group: true,
+    urltest: true,
+    priority_group: true,
+    priority_level: true
+};
+
+function is_route_block_type(stype) {
+    return ROUTE_BLOCK_TYPES[as_string(stype)] == true;
+}
+
+function parse_uci_blocks(text) {
+    let lines = split(as_string(text || ""), "\n");
+    let blocks = [];
+    let current = null;
+    for (let raw_line in lines) {
+        let line = replace(as_string(raw_line), /\r$/, "");
+        let m = match(line, /^[ \t]*config[ \t]+([A-Za-z0-9_-]+)([ \t]+['"]?([^'" \t\r\n]+)['"]?)?/);
+        if (m != null) {
+            if (current != null) {
+                current.raw = trim(join("\n", current.lines)) + "\n";
+                delete current.lines;
+                push(blocks, current);
+            }
+            current = {
+                stype: as_string(m[1]),
+                sname: as_string(m[3] || ""),
+                label: "",
+                proxy_links_count: 0,
+                lines: [ line ]
+            };
+        } else if (current != null) {
+            push(current.lines, line);
+            let opt_m = match(line, /^[ \t]*option[ \t]+(label|name)[ \t]+['"]?([^'"\r\n]+)['"]?/);
+            if (opt_m != null && current.label == "")
+                current.label = trim(as_string(opt_m[2]));
+            if (match(line, /^[ \t]*list[ \t]+proxy_links[ \t]+/) != null)
+                current.proxy_links_count++;
+        }
+    }
+    if (current != null) {
+        current.raw = trim(join("\n", current.lines)) + "\n";
+        delete current.lines;
+        push(blocks, current);
+    }
+    return blocks;
+}
+
+function summarize_uci_blocks(blocks, files_map) {
+    let counts = {
+        sections: 0,
+        servers: 0,
+        sources: 0,
+        balancers: 0,
+        conditions: 0,
+        groups: 0,
+        files: type(files_map) == "object" ? length(keys(files_map)) : 0
+    };
+    let section_names = [];
+    for (let b in blocks) {
+        if (b.stype == "section") {
+            counts.sections++;
+            let disp = b.label != "" ? b.label : b.sname;
+            if (disp != "")
+                push(section_names, disp);
+        } else if (b.stype == "server") {
+            counts.servers++;
+        } else if (b.stype == "outbound_source") {
+            counts.sources++;
+            counts.servers += int(b.proxy_links_count || 0);
+        } else if (b.stype == "balancer" || b.stype == "urltest" || b.stype == "priority_group") {
+            counts.balancers++;
+        } else if (b.stype == "condition") {
+            counts.conditions++;
+        } else if (b.stype == "outbound_group") {
+            counts.groups++;
+        }
+    }
+    return { counts: counts, section_names: section_names };
+}
+
+const TRANSFER_EXCLUDED_ENTRIES = [
+    "keys",
+    "tachyon-core-version",
+    "tachyon-core-variant",
+    "sing-box-version",
+    "sing-box-variant",
+    "mem_scale",
+    "selector_state.json"
+];
+
+function is_excluded_transfer_entry(entry_name, scope) {
+    entry_name = as_string(entry_name);
+    if (is_excluded_data_entry(entry_name))
+        return true;
+    for (let e in TRANSFER_EXCLUDED_ENTRIES)
+        if (entry_name == e)
+            return true;
+    if (scope == "routes" && (entry_name == "server-certs" || entry_name == "ui-prefs.json"))
+        return true;
+    return false;
+}
+
+function collect_transfer_files(base_dir, rel_prefix, out_map, budget, scope) {
+    if (fs.stat(base_dir) == null)
+        return;
+    let items = fs.lsdir(base_dir);
+    if (type(items) != "array")
+        return;
+    for (let item in items) {
+        item = as_string(item);
+        if (item == "" || item == "." || item == "..")
+            continue;
+        if (rel_prefix == "" && is_excluded_transfer_entry(item, scope))
+            continue;
+        let full = base_dir + "/" + item;
+        let rel = rel_prefix == "" ? item : (rel_prefix + "/" + item);
+        let st = fs.stat(full);
+        if (st == null)
+            continue;
+        if (st.type == "directory") {
+            collect_transfer_files(full, rel, out_map, budget, scope);
+        } else if (st.type == "file") {
+            let sz = int(st.size || 0);
+            if (sz > 0 && sz <= 32768 && (budget.used + sz) <= 65536) {
+                let data = fs.readfile(full);
+                if (data != null) {
+                    out_map[rel] = b64enc(data);
+                    budget.used += sz;
+                }
+            }
+        }
+    }
+}
+
+function base64_to_base64url(b64) {
+    let s = replace(as_string(b64 || ""), /\+/g, "-");
+    s = replace(s, /\//g, "_");
+    s = replace(s, /=+$/, "");
+    s = replace(s, /[\r\n \t]/g, "");
+    return s;
+}
+
+function base64url_to_base64(b64u) {
+    let s = replace(as_string(b64u || ""), /[\r\n \t]/g, "");
+    s = replace(s, /-/g, "+");
+    s = replace(s, /_/g, "/");
+    let rem = length(s) % 4;
+    if (rem == 2)
+        s += "==";
+    else if (rem == 3)
+        s += "=";
+    return s;
+}
+
+function rc4_crypt(key, data) {
+    key = as_string(key || "");
+    data = as_string(data || "");
+    let klen = length(key);
+    if (klen == 0)
+        return data;
+    let s = [];
+    for (let i = 0; i < 256; i++)
+        s[i] = i;
+    let j = 0;
+    for (let i = 0; i < 256; i++) {
+        j = (j + s[i] + ord(key, i % klen)) & 255;
+        let tmp = s[i];
+        s[i] = s[j];
+        s[j] = tmp;
+    }
+    let i = 0;
+    j = 0;
+    for (let n = 0; n < 1024; n++) {
+        i = (i + 1) & 255;
+        j = (j + s[i]) & 255;
+        let tmp = s[i];
+        s[i] = s[j];
+        s[j] = tmp;
+    }
+    let dlen = length(data);
+    let out = [];
+    for (let pos = 0; pos < dlen; pos++) {
+        i = (i + 1) & 255;
+        j = (j + s[i]) & 255;
+        let tmp = s[i];
+        s[i] = s[j];
+        s[j] = tmp;
+        let k = s[(s[i] + s[j]) & 255];
+        push(out, chr(ord(data, pos) ^ k));
+    }
+    return join("", out);
+}
+
+function generate_transfer_key() {
+    let fp = fs.open("/dev/urandom", "r");
+    if (fp != null) {
+        let rand_bytes = fp.read(16);
+        fp.close();
+        if (rand_bytes != null && length(rand_bytes) >= 16)
+            return base64_to_base64url(b64enc(rand_bytes));
+    }
+    return base64_to_base64url(b64enc(sprintf("%d-%d-tachyon", time(), clock()[1] || 0)));
+}
+
+function upload_encrypted_transfer_blob(cipher_b64u, key_b64u, stage) {
+    if (getenv("TACHYON_TRANSFER_OFFLINE_ONLY") == "1")
+        return null;
+    let relay_dir = trim(as_string(getenv("TACHYON_TRANSFER_RELAY_DIR") || ""));
+    if (relay_dir != "") {
+        common.ensure_dir(relay_dir);
+        let id = substr(key_b64u, 0, 8);
+        common.write_file(relay_dir + "/" + id, cipher_b64u);
+        return "tachyon://t1/l/" + id + "/" + key_b64u;
+    }
+    let blob_file = stage + "/cipher.txt";
+    common.write_file(blob_file, cipher_b64u);
+
+    let dp_out = trim(command_output_from_args([
+        "curl", "-k", "-m", "4", "-sS",
+        "--data-urlencode", "content@" + blob_file,
+        "-d", "expiry_days=7",
+        "https://dpaste.com/api/v2/"
+    ]));
+    let dp_m = match(dp_out, /^https:\/\/dpaste\.com\/([A-Za-z0-9]+)/);
+    if (dp_m != null)
+        return "tachyon://t1/d/" + as_string(dp_m[1]) + "/" + key_b64u;
+
+    let cn_out = trim(command_output_from_args([
+        "curl", "-k", "-m", "4", "-sS",
+        "--upload-file", blob_file,
+        "https://paste.c-net.org/"
+    ]));
+    let cn_m = match(cn_out, /^https:\/\/paste\.c-net\.org\/([A-Za-z0-9]+)/);
+    if (cn_m != null)
+        return "tachyon://t1/c/" + as_string(cn_m[1]) + "/" + key_b64u;
+
+    return null;
+}
+
+function fetch_encrypted_transfer_blob(provider, blob_id) {
+    let cache_path = "/tmp/tachyon-transfer-token-cache.json";
+    let cache_key = provider + ":" + blob_id;
+    if (fs.stat(cache_path) != null) {
+        try {
+            let cached = json(as_string(fs.readfile(cache_path) || ""));
+            if (type(cached) == "object" && as_string(cached.key) == cache_key && type(cached.blob) == "string" && cached.blob != "")
+                return trim(cached.blob);
+        } catch (e) {}
+    }
+
+    let fetched = "";
+    if (provider == "l") {
+        let relay_dir = trim(as_string(getenv("TACHYON_TRANSFER_RELAY_DIR") || ""));
+        if (relay_dir != "" && fs.stat(relay_dir + "/" + blob_id) != null)
+            fetched = trim(as_string(fs.readfile(relay_dir + "/" + blob_id) || ""));
+    } else if (provider == "d") {
+        fetched = trim(command_output_from_args([
+            "curl", "-k", "-m", "6", "-fsSL",
+            "https://dpaste.com/" + blob_id + ".txt"
+        ]));
+    } else if (provider == "c") {
+        fetched = trim(command_output_from_args([
+            "curl", "-k", "-m", "6", "-fsSL",
+            "https://paste.c-net.org/" + blob_id
+        ]));
+    }
+
+    if (fetched != "") {
+        common.write_json_file(cache_path, { key: cache_key, blob: fetched }, 0);
+    }
+    return fetched;
+}
+
+function encode_transfer_code(payload_obj) {
+    let json_text = sprintf("%J", payload_obj);
+    let offline_code = "";
+    let stage = trim(command_output_from_args([ "mktemp", "-d", "/tmp/tachyon-code-exp.XXXXXX" ]));
+    if (stage != "") {
+        let in_file = stage + "/payload.json";
+        let gz_file = stage + "/payload.json.gz";
+        common.write_file(in_file, json_text);
+        if (command_success_from_args([ "gzip", "-f", "-9", in_file ]) && fs.stat(gz_file) != null) {
+            let gz_bytes = fs.readfile(gz_file);
+            if (gz_bytes != null && gz_bytes != "")
+                offline_code = "tachyon://cfg1/" + base64_to_base64url(b64enc(gz_bytes));
+        }
+        if (offline_code == "")
+            offline_code = "tachyon://cfg1u/" + base64_to_base64url(b64enc(json_text));
+
+        let key_b64u = generate_transfer_key();
+        let encrypted_bytes = rc4_crypt(key_b64u, "TACH1:" + offline_code);
+        let cipher_b64u = base64_to_base64url(b64enc(encrypted_bytes));
+        let short_token = upload_encrypted_transfer_blob(cipher_b64u, key_b64u, stage);
+        command_status(command_from_args([ "rm", "-rf", stage ]));
+        if (short_token != null && short_token != "")
+            return short_token;
+        return offline_code;
+    }
+    return "tachyon://cfg1u/" + base64_to_base64url(b64enc(json_text));
+}
+
+function decode_transfer_code(raw_code) {
+    let s = trim(as_string(raw_code || ""));
+    if (substr(s, 0, 1) == "{") {
+        try {
+            let wrapper = json(s);
+            if (type(wrapper) == "object") {
+                if (type(wrapper.code) == "string")
+                    s = trim(wrapper.code);
+                else if (type(wrapper.transfer_code) == "string")
+                    s = trim(wrapper.transfer_code);
+            }
+        } catch (e) {}
+    }
+    s = replace(s, /^['"]+|['"]+$/g, "");
+    s = trim(s);
+
+    if (substr(s, 0, 13) == "tachyon://t1/") {
+        let tok_m = match(substr(s, 13), /^([dcl])\/([A-Za-z0-9_-]+)\/([A-Za-z0-9_-]+)$/);
+        if (tok_m == null)
+            return { ok: false, error: "invalid short transfer token format" };
+        let provider = as_string(tok_m[1]);
+        let blob_id = as_string(tok_m[2]);
+        let key_b64u = as_string(tok_m[3]);
+        let cipher_b64u = fetch_encrypted_transfer_blob(provider, blob_id);
+        if (cipher_b64u == "")
+            return { ok: false, error: "unable to fetch transfer token payload (expired or unreachable)" };
+        let cipher_bytes = null;
+        try {
+            cipher_bytes = b64dec(base64url_to_base64(cipher_b64u));
+        } catch (e) {
+            cipher_bytes = null;
+        }
+        if (cipher_bytes == null || cipher_bytes == "")
+            return { ok: false, error: "corrupted encrypted payload for transfer token" };
+        let plain = rc4_crypt(key_b64u, cipher_bytes);
+        if (substr(plain, 0, 6) != "TACH1:")
+            return { ok: false, error: "invalid transfer token key or corrupted payload" };
+        s = substr(plain, 6);
+    }
+
+    let compressed = false;
+    let b64u = "";
+    if (substr(s, 0, 15) == "tachyon://cfg1/") {
+        compressed = true;
+        b64u = substr(s, 15);
+    } else if (substr(s, 0, 16) == "tachyon://cfg1u/") {
+        compressed = false;
+        b64u = substr(s, 16);
+    } else {
+        return { ok: false, error: "invalid transfer code prefix (expected tachyon://cfg1/...)" };
+    }
+
+    if (b64u == "")
+        return { ok: false, error: "empty transfer code payload" };
+
+    let raw_bytes = null;
+    try {
+        raw_bytes = b64dec(base64url_to_base64(b64u));
+    } catch (e) {
+        raw_bytes = null;
+    }
+    if (raw_bytes == null || raw_bytes == "")
+        return { ok: false, error: "corrupted base64 in transfer code" };
+
+    let json_text = "";
+    if (compressed) {
+        let stage = trim(command_output_from_args([ "mktemp", "-d", "/tmp/tachyon-code-dec.XXXXXX" ]));
+        if (stage == "")
+            return { ok: false, error: "unable to create temporary directory" };
+        let gz_file = stage + "/payload.json.gz";
+        let out_file = stage + "/payload.json";
+        common.write_file(gz_file, raw_bytes);
+        if (!command_success_from_args([ "gzip", "-d", "-f", gz_file ]) || fs.stat(out_file) == null) {
+            command_status(command_from_args([ "rm", "-rf", stage ]));
+            return { ok: false, error: "unable to decompress transfer code" };
+        }
+        json_text = as_string(fs.readfile(out_file) || "");
+        command_status(command_from_args([ "rm", "-rf", stage ]));
+    } else {
+        json_text = as_string(raw_bytes);
+    }
+
+    let parsed = null;
+    try {
+        parsed = json(json_text);
+    } catch (e) {
+        parsed = null;
+    }
+    if (type(parsed) != "object" || as_string(parsed.format || "") != "tachyon-transfer-v1")
+        return { ok: false, error: "unsupported transfer code format" };
+
+    let uci_text = as_string(parsed.uci_text || "");
+    let blocks = parse_uci_blocks(uci_text);
+    if (length(blocks) == 0)
+        return { ok: false, error: "transfer code contains no UCI sections" };
+
+    let scope = as_string(parsed.scope || "routes");
+    if (scope != "full" && scope != "routes")
+        scope = "routes";
+
+    let files_map = type(parsed.files) == "object" ? parsed.files : {};
+    for (let rel_path, _val in files_map) {
+        let rel = as_string(rel_path);
+        if (rel == "" || substr(rel, 0, 1) == "/" || match(rel, /(^|\/)\.\.(\/|$)/) != null)
+            return { ok: false, error: "unsafe file path in transfer code: " + rel };
+    }
+
+    return {
+        ok: true,
+        scope: scope,
+        created_at: int(parsed.created_at || 0),
+        uci_text: uci_text,
+        blocks: blocks,
+        files: files_map,
+        summary: summarize_uci_blocks(blocks, files_map)
+    };
+}
+
+function snapshot_code_export(scope) {
+    scope = lc(trim(as_string(scope || "routes")));
+    if (scope != "full")
+        scope = "routes";
+
+    if (fs.stat(CONFIG_PATH) == null)
+        return fail("config file not found");
+    let raw_cfg = as_string(fs.readfile(CONFIG_PATH) || "");
+    let all_blocks = parse_uci_blocks(raw_cfg);
+    let selected_blocks = [];
+    let selected_raw_parts = [];
+    for (let b in all_blocks) {
+        if (scope == "full" || is_route_block_type(b.stype)) {
+            push(selected_blocks, b);
+            push(selected_raw_parts, b.raw);
+        }
+    }
+    if (length(selected_blocks) == 0)
+        return fail("no configuration sections found for export");
+
+    let uci_text = join("\n", selected_raw_parts);
+    let files_map = {};
+    collect_transfer_files(PERSISTENT_DIR, "", files_map, { used: 0 }, scope);
+    let summary = summarize_uci_blocks(selected_blocks, files_map);
+    let now_ts = time();
+
+    let payload = {
+        format: "tachyon-transfer-v1",
+        scope: scope,
+        created_at: now_ts,
+        uci_text: uci_text,
+        files: files_map
+    };
+
+    let code = encode_transfer_code(payload);
+    let code_len = length(code);
+    let export_record = {
+        format: "tachyon-profile-v1",
+        transfer_code: code,
+        code: code,
+        scope: scope,
+        created_at: now_ts,
+        length: code_len,
+        counts: summary.counts,
+        section_names: summary.section_names
+    };
+
+    if (EXPORT_TMP_FILE != "") {
+        common.write_json_file(EXPORT_TMP_FILE, export_record, 2);
+        command_success_from_args([ "chmod", "600", EXPORT_TMP_FILE ]);
+    }
+    let ui_state_dir = (getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon") + "/ui-state";
+    if (getenv("TACHYON_SNAPSHOT_EXPORT_FILE") == null) {
+        common.ensure_dir(ui_state_dir);
+        common.write_json_file(ui_state_dir + "/snapshot-export.json", export_record, 2);
+    }
+
+    let chunked_only = code_len > 38000;
+    print(sprintf("%J\n", {
+        success: true,
+        scope: scope,
+        created_at: now_ts,
+        chunked_export: chunked_only,
+        code: chunked_only ? "" : code,
+        length: code_len,
+        counts: summary.counts,
+        section_names: summary.section_names
+    }));
+    return 0;
+}
+
+function read_transfer_code_arg(arg, keep_file) {
+    arg = trim(as_string(arg || ""));
+    if (arg == "")
+        return "";
+    if (substr(arg, 0, 10) == "tachyon://")
+        return arg;
+    if (fs.stat(arg) != null) {
+        let content = trim(as_string(fs.readfile(arg) || ""));
+        if (!keep_file && arg == "/tmp/tachyon-snapshot-import.json") {
+            try { fs.unlink(arg); } catch (e) {}
+        }
+        return content;
+    }
+    return arg;
+}
+
+function snapshot_code_inspect(arg) {
+    let raw_code = read_transfer_code_arg(arg, true);
+    if (raw_code == "")
+        return fail("transfer code is empty");
+    let decoded = decode_transfer_code(raw_code);
+    if (!decoded.ok)
+        return fail(decoded.error);
+    print(sprintf("%J\n", {
+        success: true,
+        scope: decoded.scope,
+        created_at: decoded.created_at,
+        counts: decoded.summary.counts,
+        section_names: decoded.summary.section_names
+    }));
+    return 0;
+}
+
+function snapshot_code_apply(apply_mode, arg) {
+    apply_mode = lc(trim(as_string(apply_mode || "replace")));
+    if (apply_mode != "merge")
+        apply_mode = "replace";
+
+    let raw_code = read_transfer_code_arg(arg, false);
+    if (raw_code == "")
+        return fail("transfer code is empty");
+    let decoded = decode_transfer_code(raw_code);
+    if (!decoded.ok)
+        return fail(decoded.error);
+
+    let curr_raw = fs.stat(CONFIG_PATH) != null ? as_string(fs.readfile(CONFIG_PATH) || "") : "";
+    let curr_blocks = parse_uci_blocks(curr_raw);
+    let final_blocks = [];
+
+    if (apply_mode == "replace") {
+        if (decoded.scope == "full") {
+            final_blocks = decoded.blocks;
+        } else {
+            let had_settings = false;
+            for (let b in curr_blocks) {
+                if (b.stype == "settings")
+                    had_settings = true;
+                if (!is_route_block_type(b.stype))
+                    push(final_blocks, b);
+            }
+            if (!had_settings) {
+                push(final_blocks, {
+                    stype: "settings",
+                    sname: "settings",
+                    label: "",
+                    raw: "config settings 'settings'\n\toption enabled '1'\n"
+                });
+            }
+            for (let b in decoded.blocks) {
+                if (is_route_block_type(b.stype))
+                    push(final_blocks, b);
+            }
+        }
+    } else {
+        // merge mode: keep existing blocks, update matching (stype, sname) in-place, append new ones
+        let incoming_by_key = {};
+        for (let b in decoded.blocks) {
+            if (b.stype == "settings" && decoded.scope != "full" && length(curr_blocks) > 0)
+                continue;
+            if (b.sname != "")
+                incoming_by_key[b.stype + ":" + b.sname] = b;
+        }
+        let replaced_keys = {};
+        for (let b in curr_blocks) {
+            let key = b.sname != "" ? (b.stype + ":" + b.sname) : "";
+            if (key != "" && incoming_by_key[key] != null) {
+                push(final_blocks, incoming_by_key[key]);
+                replaced_keys[key] = true;
+            } else {
+                push(final_blocks, b);
+            }
+        }
+        for (let b in decoded.blocks) {
+            if (b.stype == "settings" && decoded.scope != "full" && length(curr_blocks) > 0)
+                continue;
+            let key = b.sname != "" ? (b.stype + ":" + b.sname) : "";
+            if (key == "" || !replaced_keys[key])
+                push(final_blocks, b);
+        }
+    }
+
+    let raw_parts = [];
+    for (let b in final_blocks)
+        push(raw_parts, b.raw);
+    let merged_uci_text = join("\n", raw_parts);
+
+    let stage = trim(command_output_from_args([ "mktemp", "-d", "/tmp/tachyon-code-apply.XXXXXX" ]));
+    if (stage == "")
+        return fail("unable to create staging directory");
+
+    let staged_cfg = stage + "/tachyon.cfg";
+    common.write_file(staged_cfg, merged_uci_text);
+    if (!config_sane_preview(staged_cfg)) {
+        command_status(command_from_args([ "rm", "-rf", stage ]));
+        return fail("merged config does not look like a valid UCI file");
+    }
+
+    let cfg_backup = stage + "/cfg_backup";
+    if (fs.stat(CONFIG_PATH) != null && !command_success_from_args([ "cp", "-a", CONFIG_PATH, cfg_backup ])) {
+        command_status(command_from_args([ "rm", "-rf", stage ]));
+        return fail("unable to back up current config");
+    }
+
+    let tmp_cfg = CONFIG_PATH + ".transfer-tmp";
+    if (!command_success_from_args([ "cp", "-a", staged_cfg, tmp_cfg ]) ||
+        !command_success_from_args([ "mv", "-f", tmp_cfg, CONFIG_PATH ])) {
+        restore_config_from_backup(cfg_backup);
+        command_status(command_from_args([ "rm", "-rf", stage ]));
+        return fail("unable to write transferred config");
+    }
+    command_success_from_args([ "chmod", "600", CONFIG_PATH ]);
+    if (!command_success_from_args([ VALIDATE_BIN, "show", CONFIG_NAME ])) {
+        restore_config_from_backup(cfg_backup);
+        command_status(command_from_args([ "rm", "-rf", stage ]));
+        return fail("transferred config failed UCI validation; rolled back");
+    }
+
+    if (type(decoded.files) == "object" && length(keys(decoded.files)) > 0) {
+        common.ensure_dir(PERSISTENT_DIR);
+        for (let rel_path, b64_content in decoded.files) {
+            let rel = as_string(rel_path);
+            if (rel == "" || substr(rel, 0, 1) == "/" || match(rel, /(^|\/)\.\.(\/|$)/) != null)
+                continue;
+            let file_bytes = null;
+            try {
+                file_bytes = b64dec(as_string(b64_content));
+            } catch (e) {
+                file_bytes = null;
+            }
+            if (file_bytes != null) {
+                let dst_path = PERSISTENT_DIR + "/" + rel;
+                common.ensure_dir(common.parent_dir(dst_path));
+                common.write_file(dst_path, file_bytes);
+            }
+        }
+    }
+
+    command_status(command_from_args([ "rm", "-rf", stage ]));
+    let final_summary = summarize_uci_blocks(final_blocks, decoded.files);
+    log_message("Config transfer code applied (" + apply_mode + ", scope=" + decoded.scope + ")");
+    print(sprintf("%J\n", {
+        success: true,
+        mode: apply_mode,
+        scope: decoded.scope,
+        counts: decoded.summary.counts,
+        total_counts: final_summary.counts,
+        section_names: decoded.summary.section_names
+    }));
+    command_status(common.background_command(command_from_args([ BIN_PATH, "restart" ])));
+    return 0;
+}
+
 function snapshot_export(file) {
     let raw_arg = as_string(file || "");
     if (substr(raw_arg, 0, 2) == "--")
         raw_arg = substr(raw_arg, 2);
+    if (raw_arg == "code:routes" || raw_arg == "code:full")
+        return snapshot_code_export(substr(raw_arg, 5));
     if (substr(raw_arg, 0, 11) == "read-chunk:") {
         let rest = substr(raw_arg, 11);
         let parts = split(rest, ":");
@@ -727,6 +1396,14 @@ function snapshot_import(source_arg) {
         print(sprintf("%J\n", { success: true }));
         return 0;
     }
+    if (substr(norm_arg, 0, 13) == "code-inspect:")
+        return snapshot_code_inspect(substr(norm_arg, 13));
+    if (substr(norm_arg, 0, 19) == "code-apply:replace:")
+        return snapshot_code_apply("replace", substr(norm_arg, 19));
+    if (substr(norm_arg, 0, 17) == "code-apply:merge:")
+        return snapshot_code_apply("merge", substr(norm_arg, 17));
+    if (substr(trim(norm_arg), 0, 10) == "tachyon://")
+        return snapshot_code_apply("replace", trim(norm_arg));
 
     let raw = "";
     if (source_arg == "-") {
@@ -741,6 +1418,9 @@ function snapshot_import(source_arg) {
             try { fs.unlink(source_arg); } catch (e) {}
         }
     }
+
+    if (substr(trim(raw), 0, 10) == "tachyon://")
+        return snapshot_code_apply("replace", trim(raw));
 
     let parsed = null;
     try {

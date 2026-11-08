@@ -121,6 +121,25 @@ ucode -e '
   }
 ' || fail "failed/deferred sections must apply fail_policy block and direct in sing-box config"
 
+# 2b. Quarantined section without runtime fail-state file still applies fail_policy="direct"
+rm -f "$TACHYON_SECTION_FAIL_STATE_FILE"
+mkdir -p "$WORK_DIR/quarantined.json.section-cache"
+ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture \
+  "$WORK_DIR/fixture.json" "$WORK_DIR/quarantined.json" "127.0.0.1" "0" "" "" "sec_direct"
+
+ucode -e '
+  let fs = require("fs");
+  let cfg = json(fs.readfile(getenv("WORK_DIR") + "/quarantined.json"));
+  let work_bypassed = false;
+  for (let r in cfg.route.rules) {
+    let ds = type(r.domain_suffix) == "array" ? r.domain_suffix[0] : r.domain_suffix;
+    if (ds == "work.example" && r.action == "route" && r.outbound == "direct-out")
+      work_bypassed = true;
+  }
+  if (!work_bypassed)
+    exit(1);
+' || fail "quarantined section with fail_policy=direct must route directly instead of dropping route"
+
 # 3. Check nft/apply.uc wiring for fail_policy
 grep -Fq 'section_is_failed_in_runtime' "$NFT_APPLY_UC" ||
   fail "nft/apply.uc must check section_is_failed_in_runtime"

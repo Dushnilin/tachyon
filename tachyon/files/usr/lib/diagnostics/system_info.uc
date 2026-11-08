@@ -440,20 +440,87 @@ function provider_version(runtime_uc) {
     return value != "" ? value : "unknown";
 }
 
+function unquote_release_value(value) {
+    let v = trim(as_string(value));
+    if (length(v) >= 2) {
+        let quote = substr(v, 0, 1);
+        if ((quote == "\"" || quote == "'") && substr(v, length(v) - 1) == quote)
+            v = substr(v, 1, length(v) - 2);
+    }
+    return v;
+}
+
 function openwrt_release() {
     let data = fs.readfile("/etc/os-release");
-    if (data == null)
-        return "unknown";
-    for (let line in split(as_string(data), "\n")) {
-        if (substr(line, 0, length("OPENWRT_RELEASE=")) != "OPENWRT_RELEASE=")
-            continue;
-        let value = substr(line, length("OPENWRT_RELEASE="));
-        if (length(value) >= 2) {
-            let quote = substr(value, 0, 1);
-            if ((quote == "\"" || quote == "'") && substr(value, length(value) - 1) == quote)
-                value = substr(value, 1, length(value) - 2);
+    if (data != null) {
+        let pretty_name = "";
+        for (let line in split(as_string(data), "\n")) {
+            if (substr(line, 0, length("OPENWRT_RELEASE=")) == "OPENWRT_RELEASE=") {
+                let value = unquote_release_value(substr(line, length("OPENWRT_RELEASE=")));
+                if (value != "")
+                    return value;
+            }
+            if (pretty_name == "" && substr(line, 0, length("PRETTY_NAME=")) == "PRETTY_NAME=")
+                pretty_name = unquote_release_value(substr(line, length("PRETTY_NAME=")));
         }
-        return value != "" ? value : "unknown";
+        if (pretty_name != "")
+            return pretty_name;
+    }
+    let owrt = fs.readfile("/etc/openwrt_release");
+    if (owrt != null) {
+        for (let line in split(as_string(owrt), "\n")) {
+            if (substr(line, 0, length("DISTRIB_DESCRIPTION=")) == "DISTRIB_DESCRIPTION=") {
+                let value = unquote_release_value(substr(line, length("DISTRIB_DESCRIPTION=")));
+                if (value != "")
+                    return value;
+            }
+        }
+    }
+    let entware = fs.readfile("/opt/etc/entware_release");
+    if (entware != null) {
+        for (let line in split(as_string(entware), "\n")) {
+            if (substr(line, 0, length("release=")) == "release=") {
+                let value = unquote_release_value(substr(line, length("release=")));
+                if (value != "")
+                    return "Entware " + value;
+            }
+        }
+    }
+    return "unknown";
+}
+
+function detect_device_model() {
+    let model = first_line_value("/tmp/sysinfo/model", "");
+    if (model != "")
+        return model;
+    let dt_raw = fs.readfile("/proc/device-tree/model");
+    if (dt_raw != null) {
+        let dt_parts = split(as_string(dt_raw), "\x00");
+        let dt_model = length(dt_parts) > 0 ? trim(dt_parts[0]) : "";
+        if (dt_model != "")
+            return dt_model;
+    }
+    let board = read_json_file("/etc/board.json");
+    if (type(board) == "object" && type(board.model) == "object") {
+        let bname = trim(as_string(board.model.name));
+        if (bname != "")
+            return bname;
+    }
+    if (command_exists("ndmc")) {
+        let ndm_out = command_output_from_args([ "ndmc", "-c", "show version" ]);
+        for (let line in split(as_string(ndm_out), "\n")) {
+            let trimmed = trim(line);
+            if (substr(trimmed, 0, length("model:")) == "model:") {
+                let m = trim(substr(trimmed, length("model:")));
+                if (m != "")
+                    return m;
+            }
+            if (substr(trimmed, 0, length("device:")) == "device:") {
+                let d = trim(substr(trimmed, length("device:")));
+                if (d != "")
+                    return d;
+            }
+        }
     }
     return "unknown";
 }
@@ -547,7 +614,7 @@ function build_system_info() {
     let fptn_supported = (fptn_installed == 1 || is_fptn_supported()) ? 1 : 0;
     let fptn_version = fptn_installed ? provider_version(FPTN_RUNTIME_UC) : "not installed";
     let fptn_mode = require("config.connections").fptn_transport_mode();
-    let device_model = first_line_value("/tmp/sysinfo/model", "unknown");
+    let device_model = detect_device_model();
 
     let direct_bypass_enabled = bool_option(settings(), "direct_bypass_enabled", false) ? 1 : 0;
     let direct_bypass_port = option(settings(), "direct_bypass_port", "2080");
@@ -596,7 +663,7 @@ function build_system_info() {
         tachyon_commit_sha: constants.TACHYON_COMMIT_SHA && !match(constants.TACHYON_COMMIT_SHA, /COMPILED/) ? constants.TACHYON_COMMIT_SHA : "",
         tachyon_latest_version: tachyon_latest_version || "unknown",
         luci_app_version,
-        active_engine: active_engine_name(),
+        active_engine: sing_box_tachyon_core == 1 ? "tachyon-core" : active_engine_name(),
         sing_box_version,
         sing_box_extended: flags.extended,
         sing_box_tiny: flags.tiny,
@@ -961,6 +1028,7 @@ return {
     system_info_cache_is_valid,
     ensure_subscription_runtime_dirs,
     write_system_info_cache,
+    is_tachyon_core_selected,
     sing_box_marker_is,
     sing_box_component_action_running,
     sing_box_live_probe_disabled,

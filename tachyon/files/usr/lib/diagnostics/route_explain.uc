@@ -1308,7 +1308,26 @@ function evaluate_section_match(raw_section, client_info, target_info, port, pro
 function query_clash_proxies_map() {
     try {
         let exec = require("core.exec");
-        let raw = exec.command_output_from_args([ "curl", "-s", "--max-time", "1", "http://127.0.0.1:9090/proxies" ]);
+        let routing_mod = null;
+        try { routing_mod = require("diagnostics.routing"); } catch (e) {}
+        let clash_addr = (routing_mod && type(routing_mod.clash_api_url) == "function")
+            ? routing_mod.clash_api_url()
+            : "127.0.0.1:9090";
+        let auth_args = (routing_mod && type(routing_mod.clash_auth_args) == "function")
+            ? routing_mod.clash_auth_args()
+            : [];
+        let args = [ "curl", "-s", "--max-time", "1" ];
+        for (let a in auth_args)
+            push(args, a);
+        push(args, "http://" + clash_addr + "/proxies");
+        let raw = exec.command_output_from_args(args);
+        if ((!raw || raw == "") && clash_addr != "127.0.0.1:9090") {
+            let fallback_args = [ "curl", "-s", "--max-time", "1" ];
+            for (let a in auth_args)
+                push(fallback_args, a);
+            push(fallback_args, "http://127.0.0.1:9090/proxies");
+            raw = exec.command_output_from_args(fallback_args);
+        }
         if (raw && raw != "") {
             let parsed = json(raw);
             if (type(parsed) == "object" && type(parsed.proxies) == "object")
@@ -1648,10 +1667,10 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
     options = options || {};
     let target_parsed = normalize_target_input(target_in);
     let target_host = target_parsed.host;
-    if (target_host == "") {
+    if (target_host == "" || target_host == "tcp" || target_host == "udp" || target_host == "icmp") {
         return {
             success: false,
-            error: "Target host or destination address is required"
+            error: "Target host or destination address is required (usage: tachyon route_explain <client_ip> <target_domain_or_ip> [port] [tcp|udp])"
         };
     }
 
@@ -1680,9 +1699,10 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
 
     let uci_cfg = load_uci_tachyon_config();
     let settings = uci_cfg.settings || {};
-    let active_engine = settings.engine || "tachyon-core";
     let core_marker = trim(fs.readfile("/etc/tachyon/tachyon-core-variant") || fs.readfile("/etc/tachyon/sing-box-variant") || "");
-    let is_tachyon_core_bin = core_marker == "tachyon-core";
+    let is_tachyon_core_bin = core_marker == "tachyon-core" ||
+        (core_marker != "extended" && core_marker != "extended-compressed" && core_marker != "lx" && core_marker != "tiny" && core_marker != "stable" && fs.stat("/usr/bin/tachyon-core") != null);
+    let active_engine = is_tachyon_core_bin ? "tachyon-core" : ((settings.engine && settings.engine != "sing-box") ? settings.engine : "tachyon-core");
     let fakeip_enabled = settings.fakeip == "1";
 
     let client_info = classify_client(client_in, uci_cfg);
@@ -2061,7 +2081,7 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
         name: "engine_outbound",
         engine: active_engine,
         engaged: !(action == "bypass" || action == "direct" || action == "dns" || action == "hosts"),
-        inbound_tag: (action == "dns" || action == "hosts") ? "dns-in" : "tproxy-in",
+        inbound_tag: (action == "bypass" || action == "direct") ? "none" : ((action == "dns" || action == "hosts") ? "dns-in" : "tproxy-in"),
         group_tag: outbound_res.group_tag,
         group_type: outbound_res.group_type,
         selected_node: outbound_res.selected_node,
@@ -2070,7 +2090,7 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
         server_port: outbound_res.server_port,
         transport: outbound_res.transport,
         details: (action == "bypass" || action == "direct")
-            ? "Engine forwards traffic directly to WAN via bypass-out."
+            ? "Core engine is bypassed entirely; unmarked packet is forwarded directly to WAN by the Linux kernel (0ms overhead)."
             : (action == "block"
                 ? "Engine drops traffic via reject action."
                 : (action == "dns"
@@ -2099,8 +2119,8 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
         en_msg = "Traffic from " + client_str + " to " + target_info.host + ":" + port + " matches section '" + section_name + "' (" + rule_desc + "). Diverted via TProxy (" + NFT_FAKEIP_MARK + ") to " + active_engine + ". Routed to outbound group '" + outbound_res.group_tag + "', active node '" + outbound_res.selected_node + "' (" + outbound_res.node_type + ").";
         ru_msg = "Трафик от " + client_str + " к " + target_info.host + ":" + port + " совпадает с секцией «" + (section_label || section_name) + "» (" + rule_desc + "). Перехвачен через TProxy (" + NFT_FAKEIP_MARK + ") в " + active_engine + ". Направлен в группу «" + outbound_res.group_tag + "», активный узел: «" + outbound_res.selected_node + "» (" + outbound_res.node_type + ").";
     } else if (verdict == "direct") {
-        en_msg = "Traffic from " + client_str + " to " + target_info.host + ":" + port + " is routed DIRECTLY to WAN (matched: " + (section_name ? ("section '" + section_name + "'") : "default direct") + ").";
-        ru_msg = "Трафик от " + client_str + " к " + target_info.host + ":" + port + " направляется НАПРЯМУЮ в WAN (правило: " + (section_name ? ("секция «" + (section_label || section_name) + "»") : "прямой маршрут по умолчанию") + ").";
+        en_msg = "Traffic from " + client_str + " to " + target_info.host + ":" + port + " is routed DIRECTLY to WAN by the Linux kernel without entering " + active_engine + " (matched: " + (section_name ? ("section '" + section_name + "'") : "default direct") + ").";
+        ru_msg = "Трафик от " + client_str + " к " + target_info.host + ":" + port + " направляется НАПРЯМУЮ в WAN ядром Linux в обход " + active_engine + " (правило: " + (section_name ? ("секция «" + (section_label || section_name) + "»") : "прямой маршрут по умолчанию") + ").";
     } else if (verdict == "dns") {
         en_msg = "Domain " + target_info.host + " matches DNS section '" + section_name + "' (" + rule_desc + "). DNS queries are routed to custom server '" + outbound_res.group_tag + "' (" + outbound_res.server_address + "), while subsequent data traffic to the resolved IP goes DIRECTLY to WAN (direct-out).";
         ru_msg = "Домен " + target_info.host + " совпадает с DNS-секцией «" + (section_label || section_name) + "» (" + rule_desc + "). DNS-запросы направляются на кастомный сервер «" + outbound_res.group_tag + "» (" + outbound_res.server_address + "), а последующий трафик к полученному IP-адресу идёт НАПРЯМУЮ в WAN (direct-out).";
@@ -2111,8 +2131,8 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
         en_msg = "Traffic from " + client_str + " to " + target_info.host + ":" + port + " is BLOCKED by section '" + section_name + "' (" + rule_desc + ").";
         ru_msg = "Трафик от " + client_str + " к " + target_info.host + ":" + port + " ЗАБЛОКИРОВАН секцией «" + (section_label || section_name) + "» (" + rule_desc + ").";
     } else if (verdict == "zapret") {
-        en_msg = "Traffic from " + client_str + " to " + target_info.host + ":" + port + " matches DPI bypass section '" + section_name + "'. Diverted to NFQueue 200 for nfqws packet desynchronization.";
-        ru_msg = "Трафик от " + client_str + " к " + target_info.host + ":" + port + " совпадает с секцией обхода DPI «" + (section_label || section_name) + "». Перенаправлен в NFQueue 200 для десинхронизации через nfqws.";
+        en_msg = "Traffic from " + client_str + " to " + target_info.host + ":" + port + " matches packet desynchronization section '" + section_name + "'. Diverted to NFQueue 200 for nfqws processing.";
+        ru_msg = "Трафик от " + client_str + " к " + target_info.host + ":" + port + " совпадает с секцией десинхронизации пакетов «" + (section_label || section_name) + "». Перенаправлен в NFQueue 200 для обработки через nfqws.";
     } else if (verdict == "byedpi") {
         en_msg = "Traffic from " + client_str + " to " + target_info.host + ":" + port + " matches ByeDPI section '" + section_name + "'. Diverted to local ciadpi SOCKS proxy.";
         ru_msg = "Трафик от " + client_str + " к " + target_info.host + ":" + port + " совпадает с секцией ByeDPI «" + (section_label || section_name) + "». Перенаправлен в локальный прокси ciadpi.";
@@ -2195,8 +2215,13 @@ function format_text_report(report) {
     push(lines, sprintf("  6. Routing:     Table '%s' (%s)", s6.table, s6.route));
 
     let s7 = report.stages["7_engine_outbound"];
-    push(lines, sprintf("  7. Engine:      %s -> Outbound Group '%s' -> Node '%s' (%s)",
-        s7.engine, s7.group_tag, s7.selected_node, s7.node_type));
+    if (s7.engaged == false && (report.verdict == "direct" || report.verdict == "local")) {
+        push(lines, sprintf("  7. Engine:      Bypassed (%s not entered) -> %s (%s)",
+            s7.engine, s7.selected_node, s7.node_type));
+    } else {
+        push(lines, sprintf("  7. Engine:      %s -> Outbound Group '%s' -> Node '%s' (%s)",
+            s7.engine, s7.group_tag, s7.selected_node, s7.node_type));
+    }
 
     push(lines, "──────────────────────────────────────────────────────────────────────────────");
     push(lines, " Explanation (RU):");
@@ -2369,6 +2394,10 @@ if (mode == "selftest") {
     let target = ARGV[2] || "";
     let port = ARGV[3] || 0;
     let proto = ARGV[4] || "tcp";
+    if (target == "" && client != "" && substr(client, 0, 2) != "--") {
+        target = client;
+        client = "";
+    }
     let format = "text";
 
     // Check for --format flag in any argument position

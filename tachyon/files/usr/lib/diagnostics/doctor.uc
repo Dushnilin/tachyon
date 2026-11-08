@@ -100,18 +100,21 @@ function list_option(cfg, key) {
 function settings() { return uci_core.get_all(CONFIG_NAME, "settings") || {}; }
 function uci_sections(type_name) { return uci_core.section_objects(CONFIG_NAME, type_name); }
 
-function active_engine_name() {
-    let engine = uci_core.get(CONFIG_NAME, "settings", "engine");
-    return (engine != null && engine != "") ? as_string(engine) : "sing-box";
-}
-
 function is_tachyon_core_active() {
     let marker = trim(fs.readfile("/etc/tachyon/tachyon-core-variant") || fs.readfile("/etc/tachyon/sing-box-variant") || "");
     if (marker == "tachyon-core")
         return true;
     if (marker == "extended" || marker == "extended-compressed" || marker == "lx" || marker == "tiny" || marker == "stable")
         return false;
-    return sysinfo_mod.sing_box_marker_is("tachyon-core");
+    return sysinfo_mod.sing_box_marker_is("tachyon-core") ||
+        (type(sysinfo_mod.is_tachyon_core_selected) == "function" && sysinfo_mod.is_tachyon_core_selected());
+}
+
+function active_engine_name() {
+    if (is_tachyon_core_active())
+        return "tachyon-core";
+    let engine = uci_core.get(CONFIG_NAME, "settings", "engine");
+    return (engine != null && engine != "") ? as_string(engine) : "tachyon-core";
 }
 
 function status_capture(args, input) { return status_bridge.status_capture(args, input); }
@@ -1524,20 +1527,23 @@ function run_doctor_checks_impl(repair) {
         if (!match(doh_url, /\/dns-query$/) && !match(doh_url, /\/query$/) && !match(doh_url, /^https?:\/\/[^\/]+\/.+/))
             doh_url = doh_url + "/dns-query";
 
-        let curl_cmd = "curl -s -m 4 -o /dev/null -w '%{http_code}' " + shell_quote(doh_url) + " 2>/dev/null";
+        let doh_probe_url = doh_url + (index(doh_url, "?") >= 0 ? "&" : "?") + "dns=AAABAAABAAAAAAAAA3d3dwZnb29nbGUDY29tAAABAAE";
+        let curl_cmd = "curl -s -m 4 -H 'Accept: application/dns-message' -o /dev/null -w '%{http_code}' " + shell_quote(doh_probe_url) + " 2>/dev/null";
         let curl_res = command_capture(curl_cmd);
-        if (curl_res.status == 0 && int(curl_res.output) < 400) {
+        let doh_code = int(curl_res.output);
+        if (curl_res.status == 0 && doh_code >= 200 && doh_code < 500) {
             dns_main_reachable = true;
             doc_check("✅", "DNS main (" + display_main + ")", "reachable", "");
         } else {
             let base_url = replace(doh_url, /\/dns-query$/, "");
             let curl_cmd2 = "curl -s -m 4 -o /dev/null -w '%{http_code}' " + shell_quote(base_url) + " 2>/dev/null";
             let curl_res2 = command_capture(curl_cmd2);
-            if (curl_res2.status == 0 && int(curl_res2.output) < 400) {
+            let base_code = int(curl_res2.output);
+            if (curl_res2.status == 0 && base_code >= 200 && base_code < 500) {
                 dns_main_reachable = true;
                 doc_check("✅", "DNS main (" + display_main + ")", "reachable", "");
             } else {
-                doc_check("⚠️", "DNS main (" + display_main + ")", "ISP blocks direct DoH", "→ Норма: провайдер блокирует DoH напрямую, " + binary_name + " использует DoH через прокси");
+                doc_check("⚠️", "DNS main (" + display_main + ")", "ISP blocks direct DoH", "→ Норма: провайдер фильтрует DoH напрямую, " + binary_name + " использует DoH через прокси");
             }
         }
     } else {
@@ -1617,6 +1623,8 @@ function run_doctor_checks_impl(repair) {
     // 6. Clash API Check
     let clash_addr = clash_api_url();
     let curl_clash = command_capture(clash_probe_cmd(clash_addr));
+    if (!(curl_clash.status == 0 && int(curl_clash.output) == 200) && clash_addr != "127.0.0.1:9090")
+        curl_clash = command_capture(clash_probe_cmd("127.0.0.1:9090"));
     if (curl_clash.status == 0 && int(curl_clash.output) == 200) {
         doc_check("✅", "Clash API", "reachable (" + clash_addr + ")", "");
     } else {
@@ -1629,6 +1637,8 @@ function run_doctor_checks_impl(repair) {
                 command_status(init_script + " restart >/dev/null 2>&1");
                 command_status("sleep 3");
                 let curl_clash2 = command_capture(clash_probe_cmd(clash_addr));
+                if (!(curl_clash2.status == 0 && int(curl_clash2.output) == 200) && clash_addr != "127.0.0.1:9090")
+                    curl_clash2 = command_capture(clash_probe_cmd("127.0.0.1:9090"));
                 if (curl_clash2.status == 0 && int(curl_clash2.output) == 200) {
                     doc_check("❌", "Clash API", "unreachable", "→ FIXED: " + binary_name + " перезапущен");
                     fixed++;
@@ -3270,8 +3280,8 @@ function diagnose_dpi_and_censorship(cfg, lang, causes, fn_add_fix) {
         if (tls_check.status != 0 && (index(tls_out, "Connection reset") >= 0 || index(tls_out, "SSL_ERROR") >= 0 || index(tls_out, "OpenSSL SSL_connect") >= 0)) {
             push(causes, {
                 probability: 88,
-                cause: lang == "en" ? "ISP DPI/TSPU is blocking TLS ClientHello (Connection Reset / SNI filtering)"
-                                    : "Обнаружена блокировка TLS ClientHello со стороны ТСПУ/DPI провайдера (сброс соединения по SNI)",
+                cause: lang == "en" ? "Upstream network middlebox is resetting TLS ClientHello handshakes (Connection Reset / SNI filtering)"
+                                    : "Обнаружен сброс рукопожатий TLS ClientHello на промежуточном сетевом узле провайдера (фильтрация по SNI)",
                 fix: "restart_zapret"
             });
             fn_add_fix("restart_zapret");
@@ -3281,7 +3291,11 @@ function diagnose_dpi_and_censorship(cfg, lang, causes, fn_add_fix) {
 
 function diagnose_proxies_health(cfg, lang, causes, fn_add_fix) {
     let clash_addr = clash_api_url();
-    let curl_res = command_capture("curl -s --max-time 2 http://" + clash_addr + "/proxies 2>/dev/null");
+    let proxy_args = [ "-s", "--max-time", "2" ];
+    for (let a in clash_auth_args())
+        push(proxy_args, a);
+    push(proxy_args, "http://" + clash_addr + "/proxies");
+    let curl_res = command_capture("curl " + common.command_from_args(proxy_args) + " 2>/dev/null");
     if (curl_res.status == 0 && curl_res.output != "") {
         let p_obj = parse_json_or_null(curl_res.output);
         if (p_obj && p_obj.proxies) {
@@ -3791,7 +3805,7 @@ function compute_ai_doctor_result(user_query) {
     let local_report_sanitized = redact_for_ai(local_res.report);
 
     let dns_type = cfg.dns_type || "doh";
-    let active_engine = cfg.engine || "tachyon-core";
+    let active_engine = is_tachyon_core_active() ? "tachyon-core" : ((cfg.engine && cfg.engine != "sing-box") ? cfg.engine : "tachyon-core");
     let version = trim(command_output("cat /etc/tachyon/version 2>/dev/null")) || "unknown";
     // busybox pgrep has no -x, so the old check reported "not running" on OpenWrt
     // even when sing-box was up. pidof matches the process name exactly and
@@ -3879,8 +3893,11 @@ function compute_ai_doctor_result(user_query) {
 
     let arch_ref_en =
         "Tachyon Architecture Reference:\n" +
-        "- Routing Engines (`settings.engine`): `tachyon-core` and `sing-box` (`/etc/init.d/tachyon-core`, config `/etc/tachyon-core/config.json` or `/etc/sing-box/config.json`, variants `stable`, `tiny`, `extended`, `lx`).\n" +
-        "- Packet & DNS Path: LAN clients -> `dnsmasq` (forwards to `127.0.0.42:53`, FakeIP range `198.18.0.0/15`, bootstrap DNS in `settings.bootstrap_dns_server`) -> `nftables` table `inet TachyonTable` -> `fwmark 0x04000000` -> `ip rule` table `tachyon` (205) -> TProxy inbound `:1602` (Clash API `127.0.0.1:9090`).\n" +
+        "- Routing Engine (`settings.engine`): `tachyon-core` (default pure-Rust routing core, `/usr/bin/tachyon-core`, `/etc/init.d/tachyon-core`, config `/etc/tachyon-core/config.json`); optional `sing-box` variants (`stable`, `tiny`, `extended`, `lx`).\n" +
+        "- Packet & DNS Path (CRITICAL — DO NOT CONFUSE Direct vs Proxy):\n" +
+        "  1) DIRECT (`action='bypass'`) & UNMATCHED TRAFFIC (in `split` mode): `dnsmasq` forwards DNS to `127.0.0.42:53` (`tachyon-core`), which resolves Direct/unmatched domains via `dns-server` to REAL IP addresses (NOT FakeIP). In `nftables` (`inet TachyonTable`), Direct rules (`action='bypass'`) immediately `accept`/`return` with `fwmark = 0`. Unmarked packets bypass `ip rule` table `tachyon` (205) and bypass `TProxy :1602`. Direct traffic NEVER enters `tachyon-core` (`0ms` native Linux kernel forwarding directly to WAN; MSS clamping in `mangle_forward` applies ONLY to `tcp flags syn`, NEVER to UDP).\n" +
+        "  2) PROXIED TRAFFIC (`action='connection'` / proxy sections): DNS returns FakeIP `198.18.0.0/15` (or real IP matched by `@tachyon_subnets` / priority proxy sets) -> `nftables` `inet TachyonTable` sets `fwmark 0x04000000` -> `ip rule` table `tachyon` (205) -> `TProxy :1602` -> `tachyon-core` outbound tunnel (Clash API `127.0.0.1:9090`).\n" +
+        "- Route Explain CLI syntax: ALWAYS pass both `<client_ip>` AND `<target_domain_or_ip>`: `tachyon route_explain <client_ip> <target_domain_or_ip> [port] [tcp|udp]` (e.g. `tachyon route_explain 192.168.1.199 demonware.net 3074 udp`). Never omit `<target_domain_or_ip>`.\n" +
         "- Modular UCI Schema (`/etc/config/tachyon`): `settings`, `section` (routing rule orchestrator), `condition` (traffic matchers: domains, lists, CIDRs, GeoIP/GeoSite, ports, client IPs/MACs), `outbound_source` (subscriptions, proxy links, JSON, providers), `balancer` (`urltest`, `least_ping`, `round_robin`, `sticky_hash`, `passive_check`), `outbound_group` (primary/backup failover & `fail_policy`), `server` (inbound server nodes), `telegram`, `guest_mode`.\n" +
         "- Local Providers: `zapret` (`nfqws` NFQueue 200+, `--dpi-desync=...`), `zapret2` (`nfqws2` NFQueue 201+, Lua scripts in `/opt/zapret2/lua/`, `--lua-desync=multisplit:pos=1,midsld:seqovl=1:fooling=badseq`), `byedpi` (`ciadpi` SOCKS5 `:4539`), `wdtt`, `olcrtc`, `fptn`, `tailscale`, `torrserver`.\n" +
         "- Self-Healing & Tools: `watchdog.uc`, `reconciler.uc` (targeted drift repair without core restart), `known_good.uc` (Last Known Good rollback), `transaction.uc` (atomic LIFO rollback), `route_explain.uc`, `config_plan.uc`, `support_bundle.uc`, `smart_detect.uc`.\n\n" +
@@ -3891,8 +3908,11 @@ function compute_ai_doctor_result(user_query) {
 
     let arch_ref_ru =
         "Архитектурная справка Tachyon:\n" +
-        "- Движки маршрутизации (`settings.engine`): `tachyon-core` и `sing-box` (`/etc/init.d/tachyon-core`, конфиг `/etc/tachyon-core/config.json` или `/etc/sing-box/config.json`, варианты `stable`, `tiny`, `extended`, `lx`).\n" +
-        "- Тракт пакетов и DNS: LAN-клиенты -> `dnsmasq` (пересылает запросы на `127.0.0.42:53`, пул FakeIP `198.18.0.0/15`, bootstrap DNS в `settings.bootstrap_dns_server`) -> таблица `nftables` `inet TachyonTable` -> `fwmark 0x04000000` -> `ip rule` таблица `tachyon` (205) -> TProxy `:1602` (Clash API `127.0.0.1:9090`).\n" +
+        "- Движок маршрутизации (`settings.engine`): `tachyon-core` (основное Rust-ядро по умолчанию, `/usr/bin/tachyon-core`, `/etc/init.d/tachyon-core`, конфиг `/etc/tachyon-core/config.json`); опционально сборки `sing-box` (`stable`, `tiny`, `extended`, `lx`).\n" +
+        "- Тракт пакетов и DNS (КРИТИЧЕСКИ ВАЖНО — НЕ ПУТАТЬ Direct и Proxy):\n" +
+        "  1) ПРЯМОЙ МАРШРУТ (`Direct` / `action='bypass'`) и трафик вне правил (в режиме `split`): `dnsmasq` -> `127.0.0.42:53` (`tachyon-core` разрешает домены Direct через `dns-server` в РЕАЛЬНЫЕ IP, БЕЗ FakeIP). В `nftables` (`inet TachyonTable`) правила Direct завершаются без метки (`fwmark = 0`), пакеты НЕ попадают в `ip rule` таблицу `tachyon` (205), НЕ попадают в `TProxy :1602` и ВООБЩЕ НЕ ЗАХОДЯТ в ядро `tachyon-core` — они маршрутизируются напрямую ядром Linux в WAN (`0ms` накладных расходов). Правило MSS Clamping (`tcp flags syn`) работает только для TCP SYN и вообще не затрагивает UDP.\n" +
+        "  2) ПРОКСИРУЕМЫЙ ТРАФИК (`Proxy` / `action='connection'`): получает FakeIP `198.18.0.0/15` (или попадает в `@tachyon_subnets` / прокси-сеты) -> в `inet TachyonTable` получает `fwmark 0x04000000` -> `ip rule` таблица `tachyon` (205) -> `TProxy :1602` -> обрабатывается ядром `tachyon-core` (Clash API `127.0.0.1:9090`).\n" +
+        "- Синтаксис проверки маршрута: ВСЕГДА указывайте и IP клиента, и целевой домен/IP: `tachyon route_explain <ip_клиента> <домен_или_ip> [порт] [tcp|udp]` (например: `tachyon route_explain 192.168.1.199 demonware.net 3074 udp`). Вызов без целевого домена/IP некорректен.\n" +
         "- Модульная схема UCI (`/etc/config/tachyon`): `settings`, `section` (оркестратор правила), `condition` (условия: домены, списки, CIDR, GeoIP/GeoSite, порты, IP/MAC клиентов), `outbound_source` (подписки, ссылки, JSON, провайдеры), `balancer` (`urltest`, `least_ping`, `round_robin`, `sticky_hash`, `passive_check`), `outbound_group` (цепочка отказоустойчивости primary/backup и `fail_policy`), `server` (серверные инбаунды), `telegram`, `guest_mode`.\n" +
         "- Локальные провайдеры: `zapret` (`nfqws` NFQueue 200+, `--dpi-desync=...`), `zapret2` (`nfqws2` NFQueue 201+, Lua-скрипты `/opt/zapret2/lua/`, `--lua-desync=multisplit:pos=1,midsld:seqovl=1:fooling=badseq`), `byedpi` (`ciadpi` SOCKS5 `:4539`), `wdtt`, `olcrtc`, `fptn`, `tailscale`, `torrserver`.\n" +
         "- Контур надёжности и инструменты: `watchdog.uc`, `reconciler.uc` (точечный ремонт без перезапуска ядра), `known_good.uc` (откат к эталону Last Known Good), `transaction.uc` (атомарные транзакции с LIFO-откатом), `route_explain.uc`, `config_plan.uc`, `support_bundle.uc`, `smart_detect.uc`.\n\n" +

@@ -76,6 +76,13 @@ TACHYON_DOWNLOAD_BYTES=0
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" 2>/dev/null && pwd || true)"
 
+if [ -d /opt/bin ] || [ -d /opt/sbin ]; then
+    case ":${PATH:-}:" in
+        *:/opt/bin:*) ;;
+        *) PATH="${PATH:-/usr/sbin:/usr/bin:/sbin:/bin}:/opt/sbin:/opt/bin"; export PATH ;;
+    esac
+fi
+
 ESC="$(printf '\033')"
 if [ -t 1 ] 2>/dev/null && [ "${TERM:-dumb}" != "dumb" ]; then
     C_RESET="${ESC}[0m"; C_BOLD="${ESC}[1m"; C_RED="${ESC}[31;1m"
@@ -136,7 +143,7 @@ Usage: $0 [options]
       --reinstall       Force reinstall of the selected release
       --tag X.Y.Z       Install an exact published release
       --channel NAME    stable (default) or beta
-      --engine NAME     Routing engine: sing-box (default), tachyon-core, none
+      --engine NAME     Routing engine: tachyon-core (default), sing-box, none
       --tachyon-core    Install tachyon-core engine build
       --sing-box-variant VAR  sing-box build: stable, tiny, extended, extended-compressed, lx, tachyon-core
       --skip-sing-box   Do not install routing engine when none is present
@@ -289,6 +296,26 @@ run_with_deadline() {
 _NL='
 '
 
+_format_console_stream_line() {
+    _fcl="$1"
+    case "$_fcl" in
+        '{'*'"kind"'*'"component"'*|'{'*'"release_notes"'*)
+            _fcl_msg="$(printf '%s\n' "$_fcl" | sed -n 's/.*"message":[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)"
+            [ -n "$_fcl_msg" ] || _fcl_msg="$(printf '%s\n' "$_fcl" | sed -n 's/.*"error":[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)"
+            _fcl_ver="$(printf '%s\n' "$_fcl" | sed -n 's/.*"current_version":[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)"
+            if [ -n "$_fcl_msg" ]; then
+                if [ -n "$_fcl_ver" ] && [ "$_fcl_ver" != "not installed" ] && [ "$_fcl_ver" != "unknown" ]; then
+                    printf '%s (%s)' "$_fcl_msg" "$_fcl_ver"
+                else
+                    printf '%s' "$_fcl_msg"
+                fi
+                return 0
+            fi
+            ;;
+    esac
+    printf '%s' "$_fcl"
+}
+
 _stream_poll() {
     _sf="$1"
     _ssize="$(wc -c <"$_sf" 2>/dev/null)" || _ssize=0
@@ -303,7 +330,10 @@ _stream_poll() {
         esac
         _sline="${_sbuf%%"$_NL"*}"
         _sbuf="${_sbuf#*"$_NL"}"
-        [ "$QUIET" -eq 1 ] || printf '  [%s] [%s] %s\n' "$(ts_elapsed)" "$_stag" "$_sline"
+        if [ "$QUIET" -ne 1 ]; then
+            _sdisp="$(_format_console_stream_line "$_sline")"
+            printf '  [%s] [%s] %s\n' "$(ts_elapsed)" "$_stag" "$_sdisp"
+        fi
     done
     return 0
 }
@@ -332,7 +362,8 @@ stream_console_lines() {
     done
     _stream_poll "$_sf"
     if [ -n "$_sbuf" ] && [ "$QUIET" -ne 1 ]; then
-        printf '  [%s] [%s] %s\n' "$(ts_elapsed)" "$_stag" "$_sbuf"
+        _sdisp="$(_format_console_stream_line "$_sbuf")"
+        printf '  [%s] [%s] %s\n' "$(ts_elapsed)" "$_stag" "$_sdisp"
     fi
     return 0
 }
@@ -724,6 +755,11 @@ kmod_is_available() {
             [ -d /sys/module/nft_tproxy ] && return 0
             modprobe nft_tproxy >/dev/null 2>&1 && return 0
             ;;
+        kmod-nft-fib)
+            [ -d /sys/module/nft_fib_inet ] && return 0
+            [ -d /sys/module/nft_fib ] && return 0
+            modprobe nft_fib_inet >/dev/null 2>&1 && return 0
+            ;;
         kmod-tun)
             [ -e /dev/net/tun ] && return 0
             [ -d /sys/module/tun ] && return 0
@@ -759,7 +795,7 @@ ensure_runtime_dependencies() {
     for _pkg in ca-bundle curl openssl-util coreutils-base64 coreutils-timeout bind-dig nftables ip-full; do
         pkg_is_installed "$_pkg" || _missing="$_missing $_pkg"
     done
-    for _kmod in kmod-nft-tproxy kmod-tun kmod-inet-diag; do
+    for _kmod in kmod-nft-tproxy kmod-nft-fib kmod-tun kmod-inet-diag; do
         kmod_is_available "$_kmod" || _missing="$_missing $_kmod"
     done
     [ -z "$_missing" ] && return 0
@@ -771,6 +807,10 @@ ensure_runtime_dependencies() {
             pkg_install_names "$_pkg" || warn "Could not install $_pkg from repository (may be built-in or unavailable in feed); continuing"
         done
     fi
+    modprobe nft_tproxy >/dev/null 2>&1 || true
+    modprobe nft_fib_inet >/dev/null 2>&1 || true
+    modprobe tun >/dev/null 2>&1 || true
+    modprobe inet_diag >/dev/null 2>&1 || true
     return 0
 }
 
@@ -963,7 +1003,14 @@ free_kb() {
 }
 
 check_storage_preflight() {
-    _overlay="$(free_kb /overlay)"; [ -n "$_overlay" ] || _overlay="$(free_kb /)"
+    _overlay="$(free_kb /overlay)"
+    if [ -z "$_overlay" ] || [ "$_overlay" -eq 0 ] 2>/dev/null; then
+        [ -d /opt ] && _overlay="$(free_kb /opt)"
+    fi
+    if [ -z "$_overlay" ] || [ "$_overlay" -eq 0 ] 2>/dev/null; then
+        _overlay="$(free_kb /etc)"
+    fi
+    [ -n "$_overlay" ] || _overlay="$(free_kb /)"
     [ -n "$_overlay" ] || _overlay=0
     if [ "$_overlay" -lt "$REQUIRED_OVERLAY_KB" ]; then
         err "Not enough persistent storage: $((_overlay / 1024)) MiB free, need at least $((REQUIRED_OVERLAY_KB / 1024)) MiB"
@@ -1469,9 +1516,18 @@ install_selected_sing_box() {
         tachyon-core|tachyon_core) _action="install_tachyon_core" ;;
         *) return 1 ;;
     esac
-    msg "Installing sing-box ($SING_BOX_INSTALL_VARIANT)"
+    case "$SING_BOX_INSTALL_VARIANT" in
+        tachyon-core|tachyon_core)
+            msg "Installing tachyon-core"
+            _uci_engine="tachyon-core"
+            ;;
+        *)
+            msg "Installing sing-box ($SING_BOX_INSTALL_VARIANT)"
+            _uci_engine="sing-box"
+            ;;
+    esac
     run_logged_timeout sing-box "$PACKAGE_TIMEOUT_SECONDS" /usr/bin/tachyon component_action sing_box "$_action" || return 1
-    uci set tachyon.settings.engine='sing-box' 2>/dev/null || true
+    uci set "tachyon.settings.engine=$_uci_engine" 2>/dev/null || true
     uci commit tachyon 2>/dev/null || true
     return 0
 }
@@ -1482,7 +1538,7 @@ restore_service_intent() {
     if [ "$TACHYON_WAS_INSTALLED" -eq 1 ]; then
         if [ "$TACHYON_WAS_ENABLED" -eq 1 ]; then /etc/init.d/tachyon enable >/dev/null 2>&1 || true; else /etc/init.d/tachyon disable >/dev/null 2>&1 || true; fi
         if [ "$TACHYON_WAS_RUNNING" -eq 1 ]; then
-            msg "Starting Tachyon service (DNS, nft rules, sing-box — usually 20-40s)"
+            msg "Starting Tachyon service (DNS, nft rules, tachyon-core — usually 20-40s)"
             _t0="$(date +%s 2>/dev/null || echo 0)"
             run_logged_timeout tachyon-start 120 /usr/bin/tachyon start || return 1
             _t1="$(date +%s 2>/dev/null || echo 0)"
@@ -1492,7 +1548,7 @@ restore_service_intent() {
             run_logged_timeout tachyon-stop 45 /usr/bin/tachyon stop || true
         fi
     else
-        msg "First Tachyon launch (DNS, nft rules, sing-box — usually 20-40s)"
+        msg "First Tachyon launch (DNS, nft rules, tachyon-core — usually 20-40s)"
         /etc/init.d/tachyon enable >/dev/null 2>&1 || true
         _t0="$(date +%s 2>/dev/null || echo 0)"
         run_logged_timeout tachyon-start 120 /usr/bin/tachyon start || true
@@ -1555,19 +1611,46 @@ banner() {
     printf 'Reliable OpenWrt install / update / repair\n\n'
 }
 
+is_entware_env() {
+    [ -r /opt/etc/entware_release ] || [ -x /opt/bin/opkg ]
+}
+
+is_keenetic_or_netcraze() {
+    if command_exists ndmc || [ -d /proc/ndm ]; then
+        return 0
+    fi
+    for _kn_file in /tmp/sysinfo/model /proc/device-tree/model /etc/openwrt_release /etc/os-release /opt/etc/entware_release; do
+        [ -r "$_kn_file" ] || continue
+        if grep -qiE 'keenetic|netcraze|netcreaze|ndms' "$_kn_file" 2>/dev/null; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 system_preflight() {
-    [ -r /etc/openwrt_release ] || { err "This installer supports OpenWrt only"; return 1; }
+    if [ ! -r /etc/openwrt_release ] && [ ! -r /etc/os-release ] && ! is_entware_env && ! is_keenetic_or_netcraze; then
+        err "This installer supports OpenWrt only"
+        return 1
+    fi
     _release="$(read_openwrt_release_value DISTRIB_RELEASE)"
     _major="$(printf '%s' "$_release" | sed 's/[^0-9].*$//')"
     case "$_major" in *[!0-9]*|"") _major=0 ;; esac
-    [ "$_major" -eq 0 ] || [ "$_major" -ge 23 ] || { err "OpenWrt 23.05 or newer is required"; return 1; }
+    [ "$_major" -lt 15 ] || [ "$_major" -ge 23 ] || { err "OpenWrt 23.05 or newer is required"; return 1; }
+    if is_keenetic_or_netcraze; then
+        msg "Detected Keenetic / Netcraze environment"
+    fi
     check_storage_preflight
 }
 
 print_plan() {
     msg "Release: ${TACHYON_RELEASE_TAG} (${PKG_MANAGER})"
     [ "$TACHYON_I18N_REQUESTED" -eq 1 ] && msg "Russian LuCI translation: yes" || msg "Russian LuCI translation: no"
-    [ -n "$SING_BOX_INSTALL_VARIANT" ] && msg "sing-box: $SING_BOX_INSTALL_VARIANT" || msg "Engine: keep existing / skip"
+    case "$SING_BOX_INSTALL_VARIANT" in
+        tachyon-core|tachyon_core) msg "Engine: tachyon-core" ;;
+        ?*) msg "sing-box: $SING_BOX_INSTALL_VARIANT" ;;
+        *) msg "Engine: keep existing / skip" ;;
+    esac
     [ "$ZRAM_INSTALL_REQUESTED" -eq 1 ] && msg "zram-swap: install" || true
 }
 

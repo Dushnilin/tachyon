@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-08 19:05+0300\n"
-"PO-Revision-Date: 2026-11-08 19:05+0300\n"
+"POT-Creation-Date: 2026-11-08 00:49+0300\n"
+"PO-Revision-Date: 2026-11-08 00:49+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -857,6 +857,9 @@ msgstr "Применить"
 msgid "Apply Best Match"
 msgstr "Применить лучшее совпадение"
 
+msgid "Apply Configuration"
+msgstr "Применить конфигурацию"
+
 msgid "Apply Preset & Launch in 1 Click"
 msgstr "Применить пресет и запустить в 1 клик"
 
@@ -1628,6 +1631,9 @@ msgstr "Проверка обновлений..."
 msgid "Checking subsystems, please wait..."
 msgstr "Проверка подсистем, пожалуйста подождите..."
 
+msgid "Checking transfer code..."
+msgstr "Проверка кода переноса..."
+
 msgid "Checking, please wait"
 msgstr "Проверяем, пожалуйста подождите"
 
@@ -1888,6 +1894,9 @@ msgstr "Ключи Cloudflare WARP успешно зарегистрирован
 
 msgid "Cloudflare account / device ID"
 msgstr "Аккаунт / ID устройства Cloudflare"
+
+msgid "Code type"
+msgstr "Тип кода"
 
 msgid "Collapse menu to icons"
 msgstr "Свернуть меню в значки"
@@ -2159,6 +2168,12 @@ msgstr "Скопировать отчет для поддержки"
 msgid "Copy Token"
 msgstr "Скопировать токен"
 
+msgid "Copy Transfer Code"
+msgstr "Скопировать строку-код"
+
+msgid "Copy a compact transfer code to move routes or the entire configuration to another router."
+msgstr "Скопируйте компактную строку-код для переноса маршрутов или всей конфигурации на другой роутер."
+
 msgid "Copy address"
 msgstr "Копировать адрес"
 
@@ -2170,6 +2185,9 @@ msgstr "Копировать лог"
 
 msgid "Copy proxy link"
 msgstr "Скопировать ссылку прокси"
+
+msgid "Copy to Clipboard"
+msgstr "Скопировать в буфер"
 
 msgid "Core Telemetry HUD"
 msgstr "Приборная панель ядра (HUD)"
@@ -3683,6 +3701,9 @@ msgstr "Не удалось применить исправление"
 msgid "Failed to apply strategy"
 msgstr "Не удалось применить стратегию"
 
+msgid "Failed to apply transfer code"
+msgstr "Не удалось применить строку-код"
+
 msgid "Failed to auto-apply strategy"
 msgstr "Не удалось автоматически применить стратегию"
 
@@ -3742,6 +3763,9 @@ msgstr "Не удалось сгенерировать конфигурацию 
 
 msgid "Failed to generate bug report"
 msgstr "Не удалось создать отчёт об ошибке"
+
+msgid "Failed to generate transfer code"
+msgstr "Не удалось сформировать строку-код"
 
 msgid "Failed to get DNS benchmark status"
 msgstr "Не удалось получить статус бенчмарка DNS"
@@ -3998,6 +4022,9 @@ msgstr "Самый быстрый"
 msgid "Fastest (Lowest RTT)"
 msgstr "Стандартный URLTest (минимальный RTT)"
 
+msgid "Files"
+msgstr "Файлы"
+
 msgid "Filter Mode"
 msgstr "Режим фильтрации"
 
@@ -4130,6 +4157,12 @@ msgstr "Протокол Fronting прокси"
 msgid "Full System Diagnostic"
 msgstr "Полная диагностика системы"
 
+msgid "Full configuration"
+msgstr "Полный конфиг"
+
+msgid "Full configuration (including system settings)"
+msgstr "Полный конфиг (включая системные настройки)"
+
 msgid "Full dashboard width (100%)"
 msgstr "На всю ширину дашборда (100%)"
 
@@ -4207,6 +4240,9 @@ msgstr "Созданный inbound"
 
 msgid "Generated!"
 msgstr "Сгенерировано!"
+
+msgid "Generating transfer code..."
+msgstr "Формирование строки-кода..."
 
 msgid "Generating…"
 msgstr "Генерация…"
@@ -5249,6 +5285,9 @@ msgstr "Неверный формат времени. Ожидается ЧЧ:М
 msgid "Invalid time format. Use HH:MM (e.g. 08:00 or 22:30)"
 msgstr "Неверный формат времени. Используйте ЧЧ:ММ (например, 08:00 или 22:30)"
 
+msgid "Invalid transfer code"
+msgstr "Некорректная строка-код"
+
 msgid "Invalid value"
 msgstr "Некорректное значение"
 
@@ -5839,6 +5878,9 @@ msgstr "Входящие условия"
 
 msgid "Memory Limit (MB)"
 msgstr "Лимит памяти (МБ)"
+
+msgid "Merge (add to existing routes)"
+msgstr "Объединить (добавить к существующим маршрутам)"
 
 msgid "Message"
 msgstr "Сообщение"
@@ -6833,6 +6875,15 @@ msgstr "Пароль не может быть пустым"
 msgid "Password for auth-user-pass authentication"
 msgstr "Пароль для авторизации auth-user-pass"
 
+msgid "Paste Transfer Code"
+msgstr "Вставить код"
+
+msgid "Paste a tachyon://cfg1/... code above to preview its contents."
+msgstr "Вставьте выше строку-код tachyon://cfg1/... для предпросмотра содержимого."
+
+msgid "Paste a transfer code from another Tachyon router, review the preview, and choose how to apply it."
+msgstr "Вставьте строку-код с другого роутера Tachyon, проверьте содержимое и выберите способ применения."
+
 msgid "Paste content or upload a file to preview imported DNS records."
 msgstr "Вставьте содержимое или загрузите файл для предварительного просмотра импортируемых DNS-записей."
 
@@ -7174,6 +7225,9 @@ msgstr "Защищает зарубежные DNS-серверы (Cloudflare/Goo
 
 msgid "Prevents multiple reload_firewall calls within 120 seconds to avoid connection drops."
 msgstr "Предотвращает множественные вызовы reload_firewall в течение 120 секунд для избежания разрыва соединений."
+
+msgid "Preview Code"
+msgstr "Проверить код"
 
 msgid "Preview matched and excluded servers in real time before saving."
 msgstr "Предпросмотр подходящих и исключённых серверов в реальном времени перед сохранением."
@@ -7691,6 +7745,9 @@ msgstr "Удаление"
 msgid "Rendezvous HRW hashing keeps each client + eTLD+1 domain pinned to the same healthy exit IP"
 msgstr "Консистентное хэширование Rendezvous HRW: сохраняет один выходной IP для клиента и домена (банки, ИИ, игры)"
 
+msgid "Replace current routes"
+msgstr "Заменить текущие маршруты"
+
 msgid "Require a username and password for the local mixed proxy"
 msgstr "Требовать имя пользователя и пароль для локального смешанного прокси"
 
@@ -8011,6 +8068,12 @@ msgstr "Маршруты"
 
 msgid "Routes new connections to the node with the lowest (active_connections + 1) × RTT score"
 msgstr "Распределение новых потоков на сервер с минимальным произведением активных соединений и задержки"
+
+msgid "Routes only"
+msgstr "Только маршруты"
+
+msgid "Routes only (sections, nodes, subscriptions, balancers, conditions)"
+msgstr "Только маршруты (секции, узлы, подписки, балансировщики, условия)"
 
 msgid "Routing"
 msgstr "Маршрутизация"
@@ -10157,6 +10220,12 @@ msgstr "Фильтр типа трафика"
 msgid "Traffic will go through the default route (Direct/Default)."
 msgstr "Трафик пойдёт через маршрут по умолчанию (Direct/Default)."
 
+msgid "Transfer code applied. The service restarts and the page will reload."
+msgstr "Строка-код применена. Служба перезапускается, страница обновится."
+
+msgid "Transfer code copied to clipboard"
+msgstr "Строка-код скопирована в буфер обмена"
+
 msgid "Transient connection error"
 msgstr "Временная ошибка соединения"
 
@@ -11110,6 +11179,9 @@ msgstr "активен"
 
 msgid "allocated dynamically on demand, not upfront"
 msgstr "выделяется динамически по мере запросов, а не сразу"
+
+msgid "chars"
+msgstr "симв."
 
 msgid "checking..."
 msgstr "проверка..."

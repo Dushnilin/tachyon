@@ -46,7 +46,7 @@ function settings() {
 
 function active_engine_name() {
     let engine = uci_core.get(CONFIG_NAME, "settings", "engine");
-    return (engine != null && engine != "") ? as_string(engine) : "sing-box";
+    return (engine != null && engine != "") ? as_string(engine) : "tachyon-core";
 }
 
 function valid_ipv4(value) {

@@ -820,6 +820,18 @@ function createSnapshotsWidget() {
   });
   btnImport.textContent = _('Import Profile');
 
+  const btnCopyCode = E('button', {
+    class: 'btn cbi-button cbi-button-action',
+    type: 'button',
+  });
+  btnCopyCode.textContent = _('Copy Transfer Code');
+
+  const btnPasteCode = E('button', {
+    class: 'btn cbi-button cbi-button-neutral',
+    type: 'button',
+  });
+  btnPasteCode.textContent = _('Paste Transfer Code');
+
   const listEl = E('div', {
     style: 'display:flex;flex-direction:column;gap:6px;',
   });
@@ -1473,6 +1485,491 @@ function createSnapshotsWidget() {
     );
   });
 
+  function formatTransferCountsSummary(counts: any, sectionNames?: string[]) {
+    if (!counts || typeof counts !== 'object') return '';
+    const parts: string[] = [];
+    parts.push(_('Sections') + ': ' + String(counts.sections || 0));
+    parts.push(_('Nodes') + ': ' + String(counts.servers || 0));
+    if (counts.sources) {
+      parts.push(_('Subscriptions') + ': ' + String(counts.sources));
+    }
+    if (counts.balancers) {
+      parts.push(_('Balancers') + ': ' + String(counts.balancers));
+    }
+    if (counts.conditions) {
+      parts.push(_('Conditions') + ': ' + String(counts.conditions));
+    }
+    if (counts.files) {
+      parts.push(_('Files') + ': ' + String(counts.files));
+    }
+    let summaryText = parts.join(' \u00b7 ');
+    if (Array.isArray(sectionNames) && sectionNames.length > 0) {
+      summaryText +=
+        ' (' +
+        sectionNames.slice(0, 6).join(', ') +
+        (sectionNames.length > 6 ? '\u2026' : '') +
+        ')';
+    }
+    return summaryText;
+  }
+
+  function uploadCodeBufferIfNeeded(rawCode: string): Promise<string> {
+    const clean = (rawCode || '').trim();
+    if (clean.length <= 8192) {
+      return Promise.resolve(clean);
+    }
+    const tmpImportPath = '/tmp/tachyon-snapshot-import.json';
+    const bytes =
+      typeof TextEncoder !== 'undefined'
+        ? new TextEncoder().encode(clean)
+        : new Uint8Array(
+            Array.from(unescape(encodeURIComponent(clean))).map((ch) =>
+              ch.charCodeAt(0),
+            ),
+          );
+    const chunkByteSize = 24576;
+    return execSnapshot(['snapshot_import', 'chunk-init'])
+      .then(function () {
+        let chain: Promise<any> = Promise.resolve();
+        for (let offset = 0; offset < bytes.length; offset += chunkByteSize) {
+          const slice = bytes.subarray(
+            offset,
+            Math.min(bytes.length, offset + chunkByteSize),
+          );
+          let binary = '';
+          for (let i = 0; i < slice.length; i++) {
+            binary += String.fromCharCode(slice[i]);
+          }
+          const b64 = btoa(binary);
+          chain = chain.then(function () {
+            return execSnapshot(['snapshot_import', 'chunk-append:' + b64]);
+          });
+        }
+        return chain;
+      })
+      .then(function () {
+        return tmpImportPath;
+      });
+  }
+
+  btnCopyCode.addEventListener('click', function () {
+    let currentScope: 'routes' | 'full' = 'routes';
+    let currentCode = '';
+
+    const radioRoutes = E('input', {
+      type: 'radio',
+      name: 'tachyon-transfer-scope',
+      value: 'routes',
+      checked: 'checked',
+    }) as HTMLInputElement;
+
+    const radioFull = E('input', {
+      type: 'radio',
+      name: 'tachyon-transfer-scope',
+      value: 'full',
+    }) as HTMLInputElement;
+
+    const summaryEl = E(
+      'div',
+      {
+        style:
+          'font-size:12px;color:var(--text-color-medium,#888);margin:4px 0;',
+      },
+      _('Generating transfer code...'),
+    );
+
+    const codeArea = E('textarea', {
+      class: 'cbi-input-textarea',
+      readonly: 'readonly',
+      style:
+        'width:100%;min-height:56px;font-family:monospace;font-size:13px;word-break:break-all;',
+      placeholder: 'tachyon://t1/...',
+    }) as HTMLTextAreaElement;
+
+    function loadCodeForScope(scope: 'routes' | 'full') {
+      currentScope = scope;
+      currentCode = '';
+      codeArea.value = '';
+      summaryEl.textContent = _('Generating transfer code...');
+      execSnapshotJson(['snapshot_export', 'code:' + scope])
+        .then(function (data) {
+          if (data && data.chunked_export) {
+            return readExportFallbackFile(new Error('chunked_export')).then(
+              function (fb) {
+                const prof = (fb && fb.profile) || fb || {};
+                return {
+                  code: prof.transfer_code || prof.code || '',
+                  counts: prof.counts || data.counts,
+                  section_names: prof.section_names || data.section_names,
+                };
+              },
+            );
+          }
+          return data;
+        })
+        .catch(function (err) {
+          return readExportFallbackFile(err).then(function (fb) {
+            const prof = (fb && fb.profile) || fb || {};
+            return {
+              code: prof.transfer_code || prof.code || '',
+              counts: prof.counts,
+              section_names: prof.section_names,
+            };
+          });
+        })
+        .then(function (res: any) {
+          currentCode = String((res && res.code) || '').trim();
+          codeArea.value = currentCode;
+          const summaryStr = formatTransferCountsSummary(
+            res && res.counts,
+            res && res.section_names,
+          );
+          summaryEl.textContent =
+            summaryStr +
+            (currentCode
+              ? ' \u00b7 ' + String(currentCode.length) + ' ' + _('chars')
+              : '');
+        })
+        .catch(function () {
+          summaryEl.textContent = _('Failed to generate transfer code');
+        });
+    }
+
+    radioRoutes.addEventListener('change', function () {
+      if (radioRoutes.checked && currentScope !== 'routes') {
+        loadCodeForScope('routes');
+      }
+    });
+    radioFull.addEventListener('change', function () {
+      if (radioFull.checked && currentScope !== 'full') {
+        loadCodeForScope('full');
+      }
+    });
+
+    ui.showModal(
+      _('Copy Transfer Code'),
+      [
+        E(
+          'p',
+          { style: 'margin-bottom:8px;' },
+          _(
+            'Copy a compact transfer code to move routes or the entire configuration to another router.',
+          ),
+        ),
+        E(
+          'div',
+          {
+            style:
+              'display:flex;flex-direction:column;gap:6px;margin-bottom:8px;',
+          },
+          [
+            E(
+              'label',
+              {
+                style:
+                  'display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;',
+              },
+              [
+                radioRoutes,
+                E(
+                  'span',
+                  {},
+                  _(
+                    'Routes only (sections, nodes, subscriptions, balancers, conditions)',
+                  ),
+                ),
+              ],
+            ),
+            E(
+              'label',
+              {
+                style:
+                  'display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;',
+              },
+              [
+                radioFull,
+                E(
+                  'span',
+                  {},
+                  _('Full configuration (including system settings)'),
+                ),
+              ],
+            ),
+          ],
+        ),
+        summaryEl,
+        codeArea,
+        E('div', { class: 'button-row' }, [
+          E(
+            'button',
+            {
+              class: 'btn cbi-button cbi-button-neutral',
+              type: 'button',
+              click: function () {
+                ui.hideModal();
+              },
+            },
+            _('Close'),
+          ),
+          E(
+            'button',
+            {
+              class: 'btn cbi-button cbi-button-positive',
+              type: 'button',
+              click: function () {
+                const textToCopy = (currentCode || codeArea.value || '').trim();
+                if (!textToCopy) return;
+                const onCopied = function () {
+                  ui.addNotification(
+                    null,
+                    E('p', {}, _('Transfer code copied to clipboard')),
+                    'info',
+                  );
+                };
+                if (
+                  navigator.clipboard &&
+                  typeof navigator.clipboard.writeText === 'function'
+                ) {
+                  navigator.clipboard
+                    .writeText(textToCopy)
+                    .then(onCopied)
+                    .catch(function () {
+                      codeArea.focus();
+                      codeArea.select();
+                      document.execCommand('copy');
+                      onCopied();
+                    });
+                } else {
+                  codeArea.focus();
+                  codeArea.select();
+                  document.execCommand('copy');
+                  onCopied();
+                }
+              },
+            },
+            _('Copy to Clipboard'),
+          ),
+        ]),
+      ],
+      'cbi-modal',
+    );
+
+    loadCodeForScope('routes');
+  });
+
+  btnPasteCode.addEventListener('click', function () {
+    let applyMode: 'replace' | 'merge' = 'replace';
+    let inspectedSource = '';
+    let inspectTimer: any = null;
+
+    const codeInput = E('textarea', {
+      class: 'cbi-input-textarea',
+      style:
+        'width:100%;min-height:56px;font-family:monospace;font-size:13px;word-break:break-all;',
+      placeholder: 'tachyon://t1/...',
+    }) as HTMLTextAreaElement;
+
+    const previewBox = E(
+      'div',
+      {
+        style:
+          'padding:8px 10px;border-radius:4px;border:1px solid var(--border-color,#dee2e6);background:var(--background-color-low,#f8f9fa);font-size:12px;margin:8px 0;',
+      },
+      _('Paste a tachyon://cfg1/... code above to preview its contents.'),
+    );
+
+    const radioReplace = E('input', {
+      type: 'radio',
+      name: 'tachyon-transfer-apply-mode',
+      value: 'replace',
+      checked: 'checked',
+    }) as HTMLInputElement;
+
+    const radioMerge = E('input', {
+      type: 'radio',
+      name: 'tachyon-transfer-apply-mode',
+      value: 'merge',
+    }) as HTMLInputElement;
+
+    radioReplace.addEventListener('change', function () {
+      if (radioReplace.checked) applyMode = 'replace';
+    });
+    radioMerge.addEventListener('change', function () {
+      if (radioMerge.checked) applyMode = 'merge';
+    });
+
+    function runInspect(rawText: string) {
+      const clean = (rawText || '').trim();
+      if (!clean) {
+        inspectedSource = '';
+        previewBox.textContent = _(
+          'Paste a tachyon://cfg1/... code above to preview its contents.',
+        );
+        return;
+      }
+      previewBox.textContent = _('Checking transfer code...');
+      uploadCodeBufferIfNeeded(clean)
+        .then(function (argTarget) {
+          inspectedSource = argTarget;
+          return execSnapshotJson([
+            'snapshot_import',
+            'code-inspect:' + argTarget,
+          ]);
+        })
+        .then(function (info: any) {
+          const scopeLabel =
+            info && info.scope === 'full'
+              ? _('Full configuration')
+              : _('Routes only');
+          const summaryStr = formatTransferCountsSummary(
+            info && info.counts,
+            info && info.section_names,
+          );
+          previewBox.innerHTML = '';
+          previewBox.appendChild(
+            E(
+              'div',
+              { style: 'font-weight:600;margin-bottom:2px;' },
+              _('Code type') + ': ' + scopeLabel,
+            ),
+          );
+          previewBox.appendChild(E('div', {}, summaryStr));
+        })
+        .catch(function (err: any) {
+          inspectedSource = '';
+          previewBox.textContent =
+            _('Invalid transfer code') +
+            (err && err.message ? ': ' + err.message : '');
+        });
+    }
+
+    codeInput.addEventListener('input', function () {
+      inspectedSource = '';
+      if (inspectTimer) clearTimeout(inspectTimer);
+      const val = (codeInput.value || '').trim();
+      if (val.indexOf('tachyon://') === 0) {
+        inspectTimer = setTimeout(function () {
+          runInspect(val);
+        }, 250);
+      }
+    });
+
+    ui.showModal(
+      _('Paste Transfer Code'),
+      [
+        E(
+          'p',
+          { style: 'margin-bottom:8px;' },
+          _(
+            'Paste a transfer code from another Tachyon router, review the preview, and choose how to apply it.',
+          ),
+        ),
+        codeInput,
+        previewBox,
+        E(
+          'div',
+          {
+            style: 'display:flex;flex-direction:column;gap:6px;margin:8px 0;',
+          },
+          [
+            E(
+              'label',
+              {
+                style:
+                  'display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;',
+              },
+              [radioReplace, E('span', {}, _('Replace current routes'))],
+            ),
+            E(
+              'label',
+              {
+                style:
+                  'display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;',
+              },
+              [radioMerge, E('span', {}, _('Merge (add to existing routes)'))],
+            ),
+          ],
+        ),
+        E('div', { class: 'button-row' }, [
+          E(
+            'button',
+            {
+              class: 'btn cbi-button cbi-button-neutral',
+              type: 'button',
+              click: function () {
+                ui.hideModal();
+              },
+            },
+            _('Cancel'),
+          ),
+          E(
+            'button',
+            {
+              class: 'btn cbi-button cbi-button-action',
+              type: 'button',
+              click: function () {
+                runInspect(codeInput.value || '');
+              },
+            },
+            _('Preview Code'),
+          ),
+          E(
+            'button',
+            {
+              class: 'btn cbi-button cbi-button-positive',
+              type: 'button',
+              click: function () {
+                const raw = (codeInput.value || '').trim();
+                if (!raw) return;
+                ui.hideModal();
+                const targetPromise = inspectedSource
+                  ? Promise.resolve(inspectedSource)
+                  : uploadCodeBufferIfNeeded(raw);
+                targetPromise
+                  .then(function (argTarget) {
+                    return execSnapshotJson([
+                      'snapshot_import',
+                      'code-apply:' + applyMode + ':' + argTarget,
+                    ]);
+                  })
+                  .then(function () {
+                    ui.addNotification(
+                      null,
+                      E(
+                        'p',
+                        {},
+                        _(
+                          'Transfer code applied. The service restarts and the page will reload.',
+                        ),
+                      ),
+                      'info',
+                    );
+                    setTimeout(function () {
+                      location.reload();
+                    }, 2500);
+                  })
+                  .catch(function (err: any) {
+                    ui.addNotification(
+                      null,
+                      E(
+                        'p',
+                        {},
+                        _('Failed to apply transfer code') +
+                          (err && err.message ? ': ' + err.message : ''),
+                      ),
+                      'error',
+                    );
+                  });
+              },
+            },
+            _('Apply Configuration'),
+          ),
+        ]),
+      ],
+      'cbi-modal',
+    );
+  });
+
   wrapper.appendChild(
     E(
       'div',
@@ -1482,6 +1979,8 @@ function createSnapshotsWidget() {
       [
         btnSave,
         btnImport,
+        btnCopyCode,
+        btnPasteCode,
         E(
           'span',
           {

@@ -1153,7 +1153,7 @@ function subscription_bootstrap_download_section_is_ready(sections, startup_bloc
     }
 
     if (!any_target)
-        log_message("Subscription startup cannot be deferred because unavailable subscription-only rules have no download-through-section target", "error");
+        log_message("Unavailable subscription-only rule(s) have no download-through-section target; deferring for background retry", "info");
 
     return any_target;
 }
@@ -3031,7 +3031,6 @@ function ensure_subscription_source_for_prepare(state, section, source_index, en
     let parsed = subscription_source_profile(section, entry);
     if (type(parsed) != "object" || parsed.valid !== true) {
         log_message("Invalid subscription source for rule '" + section_name_value + "': " + as_string(parsed.error || "Invalid subscription source entry"), "error");
-        state.startup_blocked = true;
         return false;
     }
 
@@ -3226,8 +3225,11 @@ function prepare_subscription_caches(phase, already_prepared, no_refresh) {
         return 0;
     }
 
-    if ((phase == "startup" || phase == "runtime") && subscription_bootstrap_download_section_is_ready(sections, state.startup_blocked_sections, get_subscription_user_agent(""))) {
-        log_message("Starting temporarily without subscription-only rule(s): " + state.startup_blocked_sections + ". They will be retried through the service proxy after sing-box starts", "warn");
+    if (phase == "startup" || phase == "runtime") {
+        if (subscription_bootstrap_download_section_is_ready(sections, state.startup_blocked_sections, get_subscription_user_agent("")))
+            log_message("Starting temporarily without subscription-only rule(s): " + state.startup_blocked_sections + ". They will be retried through the service proxy after sing-box starts", "warn");
+        else
+            log_message("Starting temporarily without unavailable subscription-only rule(s): " + state.startup_blocked_sections + ". Other rules remain active and failed rules will apply fail_policy / retry in background", "warn");
         write_file(TACHYON_SUBSCRIPTION_DEFERRED_SECTIONS_FILE, state.startup_blocked_sections + "\n");
         print(state.startup_blocked_sections, "\n");
         return 0;

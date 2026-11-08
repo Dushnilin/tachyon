@@ -4890,9 +4890,9 @@ function reserve_section_outbound_tags(sections, taken) {
 }
 
 function add_route_for_section(config, section, phase) {
-    if (ctx.quarantined_sections && ctx.quarantined_sections[section[".name"]])
-        return;
     let override = section_fail_policy_override_target(section);
+    if (ctx.quarantined_sections && ctx.quarantined_sections[section[".name"]] && override == null)
+        return;
     if (ctx.deferred_sections && ctx.deferred_sections[section[".name"]] && override == null)
         return;
     let action = option(section, "action", "");

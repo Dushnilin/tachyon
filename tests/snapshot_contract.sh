@@ -351,4 +351,110 @@ ACL_FILE="$ROOT_DIR/tachyon/files/usr/share/rpcd/acl.d/luci-app-tachyon.json"
 grep -Fq '"cgi-io"' "$ACL_FILE" ||
   fail "luci-app-tachyon ACL must grant cgi-io permissions for LuCI fs.read/fs.write"
 
+# ---- Compact transfer codes (tachyon://t1/... short encrypted token & tachyon://cfg1/... offline fallback)
+cat >"$WORK_DIR/config/tachyon" <<'EOF'
+config settings 'settings'
+	option dns_type 'doh'
+	option dns '1.1.1.1'
+	option engine 'tachyon-core'
+
+config section 's_media'
+	option label 'Media'
+	option enabled '1'
+
+config server 'srv_eu'
+	option label 'EU Inbound VPN'
+	option protocol 'vless'
+
+config outbound_source 'sub_main'
+	option label 'Main Sub'
+	list proxy_links 'vless://00000000-0000-0000-0000-000000000001@198.51.100.10:443#Node1'
+EOF
+printf '%s\n' 'transfer-custom-domain.example' >"$WORK_DIR/tachyon/custom.lst"
+
+TACHYON_TRANSFER_RELAY_DIR="$WORK_DIR/relay" run_uc snapshot-export "code:routes" >"$WORK_DIR/code-routes.json"
+grep -Fq '"success": true' "$WORK_DIR/code-routes.json" ||
+  fail "snapshot-export code:routes must succeed"
+grep -Fq '"scope": "routes"' "$WORK_DIR/code-routes.json" ||
+  fail "snapshot-export code:routes must report scope=routes"
+ROUTES_CODE="$(sed -n 's/.*"code": "\([^"]*\)".*/\1/p' "$WORK_DIR/code-routes.json")"
+case "$ROUTES_CODE" in
+  tachyon://t1/l/*) ;;
+  *) fail "snapshot-export code:routes with relay must produce a short tachyon://t1/ token (got: $ROUTES_CODE)" ;;
+esac
+
+TACHYON_TRANSFER_OFFLINE_ONLY=1 run_uc snapshot-export "code:full" >"$WORK_DIR/code-full.json"
+grep -Fq '"success": true' "$WORK_DIR/code-full.json" ||
+  fail "snapshot-export code:full must succeed"
+FULL_CODE="$(sed -n 's/.*"code": "\([^"]*\)".*/\1/p' "$WORK_DIR/code-full.json")"
+case "$FULL_CODE" in
+  tachyon://cfg1/*|tachyon://cfg1u/*) ;;
+  *) fail "snapshot-export with TACHYON_TRANSFER_OFFLINE_ONLY=1 must produce a tachyon://cfg1/ code" ;;
+esac
+
+TACHYON_TRANSFER_RELAY_DIR="$WORK_DIR/relay" run_uc snapshot-import "code-inspect:$ROUTES_CODE" >"$WORK_DIR/code-inspect.json"
+grep -Fq '"success": true' "$WORK_DIR/code-inspect.json" ||
+  fail "snapshot-import code-inspect must succeed"
+grep -Fq '"scope": "routes"' "$WORK_DIR/code-inspect.json" ||
+  fail "code-inspect must report scope=routes"
+grep -Fq '"Media"' "$WORK_DIR/code-inspect.json" ||
+  fail "code-inspect must include section label Media"
+
+# Target router has different system settings and its own existing route section
+cat >"$WORK_DIR/config/tachyon" <<'EOF'
+config settings 'settings'
+	option dns_type 'udp'
+	option dns '9.9.9.9'
+	option engine 'sing-box'
+
+config section 's_existing'
+	option label 'Existing Local Route'
+	option enabled '1'
+EOF
+rm -f "$WORK_DIR/tachyon/custom.lst"
+
+# 1) Merge mode: keeps s_existing and target settings, adds s_media and sub_main, and restores custom.lst
+TACHYON_TRANSFER_RELAY_DIR="$WORK_DIR/relay" run_uc snapshot-import "code-apply:merge:$ROUTES_CODE" >"$WORK_DIR/code-merge.json"
+grep -Fq '"success": true' "$WORK_DIR/code-merge.json" ||
+  fail "code-apply:merge must succeed"
+grep -Fq "option dns '9.9.9.9'" "$WORK_DIR/config/tachyon" ||
+  fail "code-apply:merge (routes) must preserve target router settings"
+grep -Fq "config section 's_existing'" "$WORK_DIR/config/tachyon" ||
+  fail "code-apply:merge must preserve existing route sections on target router"
+grep -Fq "config section 's_media'" "$WORK_DIR/config/tachyon" ||
+  fail "code-apply:merge must add incoming route sections"
+grep -Fq "config outbound_source 'sub_main'" "$WORK_DIR/config/tachyon" ||
+  fail "code-apply:merge must add incoming outbound_source sections"
+[ "$(cat "$WORK_DIR/tachyon/custom.lst")" = 'transfer-custom-domain.example' ] ||
+  fail "code-apply:merge must transfer user files in /etc/tachyon"
+
+# 2) Replace mode (scope=routes): preserves target settings, replaces s_existing with s_media
+TACHYON_TRANSFER_RELAY_DIR="$WORK_DIR/relay" run_uc snapshot-import "code-apply:replace:$ROUTES_CODE" >"$WORK_DIR/code-replace.json"
+grep -Fq '"success": true' "$WORK_DIR/code-replace.json" ||
+  fail "code-apply:replace must succeed"
+grep -Fq "option dns '9.9.9.9'" "$WORK_DIR/config/tachyon" ||
+  fail "code-apply:replace (routes) must preserve target router settings"
+if grep -Fq "config section 's_existing'" "$WORK_DIR/config/tachyon"; then
+  fail "code-apply:replace must remove old route sections not in the transfer code"
+fi
+grep -Fq "config section 's_media'" "$WORK_DIR/config/tachyon" ||
+  fail "code-apply:replace must write transferred route sections"
+
+# 3) Replace mode (scope=full): replaces target settings and includes inbound server
+run_uc snapshot-import "code-apply:replace:$FULL_CODE" >"$WORK_DIR/code-replace-full.json"
+grep -Fq '"success": true' "$WORK_DIR/code-replace-full.json" ||
+  fail "code-apply:replace (full) must succeed"
+grep -Fq "option dns '1.1.1.1'" "$WORK_DIR/config/tachyon" ||
+  fail "code-apply:replace (full) must apply transferred settings"
+grep -Fq "config server 'srv_eu'" "$WORK_DIR/config/tachyon" ||
+  fail "code-apply:replace (full) must include inbound VPN server sections"
+
+# 4) Negative test: corrupted transfer code or wrong token key is rejected without modifying config
+run_uc snapshot-import "code-apply:replace:tachyon://cfg1/not_valid_gzip_payload" >"$WORK_DIR/code-bad.json" &&
+  fail "corrupted transfer code must fail"
+grep -Fq '"success": false' "$WORK_DIR/code-bad.json" ||
+  fail "corrupted transfer code must report success=false"
+grep -Fq "option dns '1.1.1.1'" "$WORK_DIR/config/tachyon" ||
+  fail "rejected transfer code must leave current config intact"
+
 printf 'snapshot contract checks passed\n'

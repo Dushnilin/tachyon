@@ -2409,7 +2409,7 @@ function append_sing_box_schedule_signature_body(body, schedule) {
     return body;
 }
 
-function sing_box_signature_body(settings, sections, servers, mwan3_active, schedules, profiles) {
+function sing_box_signature_body(settings, sections, servers, mwan3_active, schedules, profiles, telegram) {
     settings = object_or_empty(settings);
     let body = "";
 
@@ -2460,6 +2460,9 @@ function sing_box_signature_body(settings, sections, servers, mwan3_active, sche
         body = signature_add_value(body, "settings.download_components_via_proxy_section", option(settings, "download_components_via_proxy_section", ""));
     body = signature_add_value(body, "settings.route_router_traffic", bool_option_value(settings, "route_router_traffic", false));
     body = signature_add_value(body, "settings.route_router_traffic_section", option(settings, "route_router_traffic_section", ""));
+    let bot_proxy_section = trim(option(telegram, "bot_proxy_section", ""));
+    if (bot_proxy_section != "")
+        body = signature_add_value(body, "telegram.bot_proxy_section", bot_proxy_section);
     if (bool_option(settings, "wifi_calling_direct", false))
         body = signature_add_value(body, "settings.wifi_calling_direct", "1");
     if (bool_option(settings, "lite_mode", false))
@@ -2701,12 +2704,12 @@ function fptn_runtime_signature_body(sections) {
     return body;
 }
 
-function reload_state_values_from_sources(format, settings, sections, servers, dnsmasq, legacy_dnsmasq_present, mwan3_active_value, schedules, profiles, guest_modes) {
+function reload_state_values_from_sources(format, settings, sections, servers, dnsmasq, legacy_dnsmasq_present, mwan3_active_value, schedules, profiles, guest_modes, telegram) {
     return {
         format: as_string(format),
         service_trigger_signature: signature_hash(service_trigger_signature_body(settings)),
         dnsmasq_signature: signature_hash(dnsmasq_signature_body(settings, dnsmasq, legacy_dnsmasq_present)),
-        sing_box_signature: signature_hash(sing_box_signature_body(settings, sections, servers, mwan3_active_value, schedules, profiles)),
+        sing_box_signature: signature_hash(sing_box_signature_body(settings, sections, servers, mwan3_active_value, schedules, profiles, telegram)),
         nft_signature: signature_hash(nft_runtime_signature_body(settings, sections, schedules, profiles, guest_modes)),
         zapret_queue_signature: signature_hash(action_queue_signature_body(sections, "zapret", "zapret_queue.section")),
         zapret_runtime_signature: signature_hash(zapret_runtime_signature_body(sections)),
@@ -2908,7 +2911,8 @@ function current_reload_state_values(format) {
         mwan3_active(),
         uci_sections("schedule"),
         uci_sections("profile"),
-        uci_sections("guest_mode")
+        uci_sections("guest_mode"),
+        uci_section("telegram")
     );
 }
 
@@ -2959,7 +2963,8 @@ function fixture_reload_state_values(data, format) {
         fixture_mwan3_active(data),
         fixture_section_list(data, "schedule"),
         fixture_section_list(data, "profile"),
-        fixture_section_list(data, "guest_mode")
+        fixture_section_list(data, "guest_mode"),
+        object_or_empty(data.telegram)
     );
 }
 
@@ -3113,14 +3118,14 @@ else if (mode == "dnsmasq-signature-fixture") {
     exit(print_signature_hash(dnsmasq_signature_body(fixture_settings(data), fixture_dnsmasq(data), fixture_legacy_dnsmasq_present(data))) ? 0 : 1);
 }
 else if (mode == "sing-box-signature")
-    exit(print_signature_hash(sing_box_signature_body(uci_settings(), uci_sections("section"), uci_servers(), mwan3_active(), uci_sections("schedule"), uci_sections("profile"))) ? 0 : 1);
+    exit(print_signature_hash(sing_box_signature_body(uci_settings(), uci_sections("section"), uci_servers(), mwan3_active(), uci_sections("schedule"), uci_sections("profile"), uci_section("telegram"))) ? 0 : 1);
 else if (mode == "sing-box-signature-fixture") {
     let data = fixture_data(ARGV[1]);
-    exit(print_signature_hash(sing_box_signature_body(fixture_settings(data), fixture_section_list(data), fixture_servers(data), fixture_mwan3_active(data), fixture_section_list(data, "schedule"), fixture_section_list(data, "profile"))) ? 0 : 1);
+    exit(print_signature_hash(sing_box_signature_body(fixture_settings(data), fixture_section_list(data), fixture_servers(data), fixture_mwan3_active(data), fixture_section_list(data, "schedule"), fixture_section_list(data, "profile"), object_or_empty(data.telegram))) ? 0 : 1);
 }
 else if (mode == "sing-box-signature-body-fixture") {
     let data = fixture_data(ARGV[1]);
-    print(sing_box_signature_body(fixture_settings(data), fixture_section_list(data), fixture_servers(data), fixture_mwan3_active(data), fixture_section_list(data, "schedule"), fixture_section_list(data, "profile")));
+    print(sing_box_signature_body(fixture_settings(data), fixture_section_list(data), fixture_servers(data), fixture_mwan3_active(data), fixture_section_list(data, "schedule"), fixture_section_list(data, "profile"), object_or_empty(data.telegram)));
 }
 else if (mode == "nft-signature")
     exit(print_signature_hash(nft_runtime_signature_body(uci_settings(), uci_sections("section"), uci_sections("schedule"), uci_sections("profile"), uci_sections("guest_mode"))) ? 0 : 1);

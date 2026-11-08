@@ -169,7 +169,7 @@ function uci_sections(type_name) {
 
 function active_engine_name() {
     let engine = uci_core.get(CONFIG_NAME, "settings", "engine");
-    return (engine != null && engine != "") ? as_string(engine) : "sing-box";
+    return (engine != null && engine != "") ? as_string(engine) : "tachyon-core";
 }
 
 // Native Tailscale (tailscale_mode=native) runs tailscaled outside sing-box:
@@ -1042,14 +1042,18 @@ function clash_api_url() {
 
 function clash_auth_args() {
     let secret = "";
-    let config_data = fs.readfile("/etc/tachyon-core/config.json");
-    if (config_data) {
-        try {
-            let sb_cfg = json(config_data);
-            let sb_secret = sb_cfg.experimental?.clash_api?.secret;
-            if (sb_secret && sb_secret != "")
-                secret = sb_secret;
-        } catch (e) {}
+    for (let cfg_path in [ "/etc/tachyon-core/config.json", TMP_SING_BOX_FOLDER + "/config.json" ]) {
+        let config_data = fs.readfile(cfg_path);
+        if (config_data) {
+            try {
+                let sb_cfg = json(config_data);
+                let sb_secret = sb_cfg.experimental?.clash_api?.secret;
+                if (sb_secret && sb_secret != "") {
+                    secret = sb_secret;
+                    break;
+                }
+            } catch (e) {}
+        }
     }
     if (secret == "") {
         let cfg = settings();
