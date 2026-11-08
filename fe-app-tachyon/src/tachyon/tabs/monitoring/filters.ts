@@ -1,5 +1,5 @@
 import { prettyBytes } from '../../../helpers/prettyBytes';
-import { getOutboundTagBySection } from '../../runtimeTags';
+import { cleanBalancerTagId, getOutboundTagBySection } from '../../runtimeTags';
 import { Tachyon } from '../../types';
 import { getDashboardSectionTypeFilter } from '../dashboard/dashboardLayout';
 import {
@@ -151,10 +151,11 @@ export function getUrlTestIds(section: Tachyon.ConfigSection): string[] {
 }
 
 export function getUrlTestTag(sectionName: string, id: string): string {
+  const cleanId = cleanBalancerTagId(sectionName, id);
   return getOutboundTagBySection(
-    id === 'urltest'
+    cleanId === 'urltest'
       ? `${sectionName}-urltest`
-      : `${sectionName}-urltest-${id}`,
+      : `${sectionName}-urltest-${cleanId}`,
   );
 }
 

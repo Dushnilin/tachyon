@@ -1434,6 +1434,17 @@ function add_fptn_manual_members(config, state, section_name, tag_name, link, ta
             if (!state.outboundMetadata.source_ids)
                 state.outboundMetadata.source_ids = {};
             state.outboundMetadata.source_ids[member_tag] = src_tag;
+            let src_sec = (connections && type(connections.outbound_source_section) == "function")
+                ? connections.outbound_source_section(src_tag)
+                : null;
+            if (src_sec != null) {
+                let src_nm = trim(option(src_sec, "name", option(src_sec, "label", "")));
+                if (src_nm != "") {
+                    if (!state.outboundMetadata.source_names)
+                        state.outboundMetadata.source_names = {};
+                    state.outboundMetadata.source_names[member_tag] = src_nm;
+                }
+            }
         }
     }
     return true;
@@ -1587,6 +1598,17 @@ function add_manual_proxy_link(config, state, section_name, manual_index, link, 
         if (!state.outboundMetadata.source_ids)
             state.outboundMetadata.source_ids = {};
         state.outboundMetadata.source_ids[tag_name] = src_tag;
+        let src_sec = (connections && type(connections.outbound_source_section) == "function")
+            ? connections.outbound_source_section(src_tag)
+            : null;
+        if (src_sec != null) {
+            let src_nm = trim(option(src_sec, "name", option(src_sec, "label", "")));
+            if (src_nm != "") {
+                if (!state.outboundMetadata.source_names)
+                    state.outboundMetadata.source_names = {};
+                state.outboundMetadata.source_names[tag_name] = src_nm;
+            }
+        }
     }
     return tag_name;
 }
@@ -2034,6 +2056,17 @@ function add_subscription_source_with_state(config, section, source_index, sourc
             if (!state.outboundMetadata.source_ids)
                 state.outboundMetadata.source_ids = {};
             state.outboundMetadata.source_ids[outbound.tag] = sub_src_id;
+            let src_sec = (connections && type(connections.outbound_source_section) == "function")
+                ? connections.outbound_source_section(sub_src_id)
+                : null;
+            if (src_sec != null) {
+                let src_nm = trim(option(src_sec, "name", option(src_sec, "label", "")));
+                if (src_nm != "") {
+                    if (!state.outboundMetadata.source_names)
+                        state.outboundMetadata.source_names = {};
+                    state.outboundMetadata.source_names[outbound.tag] = src_nm;
+                }
+            }
         }
         if (hidden_flags[i] !== true) {
             push(selector_tags, outbound.tag);
@@ -2126,6 +2159,11 @@ function add_interface_connection_outbound(config, state, section, interface_ind
         if (!state.outboundMetadata.source_ids)
             state.outboundMetadata.source_ids = {};
         state.outboundMetadata.source_ids[tag_name] = src_id;
+        if (display_name != "") {
+            if (!state.outboundMetadata.source_names)
+                state.outboundMetadata.source_names = {};
+            state.outboundMetadata.source_names[tag_name] = display_name;
+        }
     }
 }
 

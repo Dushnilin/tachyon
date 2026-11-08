@@ -175,4 +175,38 @@ for caller in "$LIB_DIR/components/action.uc" "$LIB_DIR/diagnostics/system_info.
   fi
 done
 
+# Module-local write_file helpers in runtime/subscription must delegate to
+# common.write_file so flash files (/etc/tachyon/*) never bypass content_unchanged.
+for mod in "$LIB_DIR/tachyon_core/runtime.uc" "$LIB_DIR/subscription/cache.uc"; do
+  fn_body="$(sed -n '/^function write_file(/,/^}/p' "$mod")"
+  grep -Fq 'common.write_file' <<< "$fn_body" ||
+    fail "$mod write_file() bypassed common.write_file: $fn_body"
+done
+
+# Repeatedly persisting an unchanged subscription cache must not touch mtime or
+# ctime (no redundant chmod/rewrite on /etc/tachyon/subscription-cache).
+mkdir -p "$WORK_DIR/sub-run" "$WORK_DIR/sub-persist"
+cat >"$WORK_DIR/sub-run/src.json" <<'JSON'
+{"outbounds":[{"type":"direct","tag":"one"}]}
+JSON
+cat >"$WORK_DIR/sub-run/meta.json" <<'JSON'
+{"version":1,"title":"Test"}
+JSON
+TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/sub-persist" \
+  TMP_SUBSCRIPTION_FOLDER="$WORK_DIR/sub-run" \
+  TACHYON_SUBSCRIPTION_METADATA_DIR="$WORK_DIR/sub-run/meta" \
+  ucode -L "$LIB_DIR" "$LIB_DIR/subscription/cache.uc" persist-source-cache \
+    proxy-subscription-1 "$WORK_DIR/sub-run/src.json" "https://example.com/sub" "v2rayN" "$WORK_DIR/sub-run/meta.json"
+sleep 1.1
+ctime_before="$(stat -c '%Y:%Z' "$WORK_DIR/sub-persist/proxy-subscription-1.json" "$WORK_DIR/sub-persist/proxy-subscription-1.url")"
+TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/sub-persist" \
+  TMP_SUBSCRIPTION_FOLDER="$WORK_DIR/sub-run" \
+  TACHYON_SUBSCRIPTION_METADATA_DIR="$WORK_DIR/sub-run/meta" \
+  ucode -L "$LIB_DIR" "$LIB_DIR/subscription/cache.uc" persist-source-cache \
+    proxy-subscription-1 "$WORK_DIR/sub-run/src.json" "https://example.com/sub" "v2rayN" "$WORK_DIR/sub-run/meta.json"
+sleep 1.1
+ctime_after="$(stat -c '%Y:%Z' "$WORK_DIR/sub-persist/proxy-subscription-1.json" "$WORK_DIR/sub-persist/proxy-subscription-1.url")"
+[ "$ctime_before" = "$ctime_after" ] ||
+  fail "persist-source-cache modified mtime/ctime on unchanged subscription cache ($ctime_before -> $ctime_after)"
+
 printf 'fault: flash wear guard passed\n'

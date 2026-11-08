@@ -518,7 +518,8 @@ function new_section_state(section_name) {
             ports: {},
             details: {},
             sources: {},
-            source_ids: {}
+            source_ids: {},
+            source_names: {}
         },
         servers: {},
         urltestCandidateTags: [],

@@ -3105,6 +3105,35 @@ function configureOutboundsSection(sectionRef) {
           uci.remove(UCI_PACKAGE, sub['.name']);
         }
       });
+      (uci.sections(UCI_PACKAGE, 'section') || []).forEach((sec) => {
+        const sid = sec['.name'];
+        if (!sid) return;
+        const rawUrls = uci.get(UCI_PACKAGE, sid, 'subscription_urls');
+        const urls = Array.isArray(rawUrls)
+          ? rawUrls
+          : rawUrls
+            ? String(rawUrls).split(/\s+/).filter(Boolean)
+            : [];
+        if (urls.includes(srcUrl)) {
+          const nextUrls = urls.filter((u) => u !== srcUrl);
+          if (nextUrls.length > 0) {
+            uci.set(UCI_PACKAGE, sid, 'subscription_urls', nextUrls);
+          } else {
+            uci.unset(UCI_PACKAGE, sid, 'subscription_urls');
+          }
+          try {
+            if (
+              typeof fs !== 'undefined' &&
+              fs &&
+              typeof fs.remove === 'function'
+            ) {
+              fs.remove(`/var/run/tachyon/section-cache/${sid}.json`).catch(
+                () => null,
+              );
+            }
+          } catch (_e) {}
+        }
+      });
     }
     if (srcIface) {
       (uci.sections(UCI_PACKAGE, 'section_interface') || []).forEach((ifc) => {

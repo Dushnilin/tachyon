@@ -2233,9 +2233,33 @@ function latency_boot_sweep() {
             let section_name = section[".name"];
             let ut_list = connections.urltests(section);
             for (let urltest_id in ut_list) {
-                let group_tag = (urltest_id == "urltest")
+                let clean_ut_id = as_string(urltest_id);
+                if (clean_ut_id != "" && clean_ut_id != "urltest" && section_name != "") {
+                    let s = clean_ut_id;
+                    let is_bal = false;
+                    if (substr(s, 0, 9) == "bal_prio_") {
+                        s = substr(s, 9);
+                        is_bal = true;
+                    } else if (substr(s, 0, 4) == "bal_") {
+                        s = substr(s, 4);
+                        is_bal = true;
+                    }
+                    if (is_bal) {
+                        let pfx = section_name + "_";
+                        let sfx = "_" + section_name;
+                        if (lc(substr(s, 0, length(pfx))) == lc(pfx))
+                            s = substr(s, length(pfx));
+                        else if (length(s) > length(sfx) && lc(substr(s, length(s) - length(sfx))) == lc(sfx))
+                            s = substr(s, 0, length(s) - length(sfx));
+                        else
+                            s = clean_ut_id;
+                        if (s != "")
+                            clean_ut_id = s;
+                    }
+                }
+                let group_tag = (clean_ut_id == "urltest")
                     ? (section_name + "-urltest-out")
-                    : (section_name + "-urltest-" + urltest_id + "-out");
+                    : (section_name + "-urltest-" + clean_ut_id + "-out");
                 let id = "boot-sweep-" + section_name + "-" + urltest_id;
                 let path = job_state_path_value(LATENCY_ACTION_DIR, id);
                 if (path == "")

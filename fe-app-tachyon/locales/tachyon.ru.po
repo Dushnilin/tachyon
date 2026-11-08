@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-07 14:04+0300\n"
-"PO-Revision-Date: 2026-11-07 14:04+0300\n"
+"POT-Creation-Date: 2026-11-08 14:06+0300\n"
+"PO-Revision-Date: 2026-11-08 14:06+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -7895,11 +7895,17 @@ msgstr "Маршрутизировать собственный трафик р�
 msgid "Route Subnets from Community Lists"
 msgstr "Маршрутизировать подсети из списков сообщества"
 
+msgid "Route all matching device traffic and DNS queries through this section without requiring domain or IP lists."
+msgstr ""
+
 msgid "Route all non-local LAN traffic through the tailnet exit node instead of the proxy engines."
 msgstr "Направлять весь не-локальный LAN-трафик через exit-node тейлнета вместо прокси-движков."
 
 msgid "Route all remaining traffic through this section without requiring specific domain/IP conditions."
 msgstr "Направлять весь не совпавший выше трафик через эту секцию без дополнительных условий."
+
+msgid "Route all traffic (Global Match All)"
+msgstr ""
 
 msgid "Route all traffic arriving on selected local Inbound Servers (from the Server tab) through this section."
 msgstr "Направлять весь трафик, приходящий на выбранные локальные входящие серверы (из вкладки «Сервер»), через эту секцию."

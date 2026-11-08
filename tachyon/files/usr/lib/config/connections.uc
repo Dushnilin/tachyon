@@ -783,6 +783,11 @@ function normalize_amnezia_config_entry(raw_val, fallback_name) {
         return "";
     if (substr(val, 0, 1) == "{")
         return val;
+    if (substr(val, 0, 6) == "vpn://" && index(val, "#") < 0) {
+        let nm = trim(as_string(fallback_name || ""));
+        if (nm != "" && nm != "AmneziaWG")
+            return val + "#" + nm;
+    }
     if (index(val, "[Interface]") >= 0 && index(val, "[Peer]") >= 0) {
         let nm = trim(as_string(fallback_name || "AmneziaWG"));
         if (nm == "")
@@ -2372,6 +2377,20 @@ function synthesized_priority_levels_for_balancer(group_id, section, force_from_
                 has_legacy = true;
             if (!has_legacy)
                 group_refs = section_combined_pool_tier_refs(owner_sec);
+        }
+        if (length(group_refs) > 0 && type(owner_sec) == "object") {
+            let sec_grefs = section_outbound_group_refs(owner_sec);
+            if (length(sec_grefs) > 0) {
+                let has_any_group = false;
+                for (let gref in group_refs) {
+                    if (outbound_group_section(gref) != null) {
+                        has_any_group = true;
+                        break;
+                    }
+                }
+                if (!has_any_group)
+                    group_refs = section_combined_pool_tier_refs(owner_sec);
+            }
         }
     }
     if (length(group_refs) == 0)
@@ -4844,6 +4863,7 @@ function outbound_group_filter_spec(group_or_id, section) {
     let grp = type(group_or_id) == "object" ? group_or_id : outbound_group_section(group_or_id);
     if (grp == null)
         return null;
+    let explicit_inc_prefixes = list_value(grp, "include_prefixes");
     let inc_prefixes = child_effective_include_prefixes(grp, section, true);
     let inc_countries = list_value(grp, "include_countries");
     let inc_outbounds = list_value(grp, "include_outbounds");
@@ -4868,7 +4888,7 @@ function outbound_group_filter_spec(group_or_id, section) {
         ? bool_option(grp, "exclude_proxy_parameters", false)
         : (length(exc_protocols) > 0 || length(exc_transports) > 0 || length(exc_securities) > 0 || length(exc_ports) > 0);
 
-    let has_inc = length(inc_prefixes) > 0 || length(inc_countries) > 0 || length(inc_outbounds) > 0 ||
+    let has_inc = length(explicit_inc_prefixes) > 0 || length(inc_countries) > 0 || length(inc_outbounds) > 0 ||
         length(inc_regex) > 0 || (inc_params && (length(inc_protocols) > 0 || length(inc_transports) > 0 || length(inc_securities) > 0 || length(inc_ports) > 0));
     let has_exc = length(exc_prefixes) > 0 || length(exc_countries) > 0 || length(exc_outbounds) > 0 ||
         length(exc_regex) > 0 || (exc_params && (length(exc_protocols) > 0 || length(exc_transports) > 0 || length(exc_securities) > 0 || length(exc_ports) > 0));
@@ -4880,6 +4900,7 @@ function outbound_group_filter_spec(group_or_id, section) {
         mode: resolve_effective_filter_mode(option(grp, "filter_mode", ""), has_inc, has_exc),
         country_mode: option(grp, "detect_server_country", "flag_emoji") || "flag_emoji",
         include_prefixes: inc_prefixes,
+        explicit_include_prefixes: explicit_inc_prefixes,
         include_countries: inc_countries,
         include_outbounds: inc_outbounds,
         include_regex: inc_regex,

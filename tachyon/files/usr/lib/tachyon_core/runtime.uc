@@ -219,7 +219,7 @@ function command_exists(name) {
 }
 
 function write_file(path, value) {
-    return fs.writefile(as_string(path), as_string(value)) != null;
+    return common.write_file(as_string(path), as_string(value)) != null;
 }
 
 function remove_files(paths) {

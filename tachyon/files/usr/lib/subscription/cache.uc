@@ -79,7 +79,7 @@ function read_json(path) {
 }
 
 function write_file(path, value) {
-    return fs.writefile(path, value) != null;
+    return common.write_file(as_string(path), as_string(value)) != null;
 }
 
 function write_json(path, value) {
@@ -626,7 +626,7 @@ function read_text(path) {
 }
 
 function write_text(path, value) {
-    return fs.writefile(as_string(path), as_string(value)) != null;
+    return common.write_file(as_string(path), as_string(value)) != null;
 }
 
 function copy_file(source, target) {
@@ -717,11 +717,26 @@ function log_message(message, level) {
 }
 
 function ensure_dir(path) {
-    run_silent("mkdir -p " + shell_quote(path));
+    let stat = fs.stat(as_string(path));
+    if (stat != null && stat.type == "directory")
+        return true;
+    return command_success_from_args([ "mkdir", "-p", as_string(path) ]);
 }
 
 function chmod_path(path, mode) {
-    run_silent("chmod " + shell_quote(mode) + " " + shell_quote(path));
+    let stat = fs.stat(as_string(path));
+    if (stat != null && type(stat.permissions) == "object") {
+        let u = object_or_empty(stat.permissions.user);
+        let g = object_or_empty(stat.permissions.group);
+        let o = object_or_empty(stat.permissions.other);
+        let g_clean = !g.read && !g.write && !g.exec;
+        let o_clean = !o.read && !o.write && !o.exec;
+        if (mode == "600" && u.read && u.write && !u.exec && g_clean && o_clean)
+            return;
+        if (mode == "700" && u.read && u.write && u.exec && g_clean && o_clean)
+            return;
+    }
+    command_success_from_args([ "chmod", as_string(mode), as_string(path) ]);
 }
 
 function ensure_runtime_dirs() {
@@ -779,10 +794,8 @@ function write_text_if_changed(path, value) {
     path = as_string(path);
     value = as_string(value);
 
-    if (fs.readfile(path) == value) {
-        chmod_path(path, "600");
+    if (fs.readfile(path) == value)
         return true;
-    }
 
     let tmp_path = sprintf("%s.%d.%d.tmp", path, clock()[0], clock()[1]);
     if (!write_file(tmp_path, value)) {
@@ -801,10 +814,8 @@ function write_text_if_changed(path, value) {
 function copy_file_if_changed(source, target) {
     if (!file_nonempty(source))
         return false;
-    if (files_equal(source, target)) {
-        chmod_path(target, "600");
+    if (files_equal(source, target))
         return true;
-    }
     if (!copy_file(source, target))
         return false;
 
@@ -1686,8 +1697,10 @@ function persist_subscription_cache(source_section, subscription_json_path, subs
     if (!cache_section_is_safe(source_section) || !subscription_cache_is_usable(subscription_json_path))
         return false;
 
-    ensure_dir(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR);
-    chmod_path(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR, "700");
+    if (fs.stat(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR) == null) {
+        ensure_dir(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR);
+        chmod_path(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR, "700");
+    }
 
     let persistent_json = source_json_path(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR, source_section);
     let persistent_url = source_url_path(TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR, source_section);
@@ -1770,7 +1783,7 @@ function get_sing_box_version() {
 
     let v = sing_box_version_from_output(command_output_from_args([ bin, "version" ]));
     if (v != "")
-        fs.writefile(SB_VERSION_STATE_FILE, v + "\n");
+        write_file(SB_VERSION_STATE_FILE, v + "\n");
     return v;
 }
 

@@ -1170,15 +1170,69 @@ export function detectQuickConnectionInput(
   };
 }
 
+const CYRILLIC_TRANSLIT_MAP: Record<string, string> = {
+  а: 'a',
+  б: 'b',
+  в: 'v',
+  г: 'g',
+  д: 'd',
+  е: 'e',
+  ё: 'yo',
+  ж: 'zh',
+  з: 'z',
+  и: 'i',
+  й: 'y',
+  к: 'k',
+  л: 'l',
+  м: 'm',
+  н: 'n',
+  о: 'o',
+  п: 'p',
+  р: 'r',
+  с: 's',
+  т: 't',
+  у: 'u',
+  ф: 'f',
+  х: 'kh',
+  ц: 'ts',
+  ч: 'ch',
+  ш: 'sh',
+  щ: 'shch',
+  ъ: '',
+  ы: 'y',
+  ь: '',
+  э: 'e',
+  ю: 'yu',
+  я: 'ya',
+};
+
+function transliterateForId(input: string): string {
+  return String(input || '')
+    .split('')
+    .map((ch) => {
+      const lower = ch.toLowerCase();
+      if (Object.prototype.hasOwnProperty.call(CYRILLIC_TRANSLIT_MAP, lower)) {
+        const mapped = CYRILLIC_TRANSLIT_MAP[lower];
+        return ch !== lower && mapped
+          ? mapped[0].toUpperCase() + mapped.slice(1)
+          : mapped;
+      }
+      return ch;
+    })
+    .join('');
+}
+
 function sanitizeId(raw: string, prefix: string): string {
-  const cleaned = String(raw || '')
+  const cleaned = transliterateForId(raw)
     .trim()
     .replace(/[^A-Za-z0-9_]/g, '_')
     .replace(/_+/g, '_')
     .replace(/^_+|_+$/g, '');
   const base = cleaned
-    ? `${prefix}_${cleaned}`
-    : `${prefix}_${Date.now() % 10000}`;
+    ? prefix
+      ? `${prefix}_${cleaned}`
+      : cleaned
+    : `${prefix || 'sec'}_${Date.now() % 10000}`;
   const uciObj = getUci();
   if (!uciObj || typeof uciObj.get !== 'function') return base;
   if (!uciObj.get(TACHYON_UCI_PACKAGE, base)) return base;
@@ -6928,13 +6982,17 @@ export function openConnectionWizardModal(
     let secId = targetExistingSection;
     const isCreatingNewSection = targetMode === 'new' || !secId;
     const rawSecTitle = isCreatingNewSection
-      ? newSectionName.trim() || finalName || 'Main'
+      ? newSectionName.trim() || connName.trim() || 'Main'
       : uciObj.get(TACHYON_UCI_PACKAGE, secId, 'name') ||
         uciObj.get(TACHYON_UCI_PACKAGE, secId, 'label') ||
         secId;
 
     if (isCreatingNewSection) {
-      secId = sanitizeId(rawSecTitle, 'sec').replace(/^sec_/, '');
+      let candidateSecId = sanitizeId(rawSecTitle, '');
+      if (/^[0-9]+$/.test(candidateSecId)) {
+        candidateSecId = `sec_${candidateSecId}`;
+      }
+      secId = candidateSecId;
       if (uciObj.get(TACHYON_UCI_PACKAGE, secId)) {
         secId = sanitizeId(rawSecTitle, 'sec');
       }
@@ -7171,18 +7229,13 @@ export function openConnectionWizardModal(
           ? String(curBalsRaw).split(/\s+/).filter(Boolean)
           : [];
       if (curBals.length === 0) {
-        const balId = sanitizeId(secId, 'bal_auto');
+        const balId = sanitizeId('auto', `bal_${secId}`);
         if (!uciObj.get(TACHYON_UCI_PACKAGE, balId)) {
           uciObj.add(TACHYON_UCI_PACKAGE, 'balancer', balId);
         }
         uciObj.set(TACHYON_UCI_PACKAGE, balId, 'enabled', '1');
         uciObj.set(TACHYON_UCI_PACKAGE, balId, 'balancer_type', 'urltest');
-        uciObj.set(
-          TACHYON_UCI_PACKAGE,
-          balId,
-          'name',
-          `${finalName} (URLTest)`,
-        );
+        uciObj.set(TACHYON_UCI_PACKAGE, balId, 'name', `${rawSecTitle} Auto`);
         uciObj.set(
           TACHYON_UCI_PACKAGE,
           balId,

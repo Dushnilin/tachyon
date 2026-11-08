@@ -108,7 +108,7 @@ function load_active_uci() {
         result.all_by_name["settings"] = raw_settings;
     }
 
-    c.foreach(CONFIG_NAME, function(s) {
+    c.foreach(CONFIG_NAME, null, function(s) {
         let name = s[".name"];
         let stype = s[".type"];
         result.all_by_name[name] = s;
@@ -1905,8 +1905,11 @@ function validate_uci_semantics(candidate_uci) {
 
     // 2. Validate servers
     for (let name, srv in candidate_uci.servers) {
-        let s_addr = trim(as_string(srv.server || srv.address || ""));
-        let s_port = int(srv.port || srv.server_port || 0);
+        let proto = lc(trim(as_string(srv.protocol || srv.type || "")));
+        if (proto == "json_inbound" || proto == "tailscale")
+            continue;
+        let s_addr = trim(as_string(srv.server || srv.address || srv.listen || ""));
+        let s_port = int(srv.port || srv.server_port || srv.listen_port || 0);
 
         if (s_addr == "" && srv.enabled != "0") {
             push(warnings, "Server '" + name + "' has an empty host/server address.");

@@ -3584,6 +3584,16 @@ function trim_runtime_logs() {
             trimmed++;
     if (trimmed > 0)
         log_message(sprintf("Trimmed %d oversized tmpfs log file(s)", trimmed), "info");
+
+    for (let db_path in [ "/etc/tachyon-core/cache.db", "/usr/share/tachyon-core/cache.db" ]) {
+        let st = fs.stat(db_path);
+        if (st != null && st.type == "file" && int(st.size || 0) > 15728640) {
+            log_message(sprintf("Watchdog: %s grew to %.1f MB; removing oversized DNS cache and reloading runtime", db_path, (st.size || 0) / 1048576.0), "warn");
+            try { fs.unlink(db_path); } catch (e) {}
+            safe_proxy_restart("oversized_cache_db", ESCALATION_LIGHT);
+            break;
+        }
+    }
 }
 
 function check_watchdog_outdated() {

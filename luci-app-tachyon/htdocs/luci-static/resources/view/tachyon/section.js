@@ -7396,13 +7396,13 @@ function detachSharedLinkedConditionIds(section_id) {
     const sharedWithOtherSection =
       ownedByOtherName ||
       allSections.some((sec) => {
-        const sid = sec?.[".name"];
+        const sid = sec && sec[".name"];
         if (!sid || sid === section_id) return false;
         return getLinkedSectionConditionIds(sid).includes(condId);
       });
     if (!sharedWithOtherSection) return condId;
 
-    const sourceCond = allConds.find((c) => c?.[".name"] === condId);
+    const sourceCond = allConds.find((c) => c && c[".name"] === condId);
     const newCondId = makeUniqueSectionId(`cond_${section_id}`);
     if (!uci.add(UCI_PACKAGE, "condition", newCondId)) return condId;
 
@@ -18249,6 +18249,20 @@ function createSectionContent(section) {
   });
   dependsOnRoutingAction(excludedIpsOption);
 
+  const matchAllOption = section.taboption(
+    "conditions",
+    form.Flag,
+    "match_all",
+    _("Route all traffic (Global Match All)"),
+    _(
+      "Route all matching device traffic and DNS queries through this section without requiring domain or IP lists.",
+    ),
+  );
+  dependsOnRoutingAction(matchAllOption);
+  matchAllOption.default = "0";
+  matchAllOption.rmempty = false;
+  matchAllOption.modalonly = true;
+
   const routedDnsEnabledOption = section.taboption(
     "conditions",
     form.Flag,
@@ -20820,6 +20834,35 @@ function copyChildSections(sourceId, targetId) {
           uci.set(UCI_PACKAGE, newItemId, "section", targetId);
         });
     });
+
+    const rawBalRefs = uci.get(UCI_PACKAGE, targetId, "balancer_refs");
+    const balRefs = Array.isArray(rawBalRefs)
+      ? rawBalRefs
+      : rawBalRefs
+        ? String(rawBalRefs).split(/\s+/).filter(Boolean)
+        : [];
+    if (balRefs.length > 0) {
+      const newBalRefs = [];
+      balRefs.forEach((balId) => {
+        const balObj = (uci.sections(UCI_PACKAGE, "balancer") || []).find(
+          (b) => b[".name"] === balId,
+        );
+        if (!balObj) return;
+        const newBalId = makeUniqueSectionId(`${balId}_copy`);
+        if (!uci.add(UCI_PACKAGE, "balancer", newBalId)) return;
+        Object.entries(balObj).forEach(([key, value]) => {
+          if (key.startsWith(".")) return;
+          if (value === undefined || value === null) return;
+          uci.set(UCI_PACKAGE, newBalId, key, value);
+        });
+        const oldBalName = uci.get(UCI_PACKAGE, balId, "name") || balId;
+        uci.set(UCI_PACKAGE, newBalId, "name", `${oldBalName} (Copy)`);
+        newBalRefs.push(newBalId);
+      });
+      if (newBalRefs.length > 0) {
+        uci.set(UCI_PACKAGE, targetId, "balancer_refs", newBalRefs);
+      }
+    }
   } catch (_e) {}
 }
 

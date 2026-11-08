@@ -517,21 +517,26 @@ function ruleset_registered(config, tag_name) {
 }
 
 function clash_api_config(settings, service_address) {
-    let controller = as_string(service_address || "");
-    if (bool_option(settings, "enable_yacd", false) && bool_option(settings, "enable_yacd_wan_access", false))
-        controller = "0.0.0.0";
-    else if (controller == "")
-        controller = "0.0.0.0";
+    let yacd_enabled = bool_option(settings, "enable_yacd", false);
+    let controller = "127.0.0.1";
+    if (yacd_enabled) {
+        if (bool_option(settings, "enable_yacd_wan_access", false))
+            controller = "0.0.0.0";
+        else {
+            controller = trim(as_string(service_address || ""));
+            if (controller == "")
+                controller = "0.0.0.0";
+        }
+    }
 
     let result = {
         external_controller: controller + ":9090"
     };
-    if (bool_option(settings, "enable_yacd", false)) {
+    let secret = option(settings, "yacd_secret_key", "");
+    if (secret != "")
+        result.secret = secret;
+    if (yacd_enabled)
         result.external_ui = "ui";
-        let secret = option(settings, "yacd_secret_key", "");
-        if (secret != "")
-            result.secret = secret;
-    }
     return result;
 }
 
@@ -974,6 +979,14 @@ function base_config(settings, service_address, runtime_context) {
     if (cache_dir != "" && cache_dir != cache_path) {
         try { fs.mkdir(cache_dir, 0755); } catch(e) {}
     }
+    for (let db_cand in [ cache_path, "/etc/tachyon-core/cache.db", "/usr/share/tachyon-core/cache.db" ]) {
+        if (db_cand == "")
+            continue;
+        let st_db = fs.stat(db_cand);
+        if (st_db != null && int(st_db.size || 0) > 10485760) {
+            try { fs.unlink(db_cand); } catch (e) {}
+        }
+    }
     let dns_config = runtime_dns.config(settings);
     if (dns_config.unsupported)
         runtime_generate_unsupported(dns_config.unsupported);
@@ -1137,9 +1150,12 @@ for (let inbound in dns_config.inbounds)
         route_section.default_http_client = "ruleset-http";
 
     if (is_sb_1_14_plus) {
+        let opt_timeout = trim(option(settings, "dns_optimistic_timeout", "6h")) || "6h";
+        if (opt_timeout == "3d" || opt_timeout == "72h")
+            opt_timeout = "6h";
         dns_section.optimistic = {
-            enabled: true,
-            timeout: "3d"
+            enabled: bool_option(settings, "dns_optimistic_cache", true),
+            timeout: opt_timeout
         };
     }
 
@@ -1150,7 +1166,7 @@ for (let inbound in dns_config.inbounds)
     };
     if (use_legacy_rdrc)
         cache_file_section.store_rdrc = true;
-    else
+    else if (bool_option(settings, "dns_cache_store_disk", false))
         cache_file_section.store_dns = true;
 
     if (is_sb_1_15_plus) {

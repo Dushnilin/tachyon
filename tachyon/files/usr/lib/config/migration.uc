@@ -1825,6 +1825,49 @@ function migrate_engine_identity(ctx) {
     }
 }
 
+const CYRILLIC_PAIRS = [
+    [ "щ", "shch" ], [ "Щ", "Shch" ],
+    [ "ё", "yo" ], [ "Ё", "Yo" ],
+    [ "ж", "zh" ], [ "Ж", "Zh" ],
+    [ "х", "kh" ], [ "Х", "Kh" ],
+    [ "ц", "ts" ], [ "Ц", "Ts" ],
+    [ "ч", "ch" ], [ "Ч", "Ch" ],
+    [ "ш", "sh" ], [ "Ш", "Sh" ],
+    [ "ю", "yu" ], [ "Ю", "Yu" ],
+    [ "я", "ya" ], [ "Я", "Ya" ],
+    [ "а", "a" ], [ "А", "A" ],
+    [ "б", "b" ], [ "Б", "B" ],
+    [ "в", "v" ], [ "В", "V" ],
+    [ "г", "g" ], [ "Г", "G" ],
+    [ "д", "d" ], [ "Д", "D" ],
+    [ "е", "e" ], [ "Е", "E" ],
+    [ "з", "z" ], [ "З", "Z" ],
+    [ "и", "i" ], [ "И", "I" ],
+    [ "й", "y" ], [ "Й", "Y" ],
+    [ "к", "k" ], [ "К", "K" ],
+    [ "л", "l" ], [ "Л", "L" ],
+    [ "м", "m" ], [ "М", "M" ],
+    [ "н", "n" ], [ "Н", "N" ],
+    [ "о", "o" ], [ "О", "O" ],
+    [ "п", "p" ], [ "П", "P" ],
+    [ "р", "r" ], [ "Р", "R" ],
+    [ "с", "s" ], [ "С", "S" ],
+    [ "т", "t" ], [ "Т", "T" ],
+    [ "у", "u" ], [ "У", "U" ],
+    [ "ф", "f" ], [ "Ф", "F" ],
+    [ "ъ", "" ], [ "Ъ", "" ],
+    [ "ы", "y" ], [ "Ы", "Y" ],
+    [ "ь", "" ], [ "Ь", "" ],
+    [ "э", "e" ], [ "Э", "E" ]
+];
+
+function transliterate_cyrillic(str) {
+    let s = as_string(str);
+    for (let pair in CYRILLIC_PAIRS)
+        s = replace(s, pair[0], pair[1]);
+    return s;
+}
+
 function sanitize_uci_id(raw) {
     let clean = replace(as_string(raw), /[^A-Za-z0-9_]/g, "_");
     clean = replace(clean, /^_+/, "");
@@ -3038,6 +3081,149 @@ function migrate_podkop_model(model, constants) {
     return ctx;
 }
 
+function migrate_numeric_wizard_ids(ctx) {
+    let taken = { settings: true, telegram: true, guest_mode: true };
+    for (let list_key in [ "sections", "balancer", "outbound_source", "outbound_group", "condition", "server", "profile", "schedule" ]) {
+        for (let item in (ctx.model[list_key] || [])) {
+            let id = section_name(item);
+            if (id != "")
+                taken[id] = true;
+        }
+    }
+
+    let sec_map = {};
+    let bal_map = {};
+    for (let sec in (ctx.model.sections || [])) {
+        let old_id = section_name(sec);
+        if (old_id == "" || !match(old_id, /^[0-9]+$/))
+            continue;
+        let raw_title = trim(option(sec, "label", option(sec, "name", "")));
+        if (raw_title == "" || raw_title == "Подписка" || raw_title == "Subscription" || raw_title == old_id)
+            raw_title = "Main";
+        let base_id = replace(sanitize_uci_id(transliterate_cyrillic(raw_title)), /_+/g, "_");
+        if (base_id == "item" || match(base_id, /^[0-9]+$/))
+            base_id = "Main";
+        let new_id = base_id;
+        let suffix = 2;
+        while (taken[new_id]) {
+            new_id = base_id + "_" + suffix;
+            suffix++;
+        }
+        taken[new_id] = true;
+        sec_map[old_id] = new_id;
+
+        if (option(sec, "name", "") == "" || option(sec, "name", "") == "Подписка" || option(sec, "name", "") == old_id)
+            sec.name = raw_title;
+        if (option(sec, "label", "") == "" || option(sec, "label", "") == "Подписка" || option(sec, "label", "") == old_id)
+            sec.label = raw_title;
+
+        for (let bal in (ctx.model.balancer || [])) {
+            let old_bal_id = section_name(bal);
+            if (old_bal_id != "bal_auto_" + old_id && old_bal_id != "bal_" + old_id + "_auto")
+                continue;
+            let new_bal_id = "bal_" + new_id + "_auto";
+            let b_sfx = 2;
+            while (taken[new_bal_id]) {
+                new_bal_id = "bal_" + new_id + "_auto_" + b_sfx;
+                b_sfx++;
+            }
+            taken[new_bal_id] = true;
+            bal_map[old_bal_id] = new_bal_id;
+            let b_name = trim(option(bal, "name", ""));
+            if (b_name == "" || b_name == "Подписка (URLTest)" || b_name == "Subscription (URLTest)" || b_name == old_id + " (URLTest)" || b_name == old_id + " Auto" || b_name == raw_title + " (URLTest)")
+                bal.name = raw_title + " Auto";
+            bal[".name"] = new_bal_id;
+            record_operation(ctx, { op: "create", section: new_bal_id, type: "balancer", anonymous: false });
+            for (let bk, bv in bal) {
+                if (substr(bk, 0, 1) == "." || bv == null)
+                    continue;
+                if (type(bv) == "array")
+                    record_operation(ctx, { op: "set_list", section: new_bal_id, option: bk, values: bv });
+                else
+                    record_operation(ctx, { op: "set", section: new_bal_id, option: bk, value: as_string(bv) });
+            }
+            record_operation(ctx, { op: "delete_section", section: old_bal_id });
+        }
+
+        let b_refs = list_option(sec, "balancer_refs");
+        if (length(b_refs) > 0) {
+            let next_b_refs = [];
+            for (let r in b_refs)
+                push(next_b_refs, bal_map[r] || r);
+            sec.balancer_refs = next_b_refs;
+        }
+        let ut_refs = list_option(sec, "urltests");
+        if (length(ut_refs) > 0) {
+            let next_ut_refs = [];
+            for (let r in ut_refs)
+                push(next_ut_refs, bal_map[r] || r);
+            sec.urltests = next_ut_refs;
+        }
+
+        sec[".name"] = new_id;
+        record_operation(ctx, { op: "create", section: new_id, type: "section", anonymous: false });
+        for (let k, v in sec) {
+            if (substr(k, 0, 1) == "." || v == null)
+                continue;
+            if (type(v) == "array")
+                record_operation(ctx, { op: "set_list", section: new_id, option: k, values: v });
+            else
+                record_operation(ctx, { op: "set", section: new_id, option: k, value: as_string(v) });
+        }
+        record_operation(ctx, { op: "delete_section", section: old_id });
+    }
+
+    if (length(keys(sec_map)) == 0)
+        return;
+
+    for (let sk in [ "dns_detour_section", "default_tunnel_section", "subscription_download_via_proxy_section" ]) {
+        let cur = option(ctx.model.settings, sk, "");
+        if (cur != "" && sec_map[cur] != null)
+            set_option(ctx, ctx.model.settings, sk, sec_map[cur]);
+    }
+    for (let sec in (ctx.model.sections || [])) {
+        for (let fk in [ "outbound_detour_section", "dns_detour_section" ]) {
+            let cur = option(sec, fk, "");
+            if (cur != "" && sec_map[cur] != null)
+                set_option(ctx, sec, fk, sec_map[cur]);
+        }
+        let members = list_option(sec, "group_members");
+        if (length(members) > 0) {
+            let next_m = [];
+            let changed_m = false;
+            for (let m in members) {
+                if (sec_map[m] != null)
+                    changed_m = true;
+                push(next_m, sec_map[m] || m);
+            }
+            if (changed_m)
+                set_list_option(ctx, sec, "group_members", next_m);
+        }
+    }
+    for (let src in (ctx.model.outbound_source || [])) {
+        for (let fk in [ "download_via_proxy_section", "outbound_detour_section" ]) {
+            let cur = option(src, fk, "");
+            if (cur != "" && sec_map[cur] != null)
+                set_option(ctx, src, fk, sec_map[cur]);
+        }
+    }
+    for (let srv in (ctx.model.server || [])) {
+        let cur = option(srv, "routing_section", "");
+        if (cur != "" && sec_map[cur] != null)
+            set_option(ctx, srv, "routing_section", sec_map[cur]);
+    }
+    for (let prof in (ctx.model.profile || [])) {
+        let cur = option(prof, "routing_section", "");
+        if (cur != "" && sec_map[cur] != null)
+            set_option(ctx, prof, "routing_section", sec_map[cur]);
+    }
+    for (let sched in (ctx.model.schedule || [])) {
+        let cur = option(sched, "section", "");
+        if (cur != "" && sec_map[cur] != null)
+            set_option(ctx, sched, "section", sec_map[cur]);
+    }
+}
+
 function migrate_tachyon_model(model) {
     let ctx = migration_context(model);
     let converted_any_rules = false;
@@ -3061,6 +3247,7 @@ function migrate_tachyon_model(model) {
         migrate_modular_entities_v1(ctx);
     cleanup_modular_entities_v1(ctx);
     migrate_balancer_levels_to_sections(ctx);
+    migrate_numeric_wizard_ids(ctx);
     // How client traffic reaches the proxy. Defaulted rather than left absent:
     // the generator has to be able to express a legal config for a router that
     // predates this option, and "no proxy_mode" would have to be read as tproxy

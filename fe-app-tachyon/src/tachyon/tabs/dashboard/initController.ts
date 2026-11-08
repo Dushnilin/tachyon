@@ -6071,12 +6071,22 @@ export async function renderSystemServicesWidget() {
       });
     }
 
-    preserveScrollForPage(() => {
-      container.replaceChildren(routingWidget);
-    }, container);
+    const nextRoutingSig = `${sysViewMode}|${loading}|${failed}|${isTachyonRunning}|${isLiteMode}|${connectionsCount}|${activeSectionsCount}|${activeClientsCount}|${cpuLoadPct ?? ''}|${cpuTempC ?? ''}`;
+    if (
+      container.childElementCount === 0 ||
+      container.getAttribute('data-routing-sig') !== nextRoutingSig
+    ) {
+      container.setAttribute('data-routing-sig', nextRoutingSig);
+      preserveScrollForPage(() => {
+        container.replaceChildren(routingWidget);
+      }, container);
+    }
 
     if (loading || failed || srvItems.length === 0) {
-      stripContainer.replaceChildren();
+      if (stripContainer.childElementCount > 0) {
+        stripContainer.removeAttribute('data-strip-sig');
+        stripContainer.replaceChildren();
+      }
     } else if (srvViewMode === 'cards') {
       const servicesCards = E(
         'div',
@@ -6120,9 +6130,16 @@ export async function renderSystemServicesWidget() {
           ),
         ],
       );
-      preserveScrollForPage(() => {
-        stripContainer.replaceChildren(servicesCards);
-      }, stripContainer);
+      const nextStripSig = `cards|${servicesCards.innerHTML}`;
+      if (
+        stripContainer.childElementCount === 0 ||
+        stripContainer.getAttribute('data-strip-sig') !== nextStripSig
+      ) {
+        stripContainer.setAttribute('data-strip-sig', nextStripSig);
+        preserveScrollForPage(() => {
+          stripContainer.replaceChildren(servicesCards);
+        }, stripContainer);
+      }
     } else if (srvViewMode === 'resource_bars') {
       const servicesBars = E(
         'div',
@@ -6184,9 +6201,16 @@ export async function renderSystemServicesWidget() {
           ),
         ],
       );
-      preserveScrollForPage(() => {
-        stripContainer.replaceChildren(servicesBars);
-      }, stripContainer);
+      const nextStripSig = `resource_bars|${servicesBars.innerHTML}`;
+      if (
+        stripContainer.childElementCount === 0 ||
+        stripContainer.getAttribute('data-strip-sig') !== nextStripSig
+      ) {
+        stripContainer.setAttribute('data-strip-sig', nextStripSig);
+        preserveScrollForPage(() => {
+          stripContainer.replaceChildren(servicesBars);
+        }, stripContainer);
+      }
     } else if (srvViewMode === 'minimal') {
       const servicesMinimal = E(
         'div',
@@ -6223,9 +6247,16 @@ export async function renderSystemServicesWidget() {
           ),
         ],
       );
-      preserveScrollForPage(() => {
-        stripContainer.replaceChildren(servicesMinimal);
-      }, stripContainer);
+      const nextStripSig = `minimal|${servicesMinimal.innerHTML}`;
+      if (
+        stripContainer.childElementCount === 0 ||
+        stripContainer.getAttribute('data-strip-sig') !== nextStripSig
+      ) {
+        stripContainer.setAttribute('data-strip-sig', nextStripSig);
+        preserveScrollForPage(() => {
+          stripContainer.replaceChildren(servicesMinimal);
+        }, stripContainer);
+      }
     } else {
       const servicesBar = E(
         'div',
@@ -6268,9 +6299,16 @@ export async function renderSystemServicesWidget() {
         ],
       );
 
-      preserveScrollForPage(() => {
-        stripContainer.replaceChildren(servicesBar);
-      }, stripContainer);
+      const nextStripSig = `strip|${servicesBar.innerHTML}`;
+      if (
+        stripContainer.childElementCount === 0 ||
+        stripContainer.getAttribute('data-strip-sig') !== nextStripSig
+      ) {
+        stripContainer.setAttribute('data-strip-sig', nextStripSig);
+        preserveScrollForPage(() => {
+          stripContainer.replaceChildren(servicesBar);
+        }, stripContainer);
+      }
     }
     return;
   }

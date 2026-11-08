@@ -7,7 +7,7 @@ import {
   getProxyUrlTransport,
   isCopyableProxyLink,
 } from '../../../helpers';
-import { getOutboundTagBySection } from '../../runtimeTags';
+import { cleanBalancerTagId, getOutboundTagBySection } from '../../runtimeTags';
 import { TachyonShellMethods } from '../shell';
 import { detectOutboundCountry } from '../../helpers/country';
 
@@ -915,7 +915,28 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
         );
         const secLevelRefs = getRawListValues(next.outbound_group_levels);
         const itemLevelRefs = getRawListValues(item.outbound_group_levels);
-        const groupRefs =
+        const secGroupRefs = getListValues(next.outbound_group_refs);
+        const secSourceRefs = getListValues(next.outbound_source_refs);
+        let coveredAll = false;
+        const coveredSources = new Set<string>();
+        secGroupRefs.forEach((gid) => {
+          const grpObj = groupById.get(gid);
+          if (grpObj && grpObj.enabled !== '0') {
+            const gSrcs = getListValues(grpObj.source_refs);
+            if (gSrcs.length === 0 || gSrcs[0] === '*') {
+              coveredAll = true;
+            } else {
+              gSrcs.forEach((s) => coveredSources.add(s));
+            }
+          }
+        });
+        const combinedPoolRefs = [
+          ...secGroupRefs,
+          ...secSourceRefs.filter(
+            (sid) => !coveredAll && !coveredSources.has(sid),
+          ),
+        ];
+        const rawGroupRefs =
           balLevelRefs.length > 0
             ? balLevelRefs
             : secLevelRefs.length > 0
@@ -923,11 +944,14 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
               : itemLevelRefs.length > 0
                 ? itemLevelRefs
                 : legacyChildren.length === 0
-                  ? [
-                      ...getListValues(next.outbound_group_refs),
-                      ...getListValues(next.outbound_source_refs),
-                    ]
+                  ? combinedPoolRefs
                   : [];
+        const groupRefs =
+          rawGroupRefs.length > 0 &&
+          secGroupRefs.length > 0 &&
+          !rawGroupRefs.some((r) => groupById.has(r.trim()))
+            ? combinedPoolRefs
+            : rawGroupRefs;
         const levels: PriorityLevelConfig[] = groupRefs.length
           ? groupRefs.flatMap((rawRef, idx): PriorityLevelConfig[] => {
               const ref = rawRef.trim();
@@ -1651,15 +1675,17 @@ function isUrlTestFilteringEnabled(settings: ItemSettings | undefined) {
 }
 
 function getUrlTestTag(sectionName: string, id: string) {
+  const cleanId = cleanBalancerTagId(sectionName, id);
   return getOutboundTagBySection(
-    id === 'urltest'
+    cleanId === 'urltest'
       ? `${sectionName}-urltest`
-      : `${sectionName}-urltest-${id}`,
+      : `${sectionName}-urltest-${cleanId}`,
   );
 }
 
 function getPriorityTag(sectionName: string, id: string) {
-  return getOutboundTagBySection(`${sectionName}-priority-${id}`);
+  const cleanId = cleanBalancerTagId(sectionName, id);
+  return getOutboundTagBySection(`${sectionName}-priority-${cleanId}`);
 }
 
 function getUrlTestDisplayName(

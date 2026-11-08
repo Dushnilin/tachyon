@@ -4,6 +4,7 @@ let userScrollListenersAttached = false;
 let activeDocLocks = 0;
 let footstrapAnchorOverridden = false;
 let previousFootstrapAnchor: string | null = null;
+let previousFootstrapFit: string | null = null;
 const containerLockCounts = new WeakMap<HTMLElement, number>();
 
 function disableFootstrapScrollAnchor() {
@@ -13,10 +14,14 @@ function disableFootstrapScrollAnchor() {
     }
     if (!footstrapAnchorOverridden) {
       previousFootstrapAnchor = localStorage.getItem('fsAnchor');
+      previousFootstrapFit = localStorage.getItem('fsFit');
       footstrapAnchorOverridden = true;
     }
     if (previousFootstrapAnchor !== 'off') {
       localStorage.setItem('fsAnchor', 'off');
+    }
+    if (previousFootstrapFit !== 'off') {
+      localStorage.setItem('fsFit', 'off');
     }
   } catch {
     // ignore storage errors
@@ -33,8 +38,14 @@ function restoreFootstrapScrollAnchor() {
     } else {
       localStorage.setItem('fsAnchor', previousFootstrapAnchor);
     }
+    if (previousFootstrapFit === null) {
+      localStorage.removeItem('fsFit');
+    } else {
+      localStorage.setItem('fsFit', previousFootstrapFit);
+    }
     footstrapAnchorOverridden = false;
     previousFootstrapAnchor = null;
+    previousFootstrapFit = null;
   } catch {
     // ignore storage errors
   }

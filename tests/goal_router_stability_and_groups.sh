@@ -129,6 +129,14 @@ let fixture = {
             name: "PriorityTiers",
             balancer_type: "priority",
             outbound_group_levels: [ "grp_awg", "grp_fptn" ]
+        },
+        {
+            ".name": "LegacyWizardPrio",
+            ".type": "balancer",
+            enabled: "1",
+            name: "Main Priority",
+            balancer_type: "priority",
+            outbound_group_levels: [ "src_sub_1" ]
         }
     ],
     section: [
@@ -149,6 +157,15 @@ let fixture = {
             outbound_source_refs: [ "src_sub_1" ],
             outbound_group_refs: [ "Germany" ],
             balancer_refs: [ "Stability" ]
+        },
+        {
+            ".name": "ClonedPrioSec",
+            ".type": "section",
+            enabled: "1",
+            action: "connection",
+            outbound_source_refs: [ "src_sub_1" ],
+            outbound_group_refs: [ "Germany" ],
+            balancer_refs: [ "Stability", "LegacyWizardPrio" ]
         }
     ]
 };
@@ -245,6 +262,25 @@ assert(filt_ut != null && length(filt_ut.outbounds) == 1 && filt_ut.outbounds[0]
     "FilteredSec-urltest-Stability-out must only include 'cloud-de-mega', got: " + sprintf("%J", filt_ut ? filt_ut.outbounds : null));
 assert(state_filt.hiddenOutboundTags["cloud-nl-1"] == true,
     "FilteredSec must mark 'cloud-nl-1' hidden in state.hiddenOutboundTags");
+
+// 1e. Section with attached outbound_group_refs=['Germany'] AND a legacy wizard Priority balancer referencing raw source 'src_sub_1'
+// must upgrade the legacy Priority level to ['Germany'] and NEVER leak unfiltered 'cloud-nl-1' into urltest or selector (Issue #372 / Bron)
+let state_cloned = subscription.new_section_state("ClonedPrioSec");
+state_cloned.outboundMetadata = state.outboundMetadata;
+let cfg_cloned = { outbounds: [], route: { rules: [] }, dns: { servers: [], rules: [] } };
+routes.add_proxy_selector(cfg_cloned, fixture.section[2], filt_candidates, filt_candidates, state_cloned, "");
+let cloned_by_tag = {};
+for (let o in cfg_cloned.outbounds)
+    cloned_by_tag[o.tag] = o;
+let cloned_sel = cloned_by_tag["ClonedPrioSec-out"];
+let cloned_ut = cloned_by_tag["ClonedPrioSec-urltest-Stability-out"];
+let cloned_prio = state_cloned.priorityGroups["ClonedPrioSec-priority-LegacyWizardPrio-out"];
+assert(cloned_sel != null && index(cloned_sel.outbounds, "cloud-de-mega") >= 0 && index(cloned_sel.outbounds, "cloud-nl-1") < 0,
+    "ClonedPrioSec-out must only include 'cloud-de-mega' and exclude 'cloud-nl-1' even when LegacyWizardPrio is attached, got: " + sprintf("%J", cloned_sel ? cloned_sel.outbounds : null));
+assert(cloned_ut != null && length(cloned_ut.outbounds) == 1 && cloned_ut.outbounds[0] == "cloud-de-mega",
+    "ClonedPrioSec-urltest-Stability-out must only include 'cloud-de-mega', got: " + sprintf("%J", cloned_ut ? cloned_ut.outbounds : null));
+assert(cloned_prio != null && length(cloned_prio.levels) == 1 && length(cloned_prio.levels[0].outbounds) == 1 && cloned_prio.levels[0].outbounds[0] == "cloud-de-mega",
+    "ClonedPrioSec-priority-LegacyWizardPrio-out must scope its level to Germany ('cloud-de-mega'), got: " + sprintf("%J", cloned_prio));
 
 // 2. Stability balancer must default to interrupt_exist_connections === false, while Main-out selector keeps true
 let stab_out = by_tag["Main-urltest-Stability-out"];
@@ -352,4 +388,134 @@ assert(res.activeDelay === 285,
     "choose_fastest_same_level must expose activeDelay (285) so tick_group can detect single-spike anomaly against prior activeDelay, got: " + sprintf("%J", res));
 
 print("✓ Part 4 passed\n");
+UCODE
+
+# --- Part 5: clean_balancer_tag_id and migrate_numeric_wizard_ids ---
+cat >"$WORK_DIR/wizard-tags.json" <<'JSON'
+{
+  "settings": {
+    "dns_server": "1.1.1.1"
+  },
+  "balancer": [
+    {
+      ".name": "bal_Main_auto",
+      ".type": "balancer",
+      "enabled": "1",
+      "name": "Main Auto",
+      "balancer_type": "urltest",
+      "mode": "urltest",
+      "check_interval": "3m",
+      "tolerance": "50"
+    },
+    {
+      ".name": "bal_Main_Fast",
+      ".type": "balancer",
+      "enabled": "1",
+      "name": "Fast",
+      "balancer_type": "urltest",
+      "mode": "urltest",
+      "check_interval": "3m",
+      "tolerance": "50"
+    }
+  ],
+  "section": [
+    {
+      ".name": "Main",
+      ".type": "section",
+      "enabled": "1",
+      "action": "proxy",
+      "selector_proxy_links": [ "vless://00000000-0000-0000-0000-000000000001@198.51.100.10:443?encryption=none#NodeA" ],
+      "balancer_refs": [ "bal_Main_auto", "bal_Main_Fast" ]
+    }
+  ]
+}
+JSON
+
+OUTPUT_WIZ="$WORK_DIR/wizard-tags-out.json"
+mkdir -p "$OUTPUT_WIZ.section-cache" "$OUTPUT_WIZ.rulesets"
+TACHYON_LIB="$TACHYON_LIB" \
+TACHYON_DNS_FAILOVER_STATE_FILE="$WORK_DIR/missing.json" \
+ucode -L "$TACHYON_LIB" "$TACHYON_LIB/tachyon_core/generator.uc" generate-config-fixture \
+  "$WORK_DIR/wizard-tags.json" "$OUTPUT_WIZ" 192.168.1.1 0
+
+TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" - "$OUTPUT_WIZ" <<'UCODE'
+let fs = require("fs");
+let cfg = json(fs.readfile(ARGV[0]));
+
+function assert(cond, msg) {
+    if (!cond) {
+        warn("FAIL: " + msg + "\n");
+        exit(1);
+    }
+}
+
+let tags = {};
+for (let ob in cfg.outbounds || [])
+    tags[ob.tag] = ob;
+
+assert(tags["Main-urltest-auto-out"] != null,
+    "bal_Main_auto must generate clean tag Main-urltest-auto-out instead of Main-urltest-bal_Main_auto-out, got: " + sprintf("%J", keys(tags)));
+assert(tags["Main-urltest-Fast-out"] != null,
+    "bal_Main_Fast must generate clean tag Main-urltest-Fast-out, got: " + sprintf("%J", keys(tags)));
+assert(tags["Main-out"] != null && tags["Main-out"].default == "Main-urltest-auto-out",
+    "Main-out selector default must point to Main-urltest-auto-out, got: " + sprintf("%J", tags["Main-out"]));
+UCODE
+
+cat >"$WORK_DIR/numeric-wizard-fixture.json" <<'JSON'
+{
+  "settings": {
+    "dns_server": "1.1.1.1"
+  },
+  "section": [
+    {
+      ".name": "1677",
+      ".type": "section",
+      "enabled": "1",
+      "name": "Подписка",
+      "action": "proxy",
+      "urltests": [ "bal_auto_1677" ],
+      "urltest_settings": [
+        "id=bal_auto_1677|name=1677 Auto|check_interval=3m|tolerance=50|filter_mode=none"
+      ]
+    }
+  ],
+  "balancer": [
+    {
+      ".name": "bal_auto_1677",
+      ".type": "balancer",
+      "name": "1677 Auto",
+      "mode": "urltest",
+      "check_interval": "3m",
+      "tolerance": "50",
+      "filter_mode": "none"
+    }
+  ]
+}
+JSON
+
+TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$TACHYON_LIB/config/migration.uc" migrate-fixture \
+  "$WORK_DIR/numeric-wizard-fixture.json" tachyon >"$WORK_DIR/numeric-wizard-migrated.json"
+
+TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" - "$WORK_DIR/numeric-wizard-migrated.json" <<'UCODE'
+let fs = require("fs");
+let migrated = json(fs.readfile(ARGV[0]));
+
+function assert(cond, msg) {
+    if (!cond) {
+        warn("FAIL: " + msg + "\n");
+        exit(1);
+    }
+}
+
+let cfg_out = migrated.config || migrated;
+let sec = cfg_out.section && cfg_out.section[0];
+let bal = cfg_out.balancer && cfg_out.balancer[0];
+assert(sec != null && sec[".name"] == "Main",
+    "Numeric wizard section '1677' with name 'Подписка' must migrate to 'Main', got: " + sprintf("%J", sec));
+assert(bal != null && bal[".name"] == "bal_Main_auto" && bal.name == "Main Auto",
+    "Auto-balancer 'bal_auto_1677' must migrate to 'bal_Main_auto' ('Main Auto'), got: " + sprintf("%J", bal));
+assert(sec.urltests && sec.urltests[0] == "bal_Main_auto",
+    "Section urltests reference must migrate to 'bal_Main_auto', got: " + sprintf("%J", sec.urltests));
+
+print("✓ Part 5 passed\n");
 UCODE

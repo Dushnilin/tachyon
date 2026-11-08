@@ -1137,13 +1137,19 @@ body.dark .tachyon_monitoring-page {
     }
 
     .tachyon_monitoring-page__filters {
-        flex: 1 1 0;
+        flex: 1 1 100%;
+        width: 100%;
     }
 
     .tachyon_monitoring-page__device-filter,
+    .tachyon_monitoring-page__route-filter,
     .tachyon_monitoring-page__multiselect,
     .tachyon_monitoring-page__search {
-        max-width: none;
+        flex: 1 1 100%;
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        box-sizing: border-box;
     }
 
     .tachyon_monitoring-page__table {
@@ -1220,9 +1226,15 @@ body.dark .tachyon_monitoring-page {
     .tachyon_monitoring-page__tabs,
     .tachyon_monitoring-page__filters,
     .tachyon_monitoring-page__device-filter,
+    .tachyon_monitoring-page__route-filter,
     .tachyon_monitoring-page__multiselect,
+    .tachyon_monitoring-page__proto-group,
     .tachyon_monitoring-page__search {
-        width: 100%;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        flex: 1 1 100% !important;
+        box-sizing: border-box;
     }
 
     .tachyon_monitoring-page__controls,
