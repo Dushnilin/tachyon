@@ -433,7 +433,9 @@ JSON
 
 OUTPUT_WIZ="$WORK_DIR/wizard-tags-out.json"
 mkdir -p "$OUTPUT_WIZ.section-cache" "$OUTPUT_WIZ.rulesets"
+echo "0.4.2-tachyon.0" > "$WORK_DIR/sb-version"
 TACHYON_LIB="$TACHYON_LIB" \
+TACHYON_UI_SING_BOX_VERSION_CACHE_FILE="$WORK_DIR/sb-version" \
 TACHYON_DNS_FAILOVER_STATE_FILE="$WORK_DIR/missing.json" \
 ucode -L "$TACHYON_LIB" "$TACHYON_LIB/tachyon_core/generator.uc" generate-config-fixture \
   "$WORK_DIR/wizard-tags.json" "$OUTPUT_WIZ" 192.168.1.1 0
@@ -459,20 +461,33 @@ assert(tags["Main-urltest-Fast-out"] != null,
     "bal_Main_Fast must generate clean tag Main-urltest-Fast-out, got: " + sprintf("%J", keys(tags)));
 assert(tags["Main-out"] != null && tags["Main-out"].default == "Main-urltest-auto-out",
     "Main-out selector default must point to Main-urltest-auto-out, got: " + sprintf("%J", tags["Main-out"]));
+assert(cfg.experimental?.clash_api?.external_controller == "192.168.1.1:9090",
+    "clash_api external_controller must bind to service_address:9090 even when enable_yacd=0 so LuCI WebSocket/HTTP works, got: " + sprintf("%J", cfg.experimental?.clash_api));
+assert(cfg.experimental?.cache_file?.flush_interval == "60s",
+    "cache_file flush_interval must default to 60s to prevent flash wear, got: " + sprintf("%J", cfg.experimental?.cache_file));
 UCODE
 
 cat >"$WORK_DIR/numeric-wizard-fixture.json" <<'JSON'
 {
   "settings": {
-    "dns_server": "1.1.1.1"
+    "dns_server": "1.1.1.1",
+    "cache_flush_interval": "10s"
   },
   "section": [
+    {
+      ".name": "1",
+      ".type": "section",
+      "enabled": "1",
+      "name": "Bypass",
+      "action": "direct"
+    },
     {
       ".name": "1677",
       ".type": "section",
       "enabled": "1",
       "name": "Подписка",
       "action": "proxy",
+      "match_all": "1",
       "urltests": [ "bal_auto_1677" ],
       "urltest_settings": [
         "id=bal_auto_1677|name=1677 Auto|check_interval=3m|tolerance=50|filter_mode=none"
@@ -508,14 +523,19 @@ function assert(cond, msg) {
 }
 
 let cfg_out = migrated.config || migrated;
-let sec = cfg_out.section && cfg_out.section[0];
+let sec0 = cfg_out.section && cfg_out.section[0];
+let sec = cfg_out.section && cfg_out.section[1];
 let bal = cfg_out.balancer && cfg_out.balancer[0];
+assert(sec0 != null && sec0[".name"] == "Bypass",
+    "First numeric section '1' ('Bypass') must remain at index 0 before Main after migration, got: " + sprintf("%J", cfg_out.section));
 assert(sec != null && sec[".name"] == "Main",
-    "Numeric wizard section '1677' with name 'Подписка' must migrate to 'Main', got: " + sprintf("%J", sec));
+    "Numeric wizard section '1677' with name 'Подписка' must migrate to 'Main' at index 1, got: " + sprintf("%J", sec));
 assert(bal != null && bal[".name"] == "bal_Main_auto" && bal.name == "Main Auto",
     "Auto-balancer 'bal_auto_1677' must migrate to 'bal_Main_auto' ('Main Auto'), got: " + sprintf("%J", bal));
 assert(sec.urltests && sec.urltests[0] == "bal_Main_auto",
     "Section urltests reference must migrate to 'bal_Main_auto', got: " + sprintf("%J", sec.urltests));
+assert(cfg_out.settings?.cache_flush_interval == "60s",
+    "Legacy cache_flush_interval=10s must migrate to 60s, got: " + sprintf("%J", cfg_out.settings));
 
 print("✓ Part 5 passed\n");
 UCODE

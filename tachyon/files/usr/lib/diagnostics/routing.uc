@@ -1014,6 +1014,26 @@ function clash_json_data(args, auth) {
 }
 
 function clash_api_url() {
+    if (getenv("FAKE_CURL_LOG") == null) {
+        for (let cfg_path in [ "/etc/tachyon-core/config.json", TMP_SING_BOX_FOLDER + "/config.json" ]) {
+            let cfg_data = fs.readfile(cfg_path);
+            if (!cfg_data)
+                continue;
+            try {
+                let sb_cfg = json(cfg_data);
+                let ext_ctrl = trim(as_string(sb_cfg?.experimental?.clash_api?.external_controller || ""));
+                if (ext_ctrl != "") {
+                    if (substr(ext_ctrl, 0, 8) == "0.0.0.0:")
+                        return "127.0.0.1:" + substr(ext_ctrl, 8);
+                    if (substr(ext_ctrl, 0, 5) == "[::]:")
+                        return "127.0.0.1:" + substr(ext_ctrl, 5);
+                    if (substr(ext_ctrl, 0, 1) == ":")
+                        return "127.0.0.1" + ext_ctrl;
+                    return ext_ctrl;
+                }
+            } catch (e) {}
+        }
+    }
     let address = replace(module_output(SINGBOX_RUNTIME_UC, [ "service-listen-address" ]), /[\r\n]+$/g, "");
     if (address == "")
         address = "127.0.0.1";
@@ -1232,7 +1252,47 @@ function build_conntrack_mark_map() {
     };
 }
 
-function read_conntrack_connections(mark_info, existing_tuples) {
+function load_conntrack_ip_host_map(parsed_connections, parsed_reverse_dns) {
+    let ip_host_map = {};
+    let ui_state_dir = (getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon") + "/ui-state";
+    let rev_cache_path = ui_state_dir + "/dns-reverse.json";
+    if (type(parsed_reverse_dns) == "object") {
+        for (let ip, dom in parsed_reverse_dns) {
+            ip = trim(as_string(ip));
+            dom = trim(as_string(dom));
+            if (ip != "" && dom != "")
+                ip_host_map[ip] = dom;
+        }
+        if (getenv("FAKE_CURL_LOG") == null && length(keys(ip_host_map)) > 0) {
+            common.ensure_dir(ui_state_dir);
+            common.write_json_file(rev_cache_path, ip_host_map, 0);
+        }
+    } else {
+        let cached = common.read_json_file(rev_cache_path);
+        if (type(cached) == "object") {
+            for (let ip, dom in cached) {
+                ip = trim(as_string(ip));
+                dom = trim(as_string(dom));
+                if (ip != "" && dom != "")
+                    ip_host_map[ip] = dom;
+            }
+        }
+    }
+    if (type(parsed_connections) == "array") {
+        for (let c in parsed_connections) {
+            if (type(c) != "object")
+                continue;
+            let meta = object_or_empty(c.metadata);
+            let dst_ip = trim(as_string(meta.destinationIP || ""));
+            let host = trim(as_string(meta.host || ""));
+            if (dst_ip != "" && host != "")
+                ip_host_map[dst_ip] = host;
+        }
+    }
+    return ip_host_map;
+}
+
+function read_conntrack_connections(mark_info, existing_tuples, ip_host_map) {
     let ct_path = getenv("TACHYON_CONNTRACK_FILE") || "/proc/net/nf_conntrack";
     if (getenv("TACHYON_CONNTRACK_FILE") == null && fs.access("/proc/sys/net/netfilter/nf_conntrack_acct")) {
         let acct = trim(as_string(fs.readfile("/proc/sys/net/netfilter/nf_conntrack_acct") || ""));
@@ -1247,6 +1307,7 @@ function read_conntrack_connections(mark_info, existing_tuples) {
     let marks = (type(mark_info) == "object" && type(mark_info.marks) == "object") ? mark_info.marks : {};
     let def_z1 = type(mark_info) == "object" ? as_string(mark_info.default_zapret || "") : "";
     let def_z2 = type(mark_info) == "object" ? as_string(mark_info.default_zapret2 || "") : "";
+    let host_map = type(ip_host_map) == "object" ? ip_host_map : {};
 
     for (let line in split(raw, "\n")) {
         line = trim(as_string(line));
@@ -1259,13 +1320,22 @@ function read_conntrack_connections(mark_info, existing_tuples) {
         if (proto != "tcp" && proto != "udp")
             continue;
         if (proto == "tcp") {
-            let st = as_string(fields[5]);
-            if (st == "TIME_WAIT" || st == "CLOSE" || st == "CLOSE_WAIT" || st == "LAST_ACK" || st == "FIN_WAIT" || st == "FIN_WAIT2")
+            let tcp_closed = false;
+            for (let fi = 3; fi < length(fields); fi++) {
+                let st = as_string(fields[fi]);
+                if (substr(st, 0, 4) == "src=")
+                    break;
+                if (st == "TIME_WAIT" || st == "CLOSE" || st == "CLOSE_WAIT" || st == "LAST_ACK" || st == "FIN_WAIT" || st == "FIN_WAIT2") {
+                    tcp_closed = true;
+                    break;
+                }
+            }
+            if (tcp_closed)
                 continue;
         }
 
         let orig_src = "", orig_dst = "", orig_sport = "", orig_dport = "", orig_bytes = 0;
-        let reply_bytes = 0;
+        let reply_dst = "", reply_bytes = 0;
         let src_seen = 0, dst_seen = 0, sport_seen = 0, dport_seen = 0, bytes_seen = 0;
         let mark_val = 0;
 
@@ -1279,6 +1349,8 @@ function read_conntrack_connections(mark_info, existing_tuples) {
                 dst_seen++;
                 if (dst_seen == 1)
                     orig_dst = substr(tok, 4);
+                else if (dst_seen == 2)
+                    reply_dst = substr(tok, 4);
             } else if (substr(tok, 0, 6) == "sport=") {
                 sport_seen++;
                 if (sport_seen == 1)
@@ -1302,7 +1374,9 @@ function read_conntrack_connections(mark_info, existing_tuples) {
             continue;
         if (!valid_public_ip(orig_dst) || valid_public_ip(orig_src) || substr(orig_src, 0, 4) == "127." || orig_src == "::1")
             continue;
-        if ((mark_val & 0x08000000) != 0)
+        if ((mark_val & 0x0c000000) != 0)
+            continue;
+        if (reply_dst != "" && reply_dst == orig_src)
             continue;
 
         let tkey = connection_tuple_key(proto, orig_src, orig_sport, orig_dst, orig_dport);
@@ -1333,6 +1407,8 @@ function read_conntrack_connections(mark_info, existing_tuples) {
             rule_str = "conntrack => dns-out";
         }
 
+        let resolved_host = as_string(host_map[orig_dst] || "");
+
         push(result, {
             id: sprintf("ct:%s:%s:%s:%s:%s", proto, orig_src, orig_sport, orig_dst, orig_dport),
             dataSource: "conntrack",
@@ -1348,7 +1424,7 @@ function read_conntrack_connections(mark_info, existing_tuples) {
                 sourcePort: orig_sport,
                 destinationIP: orig_dst,
                 destinationPort: orig_dport,
-                host: ""
+                host: resolved_host
             }
         });
         if (length(result) >= 250)
@@ -1396,8 +1472,34 @@ function clash_api(action, arg1, arg2, arg3) {
 
     if (action == "get_connections") {
         if (as_string(arg1) == "conntrack") {
+            let existing_tuples = {};
+            let ip_host_map = load_conntrack_ip_host_map(null, null);
+            if (getenv("FAKE_CURL_LOG") == null) {
+                let c_args = [ "curl", "-s", "-m", "2" ];
+                for (let item in auth) push(c_args, item);
+                push(c_args, base_url + "/connections");
+                let c_out = command_output(command_from_args(c_args));
+                let c_parsed = parse_json_or_null(c_out);
+                if (type(c_parsed) == "object") {
+                    ip_host_map = load_conntrack_ip_host_map(c_parsed.connections, c_parsed.reverseDns);
+                    if (type(c_parsed.connections) == "array") {
+                        for (let c in c_parsed.connections) {
+                            if (type(c) != "object")
+                                continue;
+                            let meta = object_or_empty(c.metadata);
+                            let c_proto = lc(as_string(meta.network || "tcp"));
+                            let c_src = as_string(meta.sourceIP || "");
+                            let c_sport = as_string(meta.sourcePort || "");
+                            let c_dst = as_string(meta.destinationIP || "");
+                            let c_dport = as_string(meta.destinationPort || "");
+                            if (c_src != "" && c_sport != "" && c_dst != "" && c_dport != "")
+                                existing_tuples[connection_tuple_key(c_proto, c_src, c_sport, c_dst, c_dport)] = true;
+                        }
+                    }
+                }
+            }
             let mark_info = build_conntrack_mark_map();
-            let ct_conns = read_conntrack_connections(mark_info, {});
+            let ct_conns = read_conntrack_connections(mark_info, existing_tuples, ip_host_map);
             printf("%J\n", { connections: ct_conns });
             return 0;
         }
@@ -1418,6 +1520,7 @@ function clash_api(action, arg1, arg2, arg3) {
             parsed.connections = [];
 
         let existing_tuples = {};
+        let ip_host_map = load_conntrack_ip_host_map(parsed.connections, parsed.reverseDns);
         for (let c in parsed.connections) {
             if (type(c) != "object")
                 continue;
@@ -1429,12 +1532,14 @@ function clash_api(action, arg1, arg2, arg3) {
             let c_sport = as_string(meta.sourcePort || "");
             let c_dst = as_string(meta.destinationIP || "");
             let c_dport = as_string(meta.destinationPort || "");
+            if (meta.host == "" && c_dst != "" && ip_host_map[c_dst] != null)
+                meta.host = ip_host_map[c_dst];
             if (c_src != "" && c_sport != "" && c_dst != "" && c_dport != "")
                 existing_tuples[connection_tuple_key(c_proto, c_src, c_sport, c_dst, c_dport)] = true;
         }
 
         let mark_info = build_conntrack_mark_map();
-        let ct_conns = read_conntrack_connections(mark_info, existing_tuples);
+        let ct_conns = read_conntrack_connections(mark_info, existing_tuples, ip_host_map);
         for (let ct in ct_conns) {
             if (length(parsed.connections) >= 300)
                 break;

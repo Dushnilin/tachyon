@@ -123,7 +123,7 @@ let latestConntrackConnections: ClashConnection[] = [];
 let latestCoreConnections: ClashConnection[] = [];
 
 let activeTab: MonitoringTabId = 'active';
-let selectedDataSourceFilter: ConnectionSourceFilter = 'all';
+let selectedDataSourceFilter: ConnectionSourceFilter = 'core';
 const selectedDeviceFilters = new Set<string>();
 const selectedRouteFilters = new Set<string>();
 const selectedNetworkFilters = new Set<string>();
@@ -231,6 +231,16 @@ function setDataSourceFilter(next: ConnectionSourceFilter) {
     return;
   }
   selectedDataSourceFilter = next;
+  if (next === 'conntrack' || next === 'all') {
+    void pollConntrackSupplement();
+  } else {
+    latestConntrackConnections = [];
+    for (const [id, conn] of Array.from(activeConnections.entries())) {
+      if (getConnectionDataSource(conn) === 'conntrack') {
+        activeConnections.delete(id);
+      }
+    }
+  }
   renderControls();
   renderConnections();
 }
@@ -268,7 +278,7 @@ function applyConnectionsPayload(payload: ClashConnectionsPayload) {
     : [];
   latestCoreConnections = baseConnections;
   const rawConnections =
-    latestConntrackConnections.length > 0
+    selectedDataSourceFilter !== 'core' && latestConntrackConnections.length > 0
       ? mergeCoreAndConntrackConnections(
           baseConnections,
           latestConntrackConnections,
@@ -845,10 +855,12 @@ function renderDataSourceFilterControls() {
     'monitoring-datasource-conntrack',
   ) as HTMLButtonElement | null;
 
-  const currentList = getCurrentTabConnections();
+  const allTabList = Array.from(
+    (activeTab === 'active' ? activeConnections : closedConnections).values(),
+  );
   let coreCount = 0;
   let ctCount = 0;
-  currentList.forEach((c) => {
+  allTabList.forEach((c) => {
     if (getConnectionDataSource(c) === 'conntrack') {
       ctCount++;
     } else {
@@ -858,7 +870,7 @@ function renderDataSourceFilterControls() {
 
   if (allBtn) {
     allBtn.replaceChildren(
-      ...renderTabButtonContent(_('All'), currentList.length),
+      ...renderTabButtonContent(_('All'), allTabList.length),
     );
     setButtonActive(allBtn, selectedDataSourceFilter === 'all');
   }
@@ -1674,7 +1686,8 @@ async function pollConntrackSupplement() {
     pollingConntrackSupplement ||
     !monitoringMounted ||
     monitoringPaused ||
-    serviceAvailability !== 'running'
+    serviceAvailability !== 'running' ||
+    selectedDataSourceFilter === 'core'
   ) {
     return;
   }
@@ -1933,7 +1946,7 @@ function watchServiceState() {
 
 function resetMonitoringState() {
   activeTab = 'active';
-  selectedDataSourceFilter = 'all';
+  selectedDataSourceFilter = 'core';
   latestConntrackConnections = [];
   selectedDeviceFilters.clear();
   selectedRouteFilters.clear();

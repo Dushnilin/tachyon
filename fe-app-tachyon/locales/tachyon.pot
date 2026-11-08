@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-08 11:06+0300\n"
-"PO-Revision-Date: 2026-11-08 11:06+0300\n"
+"POT-Creation-Date: 2026-11-08 16:05+0300\n"
+"PO-Revision-Date: 2026-11-08 16:05+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -434,7 +434,7 @@ msgstr ""
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3401
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:2121
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:2431
-#: src/tachyon/tabs/monitoring/initController.ts:897
+#: src/tachyon/tabs/monitoring/initController.ts:909
 #: src/tachyon/tabs/monitoring/render.ts:22
 #: src/tachyon/tabs/updates/initController.ts:2846
 #: src/views/parental.ts:520
@@ -791,8 +791,8 @@ msgstr ""
 
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1197
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:712
-#: src/tachyon/tabs/monitoring/initController.ts:861
-#: src/tachyon/tabs/monitoring/render.ts:51
+#: src/tachyon/tabs/monitoring/initController.ts:873
+#: src/tachyon/tabs/monitoring/render.ts:50
 msgid "All"
 msgstr ""
 
@@ -841,8 +841,8 @@ msgstr ""
 msgid "All Protocols"
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/initController.ts:501
-#: src/tachyon/tabs/monitoring/initController.ts:543
+#: src/tachyon/tabs/monitoring/initController.ts:511
+#: src/tachyon/tabs/monitoring/initController.ts:553
 #: src/tachyon/tabs/monitoring/render.ts:139
 msgid "All Routes"
 msgstr ""
@@ -917,8 +917,8 @@ msgstr ""
 msgid "All services"
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/initController.ts:651
-#: src/tachyon/tabs/monitoring/initController.ts:694
+#: src/tachyon/tabs/monitoring/initController.ts:661
+#: src/tachyon/tabs/monitoring/initController.ts:704
 #: src/tachyon/tabs/monitoring/render.ts:95
 msgid "All sources"
 msgstr ""
@@ -2695,8 +2695,8 @@ msgstr ""
 #: src/tachyon/tabs/diagnostic/partials/renderStabilityModal.ts:306
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:887
 #: src/tachyon/tabs/diagnostic/partials/renderSupportModal.ts:363
-#: src/tachyon/tabs/monitoring/initController.ts:1096
-#: src/tachyon/tabs/monitoring/initController.ts:1151
+#: src/tachyon/tabs/monitoring/initController.ts:1108
+#: src/tachyon/tabs/monitoring/initController.ts:1163
 #: src/tachyon/tabs/updates/initController.ts:1788
 #: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:492
 #: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:556
@@ -2723,12 +2723,12 @@ msgstr ""
 msgid "Close all connections"
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/initController.ts:1040
-#: src/tachyon/tabs/monitoring/initController.ts:1041
+#: src/tachyon/tabs/monitoring/initController.ts:1052
+#: src/tachyon/tabs/monitoring/initController.ts:1053
 msgid "Close connection"
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/initController.ts:904
+#: src/tachyon/tabs/monitoring/initController.ts:916
 #: src/tachyon/tabs/monitoring/render.ts:31
 msgid "Closed"
 msgstr ""
@@ -3065,7 +3065,7 @@ msgstr ""
 msgid "Connections"
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/initController.ts:1218
+#: src/tachyon/tabs/monitoring/initController.ts:1230
 msgid "Connections are unavailable"
 msgstr ""
 
@@ -4507,9 +4507,9 @@ msgstr ""
 msgid "Download through"
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/initController.ts:1089
-#: src/tachyon/tabs/monitoring/initController.ts:1148
-#: src/tachyon/tabs/monitoring/initController.ts:1344
+#: src/tachyon/tabs/monitoring/initController.ts:1101
+#: src/tachyon/tabs/monitoring/initController.ts:1160
+#: src/tachyon/tabs/monitoring/initController.ts:1356
 msgid "Downloaded"
 msgstr ""
 
@@ -5384,13 +5384,13 @@ msgstr ""
 msgid "Failed to clear fuzzer history"
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/initController.ts:1415
-#: src/tachyon/tabs/monitoring/initController.ts:1430
+#: src/tachyon/tabs/monitoring/initController.ts:1427
+#: src/tachyon/tabs/monitoring/initController.ts:1442
 msgid "Failed to close connection"
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/initController.ts:1449
-#: src/tachyon/tabs/monitoring/initController.ts:1464
+#: src/tachyon/tabs/monitoring/initController.ts:1461
+#: src/tachyon/tabs/monitoring/initController.ts:1476
 msgid "Failed to close connections"
 msgstr ""
 
@@ -6521,8 +6521,8 @@ msgstr ""
 msgid "Home Router / Office / Dacha"
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/initController.ts:1083
-#: src/tachyon/tabs/monitoring/initController.ts:1144
+#: src/tachyon/tabs/monitoring/initController.ts:1095
+#: src/tachyon/tabs/monitoring/initController.ts:1156
 msgid "Host"
 msgstr ""
 
@@ -8130,7 +8130,7 @@ msgstr ""
 msgid "Loading connected LAN devices..."
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/initController.ts:1208
+#: src/tachyon/tabs/monitoring/initController.ts:1220
 #: src/tachyon/tabs/monitoring/render.ts:239
 msgid "Loading connections"
 msgstr ""
@@ -8903,8 +8903,8 @@ msgid "No active clients"
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1003
-#: src/tachyon/tabs/monitoring/initController.ts:1232
-#: src/tachyon/tabs/monitoring/initController.ts:771
+#: src/tachyon/tabs/monitoring/initController.ts:1244
+#: src/tachyon/tabs/monitoring/initController.ts:781
 msgid "No active connections"
 msgstr ""
 
@@ -8948,7 +8948,7 @@ msgstr ""
 msgid "No check targets found in the configuration."
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/initController.ts:1233
+#: src/tachyon/tabs/monitoring/initController.ts:1245
 msgid "No closed connections"
 msgstr ""
 
@@ -9038,7 +9038,7 @@ msgstr ""
 msgid "No response from rule tracer."
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/initController.ts:620
+#: src/tachyon/tabs/monitoring/initController.ts:630
 msgid "No routes"
 msgstr ""
 
@@ -9990,7 +9990,7 @@ msgstr ""
 msgid "Patterns saved successfully!"
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/initController.ts:925
+#: src/tachyon/tabs/monitoring/initController.ts:937
 #: src/tachyon/tabs/monitoring/render.ts:218
 #: src/tachyon/tabs/monitoring/render.ts:219
 msgid "Pause updates"
@@ -11161,8 +11161,8 @@ msgstr ""
 msgid "Requires other AND operands"
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/initController.ts:560
-#: src/tachyon/tabs/monitoring/initController.ts:711
+#: src/tachyon/tabs/monitoring/initController.ts:570
+#: src/tachyon/tabs/monitoring/initController.ts:721
 #: src/views/dns_speed_test.ts:345
 #: src/views/settings.ts:791
 msgid "Reset"
@@ -11364,7 +11364,7 @@ msgstr ""
 msgid "Restricted users (auth_user)"
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/initController.ts:925
+#: src/tachyon/tabs/monitoring/initController.ts:937
 msgid "Resume updates"
 msgstr ""
 
@@ -11408,8 +11408,8 @@ msgstr ""
 
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2032
 #: src/tachyon/tabs/diagnostic/partials/renderServiceCheckModal.ts:470
-#: src/tachyon/tabs/monitoring/initController.ts:1085
-#: src/tachyon/tabs/monitoring/initController.ts:1146
+#: src/tachyon/tabs/monitoring/initController.ts:1097
+#: src/tachyon/tabs/monitoring/initController.ts:1158
 msgid "Route"
 msgstr ""
 
@@ -11543,7 +11543,7 @@ msgstr ""
 msgid "Router (WAN)"
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/initController.ts:873
+#: src/tachyon/tabs/monitoring/initController.ts:885
 #: src/tachyon/tabs/monitoring/render.ts:69
 msgid "Router Conntrack"
 msgstr ""
@@ -11595,7 +11595,7 @@ msgid "Router network interface"
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:145
-#: src/tachyon/tabs/monitoring/initController.ts:505
+#: src/tachyon/tabs/monitoring/initController.ts:515
 msgid "Routes"
 msgstr ""
 
@@ -13040,9 +13040,9 @@ msgstr ""
 
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:2671
 #: src/tachyon/tabs/diagnostic/partials/renderStabilityModal.ts:955
-#: src/tachyon/tabs/monitoring/initController.ts:1095
-#: src/tachyon/tabs/monitoring/initController.ts:1150
-#: src/tachyon/tabs/monitoring/initController.ts:656
+#: src/tachyon/tabs/monitoring/initController.ts:1107
+#: src/tachyon/tabs/monitoring/initController.ts:1162
+#: src/tachyon/tabs/monitoring/initController.ts:666
 #: src/views/conditions.ts:190
 #: src/views/outbounds.ts:2781
 #: src/views/section.ts:20232
@@ -13948,7 +13948,7 @@ msgstr ""
 msgid "Tachyon Connection Wizard"
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/initController.ts:867
+#: src/tachyon/tabs/monitoring/initController.ts:879
 #: src/tachyon/tabs/monitoring/render.ts:60
 #: src/views/settings.ts:4013
 msgid "Tachyon Core"
@@ -14061,7 +14061,7 @@ msgstr ""
 msgid "Tachyon restarted"
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/initController.ts:1197
+#: src/tachyon/tabs/monitoring/initController.ts:1209
 msgid "Tachyon service is stopped. Start the service to display connections."
 msgstr ""
 
@@ -14581,9 +14581,9 @@ msgid "Tiles"
 msgstr ""
 
 #: src/tachyon/tabs/diagnostic/partials/renderStabilityModal.ts:953
-#: src/tachyon/tabs/monitoring/initController.ts:1086
-#: src/tachyon/tabs/monitoring/initController.ts:1147
-#: src/tachyon/tabs/monitoring/initController.ts:1343
+#: src/tachyon/tabs/monitoring/initController.ts:1098
+#: src/tachyon/tabs/monitoring/initController.ts:1159
+#: src/tachyon/tabs/monitoring/initController.ts:1355
 msgid "Time"
 msgstr ""
 
@@ -14894,8 +14894,8 @@ msgstr ""
 #: src/tachyon/connectionWizard.ts:1683
 #: src/tachyon/connectionWizard.ts:1689
 #: src/tachyon/tabs/diagnostic/partials/renderStabilityModal.ts:857
-#: src/tachyon/tabs/monitoring/initController.ts:1084
-#: src/tachyon/tabs/monitoring/initController.ts:1145
+#: src/tachyon/tabs/monitoring/initController.ts:1096
+#: src/tachyon/tabs/monitoring/initController.ts:1157
 #: src/tachyon/tabs/monitoring/render.ts:166
 #: src/views/server.ts:2851
 msgid "Type"
@@ -15367,9 +15367,9 @@ msgstr ""
 msgid "Upload an OpenVPN .ovpn file from your computer to populate all settings and certificates."
 msgstr ""
 
-#: src/tachyon/tabs/monitoring/initController.ts:1092
-#: src/tachyon/tabs/monitoring/initController.ts:1149
-#: src/tachyon/tabs/monitoring/initController.ts:1345
+#: src/tachyon/tabs/monitoring/initController.ts:1104
+#: src/tachyon/tabs/monitoring/initController.ts:1161
+#: src/tachyon/tabs/monitoring/initController.ts:1357
 msgid "Uploaded"
 msgstr ""
 

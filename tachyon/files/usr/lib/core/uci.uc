@@ -157,6 +157,39 @@ function state_delete(path) {
     return !changed || state_write_lines(lines);
 }
 
+function state_rename(path, new_name) {
+    let parts = path_parts(path);
+    new_name = as_string(new_name);
+    if (parts == null || parts.section == "" || new_name == "" || parts.section == new_name)
+        return false;
+    let old_sec = parts.package + "." + parts.section;
+    let old_prefix = old_sec + ".";
+    let new_sec = parts.package + "." + new_name;
+    let new_prefix = new_sec + ".";
+    let lines = [];
+    let changed = false;
+    for (let line in state_lines()) {
+        if (line == "")
+            continue;
+        let equals = index(line, "=");
+        let key = equals >= 0 ? substr(line, 0, equals) : line;
+        let val = equals >= 0 ? substr(line, equals + 1) : "";
+        if (key == old_sec) {
+            push(lines, equals >= 0 ? (new_sec + "=" + val) : new_sec);
+            changed = true;
+            continue;
+        }
+        if (substr(key, 0, length(old_prefix)) == old_prefix) {
+            let rest = substr(key, length(old_prefix));
+            push(lines, equals >= 0 ? (new_prefix + rest + "=" + val) : (new_prefix + rest));
+            changed = true;
+            continue;
+        }
+        push(lines, line);
+    }
+    return changed ? state_write_lines(lines) : false;
+}
+
 function state_set(path, value) {
     let lines = [];
     for (let line in state_lines()) {
@@ -640,6 +673,37 @@ function harden_config_mode(package_name) {
     system("chmod 0600 " + common.shell_quote(path) + " 2>/dev/null");
 }
 
+function rename(p1, p2, p3) {
+    let path;
+    let new_name;
+    if (p3 != null) {
+        path = normalize_uci_path(p1, p2);
+        new_name = as_string(p3);
+    } else {
+        path = as_string(p1);
+        new_name = as_string(p2);
+    }
+    if (new_name == "")
+        return false;
+    if (fixture_enabled())
+        return state_rename(path, new_name);
+
+    let parts = path_parts(path);
+    let c = cursor();
+    if (c == null || parts == null || parts.section == "")
+        return false;
+    if (!load(parts.package))
+        return false;
+    parts = resolve_parts(c, parts);
+    if (parts == null)
+        return false;
+    try {
+        return c.rename(parts.package, parts.section, new_name) != false;
+    } catch (e) {
+        return false;
+    }
+}
+
 /// Move a whole package under a new name. Used once: the engine's own
 /// settings lived in a `sing-box` package and now live in `tachyon-core`, so
 /// an upgrade renames the package instead of leaving the settings behind.
@@ -779,6 +843,7 @@ return {
     set,
     add_list,
     del_list,
+    rename,
     rename_package,
     commit,
     sections,

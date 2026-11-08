@@ -518,16 +518,11 @@ function ruleset_registered(config, tag_name) {
 
 function clash_api_config(settings, service_address) {
     let yacd_enabled = bool_option(settings, "enable_yacd", false);
-    let controller = "127.0.0.1";
-    if (yacd_enabled) {
-        if (bool_option(settings, "enable_yacd_wan_access", false))
-            controller = "0.0.0.0";
-        else {
-            controller = trim(as_string(service_address || ""));
-            if (controller == "")
-                controller = "0.0.0.0";
-        }
-    }
+    let controller = trim(as_string(service_address || ""));
+    if (yacd_enabled && bool_option(settings, "enable_yacd_wan_access", false))
+        controller = "0.0.0.0";
+    else if (controller == "")
+        controller = "0.0.0.0";
 
     let result = {
         external_controller: controller + ":9090"
@@ -1171,7 +1166,10 @@ for (let inbound in dns_config.inbounds)
 
     if (is_sb_1_15_plus) {
         cache_file_section.buffer_size = option(settings, "cache_buffer_size", "16KB");
-        cache_file_section.flush_interval = option(settings, "cache_flush_interval", "10s");
+        let flush_int = option(settings, "cache_flush_interval", "60s");
+        if (flush_int == "" || flush_int == "10s")
+            flush_int = "60s";
+        cache_file_section.flush_interval = flush_int;
     }
 
     let base_cfg = {

@@ -437,6 +437,10 @@ function evaluate_multi_url_delays(delays_by_url, urls, strategy) {
 }
 
 function clash_probe(tag_name, group) {
+    if (as_string(tag_name) == "direct-out") {
+        let urls_cnt = max(1, length(type(group.health_urls) == "array" ? group.health_urls : []));
+        return { alive: true, delay: 1, passed: urls_cnt, total: urls_cnt, full_pass: true };
+    }
     // Health timing can change without regenerating outbounds or restarting the core.
     // Keep the cache fallback for fixtures and groups without a current UCI owner.
     let uci = require("core.uci");
@@ -888,11 +892,12 @@ function init_group_state(group) {
         active: "",
         levelIndex: -1,
         activeDelay: 0,
+        activeFailStreak: 0,
         lastSwitchAt: 0,
         guard: reachability_guard.create({
-            fail_threshold: 3,
-            recover_threshold: 8,
-            dwell_seconds: 120
+            fail_threshold: 2,
+            recover_threshold: 2,
+            dwell_seconds: duration_to_seconds(group.min_hold_time, 15)
         }),
         nextActiveCheck: now_seconds(),
         nextRecoveryCheck: now_seconds() + duration_to_seconds(group.recovery_check_interval, 15),
@@ -937,17 +942,32 @@ function warm_inactive_group_members(group, active_level_index, active_tag, prob
 function tick_group(state, group) {
     let now = now_seconds();
 
-    if (state.active == "") {
+    if (fixture_delays_path == "") {
         let current_now = current_group_selected(group.tag);
-        if (current_now != "") {
+        if (current_now != "" && current_now != state.active) {
             if (group.kind == "urltest") {
                 state.active = current_now;
                 state.levelIndex = 0;
+                state.activeFailStreak = 0;
             } else {
-                let lvl0 = object_or_empty(array_or_empty(group.levels)[0]);
-                if (index(array_or_empty(lvl0.outbounds), current_now) >= 0) {
+                let levels = array_or_empty(group.levels);
+                let found_level = -1;
+                for (let li = 0; li < length(levels); li++) {
+                    let lvl = object_or_empty(levels[li]);
+                    if (index(array_or_empty(lvl.outbounds), current_now) >= 0) {
+                        found_level = li;
+                        break;
+                    }
+                }
+                if (found_level >= 0 && (state.active != "" || found_level == 0)) {
+                    let prev_active = state.active;
                     state.active = current_now;
-                    state.levelIndex = 0;
+                    state.levelIndex = found_level;
+                    state.activeFailStreak = 0;
+                    if (prev_active != "") {
+                        state.lastSwitchAt = now;
+                        state.nextRecoveryCheck = now + duration_to_seconds(group.recovery_check_interval, 15);
+                    }
                 }
             }
         }
@@ -992,6 +1012,7 @@ function tick_group(state, group) {
             active = clash_probe(state.active, group);
         }
         if (active.alive) {
+            state.activeFailStreak = 0;
             state.activeDelay = active.delay;
             if (group.kind == "urltest" && length(array_or_empty(group.health_urls)) > 1)
                 warm_inactive_group_members(group, state.levelIndex, state.active, clash_probe, false, false);
@@ -1007,16 +1028,28 @@ function tick_group(state, group) {
                 reachability_guard.observe(state.guard, { direct_domestic: true, direct_foreign: true, tunnel_foreign: true, now: now });
         }
         else {
+            state.activeFailStreak = (int(state.activeFailStreak || 0, 10) || 0) + 1;
             if (state.guard)
                 reachability_guard.observe(state.guard, { direct_domestic: true, direct_foreign: false, tunnel_foreign: false, now: now });
-            let selected = choose_from_level_range(
+            let same_tier_selected = choose_from_level_range(
                 group,
                 state.levelIndex,
-                length(group.levels) - 1,
+                state.levelIndex,
                 clash_probe,
                 state.active
             );
-            if (switch_group(state, group, selected, "failover")) {
+            let selected = same_tier_selected;
+            if (selected == null && state.activeFailStreak >= 2) {
+                selected = choose_from_level_range(
+                    group,
+                    state.levelIndex,
+                    length(group.levels) - 1,
+                    clash_probe,
+                    state.active
+                );
+            }
+            if (selected != null && switch_group(state, group, selected, "failover")) {
+                state.activeFailStreak = 0;
                 if (state.levelIndex > 0 && state.guard && !state.guard.escalated) {
                     state.guard.escalated = true;
                     state.guard.escalated_at = now;
@@ -1026,7 +1059,7 @@ function tick_group(state, group) {
                 state.nextRecoveryCheck = now + duration_to_seconds(group.recovery_check_interval, 15);
                 state.nextFastestCheck = now + duration_to_seconds(group.fastest_check_interval, 180);
             }
-            else {
+            else if (state.activeFailStreak >= 2) {
                 state.active = "";
                 state.levelIndex = -1;
             }

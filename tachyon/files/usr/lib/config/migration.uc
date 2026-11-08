@@ -3133,16 +3133,9 @@ function migrate_numeric_wizard_ids(ctx) {
             if (b_name == "" || b_name == "Подписка (URLTest)" || b_name == "Subscription (URLTest)" || b_name == old_id + " (URLTest)" || b_name == old_id + " Auto" || b_name == raw_title + " (URLTest)")
                 bal.name = raw_title + " Auto";
             bal[".name"] = new_bal_id;
-            record_operation(ctx, { op: "create", section: new_bal_id, type: "balancer", anonymous: false });
-            for (let bk, bv in bal) {
-                if (substr(bk, 0, 1) == "." || bv == null)
-                    continue;
-                if (type(bv) == "array")
-                    record_operation(ctx, { op: "set_list", section: new_bal_id, option: bk, values: bv });
-                else
-                    record_operation(ctx, { op: "set", section: new_bal_id, option: bk, value: as_string(bv) });
-            }
-            record_operation(ctx, { op: "delete_section", section: old_bal_id });
+            record_operation(ctx, { op: "rename_section", section: old_bal_id, new_name: new_bal_id });
+            if (bal.name != null)
+                record_operation(ctx, { op: "set", section: new_bal_id, option: "name", value: as_string(bal.name) });
         }
 
         let b_refs = list_option(sec, "balancer_refs");
@@ -3161,16 +3154,15 @@ function migrate_numeric_wizard_ids(ctx) {
         }
 
         sec[".name"] = new_id;
-        record_operation(ctx, { op: "create", section: new_id, type: "section", anonymous: false });
-        for (let k, v in sec) {
-            if (substr(k, 0, 1) == "." || v == null)
-                continue;
-            if (type(v) == "array")
-                record_operation(ctx, { op: "set_list", section: new_id, option: k, values: v });
-            else
-                record_operation(ctx, { op: "set", section: new_id, option: k, value: as_string(v) });
-        }
-        record_operation(ctx, { op: "delete_section", section: old_id });
+        record_operation(ctx, { op: "rename_section", section: old_id, new_name: new_id });
+        if (sec.name != null)
+            record_operation(ctx, { op: "set", section: new_id, option: "name", value: as_string(sec.name) });
+        if (sec.label != null)
+            record_operation(ctx, { op: "set", section: new_id, option: "label", value: as_string(sec.label) });
+        if (type(sec.balancer_refs) == "array" && length(sec.balancer_refs) > 0)
+            record_operation(ctx, { op: "set_list", section: new_id, option: "balancer_refs", values: sec.balancer_refs });
+        if (type(sec.urltests) == "array" && length(sec.urltests) > 0)
+            record_operation(ctx, { op: "set_list", section: new_id, option: "urltests", values: sec.urltests });
     }
 
     if (length(keys(sec_map)) == 0)
@@ -3263,6 +3255,8 @@ function migrate_tachyon_model(model) {
     set_option_if_missing(ctx, ctx.model.settings, "tun_interface", "tun0");
     set_option_if_missing(ctx, ctx.model.settings, "tun_inet4", "172.19.0.1/30");
     set_option_if_missing(ctx, ctx.model.settings, "tun_mtu", "9000");
+    if (option(ctx.model.settings, "cache_flush_interval", "") == "10s")
+        set_option(ctx, ctx.model.settings, "cache_flush_interval", "60s");
     return ctx;
 }
 
@@ -3369,6 +3363,8 @@ function apply_operations(cursor, operations) {
                 cursor.set(CONFIG_NAME, section_ref(op.section), op.option, op.values);
             else if (op.op == "set_type")
                 cursor.set(CONFIG_NAME, section_ref(op.section), op.type);
+            else if (op.op == "rename_section" && type(cursor.rename) == "function")
+                cursor.rename(CONFIG_NAME, section_ref(op.section), op.new_name);
         } catch(e) {
             warn("Migration operation '" + op.op + "' failed: " + as_string(e) + "\n");
         }
@@ -3399,6 +3395,9 @@ function runtime_cursor() {
             if (option_name == null)
                 return uci_core.delete(package_name + "." + section_name);
             return uci_core.delete(package_name + "." + section_name + "." + option_name);
+        },
+        rename: function(package_name, section_name, new_name) {
+            return uci_core.rename(package_name, section_name, new_name);
         },
         commit: function(package_name) {
             return uci_core.commit(package_name);

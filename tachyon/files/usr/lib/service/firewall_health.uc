@@ -20,6 +20,22 @@ function interception_suppressed(settings) {
     return emergency_active() || manual_bypass_active(settings);
 }
 
+function tproxy_policy_route_ok() {
+    let route_res = common.command_capture(common.command_from_args([
+        "ip", "route", "list", "table", "tachyon"
+    ]) + " 2>/dev/null");
+    let route_out = route_res.output || "";
+    if (index(route_out, "table inet ") >= 0)
+        return true;
+    if (route_res.status != 0 || index(route_out, "local default dev lo") < 0)
+        return false;
+    let rule_res = common.command_capture(common.command_from_args([
+        "ip", "rule", "list"
+    ]) + " 2>/dev/null");
+    let rule_out = rule_res.output || "";
+    return rule_res.status == 0 && index(rule_out, "lookup tachyon") >= 0 && index(rule_out, "fwmark") >= 0;
+}
+
 function inspect(settings) {
     let table = getenv("NFT_TABLE_NAME") || "TachyonTable";
     let result = common.command_capture(common.command_from_args([
@@ -31,7 +47,7 @@ function inspect(settings) {
     let mode = lc(trim(common.as_string(settings.proxy_mode || "tproxy")));
     let need_tproxy = mode != "tun" && mode != "socks";
     let nft_ok = table_present && index(data, "priority_rules") >= 0 &&
-        (!need_tproxy || index(data, "tproxy") >= 0);
+        (!need_tproxy || (index(data, "tproxy") >= 0 && tproxy_policy_route_ok()));
     if ((settings.routing_mode || "nftables") != "nftables")
         nft_ok = true;
     let qos_ok = settings.qos_priority_engine == "0" ||
