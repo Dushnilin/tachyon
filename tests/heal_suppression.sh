@@ -85,18 +85,18 @@ grep -qE 'subscribe\(EV\.WAN_UP, note_wan_recovered,' "$WATCHDOG_UC" \
 grep -q 'const WAN_FAIL_THRESHOLD' "$CONTROLLER_UC" \
   || fail "probe_wan has no debounce threshold"
 wan_probe_body="$(sed -n '/function probe_wan()/,/^    }$/p' "$CONTROLLER_UC")"
-echo "$wan_probe_body" | grep -q 'state.wan_fail_streak = 0;' \
+grep -q 'state.wan_fail_streak = 0;' <<< "$wan_probe_body" \
   || fail "probe_wan no longer resets its miss streak on a healthy pass"
-echo "$wan_probe_body" | grep -q 'state.wan_fail_streak++;' \
+grep -q 'state.wan_fail_streak++;' <<< "$wan_probe_body" \
   || fail "probe_wan no longer counts consecutive misses"
-echo "$wan_probe_body" | grep -q 'if (state.wan_fail_streak < WAN_FAIL_THRESHOLD) return;' \
+grep -q 'if (state.wan_fail_streak < WAN_FAIL_THRESHOLD) return;' <<< "$wan_probe_body" \
   || fail "probe_wan publishes WAN_DOWN before the debounce threshold"
-echo "$wan_probe_body" | grep -q 'if (setting("recovery_bypass", "0") == "1") return;' \
+grep -q 'if (setting("recovery_bypass", "0") == "1") return;' <<< "$wan_probe_body" \
   || fail "probe_wan ignores recovery_bypass"
 wan_heal_body="$(sed -n '/function heal_wan_and_gateway/,/^}/p' "$WATCHDOG_UC")"
-echo "$wan_heal_body" | grep -q 'if (settings().recovery_bypass == "1") return;' \
+grep -q 'if (settings().recovery_bypass == "1") return;' <<< "$wan_heal_body" \
   || fail "heal_wan_and_gateway ignores recovery_bypass; it was the only healer that could not be disabled"
-echo "$wan_heal_body" | grep -q '/sbin/ubus call network.interface.wan renew' \
+grep -q '/sbin/ubus call network.interface.wan renew' <<< "$wan_heal_body" \
   || fail "heal_wan_and_gateway no longer tries a graceful renew before ifdown/ifup"
 
 # ── no http/mixed inbound → the proxy probe must not declare it broken ───────
@@ -104,22 +104,22 @@ echo "$wan_heal_body" | grep -q '/sbin/ubus call network.interface.wan renew' \
 # any http/mixed inbound (economy mode, all mixed proxies off) measured a dead
 # listener and the watchdog restarted sing-box every ~minute (issue #31).
 proxy_port_body="$(sed -n '/^function proxy_port()/,/^}$/p' "$CONTROLLER_UC")"
-echo "$proxy_port_body" | grep -q 'let port = "";' \
+grep -q 'let port = "";' <<< "$proxy_port_body" \
   || fail "proxy_port() still defaults to a fake port instead of signalling 'no proxy inbound'"
 proxy_probe_body="$(sed -n '/function probe_proxy()/,/^    }$/p' "$CONTROLLER_UC")"
-echo "$proxy_probe_body" | grep -q 'if (port == "") return;' \
+grep -q 'if (port == "") return;' <<< "$proxy_probe_body" \
   || fail "probe_proxy() probes a dead default port when the config has no http/mixed inbound"
 # The guard is asserted on the smart-detect body rather than as a literal
 # one-liner: it now logs why it bails, so the "if (...) return;" spelling moved
 # into a block. Both halves of the guard are still required.
 smart_detect_body="$(sed -n '/^function smart_detect_process_pending/,/^}$/p' "$WATCHDOG_UC")"
-echo "$smart_detect_body" | grep -q 'proxy_addr == "127.0.0.1:"' \
+grep -q 'proxy_addr == "127.0.0.1:"' <<< "$smart_detect_body" \
   || fail "smart-detect lost the empty-proxy-address guard"
-echo "$smart_detect_body" | awk '
+awk '
   /proxy_addr == "127\.0\.0\.1:"/ { guard = NR }
   guard && /return;/ { found = 1; exit }
   END { exit found ? 0 : 1 }
-' || fail "smart-detect probes the empty proxy address when the config has no http/mixed inbound"
+' <<< "$smart_detect_body" || fail "smart-detect probes the empty proxy address when the config has no http/mixed inbound"
 
 # ── the consequences actually check ───────────────────────────────────────────
 for healer in heal_dns_stall heal_proxy_connectivity heal_proxy_health heal_dns_continuous; do
