@@ -2333,6 +2333,12 @@ function add_connection_json_outbounds(config, state, section, taken, selector_t
             if (!state.outboundMetadata.source_ids)
                 state.outboundMetadata.source_ids = {};
             state.outboundMetadata.source_ids[tag_name] = src_id;
+            let src_name = src_obj != null ? trim(option(src_obj, "name", option(src_obj, "label", ""))) : "";
+            if (src_name != "") {
+                if (!state.outboundMetadata.source_names)
+                    state.outboundMetadata.source_names = {};
+                state.outboundMetadata.source_names[tag_name] = src_name;
+            }
         }
     }
 }

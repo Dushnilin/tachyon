@@ -922,6 +922,7 @@ function restore_persistent_subscription_cache(source_section, tmp_dir, persiste
         }
     }
 
+    let candidate_dir = persistent_dir;
     if (candidate == null) {
         let pattern = as_string(persistent_dir) + "/*.url";
         for (let url_file in (fs.glob(pattern) || [])) {
@@ -942,6 +943,32 @@ function restore_persistent_subscription_cache(source_section, tmp_dir, persiste
                 continue;
 
             candidate = name;
+            candidate_dir = persistent_dir;
+            break;
+        }
+    }
+
+    if (candidate == null && as_string(tmp_dir) != "" && as_string(tmp_dir) != as_string(persistent_dir)) {
+        let tmp_pattern = as_string(tmp_dir) + "/*.url";
+        for (let url_file in (fs.glob(tmp_pattern) || [])) {
+            let name = cache_name_from_file(url_file);
+            if (!cache_section_is_safe(name) || name == source_section)
+                continue;
+
+            let c_json = source_json_path(tmp_dir, name);
+            if (!subscription_cache_is_usable(c_json))
+                continue;
+            if (read_text(url_file) != as_string(expected_url))
+                continue;
+            if (!user_agent_matches_config(expected_user_agent, read_text(source_user_agent_path(tmp_dir, name)), default_user_agent))
+                continue;
+            if (!hwid_matches_config(expected_hwid, read_text(source_hwid_path(tmp_dir, name))))
+                continue;
+            if (read_text(source_device_headers_path(tmp_dir, name)) != as_string(expected_device_headers_signature))
+                continue;
+
+            candidate = name;
+            candidate_dir = tmp_dir;
             break;
         }
     }
@@ -949,11 +976,11 @@ function restore_persistent_subscription_cache(source_section, tmp_dir, persiste
     if (candidate == null)
         return false;
 
-    let candidate_json = source_json_path(persistent_dir, candidate);
-    let cached_url = read_text(source_url_path(persistent_dir, candidate));
-    let cached_user_agent = read_text(source_user_agent_path(persistent_dir, candidate));
-    let cached_hwid = read_text(source_hwid_path(persistent_dir, candidate));
-    let cached_device_headers = read_text(source_device_headers_path(persistent_dir, candidate));
+    let candidate_json = source_json_path(candidate_dir, candidate);
+    let cached_url = read_text(source_url_path(candidate_dir, candidate));
+    let cached_user_agent = read_text(source_user_agent_path(candidate_dir, candidate));
+    let cached_hwid = read_text(source_hwid_path(candidate_dir, candidate));
+    let cached_device_headers = read_text(source_device_headers_path(candidate_dir, candidate));
 
     let ok = copy_file(candidate_json, runtime_json) &&
         write_text(source_url_path(tmp_dir, source_section), cached_url) &&
@@ -964,7 +991,7 @@ function restore_persistent_subscription_cache(source_section, tmp_dir, persiste
     if (!ok)
         return false;
 
-    let candidate_metadata = persistent_dir + "/" + as_string(candidate) + ".metadata.json";
+    let candidate_metadata = as_string(candidate_dir) + "/" + as_string(candidate) + ".metadata.json";
     let runtime_metadata = as_string(tmp_dir) + "/" + as_string(source_section) + ".metadata.json";
     if (file_nonempty(candidate_metadata))
         copy_file(candidate_metadata, runtime_metadata);
@@ -1338,6 +1365,10 @@ function normalize_cache(cache, section, format_version) {
     cache.outboundMetadata.securities = object_or_empty(cache.outboundMetadata.securities);
     cache.outboundMetadata.prefixes = object_or_empty(cache.outboundMetadata.prefixes);
     cache.outboundMetadata.ports = object_or_empty(cache.outboundMetadata.ports);
+    cache.outboundMetadata.details = object_or_empty(cache.outboundMetadata.details);
+    cache.outboundMetadata.sources = object_or_empty(cache.outboundMetadata.sources);
+    cache.outboundMetadata.source_ids = object_or_empty(cache.outboundMetadata.source_ids);
+    cache.outboundMetadata.source_names = object_or_empty(cache.outboundMetadata.source_names);
     cache.servers = object_or_empty(cache.servers);
     cache.urltestCandidateTags = array_or_empty(cache.urltestCandidateTags);
     cache.urltestGroups = object_or_empty(cache.urltestGroups);
@@ -1370,7 +1401,11 @@ function write_outbound_metadata(cache_dir, format_version, section, names_path,
         protocols: object_or_empty(previous_metadata.protocols),
         securities: object_or_empty(previous_metadata.securities),
         prefixes: object_or_empty(previous_metadata.prefixes),
-        ports: object_or_empty(previous_metadata.ports)
+        ports: object_or_empty(previous_metadata.ports),
+        details: object_or_empty(previous_metadata.details),
+        sources: object_or_empty(previous_metadata.sources),
+        source_ids: object_or_empty(previous_metadata.source_ids),
+        source_names: object_or_empty(previous_metadata.source_names)
     };
     cache.servers = object_or_empty(read_json(servers_path));
     save_cache(cache_dir, section, format_version, cache);

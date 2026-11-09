@@ -673,6 +673,34 @@ function section_effective_outbound_sources(section) {
             for (let grp_id in bal_grps)
                 add_grp(grp_id);
         }
+        if (!has_explicit_non_dpi_sources && length(bal_srcs) == 0 && length(bal_grps) == 0) {
+            let eff_mode = lc(trim(child_option_alias(bal_sec_st, [ "filter_mode", "urltest_filter_mode" ], child_option_alias(bal, [ "filter_mode", "urltest_filter_mode" ], ""))));
+            if (eff_mode != "disabled" && eff_mode != "exclude") {
+                let inc_pfxs = child_list_alias(bal_sec_st, [ "include_prefixes", "urltest_include_prefixes" ], []);
+                if (length(inc_pfxs) == 0)
+                    inc_pfxs = child_list_alias(bal, [ "include_prefixes", "urltest_include_prefixes" ], []);
+                if (length(inc_pfxs) > 0) {
+                    let pfx_set = {};
+                    for (let p in inc_pfxs) {
+                        let pl = lc(trim(replace(as_string(p), /^\[|\]$/g, "")));
+                        if (pl != "")
+                            pfx_set[pl] = true;
+                    }
+                    for (let src in outbound_source_sections()) {
+                        if (is_dpi_or_desync_source_type(option(src, "source_type", "")))
+                            continue;
+                        let sid_l = lc(trim(section_name(src)));
+                        let sname_l = lc(trim(option(src, "name", option(src, "label", ""))));
+                        let spfx_l = lc(trim(option(src, "node_prefix", "")));
+                        if ((sid_l != "" && pfx_set[sid_l]) ||
+                            (sname_l != "" && pfx_set[sname_l]) ||
+                            (spfx_l != "" && pfx_set[spfx_l])) {
+                            add_src(src);
+                        }
+                    }
+                }
+            }
+        }
         for (let lvl_ref in bal_lvls) {
             lvl_ref = trim(as_string(lvl_ref));
             if (lvl_ref == "" || lc(lvl_ref) == "direct")
@@ -2204,8 +2232,20 @@ function priority_group_child(section, value) {
     if (child != null)
         return child;
     let bal = balancer_section(value);
-    if (bal != null && lc(option(bal, "balancer_type", "urltest")) == "priority")
+    if (bal != null && lc(option(bal, "balancer_type", "urltest")) == "priority") {
+        let bal_sec_st = type(section) == "object"
+            ? item_settings(section, "balancer_settings", value)
+            : {};
+        if (type(bal_sec_st) == "object" && length(keys(bal_sec_st)) > 0) {
+            let merged = {};
+            for (let k, v in bal)
+                merged[k] = v;
+            for (let k, v in bal_sec_st)
+                merged[k] = v;
+            return merged;
+        }
         return bal;
+    }
     return null;
 }
 
@@ -2339,7 +2379,17 @@ function section_combined_pool_tier_refs(owner_sec) {
         sid = as_string(sid);
         if (covered_all || covered_src_set[sid])
             continue;
+        let src_sec = outbound_source_section(sid);
+        if (src_sec != null && !bool_option(src_sec, "enabled", true))
+            continue;
         push_unique_str(combined, seen, sid);
+    }
+    if (length(combined) == 0 && !covered_all) {
+        for (let es in section_effective_outbound_sources(owner_sec)) {
+            let es_id = section_name(es);
+            if (es_id != "")
+                push_unique_str(combined, seen, es_id);
+        }
     }
     return combined;
 }
@@ -2405,6 +2455,8 @@ function synthesized_priority_levels_for_balancer(group_id, section, force_from_
         last_priority_section_by_group[as_string(group_id)] = section;
     if (force_from_section_pool != null)
         last_priority_force_pool_by_group[as_string(group_id)] = force_from_section_pool == true;
+    else if (type(section) == "object")
+        last_priority_force_pool_by_group[as_string(group_id)] = false;
     let use_force_pool = last_priority_force_pool_by_group[as_string(group_id)] == true;
     let owner_sec = resolve_balancer_owner_section(group_id, section);
     let group_refs = [];
@@ -2414,11 +2466,15 @@ function synthesized_priority_levels_for_balancer(group_id, section, force_from_
         let bal_sec_st = type(owner_sec) == "object"
             ? item_settings(owner_sec, "balancer_settings", group_id)
             : {};
+        let from_global_bal = false;
         group_refs = extract_entity_priority_level_refs(bal_sec_st);
         if (length(group_refs) == 0)
             group_refs = extract_entity_priority_level_refs(owner_sec);
-        if (length(group_refs) == 0)
+        if (length(group_refs) == 0) {
             group_refs = extract_entity_priority_level_refs(bal);
+            if (length(group_refs) > 0)
+                from_global_bal = true;
+        }
         if (length(group_refs) == 0) {
             let has_legacy = false;
             let owner_sec_name = type(owner_sec) == "object" ? section_name(owner_sec) : "";
@@ -2435,7 +2491,7 @@ function synthesized_priority_levels_for_balancer(group_id, section, force_from_
             if (!has_legacy)
                 group_refs = section_combined_pool_tier_refs(owner_sec);
         }
-        if (length(group_refs) > 0 && type(owner_sec) == "object") {
+        if (from_global_bal && length(group_refs) > 0 && type(owner_sec) == "object") {
             let sec_grefs = section_outbound_group_refs(owner_sec);
             if (length(sec_grefs) > 0) {
                 let has_any_group = false;

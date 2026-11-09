@@ -782,6 +782,7 @@ function tag_prefix_filter_matches(tag, names, metadata, prefixes) {
     let stored_prefix = lc(trim(as_string(object_or_empty(object_or_empty(metadata).prefixes)[tag] || "")));
     let stored_source = lc(trim(as_string(object_or_empty(object_or_empty(metadata).sources)[tag] || "")));
     let stored_source_id = lc(trim(as_string(object_or_empty(object_or_empty(metadata).source_ids)[tag] || "")));
+    let stored_source_name = lc(trim(as_string(object_or_empty(object_or_empty(metadata).source_names)[tag] || "")));
     let display = lc(trim(tag_display_name(tag, names)));
     let raw_tag = lc(trim(as_string(tag)));
     for (let p in prefixes) {
@@ -796,6 +797,8 @@ function tag_prefix_filter_matches(tag, names, metadata, prefixes) {
         if (stored_source != "" && (stored_source == bare || stored_source == pl))
             return true;
         if (stored_source_id != "" && (stored_source_id == bare || stored_source_id == pl))
+            return true;
+        if (stored_source_name != "" && (stored_source_name == bare || stored_source_name == pl))
             return true;
         if (substr(bare, 0, 4) == "sub:" || substr(bare, 0, 4) == "src_")
             continue;

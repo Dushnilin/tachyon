@@ -895,7 +895,7 @@ function safeCacheSectionName(section_id) {
   return /^[A-Za-z0-9_-]+$/.test(`${section_id || ""}`);
 }
 
-function filteredOutboundMetadataFromCache(cache) {
+function filteredOutboundMetadataFromCache(cache, sectionId = "") {
   const metadata = plainObject(plainObject(cache).outboundMetadata);
   const names = plainObject(metadata.names);
   const countries = plainObject(metadata.countries);
@@ -905,6 +905,8 @@ function filteredOutboundMetadataFromCache(cache) {
   const ports = plainObject(metadata.ports);
   const prefixes = plainObject(metadata.prefixes);
   const sources = plainObject(metadata.sources);
+  const sourceIds = plainObject(metadata.source_ids);
+  const sourceNames = plainObject(metadata.source_names);
   const candidateTags = Array.isArray(cache.urltestCandidateTags)
     ? cache.urltestCandidateTags
     : [];
@@ -918,6 +920,66 @@ function filteredOutboundMetadataFromCache(cache) {
     ports: {},
     prefixes: {},
     sources: {},
+    source_ids: {},
+    source_names: {},
+  };
+
+  const sectionSubSourceByIndex = new Map();
+  if (sectionId) {
+    const secSrcRefs = normalizeOptionValues(
+      uci.get(UCI_PACKAGE, sectionId, "outbound_source_refs"),
+    );
+    let subIdx = 0;
+    secSrcRefs.forEach((sid) => {
+      const srcObj = uci.get(UCI_PACKAGE, sid);
+      if (!srcObj || srcObj.enabled === "0") return;
+      const stype = String(srcObj.source_type || "subscription")
+        .trim()
+        .toLowerCase();
+      if (stype === "subscription" || String(srcObj.url || "").trim()) {
+        subIdx += 1;
+        sectionSubSourceByIndex.set(`sub:${subIdx}`, {
+          id: sid,
+          name: String(srcObj.name || srcObj.label || sid).trim(),
+          prefix:
+            srcObj.prefix_nodes === "0"
+              ? ""
+              : String(srcObj.node_prefix || "").trim(),
+        });
+      }
+    });
+  }
+
+  const enrichTagSourceMeta = (tag) => {
+    const rawSrc = String(result.sources[tag] || "").trim();
+    if (!result.source_ids[tag] && rawSrc) {
+      const mapped = sectionSubSourceByIndex.get(rawSrc.toLowerCase());
+      if (mapped) {
+        result.source_ids[tag] = mapped.id;
+        if (!result.source_names[tag] && mapped.name) {
+          result.source_names[tag] = mapped.name;
+        }
+        if (!result.prefixes[tag] && mapped.prefix) {
+          result.prefixes[tag] = mapped.prefix;
+        }
+      } else if (!/^sub:\d+$/i.test(rawSrc) && rawSrc !== "manual") {
+        const srcObj = uci.get(UCI_PACKAGE, rawSrc);
+        if (srcObj && srcObj[".type"] === "outbound_source") {
+          result.source_ids[tag] = rawSrc;
+          const sname = String(srcObj.name || srcObj.label || rawSrc).trim();
+          if (!result.source_names[tag] && sname) {
+            result.source_names[tag] = sname;
+          }
+        }
+      }
+    } else if (result.source_ids[tag] && !result.source_names[tag]) {
+      const sid = String(result.source_ids[tag]).trim();
+      const srcObj = uci.get(UCI_PACKAGE, sid);
+      if (srcObj) {
+        const sname = String(srcObj.name || srcObj.label || sid).trim();
+        if (sname) result.source_names[tag] = sname;
+      }
+    }
   };
 
   if (candidateTags.length > 0) {
@@ -950,6 +1012,13 @@ function filteredOutboundMetadataFromCache(cache) {
       if (sources[tag] != null) {
         result.sources[tag] = sources[tag];
       }
+      if (sourceIds[tag] != null) {
+        result.source_ids[tag] = sourceIds[tag];
+      }
+      if (sourceNames[tag] != null) {
+        result.source_names[tag] = sourceNames[tag];
+      }
+      enrichTagSourceMeta(tag);
     });
     return result;
   }
@@ -994,22 +1063,39 @@ function filteredOutboundMetadataFromCache(cache) {
       result.sources[tag] = source;
     }
   });
+  Object.entries(sourceIds).forEach(([tag, sourceId]) => {
+    if (!groups[tag]) {
+      result.source_ids[tag] = sourceId;
+    }
+  });
+  Object.entries(sourceNames).forEach(([tag, sourceName]) => {
+    if (!groups[tag]) {
+      result.source_names[tag] = sourceName;
+    }
+  });
+  Object.keys(result.names).forEach(enrichTagSourceMeta);
 
   return result;
 }
 
+function emptySectionCacheMetadata() {
+  return {
+    names: {},
+    countries: {},
+    protocols: {},
+    transports: {},
+    securities: {},
+    ports: {},
+    prefixes: {},
+    sources: {},
+    source_ids: {},
+    source_names: {},
+  };
+}
+
 function readSingleSectionCacheMetadata(targetId) {
   if (!safeCacheSectionName(targetId)) {
-    return Promise.resolve({
-      names: {},
-      countries: {},
-      protocols: {},
-      transports: {},
-      securities: {},
-      ports: {},
-      prefixes: {},
-      sources: {},
-    });
+    return Promise.resolve(emptySectionCacheMetadata());
   }
 
   const cachePath = `${SECTION_CACHE_DIR}/${targetId}.json`;
@@ -1031,90 +1117,255 @@ function readSingleSectionCacheMetadata(targetId) {
               .exec("/bin/cat", [cachePath])
               .then((res) => (res && res.stdout) || "{}");
     })
-    .then((raw) => filteredOutboundMetadataFromCache(JSON.parse(raw || "{}")))
-    .catch(() => ({
-      names: {},
-      countries: {},
-      protocols: {},
-      transports: {},
-      securities: {},
-      ports: {},
-      prefixes: {},
-      sources: {},
-    }));
+    .then((raw) =>
+      filteredOutboundMetadataFromCache(JSON.parse(raw || "{}"), targetId),
+    )
+    .catch(() => emptySectionCacheMetadata());
 }
 
-function readOutboundMetadataFromSectionCache(section_id) {
+function resolveEffectiveSectionOutboundSourceIds(section_id) {
   const targetId = section_id || "Main";
-  const memberIds =
-    getRuleResolvedAction(targetId) === "group"
-      ? currentSourceOptionValues(targetId, "group_members")
-      : [];
+  const dpiTypes = new Set([
+    "zapret",
+    "zapret2",
+    "byedpi",
+    "desync",
+    "wdtt",
+    "olcrtc",
+  ]);
+  const isNonDpiSource = (srcObj) => {
+    if (!srcObj || srcObj.enabled === "0") return false;
+    const stype = String(srcObj.source_type || "subscription")
+      .trim()
+      .toLowerCase();
+    return !dpiTypes.has(stype);
+  };
+  const allSources = (
+    uci.sections(UCI_PACKAGE, "outbound_source") || []
+  ).filter((s) => s && s[".name"] && s.enabled !== "0");
+  const allNonDpiSourceIds = allSources
+    .filter(isNonDpiSource)
+    .map((s) => s[".name"]);
+
   const rawSourceRefs = currentSourceOptionValues(
     targetId,
     "outbound_source_refs",
   );
-  const sourceRefs = rawSourceRefs.filter(
-    (id) => uci.get(UCI_PACKAGE, id, "enabled") !== "0",
+  const resultIds = [];
+  const seen = new Set();
+  const addSourceId = (id) => {
+    const sid = `${id || ""}`.trim();
+    if (!sid || seen.has(sid)) return;
+    if (uci.get(UCI_PACKAGE, sid, "enabled") === "0") return;
+    seen.add(sid);
+    resultIds.push(sid);
+  };
+
+  rawSourceRefs.forEach(addSourceId);
+
+  const memberIds =
+    getRuleResolvedAction(targetId) === "group"
+      ? currentSourceOptionValues(targetId, "group_members")
+      : [];
+  memberIds.forEach((mId) => {
+    normalizeOptionValues(
+      uci.get(UCI_PACKAGE, mId, "outbound_source_refs"),
+    ).forEach(addSourceId);
+  });
+
+  let hasExplicitNonDpi = resultIds.some((sid) =>
+    isNonDpiSource(uci.get(UCI_PACKAGE, sid)),
   );
-  const allowedSources = new Set();
-  const allowedPrefixes = new Set();
-  sourceRefs.forEach((id) => {
-    allowedSources.add(id);
+
+  const addGroupById = (grpId) => {
+    const gid = `${grpId || ""}`.trim();
+    if (!gid) return;
+    const grp = uci.get(UCI_PACKAGE, gid);
+    if (!grp || grp.enabled === "0") return;
+    const gSrcs = normalizeOptionValues(grp.source_refs);
+    if (gSrcs.length === 0 || gSrcs[0] === "*") {
+      if (!hasExplicitNonDpi) {
+        allNonDpiSourceIds.forEach(addSourceId);
+      }
+    } else if (!hasExplicitNonDpi) {
+      gSrcs.forEach(addSourceId);
+    }
+  };
+
+  currentSourceOptionValues(targetId, "outbound_group_refs").forEach(
+    addGroupById,
+  );
+  if (!hasExplicitNonDpi) {
+    hasExplicitNonDpi = resultIds.some((sid) =>
+      isNonDpiSource(uci.get(UCI_PACKAGE, sid)),
+    );
+  }
+
+  const balSettingsMap = readItemSettingsMap(targetId, "balancer_settings");
+  currentSourceOptionValues(targetId, "balancer_refs").forEach((balId) => {
+    const bid = `${balId || ""}`.trim();
+    if (!bid) return;
+    const bal = uci.get(UCI_PACKAGE, bid);
+    if (!bal || bal.enabled === "0") return;
+    const balSrcs = normalizeOptionValues(bal.source_refs);
+    const balGrps = normalizeOptionValues(bal.group_refs);
+    const balSt = (balSettingsMap && balSettingsMap[bid]) || {};
+    const balLvls = normalizeDynamicListItems(
+      balSt.outbound_group_levels ||
+        uci.get(UCI_PACKAGE, targetId, "outbound_group_levels") ||
+        bal.outbound_group_levels ||
+        [],
+    );
+    if (!hasExplicitNonDpi) {
+      balSrcs.forEach(addSourceId);
+      balGrps.forEach(addGroupById);
+    }
+    let addedFromPrefixes = false;
+    if (!hasExplicitNonDpi && balSrcs.length === 0 && balGrps.length === 0) {
+      const effMode = String(
+        balSt.filter_mode ||
+          balSt.urltest_filter_mode ||
+          bal.filter_mode ||
+          bal.urltest_filter_mode ||
+          "",
+      )
+        .trim()
+        .toLowerCase();
+      if (effMode !== "disabled" && effMode !== "exclude") {
+        let incPfxs = normalizeDynamicListItems(
+          balSt.include_prefixes || balSt.urltest_include_prefixes || [],
+        );
+        if (incPfxs.length === 0) {
+          incPfxs = normalizeDynamicListItems(
+            bal.include_prefixes || bal.urltest_include_prefixes || [],
+          );
+        }
+        if (incPfxs.length > 0) {
+          const pfxSet = new Set(
+            incPfxs
+              .map((p) =>
+                String(p || "")
+                  .trim()
+                  .replace(/^\[|\]$/g, "")
+                  .toLowerCase(),
+              )
+              .filter(Boolean),
+          );
+          allSources.forEach((src) => {
+            if (!isNonDpiSource(src)) return;
+            const sidL = String(src[".name"] || "")
+              .trim()
+              .toLowerCase();
+            const snameL = String(src.name || src.label || "")
+              .trim()
+              .toLowerCase();
+            const spfxL = String(src.node_prefix || "")
+              .trim()
+              .toLowerCase();
+            if (
+              (sidL && pfxSet.has(sidL)) ||
+              (snameL && pfxSet.has(snameL)) ||
+              (spfxL && pfxSet.has(spfxL))
+            ) {
+              addSourceId(src[".name"]);
+              addedFromPrefixes = true;
+            }
+          });
+        }
+      }
+      if (!addedFromPrefixes && balLvls.length === 0) {
+        allNonDpiSourceIds.forEach(addSourceId);
+      }
+    }
+    balLvls.forEach((lvlRef) => {
+      const ref = String(lvlRef || "").trim();
+      if (!ref || ref.toLowerCase() === "direct") return;
+      if (!ref.startsWith("srv:")) {
+        const refSec = uci.get(UCI_PACKAGE, ref);
+        if (refSec && refSec[".type"] === "outbound_source") {
+          addSourceId(ref);
+          return;
+        }
+        if (refSec && refSec[".type"] === "outbound_group") {
+          addGroupById(ref);
+          return;
+        }
+      }
+      if (!hasExplicitNonDpi) {
+        allNonDpiSourceIds.forEach(addSourceId);
+      }
+    });
+  });
+
+  return {
+    rawSourceRefs,
+    effectiveSourceIds: resultIds,
+    memberIds,
+  };
+}
+
+function readOutboundMetadataFromSectionCache(section_id) {
+  const targetId = section_id || "Main";
+  const { rawSourceRefs, effectiveSourceIds, memberIds } =
+    resolveEffectiveSectionOutboundSourceIds(targetId);
+  const hasSourceConstraint =
+    rawSourceRefs.length > 0 || effectiveSourceIds.length > 0;
+  const allowedSourcesLower = new Set();
+  const allowedPrefixesLower = new Set();
+  effectiveSourceIds.forEach((id) => {
+    allowedSourcesLower.add(String(id).toLowerCase());
     const url = String(uci.get(UCI_PACKAGE, id, "url") || "").trim();
-    if (url) allowedSources.add(url);
+    if (url) allowedSourcesLower.add(url.toLowerCase());
     const name = String(
       uci.get(UCI_PACKAGE, id, "name") ||
         uci.get(UCI_PACKAGE, id, "label") ||
         "",
     ).trim();
     if (name) {
-      allowedSources.add(name);
-      allowedPrefixes.add(name);
+      allowedSourcesLower.add(name.toLowerCase());
+      allowedPrefixesLower.add(name.toLowerCase());
     }
     const prefix = String(uci.get(UCI_PACKAGE, id, "node_prefix") || "").trim();
-    if (prefix) allowedPrefixes.add(prefix);
+    if (prefix) allowedPrefixesLower.add(prefix.toLowerCase());
   });
-  const extraIds = [...new Set([...memberIds, ...sourceRefs])].filter(
-    (id) => id && id !== targetId,
-  );
 
-  const filterMetaByAllowedSources = (meta) => {
-    if (!meta || rawSourceRefs.length === 0) return meta;
-    if (sourceRefs.length === 0) {
-      return {
-        names: {},
-        countries: {},
-        protocols: {},
-        transports: {},
-        securities: {},
-        ports: {},
-        prefixes: {},
-        sources: {},
-      };
+  const filterMetaByAllowedSources = (meta, isTargetSectionCache = false) => {
+    if (!meta || !hasSourceConstraint) return meta;
+    if (effectiveSourceIds.length === 0) {
+      return emptySectionCacheMetadata();
     }
     const hasAnySourceTag =
       Object.keys(meta.sources || {}).length > 0 ||
+      Object.keys(meta.source_ids || {}).length > 0 ||
+      Object.keys(meta.source_names || {}).length > 0 ||
       Object.keys(meta.prefixes || {}).length > 0;
-    if (!hasAnySourceTag) return meta;
-    const out = {
-      names: {},
-      countries: {},
-      protocols: {},
-      transports: {},
-      securities: {},
-      ports: {},
-      prefixes: {},
-      sources: {},
-    };
+    if (!hasAnySourceTag) {
+      return isTargetSectionCache ? meta : emptySectionCacheMetadata();
+    }
+    const out = emptySectionCacheMetadata();
     Object.keys(meta.names || {}).forEach((tag) => {
       const src = String((meta.sources && meta.sources[tag]) || "").trim();
+      const srcId = String(
+        (meta.source_ids && meta.source_ids[tag]) || "",
+      ).trim();
+      const srcName = String(
+        (meta.source_names && meta.source_names[tag]) || "",
+      ).trim();
       const pfx = String((meta.prefixes && meta.prefixes[tag]) || "").trim();
-      if (
-        (!src && !pfx) ||
-        (src && allowedSources.has(src)) ||
-        (pfx && allowedPrefixes.has(pfx))
-      ) {
+      const matched =
+        (!src && !srcId && !srcName && !pfx && isTargetSectionCache) ||
+        (srcId && allowedSourcesLower.has(srcId.toLowerCase())) ||
+        (srcName &&
+          (allowedSourcesLower.has(srcName.toLowerCase()) ||
+            allowedPrefixesLower.has(srcName.toLowerCase()))) ||
+        (src && allowedSourcesLower.has(src.toLowerCase())) ||
+        (pfx && allowedPrefixesLower.has(pfx.toLowerCase())) ||
+        (isTargetSectionCache &&
+          !srcId &&
+          !srcName &&
+          !pfx &&
+          /^sub:\d+$/i.test(src));
+      if (matched) {
         out.names[tag] = meta.names[tag];
         if (meta.countries && meta.countries[tag] != null)
           out.countries[tag] = meta.countries[tag];
@@ -1130,44 +1381,104 @@ function readOutboundMetadataFromSectionCache(section_id) {
           out.prefixes[tag] = meta.prefixes[tag];
         if (meta.sources && meta.sources[tag] != null)
           out.sources[tag] = meta.sources[tag];
+        if (meta.source_ids && meta.source_ids[tag] != null)
+          out.source_ids[tag] = meta.source_ids[tag];
+        if (meta.source_names && meta.source_names[tag] != null)
+          out.source_names[tag] = meta.source_names[tag];
       }
     });
     return out;
   };
 
-  if (extraIds.length === 0) {
-    return readSingleSectionCacheMetadata(targetId).then(
-      filterMetaByAllowedSources,
-    );
-  }
+  const otherSectionIds = (uci.sections(UCI_PACKAGE, "section") || [])
+    .map((s) => s && s[".name"])
+    .filter((id) => id && id !== targetId && safeCacheSectionName(id));
+  const fallbackSectionIds = [
+    ...new Set([...memberIds, "Main", ...otherSectionIds]),
+  ].filter((id) => id && id !== targetId && safeCacheSectionName(id));
 
-  return Promise.all([
-    readSingleSectionCacheMetadata(targetId).then(filterMetaByAllowedSources),
-    ...extraIds.map((memberId) => readSingleSectionCacheMetadata(memberId)),
-  ]).then((metaList) => {
-    const merged = {
-      names: {},
-      countries: {},
-      protocols: {},
-      transports: {},
-      securities: {},
-      ports: {},
-      prefixes: {},
-      sources: {},
-    };
-    metaList.forEach((meta) => {
-      if (!meta) return;
-      Object.assign(merged.names, meta.names);
-      Object.assign(merged.countries, meta.countries);
-      Object.assign(merged.protocols, meta.protocols);
-      Object.assign(merged.transports, meta.transports);
-      Object.assign(merged.securities, meta.securities);
-      Object.assign(merged.ports, meta.ports);
-      Object.assign(merged.prefixes, meta.prefixes);
-      Object.assign(merged.sources, meta.sources);
+  return readSingleSectionCacheMetadata(targetId)
+    .then((targetMeta) => filterMetaByAllowedSources(targetMeta, true))
+    .then((filteredTargetMeta) => {
+      const coveredSourceIds = new Set();
+      Object.values(filteredTargetMeta.source_ids || {}).forEach((sid) => {
+        if (sid) coveredSourceIds.add(String(sid).toLowerCase());
+      });
+      const allSourcesCovered =
+        effectiveSourceIds.length > 0 &&
+        effectiveSourceIds.every((sid) =>
+          coveredSourceIds.has(String(sid).toLowerCase()),
+        );
+      if (
+        Object.keys(filteredTargetMeta.names || {}).length > 0 &&
+        (allSourcesCovered || fallbackSectionIds.length === 0)
+      ) {
+        return filteredTargetMeta;
+      }
+
+      if (fallbackSectionIds.length === 0) {
+        return filteredTargetMeta;
+      }
+
+      return Promise.all(
+        fallbackSectionIds.map((secId) =>
+          readSingleSectionCacheMetadata(secId).then((m) =>
+            filterMetaByAllowedSources(m, memberIds.includes(secId)),
+          ),
+        ),
+      ).then((extraMetaList) => {
+        const merged = emptySectionCacheMetadata();
+        const seenSourceServerKey = new Set();
+        const appendMeta = (meta) => {
+          if (!meta || !meta.names) return;
+          Object.keys(meta.names).forEach((tag) => {
+            const name = String(meta.names[tag] || "").trim();
+            const sid = String(
+              (meta.source_ids && meta.source_ids[tag]) ||
+                (meta.source_names && meta.source_names[tag]) ||
+                (meta.prefixes && meta.prefixes[tag]) ||
+                (meta.sources && meta.sources[tag]) ||
+                "",
+            )
+              .trim()
+              .toLowerCase();
+            const proto = String((meta.protocols && meta.protocols[tag]) || "")
+              .trim()
+              .toLowerCase();
+            const port = String((meta.ports && meta.ports[tag]) || "").trim();
+            const dedupKey = `${sid}|${name}|${proto}|${port}`;
+            if (name && seenSourceServerKey.has(dedupKey)) return;
+            if (name) seenSourceServerKey.add(dedupKey);
+            const targetTag =
+              merged.names[tag] != null
+                ? `${tag}_${seenSourceServerKey.size}`
+                : tag;
+            merged.names[targetTag] = meta.names[tag];
+            if (meta.countries && meta.countries[tag] != null)
+              merged.countries[targetTag] = meta.countries[tag];
+            if (meta.protocols && meta.protocols[tag] != null)
+              merged.protocols[targetTag] = meta.protocols[tag];
+            if (meta.transports && meta.transports[tag] != null)
+              merged.transports[targetTag] = meta.transports[tag];
+            if (meta.securities && meta.securities[tag] != null)
+              merged.securities[targetTag] = meta.securities[tag];
+            if (meta.ports && meta.ports[tag] != null)
+              merged.ports[targetTag] = meta.ports[tag];
+            if (meta.prefixes && meta.prefixes[tag] != null)
+              merged.prefixes[targetTag] = meta.prefixes[tag];
+            if (meta.sources && meta.sources[tag] != null)
+              merged.sources[targetTag] = meta.sources[tag];
+            if (meta.source_ids && meta.source_ids[tag] != null)
+              merged.source_ids[targetTag] = meta.source_ids[tag];
+            if (meta.source_names && meta.source_names[tag] != null)
+              merged.source_names[targetTag] = meta.source_names[tag];
+          });
+        };
+        appendMeta(filteredTargetMeta);
+        extraMetaList.forEach(appendMeta);
+        return merged;
+      });
     });
-    return merged;
-  });
 }
 
 function extractCountryFromFlagEmojiName(name) {
@@ -1280,11 +1591,15 @@ function evaluateLiveServerFilterPreview(metadata, filterSpec) {
   const seenPrefixedTypeCounts = new Map();
   const prefixesMap = plainObject(meta.prefixes);
   const sourcesMap = plainObject(meta.sources);
+  const sourceIdsMap = plainObject(meta.source_ids);
+  const sourceNamesMap = plainObject(meta.source_names);
   const distinctSources = new Set();
   Object.keys(namesMap).forEach((tag) => {
     const p = `${prefixesMap[tag] || ""}`.trim();
+    const sid = `${sourceIdsMap[tag] || ""}`.trim();
     const s = `${sourcesMap[tag] || ""}`.trim();
     if (p) distinctSources.add(`p:${p}`);
+    else if (sid) distinctSources.add(`id:${sid}`);
     else if (s) distinctSources.add(`s:${s}`);
   });
   const hasMultipleSources = distinctSources.size > 1;
@@ -1306,6 +1621,8 @@ function evaluateLiveServerFilterPreview(metadata, filterSpec) {
 
     const pfx = `${prefixesMap[tag] || ""}`.trim();
     const srcKey = `${sourcesMap[tag] || ""}`.trim();
+    const srcId = `${sourceIdsMap[tag] || ""}`.trim();
+    const srcName = `${sourceNamesMap[tag] || ""}`.trim();
     let srcBadge = "";
     if (pfx && !name.startsWith(`${pfx}: `) && !name.startsWith(`[${pfx}]`)) {
       srcBadge = pfx;
@@ -1331,6 +1648,8 @@ function evaluateLiveServerFilterPreview(metadata, filterSpec) {
       name,
       prefix: pfx,
       source: srcKey,
+      sourceId: srcId,
+      sourceName: srcName,
       label: srcBadge ? prefixedIndexed : indexedLabel,
       legacyLabel: indexedLabel,
       nameWithType,
@@ -1360,8 +1679,19 @@ function evaluateLiveServerFilterPreview(metadata, filterSpec) {
   ) => {
     const prefixMatched =
       prefixFilter.length > 0 &&
-      ((entry.prefix && prefixFilter.includes(entry.prefix)) ||
-        (entry.source && prefixFilter.includes(entry.source)));
+      prefixFilter.some((rawPfx) => {
+        const pl = `${rawPfx || ""}`
+          .trim()
+          .replace(/^\[|\]$/g, "")
+          .toLowerCase();
+        if (!pl) return false;
+        if (entry.prefix && entry.prefix.toLowerCase() === pl) return true;
+        if (entry.source && entry.source.toLowerCase() === pl) return true;
+        if (entry.sourceId && entry.sourceId.toLowerCase() === pl) return true;
+        if (entry.sourceName && entry.sourceName.toLowerCase() === pl)
+          return true;
+        return false;
+      });
     const nameMatched =
       nameFilter.includes(entry.name) ||
       nameFilter.includes(entry.tag) ||
@@ -2764,56 +3094,56 @@ function currentDraftOutboundNames(section_id) {
   currentSourceOptionValues(section_id, "access_token").forEach((value) => {
     fptnTokenServerNames(value).forEach((name) => names.push(name));
   });
-  currentSourceOptionValues(section_id, "outbound_source_refs").forEach(
-    (srcId) => {
-      const sid = `${srcId || ""}`.trim();
-      if (!sid) return;
-      const stype =
-        `${uci.get(UCI_PACKAGE, sid, "source_type") || "subscription"}`
-          .trim()
-          .toLowerCase();
-      if (
-        ["zapret", "zapret2", "byedpi", "desync", "wdtt", "olcrtc"].includes(
-          stype,
-        )
-      ) {
-        return;
+  resolveEffectiveSectionOutboundSourceIds(
+    section_id,
+  ).effectiveSourceIds.forEach((srcId) => {
+    const sid = `${srcId || ""}`.trim();
+    if (!sid) return;
+    const stype =
+      `${uci.get(UCI_PACKAGE, sid, "source_type") || "subscription"}`
+        .trim()
+        .toLowerCase();
+    if (
+      ["zapret", "zapret2", "byedpi", "desync", "wdtt", "olcrtc"].includes(
+        stype,
+      )
+    ) {
+      return;
+    }
+    const rawLinks = [
+      ...normalizeOptionValues(uci.get(UCI_PACKAGE, sid, "proxy_links")),
+      ...normalizeOptionValues(
+        uci.get(UCI_PACKAGE, sid, "selector_proxy_links"),
+      ),
+      ...`${uci.get(UCI_PACKAGE, sid, "proxy_links_text") || ""}`
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean),
+      ...`${uci.get(UCI_PACKAGE, sid, "selector_proxy_links_text") || ""}`
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean),
+    ];
+    rawLinks.forEach((link) => {
+      const fptnServers = fptnTokenServerNames(link);
+      if (fptnServers.length > 0) {
+        fptnServers.forEach((sName) => names.push(sName));
+      } else {
+        const lname = main.getProxyUrlName(link);
+        if (lname) names.push(lname);
       }
-      const rawLinks = [
-        ...normalizeOptionValues(uci.get(UCI_PACKAGE, sid, "proxy_links")),
-        ...normalizeOptionValues(
-          uci.get(UCI_PACKAGE, sid, "selector_proxy_links"),
-        ),
-        ...`${uci.get(UCI_PACKAGE, sid, "proxy_links_text") || ""}`
-          .split(/\r?\n/)
-          .map((l) => l.trim())
-          .filter(Boolean),
-        ...`${uci.get(UCI_PACKAGE, sid, "selector_proxy_links_text") || ""}`
-          .split(/\r?\n/)
-          .map((l) => l.trim())
-          .filter(Boolean),
-      ];
-      rawLinks.forEach((link) => {
-        const fptnServers = fptnTokenServerNames(link);
-        if (fptnServers.length > 0) {
-          fptnServers.forEach((sName) => names.push(sName));
-        } else {
-          const lname = main.getProxyUrlName(link);
-          if (lname) names.push(lname);
-        }
-      });
-      const fptnToken =
-        `${uci.get(UCI_PACKAGE, sid, "access_token") || ""}`.trim();
-      if (fptnToken) {
-        fptnTokenServerNames(fptnToken).forEach((sName) => names.push(sName));
-      }
-      if (stype !== "subscription" && stype !== "proxy_links") {
-        const sname =
-          `${uci.get(UCI_PACKAGE, sid, "name") || uci.get(UCI_PACKAGE, sid, "label") || sid}`.trim();
-        if (sname) names.push(sname);
-      }
-    },
-  );
+    });
+    const fptnToken =
+      `${uci.get(UCI_PACKAGE, sid, "access_token") || ""}`.trim();
+    if (fptnToken) {
+      fptnTokenServerNames(fptnToken).forEach((sName) => names.push(sName));
+    }
+    if (stype !== "subscription" && stype !== "proxy_links") {
+      const sname =
+        `${uci.get(UCI_PACKAGE, sid, "name") || uci.get(UCI_PACKAGE, sid, "label") || sid}`.trim();
+      if (sname) names.push(sname);
+    }
+  });
 
   return names;
 }
@@ -2829,7 +3159,7 @@ function currentSectionPrefixChoices(section_id, selectedValues = []) {
   };
 
   const secSourceRefs = new Set(
-    currentSourceOptionValues(section_id, "outbound_source_refs"),
+    resolveEffectiveSectionOutboundSourceIds(section_id).effectiveSourceIds,
   );
   const allSources = uci.sections(UCI_PACKAGE, "outbound_source") || [];
   allSources.forEach((src) => {
@@ -3044,21 +3374,32 @@ function currentSectionGroupChoices(section_id, selectedValues = []) {
   return result.sort((left, right) => left.label.localeCompare(right.label));
 }
 
+function invalidateSectionOutboundChoicesCache(section_id) {
+  const targetId = section_id || "Main";
+  outboundNameChoicesCache.delete(targetId);
+  outboundNameChoicesFetchedAt.delete(targetId);
+  outboundNameChoicesInflight.delete(targetId);
+}
+
 function refreshDashboardFilterChoiceWidgets(section_id) {
+  invalidateSectionOutboundChoicesCache(section_id);
   const refreshers = dashboardFilterChoiceRefreshers.get(section_id);
   if (!refreshers) {
     return;
   }
 
-  refreshers.forEach((refresh) => {
-    if (refresh() === false) {
-      refreshers.delete(refresh);
+  loadOutboundNameChoices(section_id).finally(() => {
+    const currentRefreshers = dashboardFilterChoiceRefreshers.get(section_id);
+    if (!currentRefreshers) return;
+    currentRefreshers.forEach((refresh) => {
+      if (refresh() === false) {
+        currentRefreshers.delete(refresh);
+      }
+    });
+    if (currentRefreshers.size === 0) {
+      dashboardFilterChoiceRefreshers.delete(section_id);
     }
   });
-
-  if (refreshers.size === 0) {
-    dashboardFilterChoiceRefreshers.delete(section_id);
-  }
 }
 
 function isDownloadThroughTargetSection(section, currentSectionId) {
@@ -16065,6 +16406,7 @@ function createSectionContent(section) {
     const balType = String(balSec.balancer_type || "urltest").trim();
     const balName = String(balSec.name || balSec.label || balId).trim();
 
+    invalidateSectionOutboundChoicesCache(targetSectionId);
     return loadOutboundNameChoices(targetSectionId).then(() => {
       const settingsMap = readItemSettingsMap(
         targetSectionId,
@@ -16451,6 +16793,10 @@ function createSectionContent(section) {
       cfgvalue,
     );
   };
+  o.onchange = function (_event, section_id) {
+    refreshDashboardFilterChoiceWidgets(section_id);
+  };
+  outboundNameSourceOptions.set("balancer_refs", o);
 
   const parsePriorityLevelsList = (raw) => {
     if (!raw) return [];

@@ -659,4 +659,107 @@ printf '%s\n' "$warm_out" | grep -Fq '"tag": "b"' ||
 printf '%s\n' "$warm_out" | grep -Fq '"c": {' ||
   fail "warm-fixture should probe inactive fallback priority level members so their latency is not N/A"
 
+mkdir -p "$WORK_DIR/new-sec-subs"
+cat >"$WORK_DIR/new-sec-subs/new_sec-subscription-1.json" <<'JSON'
+{
+  "outbounds": [
+    {
+      "type": "vless",
+      "tag": "🇳🇱 NL Clouds 1",
+      "remark": "🇳🇱 NL Clouds 1",
+      "server": "nl.clouds.example",
+      "server_port": 443,
+      "uuid": "00000000-0000-4000-8000-000000000011",
+      "tls": { "enabled": true, "server_name": "nl.clouds.example" }
+    },
+    {
+      "type": "vless",
+      "tag": "🇩🇪 DE Clouds 2",
+      "remark": "🇩🇪 DE Clouds 2",
+      "server": "de.clouds.example",
+      "server_port": 443,
+      "uuid": "00000000-0000-4000-8000-000000000012",
+      "tls": { "enabled": true, "server_name": "de.clouds.example" }
+    }
+  ]
+}
+JSON
+printf 'https://clouds.example/sub\n' >"$WORK_DIR/new-sec-subs/new_sec-subscription-1.url"
+: >"$WORK_DIR/new-sec-subs/new_sec-subscription-1.user_agent"
+
+cat >"$WORK_DIR/new-sec-balancer-fixture.json" <<'JSON'
+{
+  "settings": { ".name": "settings", ".type": "settings" },
+  "outbound_source": [
+    {
+      ".name": "src_sub_1",
+      ".type": "outbound_source",
+      "enabled": "1",
+      "name": "Clouds",
+      "source_type": "subscription",
+      "url": "https://clouds.example/sub",
+      "prefix_nodes": "0"
+    }
+  ],
+  "balancer": [
+    {
+      ".name": "bal_ut",
+      ".type": "balancer",
+      "enabled": "1",
+      "name": "SoftPortal",
+      "balancer_type": "urltest",
+      "check_interval": "3m",
+      "tolerance": "50"
+    },
+    {
+      ".name": "bal_prio",
+      ".type": "balancer",
+      "enabled": "1",
+      "name": "MainPriority",
+      "balancer_type": "priority",
+      "pick_fastest": "1"
+    }
+  ],
+  "section": [
+    {
+      ".name": "new_sec",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "balancer_refs": [ "bal_ut", "bal_prio" ],
+      "balancer_settings": "{\"bal_ut\":{\"filter_mode\":\"include\",\"include_prefixes\":[\"Clouds\"]}}"
+    }
+  ]
+}
+JSON
+validate_fixture "$WORK_DIR/new-sec-balancer-fixture.json"
+new_sec_out="$WORK_DIR/new-sec-balancer-config.json"
+mkdir -p "${new_sec_out}.section-cache"
+TMP_SUBSCRIPTION_FOLDER="$WORK_DIR/new-sec-subs" \
+  ucode -L "$TACHYON_LIB" "$GENERATOR_UC" generate-config-fixture \
+  "$WORK_DIR/new-sec-balancer-fixture.json" "$new_sec_out" "127.0.0.1"
+ucode -e '
+let fs = require("fs");
+let cfg = json(fs.readfile(ARGV[0]));
+let cache = json(fs.readfile(ARGV[1]));
+let ut_out = null;
+let prio_out = null;
+for (let ob in cfg.outbounds || []) {
+    if (ob && ob.tag == "new_sec-urltest-bal_ut-out")
+        ut_out = ob;
+    if (ob && ob.tag == "new_sec-priority-bal_prio-out")
+        prio_out = ob;
+}
+if (!ut_out || length(ut_out.outbounds || []) != 2)
+    die("new section URLTest balancer did not capture subscription servers by source_name prefix\n");
+if (!prio_out || length(prio_out.outbounds || []) != 2)
+    die("new section Priority balancer did not capture subscription servers\n");
+let meta = (cache && cache.outboundMetadata) || {};
+if (!meta.source_ids || !meta.source_names || !meta.sources)
+    die("section cache outboundMetadata did not preserve sources/source_ids/source_names\n");
+if (meta.source_ids["🇳🇱 NL Clouds 1"] != "src_sub_1" || meta.source_names["🇳🇱 NL Clouds 1"] != "Clouds")
+    die("section cache outboundMetadata has wrong source_ids/source_names\n");
+' "$new_sec_out" "${new_sec_out}.section-cache/new_sec.json" ||
+  fail "new section URLTest and Priority balancer capture"
+
 printf 'Priority failover checks passed\n'
