@@ -1,0 +1,10 @@
+/target
+/data
+/dist
+AGENTS.md
+CLAUDE.md
+opencode.json
+*.tar.gz
+*.zip
+*.ipk
+*.apk

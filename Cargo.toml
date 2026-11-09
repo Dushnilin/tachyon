@@ -1,0 +1,33 @@
+[package]
+name = "tachyon"
+version = "2.0.0"
+edition = "2024"
+description = "Pure-Rust OpenWrt routing orchestrator and control panel for tachyon-core"
+license = "MIT"
+
+[dependencies]
+anyhow = "1.0"
+base64 = "0.22"
+rand = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+tokio = { version = "1.43", features = [
+    "rt-multi-thread",
+    "macros",
+    "net",
+    "io-util",
+    "time",
+    "process",
+    "sync",
+    "fs",
+    "signal",
+] }
+x25519-dalek = { version = "2.0", features = ["static_secrets"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

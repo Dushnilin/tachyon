@@ -1,0 +1,35 @@
+#!/bin/sh /etc/rc.common
+# Pure-Rust Tachyon OpenWrt procd init script (zero ucode, zero UCI)
+
+START=99
+STOP=10
+USE_PROCD=1
+
+PROG="/usr/bin/tachyon"
+DATA_DIR="/etc/tachyon"
+
+start_service() {
+    [ -d /dev/net ] || mkdir -p /dev/net
+    [ -c /dev/net/tun ] || mknod /dev/net/tun c 10 200 2>/dev/null || true
+    modprobe nft_tproxy 2>/dev/null || true
+    modprobe nft_fib_inet 2>/dev/null || true
+    modprobe tun 2>/dev/null || true
+    modprobe inet_diag 2>/dev/null || true
+    mkdir -p "$DATA_DIR" /etc/tachyon-core /tmp/dnsmasq.d
+
+    procd_open_instance "tachyon"
+    procd_set_param command "$PROG" daemon
+    procd_set_param env TACHYON_DATA_DIR="$DATA_DIR"
+    procd_set_param respawn 3600 5 5
+    procd_set_param stdout 1
+    procd_set_param stderr 1
+    procd_close_instance
+}
+
+stop_service() {
+    "$PROG" stop >/dev/null 2>&1 || true
+}
+
+reload_service() {
+    "$PROG" reload
+}

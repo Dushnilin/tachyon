@@ -1,0 +1,455 @@
+//! Zero-dependency host telemetry, PID-recycling-safe process identity (`pid + starttime + boot_id`),
+//! and LAN neighbor / DHCP lease discovery for OpenWrt routers.
+
+use std::collections::HashMap;
+use std::path::Path;
+
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct HostSysInfo {
+    pub os: String,
+    pub arch: String,
+    pub mem_total_bytes: u64,
+    pub mem_used_bytes: u64,
+    pub panel_rss_bytes: u64,
+    pub host_uptime_secs: u64,
+    pub load_avg: String,
+    pub router_model: String,
+    pub openwrt_release: String,
+}
+
+/// Triple process identity (`pid` + `/proc/<pid>/stat` `starttime` + `/proc/sys/kernel/random/boot_id`)
+/// matching `core/process.uc` to prevent PID recycling false positives.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessIdentity {
+    pub pid: u32,
+    pub starttime_ticks: u64,
+    pub boot_id: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct LanDevice {
+    pub ip: String,
+    pub mac: String,
+    pub hostname: String,
+    pub interface: String,
+    pub reachable: bool,
+    pub lease_expires: i64,
+}
+
+pub fn read_boot_id() -> String {
+    std::fs::read_to_string("/proc/sys/kernel/random/boot_id")
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|_| "host-boot-0".to_string())
+}
+
+/// Read `/proc/<pid>/stat` field 22 (`starttime` after the last `)`) on Linux.
+pub fn read_pid_starttime(pid: u32) -> Option<u64> {
+    if pid == 0 {
+        return None;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+        let close_paren = stat.rfind(')')?;
+        let after_comm = stat.get(close_paren + 1..)?.trim();
+        // Field 3 is state (index 0 in `after_comm`), field 22 is starttime (index 19 in `after_comm`).
+        after_comm
+            .split_whitespace()
+            .nth(19)
+            .and_then(|v| v.parse::<u64>().ok())
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        Some(pid as u64)
+    }
+}
+
+pub fn capture_process_identity(pid: u32) -> Option<ProcessIdentity> {
+    let starttime_ticks = read_pid_starttime(pid)?;
+    Some(ProcessIdentity {
+        pid,
+        starttime_ticks,
+        boot_id: read_boot_id(),
+    })
+}
+
+pub fn verify_process_identity(id: &ProcessIdentity) -> bool {
+    if id.pid == 0 {
+        return false;
+    }
+    if id.boot_id != read_boot_id() {
+        return false;
+    }
+    match read_pid_starttime(id.pid) {
+        Some(actual) => actual == id.starttime_ticks,
+        None => false,
+    }
+}
+
+/// Find a running process by `/proc/<pid>/comm` name on Linux, returning `(pid, uptime_secs)`.
+pub fn find_running_process_by_name(comm_name: &str) -> Option<(u32, u64)> {
+    #[cfg(target_os = "linux")]
+    {
+        let host_uptime = std::fs::read_to_string("/proc/uptime")
+            .ok()
+            .and_then(|s| s.split_whitespace().next()?.parse::<f64>().ok())
+            .unwrap_or(0.0) as u64;
+        let entries = std::fs::read_dir("/proc").ok()?;
+        let self_pid = std::process::id();
+        for entry in entries.flatten() {
+            let fname = entry.file_name();
+            let Some(pid_str) = fname.to_str() else {
+                continue;
+            };
+            let Ok(pid) = pid_str.parse::<u32>() else {
+                continue;
+            };
+            if pid == self_pid {
+                continue;
+            }
+            if let Ok(comm) = std::fs::read_to_string(format!("/proc/{pid}/comm"))
+                && comm.trim() == comm_name
+            {
+                let start_ticks = read_pid_starttime(pid).unwrap_or(0);
+                let proc_uptime = host_uptime.saturating_sub(start_ticks / 100);
+                return Some((pid, proc_uptime));
+            }
+        }
+        None
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = comm_name;
+        None
+    }
+}
+
+pub fn collect_host_info() -> HostSysInfo {
+    #[allow(unused_mut)]
+    let mut info = HostSysInfo {
+        os: std::env::consts::OS.to_string(),
+        arch: std::env::consts::ARCH.to_string(),
+        mem_total_bytes: 0,
+        mem_used_bytes: 0,
+        panel_rss_bytes: 0,
+        host_uptime_secs: 0,
+        load_avg: "0.00 / 0.00 / 0.00".to_string(),
+        router_model: read_router_model(),
+        openwrt_release: read_openwrt_release(),
+    };
+
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(meminfo) = std::fs::read_to_string("/proc/meminfo") {
+            let mut total_kb = 0u64;
+            let mut avail_kb = 0u64;
+            for line in meminfo.lines() {
+                if let Some(rest) = line.strip_prefix("MemTotal:") {
+                    total_kb = parse_kb(rest);
+                } else if let Some(rest) = line.strip_prefix("MemAvailable:") {
+                    avail_kb = parse_kb(rest);
+                }
+            }
+            info.mem_total_bytes = total_kb * 1024;
+            info.mem_used_bytes = total_kb.saturating_sub(avail_kb) * 1024;
+        }
+        if let Ok(uptime_str) = std::fs::read_to_string("/proc/uptime")
+            && let Some(first) = uptime_str.split_whitespace().next()
+            && let Ok(secs) = first.parse::<f64>()
+        {
+            info.host_uptime_secs = secs as u64;
+        }
+        if let Ok(loadavg) = std::fs::read_to_string("/proc/loadavg") {
+            let parts: Vec<&str> = loadavg.split_whitespace().take(3).collect();
+            if parts.len() == 3 {
+                info.load_avg = format!("{} / {} / {}", parts[0], parts[1], parts[2]);
+            }
+        }
+        if let Ok(statm) = std::fs::read_to_string("/proc/self/statm")
+            && let Some(res_pages) = statm.split_whitespace().nth(1)
+            && let Ok(pages) = res_pages.parse::<u64>()
+        {
+            info.panel_rss_bytes = pages * 4096;
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        win_sys::fill_host_info(&mut info);
+    }
+
+    info
+}
+
+fn read_router_model() -> String {
+    for p in ["/tmp/sysinfo/model", "/proc/device-tree/model"] {
+        if let Ok(s) = std::fs::read_to_string(p) {
+            let trimmed = s.trim_matches(|c: char| c.is_whitespace() || c == '\0');
+            if !trimmed.is_empty() {
+                return trimmed.to_string();
+            }
+        }
+    }
+    "Generic Router / Host".to_string()
+}
+
+fn read_openwrt_release() -> String {
+    if let Ok(raw) = std::fs::read_to_string("/etc/openwrt_release") {
+        for line in raw.lines() {
+            if let Some(rest) = line.strip_prefix("DISTRIB_DESCRIPTION=") {
+                return rest.trim_matches(|c| c == '\'' || c == '"').to_string();
+            }
+        }
+    }
+    format!("{} ({})", std::env::consts::OS, std::env::consts::ARCH)
+}
+
+/// Discover LAN devices from `/tmp/dhcp.leases` and `/proc/net/arp`.
+pub fn discover_lan_devices() -> Vec<LanDevice> {
+    let mut by_ip: HashMap<String, LanDevice> = HashMap::new();
+
+    if Path::new("/tmp/dhcp.leases").exists()
+        && let Ok(leases) = std::fs::read_to_string("/tmp/dhcp.leases")
+    {
+        for line in leases.lines() {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 4 {
+                let expires = parts[0].parse::<i64>().unwrap_or(0);
+                let mac = parts[1].to_ascii_uppercase();
+                let ip = parts[2].to_string();
+                let host = if parts[3] == "*" {
+                    String::new()
+                } else {
+                    parts[3].to_string()
+                };
+                by_ip.insert(
+                    ip.clone(),
+                    LanDevice {
+                        ip,
+                        mac,
+                        hostname: host,
+                        interface: "br-lan".to_string(),
+                        reachable: true,
+                        lease_expires: expires,
+                    },
+                );
+            }
+        }
+    }
+
+    if Path::new("/proc/net/arp").exists()
+        && let Ok(arp) = std::fs::read_to_string("/proc/net/arp")
+    {
+        for line in arp.lines().skip(1) {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 6 {
+                let ip = parts[0].to_string();
+                let flags = parts[2];
+                let mac = parts[3].to_ascii_uppercase();
+                let dev = parts[5].to_string();
+                if mac == "00:00:00:00:00:00" {
+                    continue;
+                }
+                let reachable = flags != "0x0";
+                by_ip
+                    .entry(ip.clone())
+                    .and_modify(|d| {
+                        if d.mac.is_empty() {
+                            d.mac = mac.clone();
+                        }
+                        d.interface = dev.clone();
+                        d.reachable = reachable;
+                    })
+                    .or_insert(LanDevice {
+                        ip,
+                        mac,
+                        hostname: String::new(),
+                        interface: dev,
+                        reachable,
+                        lease_expires: 0,
+                    });
+            }
+        }
+    }
+
+    let mut list: Vec<LanDevice> = by_ip.into_values().collect();
+    list.sort_by(|a, b| a.ip.cmp(&b.ip));
+    list
+}
+
+/// Read the Resident Set Size (RSS / Working Set) in bytes for a given process PID.
+pub fn process_rss_bytes(pid: u32) -> u64 {
+    if pid == 0 {
+        return 0;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(statm) = std::fs::read_to_string(format!("/proc/{pid}/statm"))
+            && let Some(res_pages) = statm.split_whitespace().nth(1)
+            && let Ok(pages) = res_pages.parse::<u64>()
+        {
+            return pages * 4096;
+        }
+        0
+    }
+    #[cfg(target_os = "windows")]
+    {
+        win_sys::pid_working_set_bytes(pid)
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    {
+        let _ = pid;
+        0
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn parse_kb(s: &str) -> u64 {
+    s.split_whitespace()
+        .next()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(0)
+}
+
+#[cfg(target_os = "windows")]
+mod win_sys {
+    use super::HostSysInfo;
+    use std::sync::{Mutex, OnceLock};
+
+    #[repr(C)]
+    struct MemoryStatusEx {
+        dw_length: u32,
+        dw_memory_load: u32,
+        ull_total_phys: u64,
+        ull_avail_phys: u64,
+        ull_total_page_file: u64,
+        ull_avail_page_file: u64,
+        ull_total_virtual: u64,
+        ull_avail_virtual: u64,
+        ull_avail_extended_virtual: u64,
+    }
+
+    #[repr(C)]
+    struct ProcessMemoryCounters {
+        cb: u32,
+        page_fault_count: u32,
+        peak_working_set_size: usize,
+        working_set_size: usize,
+        quota_peak_paged_pool_usage: usize,
+        quota_paged_pool_usage: usize,
+        quota_peak_non_paged_pool_usage: usize,
+        quota_non_paged_pool_usage: usize,
+        pagefile_usage: usize,
+        peak_pagefile_usage: usize,
+    }
+
+    #[repr(C)]
+    #[derive(Clone, Copy, Default)]
+    struct FileTime {
+        dw_low_date_time: u32,
+        dw_high_date_time: u32,
+    }
+
+    impl FileTime {
+        fn to_u64(self) -> u64 {
+            ((self.dw_high_date_time as u64) << 32) | (self.dw_low_date_time as u64)
+        }
+    }
+
+    const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+    const PROCESS_VM_READ: u32 = 0x0010;
+
+    unsafe extern "system" {
+        fn GlobalMemoryStatusEx(lp_buffer: *mut MemoryStatusEx) -> i32;
+        fn GetTickCount64() -> u64;
+        fn GetCurrentProcess() -> *mut core::ffi::c_void;
+        fn OpenProcess(
+            dw_desired_access: u32,
+            b_inherit_handle: i32,
+            dw_process_id: u32,
+        ) -> *mut core::ffi::c_void;
+        fn CloseHandle(h_object: *mut core::ffi::c_void) -> i32;
+        fn K32GetProcessMemoryInfo(
+            process: *mut core::ffi::c_void,
+            ppsmem_counters: *mut ProcessMemoryCounters,
+            cb: u32,
+        ) -> i32;
+        fn GetSystemTimes(
+            lp_idle_time: *mut FileTime,
+            lp_kernel_time: *mut FileTime,
+            lp_user_time: *mut FileTime,
+        ) -> i32;
+    }
+
+    pub fn fill_host_info(info: &mut HostSysInfo) {
+        unsafe {
+            let mut mem: MemoryStatusEx = core::mem::zeroed();
+            mem.dw_length = core::mem::size_of::<MemoryStatusEx>() as u32;
+            if GlobalMemoryStatusEx(&mut mem) != 0 {
+                info.mem_total_bytes = mem.ull_total_phys;
+                info.mem_used_bytes = mem.ull_total_phys.saturating_sub(mem.ull_avail_phys);
+            }
+            info.host_uptime_secs = GetTickCount64() / 1000;
+
+            let mut pmc: ProcessMemoryCounters = core::mem::zeroed();
+            pmc.cb = core::mem::size_of::<ProcessMemoryCounters>() as u32;
+            if K32GetProcessMemoryInfo(GetCurrentProcess(), &mut pmc, pmc.cb) != 0 {
+                info.panel_rss_bytes = pmc.working_set_size as u64;
+            }
+        }
+        let cpu_load = sample_cpu_load();
+        info.load_avg = format!("{cpu_load:.2} / {cpu_load:.2} / {cpu_load:.2}");
+    }
+
+    pub fn pid_working_set_bytes(pid: u32) -> u64 {
+        unsafe {
+            let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ, 0, pid);
+            if handle.is_null() {
+                return 0;
+            }
+            let mut pmc: ProcessMemoryCounters = core::mem::zeroed();
+            pmc.cb = core::mem::size_of::<ProcessMemoryCounters>() as u32;
+            let ok = K32GetProcessMemoryInfo(handle, &mut pmc, pmc.cb);
+            let _ = CloseHandle(handle);
+            if ok != 0 {
+                pmc.working_set_size as u64
+            } else {
+                0
+            }
+        }
+    }
+
+    fn sample_cpu_load() -> f64 {
+        static PREV: OnceLock<Mutex<(u64, u64, f64)>> = OnceLock::new();
+        let lock = PREV.get_or_init(|| Mutex::new((0, 0, 0.0)));
+        let (idle, total) = unsafe {
+            let mut idle_ft = FileTime::default();
+            let mut kern_ft = FileTime::default();
+            let mut user_ft = FileTime::default();
+            if GetSystemTimes(&mut idle_ft, &mut kern_ft, &mut user_ft) == 0 {
+                return 0.0;
+            }
+            let i = idle_ft.to_u64();
+            let t = kern_ft.to_u64().saturating_add(user_ft.to_u64());
+            (i, t)
+        };
+        let Ok(mut guard) = lock.lock() else {
+            return 0.0;
+        };
+        let (prev_idle, prev_total, prev_val) = *guard;
+        let d_total = total.saturating_sub(prev_total);
+        let d_idle = idle.saturating_sub(prev_idle);
+        let val = if prev_total > 0 && d_total > 0 {
+            let busy = d_total.saturating_sub(d_idle) as f64;
+            ((busy / (d_total as f64)) * 100.0).clamp(0.0, 100.0) / 100.0
+        } else {
+            prev_val
+        };
+        if d_total > 0 || prev_total == 0 {
+            *guard = (idle, total, val);
+        }
+        val
+    }
+}
