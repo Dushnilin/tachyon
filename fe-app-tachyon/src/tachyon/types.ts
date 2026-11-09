@@ -333,6 +333,9 @@ export namespace Tachyon {
     VALIDATE_BYEDPI_STRATEGY_JSON = 'validate_byedpi_strategy_json',
     VALIDATE_NFQWS2_STRATEGY_JSON = 'validate_nfqws2_strategy_json',
     VALIDATE_NFQWS_STRATEGY_JSON = 'validate_nfqws_strategy_json',
+    // wan
+    WAN_FAILOVER_CHECK = 'wan_failover_check',
+    WAN_FAILOVER_STATUS = 'wan_failover_status',
     // watchdog
     WATCHDOG = 'watchdog',
     WATCHDOG_START = 'watchdog_start',

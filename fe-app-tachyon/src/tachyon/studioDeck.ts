@@ -1709,8 +1709,8 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
     existingDeck.remove();
   }
 
-  let activeFilter = 'all';
-  let searchQuery = '';
+  const activeFilters = new Set<string>();
+  let filterDropdownOpen = false;
   let viewMode: StudioViewMode = getStudioViewMode(type);
   let draggedSid: string | null = null;
 
@@ -2573,34 +2573,133 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
     });
 
     toolbarEl.innerHTML = '';
-    const filterPills = meta.filters.map((f) =>
-      E(
+    const allFilterOption = meta.filters[0];
+    const subFilterOptions = meta.filters.slice(1);
+    let filterDropdownEl: HTMLElement | null = null;
+    if (subFilterOptions.length > 0) {
+      const formatFilterTriggerLabel = () => {
+        if (activeFilters.size === 0) return allFilterOption.label;
+        const chosen = subFilterOptions.filter((f) => activeFilters.has(f.id));
+        if (chosen.length === 1) return chosen[0].label;
+        return `${tr('Фильтр', 'Filter')}: ${chosen.length}`;
+      };
+
+      const triggerLabelEl = E(
+        'span',
+        { class: 'tachyon-studio-filter-trigger__label' },
+        formatFilterTriggerLabel(),
+      );
+
+      const allCheckbox = E('input', {
+        type: 'checkbox',
+        class: 'tachyon-studio-filter-checkbox',
+      }) as HTMLInputElement;
+      allCheckbox.checked = activeFilters.size === 0;
+
+      const allRowEl = E(
+        'label',
+        {
+          class: `tachyon-studio-filter-option ${activeFilters.size === 0 ? 'is-checked' : ''}`,
+        },
+        [allCheckbox, E('span', {}, allFilterOption.label)],
+      );
+
+      const optionRows = subFilterOptions.map((f) => {
+        const checked = activeFilters.has(f.id);
+        const cb = E('input', {
+          type: 'checkbox',
+          class: 'tachyon-studio-filter-checkbox',
+        }) as HTMLInputElement;
+        cb.checked = checked;
+        const row = E(
+          'label',
+          {
+            class: `tachyon-studio-filter-option ${checked ? 'is-checked' : ''}`,
+          },
+          [cb, E('span', {}, f.label)],
+        );
+        return { id: f.id, cb, row };
+      });
+
+      const triggerEl = E(
         'button',
         {
           type: 'button',
-          class: `tachyon-studio-filter-pill ${activeFilter === f.id ? 'is-active' : ''}`,
-          click: () => {
-            activeFilter = f.id;
-            renderDeck();
-          },
+          class: `tachyon-studio-filter-trigger ${activeFilters.size > 0 ? 'is-active' : ''} ${filterDropdownOpen ? 'is-open' : ''}`,
         },
-        f.label,
-      ),
-    );
+        [triggerLabelEl, renderChevronDownIcon(13)],
+      );
 
-    const searchInput = E('input', {
-      type: 'search',
-      class: 'tachyon-studio-search',
-      placeholder: tr(
-        'Поиск по имени, протоколу, сервису или домену...',
-        'Search by name, protocol, service or domain...',
-      ),
-      value: searchQuery,
-      input: (ev: Event) => {
-        searchQuery = (ev.target as HTMLInputElement).value;
+      const menuEl = E(
+        'div',
+        {
+          class: `tachyon-studio-filter-menu ${filterDropdownOpen ? 'is-open' : ''}`,
+          click: (ev: Event) => ev.stopPropagation(),
+        },
+        [allRowEl, ...optionRows.map((item) => item.row)],
+      );
+
+      const syncFilterDropdownUi = () => {
+        const isAll = activeFilters.size === 0;
+        allCheckbox.checked = isAll;
+        allRowEl.classList.toggle('is-checked', isAll);
+        optionRows.forEach(({ id, cb, row }) => {
+          const checked = activeFilters.has(id);
+          cb.checked = checked;
+          row.classList.toggle('is-checked', checked);
+        });
+        triggerLabelEl.textContent = formatFilterTriggerLabel();
+        triggerEl.classList.toggle('is-active', !isAll);
+      };
+
+      allCheckbox.addEventListener('change', () => {
+        activeFilters.clear();
+        syncFilterDropdownUi();
         renderBodyOnly(sids);
-      },
-    }) as HTMLInputElement;
+      });
+
+      optionRows.forEach(({ id, cb }) => {
+        cb.addEventListener('change', () => {
+          if (cb.checked) {
+            activeFilters.add(id);
+          } else {
+            activeFilters.delete(id);
+          }
+          syncFilterDropdownUi();
+          renderBodyOnly(sids);
+        });
+      });
+
+      triggerEl.addEventListener('click', (ev: Event) => {
+        ev.stopPropagation();
+        filterDropdownOpen = !filterDropdownOpen;
+        triggerEl.classList.toggle('is-open', filterDropdownOpen);
+        menuEl.classList.toggle('is-open', filterDropdownOpen);
+        if (filterDropdownOpen) {
+          const closeOnOutsideClick = (docEv: MouseEvent) => {
+            if (
+              filterDropdownEl &&
+              docEv.target instanceof Node &&
+              filterDropdownEl.contains(docEv.target)
+            ) {
+              return;
+            }
+            filterDropdownOpen = false;
+            triggerEl.classList.remove('is-open');
+            menuEl.classList.remove('is-open');
+            document.removeEventListener('click', closeOnOutsideClick);
+          };
+          setTimeout(() => {
+            document.addEventListener('click', closeOnOutsideClick);
+          }, 0);
+        }
+      });
+
+      filterDropdownEl = E('div', { class: 'tachyon-studio-filter-dropdown' }, [
+        triggerEl,
+        menuEl,
+      ]);
+    }
 
     const extraButtons: HTMLElement[] = [];
     if (type === 'server') {
@@ -2759,13 +2858,10 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
             `${enabledCount} / ${sids.length} ${tr('активно', 'active')}`,
           ),
         ]),
-        viewSwitchEl,
-      ]),
-    );
-    panelHeaderEl.appendChild(
-      E('div', { class: 'tachyon-studio-panel__header-right' }, [
-        E('div', { class: 'tachyon-studio-filter-group' }, filterPills),
-        searchInput,
+        E('div', { class: 'tachyon-studio-panel__header-controls' }, [
+          ...(filterDropdownEl ? [filterDropdownEl] : []),
+          viewSwitchEl,
+        ]),
       ]),
     );
 
@@ -2776,75 +2872,51 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
     bodyEl.innerHTML = '';
     bodyEl.className = `tachyon-studio-body tachyon-studio-body--${viewMode}`;
 
-    const q = searchQuery.trim().toLowerCase();
-
     const filteredSids = sids.filter((sid) => {
+      if (activeFilters.size === 0) return true;
       const raw = uci.get(UCI_PACKAGE, sid) || {};
-      const name = String(raw.label || raw.name || sid).toLowerCase();
       const enabled = raw.enabled !== '0';
 
       if (type === 'section') {
         const tel = resolveSectionTelemetry(sid);
-        if (activeFilter === 'proxy' && tel.actionTone !== 'proxy')
-          return false;
-        if (activeFilter === 'dpi' && tel.actionTone !== 'dpi') return false;
-        if (
-          activeFilter === 'system' &&
-          !['block', 'bypass', 'dns'].includes(tel.actionTone)
-        ) {
-          return false;
-        }
-        if (q) {
-          const hay = [
-            sid,
-            tel.name,
-            tel.actionLabel,
-            ...tel.protocols,
-            ...tel.transports,
-            ...tel.serviceTags,
-            ...tel.sources.map((s) => s.name),
-          ]
-            .join(' ')
-            .toLowerCase();
-          if (!hay.includes(q)) return false;
-        }
-        return true;
+        return Array.from(activeFilters).some((fid) => {
+          if (fid === 'proxy') return tel.actionTone === 'proxy';
+          if (fid === 'dpi') return tel.actionTone === 'dpi';
+          if (fid === 'system')
+            return ['block', 'bypass', 'dns'].includes(tel.actionTone);
+          return true;
+        });
       }
 
       if (type === 'outbound_source') {
         const stype = String(raw.source_type || 'subscription').toLowerCase();
-        if (activeFilter === 'subscription' && stype !== 'subscription')
-          return false;
-        if (activeFilter === 'links' && stype !== 'proxy_links') return false;
-        if (
-          activeFilter === 'tunnel' &&
-          ![
-            'warp',
-            'fptn',
-            'awg',
-            'amnezia_config',
-            'openvpn',
-            'tailscale',
-            'tor',
-            'interface',
-          ].includes(stype)
-        ) {
-          return false;
-        }
-        if (
-          activeFilter === 'dpi' &&
-          !['desync', 'zapret', 'zapret2', 'byedpi', 'wdtt', 'olcrtc'].includes(
-            stype,
-          )
-        ) {
-          return false;
-        }
-        if (q) {
-          const hay =
-            `${sid} ${name} ${stype} ${raw.url || ''} ${raw.node_prefix || ''}`.toLowerCase();
-          if (!hay.includes(q)) return false;
-        }
-        return true;
+        return Array.from(activeFilters).some((fid) => {
+          if (fid === 'subscription') return stype === 'subscription';
+          if (fid === 'links') return stype === 'proxy_links';
+          if (fid === 'tunnel') {
+            return [
+              'warp',
+              'fptn',
+              'awg',
+              'amnezia_config',
+              'openvpn',
+              'tailscale',
+              'tor',
+              'interface',
+            ].includes(stype);
+          }
+          if (fid === 'dpi') {
+            return [
+              'desync',
+              'zapret',
+              'zapret2',
+              'byedpi',
+              'wdtt',
+              'olcrtc',
+            ].includes(stype);
+          }
+          return true;
+        });
       }
 
       if (type === 'condition') {
@@ -2852,13 +2924,16 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
           (s: any) => asArray(s.condition_refs).map(stripPrefix).includes(sid),
         );
         const comm = asArray(raw.community_lists);
-        if (activeFilter === 'active' && usedBy.length === 0) return false;
-        if (activeFilter === 'services' && comm.length === 0) return false;
-        if (activeFilter === 'network' && comm.length > 0) return false;
-        if (q) {
-          const hay =
-            `${sid} ${name} ${comm.join(' ')} ${asArray(raw.domain).join(' ')} ${asArray(raw.ip_cidr).join(' ')}`.toLowerCase();
-          if (!hay.includes(q)) return false;
+        if (activeFilters.has('active') && usedBy.length === 0) return false;
+        const kindFilters = ['services', 'network'].filter((fid) =>
+          activeFilters.has(fid),
+        );
+        if (kindFilters.length > 0) {
+          return kindFilters.some((fid) => {
+            if (fid === 'services') return comm.length > 0;
+            if (fid === 'network') return comm.length === 0;
+            return true;
+          });
         }
         return true;
       }
@@ -2876,74 +2951,59 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
           'round_robin',
           'random',
         ];
-        if (
-          activeFilter === 'urltest' &&
-          (btype !== 'urltest' || poolModes.includes(bmode))
-        ) {
-          return false;
-        }
-        if (
-          activeFilter === 'pool' &&
-          (btype !== 'urltest' || !poolModes.includes(bmode))
-        ) {
-          return false;
-        }
-        if (activeFilter === 'priority' && btype !== 'priority') return false;
-        if (
-          q &&
-          !`${sid} ${name} ${btype} ${bmode}`.toLowerCase().includes(q)
-        ) {
-          return false;
-        }
-        return true;
+        return Array.from(activeFilters).some((fid) => {
+          if (fid === 'urltest') {
+            return btype === 'urltest' && !poolModes.includes(bmode);
+          }
+          if (fid === 'pool') {
+            return btype === 'urltest' && poolModes.includes(bmode);
+          }
+          if (fid === 'priority') return btype === 'priority';
+          return true;
+        });
       }
 
       if (type === 'server') {
         const proto = String(raw.protocol || 'vless').toLowerCase();
-        if (activeFilter === 'enabled' && !enabled) return false;
-        if (
-          activeFilter === 'tls_xray' &&
-          ![
-            'vless',
-            'vmess',
-            'trojan',
-            'anytls',
-            'shadowtls',
-            'naive',
-            'trusttunnel',
-            'tewfai',
-          ].includes(proto)
-        ) {
-          return false;
-        }
-        if (
-          activeFilter === 'quic' &&
-          !['hysteria2', 'tuic', 'masque'].includes(proto)
-        ) {
-          return false;
-        }
-        if (
-          activeFilter === 'vpn' &&
-          !['awg', 'fptn', 'openconnect', 'mieru'].includes(proto)
-        ) {
-          return false;
-        }
-        if (
-          activeFilter === 'local' &&
-          !['socks', 'http', 'mixed', 'shadowsocks', 'mtproto'].includes(proto)
-        ) {
-          return false;
-        }
-        if (
-          q &&
-          !`${sid} ${name} ${proto} ${raw.port || ''}`.toLowerCase().includes(q)
-        ) {
-          return false;
+        if (activeFilters.has('enabled') && !enabled) return false;
+        const protoFilters = ['tls_xray', 'quic', 'vpn', 'local'].filter(
+          (fid) => activeFilters.has(fid),
+        );
+        if (protoFilters.length > 0) {
+          return protoFilters.some((fid) => {
+            if (fid === 'tls_xray') {
+              return [
+                'vless',
+                'vmess',
+                'trojan',
+                'anytls',
+                'shadowtls',
+                'naive',
+                'trusttunnel',
+                'tewfai',
+              ].includes(proto);
+            }
+            if (fid === 'quic') {
+              return ['hysteria2', 'tuic', 'masque'].includes(proto);
+            }
+            if (fid === 'vpn') {
+              return ['awg', 'fptn', 'openconnect', 'mieru'].includes(proto);
+            }
+            if (fid === 'local') {
+              return [
+                'socks',
+                'http',
+                'mixed',
+                'shadowsocks',
+                'mtproto',
+              ].includes(proto);
+            }
+            return true;
+          });
         }
         return true;
       }
 
-      if (q && !`${sid} ${name}`.toLowerCase().includes(q)) return false;
       return true;
     });
 
@@ -3007,7 +3067,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
     if (disabledSids.length > 0) {
       disabledTrayEl.classList.remove('is-hidden');
       const isOpen =
-        disabledTrayOpen || q.length > 0 || enabledSids.length === 0;
+        disabledTrayOpen || activeFilters.size > 0 || enabledSids.length === 0;
       const trayBodyEl = E(
         'div',
         {

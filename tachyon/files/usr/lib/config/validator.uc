@@ -757,8 +757,11 @@ function dhcp_has_https_dns_proxy_options_exit(path) {
 
 function mwan3_has_enabled_interface_text(data) {
     let prefix = "mwan3.";
+    let kmwan_prefix = "kmwan.";
     let sections = {};
     let enabled = {};
+    let kmwan_members = {};
+    let kmwan_disabled = {};
 
     for (let line in split(as_string(data), "\n")) {
         let equals = index(as_string(line), "=");
@@ -767,25 +770,46 @@ function mwan3_has_enabled_interface_text(data) {
 
         let key = substr(line, 0, equals);
         let value = uci_show_list_value(substr(line, equals + 1));
-        if (!string_starts_with(key, prefix))
-            continue;
+        if (string_starts_with(key, prefix)) {
+            let rest = substr(key, length(prefix));
+            if (index(rest, ".") < 0) {
+                if (value == "interface")
+                    sections[key] = true;
+                continue;
+            }
 
-        let rest = substr(key, length(prefix));
-        if (index(rest, ".") < 0) {
-            if (value == "interface")
-                sections[key] = true;
+            let option_dot = rindex(key, ".");
+            let section = substr(key, 0, option_dot);
+            let option = substr(key, option_dot + 1);
+            if (option == "enabled")
+                enabled[section] = value;
             continue;
         }
 
-        let option_dot = rindex(key, ".");
-        let section = substr(key, 0, option_dot);
-        let option = substr(key, option_dot + 1);
-        if (option == "enabled")
-            enabled[section] = value;
+        if (string_starts_with(key, kmwan_prefix)) {
+            let rest = substr(key, length(kmwan_prefix));
+            if (index(rest, ".") < 0) {
+                if (value == "member")
+                    kmwan_members[key] = true;
+                continue;
+            }
+
+            let option_dot = rindex(key, ".");
+            let section = substr(key, 0, option_dot);
+            let option = substr(key, option_dot + 1);
+            if (option == "disabled")
+                kmwan_disabled[section] = value;
+            else if (option == "enabled" && value == "0")
+                kmwan_disabled[section] = "1";
+        }
     }
 
     for (let section, _ in sections)
         if (enabled[section] == "1")
+            return true;
+
+    for (let section, _ in kmwan_members)
+        if (kmwan_disabled[section] != "1")
             return true;
 
     return false;
@@ -802,15 +826,53 @@ function mwan3_has_enabled_interface_from_sections() {
     return false;
 }
 
+function kmwan_has_enabled_member_from_sections() {
+    for (let section in uci_core.section_objects("kmwan", "member"))
+        if (option(section, "disabled", "0") != "1" && option(section, "enabled", "1") != "0")
+            return true;
+    return false;
+}
+
+function kmwan_is_active() {
+    if (!file_nonempty("/etc/config/kmwan"))
+        return false;
+    if (!file_executable("/etc/init.d/kmwan") && !file_nonempty("/proc/gl-kmwan/config"))
+        return false;
+    if (!kmwan_has_enabled_member_from_sections())
+        return false;
+    return file_nonempty("/proc/gl-kmwan/config") ||
+        command_success_from_args([ "/etc/init.d/kmwan", "status" ]) ||
+        command_success_from_args([ "/etc/init.d/kmwan", "enabled" ]);
+}
+
+function multiwan_network_interfaces_active() {
+    let wan_count = 0;
+    for (let section in uci_core.section_objects("network", "interface")) {
+        let name = lc(trim(as_string(section[".name"] || "")));
+        if (name == "" || substr(name, -1) == "6")
+            continue;
+        if (match(name, /^(wan|wan[0-9]+|wanb|secondwan|wwan[0-9]*|lte[0-9]*|modem[0-9]*|tethering[0-9]*)$/) == null)
+            continue;
+        if (option(section, "proto", "") == "")
+            continue;
+        if (option(section, "disabled", "0") == "1" || option(section, "auto", "1") == "0")
+            continue;
+        wan_count++;
+        if (wan_count >= 2)
+            return true;
+    }
+    return false;
+}
+
 function mwan3_is_active() {
-    if (!file_executable("/etc/init.d/mwan3") || !file_nonempty("/etc/config/mwan3"))
-        return false;
-
-    if (!mwan3_has_enabled_interface_from_sections())
-        return false;
-
-    return command_success_from_args([ "/etc/init.d/mwan3", "status" ]) ||
-        command_success_from_args([ "/etc/init.d/mwan3", "enabled" ]);
+    if (file_executable("/etc/init.d/mwan3") && file_nonempty("/etc/config/mwan3") && mwan3_has_enabled_interface_from_sections()) {
+        if (command_success_from_args([ "/etc/init.d/mwan3", "status" ]) ||
+            command_success_from_args([ "/etc/init.d/mwan3", "enabled" ]))
+            return true;
+    }
+    if (kmwan_is_active())
+        return true;
+    return multiwan_network_interfaces_active();
 }
 
 let parse_number = common.parse_number;
@@ -1516,6 +1578,36 @@ function validate_geoip_country_values(section) {
     }
 }
 
+function validate_interface_address_values(section) {
+    let name = section_name(section);
+    for (let raw_item in list_option(section, "default_interface_address")) {
+        let item = trim(as_string(raw_item));
+        if (item != "" && !core_ip.valid_ip_or_cidr(item))
+            fail_validation("Rule '" + name + "' has invalid default_interface_address '" + item + "'. Expected IP or CIDR subnet. Aborted.");
+    }
+    for (let key in [ "interface_address", "network_interface_address" ]) {
+        for (let raw_item in list_option(section, key)) {
+            let item = trim(as_string(raw_item));
+            if (item == "")
+                continue;
+            let sep = index(item, "=");
+            if (sep < 0)
+                sep = index(item, ":");
+            if (sep <= 0)
+                fail_validation("Rule '" + name + "' has invalid " + key + " '" + item + "'. Expected format 'interface=CIDR' (e.g. wan2=192.168.1.0/24). Aborted.");
+            let iface_name = trim(substr(item, 0, sep));
+            let cidr_str = trim(substr(item, sep + 1));
+            if (iface_name == "" || match(iface_name, /^[A-Za-z0-9_.:-]+$/) == null)
+                fail_validation("Rule '" + name + "' has invalid interface name in " + key + " '" + item + "'. Aborted.");
+            for (let part in split(cidr_str, ",")) {
+                let cidr = trim(as_string(part));
+                if (cidr == "" || !core_ip.valid_ip_or_cidr(cidr))
+                    fail_validation("Rule '" + name + "' has invalid IP or CIDR '" + cidr + "' in " + key + " '" + item + "'. Aborted.");
+            }
+        }
+    }
+}
+
 function validate_common_rule_references(section, context) {
     for (let value in connections.community_lists(section))
         validate_service_value(value, context);
@@ -1527,6 +1619,7 @@ function validate_common_rule_references(section, context) {
         validate_plain_domain_ip_list_reference_value(value);
     validate_dscp_values(section);
     validate_geoip_country_values(section);
+    validate_interface_address_values(section);
 }
 
 function outbound_json_object(value) {
@@ -2130,6 +2223,34 @@ function validate_list_update_settings(settings) {
     validate_required_duration_option(update_interval, "settings.update_interval");
 }
 
+function validate_wan_failover_settings(settings) {
+    if (!bool_option(settings, "wan_failover_enabled", false))
+        return;
+
+    let primary = trim(option(settings, "wan_failover_primary", "wan"));
+    let backup = trim(option(settings, "wan_failover_backup", ""));
+    if (primary == "" || match(primary, /^[A-Za-z0-9_.:-]+$/) == null)
+        fail_validation("WAN failover primary interface '" + primary + "' is invalid. Aborted.");
+    if (backup != "" && match(backup, /^[A-Za-z0-9_.:-]+$/) == null)
+        fail_validation("WAN failover backup interface '" + backup + "' is invalid. Aborted.");
+    if (backup != "" && primary == backup)
+        fail_validation("WAN failover primary and backup interfaces cannot be identical ('" + primary + "'). Aborted.");
+
+    let fail_thresh = parse_number(option(settings, "wan_failover_failure_threshold", "3"));
+    if (fail_thresh == null || fail_thresh < 1 || fail_thresh > 30)
+        fail_validation("WAN failover failure threshold must be an integer between 1 and 30. Aborted.");
+
+    let rec_thresh = parse_number(option(settings, "wan_failover_recovery_threshold", "3"));
+    if (rec_thresh == null || rec_thresh < 1 || rec_thresh > 30)
+        fail_validation("WAN failover recovery threshold must be an integer between 1 and 30. Aborted.");
+
+    for (let host in list_option(settings, "wan_failover_probe_hosts")) {
+        let h = trim(as_string(host));
+        if (h == "" || match(h, /^[A-Za-z0-9_.:-]+$/) == null)
+            fail_validation("WAN failover probe host '" + h + "' is invalid. Expected IP address or hostname. Aborted.");
+    }
+}
+
 function validate_runtime_mark_ranges_context(context) {
     let fakeip_mark = parse_number(context.nft_fakeip_mark);
     let outbound_mark = parse_number(context.nft_outbound_mark);
@@ -2597,6 +2718,7 @@ function validate_modular_entities(sections, context) {
                 validate_port_condition_value(value, cname);
             validate_dscp_values(cond);
             validate_geoip_country_values(cond);
+            validate_interface_address_values(cond);
         } catch (e) {
             current_validating_section = "";
             if (index(as_string(e), "__TACHYON_QUARANTINE__") < 0)
@@ -2709,6 +2831,7 @@ function validate_runtime_config(context) {
 
     validate_dns_settings(settings, sections, context);
     validate_list_update_settings(settings);
+    validate_wan_failover_settings(settings);
     validate_http_url_option(option(settings, "latency_test_url", DEFAULT_LATENCY_TEST_URL) || DEFAULT_LATENCY_TEST_URL, "settings.latency_test_url");
     let bt_policy = lc(trim(option(settings, "bittorrent_policy", "")));
     if (bt_policy != "" && !contains([ "off", "direct", "block" ], bt_policy))

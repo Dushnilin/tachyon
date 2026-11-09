@@ -247,6 +247,8 @@ export const TACHYON_RPC_METHODS = [
   'validate_byedpi_strategy_json',
   'validate_nfqws2_strategy_json',
   'validate_nfqws_strategy_json',
+  'wan_failover_check',
+  'wan_failover_status',
   'watchdog',
   'watchdog_start',
   'watchdog_stop',
@@ -1874,6 +1876,16 @@ export interface ValidatenfqwsstrategyjsonParams {
 
 export type ValidatenfqwsstrategyjsonResult = Record<string, unknown>;
 
+/** check (service/wan_failover.uc) */
+export type WanfailovercheckParams = Record<string, never>;
+
+export type WanfailovercheckResult = Record<string, unknown>;
+
+/** status (service/wan_failover.uc) */
+export type WanfailoverstatusParams = Record<string, never>;
+
+export type WanfailoverstatusResult = Record<string, unknown>;
+
 /**  (service/watchdog.uc) */
 export interface WatchdogParams {
   /** positional argument 1 of watchdog */
@@ -2816,6 +2828,14 @@ export interface TachyonRpcRegistry {
   validate_nfqws_strategy_json: {
     params: ValidatenfqwsstrategyjsonParams;
     result: ValidatenfqwsstrategyjsonResult;
+  };
+  wan_failover_check: {
+    params: WanfailovercheckParams;
+    result: WanfailovercheckResult;
+  };
+  wan_failover_status: {
+    params: WanfailoverstatusParams;
+    result: WanfailoverstatusResult;
   };
   watchdog: {
     params: WatchdogParams;
@@ -6259,6 +6279,26 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
           description: 'positional argument 1 of validate_nfqws_strategy_json',
         },
       ],
+    },
+    wan_failover_check: {
+      name: 'wan_failover_check',
+      cli_command: 'wan_failover_check',
+      category: 'system',
+      acl: 'write',
+      description: 'check (service/wan_failover.uc)',
+      async: false,
+      timeout_ms: 60000,
+      params: [],
+    },
+    wan_failover_status: {
+      name: 'wan_failover_status',
+      cli_command: 'wan_failover_status',
+      category: 'system',
+      acl: 'write',
+      description: 'status (service/wan_failover.uc)',
+      async: false,
+      timeout_ms: 60000,
+      params: [],
     },
     watchdog: {
       name: 'watchdog',

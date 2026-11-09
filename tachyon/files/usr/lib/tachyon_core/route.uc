@@ -132,6 +132,8 @@ function p2p_direct_rules(settings, policy_mode) {
 function config(settings, runtime) {
     let output_network_interface = option(settings, "output_network_interface", "");
     let mwan3_active = type(runtime) == "object" && bool_value(runtime.mwan3_active);
+    let badwan_monitoring = bool_option(settings, "enable_badwan_interface_monitoring", false);
+    let wan_failover_enabled = bool_option(settings, "wan_failover_enabled", false);
     let mode = lc(trim(as_string(option(settings, "proxy_mode", "tproxy"))));
     let client_inbounds = (type(runtime) == "object" && type(runtime.client_inbounds) == "array" && length(runtime.client_inbounds) > 0)
         ? runtime.client_inbounds
@@ -171,7 +173,7 @@ function config(settings, runtime) {
         rules,
         rule_set: [],
         final: runtime_constants.DIRECT_OUTBOUND_TAG,
-        auto_detect_interface: output_network_interface == "" && !mwan3_active,
+        auto_detect_interface: output_network_interface == "" && !mwan3_active && !badwan_monitoring && !wan_failover_enabled,
         default_domain_resolver: type(runtime) == "object" && as_string(runtime.default_domain_resolver) != ""
             ? as_string(runtime.default_domain_resolver)
             : runtime_constants.DNS_SERVER_TAG,

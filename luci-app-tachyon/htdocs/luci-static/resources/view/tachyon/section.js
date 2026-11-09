@@ -7553,6 +7553,10 @@ const LINKED_CONDITION_OPTION_KEYS = new Set([
   "excluded_protocol",
   "geoip_mode",
   "geoip_country",
+  "default_interface_address",
+  "interface_address",
+  "network_interface_address",
+  "preferred_by",
 ]);
 
 function getLinkedSectionConditionIds(section_id) {
@@ -18663,6 +18667,26 @@ function createSectionContent(section) {
     ),
   });
   dependsOnRoutingAction(dscpOption);
+
+  const defaultInterfaceAddressOption = addDynamicConditionField(section, {
+    key: "default_interface_address",
+    label: _("Active WAN Subnet Match"),
+    description: _(
+      "Apply section rules only when the active default WAN interface has an IP address in one of these subnets (e.g. 192.168.1.0/24 when switched to a 4G backup router).",
+    ),
+    placeholder: "192.168.1.0/24",
+  });
+  dependsOnRoutingAction(defaultInterfaceAddressOption);
+
+  const interfaceAddressOption = addDynamicConditionField(section, {
+    key: "interface_address",
+    label: _("Interface Subnet Match (iface=CIDR)"),
+    description: _(
+      "Match when a specific network interface has an address within the given subnet (format: interface=CIDR, e.g. eth1=192.168.1.0/24 or wan2=10.0.0.0/8).",
+    ),
+    placeholder: "eth1=192.168.1.0/24",
+  });
+  dependsOnRoutingAction(interfaceAddressOption);
 
   const excludedProtocolOption = section.taboption(
     "conditions",

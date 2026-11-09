@@ -6482,6 +6482,13 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
     gap: 8px;
 }
 
+.tachyon-studio-panel__header-controls {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
 .tachyon-studio-panel__header-right {
     display: flex;
     align-items: center;
@@ -6687,42 +6694,101 @@ body[data-tachyon-ui-mode="simple"] [data-name="_prefix_color_presets"] {
     gap: 6px;
 }
 
-.tachyon-studio-filter-group {
-    display: flex;
+.tachyon-studio-filter-dropdown {
+    position: relative;
+    display: inline-flex;
     align-items: center;
-    flex-wrap: wrap;
-    gap: 5px;
 }
 
-.tachyon-studio-filter-pill {
+.tachyon-studio-filter-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     padding: 4px 10px;
-    border-radius: 7px;
+    border-radius: 8px;
     border: 1px solid var(--border-color-low, rgba(128, 128, 128, 0.22));
-    background: var(--background-color-low, rgba(128, 128, 128, 0.06));
+    background: var(--background-color-low, rgba(128, 128, 128, 0.08));
     color: inherit;
     font-size: 11.5px;
     font-weight: 600;
     cursor: pointer;
     white-space: nowrap;
+    transition: border-color 0.14s ease, background-color 0.14s ease, color 0.14s ease;
 }
 
-.tachyon-studio-filter-pill.is-active {
+.tachyon-studio-filter-trigger:hover,
+.tachyon-studio-filter-trigger.is-open {
+    border-color: color-mix(in srgb, var(--tachyon-accent) 38%, transparent);
+}
+
+.tachyon-studio-filter-trigger.is-active {
     border-color: color-mix(in srgb, var(--tachyon-accent) 38%, transparent);
     background: color-mix(in srgb, var(--tachyon-accent) 14%, transparent);
+    color: var(--tachyon-accent-text);
+}
+
+.tachyon-studio-filter-trigger svg {
+    opacity: 0.72;
+    transition: transform 0.14s ease;
+}
+
+.tachyon-studio-filter-trigger.is-open svg {
+    transform: rotate(180deg);
+}
+
+.tachyon-studio-filter-menu {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    min-width: 220px;
+    padding: 6px;
+    border-radius: 9px;
+    border: 1px solid var(--border-color-medium, rgba(128, 128, 128, 0.3));
+    background: var(--tachyon-bg-card, var(--background-color-high, #1e1e1e));
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.32);
+    z-index: 950;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.tachyon-studio-filter-menu.is-open {
+    display: flex;
+}
+
+.tachyon-studio-filter-option {
+    display: flex !important;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    margin: 0 !important;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    color: inherit;
+    cursor: pointer;
+    white-space: nowrap;
+    user-select: none;
+    transition: background-color 0.12s ease;
+}
+
+.tachyon-studio-filter-option:hover {
+    background: var(--background-color-low, rgba(128, 128, 128, 0.12));
+}
+
+.tachyon-studio-filter-option.is-checked {
+    background: color-mix(in srgb, var(--tachyon-accent) 12%, transparent);
     color: var(--tachyon-accent-text);
     font-weight: 600;
 }
 
-.tachyon-studio-search {
-    min-width: 220px;
-    flex: 1 1 300px;
-    max-width: 440px;
-    padding: 4px 10px !important;
-    border-radius: 8px !important;
-    border: 1px solid var(--border-color-medium, rgba(128, 128, 128, 0.26)) !important;
-    background: var(--background-color-low, rgba(128, 128, 128, 0.06)) !important;
-    color: inherit !important;
-    font-size: 12px !important;
+.tachyon-studio-filter-checkbox {
+    margin: 0 !important;
+    width: 14px;
+    height: 14px;
+    cursor: pointer;
+    accent-color: var(--tachyon-accent, #38bdf8);
+    flex-shrink: 0;
 }
 
 .tachyon-studio-body--cards {

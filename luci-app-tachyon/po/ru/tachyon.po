@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-09 10:35+0300\n"
-"PO-Revision-Date: 2026-11-09 10:35+0300\n"
+"POT-Creation-Date: 2026-11-09 13:02+0300\n"
+"PO-Revision-Date: 2026-11-09 13:02+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -358,6 +358,9 @@ msgstr "Размер активного пула (топ N узлов)"
 
 msgid "Active Route"
 msgstr "Активный выход"
+
+msgid "Active WAN Subnet Match"
+msgstr "Подсеть активного WAN-интерфейса"
 
 msgid "Active engine"
 msgstr "Активный движок"
@@ -878,6 +881,9 @@ msgstr "Применять правила этой секции только к 
 msgid "Apply section rules only to the specified local IP addresses"
 msgstr "Применять правила секции только к указанным локальным IP-адресам"
 
+msgid "Apply section rules only when the active default WAN interface has an IP address in one of these subnets (e.g. 192.168.1.0/24 when switched to a 4G backup router)."
+msgstr "Применять правила секции только тогда, когда активный WAN-интерфейс по умолчанию имеет IP-адрес в одной из указанных подсетей (например, 192.168.1.0/24 при переключении на резервный 4G-роутер)."
+
 msgid "Apply this schedule rule to all devices in the selected family profile(s)."
 msgstr "Применить это правило расписания ко всем устройствам в выбранных семейных профилях."
 
@@ -1070,6 +1076,9 @@ msgstr "Автоматический User-Agent"
 msgid "Automatic User-Agent selection"
 msgstr "Автоматический выбор User-Agent"
 
+msgid "Automatic WAN Failover"
+msgstr "Автопереключение на резервный WAN (Failover)"
+
 msgid "Automatic component update checks"
 msgstr "Автоматическая проверка обновлений компонентов"
 
@@ -1102,6 +1111,9 @@ msgstr "Автоматически увеличивать интервалы п�
 
 msgid "Automatically open port in router firewall (nftables)"
 msgstr "Автоматически открыть порт в межсетевом экране (nftables)"
+
+msgid "Automatically probe the primary WAN interface and switch the default route to the backup WAN interface (e.g. 4G modem or secondary router) when the primary provider loses connectivity, without breaking routing or firewall rules."
+msgstr "Автоматически проверять доступность интернета через основной WAN-порт и переключать маршрут по умолчанию на резервный WAN (например, 4G-модем или второй роутер) при пропадании связи у основного провайдера, не нарушая работу правил маршрутизации и межсетевого экрана."
 
 msgid "Automatically quarantines nodes that drop live connections early (< 64 KiB in < 3 s)"
 msgstr "Мгновенный карантин серверов при ранних обрывах соединений (< 64 КБ за < 3 с) без ожидания проверки пинга"
@@ -1177,6 +1189,9 @@ msgstr "Фоновая проверка живучести сессии (Health 
 
 msgid "Background:"
 msgstr "Фон:"
+
+msgid "Backup WAN Interface"
+msgstr "Резервный интерфейс WAN"
 
 msgid "Balancer"
 msgstr "Балансировщик"
@@ -3932,6 +3947,9 @@ msgstr "Отказоустойчивый (удерживать текущий д
 msgid "Failover Health Check URL"
 msgstr "URL проверки доступности для переключения (Failover)"
 
+msgid "Failover Threshold (failed checks)"
+msgstr "Порог переключения на резерв (неудачных проверок)"
+
 msgid "Failover failure threshold"
 msgstr "Порог срабатывания failover"
 
@@ -4025,6 +4043,9 @@ msgstr "Резервные DNS серверы должны быть обычны
 msgid "Fallback DNS servers must be plain UDP (IP or hostname). Path-style DoH (e.g. domain/path) is not allowed here."
 msgstr "Резервные DNS серверы должны быть обычными UDP (IP или hostname). Формат DoH с путём (например, domain/path) здесь недопустим."
 
+msgid "Fallback internet interface (e.g. wan2, wwan, usb, tethering) activated when the primary WAN fails."
+msgstr "Резервный интернет-интерфейс (например, wan2, wwan, usb, tethering), активируемый при отказе основного WAN."
+
 msgid "Fallback on unknown DC"
 msgstr "Fallback при неизвестном DC"
 
@@ -4057,6 +4078,9 @@ msgstr "Стандартный URLTest (минимальный RTT)"
 
 msgid "Files"
 msgstr "Файлы"
+
+msgid "Filter"
+msgstr "Фильтр"
 
 msgid "Filter Mode"
 msgstr "Режим фильтрации"
@@ -4640,6 +4664,9 @@ msgstr "Блокировка по IP (Таймаут TCP SYN)"
 msgid "IP Frag Bounds (--ip-frag)"
 msgstr "Границы фрагментации IP (--ip-frag)"
 
+msgid "IP addresses pinged through the primary WAN interface to verify internet connectivity (default: 77.88.8.8, 1.1.1.1, 8.8.8.8)."
+msgstr "IP-адреса, опрашиваемые через основной WAN-интерфейс для проверки наличия интернета (по умолчанию: 77.88.8.8, 1.1.1.1, 8.8.8.8)."
+
 msgid "IP and DNS leak check timed out"
 msgstr "Время ожидания проверки утечек IP и DNS истекло"
 
@@ -5000,11 +5027,11 @@ msgstr "Мониторинг интерфейсов"
 msgid "Interface Monitoring Delay"
 msgstr "Задержка мониторинга интерфейсов"
 
+msgid "Interface Subnet Match (iface=CIDR)"
+msgstr "Подсеть конкретного интерфейса (iface=CIDR)"
+
 msgid "Interface language"
 msgstr "Язык интерфейса"
-
-msgid "Interface monitoring for Bad WAN"
-msgstr "Мониторинг интерфейсов при нестабильном подключении (Bad WAN)"
 
 msgid "Interrupt Existing Connections on Switch"
 msgstr "Разрывать текущие соединения при переключении"
@@ -5801,6 +5828,9 @@ msgstr "Основной DNS-сервер. Если выбрано нескол�
 msgid "Main Subscription"
 msgstr "Основная подписка"
 
+msgid "Main internet interface (e.g. wan). Used by default when reachable."
+msgstr "Основной интернет-интерфейс (например, wan). Используется по умолчанию, когда связь исправна."
+
 msgid "Manage Tachyon daemon lifecycle and emergency bypass"
 msgstr "Управление жизненным циклом службы Tachyon и аварийным обходом"
 
@@ -5857,6 +5887,9 @@ msgstr "Сопоставлять порты назначения. Использ
 
 msgid "Match traffic by packet DSCP mark (assigned in Windows via Policy-Based QoS). Examples: 46 (EF), 0x2e, 34 (AF41)"
 msgstr "Сопоставлять трафик по DSCP-метке пакета (назначается в Windows через Policy-Based QoS). Примеры: 46 (EF), 0x2e, 34 (AF41)"
+
+msgid "Match when a specific network interface has an address within the given subnet (format: interface=CIDR, e.g. eth1=192.168.1.0/24 or wan2=10.0.0.0/8)."
+msgstr "Применять правило, когда указанный сетевой интерфейс имеет адрес в заданной подсети (формат: интерфейс=CIDR, например eth1=192.168.1.0/24 или wan2=10.0.0.0/8)."
 
 msgid "Matched"
 msgstr "Совпадение"
@@ -6013,6 +6046,9 @@ msgstr "Пн"
 
 msgid "Monday"
 msgstr "Понедельник"
+
+msgid "Monitor WAN interfaces for state changes, Multi-WAN switching, and automatic proxy reload"
+msgstr "Отслеживание изменений состояния WAN-интерфейсов, переключения Multi-WAN и автоматического перезапуска прокси"
 
 msgid "Monitored Interfaces"
 msgstr "Отслеживаемые интерфейсы"
@@ -6500,6 +6536,9 @@ msgstr "Уведомлять о перезапусках сервиса"
 msgid "Notify on Subscription Updates"
 msgstr "Уведомлять об обновлениях подписок"
 
+msgid "Number of consecutive failed checks before switching to the backup WAN (1-30, default: 3)."
+msgstr "Количество неудачных проверок подряд перед переключением на резервный WAN (1–30, по умолчанию: 3)."
+
 msgid "Number of consecutive failed checks required before switching DNS servers."
 msgstr "Количество последовательных неудачных проверок до переключения DNS-серверов."
 
@@ -6508,6 +6547,9 @@ msgstr "Сколько неудачных проверок подряд до п�
 
 msgid "Number of consecutive failures before restarting (default 3)."
 msgstr "Количество последовательных ошибок до перезапуска (по умолчанию 3)."
+
+msgid "Number of consecutive successful checks on the primary WAN before switching back from backup WAN (1-30, default: 3)."
+msgstr "Количество успешных проверок подряд на основном WAN перед возвратом с резервного канала (1–30, по умолчанию: 3)."
 
 msgid "Number of consecutive successful checks required before returning to a higher-priority DNS server."
 msgstr "Количество последовательных успешных проверок до возврата на DNS-сервер с более высоким приоритетом."
@@ -7139,9 +7181,6 @@ msgstr "Режим политики"
 msgid "Policy Routing"
 msgstr "Маршрутизация по политикам"
 
-msgid "Policy Settings"
-msgstr "Настройки политики"
-
 msgid "Policy Summary"
 msgstr "Описание политики"
 
@@ -7309,6 +7348,9 @@ msgstr "Назад"
 
 msgid "Primary DNS"
 msgstr "Основной DNS"
+
+msgid "Primary WAN Interface"
+msgstr "Основной интерфейс WAN"
 
 msgid "Primary routing rule"
 msgstr "Основной маршрут"
@@ -7711,6 +7753,9 @@ msgstr "Записей: %d"
 
 msgid "Recovery Check Interval"
 msgstr "Интервал проверки восстановления"
+
+msgid "Recovery Threshold (successful checks)"
+msgstr "Порог возврата на основной WAN (успешных проверок)"
 
 msgid "Red"
 msgstr "Красный"
@@ -8392,9 +8437,6 @@ msgstr "Поиск"
 
 msgid "Search Mode"
 msgstr "Режим подбора"
-
-msgid "Search by name, protocol, service or domain..."
-msgstr "Поиск по имени, протоколу, сервису или домену..."
 
 msgid "Search domain or service..."
 msgstr "Поиск домена или сервиса..."
@@ -10940,6 +10982,9 @@ msgstr "WAN"
 msgid "WAN DNS"
 msgstr "DNS из настроек WAN"
 
+msgid "WAN Failover Probe Hosts"
+msgstr "Проверочные хосты WAN Failover"
+
 msgid "WAN network flaps:"
 msgstr "Обрывов WAN:"
 
@@ -11818,6 +11863,15 @@ msgstr "🇱🇻 Латвия (lv)"
 
 msgid "🇵🇱 Poland (pl)"
 msgstr "🇵🇱 Польша (pl)"
+
+msgid "Search by name, protocol, service or domain..."
+msgstr "Поиск по имени, протоколу, сервису или домену..."
+
+msgid "Policy Settings"
+msgstr "Настройки политики"
+
+msgid "Interface monitoring for Bad WAN"
+msgstr "Мониторинг интерфейсов при нестабильном подключении (Bad WAN)"
 
 msgid "Checking subsystems, please wait..."
 msgstr "Проверка подсистем, пожалуйста подождите..."

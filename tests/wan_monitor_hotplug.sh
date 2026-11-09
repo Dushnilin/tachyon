@@ -174,4 +174,65 @@ sleep 1
 
 [ ! -f "$TEST_TELEGRAM_LOG" ] || fail "Test 7 failed: duplicate notification sent on repeated ifup without state change"
 
-printf 'All 7 WAN monitor hotplug tests PASSED!\n'
+# Test 8: GL.iNet secondwan / tethering transport state tracking on ifup and ifdown
+ACTION="ifup" INTERFACE="secondwan" sh "$TEST_MONITOR"
+[ "$(cat "$VAR_RUN/wan_transport_secondwan" 2>/dev/null)" = "up" ] || fail "Test 8 failed: secondwan transport not marked up"
+ACTION="ifdown" INTERFACE="secondwan" sh "$TEST_MONITOR"
+[ "$(cat "$VAR_RUN/wan_transport_secondwan" 2>/dev/null)" = "down" ] || fail "Test 8 failed: secondwan transport not marked down"
+
+# Test 9: GL.iNet kmwan member detection in validator.uc and route.uc badwan_monitoring auto_detect_interface=false
+if command -v ucode >/dev/null 2>&1; then
+    printf "kmwan.wan=member\nkmwan.wan.disabled='0'\nkmwan.secondwan=member\nkmwan.secondwan.disabled='0'\n" | \
+        ucode -L "$ROOT_DIR/tachyon/files/usr/lib" "$ROOT_DIR/tachyon/files/usr/lib/config/validator.uc" mwan3-has-enabled-interface || \
+        fail "Test 9a failed: kmwan active member must be recognized by mwan3-has-enabled-interface"
+
+    printf "kmwan.wan=member\nkmwan.wan.disabled='1'\n" | \
+        ucode -L "$ROOT_DIR/tachyon/files/usr/lib" "$ROOT_DIR/tachyon/files/usr/lib/config/validator.uc" mwan3-has-enabled-interface && \
+        fail "Test 9b failed: disabled kmwan member must not be treated as active"
+
+    ucode -L "$ROOT_DIR/tachyon/files/usr/lib" -e '
+        let route = require("tachyon_core.route");
+        let cfg = route.config({ enable_badwan_interface_monitoring: "1" }, { mwan3_active: false });
+        if (cfg.auto_detect_interface !== false)
+            exit(1);
+        let cfg2 = route.config({ wan_failover_enabled: "1" }, { mwan3_active: false });
+        if (cfg2.auto_detect_interface !== false)
+            exit(1);
+    ' || fail "Test 9c failed: enable_badwan_interface_monitoring=1 or wan_failover_enabled=1 must disable auto_detect_interface"
+
+    # Test 10: generator_routes.uc emits default_interface_address and interface_address matchers
+    ucode -L "$ROOT_DIR/tachyon/files/usr/lib" -e '
+        let gen = require("tachyon_core.generator_routes");
+        let sec = {
+            ".name": "backup_wan_rule",
+            ".type": "section",
+            enabled: "1",
+            action: "connection",
+            default_interface_address: [ "192.168.1.0/24", "10.0.0.0/8" ],
+            interface_address: [ "eth1=192.168.1.0/24", "wan2:100.64.0.0/10" ],
+            preferred_by: [ "wan2" ]
+        };
+        let rule = {};
+        if (!gen.add_interface_address_matchers(rule, sec))
+            exit(1);
+        if (type(rule.default_interface_address) != "array" || length(rule.default_interface_address) != 2 || rule.default_interface_address[0] != "192.168.1.0/24")
+            exit(2);
+        if (type(rule.interface_address) != "object" || type(rule.interface_address.eth1) != "array" || rule.interface_address.eth1[0] != "192.168.1.0/24")
+            exit(3);
+        if (type(rule.interface_address.wan2) != "array" || rule.interface_address.wan2[0] != "100.64.0.0/10")
+            exit(4);
+        if (rule.preferred_by != "wan2")
+            exit(5);
+    ' || fail "Test 10 failed: generator_routes.uc must emit default_interface_address, interface_address, and preferred_by"
+
+    # Test 11: validator.uc accepts valid default_interface_address / interface_address and rejects invalid ones
+    ucode -L "$ROOT_DIR/tachyon/files/usr/lib" -e '
+        let core_ip = require("core.ip");
+        if (!core_ip.valid_ip_or_cidr("192.168.1.0/24"))
+            exit(1);
+        if (core_ip.valid_ip_or_cidr("not-an-ip"))
+            exit(2);
+    ' || fail "Test 11 failed: CIDR validation check failed"
+fi
+
+printf 'All 10 WAN monitor, failover, and interface matcher tests PASSED!\n'

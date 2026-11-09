@@ -3694,7 +3694,9 @@ function createSettingsContent(section, capabilities) {
     form.Flag,
     "enable_badwan_interface_monitoring",
     _("Interface Monitoring"),
-    _("Interface monitoring for Bad WAN"),
+    _(
+      "Monitor WAN interfaces for state changes, Multi-WAN switching, and automatic proxy reload",
+    ),
   );
   o.default = "0";
   o.rmempty = false;
@@ -3740,6 +3742,96 @@ function createSettingsContent(section, capabilities) {
     }
     return true;
   };
+
+  o = section.taboption(
+    "network",
+    form.Flag,
+    "wan_failover_enabled",
+    _("Automatic WAN Failover"),
+    _(
+      "Automatically probe the primary WAN interface and switch the default route to the backup WAN interface (e.g. 4G modem or secondary router) when the primary provider loses connectivity, without breaking routing or firewall rules.",
+    ),
+  );
+  o.default = "0";
+  o.rmempty = false;
+
+  o = section.taboption(
+    "network",
+    widgets.NetworkSelect,
+    "wan_failover_primary",
+    _("Primary WAN Interface"),
+    _("Main internet interface (e.g. wan). Used by default when reachable."),
+  );
+  o.depends("wan_failover_enabled", "1");
+  o.multiple = false;
+  o.default = "wan";
+  o.rmempty = false;
+  o.filter = function (section_id, value) {
+    if (["lan", "loopback"].includes(value) || value.startsWith("@")) {
+      return false;
+    }
+    return true;
+  };
+
+  o = section.taboption(
+    "network",
+    widgets.NetworkSelect,
+    "wan_failover_backup",
+    _("Backup WAN Interface"),
+    _(
+      "Fallback internet interface (e.g. wan2, wwan, usb, tethering) activated when the primary WAN fails.",
+    ),
+  );
+  o.depends("wan_failover_enabled", "1");
+  o.multiple = false;
+  o.default = "wan2";
+  o.rmempty = true;
+  o.filter = function (section_id, value) {
+    if (["lan", "loopback"].includes(value) || value.startsWith("@")) {
+      return false;
+    }
+    return true;
+  };
+
+  o = section.taboption(
+    "network",
+    form.DynamicList,
+    "wan_failover_probe_hosts",
+    _("WAN Failover Probe Hosts"),
+    _(
+      "IP addresses pinged through the primary WAN interface to verify internet connectivity (default: 77.88.8.8, 1.1.1.1, 8.8.8.8).",
+    ),
+  );
+  o.depends("wan_failover_enabled", "1");
+  o.placeholder = "77.88.8.8";
+
+  o = section.taboption(
+    "network",
+    form.Value,
+    "wan_failover_failure_threshold",
+    _("Failover Threshold (failed checks)"),
+    _(
+      "Number of consecutive failed checks before switching to the backup WAN (1-30, default: 3).",
+    ),
+  );
+  o.depends("wan_failover_enabled", "1");
+  o.datatype = "range(1,30)";
+  o.default = "3";
+  o.rmempty = false;
+
+  o = section.taboption(
+    "network",
+    form.Value,
+    "wan_failover_recovery_threshold",
+    _("Recovery Threshold (successful checks)"),
+    _(
+      "Number of consecutive successful checks on the primary WAN before switching back from backup WAN (1-30, default: 3).",
+    ),
+  );
+  o.depends("wan_failover_enabled", "1");
+  o.datatype = "range(1,30)";
+  o.default = "3";
+  o.rmempty = false;
 
   o = section.taboption(
     "network",

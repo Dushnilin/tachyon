@@ -553,16 +553,13 @@ function escapeHtml(str) {
 }
 
 function createBalancersContent(section) {
-  section.tab("general", _("Policy Settings"));
-
-  let o = section.taboption("general", form.Flag, "enabled", _("Enable"));
+  let o = section.option(form.Flag, "enabled", _("Enable"));
   o.default = "1";
   o.rmempty = false;
   o.editable = true;
   o.width = "5rem";
 
-  o = section.taboption(
-    "general",
+  o = section.option(
     form.Value,
     "name",
     _("Balancer Name"),
@@ -577,8 +574,7 @@ function createBalancersContent(section) {
     return uci.get(UCI_PACKAGE, sectionId, "name") || sectionId;
   };
 
-  o = section.taboption(
-    "general",
+  o = section.option(
     form.ListValue,
     "balancer_type",
     _("Balancer Type"),
@@ -591,8 +587,7 @@ function createBalancersContent(section) {
   o.value("urltest", _("URLTest (Lowest Latency)"));
   o.value("priority", _("Priority (Ordered Failover Tiers)"));
 
-  o = section.taboption(
-    "general",
+  o = section.option(
     form.ListValue,
     "mode",
     _("Selection Algorithm"),
@@ -615,8 +610,7 @@ function createBalancersContent(section) {
   o.value("failover", _("Failover (Pin Current Until Failure)"));
   o.depends("balancer_type", "urltest");
 
-  o = section.taboption(
-    "general",
+  o = section.option(
     form.DynamicList,
     "sticky_hash",
     _("Sticky Hash Components"),
@@ -633,8 +627,7 @@ function createBalancersContent(section) {
   o.depends({ balancer_type: "urltest", mode: "sticky" });
   o.depends({ balancer_type: "urltest", mode: "round_robin" });
 
-  o = section.taboption(
-    "general",
+  o = section.option(
     form.Value,
     "balancer_pool",
     _("Active Pool Size (Top N Nodes)"),
@@ -652,8 +645,7 @@ function createBalancersContent(section) {
   o.depends({ balancer_type: "urltest", mode: "throughput" });
   o.depends({ balancer_type: "urltest", mode: "quota" });
 
-  o = section.taboption(
-    "general",
+  o = section.option(
     form.Value,
     "quota_mib",
     _("Traffic Quota per Node (MiB)"),
@@ -665,12 +657,7 @@ function createBalancersContent(section) {
   o.placeholder = "10240";
   o.depends({ balancer_type: "urltest", mode: "quota" });
 
-  o = section.taboption(
-    "general",
-    form.DummyValue,
-    "_used_in",
-    _("Used in Sections"),
-  );
+  o = section.option(form.DummyValue, "_used_in", _("Used in Sections"));
   o.modalonly = false;
   o.cfgvalue = function (sectionId) {
     const used = sectionsUsingRef("balancer_refs", sectionId).map(
@@ -682,8 +669,7 @@ function createBalancersContent(section) {
     return used.length ? used.join(", ") : "—";
   };
 
-  o = section.taboption(
-    "general",
+  o = section.option(
     form.DynamicList,
     "_target_sections",
     _("Used in Sections"),
@@ -712,12 +698,7 @@ function createBalancersContent(section) {
     updateSectionsRef("balancer_refs", sectionId, []);
   };
 
-  o = section.taboption(
-    "general",
-    form.DummyValue,
-    "_summary",
-    _("Policy Summary"),
-  );
+  o = section.option(form.DummyValue, "_summary", _("Policy Summary"));
   o.modalonly = false;
   o.rawhtml = true;
   o.cfgvalue = function (sectionId) {
@@ -729,15 +710,14 @@ function createBalancersContent(section) {
   };
 
   // URLTest & Priority URL fields
-  o = section.taboption("general", form.Value, "testing_url", _("Testing URL"));
+  o = section.option(form.Value, "testing_url", _("Testing URL"));
   o.modalonly = true;
   o.default = "https://www.gstatic.com/generate_204";
   o.placeholder = "https://www.gstatic.com/generate_204";
   o.depends("balancer_type", "urltest");
   URLTEST_URL_CHOICES.forEach((u) => o.value(u));
 
-  o = section.taboption(
-    "general",
+  o = section.option(
     form.DynamicList,
     "testing_urls",
     _("Additional Testing URLs (Multi-URL)"),
@@ -750,20 +730,14 @@ function createBalancersContent(section) {
   o.depends("balancer_type", "urltest");
   URLTEST_URL_CHOICES.forEach((u) => o.value(u));
 
-  o = section.taboption(
-    "general",
-    form.Value,
-    "health_url",
-    _("Health Check URL"),
-  );
+  o = section.option(form.Value, "health_url", _("Health Check URL"));
   o.modalonly = true;
   o.default = "https://www.gstatic.com/generate_204";
   o.placeholder = "https://www.gstatic.com/generate_204";
   o.depends("balancer_type", "priority");
   URLTEST_URL_CHOICES.forEach((u) => o.value(u));
 
-  o = section.taboption(
-    "general",
+  o = section.option(
     form.DynamicList,
     "health_urls",
     _("Additional Health Check URLs (Multi-URL)"),
@@ -776,8 +750,7 @@ function createBalancersContent(section) {
   o.depends("balancer_type", "priority");
   URLTEST_URL_CHOICES.forEach((u) => o.value(u));
 
-  o = section.taboption(
-    "general",
+  o = section.option(
     form.ListValue,
     "multi_url_strategy",
     _("Multi-URL Evaluation Strategy"),
@@ -802,8 +775,7 @@ function createBalancersContent(section) {
   o.depends("balancer_type", "urltest");
   o.depends("balancer_type", "priority");
 
-  o = section.taboption(
-    "general",
+  o = section.option(
     form.Value,
     "check_interval",
     _("Check Interval"),
@@ -814,8 +786,7 @@ function createBalancersContent(section) {
   o.placeholder = "3m";
   o.depends("balancer_type", "urltest");
 
-  o = section.taboption(
-    "general",
+  o = section.option(
     form.Value,
     "check_interval_jitter",
     _("Check Interval Randomization (Jitter)"),
@@ -832,8 +803,7 @@ function createBalancersContent(section) {
   o.value("40%", _("±40% (High randomization)"));
   o.depends("balancer_type", "urltest");
 
-  o = section.taboption(
-    "general",
+  o = section.option(
     form.Value,
     "urltest_active_check_interval",
     _("Active Check Interval"),
@@ -861,8 +831,7 @@ function createBalancersContent(section) {
     uci.unset(UCI_PACKAGE, sectionId, "urltest_active_check_interval");
   };
 
-  o = section.taboption(
-    "general",
+  o = section.option(
     form.Value,
     "tolerance",
     _("Latency Tolerance (ms)"),
@@ -873,19 +842,13 @@ function createBalancersContent(section) {
   o.placeholder = "50";
   o.depends("balancer_type", "urltest");
 
-  o = section.taboption(
-    "general",
-    form.Value,
-    "idle_timeout",
-    _("Idle Timeout"),
-  );
+  o = section.option(form.Value, "idle_timeout", _("Idle Timeout"));
   o.modalonly = true;
   o.default = "30m";
   o.placeholder = "30m";
   o.depends("balancer_type", "urltest");
 
-  o = section.taboption(
-    "general",
+  o = section.option(
     form.Value,
     "active_check_interval",
     _("Active Check Interval"),
@@ -895,19 +858,13 @@ function createBalancersContent(section) {
   o.placeholder = "5s";
   o.depends("balancer_type", "priority");
 
-  o = section.taboption(
-    "general",
-    form.Value,
-    "check_timeout",
-    _("Check Timeout"),
-  );
+  o = section.option(form.Value, "check_timeout", _("Check Timeout"));
   o.modalonly = true;
   o.default = "3s";
   o.placeholder = "3s";
   o.depends("balancer_type", "priority");
 
-  o = section.taboption(
-    "general",
+  o = section.option(
     form.Value,
     "recovery_check_interval",
     _("Recovery Check Interval"),
@@ -917,8 +874,7 @@ function createBalancersContent(section) {
   o.placeholder = "30s";
   o.depends("balancer_type", "priority");
 
-  o = section.taboption(
-    "general",
+  o = section.option(
     form.Flag,
     "pick_fastest",
     _("Select the fastest node"),
@@ -930,8 +886,7 @@ function createBalancersContent(section) {
   o.default = "1";
   o.depends("balancer_type", "priority");
 
-  o = section.taboption(
-    "general",
+  o = section.option(
     form.Flag,
     "switch_to_faster_same_priority",
     _("Pick Fastest Server Within Active Tier"),
@@ -943,8 +898,7 @@ function createBalancersContent(section) {
   o.default = "0";
   o.depends("balancer_type", "priority");
 
-  o = section.taboption(
-    "general",
+  o = section.option(
     form.Value,
     "fastest_check_interval",
     _("Faster server search interval"),
@@ -955,8 +909,7 @@ function createBalancersContent(section) {
   o.placeholder = "3m";
   o.depends({ balancer_type: "priority", switch_to_faster_same_priority: "1" });
 
-  o = section.taboption(
-    "general",
+  o = section.option(
     form.Flag,
     "interrupt_exist_connections",
     _("Interrupt Existing Connections on Switch"),

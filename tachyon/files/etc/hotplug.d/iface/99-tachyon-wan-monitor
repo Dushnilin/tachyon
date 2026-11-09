@@ -2,7 +2,7 @@
 # Hotplug handler for WAN retry on boot and interface state monitoring
 
 case "$INTERFACE" in
-    wan*|wwan*|lte*|modem*|pppoe*)
+    wan*|wwan*|secondwan*|tethering*|lte*|modem*|pppoe*|usb*)
         mkdir -p /var/run/tachyon 2>/dev/null
         case "$ACTION" in
             ifup)
@@ -10,10 +10,22 @@ case "$INTERFACE" in
                 date +%s > /var/run/tachyon/wan-event.timestamp 2>/dev/null
                 /etc/init.d/tachyon retry_start_on_wan_up >/dev/null 2>&1 &
                 [ -f /usr/lib/tachyon/providers/fptn/runtime.uc ] && ucode -L /usr/lib/tachyon /usr/lib/tachyon/providers/fptn/runtime.uc ensure-routing >/dev/null 2>&1 &
+                (
+                    sleep 1
+                    for p in $(pidof tachyon-core sing-box 2>/dev/null); do
+                        kill -HUP "$p" 2>/dev/null
+                    done
+                ) >/dev/null 2>&1 &
                 ;;
             ifdown)
                 echo "down" > "/var/run/tachyon/wan_transport_${INTERFACE}" 2>/dev/null
                 date +%s > /var/run/tachyon/wan-event.timestamp 2>/dev/null
+                (
+                    sleep 1
+                    for p in $(pidof tachyon-core sing-box 2>/dev/null); do
+                        kill -HUP "$p" 2>/dev/null
+                    done
+                ) >/dev/null 2>&1 &
                 ;;
         esac
         ;;
@@ -35,10 +47,7 @@ esac
 # 1. Check if interface monitoring is enabled in settings
 [ "$(uci -q get tachyon.settings.enable_badwan_interface_monitoring)" = "1" ] || exit 0
 
-# 2. Check if Telegram bot is enabled
-[ "$(uci -q get tachyon.telegram.enabled)" = "1" ] || exit 0
-
-# 3. Check if current interface is in badwan_monitored_interfaces (defaults to wan)
+# 2. Check if current interface is in badwan_monitored_interfaces (defaults to wan)
 MONITORED="$(uci -q get tachyon.settings.badwan_monitored_interfaces)"
 [ -n "$MONITORED" ] || MONITORED="wan"
 
@@ -50,6 +59,21 @@ for iface in $MONITORED; do
     fi
 done
 [ "$MATCHED" -eq 1 ] || exit 0
+
+case "$INTERFACE" in
+    wan*|wwan*|secondwan*|tethering*|lte*|modem*|pppoe*|usb*) ;;
+    *)
+        (
+            sleep 1
+            for p in $(pidof tachyon-core sing-box 2>/dev/null); do
+                kill -HUP "$p" 2>/dev/null
+            done
+        ) >/dev/null 2>&1 &
+        ;;
+esac
+
+# 3. Check if Telegram bot is enabled
+[ "$(uci -q get tachyon.telegram.enabled)" = "1" ] || exit 0
 
 # 4. Handle debounce, state tracking, and notifications in background to avoid blocking hotplug queue
 (

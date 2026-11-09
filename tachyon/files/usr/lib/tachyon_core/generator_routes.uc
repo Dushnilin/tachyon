@@ -4239,6 +4239,75 @@ function add_protocol_matchers(rule, section) {
         rule.protocol = single_or_array(l7_protos);
 }
 
+function parse_interface_address_map(entries) {
+    let out = {};
+    let has_any = false;
+    for (let raw in array_or_empty(entries)) {
+        for (let token in split(as_string(raw || ""), /[\r\n,;]+/)) {
+            let item = trim(as_string(token || ""));
+            if (item == "" || substr(item, 0, 1) == "#")
+                continue;
+            let sep = index(item, "=");
+            if (sep <= 0)
+                sep = index(item, ":");
+            if (sep <= 0)
+                continue;
+            let key = trim(substr(item, 0, sep));
+            let val_raw = trim(substr(item, sep + 1));
+            if (key == "" || val_raw == "")
+                continue;
+            let cidrs = core_ip.normalize_to_cidrs([ val_raw ]);
+            if (length(cidrs) == 0)
+                continue;
+            if (out[key] == null)
+                out[key] = [];
+            for (let c in cidrs) {
+                if (!array_contains(out[key], c)) {
+                    push(out[key], c);
+                    has_any = true;
+                }
+            }
+        }
+    }
+    return has_any ? out : null;
+}
+
+function add_interface_address_matchers(rule, section) {
+    let added = false;
+    let def_raw = section_leaf_list_option(section, "default_interface_address");
+    if (length(def_raw) > 0) {
+        let def_cidrs = core_ip.normalize_to_cidrs(def_raw);
+        if (length(def_cidrs) > 0) {
+            rule.default_interface_address = single_or_array(def_cidrs);
+            added = true;
+        }
+    }
+    let if_map = parse_interface_address_map(section_leaf_list_option(section, "interface_address"));
+    if (if_map != null) {
+        rule.interface_address = if_map;
+        added = true;
+    }
+    let net_if_map = parse_interface_address_map(section_leaf_list_option(section, "network_interface_address"));
+    if (net_if_map != null) {
+        rule.network_interface_address = net_if_map;
+        added = true;
+    }
+    let pref_raw = section_leaf_list_option(section, "preferred_by");
+    if (length(pref_raw) > 0) {
+        let prefs = [];
+        for (let p in pref_raw) {
+            let clean = trim(as_string(p || ""));
+            if (clean != "" && !array_contains(prefs, clean))
+                push(prefs, clean);
+        }
+        if (length(prefs) > 0) {
+            rule.preferred_by = single_or_array(prefs);
+            added = true;
+        }
+    }
+    return added;
+}
+
 
 function load_community_subnet_cidrs(community, filter_mode) {
     let service = as_string(community);
@@ -4314,6 +4383,7 @@ function build_inverted_subrules(config, section_name, inverted_conditions) {
             sub.source_ip_cidr = single_or_array(nsrc);
         add_port_matchers(sub, neg);
         add_protocol_matchers(sub, neg);
+        add_interface_address_matchers(sub, neg);
         let nrs = [];
         for (let comm in list_option(neg, "community_lists")) {
             let ens = ensure_community_ruleset(config, section_name, as_string(comm));
@@ -4484,6 +4554,7 @@ function add_combined_route_for_clause(config, section) {
         add_port_matchers(r, section);
         add_dscp_matchers(r, section);
         add_protocol_matchers(r, section);
+        add_interface_address_matchers(r, section);
         return r;
     };
 
@@ -4570,6 +4641,10 @@ function add_combined_route_for_clause(config, section) {
             let has_any_matcher = fallback_rule.source_ip_cidr != null ||
                 fallback_rule.port != null || fallback_rule.port_range != null ||
                 fallback_rule.protocol != null || fallback_rule.network != null ||
+                fallback_rule.default_interface_address != null ||
+                fallback_rule.interface_address != null ||
+                fallback_rule.network_interface_address != null ||
+                fallback_rule.preferred_by != null ||
                 (fallback_rule.__inv_subrules != null && length(fallback_rule.__inv_subrules) > 0);
             if (has_any_matcher)
                 push_section_route_rule(config, fallback_rule, target.outbound, excluded_cidrs);
@@ -5376,6 +5451,8 @@ return {
     add_dns_server_for_section,
     add_dns_action_rules_for_section,
     add_port_matchers,
+    parse_interface_address_map,
+    add_interface_address_matchers,
     add_fully_routed_ips_rule,
     add_excluded_ips_rule,
     add_combined_route_for_section,

@@ -3204,6 +3204,15 @@ function worker() {
             last_upnp_leases_sig = sig;
     }
 
+    function check_wan_failover() {
+        let cfg = (current_ctx && current_ctx.settings) ? current_ctx.settings : settings();
+        if (as_string(cfg.wan_failover_enabled || "0") != "1" && fs.stat("/var/run/tachyon/wan_failover_state.json") == null)
+            return;
+        let wf = require("service.wan_failover");
+        if (wf && type(wf.check) == "function")
+            wf.check();
+    }
+
     function perform_fast_checks() {
         safe_call(sync_upnp_dnat_sets_if_changed, "sync_upnp_dnat_sets_if_changed");
         controller.probe_fast(current_ctx);
@@ -3211,6 +3220,7 @@ function worker() {
         // watch before the deadline is tested against it.
         safe_call(settle_firewall_recoveries, "settle_firewall_recoveries");
         safe_call(settle_expired_recoveries, "settle_expired_recoveries");
+        safe_call(check_wan_failover, "check_wan_failover");
     }
 
     function check_known_good_observation() {

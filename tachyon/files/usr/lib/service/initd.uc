@@ -863,7 +863,7 @@ function trigger_plan(settings) {
 
     print("delay\t", delay, "\n");
     print("config\tconfig.change\t", CONFIG_NAME, "\t", SERVICE_INIT, "\treload\t", CONFIG_CHANGE_REASON, "\n");
-    let retry_ifaces = [ "wan", "wwan", "lte", "modem", "lan" ];
+    let retry_ifaces = [ "wan", "wan2", "secondwan", "wwan", "tethering", "lte", "modem", "lan" ];
     for (let iface in retry_ifaces)
         print("interface\tinterface.*.up\t", iface, "\t", SERVICE_INIT, "\tretry_start_on_wan_up\t\n");
 

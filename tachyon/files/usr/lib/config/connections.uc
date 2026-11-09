@@ -3200,7 +3200,11 @@ function merge_condition_into_section_object(base_section, positive_conds, negat
         "dscp",
         "geoip_country",
         "source_inbounds",
-        "server_domain_rules"
+        "server_domain_rules",
+        "default_interface_address",
+        "interface_address",
+        "network_interface_address",
+        "preferred_by"
     ];
     let text_keys = [
         "domain",
@@ -3230,7 +3234,11 @@ function merge_condition_into_section_object(base_section, positive_conds, negat
         excluded_protocol: true,
         dscp: true,
         source_inbounds: true,
-        server_domain_rules: true
+        server_domain_rules: true,
+        default_interface_address: true,
+        interface_address: true,
+        network_interface_address: true,
+        preferred_by: true
     };
     let section_filter_text_keys = {
         source_ip_cidr_text: true,
@@ -3791,6 +3799,12 @@ function single_object_has_routing_matchers(section) {
         return true;
 
     if (length(whitespace_list_value(section, "geoip_country")) > 0)
+        return true;
+
+    if (length(list_option(section, "default_interface_address")) > 0 ||
+        length(list_option(section, "interface_address")) > 0 ||
+        length(list_option(section, "network_interface_address")) > 0 ||
+        length(list_option(section, "preferred_by")) > 0)
         return true;
 
     return false;

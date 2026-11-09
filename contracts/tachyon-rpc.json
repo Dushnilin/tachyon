@@ -4356,6 +4356,34 @@
       }
     },
     {
+      "name": "wan_failover_check",
+      "cli_command": "wan_failover_check",
+      "category": "system",
+      "acl": "write",
+      "description": "check (service/wan_failover.uc)",
+      "async": false,
+      "timeout_ms": 60000,
+      "params": [],
+      "returns": {
+        "type": "object",
+        "description": "command output"
+      }
+    },
+    {
+      "name": "wan_failover_status",
+      "cli_command": "wan_failover_status",
+      "category": "system",
+      "acl": "write",
+      "description": "status (service/wan_failover.uc)",
+      "async": false,
+      "timeout_ms": 60000,
+      "params": [],
+      "returns": {
+        "type": "object",
+        "description": "command output"
+      }
+    },
+    {
       "name": "watchdog",
       "cli_command": "watchdog",
       "category": "system",

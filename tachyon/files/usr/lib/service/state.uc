@@ -2213,6 +2213,11 @@ function append_sing_box_rule_signature_body(body, section, sections) {
     let user_doms_txt = section_leaf_option_text(section, "user_domains_text");
     if (user_doms != "" || user_doms_txt != "")
         body = signature_add_value(body, prefix + ".user_domains", user_doms + "|" + user_doms_txt);
+    for (let if_key in [ "default_interface_address", "interface_address", "network_interface_address", "preferred_by" ]) {
+        let if_val = section_leaf_option_text(section, if_key);
+        if (if_val != "")
+            body = signature_add_value(body, prefix + "." + if_key, if_val);
+    }
     if (length(connections.section_condition_refs(section)) > 0 || option(section, "condition_expression", "") != "")
         body = signature_add_value(body, prefix + ".condition_clauses", sprintf("%J", connections.section_effective_clauses(section)));
     if (length(connections.section_outbound_source_refs(section)) > 0 ||
@@ -2442,6 +2447,10 @@ function sing_box_signature_body(settings, sections, servers, mwan3_active, sche
     body = signature_add_value(body, "settings.log_level", option(settings, "log_level", "warn"));
     body = signature_add_value(body, "settings.service_listen_address", option(settings, "service_listen_address", ""));
     body = signature_add_value(body, "runtime.mwan3_active", bool_value(mwan3_active));
+    if (bool_option_value(settings, "enable_badwan_interface_monitoring", false) == "1")
+        body = signature_add_value(body, "settings.enable_badwan_interface_monitoring", "1");
+    if (bool_option_value(settings, "wan_failover_enabled", false) == "1")
+        body = signature_add_value(body, "settings.wan_failover_enabled", "1");
     body = signature_add_value(body, "settings.direct_bypass_enabled", bool_option_value(settings, "direct_bypass_enabled", false));
     body = signature_add_value(body, "settings.direct_bypass_port", option(settings, "direct_bypass_port", "2080"));
 
@@ -2757,16 +2766,58 @@ function mwan3_has_enabled_interface() {
     return false;
 }
 
-function mwan3_active() {
-    if (!command_success_from_args([ "test", "-x", "/etc/init.d/mwan3" ]))
+function kmwan_has_enabled_member() {
+    for (let section in uci_core.section_objects("kmwan", "member"))
+        if (option(section, "disabled", "0") != "1" && option(section, "enabled", "1") != "0")
+            return true;
+
+    return false;
+}
+
+function kmwan_active() {
+    if (!command_success_from_args([ "test", "-s", "/etc/config/kmwan" ]))
         return false;
-    if (!command_success_from_args([ "test", "-s", "/etc/config/mwan3" ]))
+    if (!command_success_from_args([ "test", "-x", "/etc/init.d/kmwan" ]) &&
+        !command_success_from_args([ "test", "-s", "/proc/gl-kmwan/config" ]))
         return false;
-    if (!mwan3_has_enabled_interface())
+    if (!kmwan_has_enabled_member())
         return false;
 
-    return command_success_from_args([ "/etc/init.d/mwan3", "status" ]) ||
-        command_success_from_args([ "/etc/init.d/mwan3", "enabled" ]);
+    return command_success_from_args([ "test", "-s", "/proc/gl-kmwan/config" ]) ||
+        command_success_from_args([ "/etc/init.d/kmwan", "status" ]) ||
+        command_success_from_args([ "/etc/init.d/kmwan", "enabled" ]);
+}
+
+function multiwan_network_interfaces_active() {
+    let wan_count = 0;
+    for (let section in uci_core.section_objects("network", "interface")) {
+        let name = lc(trim(as_string(section[".name"] || "")));
+        if (name == "" || substr(name, -1) == "6")
+            continue;
+        if (match(name, /^(wan|wan[0-9]+|wanb|secondwan|wwan[0-9]*|lte[0-9]*|modem[0-9]*|tethering[0-9]*)$/) == null)
+            continue;
+        if (option(section, "proto", "") == "")
+            continue;
+        if (option(section, "disabled", "0") == "1" || option(section, "auto", "1") == "0")
+            continue;
+        wan_count++;
+        if (wan_count >= 2)
+            return true;
+    }
+    return false;
+}
+
+function mwan3_active() {
+    if (command_success_from_args([ "test", "-x", "/etc/init.d/mwan3" ]) &&
+        command_success_from_args([ "test", "-s", "/etc/config/mwan3" ]) &&
+        mwan3_has_enabled_interface()) {
+        if (command_success_from_args([ "/etc/init.d/mwan3", "status" ]) ||
+            command_success_from_args([ "/etc/init.d/mwan3", "enabled" ]))
+            return true;
+    }
+    if (kmwan_active())
+        return true;
+    return multiwan_network_interfaces_active();
 }
 
 function has_remote_sing_box_ruleset_sources_from_sections(sections) {
