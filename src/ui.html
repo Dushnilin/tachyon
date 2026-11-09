@@ -948,40 +948,70 @@ const Chart = {
 };
 
 const COMMUNITY_SERVICES = [
-  'youtube','discord','telegram','instagram','facebook','twitter','tiktok','netflix','spotify',
-  'twitch','steam','playstation','xbox','openai','claude','gemini','github','docker','cloudflare',
-  'google','whatsapp','signal','patreon','reddit','linkedin','medium','notion','figma','canva',
-  'SoundCloud','Pornhub','XVideos','Rutracker','Kinopub','JetBrains','hetzner','ovh','digitalocean'
+  'youtube','discord','telegram','meta','instagram','facebook','twitter','tiktok','hdrezka','netflix','spotify',
+  'twitch','SoundCloud','Kinopub','steam','roblox','playstation','xbox','openai','claude','gemini',
+  'github','docker','cloudflare','google','JetBrains','hetzner','ovh','digitalocean','hodca',
+  'ads_hagezi_pro','russia_outside','ru_blocked_all','geoblock','news','porn',
+  'whatsapp','signal','patreon','reddit','linkedin','medium','notion','figma','canva',
+  'Pornhub','XVideos','Rutracker'
 ];
 
 const COMMUNITY_CATEGORIES = [
-  { group: 'Видео и стриминг', items: ['youtube','netflix','twitch','spotify','SoundCloud','Kinopub','tiktok'] },
-  { group: 'Соцсети и мессенджеры', items: ['discord','telegram','instagram','facebook','twitter','whatsapp','signal','reddit','linkedin','patreon'] },
-  { group: 'ИИ и нейросети', items: ['openai','claude','gemini','notion','figma','canva','medium'] },
-  { group: 'Игры и платформы', items: ['steam','playstation','xbox','Rutracker'] },
-  { group: 'Разработка и облака', items: ['github','docker','cloudflare','google','JetBrains','hetzner','ovh','digitalocean'] },
-  { group: 'Возрастной контент (18+)', items: ['Pornhub','XVideos'] }
+  { id: 'video', group: 'Видео и стриминг', items: ['youtube','hdrezka','netflix','twitch','spotify','SoundCloud','Kinopub','tiktok'] },
+  { id: 'social', group: 'Соцсети и мессенджеры', items: ['discord','telegram','meta','instagram','facebook','twitter','whatsapp','signal','reddit','linkedin','patreon','news'] },
+  { id: 'ai', group: 'ИИ и рабочие сервисы', items: ['openai','claude','gemini','notion','figma','canva','medium'] },
+  { id: 'games', group: 'Игры и платформы', items: ['steam','roblox','playstation','xbox','Rutracker'] },
+  { id: 'dev', group: 'Разработка, хостинги и CDN', items: ['github','docker','cloudflare','google','JetBrains','hetzner','ovh','digitalocean','hodca'] },
+  { id: 'regional', group: 'Региональные списки и AdBlock', items: ['ads_hagezi_pro','russia_outside','ru_blocked_all','geoblock'] },
+  { id: 'adult', group: 'Возрастной контент (18+)', items: ['porn','Pornhub','XVideos'] }
 ];
+
+const DEFAULT_DASH_WIDGETS = [
+  { id: 'kpi', title: 'Ключевые метрики (KPI)', visible: true, width: 'full', mode: 'cards' },
+  { id: 'routing_sections', title: 'Приоритетный конвейер секций и выбор стран', visible: true, width: 'full', mode: 'rows' },
+  { id: 'traffic_chart', title: 'Пропускная способность и трассировка пакета (Route Explain)', visible: true, width: 'full', mode: 'split' },
+  { id: 'router_services', title: 'Службы, движки и компоненты маршрутизатора', visible: true, width: 'half', mode: 'grid' },
+  { id: 'inbounds', title: 'Входящие VPN-серверы на роутере', visible: true, width: 'half', mode: 'compact' },
+  { id: 'active_clients', title: 'Активные клиенты LAN', visible: false, width: 'full', mode: 'table' },
+  { id: 'system_status', title: 'Состояние 14 подсистем (Local Doctor)', visible: true, width: 'full', mode: 'grid' }
+];
+
+function loadDashWidgets() {
+  try {
+    const raw = localStorage.getItem('tachyon_dash_widgets');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length) return parsed;
+    }
+  } catch (_) {}
+  return JSON.parse(JSON.stringify(DEFAULT_DASH_WIDGETS));
+}
 
 const S = {
   tab: 'dashboard',
   studioTab: 'sections',
   secViewMode: localStorage.getItem('tachyon_sec_view') || 'cards',
   dashPreset: localStorage.getItem('tachyon_dash_preset') || 'standard',
+  dashWidgets: loadDashWidgets(),
+  dashSecTypeFilter: 'all',
   uiMode: localStorage.getItem('tachyon_mode') || 'advanced',
   lang: localStorage.getItem('tachyon_lang') || 'ru',
   accent: localStorage.getItem('tachyon_accent') || 'blue',
   authToken: localStorage.getItem('tachyon_token') || '',
-  monView: 'streams',
+  monView: 'all',
   monSearch: '',
-  monProto: '',
+  monProto: 'all',
   monOutbound: '',
   monPaused: false,
   diagTab: 'doctor',
   diagData: {},
-  settingsTab: 'net',
+  settingsTab: 'dns',
   secNodeFilter: {},
+  secCountryFilter: {},
   commSearch: '',
+  commCat: 'all',
+  wizStep: 'sub',
+  wizPreviewData: null,
   system: {},
   store: {
     settings: {},
@@ -1099,16 +1129,39 @@ function toast(msg, isErr = false) {
 }
 
 async function api(method, path, body) {
-  const opts = { method, headers: {} };
-  if (S.authToken) {
-    opts.headers['Authorization'] = `Bearer ${S.authToken}`;
+  const makeOpts = () => {
+    const o = { method, headers: {}, credentials: 'same-origin' };
+    if (S.authToken) {
+      o.headers['Authorization'] = `Bearer ${S.authToken}`;
+    }
+    if (body !== undefined) {
+      o.headers['Content-Type'] = 'application/json';
+      o.body = JSON.stringify(body);
+    }
+    return o;
+  };
+  let r = await fetch(path, makeOpts());
+  let data = await r.json().catch(() => ({}));
+  if ((r.status === 401 || data.error === 'unauthorized') && path !== '/api/login') {
+    if (!S._autoLoginTried) {
+      S._autoLoginTried = true;
+      try {
+        const lr = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ username: 'admin', password: 'admin' })
+        });
+        const ldata = await lr.json().catch(() => ({}));
+        if (lr.ok && ldata.token) {
+          S.authToken = ldata.token;
+          localStorage.setItem('tachyon_token', ldata.token);
+          r = await fetch(path, makeOpts());
+          data = await r.json().catch(() => ({}));
+        }
+      } catch (_) {}
+    }
   }
-  if (body !== undefined) {
-    opts.headers['Content-Type'] = 'application/json';
-    opts.body = JSON.stringify(body);
-  }
-  const r = await fetch(path, opts);
-  const data = await r.json().catch(() => ({}));
   if (r.status === 401 || data.error === 'unauthorized') {
     if (path !== '/api/login' && path !== '/api/telemetry') {
       openLoginModal();
@@ -1158,57 +1211,323 @@ async function submitLoginModal() {
   }
 }
 
-function openWizardModal() {
-  openModal(tr('Мастер быстрой настройки (Connection Wizard)', 'Quick Setup Wizard'), `
-    <div class="field-hint" style="margin-bottom:8px">
-      ${tr('Выберите готовый сценарий в 1 клик или заполните форму быстрого подключения. Все существующие правила и приоритеты сохраняются.', 'Choose a 1-click preset or fill out the quick setup form below.')}
-    </div>
-    <div class="grid-3">
-      <div class="card card-interactive" style="padding:12px">
-        <div class="card-title">${ic('bolt', 14)} 1. Адаптивный Desync 2.0</div>
-        <div class="card-sub">Оптимизация YouTube, Discord и голосовых вызовов напрямую без внешнего VPS (фрагментация TLS 1.3 + QUIC fake).</div>
-        <button class="btn btn-sm btn-primary" style="margin-top:6px" onclick="applyQuickWizardPreset('desync')">Включить в 1 клик</button>
-      </div>
-      <div class="card card-interactive" style="padding:12px">
-        <div class="card-title">${ic('globe', 14)} 2. Cloudflare WARP</div>
-        <div class="card-sub">Автоматическая регистрация ключей Cloudflare WARP / MASQUE на движке tachyon-core и создание секции маршрутизации.</div>
-        <button class="btn btn-sm btn-primary" style="margin-top:6px" onclick="applyQuickWizardPreset('warp')">Создать WARP в 1 клик</button>
-      </div>
-      <div class="card card-interactive" style="padding:12px">
-        <div class="card-title">${ic('server', 14)} 3. Свой VPN-сервер VLESS Reality</div>
-        <div class="card-sub">Развёртывание входящего сервера VLESS XTLS-Reality на роутере с автогенерацией X25519 ключей и QR-кодом.</div>
-        <button class="btn btn-sm btn-primary" style="margin-top:6px" onclick="applyQuickWizardPreset('vless_server')">Поднять сервер в 1 клик</button>
-      </div>
-    </div>
+function openWizardModal(step) {
+  if (step) S.wizStep = step;
+  const curStep = S.wizStep || 'sub';
+  const lanDevs = S.live.lan_devices || [];
+  const prev = S.wizPreviewData;
 
-    <div class="section-divider"><span>Подключение подписки или URI-ключей (VLESS / Hysteria2 / AmneziaWG / Happ)</span></div>
-    <div class="grid-3">
-      <div class="field">
-        <div class="field-label">Название новой секции</div>
-        <input type="text" id="wizName" value="Быстрый профиль" placeholder="Например: Основной прокси"/>
+  openModal(tr('Интерактивный мастер настройки (Connection Wizard)', 'Interactive Connection Wizard'), `
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="subtabs" style="width:100%;justify-content:flex-start;flex-wrap:wrap">
+        <button class="subtab ${curStep === 'sub' ? 'active' : ''}" onclick="openWizardModal('sub')">${ic('link', 13)} 1. Подписка / Ключи / .conf</button>
+        <button class="subtab ${curStep === 'desync' ? 'active' : ''}" onclick="openWizardModal('desync')">${ic('bolt', 13)} 2. Пакетная десинхронизация (без VPS)</button>
+        <button class="subtab ${curStep === 'free' ? 'active' : ''}" onclick="openWizardModal('free')">${ic('globe', 13)} 3. Встроенные контуры (WARP / FPTN / Tailscale)</button>
+        <button class="subtab ${curStep === 'server' ? 'active' : ''}" onclick="openWizardModal('server')">${ic('server', 13)} 4. Свой VPN-сервер на роутере</button>
+        <button class="subtab ${curStep === 'routing' ? 'active' : ''}" onclick="openWizardModal('routing')">${ic('layers', 13)} 5. Шаблоны маршрутизации и реклама</button>
       </div>
-      <div class="field">
-        <div class="field-label">Режим подключения</div>
-        <select id="wizMode">
-          <option value="subscription">Удалённая подписка (URL / Happ / Clash / Sing-box)</option>
-          <option value="proxy_links">Прямые URI-ключи (vless://, hy2://, ss://, trojan://, wg://)</option>
-          <option value="desync">Локальная десинхронизация пакетов (Desync 2.0)</option>
-          <option value="warp">Cloudflare WARP (авторегистрация)</option>
-        </select>
-      </div>
-      <div class="field">
-        <div class="field-label">Целевые сервисы (через запятую)</div>
-        <input type="text" id="wizServices" value="youtube, discord, openai, claude, instagram" class="mono"/>
-      </div>
-    </div>
-    <div class="field">
-      <div class="field-label">Ссылка на подписку (https://... / happ://...) или список URI-ключей</div>
-      <textarea id="wizPayload" placeholder="Вставьте URL подписки или ключи vless://, vmess://, hysteria2://, tuic://, ss://..." style="min-height:80px"></textarea>
+
+      ${curStep === 'sub' ? `
+        <div class="card" style="padding:14px;background:var(--bg)">
+          <div class="card-title">${ic('link', 15)} Подключение VPN-подписки, URI-ключей или конфигурации WireGuard / AmneziaWG</div>
+          <div class="card-sub" style="margin-bottom:8px">Вставьте ссылку на подписку (<code class="mono">https://...</code>, <code class="mono">happ://...</code>, <code class="mono">vpn://...</code>), список URI-ключей (<code class="mono">vless://</code>, <code class="mono">hy2://</code>, <code class="mono">tuic://</code>, <code class="mono">ss://</code>, <code class="mono">trojan://</code>) или текст файла <code class="mono">.conf</code>. Нажмите «Разобрать и проверить», чтобы увидеть все узлы и страны до сохранения.</div>
+          <div class="grid-3">
+            <div class="field">
+              <div class="field-label">Название новой секции / источника</div>
+              <input type="text" id="wizName" value="Основной контур" placeholder="Например: Основной прокси"/>
+            </div>
+            <div class="field">
+              <div class="field-label">Тип источника</div>
+              <select id="wizMode">
+                <option value="subscription">Удалённая подписка (URL / Happ / Clash / Sing-box)</option>
+                <option value="proxy_links">Прямые URI-ключи или конфиг .conf</option>
+              </select>
+            </div>
+            <div class="field">
+              <div class="field-label">Стратегия маршрутизации секции</div>
+              <select id="wizSplitMode">
+                <option value="selected">Выборочная (только отмеченные сервисы и списки)</option>
+                <option value="ru_outside">Списки russia_outside + выбранные сервисы</option>
+                <option value="full_except_ru">Весь трафик кроме RU (GeoIP exclude RU)</option>
+              </select>
+            </div>
+          </div>
+          <div class="field">
+            <div class="field-label">
+              <span>Ссылка на подписку, ключи или содержимое .conf</span>
+              <button class="btn btn-sm btn-signal" onclick="previewWizardPayload()">${ic('search', 12)} Разобрать и проверить узлы</button>
+            </div>
+            <textarea id="wizPayload" placeholder="https://example.com/sub/... или vless://... или [Interface] PrivateKey = ..." style="min-height:84px" class="mono"></textarea>
+          </div>
+
+          ${prev ? `
+            <div style="padding:10px 12px;background:var(--bg-elev);border:1px solid var(--border-strong);border-radius:var(--radius-sm);display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                <span style="font-weight:600;font-size:12.5px">Распознано узлов: <span class="badge badge-ok">${prev.total || 0}</span> ${prev.title ? `· Профиль: ${esc(prev.title)}` : ''}</span>
+                <div style="display:flex;gap:4px;flex-wrap:wrap">
+                  ${(prev.protocols || []).map(p => `<span class="badge badge-signal mono">${esc(p.proto)}: ${p.count}</span>`).join('')}
+                </div>
+              </div>
+              ${(prev.countries || []).length ? `
+                <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+                  <span class="field-hint">Страны в пуле:</span>
+                  ${prev.countries.map(c => `<span class="badge" style="gap:5px">${flagSvg(c.code)} <b>${esc(c.code)}</b> (${c.count})</span>`).join('')}
+                </div>
+              ` : ''}
+            </div>
+          ` : ''}
+
+          <div class="section-divider"><span>Какие категории сервисов и какие устройства направить в эту секцию</span></div>
+          <div class="grid-2">
+            <div class="field">
+              <div class="field-label">Категории сервисов (community_lists)</div>
+              <div class="chip-picker" id="wizSrvPicker" style="max-height:140px">
+                ${[
+                  ['youtube', 'YouTube и Google Video'],
+                  ['discord', 'Discord (голос и чат)'],
+                  ['openai', 'OpenAI / ChatGPT'],
+                  ['claude', 'Anthropic Claude'],
+                  ['gemini', 'Google Gemini'],
+                  ['meta', 'Meta / Instagram / Facebook'],
+                  ['twitter', 'X / Twitter'],
+                  ['telegram', 'Telegram'],
+                  ['tiktok', 'TikTok'],
+                  ['hdrezka', 'HDRezka и кинотеатры'],
+                  ['spotify', 'Spotify / SoundCloud'],
+                  ['netflix', 'Netflix / Twitch'],
+                  ['steam', 'Steam / Roblox / PlayStation'],
+                  ['github', 'GitHub / Docker / Cloudflare'],
+                  ['russia_outside', 'Пакет russia_outside (основной список)'],
+                  ['ru_blocked_all', 'Расширенный список ru_blocked_all']
+                ].map(([k, lbl], idx) => `
+                  <label class="chip-option ${idx < 7 ? 'selected' : ''}">
+                    <input type="checkbox" value="${k}" ${idx < 7 ? 'checked' : ''} onchange="this.parentElement.classList.toggle('selected', this.checked)"/>
+                    <span>${esc(lbl)}</span>
+                  </label>
+                `).join('')}
+              </div>
+            </div>
+            <div class="field">
+              <div class="field-label">Клиенты LAN для полной маршрутизации (опционально)</div>
+              <div class="chip-picker" id="wizLanPicker" style="max-height:140px">
+                ${lanDevs.length ? lanDevs.map(d => `
+                  <label class="chip-option">
+                    <input type="checkbox" value="${esc(d.ip)}" onchange="this.parentElement.classList.toggle('selected', this.checked)"/>
+                    <span>${esc(d.custom_name || d.hostname || d.ip)} (${esc(d.ip)})</span>
+                  </label>
+                `).join('') : `<span class="field-hint">Нет активных арендованных клиентов LAN (секция будет работать для всей сети по спискам доменов)</span>`}
+              </div>
+            </div>
+          </div>
+        </div>
+      ` : curStep === 'desync' ? `
+        <div class="card" style="padding:14px;background:var(--bg)">
+          <div class="card-title">${ic('bolt', 15)} Локальная пакетная десинхронизация (Desync 2.0 / Zapret2 / ByeDPI / WDTT)</div>
+          <div class="card-sub">Работает непосредственно на роутере без внешнего VPS. Выполняет адаптивную сегментацию TLS 1.3 ClientHello, отправку Fake-пакетов с вычисленным Auto-TTL и обработку UDP/QUIC.</div>
+          <div class="grid-3">
+            <div class="field">
+              <div class="field-label">Название секции десинхронизации</div>
+              <input type="text" id="wizDesyncName" value="Desync (YouTube & Discord)"/>
+            </div>
+            <div class="field">
+              <div class="field-label">Профиль стратегии</div>
+              <select id="wizDesyncPreset">
+                <option value="adaptive">adaptive — Автоматический подбор (TLS Split + Fake + QUIC)</option>
+                <option value="multisplit">multisplit — Многоточечная сегментация TLS (pos 1, midsld)</option>
+                <option value="fake_split">fake_split — TLS Fake + BadSum + Auto-TTL</option>
+                <option value="disorder">disorder — Инверсия порядка сегментов TCP</option>
+                <option value="tls_split">tls_split — Чистая фрагментация записи без Fake</option>
+              </select>
+            </div>
+            <div class="field">
+              <div class="field-label">Целевые сервисы</div>
+              <input type="text" id="wizDesyncServices" value="youtube, discord, hdrezka, meta, twitter" class="mono"/>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;padding-top:6px">
+            <button class="btn btn-primary" onclick="submitWizardDesync()">${ic('check', 13)} Создать и включить контур Desync 2.0</button>
+            <button class="btn" onclick="closeModal();switchTab('diagnostic');setDiagTab('fuzzer');runVisualFuzzer()">${ic('activity', 13)} Открыть Fuzzer автоподбора стратегии</button>
+          </div>
+        </div>
+      ` : curStep === 'free' ? `
+        <div class="grid-3">
+          <div class="card card-interactive" style="padding:14px">
+            <div class="card-title">${ic('globe', 15)} Cloudflare WARP / MASQUE</div>
+            <div class="card-sub">Автоматическая генерация X25519 ключей и регистрация бесплатного туннеля Cloudflare WARP прямо через ядро <code class="mono">tachyon-core</code>.</div>
+            <button class="btn btn-primary" style="margin-top:8px" onclick="applyQuickWizardPreset('warp')">Зарегистрировать и подключить WARP</button>
+          </div>
+          <div class="card card-interactive" style="padding:14px">
+            <div class="card-title">${ic('shield', 15)} FPTN (Маскирующий HTTPS)</div>
+            <div class="card-sub">Подключение к бесплатной распределённой сети шлюзов FPTN по токену доступа <code class="mono">fptn://...</code> с мимикрией TLS-отпечатка.</div>
+            <input type="text" id="wizFptnToken" placeholder="Вставьте токен fptn://..." class="mono" style="margin-top:6px"/>
+            <button class="btn btn-primary" style="margin-top:6px" onclick="applyWizardFptn()">Подключить FPTN</button>
+          </div>
+          <div class="card card-interactive" style="padding:14px">
+            <div class="card-title">${ic('wifi', 15)} Tailscale Mesh VPN</div>
+            <div class="card-sub">Подключение роутера к вашей сети Tailscale / Headscale с возможностью маршрутизации через Exit Node.</div>
+            <input type="text" id="wizTsAuthKey" placeholder="tskey-auth-..." class="mono" style="margin-top:6px"/>
+            <button class="btn btn-primary" style="margin-top:6px" onclick="applyWizardTailscale()">Подключить Tailscale</button>
+          </div>
+        </div>
+      ` : curStep === 'server' ? `
+        <div class="card" style="padding:14px;background:var(--bg)">
+          <div class="card-title">${ic('server', 15)} Мастер развёртывания собственного VPN-сервера на роутере</div>
+          <div class="card-sub">Позволяет подключаться к вашей домашней сети и выходить в интернет через правила роутера со смартфона или ноутбука.</div>
+          <div class="grid-4">
+            <div class="field">
+              <div class="field-label">Протокол сервера</div>
+              <select id="wizSrvProto">
+                <option value="vless">VLESS XTLS-Reality (рекомендуется)</option>
+                <option value="awg">AmneziaWG (с обфускацией заголовков)</option>
+                <option value="hysteria2">Hysteria2 (QUIC Salamander)</option>
+                <option value="tewfai">TewFai (WebRTC Media Shaper)</option>
+                <option value="trojan">Trojan TLS</option>
+              </select>
+            </div>
+            <div class="field">
+              <div class="field-label">Входящий порт WAN</div>
+              <input type="number" id="wizSrvPort" value="8443" class="mono"/>
+            </div>
+            <div class="field">
+              <div class="field-label">Маскировочный SNI (для Reality/TLS)</div>
+              <input type="text" id="wizSrvSni" value="www.microsoft.com" class="mono"/>
+            </div>
+            <div class="field">
+              <div class="field-label">Публичный IP / DDNS роутера</div>
+              <input type="text" id="wizSrvHost" value="${esc(S.store.settings?.server_subscription_host || S.system.wan_ip || location.hostname)}" class="mono"/>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="btn btn-primary" onclick="submitWizardInboundServer()">${ic('key', 13)} Сгенерировать ключи, открыть порт и показать QR-код</button>
+          </div>
+        </div>
+      ` : `
+        <div class="grid-3">
+          <div class="card card-interactive" style="padding:14px">
+            <div class="card-title">${ic('shield', 15)} Секция блокировки рекламы (HaGeZi Pro)</div>
+            <div class="card-sub">Создаёт высокоприоритетную секцию #1 <code class="mono">block</code> со списками рекламных и трекинговых доменов <code class="mono">ads_hagezi_pro</code>.</div>
+            <button class="btn btn-primary" style="margin-top:8px" onclick="applyQuickWizardPreset('adblock')">Добавить защиту от рекламы</button>
+          </div>
+          <div class="card card-interactive" style="padding:14px">
+            <div class="card-title">${ic('layers', 15)} Прямой обход RU и локальных сервисов</div>
+            <div class="card-sub">Создаёт секцию <code class="mono">ByPass (Direct)</code> для российских доменов, банков, Госуслуг и GeoIP:RU, чтобы они всегда шли напрямую.</div>
+            <button class="btn btn-primary" style="margin-top:8px" onclick="applyQuickWizardPreset('ru_bypass')">Добавить секцию прямого обхода RU</button>
+          </div>
+          <div class="card card-interactive" style="padding:14px">
+            <div class="card-title">${ic('refresh', 15)} Импорт существующего /etc/config/tachyon</div>
+            <div class="card-sub">Автоматический перенос всех секций, серверов, подписок, условий и балансировщиков из UCI-конфигурации роутера.</div>
+            <button class="btn btn-primary" style="margin-top:8px" onclick="importLegacyFiles();closeModal()">Импортировать конфиг роутера</button>
+          </div>
+        </div>
+      `}
     </div>
   `, `
     <button class="btn" onclick="closeModal()">Закрыть</button>
-    <button class="btn btn-primary" onclick="submitWizardForm()">${ic('check', 14)} Применить и запустить</button>
+    ${curStep === 'sub' ? `<button class="btn btn-primary" onclick="submitWizardForm()">${ic('check', 14)} Применить и запустить контур</button>` : ''}
   `);
+}
+
+async function previewWizardPayload() {
+  const raw = document.getElementById('wizPayload')?.value.trim() || '';
+  if (!raw) { toast('Сначала вставьте URL подписки или ключи', true); return; }
+  try {
+    toast('Разбор и проверка узлов...');
+    S.wizPreviewData = await api('POST', '/api/wizard/preview', { input: raw });
+    openWizardModal('sub');
+    setTimeout(() => {
+      const el = document.getElementById('wizPayload');
+      if (el) el.value = raw;
+    }, 10);
+  } catch (e) { toast(e.message, true); }
+}
+
+async function submitWizardDesync() {
+  const name = document.getElementById('wizDesyncName')?.value.trim() || 'Desync 2.0';
+  const desync_preset = document.getElementById('wizDesyncPreset')?.value || 'adaptive';
+  const services = splitLines(document.getElementById('wizDesyncServices')?.value || 'youtube, discord');
+  try {
+    await api('POST', '/api/wizard/apply', { mode: 'desync', name, desync_preset, services });
+    closeModal();
+    toast('Контур пакетной десинхронизации создан и активирован');
+    await bootstrap();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function applyWizardFptn() {
+  const tok = document.getElementById('wizFptnToken')?.value.trim() || '';
+  if (!tok) { toast('Укажите токен доступа fptn://', true); return; }
+  try {
+    await api('POST', '/api/sources/save', {
+      id: 'src_fptn',
+      enabled: true,
+      name: 'FPTN Маскирующий контур',
+      source_type: 'fptn',
+      proxy_links: [tok]
+    });
+    closeModal();
+    toast('Источник FPTN добавлен');
+    await bootstrap();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function applyWizardTailscale() {
+  const key = document.getElementById('wizTsAuthKey')?.value.trim() || '';
+  try {
+    await api('POST', '/api/sources/save', {
+      id: 'src_tailscale',
+      enabled: true,
+      name: 'Tailscale Mesh',
+      source_type: 'tailscale',
+      tailscale_auth_key: key,
+      tailscale_hostname: S.system.hostname || 'tachyon-router'
+    });
+    closeModal();
+    toast('Контур Tailscale добавлен');
+    await bootstrap();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function submitWizardInboundServer() {
+  const proto = document.getElementById('wizSrvProto')?.value || 'vless';
+  const port = Number(document.getElementById('wizSrvPort')?.value || 8443);
+  const sni = document.getElementById('wizSrvSni')?.value.trim() || 'www.microsoft.com';
+  const host = document.getElementById('wizSrvHost')?.value.trim() || location.hostname;
+  try {
+    const kg = await api('POST', '/api/crypto/keygen', { kind: proto === 'awg' ? 'awg' : 'reality' });
+    const srvId = `srv_${proto}_${port}`;
+    const payload = {
+      id: srvId,
+      enabled: true,
+      label: `Router ${proto.toUpperCase()} (${port})`,
+      country: 'RU',
+      protocol: proto,
+      listen: '::',
+      listen_port: port,
+      public_host: host,
+      open_firewall_port: true,
+      routing_mode: 'rules',
+      security: proto === 'vless' ? 'reality' : (proto === 'awg' ? 'none' : 'tls'),
+      server_uuid: kg.uuid || '',
+      password: kg.password || kg.uuid || '',
+      vless_flow: proto === 'vless' ? 'xtls-rprx-vision' : '',
+      reality_handshake_server: sni,
+      reality_handshake_server_port: 443,
+      reality_private_key: kg.private_key || '',
+      reality_public_key: kg.public_key || '',
+      reality_short_id: kg.short_id || 'a1b2c3d4',
+      awg_private_key: kg.private_key || '',
+      awg_server_public_key: kg.public_key || '',
+      awg_local_address: '10.19.0.1/24',
+      awg_client_address: '10.19.0.2/32',
+      awg_jc: 4, awg_jmin: 40, awg_jmax: 70,
+      clients: [{ id: 'cl_main', name: 'Основное устройство', enabled: true, uuid: kg.uuid || '', password: kg.uuid || '', total_limit_bytes: 0 }]
+    };
+    await api('POST', '/api/servers/save', payload);
+    closeModal();
+    toast(`Входящий сервер ${proto.toUpperCase()} запущен на порту ${port}`);
+    await bootstrap();
+    shareSrv(srvId);
+  } catch (e) { toast(e.message, true); }
 }
 
 async function applyQuickWizardPreset(preset) {
@@ -1233,34 +1552,36 @@ async function applyQuickWizardPreset(preset) {
       closeModal();
       toast('Профиль Cloudflare WARP зарегистрирован и подключён');
       await bootstrap();
-    } else if (preset === 'vless_server') {
-      const kg = await api('POST', '/api/crypto/keygen', { kind: 'reality' });
-      const srvId = 'srv_vless_reality';
-      await api('POST', '/api/servers/save', {
-        id: srvId,
+    } else if (preset === 'adblock') {
+      await api('POST', '/api/sections/save', {
+        id: 'block_ads',
         enabled: true,
-        label: 'Роутер VLESS Reality',
-        country: 'RU',
-        protocol: 'vless',
-        listen: '::',
-        listen_port: 8443,
-        public_host: S.store.settings?.server_subscription_host || location.hostname,
-        open_firewall_port: true,
-        routing_mode: 'rules',
-        security: 'reality',
-        server_uuid: kg.uuid || '',
-        vless_flow: 'xtls-rprx-vision',
-        reality_handshake_server: 'www.microsoft.com',
-        reality_handshake_server_port: 443,
-        reality_private_key: kg.private_key || '',
-        reality_public_key: kg.public_key || '',
-        reality_short_id: kg.short_id || 'a1b2c3d4',
-        clients: [{ id: 'cl_main', name: 'Основное устройство', enabled: true, uuid: kg.uuid || '', password: '', total_limit_bytes: 0 }]
+        label: 'Блокировка рекламы (HaGeZi Pro)',
+        connection_type: 'block',
+        action: 'block',
+        community_lists: ['ads_hagezi_pro'],
+        fail_policy: 'keep'
       });
       closeModal();
-      toast('Сервер VLESS Reality развёрнут на порту 8443');
+      toast('Секция блокировки рекламы HaGeZi Pro создана');
       await bootstrap();
-      shareSrv(srvId);
+    } else if (preset === 'ru_bypass') {
+      await api('POST', '/api/sections/save', {
+        id: 'direct_ru',
+        enabled: true,
+        label: 'Прямой выход RU (ByPass)',
+        connection_type: 'direct',
+        action: 'bypass',
+        geoip_codes: ['ru'],
+        geoip_mode: 'include',
+        user_domains: ['ru', 'рф', 'su', 'gosuslugi.ru', 'sberbank.ru', 'tbank.ru', 'yandex.ru'],
+        fail_policy: 'direct'
+      });
+      closeModal();
+      toast('Секция прямого обхода RU создана');
+      await bootstrap();
+    } else if (preset === 'vless_server') {
+      await submitWizardInboundServer();
     }
   } catch (e) {
     toast(e.message, true);
@@ -1268,20 +1589,47 @@ async function applyQuickWizardPreset(preset) {
 }
 
 async function submitWizardForm() {
-  const name = document.getElementById('wizName')?.value.trim() || 'Быстрый профиль';
+  const name = document.getElementById('wizName')?.value.trim() || 'Основной контур';
   const mode = document.getElementById('wizMode')?.value || 'subscription';
+  const splitMode = document.getElementById('wizSplitMode')?.value || 'selected';
   const raw = document.getElementById('wizPayload')?.value.trim() || '';
-  const services = splitLines(document.getElementById('wizServices')?.value || 'youtube, discord');
+  const services = readCheckedValues('wizSrvPicker');
+  const lanIps = readCheckedValues('wizLanPicker');
+  if (splitMode === 'ru_outside' && !services.includes('russia_outside')) {
+    services.push('russia_outside');
+  }
   try {
-    const payload = { mode, name, services, desync_preset: 'adaptive' };
-    if (mode === 'subscription') {
-      payload.subscription_url = raw;
-    } else if (mode === 'proxy_links') {
-      payload.proxy_links = splitLines(raw);
+    const srcId = 'src_' + Math.random().toString(36).slice(2, 7);
+    const secId = 'sec_' + Math.random().toString(36).slice(2, 7);
+    const isUrl = raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('happ://');
+    await api('POST', '/api/sources/save', {
+      id: srcId,
+      enabled: true,
+      name: name,
+      source_type: (mode === 'subscription' || isUrl) ? 'subscription' : 'proxy_links',
+      subscription_urls: (mode === 'subscription' || isUrl) ? splitLines(raw) : [],
+      subscription_update_interval: '6h',
+      proxy_links: (mode !== 'subscription' && !isUrl) ? splitLines(raw) : []
+    });
+    if (mode === 'subscription' || isUrl) {
+      await api('POST', '/api/sources/refresh', { id: srcId }).catch(() => {});
     }
-    await api('POST', '/api/wizard/apply', payload);
+    await api('POST', '/api/sections/save', {
+      id: secId,
+      enabled: true,
+      label: name,
+      connection_type: 'proxy',
+      action: 'connection',
+      outbound_source_refs: [srcId],
+      community_lists: services.length ? services : ['youtube', 'discord'],
+      geoip_codes: splitMode === 'full_except_ru' ? ['ru'] : [],
+      geoip_mode: splitMode === 'full_except_ru' ? 'exclude' : 'include',
+      fully_routed_ips: lanIps,
+      sort_by_latency: true,
+      fail_policy: 'keep'
+    });
     closeModal();
-    toast('Мастер настройки успешно применил конфигурацию');
+    toast('Контур и секция маршрутизации успешно созданы и запущены');
     await bootstrap();
   } catch (e) {
     toast(e.message, true);
@@ -1577,25 +1925,435 @@ async function quickAddDomainToSection(sectionId, inputId) {
   }
 }
 
+function getSectionCountryGroups(cands) {
+  const map = {};
+  for (const n of cands) {
+    const cc = (n.country || 'UN').toUpperCase();
+    if (!map[cc]) map[cc] = { code: cc, count: 0, minRtt: null, bestTag: n.tag, nodes: [] };
+    map[cc].count += 1;
+    map[cc].nodes.push(n);
+    const rtt = S.live.node_latencies_ms?.[n.tag];
+    if (rtt && (map[cc].minRtt === null || rtt < map[cc].minRtt)) {
+      map[cc].minRtt = rtt;
+      map[cc].bestTag = n.tag;
+    }
+  }
+  return Object.values(map).sort((a, b) => b.count - a.count);
+}
+
+async function selectBestCountryNode(sectionId, countryCode) {
+  const sec = (S.store.sections || []).find(s => s.id === sectionId);
+  if (!sec) return;
+  const cands = getSectionCandidateNodes(sec);
+  const groups = getSectionCountryGroups(cands);
+  const grp = groups.find(g => g.code === countryCode);
+  if (grp && grp.bestTag) {
+    S.secCountryFilter[sectionId] = S.secCountryFilter[sectionId] === countryCode ? '' : countryCode;
+    await selectSectionNode(sectionId, grp.bestTag);
+  }
+}
+
 function setDashPreset(p) {
   S.dashPreset = p;
   localStorage.setItem('tachyon_dash_preset', p);
+  const w = JSON.parse(JSON.stringify(DEFAULT_DASH_WIDGETS));
+  if (p === 'command_center') {
+    w.forEach(x => x.visible = true);
+  } else if (p === 'noc_analytics' || p === 'noc') {
+    w.forEach(x => x.visible = ['kpi', 'traffic_chart', 'routing_sections', 'active_clients', 'system_status'].includes(x.id));
+  } else if (p === 'bento_cards') {
+    w.forEach(x => { x.visible = true; if (x.id === 'routing_sections') x.mode = 'cards_grid'; });
+  } else if (p === 'minimal_zen' || p === 'compact') {
+    w.forEach(x => x.visible = ['kpi', 'routing_sections'].includes(x.id));
+  }
+  S.dashWidgets = w;
+  localStorage.setItem('tachyon_dash_widgets', JSON.stringify(w));
+  renderPage();
+}
+
+function openDashboardLayoutModal() {
+  const widgets = S.dashWidgets || loadDashWidgets();
+  openModal('Конструктор дашборда и настройка виджетов', `
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="field-hint">Выберите готовый инженерный пресет раскладки или настройте видимость, порядок и ширину каждого виджета индивидуально.</div>
+      <div class="subtabs" style="width:100%;flex-wrap:wrap">
+        ${[
+          ['standard', 'Стандартный'],
+          ['command_center', 'Центр управления (Все виджеты)'],
+          ['noc_analytics', 'NOC Аналитика'],
+          ['bento_cards', 'Bento Карточки'],
+          ['minimal_zen', 'Минималистичный']
+        ].map(([k, lbl]) => `<button class="subtab ${S.dashPreset === k ? 'active' : ''}" onclick="setDashPreset('${k}');openDashboardLayoutModal()">${lbl}</button>`).join('')}
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Порядок</th>
+              <th>Виджет дашборда</th>
+              <th>Ширина</th>
+              <th>Режим отображения</th>
+              <th style="text-align:right">Отображать</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${widgets.map((w, idx) => `
+              <tr>
+                <td>
+                  <div style="display:inline-flex;gap:4px;align-items:center">
+                    <span class="priority-badge">#${idx + 1}</span>
+                    <button class="btn btn-sm btn-icon" ${idx === 0 ? 'disabled' : ''} onclick="moveDashWidget(${idx}, -1)">${ic('up', 11)}</button>
+                    <button class="btn btn-sm btn-icon" ${idx === widgets.length - 1 ? 'disabled' : ''} onclick="moveDashWidget(${idx}, 1)">${ic('down', 11)}</button>
+                  </div>
+                </td>
+                <td style="font-weight:600">${esc(w.title)}</td>
+                <td>
+                  <select onchange="updateDashWidgetProp(${idx}, 'width', this.value)" style="width:130px;padding:3px 6px;font-size:11px">
+                    <option value="full" ${w.width === 'full' ? 'selected' : ''}>На всю ширину</option>
+                    <option value="half" ${w.width === 'half' ? 'selected' : ''}>Половина (1/2)</option>
+                  </select>
+                </td>
+                <td>
+                  <select onchange="updateDashWidgetProp(${idx}, 'mode', this.value)" style="width:150px;padding:3px 6px;font-size:11px">
+                    <option value="cards" ${w.mode === 'cards' ? 'selected' : ''}>Карточки / Таблица</option>
+                    <option value="cards_grid" ${w.mode === 'cards_grid' ? 'selected' : ''}>Плитки (Bento Grid)</option>
+                    <option value="compact" ${w.mode === 'compact' ? 'selected' : ''}>Компактная полоса</option>
+                  </select>
+                </td>
+                <td style="text-align:right">
+                  <input type="checkbox" ${w.visible ? 'checked' : ''} onchange="updateDashWidgetProp(${idx}, 'visible', this.checked)"/>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `, `
+    <button class="btn" onclick="S.dashWidgets=JSON.parse(JSON.stringify(DEFAULT_DASH_WIDGETS));localStorage.setItem('tachyon_dash_widgets',JSON.stringify(S.dashWidgets));renderPage();openDashboardLayoutModal()">Сбросить по умолчанию</button>
+    <button class="btn btn-primary" onclick="closeModal();renderPage()">${ic('check', 14)} Готово</button>
+  `);
+}
+
+function moveDashWidget(idx, dir) {
+  const w = S.dashWidgets || loadDashWidgets();
+  const target = idx + dir;
+  if (target < 0 || target >= w.length) return;
+  const tmp = w[idx];
+  w[idx] = w[target];
+  w[target] = tmp;
+  S.dashPreset = 'custom';
+  localStorage.setItem('tachyon_dash_widgets', JSON.stringify(w));
+  openDashboardLayoutModal();
+  renderPage();
+}
+
+function updateDashWidgetProp(idx, prop, val) {
+  const w = S.dashWidgets || loadDashWidgets();
+  if (!w[idx]) return;
+  w[idx][prop] = val;
+  S.dashPreset = 'custom';
+  localStorage.setItem('tachyon_dash_widgets', JSON.stringify(w));
   renderPage();
 }
 
 // ============================================================================
-// 1. ОБЗОР И СТАТУС (DASHBOARD)
+// 1. ОБЗОР И СТАТУС (DASHBOARD — КОНСТРУКТОР ВИДЖЕТОВ, ЧИПЫ СТРАН, СЛУЖБЫ)
 // ============================================================================
 function vDashboard() {
   const sys = S.system || {};
   const secs = S.store.sections || [];
   const srcs = S.store.outbound_sources || [];
   const srvs = S.store.servers || [];
+  const lanDevs = S.live.lan_devices || [];
+  const comps = (S.updates && S.updates.components) || [];
   const totalNodes = srcs.reduce((acc, s) => acc + ((s.cached_nodes || []).length || 1), 0);
   const memPct = sys.memory_total_mb ? Math.min(100, Math.round((sys.memory_used_mb / sys.memory_total_mb) * 100)) : 0;
   const zramMb = sys.zram_total_bytes ? Math.round(sys.zram_total_bytes / 1048576) : 0;
   const zramUsedMb = sys.zram_used_bytes ? Math.round(sys.zram_used_bytes / 1048576) : 0;
   const subs = (S.doctor && S.doctor.subsystems) || [];
+  const widgets = (S.dashWidgets || DEFAULT_DASH_WIDGETS).filter(w => w.visible);
+  const typeFilter = S.dashSecTypeFilter || 'all';
+  const filteredSecs = secs.filter(s => typeFilter === 'all' || (s.connection_type || 'proxy') === typeFilter);
+
+  const renderWidget = (w) => {
+    if (w.id === 'kpi') {
+      return `
+        <div class="grid-4">
+          <div class="card">
+            <div class="kpi-label"><span>Ядро маршрутизации</span><span class="badge ${S.live.core_running ? 'badge-ok' : 'badge-err'}">${S.live.core_running ? 'Активно' : 'Стоп'}</span></div>
+            <div class="kpi-val">tachyon-core</div>
+            <div class="kpi-meta">PID ${S.live.core_pid || '—'} · аптайм ${fmtUptime(S.live.core_uptime_secs)} · стек ${esc(S.store.settings?.proxy_mode || 'tproxy')}</div>
+          </div>
+          <div class="card">
+            <div class="kpi-label">
+              <span>Память ОЗУ, ZRAM и SoC</span>
+              <button class="btn btn-sm" style="height:20px;padding:0 6px;font-size:10px" onclick="trimCoreMemory()" title="Сжать буферы памяти ядра">Сжать ОЗУ</button>
+            </div>
+            <div class="kpi-val">${sys.memory_used_mb || 0} <span style="font-size:13px;color:var(--text-2);font-weight:400">/ ${sys.memory_total_mb || 0} МБ (${memPct}%)</span></div>
+            <div class="meter"><span style="width:${memPct}%"></span></div>
+            <div class="kpi-meta">Load: ${esc((sys.load_avg || [0,0,0]).join('/'))}${zramMb ? ` · ZRAM ${zramUsedMb}/${zramMb} МБ` : ''}${sys.cpu_temp_c ? ` · SoC ${sys.cpu_temp_c.toFixed(1)}°C` : ''}</div>
+          </div>
+          <div class="card">
+            <div class="kpi-label"><span>WAN и отказоустойчивость</span><span class="badge badge-ok">${esc(sys.wan_interface || 'wan')}</span></div>
+            <div class="kpi-val mono" style="font-size:16px">${esc(sys.wan_ip || 'Ожидание IP')}</div>
+            <div class="kpi-meta">Шлюз: ${esc(sys.default_gateway || '—')} · Секций: ${secs.filter(s => s.enabled).length}/${secs.length} · Узлов: ${totalNodes}</div>
+          </div>
+          <div class="card">
+            <div class="kpi-label"><span>Серверы и клиенты LAN</span><span class="badge badge-signal">${lanDevs.length} устройств</span></div>
+            <div class="kpi-val">${srvs.filter(s => s.enabled).length} <span style="font-size:13px;color:var(--text-2);font-weight:400">/ ${srvs.length} серверов</span></div>
+            <div class="kpi-meta">Источников: ${srcs.length} · Защита флеша: tmpfs активен</div>
+          </div>
+        </div>
+      `;
+    }
+    if (w.id === 'traffic_chart') {
+      return `
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-head">
+              <div class="card-title">${ic('activity', 15)} Пропускная способность в реальном времени</div>
+              <span class="card-sub num">Синий — приём (RX) · Серый — отдача (TX)</span>
+            </div>
+            <canvas id="tpCanvas" style="width:100%;height:152px;display:block"></canvas>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <div class="card-title">${ic('search', 15)} Трассировка маршрута пакета (Route Explain + Engine Probe)</div>
+              <span class="card-sub">Проверка секции и реального прохождения рукопожатия через движок</span>
+            </div>
+            <div class="grid-3">
+              <div class="field">
+                <div class="field-label">IP клиента LAN</div>
+                <input type="text" id="quickExpClient" value="192.168.1.100" class="mono"/>
+              </div>
+              <div class="field">
+                <div class="field-label">Целевой домен / IP</div>
+                <input type="text" id="quickExpTarget" value="www.youtube.com" class="mono"/>
+              </div>
+              <div class="field">
+                <div class="field-label">Порт и протокол</div>
+                <div style="display:flex;gap:6px">
+                  <input type="number" id="quickExpPort" value="443" class="mono" style="width:78px"/>
+                  <select id="quickExpProto" style="width:82px"><option value="tcp">TCP</option><option value="udp">UDP</option></select>
+                  <button class="btn btn-primary" onclick="runQuickExplain()">Проверить</button>
+                </div>
+              </div>
+            </div>
+            <div id="quickExpResult" style="font-size:12px;color:var(--text-2);padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font-mono)">
+              Введите адрес назначения и нажмите «Проверить» для вычисления секции, условия и двойного теста соединения через движок tachyon-core.
+            </div>
+          </div>
+        </div>
+      `;
+    }
+    if (w.id === 'routing_sections') {
+      return `
+        <div class="card">
+          <div class="card-head" style="flex-wrap:wrap">
+            <div>
+              <div class="card-title">${ic('layers', 15)} Приоритетный конвейер секций маршрутизации и быстрый выбор страны</div>
+              <div class="card-sub">Правила проверяются строго сверху вниз (#1 → #${secs.length}). Нажмите на флаг страны в строке секции для мгновенного переключения на лучший узел этой страны.</div>
+            </div>
+            <div class="toolbar">
+              <div class="subtabs">
+                ${[
+                  ['all', `Все (${secs.length})`],
+                  ['proxy', 'Прокси'],
+                  ['desync', 'Desync'],
+                  ['direct', 'Direct'],
+                  ['block', 'Block']
+                ].map(([k, lbl]) => `<button class="subtab ${typeFilter === k ? 'active' : ''}" onclick="S.dashSecTypeFilter='${k}';renderPage()">${lbl}</button>`).join('')}
+              </div>
+              <button class="btn btn-sm" onclick="probeAllLatencies()">${ic('activity', 12)} Замер RTT</button>
+              <button class="btn btn-sm" onclick="editSec()">${ic('plus', 13)} Новая секция</button>
+              <button class="btn btn-sm" onclick="switchTab('section')">Открыть студию</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:94px">Приоритет</th>
+                  <th>Секция</th>
+                  <th>Тип / Действие</th>
+                  <th>Условия и списки</th>
+                  <th>Страны в пуле и активный узел</th>
+                  <th style="text-align:right">Управление</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${filteredSecs.map((sec) => {
+                  const idx = secs.findIndex(x => x.id === sec.id);
+                  const cands = getSectionCandidateNodes(sec);
+                  const countryGroups = getSectionCountryGroups(cands);
+                  const curTag = sec.active_selected_tag || (cands[0] ? cands[0].tag : '');
+                  const curNode = cands.find(n => n.tag === curTag);
+                  const curCountry = curNode ? (curNode.country || '').toUpperCase() : '';
+                  const rtt = curTag ? S.live.node_latencies_ms?.[curTag] : null;
+                  return `
+                    <tr style="${!sec.enabled ? 'opacity:0.58' : ''}">
+                      <td>
+                        <div style="display:inline-flex;align-items:center;gap:4px">
+                          <span class="priority-badge">#${idx + 1}</span>
+                          <button class="btn btn-sm btn-icon" ${idx === 0 ? 'disabled' : ''} onclick="moveSectionPriority('${esc(sec.id)}', -1)" title="Выше">${ic('up', 12)}</button>
+                          <button class="btn btn-sm btn-icon" ${idx === secs.length - 1 ? 'disabled' : ''} onclick="moveSectionPriority('${esc(sec.id)}', 1)" title="Ниже">${ic('down', 12)}</button>
+                        </div>
+                      </td>
+                      <td>
+                        <div style="font-weight:600">${esc(sec.label || sec.id)}</div>
+                        <div class="mono" style="font-size:11px;color:var(--text-3)">${esc(sec.id)}${sec.outbound_detour_enabled && sec.outbound_detour_section ? ` → цепочка через ${esc(sec.outbound_detour_section)}` : ''}</div>
+                      </td>
+                      <td>
+                        <span class="badge ${sec.connection_type === 'block' ? 'badge-err' : sec.connection_type === 'direct' ? 'badge-ok' : 'badge-signal'}">${esc(sec.connection_type || sec.action || 'proxy')}</span>
+                        ${sec.routed_dns_enabled ? `<span class="badge" title="Собственный DNS секции">DNS</span>` : ''}
+                      </td>
+                      <td>
+                        <div style="display:flex;flex-wrap:wrap;gap:4px">
+                          ${(sec.condition_refs || []).map(c => `<span class="badge mono">${esc(c)}</span>`).join('')}
+                          ${(sec.community_lists || []).slice(0, 5).map(l => `<span class="badge">${esc(l)}</span>`).join('')}
+                          ${(sec.community_lists || []).length > 5 ? `<span class="badge">+${sec.community_lists.length - 5}</span>` : ''}
+                          ${(sec.user_domains || []).length ? `<span class="badge">${sec.user_domains.length} дом.</span>` : ''}
+                          ${(sec.fully_routed_ips || []).length ? `<span class="badge">${sec.fully_routed_ips.length} LAN IP</span>` : ''}
+                        </div>
+                      </td>
+                      <td>
+                        <div style="display:flex;flex-direction:column;gap:6px">
+                          ${countryGroups.length > 1 ? `
+                            <div style="display:flex;flex-wrap:wrap;gap:4px">
+                              ${countryGroups.slice(0, 8).map(cg => `
+                                <button class="btn btn-sm ${curCountry === cg.code ? 'btn-signal' : ''}" style="height:22px;padding:0 6px;font-size:10.5px;gap:4px" onclick="selectBestCountryNode('${esc(sec.id)}', '${esc(cg.code)}')" title="Переключить на лучший узел ${esc(cg.code)} (${esc(cg.bestTag)})">
+                                  ${flagSvg(cg.code)} <span>${esc(cg.code)} (${cg.count})${cg.minRtt ? ` · ${cg.minRtt}ms` : ''}</span>
+                                </button>
+                              `).join('')}
+                            </div>
+                          ` : ''}
+                          ${cands.length > 1 ? `
+                            <select onchange="selectSectionNode('${esc(sec.id)}', this.value)" style="max-width:280px;padding:4px 8px;font-size:11px">
+                              ${cands.map(n => {
+                                const nrtt = S.live.node_latencies_ms?.[n.tag];
+                                return `<option value="${esc(n.tag)}" ${n.tag === curTag ? 'selected' : ''}>${esc(n.country ? `[${n.country}] ` : '')}${esc(n.tag)}${nrtt ? ` (${nrtt} ms)` : ''}</option>`;
+                              }).join('')}
+                            </select>
+                          ` : `<span class="mono" style="font-size:11px;color:var(--text-2)">${esc((sec.outbound_source_refs || []).join(', ') || sec.balancer_refs?.join(', ') || sec.connection_type || 'direct')}${rtt ? ` · ${rtt} ms` : ''}</span>`}
+                        </div>
+                      </td>
+                      <td style="text-align:right">
+                        <div style="display:inline-flex;align-items:center;gap:6px">
+                          <label class="check-row" title="Включить/выключить секцию">
+                            <input type="checkbox" ${sec.enabled ? 'checked' : ''} onchange="toggleSectionEnabled('${esc(sec.id)}', this.checked)"/>
+                          </label>
+                          <button class="btn btn-sm" onclick="editSec('${esc(sec.id)}')">${ic('edit', 12)} Настроить</button>
+                        </div>
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+    if (w.id === 'router_services') {
+      return `
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">${ic('cpu', 15)} Службы и сетевые движки маршрутизатора</div>
+            <button class="btn btn-sm" onclick="switchTab('updates')">Менеджер компонентов</button>
+          </div>
+          <div class="grid-3">
+            ${(comps.length ? comps.slice(0, 6) : [
+              { id: 'tachyon-core', name: 'Tachyon Core', running: S.live.core_running, version: S.updates?.core_installed || '0.4.4' },
+              { id: 'zapret2', name: 'Desync 2.0 / Zapret2', running: S.live.core_running, version: 'в ядре' },
+              { id: 'torrserver_direct', name: 'TorrServer Direct', running: S.store.settings?.torrserver_direct_enabled, version: 'активен' }
+            ]).map(c => `
+              <div style="padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);display:flex;justify-content:space-between;align-items:center;gap:8px">
+                <div>
+                  <div style="font-weight:600;font-size:12px">${esc(c.name)}</div>
+                  <div class="mono" style="font-size:10.5px;color:var(--text-3)">${esc(c.version || '')}</div>
+                </div>
+                <div style="display:inline-flex;align-items:center;gap:6px">
+                  <span class="dot ${c.running ? 'ok' : 'warn'}"></span>
+                  <button class="btn btn-sm" style="height:22px;padding:0 6px;font-size:10px" onclick="componentAction('${esc(c.id)}', 'restart')">${ic('refresh', 11)}</button>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+    if (w.id === 'inbounds') {
+      return `
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">${ic('server', 15)} Активные входящие VPN-серверы на роутере (${srvs.filter(s => s.enabled).length}/${srvs.length})</div>
+            <button class="btn btn-sm" onclick="switchTab('server')">Все серверы</button>
+          </div>
+          <div class="grid-3">
+            ${srvs.slice(0, 6).map(s => `
+              <div style="padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);display:flex;justify-content:space-between;align-items:center;gap:8px">
+                <div>
+                  <div style="font-weight:600;font-size:12px">${esc(s.label || s.id)}</div>
+                  <div class="mono" style="font-size:11px;color:var(--text-3)">${esc(s.protocol)} · :${s.listen_port || 443}</div>
+                </div>
+                <button class="btn btn-sm" style="height:22px;padding:0 8px;font-size:10px" onclick="shareSrv('${esc(s.id)}')">QR / Ключ</button>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+    if (w.id === 'active_clients') {
+      return `
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">${ic('devices', 15)} Активные клиенты LAN (${lanDevs.length})</div>
+            <button class="btn btn-sm" onclick="switchTab('local_devices')">Управление клиентами</button>
+          </div>
+          <div class="grid-4">
+            ${lanDevs.slice(0, 8).map(d => `
+              <div style="padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm)">
+                <div style="font-weight:600;font-size:12px">${esc(d.custom_name || d.hostname || d.ip)}</div>
+                <div class="mono" style="font-size:11px;color:var(--text-3)">${esc(d.ip)} · ↓${fmtBytes(d.download_bytes || 0)}</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+    if (w.id === 'system_status') {
+      return `
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">${ic('stethoscope', 15)} Состояние 14 подсистем (Local Doctor)</div>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-sm" onclick="switchTab('diagnostic')">Все инструменты диагностики</button>
+              <button class="btn btn-sm btn-primary" onclick="quickFixAll()">Автоисправление стека</button>
+            </div>
+          </div>
+          <div class="grid-4">
+            ${subs.map(s => `
+              <div style="padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);display:flex;flex-direction:column;gap:4px">
+                <div style="display:flex;align-items:center;justify-content:space-between">
+                  <span style="font-weight:500;font-size:12px">${esc(s.name || s.title)}</span>
+                  <span class="dot ${s.status === 'ok' ? 'ok' : s.status === 'warn' ? 'warn' : 'err'}"></span>
+                </div>
+                <div style="font-size:11px;color:var(--text-3)">${esc(s.summary || s.detail || '')}</div>
+                ${s.status !== 'ok' && s.fix_id ? `
+                  <div style="margin-top:4px">
+                    <button class="btn btn-sm" style="height:22px;padding:0 8px;font-size:10px" onclick="quickFixSubsystem('${esc(s.fix_id)}')">${esc(s.fix_label || 'Исправить')}</button>
+                  </div>
+                ` : ''}
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+    return '';
+  };
 
   return `
     <div class="page-head">
@@ -1606,185 +2364,16 @@ function vDashboard() {
       <div class="toolbar">
         <div class="subtabs">
           <button class="subtab ${S.dashPreset === 'standard' ? 'active' : ''}" onclick="setDashPreset('standard')">${tr('Стандартный', 'Standard')}</button>
-          <button class="subtab ${S.dashPreset === 'compact' ? 'active' : ''}" onclick="setDashPreset('compact')">${tr('Компактный', 'Compact')}</button>
-          <button class="subtab ${S.dashPreset === 'noc' ? 'active' : ''}" onclick="setDashPreset('noc')">NOC</button>
+          <button class="subtab ${S.dashPreset === 'command_center' ? 'active' : ''}" onclick="setDashPreset('command_center')">${tr('Центр управления', 'Command Center')}</button>
+          <button class="subtab ${S.dashPreset === 'noc_analytics' ? 'active' : ''}" onclick="setDashPreset('noc_analytics')">NOC</button>
+          <button class="subtab ${S.dashPreset === 'minimal_zen' ? 'active' : ''}" onclick="setDashPreset('minimal_zen')">${tr('Компактный', 'Minimal')}</button>
         </div>
-        <button class="btn btn-primary" onclick="openWizardModal()">${ic('bolt', 14)} ${tr('Быстрая настройка', 'Quick Setup')}</button>
+        <button class="btn" onclick="openDashboardLayoutModal()" title="Конструктор виджетов дашборда">${ic('settings', 13)} ${tr('Виджеты', 'Widgets')}</button>
+        <button class="btn btn-primary" onclick="openWizardModal()">${ic('bolt', 14)} ${tr('Мастер настройки', 'Quick Setup')}</button>
         <button class="btn" onclick="switchTab('section')">${ic('layers', 14)} ${tr('Секции и приоритеты', 'Sections')}</button>
       </div>
     </div>
-
-    <div class="grid-4">
-      <div class="card">
-        <div class="kpi-label"><span>Ядро маршрутизации</span><span class="badge ${S.live.core_running ? 'badge-ok' : 'badge-err'}">${S.live.core_running ? 'Активно' : 'Стоп'}</span></div>
-        <div class="kpi-val">tachyon-core</div>
-        <div class="kpi-meta">PID ${S.live.core_pid || '—'} · аптайм ${fmtUptime(S.live.core_uptime_secs)} · стек ${esc(S.store.settings?.proxy_mode || 'tproxy')}</div>
-      </div>
-      <div class="card">
-        <div class="kpi-label">
-          <span>Память ОЗУ, ZRAM и SoC</span>
-          <button class="btn btn-sm" style="height:20px;padding:0 6px;font-size:10px" onclick="trimCoreMemory()" title="Сжать буферы памяти ядра">Сжать ОЗУ</button>
-        </div>
-        <div class="kpi-val">${sys.memory_used_mb || 0} <span style="font-size:13px;color:var(--text-2);font-weight:400">/ ${sys.memory_total_mb || 0} МБ (${memPct}%)</span></div>
-        <div class="meter"><span style="width:${memPct}%"></span></div>
-        <div class="kpi-meta">Load: ${esc((sys.load_avg || [0,0,0]).join('/'))}${zramMb ? ` · ZRAM ${zramUsedMb}/${zramMb} МБ` : ''}${sys.cpu_temp_c ? ` · SoC ${sys.cpu_temp_c.toFixed(1)}°C` : ''}</div>
-      </div>
-      <div class="card">
-        <div class="kpi-label"><span>WAN и отказоустойчивость</span><span class="badge badge-ok">${esc(sys.wan_interface || 'wan')}</span></div>
-        <div class="kpi-val mono" style="font-size:16px">${esc(sys.wan_ip || 'Ожидание IP')}</div>
-        <div class="kpi-meta">Шлюз: ${esc(sys.default_gateway || '—')} · Секций: ${secs.filter(s => s.enabled).length}/${secs.length} · Узлов: ${totalNodes}</div>
-      </div>
-      <div class="card">
-        <div class="kpi-label"><span>Серверы и клиенты LAN</span><span class="badge badge-signal">${(S.live.lan_devices || []).length} устройств</span></div>
-        <div class="kpi-val">${srvs.filter(s => s.enabled).length} <span style="font-size:13px;color:var(--text-2);font-weight:400">/ ${srvs.length} серверов</span></div>
-        <div class="kpi-meta">Источников: ${srcs.length} · Защита флеша: tmpfs активен</div>
-      </div>
-    </div>
-
-    ${S.dashPreset !== 'compact' ? `
-    <div class="grid-2">
-      <div class="card">
-        <div class="card-head">
-          <div class="card-title">${ic('activity', 15)} Пропускная способность в реальном времени</div>
-          <span class="card-sub num">Синий — приём (RX) · Серый — отдача (TX)</span>
-        </div>
-        <canvas id="tpCanvas" style="width:100%;height:152px;display:block"></canvas>
-      </div>
-
-      <div class="card">
-        <div class="card-head">
-          <div class="card-title">${ic('search', 15)} Трассировка маршрута пакета (Route Explain + Engine Probe)</div>
-          <span class="card-sub">Проверка секции и реального прохождения рукопожатия через движок</span>
-        </div>
-        <div class="grid-3">
-          <div class="field">
-            <div class="field-label">IP клиента LAN</div>
-            <input type="text" id="quickExpClient" value="192.168.1.100" class="mono"/>
-          </div>
-          <div class="field">
-            <div class="field-label">Целевой домен / IP</div>
-            <input type="text" id="quickExpTarget" value="www.youtube.com" class="mono"/>
-          </div>
-          <div class="field">
-            <div class="field-label">Порт и протокол</div>
-            <div style="display:flex;gap:6px">
-              <input type="number" id="quickExpPort" value="443" class="mono" style="width:78px"/>
-              <select id="quickExpProto" style="width:82px"><option value="tcp">TCP</option><option value="udp">UDP</option></select>
-              <button class="btn btn-primary" onclick="runQuickExplain()">Проверить</button>
-            </div>
-          </div>
-        </div>
-        <div id="quickExpResult" style="font-size:12px;color:var(--text-2);padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font-mono)">
-          Введите адрес назначения и нажмите «Проверить» для вычисления секции, условия и двойного теста соединения через движок tachyon-core.
-        </div>
-      </div>
-    </div>
-    ` : ''}
-
-    <div class="card">
-      <div class="card-head">
-        <div>
-          <div class="card-title">${ic('layers', 15)} Приоритетный конвейер секций маршрутизации</div>
-          <div class="card-sub">Правила проверяются строго сверху вниз (#1 → #${secs.length}). Первая совпавшая секция обрабатывает трафик.</div>
-        </div>
-        <div class="toolbar">
-          <button class="btn btn-sm" onclick="editSec()">${ic('plus', 13)} Новая секция</button>
-          <button class="btn btn-sm" onclick="switchTab('section')">Открыть студию</button>
-        </div>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th style="width:94px">Приоритет</th>
-              <th>Секция</th>
-              <th>Тип / Действие</th>
-              <th>Условия и списки</th>
-              <th>Источник / Активный узел</th>
-              <th style="text-align:right">Управление</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${secs.map((sec, idx) => {
-              const cands = getSectionCandidateNodes(sec);
-              const curTag = sec.active_selected_tag || (cands[0] ? cands[0].tag : '');
-              const rtt = curTag ? S.live.node_latencies_ms?.[curTag] : null;
-              return `
-                <tr>
-                  <td>
-                    <div style="display:inline-flex;align-items:center;gap:4px">
-                      <span class="priority-badge">#${idx + 1}</span>
-                      <button class="btn btn-sm btn-icon" ${idx === 0 ? 'disabled' : ''} onclick="moveSectionPriority('${esc(sec.id)}', -1)" title="Выше">${ic('up', 12)}</button>
-                      <button class="btn btn-sm btn-icon" ${idx === secs.length - 1 ? 'disabled' : ''} onclick="moveSectionPriority('${esc(sec.id)}', 1)" title="Ниже">${ic('down', 12)}</button>
-                    </div>
-                  </td>
-                  <td>
-                    <div style="font-weight:600">${esc(sec.label || sec.id)}</div>
-                    <div class="mono" style="font-size:11px;color:var(--text-3)">${esc(sec.id)}${sec.outbound_detour_enabled && sec.outbound_detour_section ? ` → цепочка через ${esc(sec.outbound_detour_section)}` : ''}</div>
-                  </td>
-                  <td>
-                    <span class="badge ${sec.connection_type === 'block' ? 'badge-err' : sec.connection_type === 'direct' ? 'badge-ok' : 'badge-signal'}">${esc(sec.connection_type || sec.action || 'proxy')}</span>
-                    ${sec.routed_dns_enabled ? `<span class="badge" title="Собственный DNS секции">DNS</span>` : ''}
-                  </td>
-                  <td>
-                    <div style="display:flex;flex-wrap:wrap;gap:4px">
-                      ${(sec.condition_refs || []).map(c => `<span class="badge mono">${esc(c)}</span>`).join('')}
-                      ${(sec.community_lists || []).slice(0, 4).map(l => `<span class="badge">${esc(l)}</span>`).join('')}
-                      ${(sec.user_domains || []).length ? `<span class="badge">${sec.user_domains.length} дом.</span>` : ''}
-                      ${(sec.fully_routed_ips || []).length ? `<span class="badge">${sec.fully_routed_ips.length} LAN IP</span>` : ''}
-                    </div>
-                  </td>
-                  <td>
-                    ${cands.length > 1 ? `
-                      <select onchange="selectSectionNode('${esc(sec.id)}', this.value)" style="max-width:240px;padding:4px 8px;font-size:11px">
-                        ${cands.map(n => {
-                          const nrtt = S.live.node_latencies_ms?.[n.tag];
-                          return `<option value="${esc(n.tag)}" ${n.tag === curTag ? 'selected' : ''}>${esc(n.country ? `[${n.country}] ` : '')}${esc(n.tag)}${nrtt ? ` (${nrtt} ms)` : ''}</option>`;
-                        }).join('')}
-                      </select>
-                    ` : `<span class="mono" style="font-size:11px;color:var(--text-2)">${esc((sec.outbound_source_refs || []).join(', ') || sec.balancer_refs?.join(', ') || sec.connection_type || 'direct')}${rtt ? ` · ${rtt} ms` : ''}</span>`}
-                  </td>
-                  <td style="text-align:right">
-                    <div style="display:inline-flex;align-items:center;gap:6px">
-                      <label class="check-row" title="Включить/выключить секцию">
-                        <input type="checkbox" ${sec.enabled ? 'checked' : ''} onchange="toggleSectionEnabled('${esc(sec.id)}', this.checked)"/>
-                      </label>
-                      <button class="btn btn-sm" onclick="editSec('${esc(sec.id)}')">${ic('edit', 12)} Настроить</button>
-                    </div>
-                  </td>
-                </tr>
-              `;
-            }).join('')}
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-head">
-        <div class="card-title">${ic('stethoscope', 15)} Состояние 14 подсистем (Local Doctor)</div>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-sm" onclick="switchTab('diagnostic')">Все инструменты диагностики</button>
-          <button class="btn btn-sm btn-primary" onclick="quickFixAll()">Автоисправление стека</button>
-        </div>
-      </div>
-      <div class="grid-4">
-        ${subs.map(s => `
-          <div style="padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);display:flex;flex-direction:column;gap:4px">
-            <div style="display:flex;align-items:center;justify-content:space-between">
-              <span style="font-weight:500;font-size:12px">${esc(s.name)}</span>
-              <span class="dot ${s.status === 'ok' ? 'ok' : s.status === 'warn' ? 'warn' : 'err'}"></span>
-            </div>
-            <div style="font-size:11px;color:var(--text-3)">${esc(s.summary || s.detail || '')}</div>
-            ${s.status !== 'ok' && s.fix_id ? `
-              <div style="margin-top:4px">
-                <button class="btn btn-sm" style="height:22px;padding:0 8px;font-size:10px" onclick="quickFixSubsystem('${esc(s.fix_id)}')">${esc(s.fix_label || 'Исправить')}</button>
-              </div>
-            ` : ''}
-          </div>
-        `).join('')}
-      </div>
-    </div>
+    ${widgets.map(renderWidget).join('')}
   `;
 }
 
@@ -1984,13 +2573,16 @@ function vStudioSections(secs) {
     <div style="display:flex;flex-direction:column;gap:12px">
       ${secs.map((sec, idx) => {
         const cands = getSectionCandidateNodes(sec);
+        const countryGroups = getSectionCountryGroups(cands);
+        const selCC = S.secCountryFilter[sec.id] || '';
         const filterQ = (S.secNodeFilter[sec.id] || '').toLowerCase().trim();
-        let filteredNodes = cands.filter(n =>
-          !filterQ ||
-          n.tag.toLowerCase().includes(filterQ) ||
-          (n.country || '').toLowerCase().includes(filterQ) ||
-          (n.protocol || '').toLowerCase().includes(filterQ)
-        );
+        let filteredNodes = cands.filter(n => {
+          if (selCC && (n.country || 'UN').toUpperCase() !== selCC) return false;
+          if (!filterQ) return true;
+          return n.tag.toLowerCase().includes(filterQ) ||
+            (n.country || '').toLowerCase().includes(filterQ) ||
+            (n.protocol || '').toLowerCase().includes(filterQ);
+        });
         if (sec.sort_by_latency) {
           filteredNodes.sort((a, b) => (S.live.node_latencies_ms?.[a.tag] || 9999) - (S.live.node_latencies_ms?.[b.tag] || 9999));
         }
@@ -2071,8 +2663,18 @@ function vStudioSections(secs) {
                     <input type="text" placeholder="Фильтр по стране / имени / протоколу..." value="${esc(S.secNodeFilter[sec.id] || '')}" oninput="S.secNodeFilter['${esc(sec.id)}']=this.value;renderPage()" style="width:240px;padding:4px 8px;font-size:11px"/>
                   </div>
                 </div>
+                ${countryGroups.length > 1 ? `
+                  <div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center">
+                    <button class="btn btn-sm ${!selCC ? 'btn-signal' : ''}" style="height:24px;padding:0 8px;font-size:11px" onclick="S.secCountryFilter['${esc(sec.id)}']='';renderPage()">Все страны (${cands.length})</button>
+                    ${countryGroups.map(cg => `
+                      <button class="btn btn-sm ${selCC === cg.code ? 'btn-signal' : ''}" style="height:24px;padding:0 8px;font-size:11px;gap:5px" onclick="selectBestCountryNode('${esc(sec.id)}', '${esc(cg.code)}')" title="Фильтр и выбор лучшего узла страны ${esc(cg.code)} (${esc(cg.bestTag)})">
+                        ${flagSvg(cg.code)} <span>${esc(cg.code)} (${cg.count})${cg.minRtt ? ` · ${cg.minRtt}ms` : ''}</span>
+                      </button>
+                    `).join('')}
+                  </div>
+                ` : ''}
                 <div class="node-grid">
-                  ${filteredNodes.slice(0, 60).map(n => {
+                  ${filteredNodes.slice(0, 80).map(n => {
                     const rtt = S.live.node_latencies_ms?.[n.tag];
                     const isAct = n.tag === curTag;
                     return `
@@ -2092,6 +2694,51 @@ function vStudioSections(secs) {
     </div>
     `}
   `;
+}
+
+function renderCommunityListPickerHtml(pickerId, selectedList) {
+  const selSet = new Set(selectedList || []);
+  return `
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <input type="text" placeholder="Поиск сервиса или списка (youtube, ads_hagezi_pro, russia_outside)..." oninput="filterCommPicker('${pickerId}', this.value)" style="flex:1;min-width:180px;padding:4px 8px;font-size:11px"/>
+        <button type="button" class="btn btn-sm" style="height:24px;padding:0 8px;font-size:10.5px" onclick="toggleAllCommPicker('${pickerId}', true)">Выбрать видимые</button>
+        <button type="button" class="btn btn-sm" style="height:24px;padding:0 8px;font-size:10.5px" onclick="toggleAllCommPicker('${pickerId}', false)">Снять все</button>
+      </div>
+      <div class="chip-picker" id="${pickerId}" style="max-height:175px">
+        ${COMMUNITY_CATEGORIES.map(cat => `
+          <div style="width:100%;font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;margin-top:4px">${esc(cat.group)}</div>
+          ${cat.items.map(srv => `
+            <label class="chip-option ${selSet.has(srv) ? 'selected' : ''}" data-srv="${esc(srv.toLowerCase())}">
+              <input type="checkbox" value="${esc(srv)}" ${selSet.has(srv) ? 'checked' : ''} onchange="this.parentElement.classList.toggle('selected', this.checked)"/>
+              <span>${esc(srv)}</span>
+            </label>
+          `).join('')}
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function filterCommPicker(pickerId, q) {
+  const query = (q || '').trim().toLowerCase();
+  const labels = document.querySelectorAll(`#${pickerId} label.chip-option`);
+  labels.forEach(lbl => {
+    const s = lbl.getAttribute('data-srv') || '';
+    lbl.style.display = (!query || s.includes(query)) ? '' : 'none';
+  });
+}
+
+function toggleAllCommPicker(pickerId, state) {
+  const labels = document.querySelectorAll(`#${pickerId} label.chip-option`);
+  labels.forEach(lbl => {
+    if (state && lbl.style.display === 'none') return;
+    const cb = lbl.querySelector('input[type="checkbox"]');
+    if (cb) {
+      cb.checked = state;
+      lbl.classList.toggle('selected', state);
+    }
+  });
 }
 
 async function recheckCoreRoutesNow() {
@@ -2254,14 +2901,7 @@ function editSec(id) {
       </div>
       <div class="field">
         <div class="field-label">Списки сервисов (community_lists / geosite)</div>
-        <div class="chip-picker" id="mSecCommPicker">
-          ${COMMUNITY_SERVICES.map(srv => `
-            <label class="chip-option ${(sec.community_lists || []).includes(srv) ? 'selected' : ''}">
-              <input type="checkbox" value="${esc(srv)}" ${(sec.community_lists || []).includes(srv) ? 'checked' : ''} onchange="this.parentElement.classList.toggle('selected', this.checked)"/>
-              <span>${esc(srv)}</span>
-            </label>
-          `).join('')}
-        </div>
+        ${renderCommunityListPickerHtml('mSecCommPicker', sec.community_lists)}
       </div>
     </div>
 
@@ -2662,9 +3302,9 @@ function editSrc(id) {
     </div>
 
     <div class="section-divider">
-      <span>Подписка, URI-ключи и быстрые шаблоны всех 24 протоколов</span>
+      <span>Визуальный конструктор одиночного узла (24 протокола)</span>
       <select onchange="if(this.value){insertProtocolTemplate(this.value);this.value='';}" style="width:280px;padding:3px 6px;font-size:11px">
-        <option value="">+ Подставить шаблон протокола (24 типа)...</option>
+        <option value="">+ Быстрый шаблон протокола (24 типа)...</option>
         <option value="vless">VLESS XTLS-Reality (TCP)</option>
         <option value="vless_xhttp">VLESS Reality + XHTTP (packet-up)</option>
         <option value="vmess">VMess AEAD + WS TLS</option>
@@ -2687,6 +3327,82 @@ function editSrc(id) {
         <option value="http">HTTP CONNECT Proxy</option>
       </select>
     </div>
+    <div class="card" style="padding:12px;background:var(--bg)">
+      <div class="grid-4">
+        <div class="field">
+          <div class="field-label">Протокол конструктора</div>
+          <select id="nbProto">
+            <option value="vless">VLESS (Reality / TLS / XHTTP)</option>
+            <option value="hysteria2">Hysteria2 (QUIC / Salamander)</option>
+            <option value="tuic">TUIC v5 (QUIC BBR)</option>
+            <option value="trojan">Trojan TLS</option>
+            <option value="ss">Shadowsocks / SS-2022</option>
+            <option value="vmess">VMess AEAD</option>
+            <option value="tewfai">TewFai (WebRTC Shaper)</option>
+            <option value="anytls">AnyTLS</option>
+            <option value="shadowtls">ShadowTLS v3</option>
+            <option value="naive">NaiveProxy</option>
+            <option value="mieru">Mieru v3</option>
+            <option value="snell">Snell v4</option>
+            <option value="masque">MASQUE</option>
+            <option value="trusttunnel">TrustTunnel</option>
+            <option value="openconnect">OpenConnect</option>
+            <option value="socks5">SOCKS5</option>
+            <option value="http">HTTP Proxy</option>
+          </select>
+        </div>
+        <div class="field">
+          <div class="field-label">Имя узла (Тег) и Страна (ISO)</div>
+          <div style="display:flex;gap:6px">
+            <input type="text" id="nbTag" value="NL-Node-1" placeholder="NL-Fast"/>
+            <input type="text" id="nbCC" value="NL" style="width:54px" class="mono" placeholder="NL"/>
+          </div>
+        </div>
+        <div class="field">
+          <div class="field-label">Адрес сервера и Порт</div>
+          <div style="display:flex;gap:6px">
+            <input type="text" id="nbHost" placeholder="198.51.100.10" class="mono"/>
+            <input type="number" id="nbPort" value="443" style="width:78px" class="mono"/>
+          </div>
+        </div>
+        <div class="field">
+          <div class="field-label">UUID / Пароль / Ключ</div>
+          <input type="text" id="nbSecret" placeholder="uuid или пароль" class="mono"/>
+        </div>
+      </div>
+      <div class="grid-4" style="margin-top:6px">
+        <div class="field">
+          <div class="field-label">Защита (Security) и Flow</div>
+          <div style="display:flex;gap:6px">
+            <select id="nbSec"><option value="reality">reality</option><option value="tls">tls</option><option value="none">none</option></select>
+            <input type="text" id="nbFlow" value="xtls-rprx-vision" placeholder="xtls-rprx-vision" class="mono"/>
+          </div>
+        </div>
+        <div class="field">
+          <div class="field-label">TLS SNI и Fingerprint</div>
+          <div style="display:flex;gap:6px">
+            <input type="text" id="nbSni" value="www.microsoft.com" class="mono"/>
+            <select id="nbFp" style="width:92px"><option value="chrome">chrome</option><option value="firefox">firefox</option><option value="safari">safari</option><option value="random">random</option></select>
+          </div>
+        </div>
+        <div class="field">
+          <div class="field-label">Reality Public Key (pbk) и Short ID</div>
+          <div style="display:flex;gap:6px">
+            <input type="text" id="nbPbk" placeholder="PublicKey" class="mono"/>
+            <input type="text" id="nbSid" placeholder="ShortID" style="width:84px" class="mono"/>
+          </div>
+        </div>
+        <div class="field">
+          <div class="field-label">Транспорт (tcp/ws/grpc/xhttp) и Path</div>
+          <div style="display:flex;gap:6px">
+            <select id="nbTr"><option value="tcp">tcp</option><option value="xhttp">xhttp</option><option value="ws">ws</option><option value="grpc">grpc</option><option value="httpupgrade">httpupgrade</option></select>
+            <input type="text" id="nbPath" value="/" class="mono"/>
+            <button type="button" class="btn btn-sm btn-primary" onclick="buildNodeFromVisualForm()">+ Добавить</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="grid-2">
       <div class="field">
         <div class="field-label"><span>URL-адреса подписок (Base64 / YAML / JSON / happ:// / vpn://)</span><span>Интервал: <input type="text" id="mSrcSubInt" value="${esc(src.subscription_update_interval || '6h')}" style="width:60px;padding:2px 6px;display:inline" class="mono"/></span></div>
@@ -2845,6 +3561,62 @@ function parseWgConfIntoModal() {
     document.getElementById('mSrcAwgS2').value = getVal('S2') || 0;
   }
   toast('Параметры .conf распознаны');
+}
+
+function buildNodeFromVisualForm() {
+  const proto = document.getElementById('nbProto')?.value || 'vless';
+  const tag = (document.getElementById('nbTag')?.value.trim() || 'Node-1');
+  const cc = (document.getElementById('nbCC')?.value.trim() || 'NL').toUpperCase();
+  const host = document.getElementById('nbHost')?.value.trim() || '';
+  const port = Number(document.getElementById('nbPort')?.value || 443);
+  const secret = document.getElementById('nbSecret')?.value.trim() || '00000000-0000-0000-0000-000000000000';
+  const sec = document.getElementById('nbSec')?.value || 'reality';
+  const flow = document.getElementById('nbFlow')?.value.trim() || '';
+  const sni = document.getElementById('nbSni')?.value.trim() || 'www.microsoft.com';
+  const fp = document.getElementById('nbFp')?.value || 'chrome';
+  const pbk = document.getElementById('nbPbk')?.value.trim() || '';
+  const sid = document.getElementById('nbSid')?.value.trim() || '';
+  const trp = document.getElementById('nbTr')?.value || 'tcp';
+  const path = document.getElementById('nbPath')?.value.trim() || '/';
+  if (!host) { toast('Укажите адрес сервера (Host / IP)', true); return; }
+
+  const fullTag = tag.startsWith('[') ? tag : `[${cc}] ${tag}`;
+  let line = '';
+  if (proto === 'vless') {
+    const q = new URLSearchParams({ encryption: 'none', security: sec, sni, fp, type: trp });
+    if (flow) q.set('flow', flow);
+    if (pbk) q.set('pbk', pbk);
+    if (sid) q.set('sid', sid);
+    if (trp !== 'tcp') q.set('path', path);
+    if (trp === 'xhttp') q.set('mode', 'packet-up');
+    line = `vless://${encodeURIComponent(secret)}@${host}:${port}?${q.toString()}#${encodeURIComponent(fullTag)}`;
+  } else if (proto === 'hysteria2') {
+    line = `hysteria2://${encodeURIComponent(secret)}@${host}:${port}?sni=${encodeURIComponent(sni)}#${encodeURIComponent(fullTag)}`;
+  } else if (proto === 'tuic') {
+    line = `tuic://${encodeURIComponent(secret)}:${encodeURIComponent(secret)}@${host}:${port}?congestion_control=bbr&alpn=h3&sni=${encodeURIComponent(sni)}#${encodeURIComponent(fullTag)}`;
+  } else if (proto === 'trojan') {
+    line = `trojan://${encodeURIComponent(secret)}@${host}:${port}?security=${sec}&sni=${encodeURIComponent(sni)}&type=${trp}#${encodeURIComponent(fullTag)}`;
+  } else if (proto === 'ss') {
+    line = `ss://${btoa(`2022-blake3-aes-256-gcm:${secret}`)}@${host}:${port}#${encodeURIComponent(fullTag)}`;
+  } else if (proto === 'socks5' || proto === 'http') {
+    line = `${proto}://${encodeURIComponent(secret)}@${host}:${port}#${encodeURIComponent(fullTag)}`;
+  } else {
+    const obj = { type: proto, tag: fullTag, server: host, server_port: port, uuid: secret, password: secret };
+    if (sec !== 'none') obj.tls = { enabled: true, server_name: sni };
+    if (proto === 'tewfai') { obj.shaper_profile = 'webrtc_video'; obj.morph_profile = 'chrome_h3'; }
+    const cj = document.getElementById('mSrcCustomJson');
+    const st = document.getElementById('mSrcType');
+    if (cj) cj.value = JSON.stringify(obj);
+    if (st) st.value = 'custom_json';
+    toast(`Конфигурация ${proto.toUpperCase()} (${fullTag}) собрана в custom_json`);
+    return;
+  }
+
+  const ta = document.getElementById('mSrcLinks');
+  const st = document.getElementById('mSrcType');
+  if (ta) ta.value = (ta.value ? ta.value + '\n' : '') + line;
+  if (st) st.value = 'proxy_links';
+  toast(`Узел ${fullTag} собран и добавлен в список ключей`);
 }
 
 async function saveSrc() {
@@ -3048,14 +3820,7 @@ function editCond(id) {
 
     <div class="field">
       <div class="field-label">Каталог сервисов (community_lists)</div>
-      <div class="chip-picker" id="mCondComm">
-        ${COMMUNITY_SERVICES.map(srv => `
-          <label class="chip-option ${(c.community_lists || []).includes(srv) ? 'selected' : ''}">
-            <input type="checkbox" value="${esc(srv)}" ${(c.community_lists || []).includes(srv) ? 'checked' : ''} onchange="this.parentElement.classList.toggle('selected', this.checked)"/>
-            <span>${esc(srv)}</span>
-          </label>
-        `).join('')}
-      </div>
+      ${renderCommunityListPickerHtml('mCondComm', c.community_lists)}
     </div>
 
     <div class="grid-2">
@@ -3490,6 +4255,7 @@ function vServers() {
         <div class="page-desc">Поддержка 23 протоколов, мульти-клиентских учётных записей, подписок под Happ / v2rayNG / Clash / Sing-box / Amnezia, изоляции LAN и Honeypot</div>
       </div>
       <div class="toolbar">
+        <button class="btn" onclick="openSubServerSettingsModal()">${ic('settings', 13)} Настройки подписок</button>
         <button class="btn" onclick="navigator.clipboard.writeText('${esc(subUrl)}');toast('Ссылка единой подписки скопирована')">${ic('link', 13)} Подписка роутера (/sub/${esc(subTok.slice(0, 8))})</button>
         <button class="btn btn-primary" onclick="editSrv()">${ic('plus', 14)} Новый сервер</button>
       </div>
@@ -3724,12 +4490,13 @@ function editSrv(id) {
     </div>
 
     <div class="section-divider">
-      <span>Ключи, UUID, Reality X25519 и криптография</span>
-      <div style="display:flex;gap:6px">
+      <span>Ключи, UUID, Reality X25519, TLS-сертификаты и криптография</span>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn btn-sm" onclick="pickBestRealitySni()">${ic('search', 12)} Подобрать лучший SNI</button>
-        <button class="btn btn-sm" onclick="srvKeygen('reality')">${ic('key', 12)} Сгенерировать Reality + UUID</button>
+        <button class="btn btn-sm" onclick="srvKeygen('reality')">${ic('key', 12)} Reality + UUID</button>
         <button class="btn btn-sm" onclick="srvKeygen('ss2022')">Ключ SS-2022</button>
-        <button class="btn btn-sm" onclick="srvKeygen('wg')">Ключи WireGuard</button>
+        <button class="btn btn-sm" onclick="srvKeygen('wg')">Ключи WG/AWG</button>
+        <button class="btn btn-sm" onclick="srvKeygen('tls_cert')">${ic('shield', 12)} Самоподписанный TLS ECDSA</button>
       </div>
     </div>
 
@@ -3751,20 +4518,40 @@ function editSrv(id) {
       </div>
     </div>
 
-    <div class="section-divider"><span>Профили шейпинга TewFai / AmneziaWG и изоляция LAN</span></div>
+    <div class="grid-2">
+      <div class="field">
+        <div class="field-label">TLS Certificate PEM (для Hysteria2 / TUIC / Trojan / AnyTLS)</div>
+        <textarea id="mSrvCertPem" class="mono" style="min-height:54px;font-size:10.5px" placeholder="-----BEGIN CERTIFICATE-----">${esc(s.tls_cert_pem || '')}</textarea>
+      </div>
+      <div class="field">
+        <div class="field-label">TLS Private Key PEM</div>
+        <textarea id="mSrvKeyPem" class="mono" style="min-height:54px;font-size:10.5px" placeholder="-----BEGIN PRIVATE KEY-----">${esc(s.tls_key_pem || '')}</textarea>
+      </div>
+    </div>
+
+    <div class="section-divider"><span>Профили шейпинга TewFai / Hysteria2 / AmneziaWG и изоляция LAN</span></div>
     <div class="grid-3">
       <div class="field">
-        <div class="field-label">Профили TewFai (Shaper / Morph)</div>
+        <div class="field-label">TewFai (Shaper / Morph) и Hysteria2 (Up/Down Мбит/с)</div>
         <div style="display:flex;gap:6px">
-          <input type="text" id="mSrvTewShaper" value="${esc(s.tewfai_shaper_profile || 'webrtc_video')}" class="mono"/>
-          <input type="text" id="mSrvTewMorph" value="${esc(s.tewfai_morph_profile || 'chrome_h3')}" class="mono"/>
+          <input type="text" id="mSrvTewShaper" value="${esc(s.tewfai_shaper_profile || 'webrtc_video')}" class="mono" title="TewFai Shaper"/>
+          <input type="text" id="mSrvTewMorph" value="${esc(s.tewfai_morph_profile || 'chrome_h3')}" class="mono" title="TewFai Morph"/>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:4px">
+          <input type="number" id="mSrvHyUp" value="${s.up_mbps || 100}" class="mono" placeholder="Up Mbps"/>
+          <input type="number" id="mSrvHyDown" value="${s.down_mbps || 100}" class="mono" placeholder="Down Mbps"/>
         </div>
       </div>
       <div class="field">
-        <div class="field-label">AmneziaWG адреса (сервер / клиент)</div>
+        <div class="field-label">AmneziaWG адреса и параметры обфускации (Jc/Jmin/Jmax)</div>
         <div style="display:flex;gap:6px">
           <input type="text" id="mSrvAwgLocal" value="${esc(s.awg_local_address || '10.19.0.1/24')}" class="mono"/>
           <input type="text" id="mSrvAwgClient" value="${esc(s.awg_client_address || '10.19.0.2/32')}" class="mono"/>
+        </div>
+        <div style="display:flex;gap:4px;margin-top:4px">
+          <input type="number" id="mSrvAwgJc" value="${s.awg_jc || 4}" class="mono" placeholder="Jc" title="Jc"/>
+          <input type="number" id="mSrvAwgJmin" value="${s.awg_jmin || 40}" class="mono" placeholder="Jmin" title="Jmin"/>
+          <input type="number" id="mSrvAwgJmax" value="${s.awg_jmax || 70}" class="mono" placeholder="Jmax" title="Jmax"/>
         </div>
       </div>
       <div class="field">
@@ -3787,6 +4574,63 @@ function editSrv(id) {
     <button class="btn btn-primary" onclick="saveSrv('${esc(s.id)}')">${ic('check', 14)} Сохранить сервер</button>
   `);
   renderSrvClientsTable();
+}
+
+function openSubServerSettingsModal() {
+  const st = S.store.settings || {};
+  const tok = st.server_subscription_token || 'default';
+  const subUrl = `${location.origin}/sub/${tok}`;
+  openModal('Сервер клиентских подписок роутера (/sub/:token)', `
+    <div class="grid-2">
+      <div class="field">
+        <div class="field-label">Статус публичного эндпоинта подписок</div>
+        <label class="check-row" style="padding-top:6px">
+          <input type="checkbox" id="mSubSrvEn" ${st.server_subscription_enabled !== false ? 'checked' : ''}/>
+          <span>Разрешить выдачу подписок по адресу /sub/:token</span>
+        </label>
+      </div>
+      <div class="field">
+        <div class="field-label">Формат выдачи по умолчанию</div>
+        <select id="mSubSrvFmt">
+          <option value="uri" ${(st.server_subscription_format || 'uri') === 'uri' ? 'selected' : ''}>uri — Base64 список ссылок (v2rayNG / Hiddify / Streisand)</option>
+          <option value="sing-box" ${st.server_subscription_format === 'sing-box' ? 'selected' : ''}>sing-box — готовый JSON-профиль для sing-box / SFA</option>
+          <option value="clash" ${st.server_subscription_format === 'clash' ? 'selected' : ''}>clash — конфигурация Clash Meta / Mihomo</option>
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <div class="field-label">Секретный токен подписки (server_subscription_token)</div>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="mSubSrvTok" value="${esc(tok)}" class="mono"/>
+        <button class="btn" onclick="document.getElementById('mSubSrvTok').value='sub_'+Math.random().toString(36).slice(2,12)">Сгенерировать токен</button>
+      </div>
+    </div>
+    <div style="padding:12px;background:var(--bg-elev);border:1px solid var(--border);border-radius:var(--radius)">
+      <div class="field-label" style="margin-bottom:6px">Готовые ссылки для клиентских приложений</div>
+      <div class="mono" style="font-size:11.5px;display:flex;flex-direction:column;gap:4px">
+        <div>Универсальная Base64 URI: <strong style="color:var(--signal)">${esc(subUrl)}</strong></div>
+        <div>Профиль sing-box JSON: <strong>${esc(subUrl)}?app=sing-box</strong></div>
+        <div>Профиль Clash Meta YAML: <strong>${esc(subUrl)}?app=clash</strong></div>
+      </div>
+    </div>
+  `, `
+    <button class="btn" onclick="closeModal()">Отмена</button>
+    <button class="btn" onclick="navigator.clipboard.writeText('${esc(subUrl)}');toast('URL подписки скопирован')">Скопировать URL</button>
+    <button class="btn btn-primary" onclick="saveSubServerSettings()">${ic('check', 14)} Сохранить параметры подписки</button>
+  `);
+}
+
+async function saveSubServerSettings() {
+  try {
+    await api('POST', '/api/settings/save', {
+      server_subscription_enabled: document.getElementById('mSubSrvEn').checked,
+      server_subscription_format: document.getElementById('mSubSrvFmt').value,
+      server_subscription_token: document.getElementById('mSubSrvTok').value.trim() || 'default'
+    });
+    closeModal();
+    toast('Параметры сервера подписок сохранены');
+    await bootstrap();
+  } catch (e) { toast(e.message, true); }
 }
 
 async function pickBestRealitySni() {
@@ -3856,6 +4700,8 @@ async function srvKeygen(kind) {
     if (res.public_key) document.getElementById('mSrvRPub').value = res.public_key;
     if (res.short_id) document.getElementById('mSrvSid').value = res.short_id;
     if (res.key) document.getElementById('mSrvPass').value = res.key;
+    if (res.cert_pem && document.getElementById('mSrvCertPem')) document.getElementById('mSrvCertPem').value = res.cert_pem;
+    if (res.key_pem && document.getElementById('mSrvKeyPem')) document.getElementById('mSrvKeyPem').value = res.key_pem;
     toast('Криптографические ключи сгенерированы');
   } catch (e) {
     toast(e.message, true);
@@ -3884,10 +4730,17 @@ async function saveSrv(origId) {
     reality_short_id: document.getElementById('mSrvSid').value.trim(),
     reality_private_key: document.getElementById('mSrvRPriv').value.trim(),
     reality_public_key: document.getElementById('mSrvRPub').value.trim(),
+    tls_cert_pem: document.getElementById('mSrvCertPem')?.value.trim() || '',
+    tls_key_pem: document.getElementById('mSrvKeyPem')?.value.trim() || '',
     tewfai_shaper_profile: document.getElementById('mSrvTewShaper').value.trim(),
     tewfai_morph_profile: document.getElementById('mSrvTewMorph').value.trim(),
+    up_mbps: Number(document.getElementById('mSrvHyUp')?.value || 100),
+    down_mbps: Number(document.getElementById('mSrvHyDown')?.value || 100),
     awg_local_address: document.getElementById('mSrvAwgLocal').value.trim(),
     awg_client_address: document.getElementById('mSrvAwgClient').value.trim(),
+    awg_jc: Number(document.getElementById('mSrvAwgJc')?.value || 4),
+    awg_jmin: Number(document.getElementById('mSrvAwgJmin')?.value || 40),
+    awg_jmax: Number(document.getElementById('mSrvAwgJmax')?.value || 70),
     isolate_lan_for_users: document.getElementById('mSrvIsoLan').checked,
     isolated_subnets: splitLines(document.getElementById('mSrvIsoSubnets').value),
     clients: editingSrvClients
@@ -4979,39 +5832,82 @@ async function runDiagTool(method, path, body) {
 }
 
 // ============================================================================
-// 8. ОБНОВЛЕНИЯ, ПРАВИЛА .SRS/.TRS, TELEGRAM И СИСТЕМНЫЕ НАСТРОЙКИ
+// 8. ОБНОВЛЕНИЯ, КОМПОНЕНТЫ, ДВИЖКИ, ПРАВИЛА .SRS/.TRS, TELEGRAM И НАСТРОЙКИ
 // ============================================================================
 function vUpdates() {
   const u = S.updates || {};
   const jobs = S.live.jobs || [];
   const rulesets = u.rulesets || [];
+  const comps = u.components || [];
   return `
     <div class="page-head">
       <div>
-        <div class="page-title">Обновления компонентов и гео-баз маршрутизации</div>
-        <div class="page-desc">Атомарное обновление правил <code class="mono">.srs / .trs</code>, GeoIP/GeoSite, подписок и бинарного ядра <code class="mono">tachyon-core</code></div>
+        <div class="page-title">Центр управления компонентами, движками и гео-базами</div>
+        <div class="page-desc">Управление версиями и вариантами ядер (<code class="mono">tachyon-core / sing-box</code>), службами десинхронизации (<code class="mono">zapret2 / byedpi / wdtt / olcrtc</code>), туннелями (<code class="mono">fptn / tailscale</code>) и базами <code class="mono">.srs / .trs</code></div>
       </div>
       <div class="toolbar">
-        <button class="btn btn-primary" onclick="runUpdateJob('lists')">${ic('refresh', 13)} Обновить списки и подписки</button>
-        <button class="btn" onclick="runUpdateJob('core')">Проверить обновление ядра</button>
+        <button class="btn" onclick="componentAction('all','check')">${ic('search', 13)} Проверить обновления</button>
+        <button class="btn btn-primary" onclick="runUpdateJob('lists')">${ic('refresh', 13)} Обновить все списки и подписки</button>
+        <button class="btn" onclick="runUpdateJob('core')">Обновить ядро</button>
       </div>
     </div>
 
     <div class="grid-3">
       <div class="card">
-        <div class="kpi-label">Версия оркестратора tachyon</div>
+        <div class="kpi-label">Оркестратор панели tachyon</div>
         <div class="kpi-val mono">${esc(u.tachyon_version || '2.0.0')}</div>
-        <div class="kpi-meta">Чистый Rust · без зависимостей от UCI/LuCI</div>
+        <div class="kpi-meta">Чистый Rust · 0 внешних runtime-зависимостей</div>
       </div>
       <div class="card">
-        <div class="kpi-label">Версия ядра tachyon-core</div>
+        <div class="kpi-label">Маршрутизирующее ядро (${esc(S.store.settings?.engine_variant || 'tachyon-core')})</div>
         <div class="kpi-val mono">${esc(u.core_version || S.system.core_version || 'installed')}</div>
-        <div class="kpi-meta">Путь: ${esc(S.store.settings?.core_bin_path || '/usr/bin/tachyon-core')}</div>
+        <div class="kpi-meta">Бинарник: ${esc(S.store.settings?.core_bin_path || '/usr/bin/tachyon-core')}</div>
       </div>
       <div class="card">
-        <div class="kpi-label">Автообновление списков</div>
+        <div class="kpi-label">Автообновление гео-баз и подписок</div>
         <div class="kpi-val">${S.store.settings?.list_update_enabled ? 'Активно' : 'Выкл'}</div>
-        <div class="kpi-meta">Интервал: ${esc(S.store.settings?.update_interval || '3h')} · Файлов: ${rulesets.length}</div>
+        <div class="kpi-meta">Интервал: ${esc(S.store.settings?.update_interval || '3h')} · Наборов .srs/.trs: ${rulesets.length}</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <div class="card-title">Менеджер компонентов и сетевых движков (${comps.length})</div>
+          <div class="card-sub">Индивидуальная проверка версий, выбор сборки ядра, обновление, перезапуск и откат на резервную копию (.bak)</div>
+        </div>
+      </div>
+      <div class="grid-3">
+        ${comps.map(c => `
+          <div style="padding:12px;background:var(--bg-elev);border:1px solid var(--border);border-radius:var(--radius);display:flex;flex-direction:column;justify-content:space-between;gap:10px">
+            <div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px">
+                <span style="font-weight:600;font-size:13px">${esc(c.name || c.title || c.id)}</span>
+                <span class="badge ${c.running ? 'badge-ok' : c.installed ? 'badge-signal' : 'badge-warn'}">${c.running ? 'РАБОТАЕТ' : c.installed ? 'УСТАНОВЛЕН' : 'ВСТРОЕН / ОЖИДАНИЕ'}</span>
+              </div>
+              <div style="font-size:11.5px;color:var(--text-3);margin-bottom:8px">${esc(c.desc || c.description || '')}</div>
+              <div class="mono" style="font-size:11px;color:var(--text-2);display:flex;flex-direction:column;gap:2px">
+                <div>Текущая версия: <strong>${esc(c.version || c.installed_version || '—')}</strong> → Канал: <strong>${esc(c.latest || c.latest_version || 'stable')}</strong></div>
+                ${c.repo ? `<div style="color:var(--text-3)">Репозиторий: ${esc(c.repo)}</div>` : ''}
+              </div>
+              ${Array.isArray(c.variants) && c.variants.length ? `
+                <div style="margin-top:8px">
+                  <div class="field-label" style="margin-bottom:3px">Вариант сборки ядра (Engine Variant)</div>
+                  <select onchange="componentAction('${esc(c.id)}','set_variant',this.value)" class="mono" style="font-size:11px;padding:4px 6px">
+                    ${c.variants.map(v => `<option value="${esc(v)}" ${c.variant === v ? 'selected' : ''}>${esc(v)}</option>`).join('')}
+                  </select>
+                </div>
+              ` : ''}
+            </div>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;padding-top:8px;border-top:1px solid var(--border)">
+              <button class="btn btn-sm" onclick="componentAction('${esc(c.id)}','check')">Проверить</button>
+              <button class="btn btn-sm btn-signal" onclick="componentAction('${esc(c.id)}','update')">Обновить</button>
+              <button class="btn btn-sm" onclick="componentAction('${esc(c.id)}','restart')">Перезапуск</button>
+              <button class="btn btn-sm" onclick="componentAction('${esc(c.id)}','stop')">Стоп</button>
+              ${c.can_rollback ? `<button class="btn btn-sm btn-danger" onclick="componentAction('${esc(c.id)}','rollback')">Откат .bak</button>` : ''}
+            </div>
+          </div>
+        `).join('')}
       </div>
     </div>
 
@@ -5019,7 +5915,7 @@ function vUpdates() {
       <div class="card-head">
         <div class="card-title">Локальные скомпилированные наборы правил (.srs / .trs / .json) в /etc/tachyon/lists (${rulesets.length})</div>
       </div>
-      ${rulesets.length === 0 ? `<div style="font-size:12px;color:var(--text-3)">В каталоге /etc/tachyon/lists пока нет загруженных файлов гео-баз.</div>` : `
+      ${rulesets.length === 0 ? `<div style="font-size:12px;color:var(--text-3)">В каталоге /etc/tachyon/lists пока нет загруженных файлов гео-баз. Нажмите «Обновить все списки и подписки».</div>` : `
         <div class="table-wrap">
           <table>
             <thead>
@@ -5027,7 +5923,7 @@ function vUpdates() {
                 <th>Файл набора правил</th>
                 <th>Размер</th>
                 <th>Контрольная сумма</th>
-                <th>Обновлён (Unix)</th>
+                <th>Обновлён</th>
               </tr>
             </thead>
             <tbody>
@@ -5036,7 +5932,7 @@ function vUpdates() {
                   <td class="mono" style="font-weight:600">${esc(r.name)}</td>
                   <td class="mono">${fmtBytes(r.size_bytes || 0)}</td>
                   <td class="mono">${esc(r.sha256_prefix || '—')}</td>
-                  <td class="mono">${r.modified_unix ? new Date(r.modified_unix * 1000).toLocaleString('ru-RU') : '—'}</td>
+                  <td class="mono">${(r.updated_at || r.modified_unix) ? new Date((r.updated_at || r.modified_unix) * 1000).toLocaleString('ru-RU') : '—'}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -5073,6 +5969,15 @@ function vUpdates() {
       `}
     </div>
   `;
+}
+
+async function componentAction(id, action, variant) {
+  try {
+    toast(`Компонент ${id}: ${action}...`);
+    const res = await api('POST', '/api/components/action', { id, action, variant });
+    toast(res.message || `Операция ${action} выполнена`);
+    await bootstrap();
+  } catch (e) { toast(e.message, true); }
 }
 
 async function runUpdateJob(target) {
@@ -5149,26 +6054,123 @@ async function testTelegram() {
   try { await api('POST', '/api/telegram/test', {}); toast('Тестовое сообщение отправлено'); } catch (e) { toast(e.message, true); }
 }
 
+function switchSettingsSubtab(tab) {
+  S.settingsTab = tab;
+  document.querySelectorAll('[data-st-tab]').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('data-st-tab') === tab);
+  });
+  document.querySelectorAll('[data-st-pane]').forEach(pane => {
+    pane.style.display = pane.getAttribute('data-st-pane') === tab ? 'flex' : 'none';
+  });
+}
+
 function vSettings() {
   const st = S.store.settings || {};
   const secs = S.store.sections || [];
+  const cur = S.settingsTab || 'dns';
+  const tabs = [
+    ['dns', '1. DNS, FakeIP и Hosts'],
+    ['net', '2. Сеть и TProxy/TUN'],
+    ['services', '3. Службы, Failover и Smart Detect'],
+    ['updates', '4. Автообновления и зеркала'],
+    ['ai', '5. AI Doctor и RAG'],
+    ['ui', '6. Интерфейс и навигация'],
+    ['security', '7. Безопасность, подписки и бэкап']
+  ];
   return `
     <div class="page-head">
       <div>
         <div class="page-title">Системные параметры маршрутизатора</div>
-        <div class="page-desc">Конфигурация перехвата TProxy/TUN, каскадного DNS, файлов Hosts, Multi-WAN Failover, Watchdog, AI Doctor и резервного копирования</div>
+        <div class="page-desc">Полное управление 7 подсистемами: каскадный DNS и Hosts, перехват TProxy/TUN, службы и Multi-WAN Failover, автообновления, AI Doctor, интерфейс и безопасность</div>
       </div>
       <div class="toolbar">
         <button class="btn" onclick="importLegacyFiles()">Импорт legacy-конфигов роутера</button>
         <button class="btn" onclick="downloadBackup()">${ic('download', 13)} Скачать бэкап JSON</button>
         <button class="btn" onclick="openRestoreBackupModal()">${ic('upload', 13)} Восстановить из JSON</button>
-        <button class="btn btn-primary" onclick="saveSettings()">${ic('check', 14)} Сохранить настройки</button>
+        <button class="btn btn-primary" onclick="saveSettings()">${ic('check', 14)} Сохранить все настройки</button>
       </div>
     </div>
 
-    <div class="grid-2">
+    <div class="subtabs" style="width:100%;flex-wrap:wrap">
+      ${tabs.map(([id, label]) => `
+        <button class="subtab ${cur === id ? 'active' : ''}" data-st-tab="${id}" onclick="switchSettingsSubtab('${id}')">${esc(label)}</button>
+      `).join('')}
+    </div>
+
+    <!-- 1. DNS, FakeIP и Hosts -->
+    <div data-st-pane="dns" style="display:${cur === 'dns' ? 'flex' : 'none'};flex-direction:column;gap:14px">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">Каскадный резолвер DNS, FakeIP, кэширование, DNS Detour и DHCP</div>
+          <div class="grid-3">
+            <div class="field">
+              <div class="field-label">Протокол апстрима DNS</div>
+              <select id="stDnsType">
+                <option value="doh" ${st.dns_type === 'doh' ? 'selected' : ''}>doh — DNS-over-HTTPS</option>
+                <option value="dot" ${st.dns_type === 'dot' ? 'selected' : ''}>dot — DNS-over-TLS</option>
+                <option value="udp" ${st.dns_type === 'udp' ? 'selected' : ''}>udp — UDP 53</option>
+              </select>
+            </div>
+            <div class="field">
+              <div class="field-label">Стратегия IP (dns_strategy)</div>
+              <select id="stDnsStrat">
+                <option value="prefer_ipv4" ${st.dns_strategy === 'prefer_ipv4' ? 'selected' : ''}>prefer_ipv4</option>
+                <option value="ipv4_only" ${st.dns_strategy === 'ipv4_only' ? 'selected' : ''}>ipv4_only</option>
+                <option value="prefer_ipv6" ${st.dns_strategy === 'prefer_ipv6' ? 'selected' : ''}>prefer_ipv6</option>
+              </select>
+            </div>
+            <div class="field">
+              <div class="field-label">Размер кэша DNS</div>
+              <input type="number" id="stDnsCacheSz" value="${st.dns_cache_size || 4096}" class="mono"/>
+            </div>
+          </div>
+          <div class="grid-3">
+            <div class="field">
+              <div class="field-label">Основные серверы DNS</div>
+              <input type="text" id="stDnsSrvs" value="${esc((st.dns_servers || []).join(', '))}" class="mono"/>
+            </div>
+            <div class="field">
+              <div class="field-label">Bootstrap DNS (для резолва DoH)</div>
+              <input type="text" id="stBootDns" value="${esc((st.bootstrap_dns_servers || ['77.88.8.8', '1.1.1.1']).join(', '))}" class="mono"/>
+            </div>
+            <div class="field">
+              <div class="field-label">Резервный Fallback DNS</div>
+              <input type="text" id="stFallDns" value="${esc(st.fallback_dns_server || '1.1.1.1')}" class="mono"/>
+            </div>
+          </div>
+          <div class="grid-2">
+            <label class="check-row"><input type="checkbox" id="stDnsDetour" ${st.dns_detour_enabled ? 'checked' : ''}/><span>Направлять DNS через секцию:</span></label>
+            <select id="stDnsDetourSec">
+              <option value="">— Прямой канал —</option>
+              ${secs.map(s => `<option value="${esc(s.id)}" ${st.dns_detour_section === s.id ? 'selected' : ''}>${esc(s.label || s.id)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="grid-3">
+            <label class="check-row"><input type="checkbox" id="stDnsLocCache" ${st.dns_local_cache !== false ? 'checked' : ''}/><span>Локальный кэш DNS</span></label>
+            <label class="check-row"><input type="checkbox" id="stDnsTurbo" ${st.dns_turbo_cache !== false ? 'checked' : ''}/><span>DNS Turbo Cache</span></label>
+            <label class="check-row"><input type="checkbox" id="stNoDhcp" ${st.dont_touch_dhcp ? 'checked' : ''}/><span>Не изменять настройки DHCP</span></label>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Движок подмены файлов Hosts и кастомные сопоставления IP</div>
+          <label class="check-row"><input type="checkbox" id="stHostsEn" ${st.hosts_enabled ? 'checked' : ''}/><span>Включить локальную подмену и внешние списки Hosts</span></label>
+          <div class="field">
+            <div class="field-label">URL-списки внешних файлов Hosts</div>
+            <textarea id="stHostsUrls" style="min-height:80px">${esc((st.hosts_list_urls || []).join('\n'))}</textarea>
+          </div>
+          <div class="field">
+            <div class="field-label">Статические записи Hosts (IP домен)</div>
+            <textarea id="stStaticHosts" style="min-height:80px">${esc((st.static_hosts || []).join('\n'))}</textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. Сеть и TProxy/TUN -->
+    <div data-st-pane="net" style="display:${cur === 'net' ? 'flex' : 'none'};flex-direction:column;gap:14px">
       <div class="card">
-        <div class="card-title">Сетевой стек, перехват TProxy / TUN и аппаратные оптимизации</div>
+        <div class="card-title">Сетевой стек, перехват TProxy / TUN, nftables и защита от утечек</div>
         <div class="grid-3">
           <div class="field">
             <div class="field-label">Режим перехвата (proxy_mode)</div>
@@ -5205,83 +6207,32 @@ function vSettings() {
             <input type="number" id="stTunMtu" value="${st.tun_mtu || 1420}" class="mono"/>
           </div>
         </div>
-        <div class="grid-2">
+        <div class="grid-3">
           <label class="check-row"><input type="checkbox" id="stIpv6" ${st.enable_ipv6 ? 'checked' : ''}/><span>Разрешить маршрутизацию IPv6</span></label>
           <label class="check-row"><input type="checkbox" id="stNoQuic" ${st.disable_quic ? 'checked' : ''}/><span>Блокировать внешний UDP/443 QUIC</span></label>
           <label class="check-row"><input type="checkbox" id="stBlockDoh" ${st.block_doh ? 'checked' : ''}/><span>Перехватывать сторонний DoH/DoT</span></label>
           <label class="check-row"><input type="checkbox" id="stWebrtc" ${st.webrtc_leak_protect ? 'checked' : ''}/><span>Защита от утечек STUN/WebRTC</span></label>
           <label class="check-row"><input type="checkbox" id="stRouterSelf" ${st.route_router_traffic ? 'checked' : ''}/><span>Маршрутизировать трафик самого роутера</span></label>
-          <label class="check-row"><input type="checkbox" id="stWatchdog" ${st.enable_watchdog ? 'checked' : ''}/><span>Сторожевой таймер (Watchdog) и LKG</span></label>
-          <label class="check-row"><input type="checkbox" id="stTorrDirect" ${st.torrserver_direct !== false ? 'checked' : ''}/><span>TorrServer Direct (прямой локальный поток)</span></label>
           <label class="check-row"><input type="checkbox" id="stTorrIso" ${st.torrent_isolation ? 'checked' : ''}/><span>Изоляция P2P/BitTorrent от прокси</span></label>
-          <label class="check-row"><input type="checkbox" id="stWifiCall" ${st.wifi_calling_direct !== false ? 'checked' : ''}/><span>Wi-Fi Calling Direct (UDP 500/4500 VoWiFi)</span></label>
-          <label class="check-row"><input type="checkbox" id="stConsoleOpt" ${st.console_gaming_mode ? 'checked' : ''}/><span>Game Console Optimizer (Open NAT UDP)</span></label>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-title">Каскадный резолвер DNS, кэширование, DNS Detour и DHCP</div>
-        <div class="grid-3">
-          <div class="field">
-            <div class="field-label">Протокол апстрима DNS</div>
-            <select id="stDnsType">
-              <option value="doh" ${st.dns_type === 'doh' ? 'selected' : ''}>doh — DNS-over-HTTPS</option>
-              <option value="dot" ${st.dns_type === 'dot' ? 'selected' : ''}>dot — DNS-over-TLS</option>
-              <option value="udp" ${st.dns_type === 'udp' ? 'selected' : ''}>udp — UDP 53</option>
-            </select>
-          </div>
-          <div class="field">
-            <div class="field-label">Стратегия IP (dns_strategy)</div>
-            <select id="stDnsStrat">
-              <option value="prefer_ipv4" ${st.dns_strategy === 'prefer_ipv4' ? 'selected' : ''}>prefer_ipv4</option>
-              <option value="ipv4_only" ${st.dns_strategy === 'ipv4_only' ? 'selected' : ''}>ipv4_only</option>
-              <option value="prefer_ipv6" ${st.dns_strategy === 'prefer_ipv6' ? 'selected' : ''}>prefer_ipv6</option>
-            </select>
-          </div>
-          <div class="field">
-            <div class="field-label">Размер кэша DNS</div>
-            <input type="number" id="stDnsCacheSz" value="${st.dns_cache_size || 4096}" class="mono"/>
-          </div>
-        </div>
-        <div class="grid-3">
-          <div class="field">
-            <div class="field-label">Основные серверы DNS</div>
-            <input type="text" id="stDnsSrvs" value="${esc((st.dns_servers || []).join(', '))}" class="mono"/>
-          </div>
-          <div class="field">
-            <div class="field-label">Bootstrap DNS (для резолва DoH)</div>
-            <input type="text" id="stBootDns" value="${esc((st.bootstrap_dns_servers || ['77.88.8.8', '1.1.1.1']).join(', '))}" class="mono"/>
-          </div>
-          <div class="field">
-            <div class="field-label">Резервный Fallback DNS</div>
-            <input type="text" id="stFallDns" value="${esc(st.fallback_dns_server || '1.1.1.1')}" class="mono"/>
-          </div>
-        </div>
-        <div class="grid-2">
-          <label class="check-row"><input type="checkbox" id="stDnsDetour" ${st.dns_detour_enabled ? 'checked' : ''}/><span>Направлять DNS через секцию:</span></label>
-          <select id="stDnsDetourSec">
-            <option value="">— Прямой канал —</option>
-            ${secs.map(s => `<option value="${esc(s.id)}" ${st.dns_detour_section === s.id ? 'selected' : ''}>${esc(s.label || s.id)}</option>`).join('')}
-          </select>
-        </div>
-        <div class="grid-3">
-          <label class="check-row"><input type="checkbox" id="stDnsLocCache" ${st.dns_local_cache !== false ? 'checked' : ''}/><span>Локальный кэш DNS</span></label>
-          <label class="check-row"><input type="checkbox" id="stDnsTurbo" ${st.dns_turbo_cache !== false ? 'checked' : ''}/><span>DNS Turbo Cache</span></label>
-          <label class="check-row"><input type="checkbox" id="stNoDhcp" ${st.dont_touch_dhcp ? 'checked' : ''}/><span>Не изменять настройки DHCP</span></label>
         </div>
       </div>
     </div>
 
-    <div class="grid-2">
+    <!-- 3. Службы, Failover и Smart Detect -->
+    <div data-st-pane="services" style="display:${cur === 'services' ? 'flex' : 'none'};flex-direction:column;gap:14px">
       <div class="card">
-        <div class="card-title">Движок Hosts, Multi-WAN Failover и контроль ресурсов</div>
-        <div class="grid-2">
-          <label class="check-row"><input type="checkbox" id="stHostsEn" ${st.hosts_enabled ? 'checked' : ''}/><span>Включить подмену Hosts</span></label>
-          <label class="check-row"><input type="checkbox" id="stSmartEn" ${st.smart_detect ? 'checked' : ''}/><span>Smart Detect при сбросе соединения</span></label>
-          <label class="check-row"><input type="checkbox" id="stWanFoEn" ${st.wan_failover_enabled ? 'checked' : ''}/><span>Включить Multi-WAN Failover</span></label>
+        <div class="card-title">Multi-WAN Failover, Watchdog, Smart Detect и специализированные оптимизации</div>
+        <div class="grid-4">
+          <label class="check-row"><input type="checkbox" id="stWatchdog" ${st.enable_watchdog ? 'checked' : ''}/><span>Сторожевой таймер (Watchdog) и LKG</span></label>
           <label class="check-row"><input type="checkbox" id="stAutoHeal" ${st.auto_heal_enabled !== false ? 'checked' : ''}/><span>Автовосстановление (Auto-Heal)</span></label>
+          <label class="check-row"><input type="checkbox" id="stSmartEn" ${st.smart_detect ? 'checked' : ''}/><span>Smart Detect при сбросе сессий</span></label>
+          <label class="check-row"><input type="checkbox" id="stWanFoEn" ${st.wan_failover_enabled ? 'checked' : ''}/><span>Включить Multi-WAN Failover</span></label>
+          <label class="check-row"><input type="checkbox" id="stTorrDirect" ${st.torrserver_direct !== false ? 'checked' : ''}/><span>TorrServer Direct (локальный поток)</span></label>
+          <label class="check-row"><input type="checkbox" id="stWifiCall" ${st.wifi_calling_direct !== false ? 'checked' : ''}/><span>Wi-Fi Calling Direct (UDP 500/4500)</span></label>
+          <label class="check-row"><input type="checkbox" id="stConsoleOpt" ${st.console_gaming_mode ? 'checked' : ''}/><span>Game Console Optimizer (Open NAT)</span></label>
+          <label class="check-row"><input type="checkbox" id="stTailscale" ${st.tailscale_enabled ? 'checked' : ''}/><span>Интеграция с подсетью Tailscale</span></label>
         </div>
-        <div class="grid-3">
+        <div class="grid-4">
           <div class="field">
             <div class="field-label">Основной интерфейс WAN</div>
             <input type="text" id="stWanPri" value="${esc(st.wan_failover_primary || 'wan')}" class="mono"/>
@@ -5291,25 +6242,79 @@ function vSettings() {
             <input type="text" id="stWanBak" value="${esc(st.wan_failover_backup || 'wan2')}" class="mono"/>
           </div>
           <div class="field">
+            <div class="field-label">Секция для Smart Detect</div>
+            <select id="stSmartSec">
+              <option value="">— Первая активная прокси-секция —</option>
+              ${secs.map(s => `<option value="${esc(s.id)}" ${st.smart_detect_section === s.id ? 'selected' : ''}>${esc(s.label || s.id)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field">
             <div class="field-label">Лимит памяти ядра (МБ)</div>
             <input type="number" id="stMemLim" value="${st.memory_limit_mb || 48}" class="mono"/>
           </div>
         </div>
-        <div class="field">
-          <div class="field-label">URL-списки внешних файлов Hosts</div>
-          <textarea id="stHostsUrls" style="min-height:54px">${esc((st.hosts_list_urls || []).join('\n'))}</textarea>
-        </div>
-        <div class="field">
-          <div class="field-label">Статические записи Hosts (IP домен)</div>
-          <textarea id="stStaticHosts" style="min-height:54px">${esc((st.static_hosts || []).join('\n'))}</textarea>
+      </div>
+    </div>
+
+    <!-- 4. Автообновления и зеркала -->
+    <div data-st-pane="updates" style="display:${cur === 'updates' ? 'flex' : 'none'};flex-direction:column;gap:14px">
+      <div class="card">
+        <div class="card-title">Расписание обновлений гео-баз, подписок и вариант движка</div>
+        <div class="grid-4">
+          <div class="field">
+            <div class="field-label">Автообновление списков .srs/.trs</div>
+            <label class="check-row" style="padding-top:6px"><input type="checkbox" id="stListUpdEn" ${st.list_update_enabled !== false ? 'checked' : ''}/><span>Автообновлять гео-базы и подписки</span></label>
+          </div>
+          <div class="field">
+            <div class="field-label">Интервал обновления (1h / 3h / 6h / 12h / 24h)</div>
+            <input type="text" id="stUpdInt" value="${esc(st.update_interval || '3h')}" class="mono"/>
+          </div>
+          <div class="field">
+            <div class="field-label">Вариант маршрутизирующего ядра</div>
+            <select id="stEngVar" class="mono">
+              <option value="tachyon-core" ${(st.engine_variant || 'tachyon-core') === 'tachyon-core' ? 'selected' : ''}>tachyon-core (Native Rust)</option>
+              <option value="sing-box-extended" ${st.engine_variant === 'sing-box-extended' ? 'selected' : ''}>sing-box-extended</option>
+              <option value="sing-box-lx" ${st.engine_variant === 'sing-box-lx' ? 'selected' : ''}>sing-box-lx</option>
+              <option value="sing-box-stable" ${st.engine_variant === 'sing-box-stable' ? 'selected' : ''}>sing-box-stable</option>
+              <option value="sing-box-tiny" ${st.engine_variant === 'sing-box-tiny' ? 'selected' : ''}>sing-box-tiny</option>
+            </select>
+          </div>
+          <div class="field">
+            <div class="field-label">Путь к бинарнику ядра</div>
+            <input type="text" id="stCoreBin" value="${esc(st.core_bin_path || '/usr/bin/tachyon-core')}" class="mono"/>
+          </div>
         </div>
       </div>
+    </div>
 
+    <!-- 5. AI Doctor и RAG -->
+    <div data-st-pane="ai" style="display:${cur === 'ai' ? 'flex' : 'none'};flex-direction:column;gap:14px">
       <div class="card">
-        <div class="card-title">Интерфейс, акцентная тема, безопасность панели и AI Doctor</div>
+        <div class="card-title">Интеграция AI Doctor v3.0 и облачных LLM-провайдеров</div>
         <div class="grid-3">
           <div class="field">
-            <div class="field-label">Боковая панель</div>
+            <div class="field-label">Провайдер AI (deepseek / openai / openrouter / local)</div>
+            <input type="text" id="stAiProv" value="${esc(st.ai_doctor_provider || 'deepseek')}" class="mono"/>
+          </div>
+          <div class="field">
+            <div class="field-label">Модель LLM</div>
+            <input type="text" id="stAiMod" value="${esc(st.ai_doctor_model || 'deepseek-chat')}" class="mono"/>
+          </div>
+          <div class="field">
+            <div class="field-label">API-ключ провайдера AI</div>
+            <input type="password" id="stAiKey" value="${esc(st.ai_doctor_api_key || '')}" class="mono"/>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 6. Интерфейс и навигация -->
+    <div data-st-pane="ui" style="display:${cur === 'ui' ? 'flex' : 'none'};flex-direction:column;gap:14px">
+      <div class="card">
+        <div class="card-title">Параметры приборной панели, темы оформления и навигации</div>
+        <div class="grid-3">
+          <div class="field">
+            <div class="field-label">Положение боковой панели</div>
             <select id="stSidebarPos">
               <option value="left" ${st.sidebar_pos !== 'right' ? 'selected' : ''}>Слева (стандартно)</option>
               <option value="right" ${st.sidebar_pos === 'right' ? 'selected' : ''}>Справа</option>
@@ -5325,22 +6330,39 @@ function vSettings() {
             </select>
           </div>
           <div class="field">
-            <div class="field-label">Новый пароль панели</div>
-            <input type="password" id="stNewPass" placeholder="Не менять"/>
+            <div class="field-label">Конструктор виджетов Дашборда</div>
+            <button class="btn" onclick="openDashboardLayoutModal()" style="margin-top:2px">${ic('panel', 13)} Настроить виджеты Дашборда</button>
           </div>
         </div>
-        <div class="grid-2">
+      </div>
+    </div>
+
+    <!-- 7. Безопасность, подписки и бэкап -->
+    <div data-st-pane="security" style="display:${cur === 'security' ? 'flex' : 'none'};flex-direction:column;gap:14px">
+      <div class="card">
+        <div class="card-title">Безопасность панели управления, Agent API и сервер клиентских подписок</div>
+        <div class="grid-3">
           <div class="field">
-            <div class="field-label">Провайдер и модель AI Doctor</div>
-            <div style="display:flex;gap:6px">
-              <input type="text" id="stAiProv" value="${esc(st.ai_doctor_provider || 'deepseek')}" class="mono"/>
-              <input type="text" id="stAiMod" value="${esc(st.ai_doctor_model || 'deepseek-chat')}" class="mono"/>
-            </div>
+            <div class="field-label">Новый пароль администратора</div>
+            <input type="password" id="stNewPass" placeholder="Оставьте пустым, чтобы не менять"/>
           </div>
           <div class="field">
-            <div class="field-label">API-ключ провайдера AI</div>
-            <input type="password" id="stAiKey" value="${esc(st.ai_doctor_api_key || '')}" class="mono"/>
+            <div class="field-label">Токен клиентских подписок (/sub/:token)</div>
+            <input type="text" id="stSubTok" value="${esc(st.server_subscription_token || 'default')}" class="mono"/>
           </div>
+          <div class="field">
+            <div class="field-label">Формат клиентских подписок по умолчанию</div>
+            <select id="stSubFmt">
+              <option value="uri" ${(st.server_subscription_format || 'uri') === 'uri' ? 'selected' : ''}>uri — Base64 ссылки</option>
+              <option value="sing-box" ${st.server_subscription_format === 'sing-box' ? 'selected' : ''}>sing-box JSON</option>
+              <option value="clash" ${st.server_subscription_format === 'clash' ? 'selected' : ''}>clash YAML</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;padding-top:6px">
+          <button class="btn" onclick="downloadBackup()">${ic('download', 13)} Экспортировать полный бэкап JSON</button>
+          <button class="btn" onclick="openRestoreBackupModal()">${ic('upload', 13)} Восстановить из бэкапа JSON</button>
+          <button class="btn" onclick="importLegacyFiles()">Импортировать legacy-конфиги /etc/config/tachyon</button>
         </div>
       </div>
     </div>
@@ -5365,6 +6387,7 @@ async function saveSettings() {
     torrent_isolation: document.getElementById('stTorrIso').checked,
     wifi_calling_direct: document.getElementById('stWifiCall').checked,
     console_gaming_mode: document.getElementById('stConsoleOpt').checked,
+    tailscale_enabled: document.getElementById('stTailscale')?.checked || false,
     dns_type: document.getElementById('stDnsType').value,
     dns_strategy: document.getElementById('stDnsStrat').value,
     dns_cache_size: Number(document.getElementById('stDnsCacheSz').value || 4096),
@@ -5378,11 +6401,16 @@ async function saveSettings() {
     dont_touch_dhcp: document.getElementById('stNoDhcp').checked,
     hosts_enabled: document.getElementById('stHostsEn').checked,
     smart_detect: document.getElementById('stSmartEn').checked,
+    smart_detect_section: document.getElementById('stSmartSec')?.value || '',
     wan_failover_enabled: document.getElementById('stWanFoEn').checked,
     auto_heal_enabled: document.getElementById('stAutoHeal').checked,
     wan_failover_primary: document.getElementById('stWanPri').value.trim(),
     wan_failover_backup: document.getElementById('stWanBak').value.trim(),
     memory_limit_mb: Number(document.getElementById('stMemLim').value || 48),
+    list_update_enabled: document.getElementById('stListUpdEn')?.checked !== false,
+    update_interval: document.getElementById('stUpdInt')?.value.trim() || '3h',
+    engine_variant: document.getElementById('stEngVar')?.value || 'tachyon-core',
+    core_bin_path: document.getElementById('stCoreBin')?.value.trim() || '/usr/bin/tachyon-core',
     hosts_list_urls: splitLines(document.getElementById('stHostsUrls').value),
     static_hosts: splitLines(document.getElementById('stStaticHosts').value),
     sidebar_pos: document.getElementById('stSidebarPos').value,
@@ -5390,6 +6418,8 @@ async function saveSettings() {
     ai_doctor_provider: document.getElementById('stAiProv').value.trim(),
     ai_doctor_model: document.getElementById('stAiMod').value.trim(),
     ai_doctor_api_key: document.getElementById('stAiKey').value.trim(),
+    server_subscription_token: document.getElementById('stSubTok')?.value.trim() || 'default',
+    server_subscription_format: document.getElementById('stSubFmt')?.value || 'uri',
     new_password: document.getElementById('stNewPass').value.trim()
   };
   try {

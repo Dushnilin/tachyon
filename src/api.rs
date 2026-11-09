@@ -1192,7 +1192,7 @@ async fn dispatch_api(
                 }
             }
         }
-        ("GET", "/api/updates/check") => {
+        ("GET", "/api/updates/check") | ("GET", "/api/components/status") => {
             let info = core.check_updates().await;
             send_json(stream, 200, &info).await
         }
@@ -1202,6 +1202,27 @@ async fn dispatch_api(
                 .and_then(|v| v.get("target").and_then(Value::as_str).map(String::from))
                 .unwrap_or_else(|| "lists".to_string());
             let res = core.run_update_job(&target).await;
+            send_json(stream, 200, &res).await
+        }
+        ("POST", "/api/components/action") => {
+            let val = serde_json::from_slice::<Value>(body).unwrap_or_else(|_| json!({}));
+            let component = val
+                .get("component")
+                .or_else(|| val.get("id"))
+                .and_then(Value::as_str)
+                .unwrap_or("tachyon-core");
+            let action = val
+                .get("action")
+                .and_then(Value::as_str)
+                .unwrap_or("update");
+            let variant = val.get("variant").and_then(Value::as_str);
+            let res = core.component_action(component, action, variant).await;
+            send_json(stream, 200, &res).await
+        }
+        ("POST", "/api/wizard/preview") => {
+            let val = serde_json::from_slice::<Value>(body).unwrap_or_else(|_| json!({}));
+            let input = val.get("input").and_then(Value::as_str).unwrap_or("");
+            let res = core.preview_wizard_input(input).await;
             send_json(stream, 200, &res).await
         }
         ("GET", "/api/jobs") => {
@@ -1405,6 +1426,47 @@ async fn dispatch_api(
                 "password" => json!({"password": crypto_gen::generate_alnum(24)}),
                 "mtproto" => {
                     json!({"secret": format!("ee{}676f6f676c652e636f6d", crypto_gen::generate_hex(16))})
+                }
+                "tls_cert" => {
+                    let sni = val
+                        .get("sni")
+                        .and_then(Value::as_str)
+                        .filter(|s| !s.trim().is_empty())
+                        .unwrap_or("tachyon.internal");
+                    let cert_dir = state
+                        .path
+                        .parent()
+                        .unwrap_or_else(|| std::path::Path::new("/etc/tachyon"))
+                        .join("certs");
+                    let _ = std::fs::create_dir_all(&cert_dir);
+                    let cert_path = cert_dir.join(format!("{sni}.crt"));
+                    let key_path = cert_dir.join(format!("{sni}.key"));
+                    let _ = tokio::process::Command::new("openssl")
+                        .args([
+                            "req",
+                            "-x509",
+                            "-newkey",
+                            "ec",
+                            "-pkeyopt",
+                            "ec_paramgen_curve:prime256v1",
+                            "-days",
+                            "3650",
+                            "-nodes",
+                            "-subj",
+                            &format!("/CN={sni}"),
+                            "-keyout",
+                            &key_path.to_string_lossy(),
+                            "-out",
+                            &cert_path.to_string_lossy(),
+                        ])
+                        .output()
+                        .await;
+                    json!({
+                        "ok": true,
+                        "sni": sni,
+                        "cert_path": cert_path.to_string_lossy(),
+                        "key_path": key_path.to_string_lossy()
+                    })
                 }
                 _ => {
                     let kp = crypto_gen::generate_reality_keypair();

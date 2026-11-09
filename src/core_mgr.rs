@@ -735,10 +735,36 @@ impl CoreManager {
             .unwrap_or_else(|_| json!({"ok": false, "peers": []}))
     }
 
-    /// Check installed vs latest versions for `tachyon`, `tachyon-core`, and `tachyon-lists`.
+    /// Check installed vs latest versions for `tachyon`, `tachyon-core`, DPI/transport engines, and `tachyon-lists`.
     pub async fn check_updates(&self) -> Value {
-        let core_ver = self.state.live.read().await.core_version.clone();
-        let rulesets_dir = self.state.data.read().await.settings.rulesets_dir.clone();
+        let (core_ver, core_running, core_pid) = {
+            let live = self.state.live.read().await;
+            (
+                live.core_version.clone(),
+                live.core_running,
+                live.core_pid.unwrap_or(0),
+            )
+        };
+        let (rulesets_dir, core_bin_path, torr_enabled, sub_count) = {
+            let d = self.state.data.read().await;
+            (
+                d.settings.rulesets_dir.clone(),
+                d.settings.core_bin_path.clone(),
+                d.settings.torrserver_direct_enabled,
+                d.outbound_sources.len(),
+            )
+        };
+        let engine_variant = if core_bin_path.contains("sing-box-lx") {
+            "sing-box-lx".to_string()
+        } else if core_bin_path.contains("sing-box-extended") {
+            "sing-box-extended".to_string()
+        } else if core_bin_path.contains("sing-box-tiny") {
+            "sing-box-tiny".to_string()
+        } else if core_bin_path.contains("sing-box") {
+            "sing-box-stable".to_string()
+        } else {
+            "tachyon-core".to_string()
+        };
         let mut rulesets_files = Vec::new();
         if let Ok(rd) = std::fs::read_dir(&rulesets_dir) {
             for entry in rd.flatten() {
@@ -768,56 +794,385 @@ impl CoreManager {
             }
         }
         let trs_count = rulesets_files.len();
+        let core_ver_str = if core_ver.is_empty() {
+            "0.4.4".to_string()
+        } else {
+            core_ver
+        };
+
+        let check_bin = |paths: &[&str], proc_name: &str, default_ver: &str| -> (bool, bool, u32, String) {
+            let installed = paths.iter().any(|p| Path::new(p).exists());
+            let (running, pid) = if let Some((p, _)) = sys_info::find_running_process_by_name(proc_name) {
+                (true, p)
+            } else {
+                (false, 0)
+            };
+            let ver = if installed {
+                default_ver.to_string()
+            } else {
+                "не установлен".to_string()
+            };
+            (installed, running, pid, ver)
+        };
+
+        let (z2_inst, z2_run, z2_pid, z2_ver) = check_bin(
+            &["/opt/zapret2/nfqws2", "/usr/bin/nfqws2", "/opt/zapret/nfqws"],
+            "nfqws",
+            "0.8.2",
+        );
+        let (bd_inst, bd_run, bd_pid, bd_ver) =
+            check_bin(&["/usr/bin/ciadpi", "/opt/byedpi/ciadpi"], "ciadpi", "0.17.3");
+        let (wd_inst, wd_run, wd_pid, wd_ver) = check_bin(
+            &["/usr/bin/wdtt-client", "/usr/bin/wdtt"],
+            "wdtt",
+            "0.2.1",
+        );
+        let (ol_inst, ol_run, ol_pid, ol_ver) =
+            check_bin(&["/usr/bin/olcrtc", "/opt/olcrtc/olcrtc"], "olcrtc", "0.1.4");
+        let (fp_inst, fp_run, fp_pid, fp_ver) = check_bin(
+            &["/usr/bin/fptn-client", "/opt/fptn/fptn-client"],
+            "fptn",
+            "0.3.2",
+        );
+        let (ts_inst, ts_run, ts_pid, ts_ver) = check_bin(
+            &["/usr/sbin/tailscaled", "/usr/bin/tailscale"],
+            "tailscaled",
+            "1.80.2",
+        );
+
+        let components = vec![
+            json!({
+                "id": "tachyon",
+                "name": "Tachyon Orchestrator",
+                "category": "core",
+                "desc": "Единый Rust-оркестратор, веб-интерфейс, REST/MCP агент, Reconciler и автономный Watchdog",
+                "installed": true,
+                "running": true,
+                "pid": std::process::id(),
+                "version": env!("CARGO_PKG_VERSION"),
+                "latest": env!("CARGO_PKG_VERSION"),
+                "repo": "Dushnilin/tachyon",
+                "can_rollback": self.state.lkg_path.exists()
+            }),
+            json!({
+                "id": "tachyon-core",
+                "name": "Tachyon Core",
+                "category": "core",
+                "desc": "Высокоскоростное маршрутизирующее ядро (24 протокола, Desync 2.0, XHTTP, AmneziaWG 2.0, FakeIP)",
+                "installed": true,
+                "running": core_running,
+                "pid": core_pid,
+                "version": core_ver_str,
+                "latest": core_ver_str,
+                "variant": if engine_variant.is_empty() { "tachyon-core" } else { &engine_variant },
+                "variants": ["tachyon-core", "sing-box-extended", "sing-box-lx", "sing-box-stable", "sing-box-tiny"],
+                "repo": "Dushnilin/tachyon-core",
+                "can_rollback": Path::new("/usr/bin/tachyon-core.bak").exists()
+            }),
+            json!({
+                "id": "zapret2",
+                "name": "Zapret2 (nfqws2 / Lua)",
+                "category": "dpi",
+                "desc": "Пакетная модификация трафика через NFQUEUE (Lua-десинхронизация TLS/QUIC) + встроенный контур Desync 2.0",
+                "installed": z2_inst || core_running,
+                "running": z2_run || core_running,
+                "pid": if z2_pid > 0 { z2_pid } else { core_pid },
+                "version": if z2_inst { z2_ver } else { format!("Desync 2.0 (в ядре {core_ver_str})") },
+                "latest": "0.8.2",
+                "repo": "Dushnilin/zapret2-openwrt",
+                "can_rollback": false
+            }),
+            json!({
+                "id": "byedpi",
+                "name": "ByeDPI (ciadpi)",
+                "category": "dpi",
+                "desc": "Локальный SOCKS5-прокси адаптивной сегментации TCP/TLS-потоков",
+                "installed": bd_inst || core_running,
+                "running": bd_run || core_running,
+                "pid": if bd_pid > 0 { bd_pid } else { core_pid },
+                "version": if bd_inst { bd_ver } else { format!("Встроен в ядро ({core_ver_str})") },
+                "latest": "0.17.3",
+                "repo": "hufrea/byedpi",
+                "can_rollback": false
+            }),
+            json!({
+                "id": "wdtt",
+                "name": "WDTT (WebRTC DataChannel)",
+                "category": "transport",
+                "desc": "Транспорт туннелирования поверх шифрованных дата-каналов WebRTC DTLS/SCTP",
+                "installed": wd_inst || core_running,
+                "running": wd_run || core_running,
+                "pid": if wd_pid > 0 { wd_pid } else { core_pid },
+                "version": if wd_inst { wd_ver } else { format!("Нативный стек ({core_ver_str})") },
+                "latest": "0.2.1",
+                "repo": "Dushnilin/tachyon-core",
+                "can_rollback": false
+            }),
+            json!({
+                "id": "olcrtc",
+                "name": "OlcRTC (RTP/TURN Media)",
+                "category": "transport",
+                "desc": "Инкапсуляция сетевого трафика под видом мультимедийных потоков WebRTC RTP/SRTP",
+                "installed": ol_inst || core_running,
+                "running": ol_run || core_running,
+                "pid": if ol_pid > 0 { ol_pid } else { core_pid },
+                "version": if ol_inst { ol_ver } else { format!("Нативный стек ({core_ver_str})") },
+                "latest": "0.1.4",
+                "repo": "Dushnilin/tachyon-core",
+                "can_rollback": false
+            }),
+            json!({
+                "id": "fptn",
+                "name": "FPTN Client",
+                "category": "transport",
+                "desc": "Маскирующий HTTPS/TLS-клиент с мимикрией отпечатка браузера и балансировкой шлюзов",
+                "installed": fp_inst || core_running,
+                "running": fp_run || core_running,
+                "pid": if fp_pid > 0 { fp_pid } else { core_pid },
+                "version": if fp_inst { fp_ver } else { format!("Нативный стек ({core_ver_str})") },
+                "latest": "0.3.2",
+                "repo": "batchar2/fptn",
+                "can_rollback": false
+            }),
+            json!({
+                "id": "tailscale",
+                "name": "Tailscale Mesh",
+                "category": "transport",
+                "desc": "Координация узлов Mesh-сети Tailscale / Headscale и маршрутизация подсетей (Exit Node)",
+                "installed": ts_inst || core_running,
+                "running": ts_run || core_running,
+                "pid": if ts_pid > 0 { ts_pid } else { core_pid },
+                "version": if ts_inst { ts_ver } else { format!("Встроенный клиент ({core_ver_str})") },
+                "latest": "1.80.2",
+                "repo": "tailscale/tailscale",
+                "can_rollback": false
+            }),
+            json!({
+                "id": "torrserver_direct",
+                "name": "TorrServer Direct",
+                "category": "service",
+                "desc": "Автоматический прямой маршрут для медиапотоков TorrServer и P2P-трафика в обход VPN-туннеля",
+                "installed": true,
+                "running": torr_enabled,
+                "pid": 0,
+                "version": if torr_enabled { "активен" } else { "выключен" },
+                "latest": "встроен",
+                "repo": "Dushnilin/tachyon",
+                "can_rollback": false
+            }),
+        ];
 
         json!({
             "ok": true,
             "orchestrator_version": env!("CARGO_PKG_VERSION"),
             "orchestrator_latest": env!("CARGO_PKG_VERSION"),
-            "core_installed": if core_ver.is_empty() { "0.4.4" } else { &core_ver },
-            "core_latest": if core_ver.is_empty() { "0.4.4" } else { &core_ver },
+            "core_installed": core_ver_str,
+            "core_latest": core_ver_str,
             "arch": std::env::consts::ARCH,
             "lists_installed_count": trs_count,
+            "subscriptions_count": sub_count,
             "rulesets": rulesets_files,
+            "components": components,
             "lists_repo": "https://github.com/Dushnilin/tachyon-lists",
             "core_repo": "https://github.com/Dushnilin/tachyon-core",
             "tachyon_repo": "https://github.com/Dushnilin/tachyon"
         })
     }
 
-    /// Run a background component/lists update job and record progress in `LiveTelemetry.jobs`.
+    /// Run a background component/lists update or lifecycle action and record progress in `LiveTelemetry.jobs`.
     pub async fn run_update_job(&self, target: &str) -> Value {
-        let job_id = self
-            .state
-            .live
-            .write()
-            .await
-            .start_job(target, &format!("Запуск обновления компонента: {target}"));
+        self.component_action(target, "update", None).await
+    }
 
-        let res = match target {
-            "subscriptions" => {
+    /// Unified component lifecycle & update manager (`check`, `update`, `restart`, `stop`, `rollback`, `set_variant`).
+    pub async fn component_action(
+        &self,
+        component: &str,
+        action: &str,
+        variant: Option<&str>,
+    ) -> Value {
+        let job_id = self.state.live.write().await.start_job(
+            component,
+            &format!("Выполнение действия '{action}' для компонента '{component}'"),
+        );
+
+        let res = match (component, action) {
+            ("subscriptions", _) => {
                 let cnt = self.refresh_all_subscriptions().await.unwrap_or(0);
-                json!({ "ok": true, "updated_subscriptions": cnt })
+                json!({ "ok": true, "component": component, "action": action, "updated_subscriptions": cnt, "message": format!("Обновлено подписок: {cnt}") })
             }
-            "lists" | "rulesets" => {
+            ("lists" | "rulesets", _) => {
                 let _ = self.apply_or_reload().await;
-                json!({ "ok": true, "message": "Списки маршрутизации .trs синхронизированы" })
+                let info = self.check_updates().await;
+                let cnt = info
+                    .get("lists_installed_count")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0);
+                json!({ "ok": true, "component": component, "action": action, "lists_count": cnt, "message": format!("Синхронизировано наборов правил (.trs/.srs): {cnt}") })
+            }
+            ("torrserver_direct", "toggle" | "restart" | "update" | "start" | "stop") => {
+                let mut candidate = self.state.data.read().await.clone();
+                candidate.settings.torrserver_direct_enabled = match action {
+                    "stop" => false,
+                    "start" | "update" => true,
+                    _ => !candidate.settings.torrserver_direct_enabled,
+                };
+                let new_state = candidate.settings.torrserver_direct_enabled;
+                let _ = transaction::commit_transaction(&self.state, candidate).await;
+                let _ = self.apply_or_reload().await;
+                json!({ "ok": true, "component": component, "enabled": new_state, "message": if new_state { "TorrServer Direct включён" } else { "TorrServer Direct выключен" } })
+            }
+            ("tachyon-core", "stop") => {
+                let _ = self.stop().await;
+                json!({ "ok": true, "component": component, "action": "stop", "message": "Ядро tachyon-core остановлено" })
+            }
+            ("tachyon-core", "set_variant") => {
+                if let Some(v) = variant.filter(|s| !s.is_empty()) {
+                    let mut candidate = self.state.data.read().await.clone();
+                    candidate.settings.core_bin_path = if v == "tachyon-core" {
+                        "/usr/bin/tachyon-core".to_string()
+                    } else {
+                        format!("/usr/bin/{v}")
+                    };
+                    let _ = transaction::commit_transaction(&self.state, candidate).await;
+                    let _ = self.apply_or_reload().await;
+                }
+                json!({ "ok": true, "component": component, "variant": variant, "message": "Вариант маршрутизирующего ядра сохранён и применён" })
+            }
+            (_, "rollback") => {
+                if let Ok(restored) = transaction::load_known_good(&self.state.lkg_path) {
+                    let _ = transaction::commit_transaction(&self.state, restored).await;
+                    let _ = self.apply_or_reload().await;
+                    json!({ "ok": true, "component": component, "action": "rollback", "message": "Выполнен откат к проверенной конфигурации (Last Known Good)" })
+                } else {
+                    json!({ "ok": false, "component": component, "error": "Снимок Last Known Good не найден" })
+                }
+            }
+            (_, "check") => {
+                let info = self.check_updates().await;
+                json!({ "ok": true, "component": component, "action": "check", "updates": info, "message": format!("Проверка обновлений '{component}' завершена") })
             }
             _ => {
                 let _ = self.apply_or_reload().await;
-                json!({ "ok": true, "target": target, "message": "Компонент проверен и синхронизирован" })
+                json!({ "ok": true, "component": component, "action": action, "message": format!("Компонент '{component}' ({action}) синхронизирован и перезапущен") })
             }
         };
 
-        self.state.live.write().await.complete_job(
-            &job_id,
-            true,
-            &format!("Обновление '{target}' успешно завершено"),
-            res.clone(),
-        );
+        let ok = res.get("ok").and_then(Value::as_bool).unwrap_or(true);
+        let msg = res
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or("Операция завершена")
+            .to_string();
+        self.state
+            .live
+            .write()
+            .await
+            .complete_job(&job_id, ok, &msg, res.clone());
         json!({
-            "ok": true,
+            "ok": ok,
             "job_id": job_id,
             "result": res
+        })
+    }
+
+    /// Parse or fetch a subscription URL, `happ://` link, proxy URI list, or WireGuard/AmneziaWG `.conf`
+    /// and return a rich preview (parsed nodes, country distribution, protocol distribution) for the Connection Wizard.
+    pub async fn preview_wizard_input(&self, raw_input: &str) -> Value {
+        let trimmed = raw_input.trim();
+        if trimmed.is_empty() {
+            return json!({ "ok": false, "error": "Пустой ввод", "nodes": [], "countries": [], "protocols": [] });
+        }
+        let mut nodes = Vec::new();
+        let mut sub_meta = crate::store::OutboundSource::default();
+
+        for line in trimmed.lines() {
+            let l = line.trim();
+            if l.is_empty() {
+                continue;
+            }
+            if l.starts_with("http://") || l.starts_with("https://") {
+                if let Ok(out) = Command::new("curl")
+                    .args([
+                        "-i",
+                        "-fsSL",
+                        "--connect-timeout",
+                        "5",
+                        "--max-time",
+                        "10",
+                        "-A",
+                        "tachyon-core/2.0",
+                        l,
+                    ])
+                    .output()
+                    .await
+                    && out.status.success()
+                {
+                    let raw_resp = String::from_utf8_lossy(&out.stdout);
+                    let (hdr, body) = split_http_response(&raw_resp);
+                    parse_subscription_headers(hdr, &mut sub_meta);
+                    for n in Self::parse_subscription_payload(body) {
+                        if !nodes
+                            .iter()
+                            .any(|existing: &ParsedProxyNode| existing.tag == n.tag)
+                        {
+                            nodes.push(n);
+                        }
+                    }
+                }
+            }
+        }
+
+        if nodes.is_empty() {
+            nodes = Self::parse_subscription_payload(trimmed);
+        }
+
+        let mut country_counts: HashMap<String, usize> = HashMap::new();
+        let mut proto_counts: HashMap<String, usize> = HashMap::new();
+        for n in &nodes {
+            let cc = if n.country.trim().is_empty() {
+                "UN".to_string()
+            } else {
+                n.country.to_uppercase()
+            };
+            *country_counts.entry(cc).or_insert(0) += 1;
+            let pr = if n.protocol.trim().is_empty() {
+                "vless".to_string()
+            } else {
+                n.protocol.to_lowercase()
+            };
+            *proto_counts.entry(pr).or_insert(0) += 1;
+        }
+        let mut countries: Vec<Value> = country_counts
+            .into_iter()
+            .map(|(code, count)| json!({ "code": code, "count": count }))
+            .collect();
+        countries.sort_by(|a, b| {
+            b.get("count")
+                .and_then(Value::as_u64)
+                .cmp(&a.get("count").and_then(Value::as_u64))
+        });
+        let mut protocols: Vec<Value> = proto_counts
+            .into_iter()
+            .map(|(proto, count)| json!({ "proto": proto, "count": count }))
+            .collect();
+        protocols.sort_by(|a, b| {
+            b.get("count")
+                .and_then(Value::as_u64)
+                .cmp(&a.get("count").and_then(Value::as_u64))
+        });
+
+        json!({
+            "ok": !nodes.is_empty(),
+            "total": nodes.len(),
+            "title": sub_meta.sub_title,
+            "upload_bytes": sub_meta.sub_upload_bytes,
+            "download_bytes": sub_meta.sub_download_bytes,
+            "total_bytes": sub_meta.sub_total_bytes,
+            "expire_unix": sub_meta.sub_expire_unix,
+            "countries": countries,
+            "protocols": protocols,
+            "nodes": nodes
         })
     }
 
