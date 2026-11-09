@@ -1345,13 +1345,16 @@ function safe_proxy_restart(reason, force_level) {
 
         log_message("Restarting " + active_engine + " service only (" + reason + ")", "warn");
         let init_script = core_init_script();
+        let cfg_repair_cmd = "if ! /usr/bin/tachyon-core -c /etc/tachyon-core/config.json check >/dev/null 2>&1; then " +
+            "ucode -L " + shell_quote(LIB_DIR) + " " + shell_quote(LIB_DIR + "/tachyon_core/runtime.uc") + " init-config 1 1 1 >/dev/null 2>&1; fi";
         let dns_apply_cmd = "ucode -L " + shell_quote(LIB_DIR) + " " + shell_quote(LIB_DIR + "/dns/apply.uc") + " configure";
         let fw_repair_cmd = "if ! nft list table inet TachyonTable >/dev/null 2>&1; then /usr/bin/tachyon reload_firewall >/dev/null 2>&1; fi";
         // Re-check in the background job: failsafe can engage while the
         // service is restarting. Keep direct DNS until verified release.
         dns_apply_cmd = "if [ ! -e " + shell_quote(EMERGENCY_STATE_FILE) + " ] && [ ! -e " +
             shell_quote(EMERGENCY_STATE_TMP) + " ]; then " + dns_apply_cmd + "; " + fw_repair_cmd + "; fi";
-        bg_system(init_script + " stop >/dev/null 2>&1; " +
+        bg_system(cfg_repair_cmd + "; " +
+            init_script + " stop >/dev/null 2>&1; " +
             init_script + " start >/dev/null 2>&1; " +
             dns_apply_cmd + " >/dev/null 2>&1; rm -f " + lock_path);
     } else {

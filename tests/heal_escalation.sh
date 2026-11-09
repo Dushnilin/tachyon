@@ -29,6 +29,8 @@ grep -qE '(/etc/init\.d/tachyon-core|core_init_script\(\).*init_script \+) start
   || fail "the light rung no longer starts the sing-box service"
 grep -q 'core_contract().init_script' "$WATCHDOG_UC" \
   || fail "watchdog no longer resolves the core init script from core_contract"
+grep -q 'init-config 1 1 1' "$WATCHDOG_UC" \
+  || fail "the light rung no longer regenerates /etc/tachyon-core/config.json when check fails"
 
 # ── the ladder is consulted, not hardcoded ────────────────────────────────────
 grep -q 'function next_escalation(reason)' "$WATCHDOG_UC" \

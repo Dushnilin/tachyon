@@ -9,6 +9,33 @@
 "require view.tachyon.main as main";
 
 const UCI_PACKAGE = main.TACHYON_UCI_PACKAGE;
+
+function _tr(ru, en) {
+  const envLang =
+    (typeof L !== "undefined" && L.env && L.env.lang) ||
+    (typeof window !== "undefined" &&
+      window.L &&
+      window.L.env &&
+      window.L.env.lang) ||
+    "";
+  const docLang = (
+    (typeof document !== "undefined" &&
+      document.documentElement &&
+      document.documentElement.lang) ||
+    (typeof document !== "undefined" &&
+      document.querySelector("html")?.getAttribute("lang")) ||
+    ""
+  ).toLowerCase();
+  const lang = (envLang || docLang).toLowerCase();
+  const isRu =
+    lang.startsWith("ru") ||
+    (typeof _ === "function" &&
+      (_("Status") === "Статус" ||
+        _("Overview") === "Обзор" ||
+        _("Save") === "Сохранить"));
+  return isRu ? ru : en;
+}
+
 const ACTION_PROVIDERS_AVAILABILITY_EVENT =
   main.TACHYON_ACTION_PROVIDERS_AVAILABILITY_EVENT ||
   "tachyon:action-providers-availability";
