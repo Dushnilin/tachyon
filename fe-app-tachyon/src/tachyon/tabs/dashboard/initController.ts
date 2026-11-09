@@ -1236,6 +1236,14 @@ export async function applyTestedLatenciesResults(
     }
 
     const proxies = (proxiesRes.data as any)?.proxies || {};
+    const telemetry = (proxiesRes.data as any)?.telemetry || {};
+    const getTelemetryDelay = (t: string): number => {
+      const entry = telemetry[t] || telemetry[t.trim()];
+      const rtt = entry?.rtt_ms ?? entry?.ewma_rtt_ms;
+      return typeof rtt === 'number' && Number.isFinite(rtt) && rtt > 0
+        ? Math.round(rtt)
+        : 0;
+    };
     for (const tag of testedTags) {
       const proxy = proxies[tag] || proxies[tag.trim()];
       const latest = proxy?.history?.[0];
@@ -1299,7 +1307,10 @@ export async function applyTestedLatenciesResults(
             }
           }
           const cLatest = proxies[cTag]?.history?.[0];
-          const cDelay = typeof cLatest?.delay === 'number' ? cLatest.delay : 0;
+          const cDelay =
+            typeof cLatest?.delay === 'number' && cLatest.delay > 0
+              ? cLatest.delay
+              : getTelemetryDelay(cTag);
           if (cDelay > 0) {
             derivedDelay =
               derivedDelay > 0 ? Math.min(derivedDelay, cDelay) : cDelay;
@@ -1308,6 +1319,9 @@ export async function applyTestedLatenciesResults(
               break;
             }
           }
+        }
+        if (derivedDelay <= 0) {
+          derivedDelay = getTelemetryDelay(tag);
         }
         customProxyLatencies.set(tag, derivedDelay > 0 ? derivedDelay : -1);
       }
@@ -5104,32 +5118,36 @@ export async function renderSectionDashboardWidgets() {
 
   if (kpiContainer) {
     const isLiteMode = Boolean(store.get().servicesInfoWidget.data?.liteMode);
-    kpiContainer.replaceChildren(
-      ...renderKpiRow({
-        activeClients: currentConnections.length,
-        activeConnections:
-          store.get().systemInfoWidget.data?.connections ||
-          lastRawConnections.length ||
-          0,
-        activeSections: activeRoutes.length,
-        downloadTotal,
-        uploadTotal,
-        downSpeed,
-        upSpeed,
-        avgLatencyMs,
-        isLiteMode,
-        clientsHistory: kpiClientsHistory,
-        sectionsHistory: kpiSectionsHistory,
-        trafficHistory: kpiTrafficHistory,
-        latencyHistory: kpiLatencyHistory,
-      }),
-    );
+    preserveScrollForPage(() => {
+      kpiContainer.replaceChildren(
+        ...renderKpiRow({
+          activeClients: currentConnections.length,
+          activeConnections:
+            store.get().systemInfoWidget.data?.connections ||
+            lastRawConnections.length ||
+            0,
+          activeSections: activeRoutes.length,
+          downloadTotal,
+          uploadTotal,
+          downSpeed,
+          upSpeed,
+          avgLatencyMs,
+          isLiteMode,
+          clientsHistory: kpiClientsHistory,
+          sectionsHistory: kpiSectionsHistory,
+          trafficHistory: kpiTrafficHistory,
+          latencyHistory: kpiLatencyHistory,
+        }),
+      );
+    }, kpiContainer);
   }
 
   if (chartContainer) {
-    chartContainer.replaceChildren(
-      renderTrafficChartCard(trafficChartHistory, downSpeed, upSpeed),
-    );
+    preserveScrollForPage(() => {
+      chartContainer.replaceChildren(
+        renderTrafficChartCard(trafficChartHistory, downSpeed, upSpeed),
+      );
+    }, chartContainer);
   }
 
   // Patch compact section row metrics in-place inside #dashboard-sections-grid

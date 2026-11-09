@@ -105,7 +105,7 @@ function normalize_strategy(strategy) {
     return "worst_case";
 }
 
-function normalize_group(group, tag_name) {
+function normalize_group(group, tag_name, section_name) {
     group = object_or_empty(group);
     let levels = [];
     for (let level in array_or_empty(group.levels)) {
@@ -134,7 +134,7 @@ function normalize_group(group, tag_name) {
         id: as_string(group.id || ""),
         tag: as_string(group.tag || tag_name),
         kind: as_string(group.kind || "priority"),
-        section: as_string(group.section || ""),
+        section: as_string(group.section || section_name || ""),
         displayName: as_string(group.displayName || group.name || tag_name),
         health_url: primary_url,
         health_urls: normalize_urls(primary_url, extra_urls),
@@ -214,7 +214,7 @@ function priority_groups_from_cache() {
         let cache = object_or_empty(read_json_file(path));
         let section_name = as_string(cache.section || "");
         for (let tag_name, group in object_or_empty(cache.priorityGroups)) {
-            let normalized = normalize_group(group, tag_name);
+            let normalized = normalize_group(group, tag_name, section_name);
             if (normalized.tag != "" && length(normalized.levels) > 0)
                 push(result, normalized);
         }
@@ -943,6 +943,13 @@ function tick_group(state, group) {
     let now = now_seconds();
 
     if (fixture_delays_path == "") {
+        let sec_name = as_string(group.section || "");
+        let parent_tag = sec_name != "" ? (sec_name + "-out") : "";
+        if (parent_tag != "" && group.tag != parent_tag) {
+            let parent_now = current_group_selected(parent_tag);
+            if (parent_now != "" && parent_now != group.tag)
+                return;
+        }
         let current_now = current_group_selected(group.tag);
         if (current_now != "" && current_now != state.active) {
             if (group.kind == "urltest") {
@@ -1183,7 +1190,7 @@ function start_runtime() {
 }
 
 function select_fixture(group_path, latency_path, start_index, end_index, skip_tag) {
-    let group = normalize_group(read_json_file(group_path), "fixture");
+    let group = normalize_group(read_json_file(group_path), "fixture", "");
     let latencies = object_or_empty(read_json_file(latency_path));
     // The same file feeds the measured-delay snapshot, so the ordering logic
     // runs exactly as it does on a live core.
@@ -1195,7 +1202,7 @@ function select_fixture(group_path, latency_path, start_index, end_index, skip_t
 }
 
 function select_faster_fixture(group_path, latency_path, level_index, active_tag) {
-    let group = normalize_group(read_json_file(group_path), "fixture");
+    let group = normalize_group(read_json_file(group_path), "fixture", "");
     let latencies = object_or_empty(read_json_file(latency_path));
     let selected = choose_fastest_same_level(group, int(level_index || 0), as_string(active_tag), function(tag_name, grp) {
         return fixture_probe(latencies, tag_name, grp);
@@ -1204,7 +1211,7 @@ function select_faster_fixture(group_path, latency_path, level_index, active_tag
 }
 
 function warm_fixture(group_path, latency_path) {
-    let group = normalize_group(read_json_file(group_path), "fixture");
+    let group = normalize_group(read_json_file(group_path), "fixture", "");
     let latencies = object_or_empty(read_json_file(latency_path));
     let probe = function(tag_name, grp) {
         return fixture_probe(latencies, tag_name, grp);

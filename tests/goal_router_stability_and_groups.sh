@@ -461,8 +461,8 @@ assert(tags["Main-urltest-Fast-out"] != null,
     "bal_Main_Fast must generate clean tag Main-urltest-Fast-out, got: " + sprintf("%J", keys(tags)));
 assert(tags["Main-out"] != null && tags["Main-out"].default == "Main-urltest-auto-out",
     "Main-out selector default must point to Main-urltest-auto-out, got: " + sprintf("%J", tags["Main-out"]));
-assert(cfg.experimental?.clash_api?.external_controller == "192.168.1.1:9090",
-    "clash_api external_controller must bind to service_address:9090 even when enable_yacd=0 so LuCI WebSocket/HTTP works, got: " + sprintf("%J", cfg.experimental?.clash_api));
+assert(cfg.experimental?.clash_api?.external_controller == "127.0.0.1:9090",
+    "clash_api external_controller must bind to 127.0.0.1:9090 when enable_yacd=0 so LAN clients cannot access Clash API without auth, got: " + sprintf("%J", cfg.experimental?.clash_api));
 assert(cfg.experimental?.cache_file?.flush_interval == "60s",
     "cache_file flush_interval must default to 60s to prevent flash wear, got: " + sprintf("%J", cfg.experimental?.cache_file));
 UCODE

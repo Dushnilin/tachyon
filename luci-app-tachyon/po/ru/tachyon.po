@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-09 21:46+0300\n"
-"PO-Revision-Date: 2026-11-09 21:46+0300\n"
+"POT-Creation-Date: 2026-11-09 01:14+0300\n"
+"PO-Revision-Date: 2026-11-09 01:14+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -3134,6 +3134,9 @@ msgstr "Скачать"
 msgid "Download .conf"
 msgstr "Скачать .conf"
 
+msgid "Download File (.json)"
+msgstr ""
+
 msgid "Download Subscription via Proxy Section"
 msgstr "Скачивать подписку через прокси-секцию"
 
@@ -5728,6 +5731,9 @@ msgstr "Загрузить текущие записи"
 
 msgid "Load an AmneziaWG or WireGuard .conf file to auto-fill all tunnel and obfuscation parameters."
 msgstr "Загрузите файл .conf AmneziaWG или WireGuard для автоматического заполнения всех параметров туннеля и обфускации."
+
+msgid "Load from File (.json)"
+msgstr ""
 
 msgid "Load one or multiple .conf files from your computer into this source."
 msgstr "Загрузите один или несколько файлов .conf с компьютера в это подключение."
@@ -8489,11 +8495,11 @@ msgstr "Поиск серверов в пуле..."
 msgid "Secret"
 msgstr "Секрет"
 
-msgid "Secret key for authenticating remote access to YACD when WAN access is enabled."
-msgstr "Секретный ключ для аутентификации удалённого доступа к YACD при включённом WAN-доступе."
+msgid "Secret key for authenticating access to YACD and Clash API (required when YACD is enabled)."
+msgstr ""
 
-msgid "Secret key is required when WAN access is enabled"
-msgstr "Секретный ключ обязателен, когда включён WAN-доступ"
+msgid "Secret key is required when YACD is enabled"
+msgstr ""
 
 msgid "Secret token for authorizing WRITE operations (POST/PUT) on /cgi-bin/tachyon-agent/. Leave empty if auth is not required."
 msgstr "Секретный токен для авторизации операций записи (POST/PUT) на /cgi-bin/tachyon-agent/. Оставьте пустым, если аутентификация не требуется."
@@ -11923,6 +11929,12 @@ msgstr "🇱🇻 Латвия (lv)"
 
 msgid "🇵🇱 Poland (pl)"
 msgstr "🇵🇱 Польша (pl)"
+
+msgid "Secret key for authenticating remote access to YACD when WAN access is enabled."
+msgstr "Секретный ключ для аутентификации удалённого доступа к YACD при включённом WAN-доступе."
+
+msgid "Secret key is required when WAN access is enabled"
+msgstr "Секретный ключ обязателен, когда включён WAN-доступ"
 
 msgid "Search by name, protocol, service or domain..."
 msgstr "Поиск по имени, протоколу, сервису или домену..."

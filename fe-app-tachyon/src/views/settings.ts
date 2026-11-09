@@ -1583,7 +1583,7 @@ function createSnapshotsWidget() {
       readonly: 'readonly',
       style:
         'width:100%;min-height:56px;font-family:monospace;font-size:13px;word-break:break-all;',
-      placeholder: 'tachyon://t1/...',
+      placeholder: 'tachyon://cfg1/...',
     }) as HTMLTextAreaElement;
 
     function loadCodeForScope(scope: 'routes' | 'full') {
@@ -1714,6 +1714,44 @@ function createSnapshotsWidget() {
           E(
             'button',
             {
+              class: 'btn cbi-button cbi-button-action',
+              type: 'button',
+              click: function () {
+                const textToCopy = (currentCode || codeArea.value || '').trim();
+                if (!textToCopy) return;
+                const payload = JSON.stringify(
+                  {
+                    format: 'tachyon-transfer-v1',
+                    scope: currentScope,
+                    created_at: new Date().toISOString(),
+                    code: textToCopy,
+                  },
+                  null,
+                  2,
+                );
+                const blob = new Blob([payload], {
+                  type: 'application/json;charset=utf-8',
+                });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download =
+                  currentScope === 'routes'
+                    ? 'tachyon-routes.json'
+                    : 'tachyon-config.json';
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(function () {
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                }, 100);
+              },
+            },
+            _('Download File (.json)'),
+          ),
+          E(
+            'button',
+            {
               class: 'btn cbi-button cbi-button-positive',
               type: 'button',
               click: function () {
@@ -1760,14 +1798,44 @@ function createSnapshotsWidget() {
   btnPasteCode.addEventListener('click', function () {
     let applyMode: 'replace' | 'merge' = 'replace';
     let inspectedSource = '';
+    let inspectPromise: Promise<string> | null = null;
     let inspectTimer: any = null;
+
+    function normalizeTransferInput(rawText: string): string {
+      const trimmed = (rawText || '').trim();
+      if (trimmed.indexOf('{') === 0) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (parsed && typeof parsed === 'object') {
+            if (typeof parsed.code === 'string' && parsed.code.trim()) {
+              return parsed.code.trim();
+            }
+            if (
+              typeof parsed.transfer_code === 'string' &&
+              parsed.transfer_code.trim()
+            ) {
+              return parsed.transfer_code.trim();
+            }
+          }
+        } catch (_e) {
+          // Keep original string if JSON parse fails
+        }
+      }
+      return trimmed;
+    }
 
     const codeInput = E('textarea', {
       class: 'cbi-input-textarea',
       style:
         'width:100%;min-height:56px;font-family:monospace;font-size:13px;word-break:break-all;',
-      placeholder: 'tachyon://t1/...',
+      placeholder: 'tachyon://cfg1/...',
     }) as HTMLTextAreaElement;
+
+    const transferFileInput = E('input', {
+      type: 'file',
+      accept: '.json,.txt,application/json,text/plain',
+      style: 'display:none;',
+    }) as HTMLInputElement;
 
     const previewBox = E(
       'div',
@@ -1799,16 +1867,19 @@ function createSnapshotsWidget() {
     });
 
     function runInspect(rawText: string) {
-      const clean = (rawText || '').trim();
+      const clean = normalizeTransferInput(rawText);
       if (!clean) {
         inspectedSource = '';
+        inspectPromise = null;
         previewBox.textContent = _(
           'Paste a tachyon://cfg1/... code above to preview its contents.',
         );
         return;
       }
       previewBox.textContent = _('Checking transfer code...');
-      uploadCodeBufferIfNeeded(clean)
+      const uploadReq = uploadCodeBufferIfNeeded(clean);
+      inspectPromise = uploadReq;
+      uploadReq
         .then(function (argTarget) {
           inspectedSource = argTarget;
           return execSnapshotJson([
@@ -1837,16 +1908,34 @@ function createSnapshotsWidget() {
         })
         .catch(function (err: any) {
           inspectedSource = '';
+          inspectPromise = null;
           previewBox.textContent =
             _('Invalid transfer code') +
             (err && err.message ? ': ' + err.message : '');
         });
     }
 
+    transferFileInput.addEventListener('change', function () {
+      const file = transferFileInput.files && transferFileInput.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function () {
+        const text = normalizeTransferInput(String(reader.result || ''));
+        codeInput.value = text;
+        inspectedSource = '';
+        inspectPromise = null;
+        if (inspectTimer) clearTimeout(inspectTimer);
+        runInspect(text);
+      };
+      reader.readAsText(file);
+      transferFileInput.value = '';
+    });
+
     codeInput.addEventListener('input', function () {
       inspectedSource = '';
+      inspectPromise = null;
       if (inspectTimer) clearTimeout(inspectTimer);
-      const val = (codeInput.value || '').trim();
+      const val = normalizeTransferInput(codeInput.value || '');
       if (val.indexOf('tachyon://') === 0) {
         inspectTimer = setTimeout(function () {
           runInspect(val);
@@ -1863,6 +1952,26 @@ function createSnapshotsWidget() {
           _(
             'Paste a transfer code from another Tachyon router, review the preview, and choose how to apply it.',
           ),
+        ),
+        transferFileInput,
+        E(
+          'div',
+          {
+            style: 'display:flex;justify-content:flex-end;margin-bottom:6px;',
+          },
+          [
+            E(
+              'button',
+              {
+                class: 'btn cbi-button cbi-button-neutral',
+                type: 'button',
+                click: function () {
+                  transferFileInput.click();
+                },
+              },
+              _('Load from File (.json)'),
+            ),
+          ],
         ),
         codeInput,
         previewBox,
@@ -1919,12 +2028,16 @@ function createSnapshotsWidget() {
               class: 'btn cbi-button cbi-button-positive',
               type: 'button',
               click: function () {
-                const raw = (codeInput.value || '').trim();
+                if (inspectTimer) {
+                  clearTimeout(inspectTimer);
+                  inspectTimer = null;
+                }
+                const raw = normalizeTransferInput(codeInput.value || '');
                 if (!raw) return;
                 ui.hideModal();
                 const targetPromise = inspectedSource
                   ? Promise.resolve(inspectedSource)
-                  : uploadCodeBufferIfNeeded(raw);
+                  : inspectPromise || uploadCodeBufferIfNeeded(raw);
                 targetPromise
                   .then(function (argTarget) {
                     return execSnapshotJson([
@@ -3988,17 +4101,17 @@ function createSettingsContent(section, capabilities) {
     'yacd_secret_key',
     _('YACD Secret Key'),
     _(
-      'Secret key for authenticating remote access to YACD when WAN access is enabled.',
+      'Secret key for authenticating access to YACD and Clash API (required when YACD is enabled).',
     ),
   );
-  o.depends('enable_yacd_wan_access', '1');
+  o.depends('enable_yacd', '1');
   o.rmempty = true;
   o.validate = function (section_id, value) {
     if (
-      this.section.formvalue(section_id, 'enable_yacd_wan_access') === '1' &&
+      this.section.formvalue(section_id, 'enable_yacd') === '1' &&
       (!value || !`${value}`.trim())
     ) {
-      return _('Secret key is required when WAN access is enabled');
+      return _('Secret key is required when YACD is enabled');
     }
     return true;
   };

@@ -1491,23 +1491,58 @@ function ensure_local_rulesets_exist(temp_config) {
         let cfg_obj = length(cfg_raw) > 0 ? json(cfg_raw) : null;
         if (type(cfg_obj) == "object" && type(cfg_obj.route) == "object" && type(cfg_obj.route.rule_set) == "array") {
             command_success_from_args(["mkdir", "-p", TMP_RULESET_FOLDER]);
+            let active_local_paths = {};
+            let keep_compiled_tags = {};
             for (let rs in cfg_obj.route.rule_set) {
-                if (type(rs) == "object" && rs.type == "local" && rs.path) {
-                    let st = fs.stat(rs.path);
+                if (type(rs) != "object")
+                    continue;
+                let rs_tag = as_string(rs.tag || "");
+                if (rs.type == "local" && rs.path) {
+                    let rs_path = as_string(rs.path);
+                    active_local_paths[rs_path] = true;
+                    if (!match(rs_path, /\.trs$/) && rs_tag != "")
+                        keep_compiled_tags[rs_tag] = true;
+                    let st = fs.stat(rs_path);
                     if (!st || st.size < 17) {
-                        let bname = replace(rs.path, /^.*\//, "");
+                        let bname = replace(rs_path, /^.*\//, "");
                         let etc_file = "/etc/tachyon/rulesets/" + bname;
                         let etc_st = fs.stat(etc_file);
                         if (etc_st && etc_st.size >= 17) {
                             let content = fs.readfile(etc_file);
-                            if (content) fs.writefile(rs.path, content);
-                        } else if (rs.format == "source" || match(rs.path, /\.json$/)) {
-                            fs.writefile(rs.path, sprintf("%J", { version: 3, rules: [] }));
+                            if (content) fs.writefile(rs_path, content);
+                        } else if (rs.format == "source" || match(rs_path, /\.json$/)) {
+                            fs.writefile(rs_path, sprintf("%J", { version: 3, rules: [] }));
                         } else {
-                            fs.writefile(rs.path, EMPTY_SRS_BINARY);
+                            fs.writefile(rs_path, EMPTY_SRS_BINARY);
                         }
                     }
+                } else if (rs_tag != "") {
+                    keep_compiled_tags[rs_tag] = true;
                 }
+            }
+            let rdir = fs.opendir(TMP_RULESET_FOLDER);
+            if (rdir) {
+                let entry;
+                while ((entry = rdir.read()) != null) {
+                    if (match(entry, /\.trs$/) && substr(entry, 0, 1) != ".") {
+                        let full_p = TMP_RULESET_FOLDER + "/" + entry;
+                        if (!active_local_paths[full_p])
+                            remove_file(full_p);
+                    }
+                }
+                rdir.close();
+            }
+            let cdir = fs.opendir("/tmp/tachyon-rulesets");
+            if (cdir) {
+                let entry;
+                while ((entry = cdir.read()) != null) {
+                    if (match(entry, /\.(trs|tsr|tmp)$/)) {
+                        let tag_part = replace(entry, /\.(trs|tsr|tmp)$/, "");
+                        if (!keep_compiled_tags[tag_part])
+                            remove_file("/tmp/tachyon-rulesets/" + entry);
+                    }
+                }
+                cdir.close();
             }
         }
     } catch (e) {}

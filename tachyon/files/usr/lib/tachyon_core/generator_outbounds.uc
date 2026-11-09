@@ -2463,10 +2463,10 @@ function outbound_detour_tag_for_section(section) {
     return outbound_tag(detour_section);
 }
 
-function apply_section_detour_to_connection_outbounds(config, start_index, detour_tag) {
-    let outbounds = array_or_empty(config.outbounds);
-    for (let i = int(start_index || 0); i < length(outbounds); i++) {
-        let outbound = outbounds[i];
+function apply_section_detour_to_outbound_slice(items, start_index, detour_tag) {
+    let list = array_or_empty(items);
+    for (let i = int(start_index || 0); i < length(list); i++) {
+        let outbound = list[i];
         if (type(outbound) != "object")
             continue;
         if (outbound.__tachyon_explicit_bind_interface) {
@@ -2491,17 +2491,16 @@ function apply_section_detour_to_connection_outbounds(config, start_index, detou
     }
 }
 
-function apply_section_bind_interface_to_connection_outbounds(config, start_index, bind_iface, section) {
-    bind_iface = trim(as_string(bind_iface || ""));
-    let sec_overrides = section != null ? parse_server_interface_overrides([ section ]) : null;
-    let has_sec_overrides = sec_overrides != null &&
-        (length(keys(object_or_empty(sec_overrides.exact))) > 0 || length(array_or_empty(sec_overrides.substr_rules)) > 0);
-    if (bind_iface == "" && !has_sec_overrides)
-        return;
+function apply_section_detour_to_connection_outbounds(config, start_index, detour_tag, endpoints_start_index) {
+    apply_section_detour_to_outbound_slice(config.outbounds, start_index, detour_tag);
+    if (endpoints_start_index != null)
+        apply_section_detour_to_outbound_slice(config.endpoints, endpoints_start_index, detour_tag);
+}
 
-    let outbounds = array_or_empty(config.outbounds);
-    for (let i = int(start_index || 0); i < length(outbounds); i++) {
-        let outbound = outbounds[i];
+function apply_section_bind_interface_to_outbound_slice(items, start_index, bind_iface, sec_overrides, has_sec_overrides) {
+    let list = array_or_empty(items);
+    for (let i = int(start_index || 0); i < length(list); i++) {
+        let outbound = list[i];
         if (type(outbound) != "object")
             continue;
         delete outbound.__tachyon_explicit_bind_interface;
@@ -2515,9 +2514,12 @@ function apply_section_bind_interface_to_connection_outbounds(config, start_inde
             continue;
 
         if (has_sec_overrides) {
+            let peer_addr = "";
+            if (type(outbound.peers) == "array" && type(outbound.peers[0]) == "object")
+                peer_addr = as_string(outbound.peers[0].address || "");
             let override_iface = match_server_interface_override(sec_overrides, [
                 as_string(outbound.tag || ""),
-                as_string(outbound.server || "")
+                as_string(outbound.server || peer_addr)
             ]);
             if (override_iface != "") {
                 outbound.bind_interface = override_iface;
@@ -2529,6 +2531,19 @@ function apply_section_bind_interface_to_connection_outbounds(config, start_inde
         if (bind_iface != "" && as_string(outbound.detour || "") == "" && as_string(outbound.bind_interface || "") == "")
             outbound.bind_interface = bind_iface;
     }
+}
+
+function apply_section_bind_interface_to_connection_outbounds(config, start_index, bind_iface, section, endpoints_start_index) {
+    bind_iface = trim(as_string(bind_iface || ""));
+    let sec_overrides = section != null ? parse_server_interface_overrides([ section ]) : null;
+    let has_sec_overrides = sec_overrides != null &&
+        (length(keys(object_or_empty(sec_overrides.exact))) > 0 || length(array_or_empty(sec_overrides.substr_rules)) > 0);
+    if (bind_iface == "" && !has_sec_overrides)
+        return;
+
+    apply_section_bind_interface_to_outbound_slice(config.outbounds, start_index, bind_iface, sec_overrides, has_sec_overrides);
+    if (endpoints_start_index != null)
+        apply_section_bind_interface_to_outbound_slice(config.endpoints, endpoints_start_index, bind_iface, sec_overrides, has_sec_overrides);
 }
 
 function apply_section_packet_encoding_to_connection_outbounds(config, start_index, encoding) {
@@ -2822,6 +2837,7 @@ function add_connections_outbound(config, section, taken) {
     let urltest_candidate_tags = [];
     let state = runtime_subscription.new_section_state(section_name);
     let cascade_start = length(array_or_empty(config.outbounds));
+    let endpoints_start = length(array_or_empty(config.endpoints));
 
     let eff_sources = (connections && connections.section_effective_outbound_sources)
         ? connections.section_effective_outbound_sources(section)
@@ -2850,7 +2866,8 @@ function add_connections_outbound(config, section, taken) {
     apply_section_detour_to_connection_outbounds(
         config,
         cascade_start,
-        outbound_detour_tag_for_section(section)
+        outbound_detour_tag_for_section(section),
+        endpoints_start
     );
     add_connection_interfaces(config, state, section, taken, selector_tags, urltest_candidate_tags);
     add_connection_json_outbounds(config, state, section, taken, selector_tags, urltest_candidate_tags);
@@ -2859,7 +2876,8 @@ function add_connections_outbound(config, section, taken) {
         config,
         cascade_start,
         option(section, "bind_interface", ""),
-        section
+        section,
+        endpoints_start
     );
     apply_section_packet_encoding_to_connection_outbounds(
         config,

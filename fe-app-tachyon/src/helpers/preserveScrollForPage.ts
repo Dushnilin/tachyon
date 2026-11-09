@@ -1,5 +1,6 @@
 let lastUserScrollTime = 0;
 let isProgrammaticScroll = false;
+let activeRenderCount = 0;
 let userScrollListenersAttached = false;
 let activeDocLocks = 0;
 let footstrapAnchorOverridden = false;
@@ -7,8 +8,32 @@ let previousFootstrapAnchor: string | null = null;
 let previousFootstrapFit: string | null = null;
 const containerLockCounts = new WeakMap<HTMLElement, number>();
 
+function clearFootstrapFloorLocks() {
+  try {
+    if (typeof document === 'undefined') {
+      return;
+    }
+    if (document.documentElement?.dataset) {
+      delete document.documentElement.dataset.fsFit;
+    }
+    if (typeof document.querySelectorAll === 'function') {
+      const floorNodes =
+        document.querySelectorAll<HTMLElement>('[data-fs-floor]');
+      floorNodes.forEach((node) => {
+        if (node?.style) {
+          node.style.minHeight = '';
+        }
+        node?.removeAttribute?.('data-fs-floor');
+      });
+    }
+  } catch {
+    // ignore DOM errors
+  }
+}
+
 function disableFootstrapScrollAnchor() {
   try {
+    clearFootstrapFloorLocks();
     if (typeof localStorage === 'undefined') {
       return;
     }
@@ -59,7 +84,10 @@ export function ensureUserScrollTracking() {
   disableFootstrapScrollAnchor();
 
   const onUserInteraction = (e: Event) => {
-    if (e.type === 'scroll' && isProgrammaticScroll) {
+    if (
+      e.type === 'scroll' &&
+      (isProgrammaticScroll || activeRenderCount > 0)
+    ) {
       return;
     }
     lastUserScrollTime = Date.now();
@@ -129,6 +157,7 @@ export function _resetUserScrollTrackingForTest() {
   userScrollListenersAttached = false;
   lastUserScrollTime = 0;
   isProgrammaticScroll = false;
+  activeRenderCount = 0;
   activeDocLocks = 0;
 }
 
@@ -201,17 +230,26 @@ export function preserveScrollForPage(
   targetContainer?: HTMLElement | null,
 ) {
   ensureUserScrollTracking();
+  clearFootstrapFloorLocks();
 
   const pos = getScrollPosition();
   const scrollTimeAtStart = lastUserScrollTime;
 
+  const isFootstrapShell =
+    typeof document !== 'undefined' &&
+    typeof document.querySelector === 'function' &&
+    Boolean(document.querySelector('.fs-shell, .fs-main'));
+
   // Only lock documentElement height when window itself is the scrolling element.
-  // In container-scrolling themes (e.g. Footstrap's #maincontent), documentElement has a fixed
-  // 100svh height, and setting minHeight on <html> causes layout distortion and reflow loops.
+  // In container-scrolling themes (e.g. Footstrap's #maincontent) or when Footstrap's
+  // .fs-shell flex wrapper is active and targetContainer is already height-locked,
+  // setting minHeight on <html> causes layout distortion and reflow loops.
   const isWindowScroll =
     pos.target === (typeof window !== 'undefined' ? window : null);
   const root =
-    isWindowScroll && typeof document !== 'undefined'
+    isWindowScroll &&
+    !(isFootstrapShell && targetContainer) &&
+    typeof document !== 'undefined'
       ? document.documentElement
       : null;
   const prevDocHeight = root ? root.scrollHeight : 0;
@@ -229,29 +267,7 @@ export function preserveScrollForPage(
     }
   }
 
-  renderFn();
-
-  scheduleFrame(() => {
-    if (targetContainer) {
-      const remainingCount =
-        (containerLockCounts.get(targetContainer) || 1) - 1;
-      if (remainingCount <= 0) {
-        containerLockCounts.delete(targetContainer);
-        if (targetContainer.style) {
-          targetContainer.style.minHeight = '';
-        }
-      } else {
-        containerLockCounts.set(targetContainer, remainingCount);
-      }
-    }
-
-    if (root) {
-      activeDocLocks = Math.max(0, activeDocLocks - 1);
-      if (activeDocLocks === 0 && root.style) {
-        root.style.minHeight = '';
-      }
-    }
-
+  const restoreClampedScrollIfNeeded = () => {
     if (typeof window === 'undefined' || !pos.target) {
       return;
     }
@@ -283,5 +299,37 @@ export function preserveScrollForPage(
         isProgrammaticScroll = false;
       });
     }
-  });
+  };
+
+  activeRenderCount += 1;
+  try {
+    renderFn();
+    restoreClampedScrollIfNeeded();
+  } finally {
+    scheduleFrame(() => {
+      activeRenderCount = Math.max(0, activeRenderCount - 1);
+
+      if (targetContainer) {
+        const remainingCount =
+          (containerLockCounts.get(targetContainer) || 1) - 1;
+        if (remainingCount <= 0) {
+          containerLockCounts.delete(targetContainer);
+          if (targetContainer.style) {
+            targetContainer.style.minHeight = '';
+          }
+        } else {
+          containerLockCounts.set(targetContainer, remainingCount);
+        }
+      }
+
+      if (root) {
+        activeDocLocks = Math.max(0, activeDocLocks - 1);
+        if (activeDocLocks === 0 && root.style) {
+          root.style.minHeight = '';
+        }
+      }
+
+      restoreClampedScrollIfNeeded();
+    });
+  }
 }

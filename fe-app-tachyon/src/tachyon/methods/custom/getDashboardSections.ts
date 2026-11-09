@@ -2316,12 +2316,26 @@ function buildUrlTestInfo({
         configuredPrefixes,
       });
 
+      const childTelemetry =
+        entry?.value.telemetry?.[childCode] ||
+        entry?.value.telemetry?.[effectiveCode];
+      const historyDelay = Number(childEntry?.value?.history?.[0]?.delay);
+      const telemetryDelay = Number(
+        childTelemetry?.rtt_ms ?? childTelemetry?.ewma_rtt_ms,
+      );
+      const childLatency =
+        Number.isFinite(historyDelay) && historyDelay > 0
+          ? historyDelay
+          : Number.isFinite(telemetryDelay) && telemetryDelay > 0
+            ? Math.round(telemetryDelay)
+            : 0;
+
       return [
         {
           code: effectiveCode,
           displayName: resolved.displayName,
           prefix: resolved.prefix,
-          latency: childEntry?.value?.history?.[0]?.delay || 0,
+          latency: childLatency,
           type: dashboardOutboundType(
             childCode,
             childEntry?.value?.type,
@@ -2339,9 +2353,7 @@ function buildUrlTestInfo({
           country: showDetectedCountries
             ? lookupMetadataField(outboundMetadata?.countries, childCode)
             : undefined,
-          telemetry:
-            entry?.value.telemetry?.[childCode] ||
-            entry?.value.telemetry?.[effectiveCode],
+          telemetry: childTelemetry,
         },
       ];
     }),
@@ -2837,15 +2849,29 @@ function buildProxyGroupOutbounds(
       )?.latency ||
       0;
 
-    const itemDelay = Number(effectiveItem?.value.history?.[0]?.delay);
-    const validItemDelay =
-      Number.isFinite(itemDelay) && itemDelay > 0 ? itemDelay : 0;
-    const latency =
-      validItemDelay || (activeMemberLatency > 0 ? activeMemberLatency : 0);
-
     const isGroupType = Boolean(
       priorityConfig || urlTestConfig || isRuntimeUrlTest,
     );
+
+    const itemDelay = Number(effectiveItem?.value.history?.[0]?.delay);
+    const validItemDelay =
+      Number.isFinite(itemDelay) && itemDelay > 0 ? itemDelay : 0;
+    let urlTestTelemetryDelay = 0;
+    if (!validItemDelay && !isGroupType) {
+      for (const sc of uniqueCodes([...urlTestCodes, ...selectorCodes])) {
+        const utProxy = proxyByCode.get(sc);
+        const t = utProxy?.value.telemetry?.[code];
+        const td = Number(t?.rtt_ms ?? t?.ewma_rtt_ms);
+        if (Number.isFinite(td) && td > 0) {
+          urlTestTelemetryDelay = Math.round(td);
+          break;
+        }
+      }
+    }
+    const latency =
+      validItemDelay ||
+      urlTestTelemetryDelay ||
+      (activeMemberLatency > 0 ? activeMemberLatency : 0);
 
     let sourceGroup = isGroupType
       ? undefined

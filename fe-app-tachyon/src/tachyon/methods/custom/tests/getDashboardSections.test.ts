@@ -47,6 +47,7 @@ function proxy(
     history: options.history || [],
     now: options.now,
     all: options.all,
+    ...(options.telemetry ? { telemetry: options.telemetry } : {}),
   };
 }
 
@@ -2154,5 +2155,65 @@ describe('getDashboardSections', () => {
       'Proxy-sub-1-out',
       'Proxy-sub-3-out',
     ]);
+  });
+
+  it('derives URLTest group and member latency from URLTest telemetry when proxy history is empty', async () => {
+    mocks.getConfigSections.mockResolvedValue([proxySection()]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'main-out': proxy('Selector', {
+            name: 'main-out',
+            now: 'main-urltest',
+            all: ['main-urltest', 'main-1-out', 'main-2-out'],
+          }),
+          'main-urltest': proxy('URLTest', {
+            name: 'main-urltest',
+            now: 'main-2-out',
+            all: ['main-1-out', 'main-2-out'],
+            history: [],
+            telemetry: {
+              'main-1-out': {
+                rtt_ms: 0,
+                ewma_rtt_ms: 0,
+                quarantined: true,
+              },
+              'main-2-out': {
+                rtt_ms: 34,
+                ewma_rtt_ms: 36,
+                quarantined: false,
+              },
+            },
+          }),
+          'main-1-out': proxy('AmneziaWG', {
+            name: 'AmneziaWG',
+            history: [],
+          }),
+          'main-2-out': proxy('VLESS', {
+            name: 'Panthera NL',
+            history: [],
+          }),
+        },
+      },
+    });
+
+    const result = await getDashboardSections();
+    expect(result.success).toBe(true);
+    const [section] = result.data;
+    const urltestCard = section.outbounds.find(
+      (item) => item.code === 'main-urltest',
+    );
+    const activeNodeCard = section.outbounds.find(
+      (item) => item.code === 'main-2-out',
+    );
+
+    expect(urltestCard?.latency).toBe(34);
+    expect(urltestCard?.urlTestInfo?.selectedCode).toBe('main-2-out');
+    expect(
+      urltestCard?.urlTestInfo?.outbounds.find((m) => m.code === 'main-2-out')
+        ?.latency,
+    ).toBe(34);
+    expect(activeNodeCard?.latency).toBe(34);
   });
 });

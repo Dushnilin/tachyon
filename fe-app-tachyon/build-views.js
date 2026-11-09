@@ -75,6 +75,20 @@ async function buildViews() {
       .replace(/\n*\/\/# sourceURL=[^\n]+\n*/g, '\n')
       .replace(/^export default /m, 'return ');
 
+    try {
+      new Function(luciJs);
+    } catch (syntaxErr) {
+      throw new Error(
+        `Invalid JavaScript syntax in generated LuCI view ${outFile}: ${syntaxErr.message}`,
+      );
+    }
+
+    if (/\b_tr\s*\(/.test(luciJs) && !/\bfunction\s+_tr\s*\(/.test(luciJs)) {
+      throw new Error(
+        `LuCI view ${outFile} calls _tr(...) without defining function _tr(ru, en)`,
+      );
+    }
+
     const existing = await fs.readFile(outPath, 'utf8').catch(() => null);
     if (existing !== luciJs) {
       await fs.writeFile(outPath, luciJs, 'utf8');

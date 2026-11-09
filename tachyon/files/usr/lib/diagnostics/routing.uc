@@ -1709,12 +1709,21 @@ function clash_api(action, arg1, arg2, arg3) {
             module_success(SERVICE_UI_UC, [ "latency-progress-state", progress_path, count, total, failed ]);
 
         let ordered_proxy_tags = [];
-        for (let proxy_tag in proxy_tags)
-            if (lc(as_string(proxy_types[proxy_tag])) != "urltest")
+        let non_urltest_tags = [];
+        let urltest_only_tags = [];
+        for (let proxy_tag in proxy_tags) {
+            if (lc(as_string(proxy_types[proxy_tag])) != "urltest") {
                 push(ordered_proxy_tags, proxy_tag);
-        for (let proxy_tag in proxy_tags)
-            if (lc(as_string(proxy_types[proxy_tag])) == "urltest")
+                push(non_urltest_tags, proxy_tag);
+            }
+        }
+        for (let proxy_tag in proxy_tags) {
+            if (lc(as_string(proxy_types[proxy_tag])) == "urltest") {
                 push(ordered_proxy_tags, proxy_tag);
+                push(urltest_only_tags, proxy_tag);
+            }
+        }
+        let batch_proxy_tags = length(non_urltest_tags) > 0 ? non_urltest_tags : ordered_proxy_tags;
 
         let timeout_ms = as_string(arg2 || "3500");
         let max_time = as_string(int((int(timeout_ms) + 1999) / 1000));
@@ -1784,7 +1793,7 @@ function clash_api(action, arg1, arg2, arg3) {
                         }
                     }
                 };
-                let wave_tags = slice(ordered_proxy_tags, 0, probe_chunk_size * parallel_chunks);
+                let wave_tags = slice(batch_proxy_tags, 0, probe_chunk_size * parallel_chunks);
                 if (length(wave_tags) > 0) {
                     let wave_cmds = [];
                     let wave_chunks = [];
@@ -1851,8 +1860,8 @@ function clash_api(action, arg1, arg2, arg3) {
 
                 if (batch_supported) {
                     let wave_step = probe_chunk_size * parallel_chunks;
-                    for (let w = wave_step; w < length(ordered_proxy_tags); w += wave_step) {
-                        let w_tags = slice(ordered_proxy_tags, w, w + wave_step);
+                    for (let w = wave_step; w < length(batch_proxy_tags); w += wave_step) {
+                        let w_tags = slice(batch_proxy_tags, w, w + wave_step);
                         let wave_cmds = [];
                         let wave_chunks = [];
                         for (let c = 0; c < length(w_tags); c += probe_chunk_size) {
@@ -1910,9 +1919,8 @@ function clash_api(action, arg1, arg2, arg3) {
                         }
                     }
 
-                    for (let gt in ordered_proxy_tags) {
-                        if (lc(as_string(proxy_types[gt])) != "urltest")
-                            continue;
+                    let skipped_urltests = length(non_urltest_tags) > 0;
+                    for (let gt in urltest_only_tags) {
                         let ginfo = object_or_empty(proxy_info[gt]);
                         let gall = type(ginfo.all) == "array" ? ginfo.all : [];
                         let best_child = "";
@@ -1926,16 +1934,24 @@ function clash_api(action, arg1, arg2, arg3) {
                             }
                         }
                         if (best_child != "") {
+                            all_wave_results[gt] = best_delay;
                             let cur_now = trim(as_string(ginfo.now || ""));
-                            if (cur_now == "" || int(all_wave_results[cur_now] || 0) <= 0) {
+                            let cur_delay = int(all_wave_results[cur_now] || 0);
+                            if (cur_now == "" || cur_delay <= 0 || best_delay + 50 < cur_delay) {
                                 let put_payload = status_output([ "clash-set-group-proxy-payload", best_child ], null);
                                 let put_args = [ "curl", "-X", "PUT", "-s", "-m", "3", base_url + "/proxies/" + clash_urlencode(gt) ];
                                 for (let item in auth) push(put_args, item);
                                 push(put_args, "--data-raw", put_payload);
                                 common.command_status(command_from_args(put_args));
                             }
+                        } else if (skipped_urltests) {
+                            failed++;
                         }
+                        if (skipped_urltests)
+                            count++;
                     }
+                    if (skipped_urltests && length(urltest_only_tags) > 0 && progress_path != "")
+                        module_success(SERVICE_UI_UC, [ "latency-progress-state", progress_path, count, total, failed ]);
                 }
                 else {
                     let batch_size = 64;

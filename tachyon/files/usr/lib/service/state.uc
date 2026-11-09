@@ -2459,6 +2459,8 @@ function sing_box_signature_body(settings, sections, servers, mwan3_active, sche
     if (enable_yacd == "1") {
         body = signature_add_value(body, "settings.enable_yacd_wan_access", bool_option_value(settings, "enable_yacd_wan_access", false));
         body = signature_add_value(body, "settings.yacd_secret_key", option(settings, "yacd_secret_key", ""));
+    } else if (option(settings, "yacd_secret_key", "") != "") {
+        body = signature_add_value(body, "settings.yacd_secret_key", option(settings, "yacd_secret_key", ""));
     }
 
     body = signature_add_value(body, "settings.download_lists_via_proxy", bool_option_value(settings, "download_lists_via_proxy", false));

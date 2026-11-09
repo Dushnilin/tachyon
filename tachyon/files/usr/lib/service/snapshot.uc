@@ -780,11 +780,14 @@ function upload_encrypted_transfer_blob(cipher_b64u, key_b64u, stage) {
         common.write_file(relay_dir + "/" + id, cipher_b64u);
         return "tachyon://t1/l/" + id + "/" + key_b64u;
     }
+    if (getenv("TACHYON_TRANSFER_ONLINE_SHORT") != "1")
+        return null;
     let blob_file = stage + "/cipher.txt";
     common.write_file(blob_file, cipher_b64u);
 
     let dp_out = trim(command_output_from_args([
         "curl", "-k", "-m", "4", "-sS",
+        "-A", "Mozilla/5.0",
         "--data-urlencode", "content@" + blob_file,
         "-d", "expiry_days=7",
         "https://dpaste.com/api/v2/"
@@ -795,6 +798,7 @@ function upload_encrypted_transfer_blob(cipher_b64u, key_b64u, stage) {
 
     let cn_out = trim(command_output_from_args([
         "curl", "-k", "-m", "4", "-sS",
+        "-A", "Mozilla/5.0",
         "--upload-file", blob_file,
         "https://paste.c-net.org/"
     ]));
@@ -821,16 +825,20 @@ function fetch_encrypted_transfer_blob(provider, blob_id) {
         let relay_dir = trim(as_string(getenv("TACHYON_TRANSFER_RELAY_DIR") || ""));
         if (relay_dir != "" && fs.stat(relay_dir + "/" + blob_id) != null)
             fetched = trim(as_string(fs.readfile(relay_dir + "/" + blob_id) || ""));
-    } else if (provider == "d") {
+    } else if (provider == "d" || provider == "c") {
+        let target_url = (provider == "d")
+            ? ("https://dpaste.com/" + blob_id + ".txt")
+            : ("https://paste.c-net.org/" + blob_id);
         fetched = trim(command_output_from_args([
-            "curl", "-k", "-m", "6", "-fsSL",
-            "https://dpaste.com/" + blob_id + ".txt"
+            "curl", "-k", "-m", "8", "-A", "Mozilla/5.0", "-fsSL",
+            target_url
         ]));
-    } else if (provider == "c") {
-        fetched = trim(command_output_from_args([
-            "curl", "-k", "-m", "6", "-fsSL",
-            "https://paste.c-net.org/" + blob_id
-        ]));
+        if (fetched == "") {
+            fetched = trim(command_output_from_args([
+                "curl", "-k", "-m", "8", "-A", "Mozilla/5.0", "-x", "http://127.0.0.1:4534", "-fsSL",
+                target_url
+            ]));
+        }
     }
 
     if (fetched != "") {

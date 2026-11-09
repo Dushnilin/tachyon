@@ -762,4 +762,75 @@ if (meta.source_ids["🇳🇱 NL Clouds 1"] != "src_sub_1" || meta.source_names[
 ' "$new_sec_out" "${new_sec_out}.section-cache/new_sec.json" ||
   fail "new section URLTest and Priority balancer capture"
 
+mkdir -p "$WORK_DIR/mock-bin"
+cat >"$WORK_DIR/mock-bin/curl" <<'SH'
+#!/usr/bin/env bash
+for arg in "$@"; do
+  case "$arg" in
+    */proxies/main-out)
+      printf '{"now":"%s"}\n' "${MOCK_PARENT_NOW:-main-urltest}"
+      exit 0
+      ;;
+    */proxies/main-priority-pg-out)
+      printf '{"now":"node-a"}\n'
+      exit 0
+      ;;
+    */proxies/*/delay*)
+      echo "probed" >> "$MOCK_PROBE_LOG"
+      printf '{"delay":42}\n'
+      exit 0
+      ;;
+  esac
+done
+exit 0
+SH
+chmod +x "$WORK_DIR/mock-bin/curl"
+
+: >"$WORK_DIR/probe.log"
+PATH="$WORK_DIR/mock-bin:$PATH" MOCK_PARENT_NOW="main-urltest" MOCK_PROBE_LOG="$WORK_DIR/probe.log" \
+  ucode -L "$TACHYON_LIB" -e '
+let prio = require("tachyon_core.priority");
+let grp = {
+    id: "pg",
+    tag: "main-priority-pg-out",
+    kind: "priority",
+    section: "main",
+    health_url: "https://www.gstatic.com/generate_204",
+    health_urls: [ "https://www.gstatic.com/generate_204" ],
+    active_check_interval: "5s",
+    check_timeout: "2s",
+    recovery_check_interval: "15s",
+    fastest_check_interval: "3m",
+    levels: [ { id: "l1", order: 0, outbounds: [ "node-a", "node-b" ] } ]
+};
+let st = prio.init_group_state(grp);
+prio.tick_group(st, grp);
+'
+if [ -s "$WORK_DIR/probe.log" ]; then
+  fail "tick_group must not probe an inactive priority group when parent selector is on another outbound"
+fi
+
+PATH="$WORK_DIR/mock-bin:$PATH" MOCK_PARENT_NOW="main-priority-pg-out" MOCK_PROBE_LOG="$WORK_DIR/probe.log" \
+  ucode -L "$TACHYON_LIB" -e '
+let prio = require("tachyon_core.priority");
+let grp = {
+    id: "pg",
+    tag: "main-priority-pg-out",
+    kind: "priority",
+    section: "main",
+    health_url: "https://www.gstatic.com/generate_204",
+    health_urls: [ "https://www.gstatic.com/generate_204" ],
+    active_check_interval: "5s",
+    check_timeout: "2s",
+    recovery_check_interval: "15s",
+    fastest_check_interval: "3m",
+    levels: [ { id: "l1", order: 0, outbounds: [ "node-a", "node-b" ] } ]
+};
+let st = prio.init_group_state(grp);
+prio.tick_group(st, grp);
+'
+if [ ! -s "$WORK_DIR/probe.log" ]; then
+  fail "tick_group must probe priority group when it is selected in parent selector"
+fi
+
 printf 'Priority failover checks passed\n'

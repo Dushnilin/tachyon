@@ -2415,14 +2415,8 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
     let saved_selector_state = read_json_file(persistent_selector_file);
     if (type(saved_selector_state) == "object" && as_string(saved_selector_state[selector_tag]) != "") {
         let saved_target = as_string(saved_selector_state[selector_tag]);
-        let auto_balancer_preferred = sel_mode != "default" && !first_is_dpi && has_explicit_balancers;
-        let saved_is_balancer = index(urltest_tags, saved_target) >= 0 || index(priority_tags, saved_target) >= 0;
-        if (index(selector_outbounds, saved_target) >= 0 && (!auto_balancer_preferred || saved_is_balancer)) {
+        if (index(selector_outbounds, saved_target) >= 0) {
             selector_default = saved_target;
-        }
-        else if (auto_balancer_preferred && !saved_is_balancer) {
-            delete saved_selector_state[selector_tag];
-            common.write_json_file(persistent_selector_file, saved_selector_state, 2);
         }
     }
 

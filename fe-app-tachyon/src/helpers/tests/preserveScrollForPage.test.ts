@@ -237,9 +237,39 @@ describe('preserveScrollForPage', () => {
 
       (globalThis as any).window.dispatchEvent({ type: 'pageshow' });
       expect(store.fsAnchor).toBe('off');
+      expect(store.fsFit).toBe('off');
     } finally {
       _resetUserScrollTrackingForTest();
       (globalThis as any).localStorage = origStorage;
     }
+  });
+
+  it('restores scroll position even when DOM replacement fires a synthetic scroll event during render', () => {
+    const scrollToMock = (globalThis as any).window.scrollTo;
+    (globalThis as any).window.scrollY = 480;
+
+    preserveScrollForPage(() => {
+      // Simulate iOS WebKit / Footstrap clamping scrollY to 0 and dispatching a 'scroll' event
+      (globalThis as any).window.scrollY = 0;
+      (globalThis as any).window.dispatchEvent({ type: 'scroll' });
+    });
+
+    vi.advanceTimersByTime(20);
+    expect(scrollToMock).toHaveBeenCalledWith({ top: 480 });
+    expect(isUserActivelyScrolling()).toBe(false);
+  });
+
+  it('clears Footstrap [data-fs-floor] minHeight locks before rendering', () => {
+    const floorEl: any = {
+      style: { minHeight: '1400px' },
+      removeAttribute: vi.fn(),
+    };
+    (globalThis as any).document.querySelectorAll = (sel: string) =>
+      sel === '[data-fs-floor]' ? [floorEl] : [];
+
+    preserveScrollForPage(() => {});
+
+    expect(floorEl.style.minHeight).toBe('');
+    expect(floorEl.removeAttribute).toHaveBeenCalledWith('data-fs-floor');
   });
 });
