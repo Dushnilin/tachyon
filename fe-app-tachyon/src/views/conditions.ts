@@ -447,7 +447,7 @@ function createTwoModeTracerWidget() {
 
   return E(
     'div',
-    { class: 'tachyon-studio-panel', style: 'margin-bottom: 12px;' },
+    { class: 'tachyon-studio-panel', style: 'margin-top: 12px;' },
     [
       E('div', { class: 'tachyon-studio-panel__header' }, [
         E('div', { class: 'tachyon-studio-panel__titles' }, [
@@ -541,7 +541,7 @@ function configureConditionsSection(sectionRef) {
   sectionRef.render = function () {
     return origRender.apply(this, arguments).then((node) => {
       if (node) {
-        node.insertBefore(createTwoModeTracerWidget(), node.firstChild);
+        node.appendChild(createTwoModeTracerWidget());
       }
       return node;
     });
