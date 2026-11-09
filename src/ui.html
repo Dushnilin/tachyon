@@ -951,13 +951,37 @@ const COMMUNITY_SERVICES = [
   'youtube','discord','telegram','instagram','facebook','twitter','tiktok','netflix','spotify',
   'twitch','steam','playstation','xbox','openai','claude','gemini','github','docker','cloudflare',
   'google','whatsapp','signal','patreon','reddit','linkedin','medium','notion','figma','canva',
-  'SoundCloud','Spotify','Pornhub','XVideos','Rutracker','Kinopub','JetBrains','hetzner','ovh','digitalocean'
+  'SoundCloud','Pornhub','XVideos','Rutracker','Kinopub','JetBrains','hetzner','ovh','digitalocean'
+];
+
+const COMMUNITY_CATEGORIES = [
+  { group: 'Видео и стриминг', items: ['youtube','netflix','twitch','spotify','SoundCloud','Kinopub','tiktok'] },
+  { group: 'Соцсети и мессенджеры', items: ['discord','telegram','instagram','facebook','twitter','whatsapp','signal','reddit','linkedin','patreon'] },
+  { group: 'ИИ и нейросети', items: ['openai','claude','gemini','notion','figma','canva','medium'] },
+  { group: 'Игры и платформы', items: ['steam','playstation','xbox','Rutracker'] },
+  { group: 'Разработка и облака', items: ['github','docker','cloudflare','google','JetBrains','hetzner','ovh','digitalocean'] },
+  { group: 'Возрастной контент (18+)', items: ['Pornhub','XVideos'] }
 ];
 
 const S = {
   tab: 'dashboard',
   studioTab: 'sections',
+  secViewMode: localStorage.getItem('tachyon_sec_view') || 'cards',
+  dashPreset: localStorage.getItem('tachyon_dash_preset') || 'standard',
+  uiMode: localStorage.getItem('tachyon_mode') || 'advanced',
+  lang: localStorage.getItem('tachyon_lang') || 'ru',
+  accent: localStorage.getItem('tachyon_accent') || 'blue',
+  authToken: localStorage.getItem('tachyon_token') || '',
+  monView: 'streams',
+  monSearch: '',
+  monProto: '',
+  monOutbound: '',
+  monPaused: false,
+  diagTab: 'doctor',
+  diagData: {},
+  settingsTab: 'net',
   secNodeFilter: {},
+  commSearch: '',
   system: {},
   store: {
     settings: {},
@@ -987,8 +1011,46 @@ const S = {
   doctor: { healthy: true, subsystems: [] },
   updates: {},
   connections: [],
+  flightEvents: [],
+  failoverState: null,
   diagOut: ''
 };
+
+function tr(ru, en) {
+  return S.lang === 'en' ? (en || ru) : ru;
+}
+
+function applyThemeAccent(acc) {
+  S.accent = acc || 'blue';
+  localStorage.setItem('tachyon_accent', S.accent);
+  const map = {
+    blue: ['#3b82f6', 'rgba(59, 130, 246, 0.14)'],
+    emerald: ['#10b981', 'rgba(16, 185, 129, 0.14)'],
+    amber: ['#f59e0b', 'rgba(245, 158, 11, 0.14)'],
+    zinc: ['#e4e4e7', 'rgba(228, 228, 231, 0.12)']
+  };
+  const [sig, dim] = map[S.accent] || map.blue;
+  document.documentElement.style.setProperty('--signal', sig);
+  document.documentElement.style.setProperty('--signal-dim', dim);
+}
+
+function toggleUiMode() {
+  S.uiMode = S.uiMode === 'basic' ? 'advanced' : 'basic';
+  localStorage.setItem('tachyon_mode', S.uiMode);
+  toast(S.uiMode === 'basic'
+    ? tr('Включён простой режим (только основные настройки и быстрые пресеты)', 'Basic mode enabled')
+    : tr('Включён инженерный режим (все протоколы и низкоуровневые параметры)', 'Advanced engineering mode enabled'));
+  renderTopbar();
+  renderPage();
+}
+
+function toggleLang() {
+  S.lang = S.lang === 'ru' ? 'en' : 'ru';
+  localStorage.setItem('tachyon_lang', S.lang);
+  renderNav();
+  renderTopbar();
+  renderPage();
+}
 
 function esc(v) {
   return String(v ?? '')
@@ -1038,22 +1100,222 @@ function toast(msg, isErr = false) {
 
 async function api(method, path, body) {
   const opts = { method, headers: {} };
+  if (S.authToken) {
+    opts.headers['Authorization'] = `Bearer ${S.authToken}`;
+  }
   if (body !== undefined) {
     opts.headers['Content-Type'] = 'application/json';
     opts.body = JSON.stringify(body);
   }
   const r = await fetch(path, opts);
   const data = await r.json().catch(() => ({}));
+  if (r.status === 401 || data.error === 'unauthorized') {
+    if (path !== '/api/login' && path !== '/api/telemetry') {
+      openLoginModal();
+    }
+    throw new Error(tr('Требуется авторизация администратора', 'Authentication required'));
+  }
   if (!r.ok || data.error) {
     throw new Error(data.error || `HTTP ${r.status}`);
   }
   return data;
 }
 
+function openLoginModal() {
+  openModal(tr('Авторизация в панели Tachyon OS', 'Tachyon OS Sign In'), `
+    <div style="max-width:420px;margin:0 auto;display:flex;flex-direction:column;gap:12px">
+      <div class="field-hint">
+        ${tr('Введите учётные данные администратора маршрутизатора (по умолчанию логин admin, пароль admin).', 'Enter router administrator credentials (default: admin / admin).')}
+      </div>
+      <div class="field">
+        <div class="field-label">${tr('Имя пользователя', 'Username')}</div>
+        <input type="text" id="loginUser" value="admin" class="mono"/>
+      </div>
+      <div class="field">
+        <div class="field-label">${tr('Пароль администратора', 'Password')}</div>
+        <input type="password" id="loginPass" value="admin" class="mono" onkeydown="if(event.key==='Enter')submitLoginModal()"/>
+      </div>
+    </div>
+  `, `
+    <button class="btn btn-primary" onclick="submitLoginModal()">${ic('key', 14)} ${tr('Войти в систему', 'Sign In')}</button>
+  `);
+}
+
+async function submitLoginModal() {
+  const username = document.getElementById('loginUser')?.value.trim() || 'admin';
+  const password = document.getElementById('loginPass')?.value || '';
+  try {
+    const res = await api('POST', '/api/login', { username, password });
+    if (res.token) {
+      S.authToken = res.token;
+      localStorage.setItem('tachyon_token', res.token);
+    }
+    closeModal();
+    toast(tr('Авторизация выполнена', 'Signed in successfully'));
+    await bootstrap();
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+function openWizardModal() {
+  openModal(tr('Мастер быстрой настройки (Connection Wizard)', 'Quick Setup Wizard'), `
+    <div class="field-hint" style="margin-bottom:8px">
+      ${tr('Выберите готовый сценарий в 1 клик или заполните форму быстрого подключения. Все существующие правила и приоритеты сохраняются.', 'Choose a 1-click preset or fill out the quick setup form below.')}
+    </div>
+    <div class="grid-3">
+      <div class="card card-interactive" style="padding:12px">
+        <div class="card-title">${ic('bolt', 14)} 1. Адаптивный Desync 2.0</div>
+        <div class="card-sub">Оптимизация YouTube, Discord и голосовых вызовов напрямую без внешнего VPS (фрагментация TLS 1.3 + QUIC fake).</div>
+        <button class="btn btn-sm btn-primary" style="margin-top:6px" onclick="applyQuickWizardPreset('desync')">Включить в 1 клик</button>
+      </div>
+      <div class="card card-interactive" style="padding:12px">
+        <div class="card-title">${ic('globe', 14)} 2. Cloudflare WARP</div>
+        <div class="card-sub">Автоматическая регистрация ключей Cloudflare WARP / MASQUE на движке tachyon-core и создание секции маршрутизации.</div>
+        <button class="btn btn-sm btn-primary" style="margin-top:6px" onclick="applyQuickWizardPreset('warp')">Создать WARP в 1 клик</button>
+      </div>
+      <div class="card card-interactive" style="padding:12px">
+        <div class="card-title">${ic('server', 14)} 3. Свой VPN-сервер VLESS Reality</div>
+        <div class="card-sub">Развёртывание входящего сервера VLESS XTLS-Reality на роутере с автогенерацией X25519 ключей и QR-кодом.</div>
+        <button class="btn btn-sm btn-primary" style="margin-top:6px" onclick="applyQuickWizardPreset('vless_server')">Поднять сервер в 1 клик</button>
+      </div>
+    </div>
+
+    <div class="section-divider"><span>Подключение подписки или URI-ключей (VLESS / Hysteria2 / AmneziaWG / Happ)</span></div>
+    <div class="grid-3">
+      <div class="field">
+        <div class="field-label">Название новой секции</div>
+        <input type="text" id="wizName" value="Быстрый профиль" placeholder="Например: Основной прокси"/>
+      </div>
+      <div class="field">
+        <div class="field-label">Режим подключения</div>
+        <select id="wizMode">
+          <option value="subscription">Удалённая подписка (URL / Happ / Clash / Sing-box)</option>
+          <option value="proxy_links">Прямые URI-ключи (vless://, hy2://, ss://, trojan://, wg://)</option>
+          <option value="desync">Локальная десинхронизация пакетов (Desync 2.0)</option>
+          <option value="warp">Cloudflare WARP (авторегистрация)</option>
+        </select>
+      </div>
+      <div class="field">
+        <div class="field-label">Целевые сервисы (через запятую)</div>
+        <input type="text" id="wizServices" value="youtube, discord, openai, claude, instagram" class="mono"/>
+      </div>
+    </div>
+    <div class="field">
+      <div class="field-label">Ссылка на подписку (https://... / happ://...) или список URI-ключей</div>
+      <textarea id="wizPayload" placeholder="Вставьте URL подписки или ключи vless://, vmess://, hysteria2://, tuic://, ss://..." style="min-height:80px"></textarea>
+    </div>
+  `, `
+    <button class="btn" onclick="closeModal()">Закрыть</button>
+    <button class="btn btn-primary" onclick="submitWizardForm()">${ic('check', 14)} Применить и запустить</button>
+  `);
+}
+
+async function applyQuickWizardPreset(preset) {
+  try {
+    if (preset === 'desync') {
+      await api('POST', '/api/wizard/apply', {
+        mode: 'desync',
+        name: 'Адаптивный Desync (YouTube & Discord)',
+        desync_preset: 'adaptive',
+        services: ['youtube', 'discord']
+      });
+      closeModal();
+      toast('Секция адаптивной десинхронизации создана и запущена');
+      await bootstrap();
+    } else if (preset === 'warp') {
+      await api('POST', '/api/sources/warp-register', {});
+      await api('POST', '/api/wizard/apply', {
+        mode: 'warp',
+        name: 'Cloudflare WARP',
+        services: ['openai', 'claude', 'gemini', 'instagram']
+      });
+      closeModal();
+      toast('Профиль Cloudflare WARP зарегистрирован и подключён');
+      await bootstrap();
+    } else if (preset === 'vless_server') {
+      const kg = await api('POST', '/api/crypto/keygen', { kind: 'reality' });
+      const srvId = 'srv_vless_reality';
+      await api('POST', '/api/servers/save', {
+        id: srvId,
+        enabled: true,
+        label: 'Роутер VLESS Reality',
+        country: 'RU',
+        protocol: 'vless',
+        listen: '::',
+        listen_port: 8443,
+        public_host: S.store.settings?.server_subscription_host || location.hostname,
+        open_firewall_port: true,
+        routing_mode: 'rules',
+        security: 'reality',
+        server_uuid: kg.uuid || '',
+        vless_flow: 'xtls-rprx-vision',
+        reality_handshake_server: 'www.microsoft.com',
+        reality_handshake_server_port: 443,
+        reality_private_key: kg.private_key || '',
+        reality_public_key: kg.public_key || '',
+        reality_short_id: kg.short_id || 'a1b2c3d4',
+        clients: [{ id: 'cl_main', name: 'Основное устройство', enabled: true, uuid: kg.uuid || '', password: '', total_limit_bytes: 0 }]
+      });
+      closeModal();
+      toast('Сервер VLESS Reality развёрнут на порту 8443');
+      await bootstrap();
+      shareSrv(srvId);
+    }
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+async function submitWizardForm() {
+  const name = document.getElementById('wizName')?.value.trim() || 'Быстрый профиль';
+  const mode = document.getElementById('wizMode')?.value || 'subscription';
+  const raw = document.getElementById('wizPayload')?.value.trim() || '';
+  const services = splitLines(document.getElementById('wizServices')?.value || 'youtube, discord');
+  try {
+    const payload = { mode, name, services, desync_preset: 'adaptive' };
+    if (mode === 'subscription') {
+      payload.subscription_url = raw;
+    } else if (mode === 'proxy_links') {
+      payload.proxy_links = splitLines(raw);
+    }
+    await api('POST', '/api/wizard/apply', payload);
+    closeModal();
+    toast('Мастер настройки успешно применил конфигурацию');
+    await bootstrap();
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+async function confirmLkgNow() {
+  try {
+    await api('POST', '/api/lkg/confirm', {});
+    toast('Конфигурация подтверждена и зафиксирована как эталон LKG');
+    await bootstrap();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function rollbackLkgNow() {
+  try {
+    await api('POST', '/api/lkg/rollback', {});
+    toast('Выполнен откат к последней стабильной конфигурации LKG');
+    await bootstrap();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function trimCoreMemory() {
+  try {
+    const r = await api('POST', '/api/core/memory-trim', {});
+    toast(r.message || 'Буферы памяти ядра tachyon-core очищены');
+    await bootstrap();
+  } catch (e) { toast(e.message, true); }
+}
+
 function openModal(title, bodyHtml, footHtml = '') {
   document.getElementById('modalTitle').textContent = title;
   document.getElementById('modalBody').innerHTML = bodyHtml;
-  document.getElementById('modalFoot').innerHTML = footHtml || `<button class="btn" onclick="closeModal()">Закрыть</button>`;
+  document.getElementById('modalFoot').innerHTML = footHtml || `<button class="btn" onclick="closeModal()">${tr('Закрыть', 'Close')}</button>`;
   document.getElementById('modalBackdrop').classList.add('open');
 }
 
@@ -1067,23 +1329,23 @@ function toggleSidebar() {
 }
 
 const NAV_ITEMS = [
-  { group: 'Маршрутизация', items: [
-    { id: 'dashboard', label: 'Обзор и статус', icon: 'dashboard' },
-    { id: 'section', label: 'Студия маршрутизации', icon: 'layers', count: () => (S.store.sections || []).length },
-    { id: 'server', label: 'Входящие серверы', icon: 'server', count: () => (S.store.servers || []).length },
-    { id: 'local_devices', label: 'Клиенты LAN', icon: 'devices', count: () => (S.live.lan_devices || []).length }
+  { group: 'Маршрутизация', groupEn: 'Routing', items: [
+    { id: 'dashboard', label: 'Обзор и статус', labelEn: 'Dashboard', icon: 'dashboard' },
+    { id: 'section', label: 'Студия маршрутизации', labelEn: 'Routing Studio', icon: 'layers', count: () => (S.store.sections || []).length },
+    { id: 'server', label: 'Входящие серверы', labelEn: 'Inbound Servers', icon: 'server', count: () => (S.store.servers || []).length },
+    { id: 'local_devices', label: 'Клиенты LAN', labelEn: 'LAN Devices', icon: 'devices', count: () => (S.live.lan_devices || []).length }
   ]},
-  { group: 'Политики доступа', items: [
-    { id: 'profile', label: 'Родительские профили', icon: 'shield', count: () => (S.store.profiles || []).length },
-    { id: 'schedule', label: 'Расписания', icon: 'clock', count: () => (S.store.schedules || []).length },
-    { id: 'guest_mode', label: 'Гостевой контур', icon: 'wifi' }
+  { group: 'Политики доступа', groupEn: 'Access Policies', items: [
+    { id: 'profile', label: 'Родительские профили', labelEn: 'Parental Control', icon: 'shield', count: () => (S.store.profiles || []).length },
+    { id: 'schedule', label: 'Расписания', labelEn: 'Schedules', icon: 'clock', count: () => (S.store.schedules || []).length },
+    { id: 'guest_mode', label: 'Гостевой контур', labelEn: 'Guest Network', icon: 'wifi' }
   ]},
-  { group: 'Инженерный контур', items: [
-    { id: 'monitoring', label: 'Мониторинг сессий', icon: 'activity' },
-    { id: 'diagnostic', label: 'Диагностика и Doctor', icon: 'stethoscope' },
-    { id: 'updates', label: 'Обновления и гео-базы', icon: 'refresh' },
-    { id: 'telegram', label: 'Telegram-управление', icon: 'send' },
-    { id: 'settings', label: 'Настройки системы', icon: 'settings' }
+  { group: 'Инженерный контур', groupEn: 'Engineering & Ops', items: [
+    { id: 'monitoring', label: 'Мониторинг сессий', labelEn: 'Live Sessions', icon: 'activity' },
+    { id: 'diagnostic', label: 'Диагностика и Doctor', labelEn: 'Diagnostics & Doctor', icon: 'stethoscope' },
+    { id: 'updates', label: 'Обновления и гео-базы', labelEn: 'Updates & Rulesets', icon: 'refresh' },
+    { id: 'telegram', label: 'Telegram-управление', labelEn: 'Telegram Bot', icon: 'send' },
+    { id: 'settings', label: 'Настройки системы', labelEn: 'System Settings', icon: 'settings' }
   ]}
 ];
 
@@ -1096,13 +1358,13 @@ function renderNav() {
 
   let html = '';
   for (const grp of NAV_ITEMS) {
-    html += `<div class="nav-group-label">${esc(grp.group)}</div>`;
+    html += `<div class="nav-group-label">${esc(tr(grp.group, grp.groupEn))}</div>`;
     for (const it of grp.items) {
       const active = S.tab === it.id ? 'active' : '';
       const cnt = it.count ? it.count() : null;
       html += `<button class="nav-btn ${active}" onclick="switchTab('${it.id}')">
         <span class="nav-icon">${ic(it.icon, 15)}</span>
-        <span class="nav-label">${esc(it.label)}</span>
+        <span class="nav-label">${esc(tr(it.label, it.labelEn))}</span>
         ${cnt !== null ? `<span class="nav-count">${cnt}</span>` : ''}
       </button>`;
     }
@@ -1119,7 +1381,7 @@ function renderTopbar() {
   document.getElementById('topbarLeft').innerHTML = `
     <div class="status-chip">
       <span class="dot ${running ? 'ok' : 'err'}"></span>
-      <span>tachyon-core ${running ? `PID ${S.live.core_pid || '-'}` : 'остановлен'}</span>
+      <span>tachyon-core ${running ? `PID ${S.live.core_pid || '-'}` : tr('остановлен', 'stopped')}</span>
     </div>
     <div class="status-chip num">
       <span>↓ ${fmtBps(last.rx_bps || 0)}</span>
@@ -1127,18 +1389,28 @@ function renderTopbar() {
       <span>↑ ${fmtBps(last.tx_bps || 0)}</span>
     </div>
     <div class="status-chip num">
-      <span>RAM ${S.system.memory_used_mb || 0}/${S.system.memory_total_mb || 0} МБ</span>
+      <span>RAM ${S.system.memory_used_mb || 0}/${S.system.memory_total_mb || 0} МБ${S.system.cpu_temp_c ? ` · ${S.system.cpu_temp_c.toFixed(0)}°C` : ''}</span>
     </div>
-    ${lkg ? `<div class="status-chip"><span class="dot warn"></span><span>LKG контроль (${S.live.lkg_remaining_secs || 0}с)</span></div>` : ''}
+    ${lkg ? `
+      <div class="status-chip" style="border-color:var(--warn)">
+        <span class="dot warn"></span>
+        <span>${tr('Проверка LKG', 'LKG Check')} (${S.live.lkg_remaining_secs || 0}с)</span>
+        <button class="btn btn-sm btn-primary" style="height:20px;padding:0 6px;font-size:10px" onclick="confirmLkgNow()">${tr('Подтвердить', 'Confirm')}</button>
+        <button class="btn btn-sm btn-danger" style="height:20px;padding:0 6px;font-size:10px" onclick="rollbackLkgNow()">${tr('Откатить', 'Rollback')}</button>
+      </div>
+    ` : ''}
   `;
 
   document.getElementById('topbarRight').innerHTML = `
-    <button class="btn btn-sm" onclick="openConfigPlanModal()" title="Предпросмотр скомпилированного конфига и nftables">${ic('code', 13)} План конфига</button>
-    <button class="btn btn-sm" onclick="probeAllLatencies()" title="Измерить задержку всех узлов">${ic('activity', 13)} Замер RTT</button>
-    <button class="btn btn-sm" onclick="coreAction('reload')" title="Применить и перезагрузить ядро">${ic('refresh', 13)} Применить</button>
+    <button class="btn btn-sm btn-primary" onclick="openWizardModal()" title="Мастер быстрой настройки в 1 клик">${ic('bolt', 13)} ${tr('Мастер настройки', 'Quick Wizard')}</button>
+    <button class="btn btn-sm" onclick="toggleUiMode()" title="Переключить режим детализации интерфейса">${S.uiMode === 'basic' ? tr('Режим: Простой', 'Mode: Basic') : tr('Режим: Инженерный', 'Mode: Advanced')}</button>
+    <button class="btn btn-sm" onclick="toggleLang()" title="Переключить язык RU / EN">${S.lang.toUpperCase()}</button>
+    <button class="btn btn-sm" onclick="openConfigPlanModal()" title="Предпросмотр скомпилированного конфига и nftables">${ic('code', 13)} ${tr('План конфига', 'Config Plan')}</button>
+    <button class="btn btn-sm" onclick="probeAllLatencies()" title="Измерить задержку всех узлов через tachyon-core">${ic('activity', 13)} ${tr('Замер RTT', 'Probe RTT')}</button>
+    <button class="btn btn-sm" onclick="coreAction('reload')" title="Применить и перезагрузить ядро">${ic('refresh', 13)} ${tr('Применить', 'Apply')}</button>
     ${running
-      ? `<button class="btn btn-sm btn-danger" onclick="coreAction('stop')">${ic('stop', 12)} Стоп</button>`
-      : `<button class="btn btn-sm btn-primary" onclick="coreAction('start')">${ic('play', 12)} Старт</button>`}
+      ? `<button class="btn btn-sm btn-danger" onclick="coreAction('stop')">${ic('stop', 12)} ${tr('Стоп', 'Stop')}</button>`
+      : `<button class="btn btn-sm btn-primary" onclick="coreAction('start')">${ic('play', 12)} ${tr('Старт', 'Start')}</button>`}
   `;
 }
 
@@ -1154,10 +1426,10 @@ async function coreAction(act) {
 
 async function probeAllLatencies() {
   try {
-    toast('Запущен замер RTT узлов...');
+    toast('Запущен пакетный замер RTT узлов через tachyon-core...');
     const res = await api('POST', '/api/diagnostics/urltest');
     if (res.latencies) S.live.node_latencies_ms = res.latencies;
-    toast('Замер RTT завершён');
+    toast(`Замер RTT завершён (${res.engine || 'tachyon-core'})`);
     renderPage();
   } catch (e) {
     toast(e.message, true);
@@ -1305,6 +1577,12 @@ async function quickAddDomainToSection(sectionId, inputId) {
   }
 }
 
+function setDashPreset(p) {
+  S.dashPreset = p;
+  localStorage.setItem('tachyon_dash_preset', p);
+  renderPage();
+}
+
 // ============================================================================
 // 1. ОБЗОР И СТАТУС (DASHBOARD)
 // ============================================================================
@@ -1315,17 +1593,24 @@ function vDashboard() {
   const srvs = S.store.servers || [];
   const totalNodes = srcs.reduce((acc, s) => acc + ((s.cached_nodes || []).length || 1), 0);
   const memPct = sys.memory_total_mb ? Math.min(100, Math.round((sys.memory_used_mb / sys.memory_total_mb) * 100)) : 0;
+  const zramMb = sys.zram_total_bytes ? Math.round(sys.zram_total_bytes / 1048576) : 0;
+  const zramUsedMb = sys.zram_used_bytes ? Math.round(sys.zram_used_bytes / 1048576) : 0;
   const subs = (S.doctor && S.doctor.subsystems) || [];
 
   return `
     <div class="page-head">
       <div>
-        <div class="page-title">Сетевой оркестратор маршрутизатора</div>
-        <div class="page-desc">${esc(sys.board_model || sys.hostname || 'OpenWrt')} · Ядро Linux ${esc(sys.kernel || '-')} · Архитектура ${esc(sys.arch || '-')} · Аптайм системы ${fmtUptime(sys.uptime_secs)}</div>
+        <div class="page-title">${tr('Сетевой оркестратор маршрутизатора', 'Router Network Orchestrator')}</div>
+        <div class="page-desc">${esc(sys.board_model || sys.hostname || 'OpenWrt')} · Linux ${esc(sys.kernel || '-')} · ${esc(sys.arch || '-')} · WAN <code class="mono">${esc(sys.wan_interface || 'wan')} (${esc(sys.wan_ip || '—')})</code> · ${tr('Аптайм', 'Uptime')} ${fmtUptime(sys.uptime_secs)}</div>
       </div>
       <div class="toolbar">
-        <button class="btn" onclick="switchTab('section')">${ic('layers', 14)} Настроить секции и приоритеты</button>
-        <button class="btn" onclick="switchTab('diagnostic')">${ic('stethoscope', 14)} Диагностика</button>
+        <div class="subtabs">
+          <button class="subtab ${S.dashPreset === 'standard' ? 'active' : ''}" onclick="setDashPreset('standard')">${tr('Стандартный', 'Standard')}</button>
+          <button class="subtab ${S.dashPreset === 'compact' ? 'active' : ''}" onclick="setDashPreset('compact')">${tr('Компактный', 'Compact')}</button>
+          <button class="subtab ${S.dashPreset === 'noc' ? 'active' : ''}" onclick="setDashPreset('noc')">NOC</button>
+        </div>
+        <button class="btn btn-primary" onclick="openWizardModal()">${ic('bolt', 14)} ${tr('Быстрая настройка', 'Quick Setup')}</button>
+        <button class="btn" onclick="switchTab('section')">${ic('layers', 14)} ${tr('Секции и приоритеты', 'Sections')}</button>
       </div>
     </div>
 
@@ -1333,26 +1618,30 @@ function vDashboard() {
       <div class="card">
         <div class="kpi-label"><span>Ядро маршрутизации</span><span class="badge ${S.live.core_running ? 'badge-ok' : 'badge-err'}">${S.live.core_running ? 'Активно' : 'Стоп'}</span></div>
         <div class="kpi-val">tachyon-core</div>
-        <div class="kpi-meta">PID ${S.live.core_pid || '—'} · аптайм ${fmtUptime(S.live.core_uptime_secs)} · режим ${esc(S.store.settings?.proxy_mode || 'tproxy')}</div>
+        <div class="kpi-meta">PID ${S.live.core_pid || '—'} · аптайм ${fmtUptime(S.live.core_uptime_secs)} · стек ${esc(S.store.settings?.proxy_mode || 'tproxy')}</div>
       </div>
       <div class="card">
-        <div class="kpi-label"><span>Память ОЗУ и CPU</span><span class="num">${memPct}%</span></div>
-        <div class="kpi-val">${sys.memory_used_mb || 0} <span style="font-size:13px;color:var(--text-2);font-weight:400">/ ${sys.memory_total_mb || 0} МБ</span></div>
+        <div class="kpi-label">
+          <span>Память ОЗУ, ZRAM и SoC</span>
+          <button class="btn btn-sm" style="height:20px;padding:0 6px;font-size:10px" onclick="trimCoreMemory()" title="Сжать буферы памяти ядра">Сжать ОЗУ</button>
+        </div>
+        <div class="kpi-val">${sys.memory_used_mb || 0} <span style="font-size:13px;color:var(--text-2);font-weight:400">/ ${sys.memory_total_mb || 0} МБ (${memPct}%)</span></div>
         <div class="meter"><span style="width:${memPct}%"></span></div>
-        <div class="kpi-meta">Load avg: ${esc((sys.load_avg || [0,0,0]).join(' / '))}</div>
+        <div class="kpi-meta">Load: ${esc((sys.load_avg || [0,0,0]).join('/'))}${zramMb ? ` · ZRAM ${zramUsedMb}/${zramMb} МБ` : ''}${sys.cpu_temp_c ? ` · SoC ${sys.cpu_temp_c.toFixed(1)}°C` : ''}</div>
       </div>
       <div class="card">
-        <div class="kpi-label"><span>Конвейер секций</span><span class="badge">${secs.filter(s => s.enabled).length} из ${secs.length}</span></div>
-        <div class="kpi-val">${secs.length} секций</div>
-        <div class="kpi-meta">Условий: ${(S.store.conditions || []).length} · Балансировщиков: ${(S.store.balancers || []).length}</div>
+        <div class="kpi-label"><span>WAN и отказоустойчивость</span><span class="badge badge-ok">${esc(sys.wan_interface || 'wan')}</span></div>
+        <div class="kpi-val mono" style="font-size:16px">${esc(sys.wan_ip || 'Ожидание IP')}</div>
+        <div class="kpi-meta">Шлюз: ${esc(sys.default_gateway || '—')} · Секций: ${secs.filter(s => s.enabled).length}/${secs.length} · Узлов: ${totalNodes}</div>
       </div>
       <div class="card">
-        <div class="kpi-label"><span>Внешние узлы и серверы</span><span class="badge badge-signal">${totalNodes} узлов</span></div>
-        <div class="kpi-val">${srcs.length} источников</div>
-        <div class="kpi-meta">Входящих серверов: ${srvs.filter(s => s.enabled).length}/${srvs.length} · LAN клиентов: ${(S.live.lan_devices || []).length}</div>
+        <div class="kpi-label"><span>Серверы и клиенты LAN</span><span class="badge badge-signal">${(S.live.lan_devices || []).length} устройств</span></div>
+        <div class="kpi-val">${srvs.filter(s => s.enabled).length} <span style="font-size:13px;color:var(--text-2);font-weight:400">/ ${srvs.length} серверов</span></div>
+        <div class="kpi-meta">Источников: ${srcs.length} · Защита флеша: tmpfs активен</div>
       </div>
     </div>
 
+    ${S.dashPreset !== 'compact' ? `
     <div class="grid-2">
       <div class="card">
         <div class="card-head">
@@ -1364,8 +1653,8 @@ function vDashboard() {
 
       <div class="card">
         <div class="card-head">
-          <div class="card-title">${ic('search', 15)} Трассировка маршрута пакета (Route Explain)</div>
-          <span class="card-sub">Проверка приоритета срабатывания секции</span>
+          <div class="card-title">${ic('search', 15)} Трассировка маршрута пакета (Route Explain + Engine Probe)</div>
+          <span class="card-sub">Проверка секции и реального прохождения рукопожатия через движок</span>
         </div>
         <div class="grid-3">
           <div class="field">
@@ -1386,10 +1675,11 @@ function vDashboard() {
           </div>
         </div>
         <div id="quickExpResult" style="font-size:12px;color:var(--text-2);padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);font-family:var(--font-mono)">
-          Введите адрес назначения и нажмите «Проверить» для вычисления секции, условия и выходного контура.
+          Введите адрес назначения и нажмите «Проверить» для вычисления секции, условия и двойного теста соединения через движок tachyon-core.
         </div>
       </div>
     </div>
+    ` : ''}
 
     <div class="card">
       <div class="card-head">
@@ -1472,8 +1762,11 @@ function vDashboard() {
 
     <div class="card">
       <div class="card-head">
-        <div class="card-title">${ic('stethoscope', 15)} Состояние подсистем (Local Doctor)</div>
-        <button class="btn btn-sm" onclick="quickFixAll()">Автоисправление стека</button>
+        <div class="card-title">${ic('stethoscope', 15)} Состояние 14 подсистем (Local Doctor)</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-sm" onclick="switchTab('diagnostic')">Все инструменты диагностики</button>
+          <button class="btn btn-sm btn-primary" onclick="quickFixAll()">Автоисправление стека</button>
+        </div>
       </div>
       <div class="grid-4">
         ${subs.map(s => `
@@ -1483,6 +1776,11 @@ function vDashboard() {
               <span class="dot ${s.status === 'ok' ? 'ok' : s.status === 'warn' ? 'warn' : 'err'}"></span>
             </div>
             <div style="font-size:11px;color:var(--text-3)">${esc(s.summary || s.detail || '')}</div>
+            ${s.status !== 'ok' && s.fix_id ? `
+              <div style="margin-top:4px">
+                <button class="btn btn-sm" style="height:22px;padding:0 8px;font-size:10px" onclick="quickFixSubsystem('${esc(s.fix_id)}')">${esc(s.fix_label || 'Исправить')}</button>
+              </div>
+            ` : ''}
           </div>
         `).join('')}
       </div>
@@ -1498,11 +1796,37 @@ async function runQuickExplain() {
   const box = document.getElementById('quickExpResult');
   try {
     const res = await api('POST', '/api/diagnostics/route-explain', { client_ip, target, port, protocol });
+    const eng = res.engine_route_check || {};
+    const outProbe = eng.outbound_probe ? ` · Outbound RTT: ${eng.outbound_probe.latency_ms ?? '—'} мс (${eng.outbound_probe.ok ? 'OK' : 'FAIL'})` : '';
     if (box) {
-      box.innerHTML = `Секция: <strong style="color:var(--text)">${esc(res.matched_section || 'default')}</strong> · Причина: <strong style="color:var(--text)">${esc(res.reason || '-')}</strong> · Выход (Outbound): <span class="badge badge-signal">${esc(res.outbound_tag || 'direct')}</span>`;
+      box.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+          <div>
+            Секция: <strong style="color:var(--text)">${esc(res.matched_section || 'default')}</strong> ·
+            Причина: <strong style="color:var(--text)">${esc(res.reason || '-')}</strong> ·
+            Выход: <span class="badge badge-signal">${esc(res.outbound_tag || 'direct')}</span>${esc(outProbe)}
+          </div>
+          <div style="display:inline-flex;gap:6px;align-items:center">
+            <select id="quickExpAddSec" style="width:160px;padding:2px 6px;font-size:11px">
+              ${(S.store.sections || []).map(s => `<option value="${esc(s.id)}">${esc(s.label || s.id)}</option>`).join('')}
+            </select>
+            <button class="btn btn-sm" onclick="routeHostFromMon('${esc(target)}', document.getElementById('quickExpAddSec').value)">+ В секцию</button>
+          </div>
+        </div>
+      `;
     }
   } catch (e) {
     if (box) box.textContent = 'Ошибка: ' + e.message;
+  }
+}
+
+async function quickFixSubsystem(fix_id) {
+  try {
+    const r = await api('POST', '/api/diagnostics/quick-fix', { fix_id });
+    toast(r.message || 'Подсистема восстановлена');
+    await bootstrap();
+  } catch (e) {
+    toast(e.message, true);
   }
 }
 
@@ -1559,18 +1883,104 @@ function vStudio() {
   `;
 }
 
+function setSecViewMode(m) {
+  S.secViewMode = m;
+  localStorage.setItem('tachyon_sec_view', m);
+  renderPage();
+}
+
 function vStudioSections(secs) {
+  const vm = S.secViewMode || 'cards';
   return `
     <div class="toolbar" style="justify-content:space-between">
-      <div style="font-size:12px;color:var(--text-2)">
-        Порядок секций определяет приоритет в таблице правил <code class="mono">tachyon-core</code>. Используйте кнопки <strong>↑ / ↓ / ⇈ / ⇊</strong> или выбор позиции <code class="mono">#1..#${secs.length}</code>.
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <div class="subtabs">
+          <button class="subtab ${vm === 'cards' ? 'active' : ''}" onclick="setSecViewMode('cards')">Карточки</button>
+          <button class="subtab ${vm === 'table' ? 'active' : ''}" onclick="setSecViewMode('table')">Таблица</button>
+          <button class="subtab ${vm === 'pipeline' ? 'active' : ''}" onclick="setSecViewMode('pipeline')">Конвейер</button>
+        </div>
+        <span style="font-size:12px;color:var(--text-2)">
+          Порядок секций определяет приоритет в таблице правил <code class="mono">tachyon-core</code> (#1 → #${secs.length}).
+        </span>
       </div>
       <div style="display:flex;gap:8px">
+        <button class="btn" onclick="recheckCoreRoutesNow()" title="Перепроверить маршруты на движке tachyon-core">${ic('refresh', 13)} Перепроверить маршруты</button>
         <button class="btn" onclick="probeAllLatencies()">${ic('activity', 13)} Измерить RTT всех узлов</button>
         <button class="btn btn-primary" onclick="editSec()">${ic('plus', 14)} Добавить секцию</button>
       </div>
     </div>
 
+    ${vm === 'table' ? `
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:110px">Приоритет</th>
+              <th>Секция</th>
+              <th>Тип / Отказ</th>
+              <th>Условия и списки</th>
+              <th>Активный узел / Контур</th>
+              <th style="text-align:right">Действия</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${secs.map((sec, idx) => {
+              const cands = getSectionCandidateNodes(sec);
+              const curTag = sec.active_selected_tag || (cands[0] ? cands[0].tag : '');
+              return `
+                <tr style="${!sec.enabled ? 'opacity:0.58' : ''}">
+                  <td>
+                    <div style="display:inline-flex;align-items:center;gap:3px">
+                      <span class="priority-badge">#${idx + 1}</span>
+                      <button class="btn btn-sm btn-icon" ${idx === 0 ? 'disabled' : ''} onclick="moveSectionPriority('${esc(sec.id)}', -1)">${ic('up', 11)}</button>
+                      <button class="btn btn-sm btn-icon" ${idx === secs.length - 1 ? 'disabled' : ''} onclick="moveSectionPriority('${esc(sec.id)}', 1)">${ic('down', 11)}</button>
+                    </div>
+                  </td>
+                  <td><div style="font-weight:600">${esc(sec.label || sec.id)}</div><div class="mono" style="font-size:11px;color:var(--text-3)">${esc(sec.id)}</div></td>
+                  <td><span class="badge badge-signal">${esc(sec.connection_type || 'proxy')}</span> <span class="badge">${esc(sec.fail_policy || 'keep')}</span></td>
+                  <td>${(sec.community_lists || []).map(l => `<span class="badge">${esc(l)}</span>`).join(' ')} ${(sec.condition_refs || []).map(c => `<span class="badge mono">${esc(c)}</span>`).join(' ')}</td>
+                  <td class="mono">${esc(curTag || (sec.outbound_source_refs || []).join(', ') || 'direct')}</td>
+                  <td style="text-align:right">
+                    <div style="display:inline-flex;gap:6px;align-items:center">
+                      <input type="checkbox" ${sec.enabled ? 'checked' : ''} onchange="toggleSectionEnabled('${esc(sec.id)}', this.checked)"/>
+                      <button class="btn btn-sm" onclick="editSec('${esc(sec.id)}')">${ic('edit', 12)}</button>
+                      <button class="btn btn-sm btn-danger" onclick="delSec('${esc(sec.id)}')">${ic('trash', 12)}</button>
+                    </div>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    ` : vm === 'pipeline' ? `
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${secs.map((sec, idx) => {
+          const cands = getSectionCandidateNodes(sec);
+          const curTag = sec.active_selected_tag || (cands[0] ? cands[0].tag : sec.connection_type || 'direct');
+          return `
+            <div class="card" style="padding:12px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;${!sec.enabled ? 'opacity:0.55' : ''}">
+              <div style="display:flex;align-items:center;gap:10px">
+                <span class="priority-badge">#${idx + 1}</span>
+                <div>
+                  <div style="font-weight:600">${esc(sec.label || sec.id)}</div>
+                  <div class="mono" style="font-size:11px;color:var(--text-3)">Вход: ${(sec.community_lists || []).join(', ') || (sec.condition_refs || []).join(', ') || 'Все пакеты'}</div>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px">
+                <span class="badge">${esc(sec.action || 'connection')}</span>
+                <span style="color:var(--text-3)">→</span>
+                <span class="badge badge-signal mono">${esc(sec.connection_type || 'proxy')}: ${esc(curTag)}</span>
+                ${sec.outbound_detour_enabled && sec.outbound_detour_section ? `<span style="color:var(--text-3)">→</span><span class="badge badge-warn mono">Detour: ${esc(sec.outbound_detour_section)}</span>` : ''}
+              </div>
+              <div style="display:flex;gap:6px">
+                <button class="btn btn-sm" onclick="editSec('${esc(sec.id)}')">${ic('edit', 12)} Настроить</button>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    ` : `
     <div style="display:flex;flex-direction:column;gap:12px">
       ${secs.map((sec, idx) => {
         const cands = getSectionCandidateNodes(sec);
@@ -1680,7 +2090,16 @@ function vStudioSections(secs) {
         `;
       }).join('')}
     </div>
+    `}
   `;
+}
+
+async function recheckCoreRoutesNow() {
+  try {
+    await api('POST', '/api/core/route-recheck', {});
+    toast('Маршруты ядра tachyon-core перепроверены');
+    await bootstrap();
+  } catch (e) { toast(e.message, true); }
 }
 
 function editSec(id) {
@@ -1963,9 +2382,10 @@ function vStudioSources(srcs) {
   return `
     <div class="toolbar" style="justify-content:space-between">
       <div style="font-size:12px;color:var(--text-2)">
-        Подписки, списки URI-ключей, контуры десинхронизации пакетов Desync 2.0, туннели WireGuard / AmneziaWG (с UDP port hopping), Cloudflare WARP и Tailscale.
+        Подписки (Base64 / Clash / Sing-box / Happ / Amnezia), 24 исходящих протокола, контуры десинхронизации Desync 2.0, WireGuard / AmneziaWG (UDP Hopping), Cloudflare WARP и Tailscale.
       </div>
       <div style="display:flex;gap:8px">
+        <button class="btn" onclick="checkTailscaleModal()">${ic('wifi', 13)} Статус Tailscale</button>
         <button class="btn" onclick="registerWarpSource()">${ic('globe', 13)} Авторегистрация Cloudflare WARP</button>
         <button class="btn btn-primary" onclick="editSrc()">${ic('plus', 14)} Новый источник</button>
       </div>
@@ -1975,6 +2395,9 @@ function vStudioSources(srcs) {
       ${srcs.map(src => {
         const nodes = src.cached_nodes || [];
         const countries = Array.from(new Set(nodes.map(n => n.country).filter(Boolean)));
+        const usedTraffic = (src.sub_upload_bytes || 0) + (src.sub_download_bytes || 0);
+        const totalTraffic = src.sub_total_bytes || 0;
+        const quotaPct = totalTraffic > 0 ? Math.min(100, Math.round((usedTraffic / totalTraffic) * 100)) : 0;
         return `
           <div class="card card-interactive">
             <div class="card-head">
@@ -1990,6 +2413,17 @@ function vStudioSources(srcs) {
             </div>
 
             ${src.sub_announce ? `<div style="font-size:11px;color:var(--text-2);padding:6px 8px;background:var(--bg);border-radius:4px;border:1px solid var(--border)">${esc(src.sub_announce)}</div>` : ''}
+            ${src.sub_last_error ? `<div style="font-size:11px;color:var(--err);padding:4px 8px;background:var(--err-dim);border-radius:4px">${esc(src.sub_last_error)}</div>` : ''}
+
+            ${(totalTraffic > 0 || src.sub_expire_unix) ? `
+              <div style="padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;display:flex;flex-direction:column;gap:4px">
+                <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-2)" class="num">
+                  <span>Трафик подписки: ${fmtBytes(usedTraffic)}${totalTraffic > 0 ? ` / ${fmtBytes(totalTraffic)} (${quotaPct}%)` : ''}</span>
+                  ${src.sub_expire_unix ? `<span>До: ${new Date(src.sub_expire_unix * 1000).toLocaleDateString('ru-RU')}</span>` : ''}
+                </div>
+                ${totalTraffic > 0 ? `<div class="meter"><span style="width:${quotaPct}%"></span></div>` : ''}
+              </div>
+            ` : ''}
 
             <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
               <span class="badge">${nodes.length} узлов в кэше</span>
@@ -2035,10 +2469,11 @@ function viewSourceNodes(srcId) {
             <th>Протокол</th>
             <th>Сервер и порт</th>
             <th>Задержка RTT</th>
+            <th style="text-align:right">Проверка через движок</th>
           </tr>
         </thead>
         <tbody>
-          ${nodes.map(n => {
+          ${nodes.map((n, idx) => {
             const rtt = S.live.node_latencies_ms?.[n.tag];
             return `
               <tr>
@@ -2046,7 +2481,13 @@ function viewSourceNodes(srcId) {
                 <td class="mono" style="font-weight:500">${esc(n.tag)}</td>
                 <td><span class="badge">${esc(n.protocol)}</span></td>
                 <td class="mono" style="color:var(--text-2)">${esc(n.server)}:${n.server_port || 443}</td>
-                <td class="mono">${rtt ? `${rtt} ms` : '—'}</td>
+                <td class="mono" id="nodeRttCell_${idx}">${rtt ? `${rtt} ms` : '—'}</td>
+                <td style="text-align:right">
+                  <div style="display:inline-flex;gap:4px">
+                    <button class="btn btn-sm" onclick="probeSingleNode('${esc(n.tag)}', 'nodeRttCell_${idx}')">RTT</button>
+                    <button class="btn btn-sm" onclick="probeSingleNodeExit('${esc(n.tag)}')">Exit IP</button>
+                  </div>
+                </td>
               </tr>
             `;
           }).join('')}
@@ -2054,6 +2495,77 @@ function viewSourceNodes(srcId) {
       </table>
     </div>
   `);
+}
+
+async function probeSingleNode(tag, cellId) {
+  try {
+    const r = await api('POST', '/api/nodes/delay', { tag });
+    if (r.delay_ms) {
+      S.live.node_latencies_ms[tag] = r.delay_ms;
+      const el = document.getElementById(cellId);
+      if (el) el.textContent = `${r.delay_ms} ms`;
+      toast(`Узел ${tag}: ${r.delay_ms} мс`);
+    } else {
+      toast(`Узел ${tag}: таймаут`, true);
+    }
+  } catch (e) { toast(e.message, true); }
+}
+
+async function probeSingleNodeExit(tag) {
+  try {
+    const r = await api('POST', '/api/nodes/exit', { tag });
+    toast(`Выходной IP узла ${tag}: ${JSON.stringify(r.exit || r)}`);
+  } catch (e) { toast(e.message, true); }
+}
+
+async function checkTailscaleModal() {
+  try {
+    const r = await api('GET', '/api/tailscale');
+    openModal('Состояние сети Tailscale (tachyon-core)', `
+      <textarea readonly style="min-height:220px" class="mono">${esc(JSON.stringify(r, null, 2))}</textarea>
+    `);
+  } catch (e) { toast(e.message, true); }
+}
+
+const OUTBOUND_PROTOCOL_TEMPLATES = {
+  vless: 'vless://00000000-0000-0000-0000-000000000000@example.com:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=www.microsoft.com&fp=chrome&pbk=PUBLIC_KEY&sid=a1b2c3d4&type=tcp#VLESS-Reality',
+  vless_xhttp: 'vless://00000000-0000-0000-0000-000000000000@example.com:443?security=reality&sni=www.microsoft.com&fp=chrome&pbk=PUBLIC_KEY&sid=a1b2c3d4&type=xhttp&path=%2F&mode=packet-up#VLESS-XHTTP',
+  vmess: 'vmess://eyJ2IjoiMiIsInBzIjoiVk1lc3MiLCJhZGQiOiJleGFtcGxlLmNvbSIsInBvcnQiOiI0NDMiLCJpZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMCIsImFpZCI6IjAiLCJuZXQiOiJ3cyIsInRscyI6InRscyJ9',
+  trojan: 'trojan://password@example.com:443?security=tls&sni=example.com&type=tcp#Trojan-TLS',
+  ss2022: 'ss://MjAyMi1ibGFrZTMtYWVzLTI1Ni1nY206cGFzc3dvcmQ=@example.com:8388#SS2022',
+  hysteria2: 'hysteria2://password@example.com:443?sni=example.com&obfs=salamander&obfs-password=secret&mport=40000-50000#Hysteria2',
+  tuic: 'tuic://00000000-0000-0000-0000-000000000000:password@example.com:443?congestion_control=bbr&alpn=h3&sni=example.com#TUIC-v5',
+  anytls: '{"type":"anytls","tag":"anytls-out","server":"example.com","server_port":443,"password":"secret","tls":{"enabled":true,"server_name":"example.com"}}',
+  shadowtls: '{"type":"shadowtls","tag":"shadowtls-out","server":"example.com","server_port":443,"version":3,"password":"secret","tls":{"enabled":true,"server_name":"www.microsoft.com"}}',
+  naive: '{"type":"naive","tag":"naive-out","server":"example.com","server_port":443,"username":"user","password":"secret","tls":{"enabled":true,"server_name":"example.com"}}',
+  mieru: '{"type":"mieru","tag":"mieru-out","server":"example.com","server_port":443,"transport":"TCP","username":"user","password":"secret"}',
+  snell: '{"type":"snell","tag":"snell-out","server":"example.com","server_port":443,"psk":"secret","version":4}',
+  tewfai: '{"type":"tewfai","tag":"tewfai-out","server":"example.com","server_port":443,"uuid":"00000000-0000-0000-0000-000000000000","shaper_profile":"webrtc_video","morph_profile":"chrome_h3"}',
+  masque: '{"type":"masque","tag":"masque-out","server":"162.159.198.1","server_port":443,"local_address":["172.16.0.2/32"]}',
+  trusttunnel: '{"type":"trusttunnel","tag":"trusttunnel-out","server":"example.com","server_port":443,"token":"secret"}',
+  openconnect: '{"type":"openconnect","tag":"oc-out","server":"vpn.example.com","server_port":443,"username":"user","password":"secret"}',
+  fptn: '{"type":"fptn","tag":"fptn-out","token":"fptn://..."}',
+  wdtt: '{"type":"wdtt","tag":"wdtt-out","mode":"auto"}',
+  socks: 'socks5://user:pass@127.0.0.1:1080#SOCKS5',
+  http: 'http://user:pass@127.0.0.1:8080#HTTP-Proxy'
+};
+
+function insertProtocolTemplate(protoKey) {
+  const tpl = OUTBOUND_PROTOCOL_TEMPLATES[protoKey];
+  if (!tpl) return;
+  if (tpl.startsWith('{')) {
+    const cj = document.getElementById('mSrcCustomJson');
+    const st = document.getElementById('mSrcType');
+    if (cj) cj.value = tpl;
+    if (st) st.value = 'custom_json';
+    toast(`Шаблон JSON протокола ${protoKey} подставлен в custom_json`);
+  } else {
+    const ta = document.getElementById('mSrcLinks');
+    const st = document.getElementById('mSrcType');
+    if (ta) ta.value = (ta.value ? ta.value + '\n' : '') + tpl;
+    if (st) st.value = 'proxy_links';
+    toast(`Шаблон URI протокола ${protoKey} добавлен в список ключей`);
+  }
 }
 
 async function refreshSub(id) {
@@ -2149,14 +2661,39 @@ function editSrc(id) {
       </div>
     </div>
 
-    <div class="section-divider"><span>Подписка и списки прокси-ссылок</span></div>
+    <div class="section-divider">
+      <span>Подписка, URI-ключи и быстрые шаблоны всех 24 протоколов</span>
+      <select onchange="if(this.value){insertProtocolTemplate(this.value);this.value='';}" style="width:280px;padding:3px 6px;font-size:11px">
+        <option value="">+ Подставить шаблон протокола (24 типа)...</option>
+        <option value="vless">VLESS XTLS-Reality (TCP)</option>
+        <option value="vless_xhttp">VLESS Reality + XHTTP (packet-up)</option>
+        <option value="vmess">VMess AEAD + WS TLS</option>
+        <option value="trojan">Trojan TLS</option>
+        <option value="ss2022">Shadowsocks 2022 (blake3-aes-256-gcm)</option>
+        <option value="hysteria2">Hysteria2 (Salamander + Port Hopping)</option>
+        <option value="tuic">TUIC v5 (QUIC BBR 0-RTT)</option>
+        <option value="anytls">AnyTLS</option>
+        <option value="shadowtls">ShadowTLS v3</option>
+        <option value="naive">NaiveProxy (HTTP/2 / HTTP/3)</option>
+        <option value="mieru">Mieru v3</option>
+        <option value="snell">Snell v4/v5</option>
+        <option value="tewfai">TewFai (WebRTC Shaper + Morph)</option>
+        <option value="masque">MASQUE (HTTP/3 CONNECT-UDP)</option>
+        <option value="trusttunnel">TrustTunnel</option>
+        <option value="openconnect">OpenConnect (Cisco AnyConnect)</option>
+        <option value="fptn">FPTN</option>
+        <option value="wdtt">WDTT</option>
+        <option value="socks">SOCKS5</option>
+        <option value="http">HTTP CONNECT Proxy</option>
+      </select>
+    </div>
     <div class="grid-2">
       <div class="field">
-        <div class="field-label"><span>URL-адреса подписок (по одному в строке)</span><span>Интервал: <input type="text" id="mSrcSubInt" value="${esc(src.subscription_update_interval || '6h')}" style="width:60px;padding:2px 6px;display:inline" class="mono"/></span></div>
-        <textarea id="mSrcSubUrls" placeholder="https://example.com/sub/token">${esc((src.subscription_urls || []).join('\n'))}</textarea>
+        <div class="field-label"><span>URL-адреса подписок (Base64 / YAML / JSON / happ:// / vpn://)</span><span>Интервал: <input type="text" id="mSrcSubInt" value="${esc(src.subscription_update_interval || '6h')}" style="width:60px;padding:2px 6px;display:inline" class="mono"/></span></div>
+        <textarea id="mSrcSubUrls" placeholder="https://example.com/sub/token&#10;happ://crypt...">${esc((src.subscription_urls || []).join('\n'))}</textarea>
       </div>
       <div class="field">
-        <div class="field-label">Прямые URI-ключи (vless://, vmess://, trojan://, ss://, hy2://, tuic://)</div>
+        <div class="field-label">Прямые URI-ключи (vless://, vmess://, trojan://, ss://, hy2://, tuic://, wg://)</div>
         <textarea id="mSrcLinks" placeholder="vless://uuid@host:443?security=reality...">${esc((src.proxy_links || []).join('\n'))}</textarea>
       </div>
     </div>
@@ -2410,7 +2947,43 @@ function vStudioConditions(conds) {
         </div>
       `).join('')}
     </div>
+
+    <div class="card" style="margin-top:8px">
+      <div class="card-head">
+        <div class="card-title">${ic('search', 15)} Интерактивный симулятор правил (Route Tracer)</div>
+        <span class="card-sub">Пошаговая проверка совпадения условий и секций через движок tachyon-core</span>
+      </div>
+      <div class="grid-3">
+        <div class="field"><div class="field-label">IP клиента LAN</div><input type="text" id="trClientIp" value="192.168.1.100" class="mono"/></div>
+        <div class="field"><div class="field-label">Целевой домен / IP</div><input type="text" id="trTargetHost" value="discord.com" class="mono"/></div>
+        <div class="field">
+          <div class="field-label">Порт и запуск</div>
+          <div style="display:flex;gap:6px">
+            <input type="number" id="trTargetPort" value="443" class="mono" style="width:84px"/>
+            <button class="btn btn-primary" onclick="runCondTracer()">Трассировать правило</button>
+          </div>
+        </div>
+      </div>
+      <div id="trCondOut" class="mono" style="font-size:12px;color:var(--text-2);padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px">
+        Нажмите «Трассировать правило» для проверки булева дерева условий и результата движка.
+      </div>
+    </div>
   `;
+}
+
+async function runCondTracer() {
+  const client_ip = document.getElementById('trClientIp')?.value || '192.168.1.100';
+  const target = document.getElementById('trTargetHost')?.value || 'discord.com';
+  const port = Number(document.getElementById('trTargetPort')?.value || 443);
+  const box = document.getElementById('trCondOut');
+  try {
+    const res = await api('POST', '/api/diagnostics/route-explain', { client_ip, target, port, protocol: 'tcp' });
+    if (box) {
+      box.innerHTML = `Совпавшая секция: <strong style="color:var(--text)">${esc(res.matched_section)}</strong> · Предикат: <strong style="color:var(--text)">${esc(res.reason)}</strong> · Выходной узел: <span class="badge badge-signal">${esc(res.outbound_tag)}</span>`;
+    }
+  } catch (e) {
+    if (box) box.textContent = 'Ошибка: ' + e.message;
+  }
 }
 
 function editCond(id) {
@@ -2754,7 +3327,10 @@ function vStudioGroups(grps) {
       <div style="font-size:12px;color:var(--text-2)">
         Группы отказоустойчивости объединяют основные контуры (<code class="mono">primary_refs</code>) и резервные контуры (<code class="mono">backup_refs</code>) с политикой отказа.
       </div>
-      <button class="btn btn-primary" onclick="editGrp()">${ic('plus', 14)} Новая группа</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn" onclick="openFailoverStatusModal()">${ic('activity', 13)} Статус Failover в ядре</button>
+        <button class="btn btn-primary" onclick="editGrp()">${ic('plus', 14)} Новая группа</button>
+      </div>
     </div>
 
     <div class="grid-auto">
@@ -2766,6 +3342,7 @@ function vStudioGroups(grps) {
               <div class="card-sub mono">${esc(g.id)}</div>
             </div>
             <div style="display:flex;gap:6px">
+              <button class="btn btn-sm" onclick="restoreFailoverGroup('${esc(g.id)}')" title="Вернуть группу на основной контур">Восстановить Primary</button>
               <button class="btn btn-sm" onclick="editGrp('${esc(g.id)}')">${ic('edit', 12)}</button>
               <button class="btn btn-sm btn-danger" onclick="delGrp('${esc(g.id)}')">${ic('trash', 12)}</button>
             </div>
@@ -2779,6 +3356,22 @@ function vStudioGroups(grps) {
       ${!grps.length ? `<div class="card"><div class="card-sub">Группы отказоустойчивости ещё не созданы. Нажмите «Новая группа», чтобы объединить основной прокси и резервный контур (например, Desync или WARP).</div></div>` : ''}
     </div>
   `;
+}
+
+async function openFailoverStatusModal() {
+  try {
+    const r = await api('GET', '/api/diagnostics/failover');
+    openModal('Состояние групп отказоустойчивости (tachyon-core /tachyon/failover)', `
+      <textarea readonly style="min-height:220px" class="mono">${esc(JSON.stringify(r, null, 2))}</textarea>
+    `);
+  } catch (e) { toast(e.message, true); }
+}
+
+async function restoreFailoverGroup(group) {
+  try {
+    await api('POST', '/api/diagnostics/failover-restore', { group });
+    toast(`Группа ${group} возвращена на основной контур`);
+  } catch (e) { toast(e.message, true); }
 }
 
 function editGrp(id) {
@@ -2888,12 +3481,13 @@ function vServers() {
   const srvs = S.store.servers || [];
   const subTok = S.store.settings?.server_subscription_token || 'default';
   const subUrl = `${location.origin}/sub/${subTok}`;
+  const hpHits = S.live.honeypot_hits || [];
 
   return `
     <div class="page-head">
       <div>
         <div class="page-title">Входящие серверы маршрутизатора (${srvs.length})</div>
-        <div class="page-desc">Поддержка 23 протоколов, мульти-клиентских учётных записей, изоляции локальной сети LAN, генерации X25519 / WireGuard ключей, QR-кодов и единой подписки</div>
+        <div class="page-desc">Поддержка 23 протоколов, мульти-клиентских учётных записей, подписок под Happ / v2rayNG / Clash / Sing-box / Amnezia, изоляции LAN и Honeypot</div>
       </div>
       <div class="toolbar">
         <button class="btn" onclick="navigator.clipboard.writeText('${esc(subUrl)}');toast('Ссылка единой подписки скопирована')">${ic('link', 13)} Подписка роутера (/sub/${esc(subTok.slice(0, 8))})</button>
@@ -2943,7 +3537,7 @@ function vServers() {
               </td>
               <td style="text-align:right">
                 <div style="display:inline-flex;gap:6px">
-                  <button class="btn btn-sm" onclick="shareSrv('${esc(srv.id)}')">${ic('link', 12)} Ключ / QR</button>
+                  <button class="btn btn-sm" onclick="shareSrv('${esc(srv.id)}')">${ic('link', 12)} Ключ / QR / Подписки</button>
                   <button class="btn btn-sm" onclick="editSrv('${esc(srv.id)}')">${ic('edit', 12)} Настроить</button>
                   <button class="btn btn-sm btn-danger" onclick="delSrv('${esc(srv.id)}')">${ic('trash', 12)}</button>
                 </div>
@@ -2953,29 +3547,56 @@ function vServers() {
         </tbody>
       </table>
     </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <div class="card-title">${ic('shield', 15)} Защита входящих серверов (Honeypot & Banlist)</div>
+          <div class="card-sub">Автоматическое обнаружение неавторизованных сканирований портов и блокировка в наборе nftables <code class="mono">tachyon_banlist</code></div>
+        </div>
+        <span class="badge ${hpHits.length ? 'badge-warn' : 'badge-ok'}">Срабатываний: ${hpHits.length}</span>
+      </div>
+      ${hpHits.length ? `
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Время</th><th>IP источника</th><th>Порт</th><th>Детали пробы</th></tr></thead>
+            <tbody>
+              ${hpHits.slice(0, 20).map(h => `<tr><td class="mono">${new Date((h.ts || 0)*1000).toLocaleTimeString('ru-RU')}</td><td class="mono">${esc(h.remote_ip)}</td><td class="mono">${h.port || 443}</td><td>${esc(h.reason || 'probe')}</td></tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      ` : `<div class="field-hint">Подозрительных попыток сканирования входящих портов за текущую сессию не зафиксировано.</div>`}
+    </div>
   `;
 }
 
 async function shareSrv(id) {
   try {
     const res = await api('GET', `/api/servers/share?id=${encodeURIComponent(id)}`);
+    const baseSub = location.origin + (res.sub_url || '/sub/default');
     openModal(`Подключение к серверу: ${res.label || res.id} (${res.protocol})`, `
       <div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap">
-        <div>${QR.toSVG(res.uri || res.wg_conf || res.id, 176)}</div>
+        <div>${QR.toSVG(res.uri || res.wg_conf || baseSub, 176)}</div>
         <div style="flex:1;min-width:280px;display:flex;flex-direction:column;gap:10px">
           <div class="field">
             <div class="field-label"><span>URI-ключ для клиента</span><button class="btn btn-sm" onclick="navigator.clipboard.writeText(document.getElementById('shUri').value);toast('URI скопирован')">Копировать</button></div>
-            <textarea id="shUri" readonly style="min-height:68px">${esc(res.uri || '')}</textarea>
+            <textarea id="shUri" readonly style="min-height:64px">${esc(res.uri || '')}</textarea>
           </div>
           ${res.wg_conf ? `
             <div class="field">
               <div class="field-label"><span>Конфигурация WireGuard / AmneziaWG (.conf)</span><button class="btn btn-sm" onclick="navigator.clipboard.writeText(document.getElementById('shWg').value);toast('Конфиг .conf скопирован')">Копировать .conf</button></div>
-              <textarea id="shWg" readonly style="min-height:130px">${esc(res.wg_conf)}</textarea>
+              <textarea id="shWg" readonly style="min-height:120px">${esc(res.wg_conf)}</textarea>
             </div>
           ` : ''}
           <div class="field">
-            <div class="field-label">Единый URL подписки роутера</div>
-            <input type="text" readonly value="${esc(location.origin + (res.sub_url || '/sub/default'))}" class="mono"/>
+            <div class="field-label">Ссылки мультиформатной подписки под клиентские приложения</div>
+            <div class="grid-2" style="gap:6px">
+              <button class="btn btn-sm" onclick="navigator.clipboard.writeText('${esc(baseSub + '?app=happ')}');toast('Ссылка Happ / v2rayNG скопирована')">${ic('link', 11)} Happ / v2rayNG / Streisand</button>
+              <button class="btn btn-sm" onclick="navigator.clipboard.writeText('${esc(baseSub + '?app=clash')}');toast('Ссылка Clash / Mihomo YAML скопирована')">${ic('link', 11)} Clash / Mihomo (YAML)</button>
+              <button class="btn btn-sm" onclick="navigator.clipboard.writeText('${esc(baseSub + '?app=singbox')}');toast('Ссылка Sing-box / Hiddify JSON скопирована')">${ic('link', 11)} Sing-box / Hiddify (JSON)</button>
+              <button class="btn btn-sm" onclick="navigator.clipboard.writeText('${esc(baseSub + '?app=amnezia')}');toast('Ссылка Amnezia / WireGuard скопирована')">${ic('link', 11)} Amnezia / WireGuard (.conf)</button>
+            </div>
+            <input type="text" readonly value="${esc(baseSub)}" class="mono" style="margin-top:6px"/>
           </div>
         </div>
       </div>
@@ -3105,6 +3726,7 @@ function editSrv(id) {
     <div class="section-divider">
       <span>Ключи, UUID, Reality X25519 и криптография</span>
       <div style="display:flex;gap:6px">
+        <button class="btn btn-sm" onclick="pickBestRealitySni()">${ic('search', 12)} Подобрать лучший SNI</button>
         <button class="btn btn-sm" onclick="srvKeygen('reality')">${ic('key', 12)} Сгенерировать Reality + UUID</button>
         <button class="btn btn-sm" onclick="srvKeygen('ss2022')">Ключ SS-2022</button>
         <button class="btn btn-sm" onclick="srvKeygen('wg')">Ключи WireGuard</button>
@@ -3165,6 +3787,21 @@ function editSrv(id) {
     <button class="btn btn-primary" onclick="saveSrv('${esc(s.id)}')">${ic('check', 14)} Сохранить сервер</button>
   `);
   renderSrvClientsTable();
+}
+
+async function pickBestRealitySni() {
+  try {
+    toast('Сканирование кандидатов TLS 1.3 SNI...');
+    const r = await api('POST', '/api/diagnostics/sni-scan', {});
+    const best = (r.candidates || []).find(c => c.suitable);
+    if (best && best.domain) {
+      const el = document.getElementById('mSrvSni');
+      if (el) el.value = best.domain;
+      toast(`Выбран лучший SNI: ${best.domain} (${best.latency_ms} мс)`);
+    } else {
+      toast('Подходящий SNI не найден, оставлен текущий', true);
+    }
+  } catch (e) { toast(e.message, true); }
 }
 
 function renderSrvClientsTable() {
@@ -3277,7 +3914,7 @@ async function delSrv(id) {
 }
 
 // ============================================================================
-// 4. КЛИЕНТЫ LAN (LOCAL DEVICES, ROUTING BINDING & WAKE-ON-LAN)
+// 4. КЛИЕНТЫ LAN (LOCAL DEVICES, ROUTING BINDING, RATE LIMIT & WAKE-ON-LAN)
 // ============================================================================
 function vDevices() {
   const devs = S.live.lan_devices || [];
@@ -3288,7 +3925,7 @@ function vDevices() {
     <div class="page-head">
       <div>
         <div class="page-title">Клиенты локальной сети LAN (${devs.length})</div>
-        <div class="page-desc">Привязка клиентских устройств к секциям полной маршрутизации, родительским профилям и отправка пакетов Wake-on-LAN</div>
+        <div class="page-desc">Обогащённый реестр устройств из ядра <code class="mono">tachyon-core</code> и DHCP/ARP: вендор по OUI, учёт проксированного и прямого трафика, шейпинг скорости и Wake-on-LAN</div>
       </div>
     </div>
 
@@ -3296,39 +3933,55 @@ function vDevices() {
       <table>
         <thead>
           <tr>
-            <th>Имя хоста</th>
-            <th>IP-адрес</th>
-            <th>MAC-адрес</th>
-            <th>Интерфейс / Статус</th>
-            <th>Привязка к секции маршрутизации</th>
+            <th>Устройство / Заметка</th>
+            <th>IP и MAC (Вендор)</th>
+            <th>Скорость и трафик (Прокси / Прямой)</th>
+            <th>Привязка к секции</th>
             <th>Родительский профиль</th>
-            <th style="text-align:right">Wake-on-LAN</th>
+            <th style="text-align:right">Лимит и WoL</th>
           </tr>
         </thead>
         <tbody>
           ${devs.map(d => {
             const curSec = secs.find(s => (s.fully_routed_ips || []).includes(d.ip));
             const curProf = profs.find(p => (p.device_ips || []).includes(d.ip));
+            const limMbps = d.limit_down_bps ? Math.round((d.limit_down_bps * 8) / 1000000) : 0;
             return `
               <tr>
-                <td style="font-weight:600">${esc(d.hostname || 'Устройство')}</td>
-                <td class="mono">${esc(d.ip)}</td>
-                <td class="mono" style="color:var(--text-2)">${esc(d.mac || '—')}</td>
-                <td><span class="badge ${d.online ? 'badge-ok' : ''}">${esc(d.interface || 'br-lan')} · ${d.online ? 'online' : 'arp'}</span></td>
                 <td>
-                  <select onchange="assignDevice('${esc(d.ip)}', 'section', this.value)" style="max-width:210px;padding:4px 8px">
+                  <div style="display:flex;align-items:center;gap:6px">
+                    <span class="dot ${d.online ? 'ok' : ''}"></span>
+                    <div>
+                      <div style="font-weight:600">${esc(d.custom_name || d.hostname || 'Устройство')}</div>
+                      <div style="font-size:11px;color:var(--text-3)">${esc(d.note || d.interface || 'br-lan')}${d.active_sessions ? ` · ${d.active_sessions} сессий` : ''}</div>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <div class="mono" style="font-weight:500">${esc(d.ip)}</div>
+                  <div class="mono" style="font-size:11px;color:var(--text-3)">${esc(d.mac || '—')}${d.vendor ? ` · ${esc(d.vendor)}` : ''}</div>
+                </td>
+                <td class="num">
+                  <div style="font-size:12px">↓ ${fmtBps(d.download_bps || 0)} · ↑ ${fmtBps(d.upload_bps || 0)}</div>
+                  <div style="font-size:11px;color:var(--text-3)">Прокси: ${fmtBytes((d.proxied_download || 0) + (d.proxied_upload || 0))} · Прямой: ${fmtBytes((d.direct_download || 0) + (d.direct_upload || 0))}</div>
+                </td>
+                <td>
+                  <select onchange="assignDevice('${esc(d.ip)}', 'section', this.value)" style="max-width:190px;padding:4px 8px">
                     <option value="">— По правилам доменов —</option>
                     ${secs.map(s => `<option value="${esc(s.id)}" ${curSec && curSec.id === s.id ? 'selected' : ''}>Секция: ${esc(s.label || s.id)}</option>`).join('')}
                   </select>
                 </td>
                 <td>
-                  <select onchange="assignDevice('${esc(d.ip)}', 'profile', this.value)" style="max-width:190px;padding:4px 8px">
+                  <select onchange="assignDevice('${esc(d.ip)}', 'profile', this.value)" style="max-width:170px;padding:4px 8px">
                     <option value="">— Без ограничений —</option>
                     ${profs.map(p => `<option value="${esc(p.id)}" ${curProf && curProf.id === p.id ? 'selected' : ''}>${esc(p.label || p.id)}</option>`).join('')}
                   </select>
                 </td>
                 <td style="text-align:right">
-                  <button class="btn btn-sm" onclick="wolDevice('${esc(d.mac)}', '${esc(d.interface || 'br-lan')}')">Разбудить (WoL)</button>
+                  <div style="display:inline-flex;gap:4px">
+                    <button class="btn btn-sm" onclick="openDeviceMetaModal('${esc(d.ip)}', '${esc(d.mac)}', '${esc(d.custom_name || d.hostname || '')}', '${esc(d.note || '')}', ${limMbps})" title="Имя, заметка и лимит скорости">${ic('edit', 11)} ${limMbps ? `${limMbps}M` : 'Опции'}</button>
+                    <button class="btn btn-sm" onclick="wolDevice('${esc(d.mac)}', '${esc(d.interface || 'br-lan')}')">WoL</button>
+                  </div>
                 </td>
               </tr>
             `;
@@ -3337,6 +3990,49 @@ function vDevices() {
       </table>
     </div>
   `;
+}
+
+function openDeviceMetaModal(ip, mac, name, note, limMbps) {
+  openModal(`Параметры устройства LAN: ${ip}`, `
+    <div class="grid-2">
+      <div class="field">
+        <div class="field-label">Пользовательское имя устройства</div>
+        <input type="text" id="mDevName" value="${esc(name)}" placeholder="Например: MacBook Pro / PS5"/>
+      </div>
+      <div class="field">
+        <div class="field-label">Заметка</div>
+        <input type="text" id="mDevNote" value="${esc(note)}" placeholder="Кабинет / Игровая консоль"/>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="field">
+        <div class="field-label">Лимит скорости через движок tachyon-core (Мбит/с, 0 = без лимита)</div>
+        <input type="number" id="mDevLimMbps" value="${limMbps || 0}" class="mono"/>
+      </div>
+      <div class="field">
+        <div class="field-label">Резервация DHCP</div>
+        <label class="check-row" style="padding-top:6px"><input type="checkbox" id="mDevStatic"/><span>Закрепить статический IP за MAC ${esc(mac)}</span></label>
+      </div>
+    </div>
+  `, `
+    <button class="btn" onclick="closeModal()">Отмена</button>
+    <button class="btn btn-primary" onclick="saveDeviceMetaAndLimit('${esc(ip)}', '${esc(mac)}')">${ic('check', 14)} Сохранить</button>
+  `);
+}
+
+async function saveDeviceMetaAndLimit(ip, mac) {
+  const custom_name = document.getElementById('mDevName')?.value.trim() || '';
+  const note = document.getElementById('mDevNote')?.value.trim() || '';
+  const mbps = Number(document.getElementById('mDevLimMbps')?.value || 0);
+  const static_lease = !!document.getElementById('mDevStatic')?.checked;
+  const bps = mbps > 0 ? mbps * 125000 : 0;
+  try {
+    await api('POST', '/api/devices/meta', { key: mac || ip, ip, mac, custom_name, note, static_lease, limit_up_bps: bps, limit_down_bps: bps });
+    await api('POST', '/api/devices/limit', { ip, limit_up_bps: bps, limit_down_bps: bps });
+    closeModal();
+    toast(`Параметры и шейпинг для ${ip} применены`);
+    await bootstrap();
+  } catch (e) { toast(e.message, true); }
 }
 
 async function assignDevice(ip, target_type, target_id) {
@@ -3364,37 +4060,58 @@ async function wolDevice(mac, iface) {
 // ============================================================================
 function vProfiles() {
   const profs = S.store.profiles || [];
+  const nowSec = Math.floor(Date.now() / 1000);
   return `
     <div class="page-head">
       <div>
         <div class="page-title">Родительские профили и контентные политики (${profs.length})</div>
-        <div class="page-desc">Безопасный поиск (SafeSearch), блокировка стороннего DoH, категории трафика и суточные квоты по устройствам</div>
+        <div class="page-desc">Безопасный поиск (SafeSearch), блокировка стороннего DoH, категории трафика и учёт экранного времени по устройствам</div>
       </div>
       <button class="btn btn-primary" onclick="editProfile()">${ic('plus', 14)} Новый профиль</button>
     </div>
     <div class="grid-auto">
-      ${profs.map(p => `
+      ${profs.map(p => {
+        const used = p.used_minutes_today || 0;
+        const quota = p.daily_quota_minutes || 0;
+        const pct = quota > 0 ? Math.min(100, Math.round((used / quota) * 100)) : 0;
+        const isPaused = (p.paused_until_unix || 0) > nowSec;
+        return `
         <div class="card">
           <div class="card-head">
             <div>
-              <div class="card-title">${esc(p.label || p.id)}</div>
-              <div class="card-sub mono">${esc(p.id)} · Квота: ${p.daily_quota_minutes || 0} мин/сут</div>
+              <div class="card-title">${esc(p.label || p.id)} ${isPaused ? `<span class="badge badge-err">Пауза активна</span>` : ''}</div>
+              <div class="card-sub mono">${esc(p.id)} · Использовано сегодня: ${used} / ${quota || '∞'} мин</div>
             </div>
             <div style="display:flex;gap:6px">
               <button class="btn btn-sm" onclick="editProfile('${esc(p.id)}')">${ic('edit', 12)}</button>
               <button class="btn btn-sm btn-danger" onclick="delProfile('${esc(p.id)}')">${ic('trash', 12)}</button>
             </div>
           </div>
+          ${quota > 0 ? `<div class="meter"><span style="width:${pct}%"></span></div>` : ''}
           <div style="display:flex;flex-wrap:wrap;gap:6px">
             ${p.safe_search ? `<span class="badge badge-ok">SafeSearch</span>` : ''}
             ${p.block_doh ? `<span class="badge badge-warn">Блок DoH</span>` : ''}
             ${(p.device_ips || []).map(ip => `<span class="badge mono">${esc(ip)}</span>`).join('')}
             ${(p.blocked_categories || []).map(cat => `<span class="badge badge-err">${esc(cat)}</span>`).join('')}
           </div>
+          <div style="display:flex;gap:6px;padding-top:6px;border-top:1px solid var(--border)">
+            <button class="btn btn-sm" onclick="profileQuotaAction('${esc(p.id)}', 'bonus_30m')">+30 мин сегодня</button>
+            <button class="btn btn-sm" onclick="profileQuotaAction('${esc(p.id)}', 'pause_1h')">Пауза на 1 час</button>
+            <button class="btn btn-sm" onclick="profileQuotaAction('${esc(p.id)}', 'resume')">Сбросить / Возобновить</button>
+          </div>
         </div>
-      `).join('')}
+        `;
+      }).join('')}
     </div>
   `;
+}
+
+async function profileQuotaAction(id, action) {
+  try {
+    await api('POST', '/api/profiles/quota', { id, action });
+    toast('Квота экранного времени обновлена');
+    await bootstrap();
+  } catch (e) { toast(e.message, true); }
 }
 
 function editProfile(id) {
@@ -3569,70 +4286,211 @@ async function saveGuestMode() {
 }
 
 // ============================================================================
-// 6. МОНИТОРИНГ АКТИВНЫХ СЕССИЙ (CLASH API + NF_CONNTRACK + HONEYPOT)
+// 6. МОНИТОРИНГ АКТИВНЫХ СЕССИЙ (CLASH API + NF_CONNTRACK + FLIGHT RECORDER)
 // ============================================================================
 async function loadConnections() {
+  if (S.monPaused) return;
   try {
     const res = await api('GET', '/api/core/connections');
     S.connections = res.connections || [];
+    if (S.monView === 'flight') {
+      const fl = await api('GET', '/api/diagnostics/flight');
+      S.flightData = fl;
+    }
     renderPage();
   } catch (_) {}
 }
 
+function setMonView(v) {
+  S.monView = v;
+  if (v === 'flight') {
+    api('GET', '/api/diagnostics/flight').then(fl => { S.flightData = fl; renderPage(); }).catch(() => renderPage());
+  } else {
+    renderPage();
+  }
+}
+
+function toggleMonPause() {
+  S.monPaused = !S.monPaused;
+  renderPage();
+}
+
+async function kickClientNow(ip) {
+  if (!ip) return;
+  try {
+    await api('POST', '/api/core/kick', { ip });
+    toast(`Все сессии клиента ${ip} принудительно сброшены (/tachyon/kick)`);
+    await loadConnections();
+  } catch (e) { toast(e.message, true); }
+}
+
 function vMonitoring() {
-  const conns = S.connections || [];
+  const allConns = S.connections || [];
   const secs = S.store.sections || [];
+  const q = (S.monSearch || '').trim().toLowerCase();
+  const proto = S.monProto || 'all';
+
+  const conns = allConns.filter(c => {
+    if (proto !== 'all' && (c.network || '').toLowerCase() !== proto) return false;
+    if (!q) return true;
+    const hay = `${c.src_ip || ''} ${c.host || ''} ${c.dst_ip || ''} ${c.outbound || ''} ${c.rule || ''}`.toLowerCase();
+    return hay.includes(q);
+  });
+
+  // Aggregation for Top Hosts and Top Clients
+  const hostMap = {};
+  const clientMap = {};
+  conns.forEach(c => {
+    const h = c.host || c.dst_ip || 'unknown';
+    if (!hostMap[h]) hostMap[h] = { host: h, count: 0, dl: 0, ul: 0, outbound: c.outbound || 'direct' };
+    hostMap[h].count += 1;
+    hostMap[h].dl += Number(c.download || 0);
+    hostMap[h].ul += Number(c.upload || 0);
+
+    const cl = c.src_ip || 'unknown';
+    if (!clientMap[cl]) clientMap[cl] = { ip: cl, count: 0, dl: 0, ul: 0 };
+    clientMap[cl].count += 1;
+    clientMap[cl].dl += Number(c.download || 0);
+    clientMap[cl].ul += Number(c.upload || 0);
+  });
+  const topHosts = Object.values(hostMap).sort((a, b) => (b.dl + b.ul) - (a.dl + a.ul));
+  const topClients = Object.values(clientMap).sort((a, b) => (b.dl + b.ul) - (a.dl + a.ul));
+
   return `
     <div class="page-head">
       <div>
-        <div class="page-title">Мониторинг активных сетевых сессий (${conns.length})</div>
-        <div class="page-desc">Потоки ядра <code class="mono">tachyon-core</code> и таблица <code class="mono">nf_conntrack</code> с возможностью мгновенно направить домен в нужную секцию</div>
+        <div class="page-title">Мониторинг активных сетевых сессий (${conns.length} из ${allConns.length})</div>
+        <div class="page-desc">Потоки ядра <code class="mono">tachyon-core</code>, таблица <code class="mono">nf_conntrack</code> и кольцевой буфер <code class="mono">Flight Recorder</code></div>
       </div>
       <div class="toolbar">
-        <button class="btn" onclick="loadConnections()">${ic('refresh', 13)} Обновить</button>
+        <button class="btn ${S.monPaused ? 'btn-signal' : ''}" onclick="toggleMonPause()">${S.monPaused ? 'Возобновить поток' : 'Пауза'}</button>
+        <button class="btn" onclick="S.monPaused=false;loadConnections()">${ic('refresh', 13)} Обновить</button>
         <button class="btn btn-danger" onclick="closeConn('')">Сбросить все сессии</button>
       </div>
     </div>
 
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Источник</th>
-            <th>Клиент LAN</th>
-            <th>Назначение (Хост / IP:Порт)</th>
-            <th>Правило / Выход</th>
-            <th>Трафик (↓ / ↑)</th>
-            <th style="text-align:right">Быстрая маршрутизация</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${conns.slice(0, 120).map(c => {
-            const targetHost = c.host || c.dst_ip || '';
-            return `
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+      <div class="subtabs">
+        <button class="subtab ${S.monView === 'all' ? 'active' : ''}" onclick="setMonView('all')">Все потоки (${conns.length})</button>
+        <button class="subtab ${S.monView === 'hosts' ? 'active' : ''}" onclick="setMonView('hosts')">Топ хостов (${topHosts.length})</button>
+        <button class="subtab ${S.monView === 'clients' ? 'active' : ''}" onclick="setMonView('clients')">Топ клиентов LAN (${topClients.length})</button>
+        <button class="subtab ${S.monView === 'flight' ? 'active' : ''}" onclick="setMonView('flight')">Flight Recorder (/tachyon/flight)</button>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select onchange="S.monProto=this.value;renderPage()" style="width:120px;padding:5px 8px;font-size:12px" class="mono">
+          <option value="all" ${proto === 'all' ? 'selected' : ''}>TCP + UDP</option>
+          <option value="tcp" ${proto === 'tcp' ? 'selected' : ''}>Только TCP</option>
+          <option value="udp" ${proto === 'udp' ? 'selected' : ''}>Только UDP</option>
+        </select>
+        <input type="text" placeholder="Фильтр по IP, домену, секции..." value="${esc(S.monSearch || '')}" oninput="S.monSearch=this.value;renderPage()" style="width:240px;padding:5px 10px;font-size:12px" class="mono"/>
+      </div>
+    </div>
+
+    ${S.monView === 'hosts' ? `
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Целевой хост / SNI / IP</th>
+              <th>Активных потоков</th>
+              <th>Текущий выход</th>
+              <th>Суммарный трафик (↓ / ↑)</th>
+              <th style="text-align:right">Быстрая маршрутизация</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${topHosts.slice(0, 80).map(h => `
               <tr>
-                <td><span class="badge mono">${esc(c.source)}/${esc(c.network)}</span></td>
-                <td class="mono">${esc(c.src_ip)}</td>
-                <td class="mono" style="font-weight:500">${esc(targetHost)}:${c.dst_port || 443}</td>
-                <td><span class="badge badge-signal mono">${esc(c.outbound)}</span> <span class="mono" style="font-size:11px;color:var(--text-3)">${esc(c.rule)}</span></td>
-                <td class="mono">${fmtBytes(c.download)} / ${fmtBytes(c.upload)}</td>
+                <td class="mono" style="font-weight:600">${esc(h.host)}</td>
+                <td class="mono">${h.count}</td>
+                <td><span class="badge badge-signal mono">${esc(h.outbound)}</span></td>
+                <td class="mono">${fmtBytes(h.dl)} / ${fmtBytes(h.ul)}</td>
                 <td style="text-align:right">
-                  <div style="display:inline-flex;gap:4px">
-                    ${targetHost ? `
-                      <select onchange="if(this.value){routeHostFromMon('${esc(targetHost)}', this.value);this.value='';}" style="width:140px;padding:3px 6px;font-size:11px">
-                        <option value="">+ В секцию...</option>
-                        ${secs.map(s => `<option value="${esc(s.id)}">${esc(s.label || s.id)}</option>`).join('')}
-                      </select>
-                    ` : ''}
-                    ${c.id ? `<button class="btn btn-sm btn-danger" onclick="closeConn('${esc(c.id)}')">${ic('close', 11)}</button>` : ''}
-                  </div>
+                  <select onchange="if(this.value){routeHostFromMon('${esc(h.host)}', this.value);this.value='';}" style="width:155px;padding:3px 6px;font-size:11px">
+                    <option value="">+ В секцию...</option>
+                    ${secs.map(s => `<option value="${esc(s.id)}">${esc(s.label || s.id)}</option>`).join('')}
+                  </select>
                 </td>
               </tr>
-            `;
-          }).join('')}
-        </tbody>
-      </table>
-    </div>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    ` : S.monView === 'clients' ? `
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Клиент LAN (IP)</th>
+              <th>Активных сессий</th>
+              <th>Трафик (↓ / ↑)</th>
+              <th style="text-align:right">Управление сессиями</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${topClients.map(cl => `
+              <tr>
+                <td class="mono" style="font-weight:600">${esc(cl.ip)}</td>
+                <td class="mono">${cl.count}</td>
+                <td class="mono">${fmtBytes(cl.dl)} / ${fmtBytes(cl.ul)}</td>
+                <td style="text-align:right">
+                  <button class="btn btn-sm btn-danger" onclick="kickClientNow('${esc(cl.ip)}')">Сбросить потоки клиента (/tachyon/kick)</button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    ` : S.monView === 'flight' ? `
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">${ic('activity', 15)} Кольцевой буфер событий ядра (Flight Recorder)</div>
+          <button class="btn btn-sm" onclick="setMonView('flight')">${ic('refresh', 12)} Обновить буфер</button>
+        </div>
+        <textarea readonly class="mono" style="min-height:260px;font-size:11.5px">${esc(JSON.stringify(S.flightData || { status: 'Нажмите Обновить для чтения /tachyon/flight' }, null, 2))}</textarea>
+      </div>
+    ` : `
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Источник</th>
+              <th>Клиент LAN</th>
+              <th>Назначение (Хост / IP:Порт)</th>
+              <th>Правило / Выход</th>
+              <th>Трафик (↓ / ↑)</th>
+              <th style="text-align:right">Быстрая маршрутизация и управление</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${conns.slice(0, 120).map(c => {
+              const targetHost = c.host || c.dst_ip || '';
+              return `
+                <tr>
+                  <td><span class="badge mono">${esc(c.source)}/${esc(c.network)}</span></td>
+                  <td class="mono">${esc(c.src_ip)}</td>
+                  <td class="mono" style="font-weight:500">${esc(targetHost)}:${c.dst_port || 443}</td>
+                  <td><span class="badge badge-signal mono">${esc(c.outbound)}</span> <span class="mono" style="font-size:11px;color:var(--text-3)">${esc(c.rule)}</span></td>
+                  <td class="mono">${fmtBytes(c.download)} / ${fmtBytes(c.upload)}</td>
+                  <td style="text-align:right">
+                    <div style="display:inline-flex;gap:4px;align-items:center">
+                      ${targetHost ? `
+                        <select onchange="if(this.value){routeHostFromMon('${esc(targetHost)}', this.value);this.value='';}" style="width:140px;padding:3px 6px;font-size:11px">
+                          <option value="">+ В секцию...</option>
+                          ${secs.map(s => `<option value="${esc(s.id)}">${esc(s.label || s.id)}</option>`).join('')}
+                        </select>
+                      ` : ''}
+                      ${c.src_ip ? `<button class="btn btn-sm" title="Kick IP (/tachyon/kick)" onclick="kickClientNow('${esc(c.src_ip)}')">Kick IP</button>` : ''}
+                      ${c.id ? `<button class="btn btn-sm btn-danger" title="Закрыть поток" onclick="closeConn('${esc(c.id)}')">${ic('close', 11)}</button>` : ''}
+                    </div>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `}
   `;
 }
 
@@ -3652,87 +4510,476 @@ async function closeConn(id) {
 }
 
 // ============================================================================
-// 7. ДИАГНОСТИКА, FUZZER, SNI SCANNER, UNLOCK PROBE, LKG & AI DOCTOR
+// 7. ДИАГНОСТИКА (8 ВИЗУАЛЬНЫХ ВКЛАДОК БЕЗ СЫРОГО JSON)
 // ============================================================================
+function setDiagTab(t) {
+  S.diagTab = t;
+  renderPage();
+}
+
 function vDiagnostics() {
   const subs = (S.doctor && S.doctor.subsystems) || [];
+  const dt = S.diagTab || 'doctor';
+
   return `
     <div class="page-head">
       <div>
         <div class="page-title">Инженерная диагностика и тестирование канала</div>
-        <div class="page-desc">Аудит 11 подсистем, подбор стратегии десинхронизации пакетов, сканер TLS SNI, проверка гео-сервисов, контроль LKG и ИИ-ассистент</div>
+        <div class="page-desc">Аудит 14 подсистем, подбор стратегии десинхронизации пакетов, DNS Speed Test, сканер TLS SNI, проверка гео-сервисов, контроль утечек и AI Doctor v3.0</div>
       </div>
       <div class="toolbar">
-        <button class="btn" onclick="runDiagTool('POST', '/api/diagnostics/known-good/promote')">Зафиксировать LKG (Known-Good)</button>
+        <button class="btn" onclick="runDiagTool('POST', '/api/diagnostics/known-good/promote')">Зафиксировать LKG</button>
         <button class="btn btn-danger" onclick="runDiagTool('POST', '/api/diagnostics/known-good/rollback')">Откатить к LKG</button>
+        <button class="btn" onclick="downloadSupportBundle()">${ic('download', 13)} Support Bundle</button>
       </div>
     </div>
 
-    <div class="grid-3">
-      <div class="card">
-        <div class="card-title">${ic('bolt', 15)} Подбор параметров десинхронизации (Fuzzer)</div>
-        <div class="field">
-          <div class="field-label">Целевой домен для проверки рукопожатия</div>
-          <div style="display:flex;gap:6px">
-            <input type="text" id="diagFuzzDom" value="www.youtube.com" class="mono"/>
-            <button class="btn btn-primary" onclick="runDiagTool('POST', '/api/diagnostics/fuzzer', {target: document.getElementById('diagFuzzDom').value})">Запустить</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-title">${ic('search', 15)} Сканер доменов Reality TLS SNI и DNS Bench</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;padding-top:4px">
-          <button class="btn" onclick="runDiagTool('POST', '/api/diagnostics/sni-scan', {})">Сканировать SNI</button>
-          <button class="btn" onclick="runDiagTool('POST', '/api/diagnostics/dns-speed-test', {})">Тест скорости DNS</button>
-          <button class="btn" onclick="runDiagTool('POST', '/api/diagnostics/unlock-probe', {})">Проверка AI / Стриминга</button>
-          <button class="btn" onclick="runDiagTool('GET', '/api/diagnostics/leak-check')">Тест утечек</button>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-title">${ic('stethoscope', 15)} AI Doctor и база знаний</div>
-        <div style="display:flex;gap:6px">
-          <input type="text" id="diagAiQuery" placeholder="Опишите проблему или поисковый запрос..."/>
-          <button class="btn btn-primary" onclick="runDiagTool('POST', '/api/diagnostics/ai-doctor', {query: document.getElementById('diagAiQuery').value})">Анализ</button>
-        </div>
-      </div>
+    <div class="subtabs">
+      <button class="subtab ${dt === 'doctor' ? 'active' : ''}" onclick="setDiagTab('doctor')">1. Local Doctor (${subs.length})</button>
+      <button class="subtab ${dt === 'fuzzer' ? 'active' : ''}" onclick="setDiagTab('fuzzer')">2. Fuzzer десинхронизации</button>
+      <button class="subtab ${dt === 'dns' ? 'active' : ''}" onclick="setDiagTab('dns')">3. DNS Speed Test</button>
+      <button class="subtab ${dt === 'sni' ? 'active' : ''}" onclick="setDiagTab('sni')">4. Сканер TLS SNI</button>
+      <button class="subtab ${dt === 'unlock' ? 'active' : ''}" onclick="setDiagTab('unlock')">5. Доступность сервисов</button>
+      <button class="subtab ${dt === 'leak' ? 'active' : ''}" onclick="setDiagTab('leak')">6. Аудит утечек</button>
+      <button class="subtab ${dt === 'net' ? 'active' : ''}" onclick="setDiagTab('net')">7. Сетевые утилиты</button>
+      <button class="subtab ${dt === 'ai' ? 'active' : ''}" onclick="setDiagTab('ai')">8. AI Doctor v3.0</button>
     </div>
 
+    ${dt === 'doctor' ? vDiagDoctor(subs)
+      : dt === 'fuzzer' ? vDiagFuzzer()
+      : dt === 'dns' ? vDiagDns()
+      : dt === 'sni' ? vDiagSni()
+      : dt === 'unlock' ? vDiagUnlock()
+      : dt === 'leak' ? vDiagLeak()
+      : dt === 'net' ? vDiagNet()
+      : vDiagAi()}
+  `;
+}
+
+function vDiagDoctor(subs) {
+  return `
     <div class="card">
       <div class="card-head">
-        <div class="card-title">Результат выполнения диагностического инструмента</div>
-        <button class="btn btn-sm" onclick="runDiagTool('GET', '/api/diagnostics/support-bundle')">Выгрузить Support Bundle</button>
+        <div class="card-title">${ic('stethoscope', 15)} Детальная самодиагностика 14 подсистем маршрутизатора</div>
+        <button class="btn btn-sm" onclick="bootstrap()">${ic('refresh', 12)} Перепроверить все подсистемы</button>
       </div>
-      <textarea id="diagOutputBox" readonly style="min-height:220px">${esc(S.diagOut || JSON.stringify(subs, null, 2))}</textarea>
+      <div class="grid-3">
+        ${subs.map(s => `
+          <div style="padding:12px;background:var(--bg-elev);border:1px solid var(--border);border-radius:var(--radius);display:flex;flex-direction:column;justify-content:space-between;gap:8px">
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+                <span style="font-size:12.5px;font-weight:600">${esc(s.title)}</span>
+                <span class="dot ${s.status === 'ok' ? 'ok' : s.status === 'warn' ? 'warn' : 'err'}"></span>
+              </div>
+              <div class="mono" style="font-size:11.5px;color:var(--text-2)">${esc(s.detail)}</div>
+              ${s.recommendation ? `<div style="font-size:11px;color:var(--amber);margin-top:4px">${esc(s.recommendation)}</div>` : ''}
+            </div>
+            ${s.fix_id && s.status !== 'ok' ? `
+              <button class="btn btn-sm btn-signal" onclick="quickFixSubsystem('${esc(s.fix_id)}')">${ic('wrench', 11)} Быстрое исправление (${esc(s.fix_id)})</button>
+            ` : ''}
+          </div>
+        `).join('')}
+      </div>
     </div>
   `;
 }
 
+function vDiagFuzzer() {
+  const res = S.diagFuzzerRes;
+  return `
+    <div class="card">
+      <div class="card-head">
+        <div class="card-title">${ic('bolt', 15)} Автоподбор параметров десинхронизации пакетов (Desync Strategy Fuzzer)</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+        <input type="text" id="diagFuzzDom" value="www.youtube.com" class="mono" style="max-width:320px" placeholder="Целевой домен (например www.youtube.com)"/>
+        <button class="btn btn-primary" onclick="runVisualFuzzer()">Запустить перебор стратегий</button>
+      </div>
+      ${res ? `
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Стратегия</th>
+                <th>Параметры десинхронизации</th>
+                <th>Auto-TTL</th>
+                <th>TLS 1.3</th>
+                <th>HTTP/2</th>
+                <th>Задержка</th>
+                <th style="text-align:right">Применение</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${(res.results || []).map(r => `
+                <tr>
+                  <td style="font-weight:600">${esc(r.label)} ${r.recommended ? '<span class="badge badge-ok">Рекомендуется</span>' : ''}</td>
+                  <td class="mono" style="font-size:11.5px">${esc(r.params)}</td>
+                  <td class="mono">${r.fake_ttl || 5}</td>
+                  <td><span class="badge ${r.tls_ok ? 'badge-ok' : 'badge-err'}">${r.tls_ok ? 'OK' : 'TIMEOUT'}</span></td>
+                  <td><span class="badge ${r.http_ok ? 'badge-ok' : 'badge-warn'}">${r.http_ok ? 'OK' : 'WARN'}</span></td>
+                  <td class="mono">${r.latency_ms} мс</td>
+                  <td style="text-align:right">
+                    <button class="btn btn-sm btn-primary" onclick="applyFuzzerPreset('${esc(r.params)}', ${r.fake_ttl || 5})">Применить в секцию Desync</button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      ` : `<div style="font-size:12px;color:var(--text-3)">Укажите целевой домен и нажмите «Запустить перебор стратегий» для измерения прохождения TLS ClientHello и подбора оптимального Auto-TTL.</div>`}
+    </div>
+  `;
+}
+
+async function runVisualFuzzer() {
+  const target = document.getElementById('diagFuzzDom').value.trim() || 'www.youtube.com';
+  try {
+    toast('Запущен перебор стратегий десинхронизации...');
+    S.diagFuzzerRes = await api('POST', '/api/diagnostics/fuzzer', { target });
+    renderPage();
+    toast('Подбор стратегий завершён');
+  } catch (e) { toast(e.message, true); }
+}
+
+async function applyFuzzerPreset(params, fake_ttl) {
+  const sec = (S.store.sections || []).find(s => s.mode === 'desync') || (S.store.sections || [])[0];
+  if (!sec) { toast('Секция десинхронизации не найдена', true); return; }
+  const updated = Object.assign({}, sec, {
+    mode: 'desync',
+    desync_params: params,
+    desync_fake_ttl: Number(fake_ttl || 5)
+  });
+  try {
+    await api('POST', '/api/sections/save', updated);
+    toast(`Стратегия применена в секцию «${sec.label || sec.id}»`);
+    await bootstrap();
+  } catch (e) { toast(e.message, true); }
+}
+
+function vDiagDns() {
+  const res = S.diagDnsRes;
+  return `
+    <div class="card">
+      <div class="card-head">
+        <div class="card-title">${ic('globe', 15)} Сравнительный бенчмарк резолверов (UDP / DoT / DoH) и проверка перехвата DNS</div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-sm" onclick="runNativeDnsCheck()">Проверка ядра (/tachyon/dns-check)</button>
+          <button class="btn btn-sm btn-primary" onclick="runVisualDnsBench()">Запустить DNS Speed Test</button>
+        </div>
+      </div>
+      ${res ? `
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Резолвер</th>
+                <th>Протокол</th>
+                <th>Мин / Сред / Макс (мс)</th>
+                <th>Успешность</th>
+                <th style="text-align:right">Действие</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${(res.results || []).map(r => `
+                <tr>
+                  <td class="mono" style="font-weight:600">${esc(r.resolver)} ${r.recommended ? '<span class="badge badge-ok">Лучший отклик</span>' : ''}</td>
+                  <td><span class="badge mono">${esc(r.protocol)}</span></td>
+                  <td class="mono">${r.min_ms} / <b>${r.avg_ms}</b> / ${r.max_ms} мс</td>
+                  <td class="mono">${r.success_rate}%</td>
+                  <td style="text-align:right">
+                    <button class="btn btn-sm" onclick="promoteDnsResolver('${esc(r.resolver)}', '${esc(r.protocol)}')">Сделать основным DNS</button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      ` : `<div style="font-size:12px;color:var(--text-3)">Нажмите «Запустить DNS Speed Test» для параллельного измерения времени отклика DoH/DoT/UDP резолверов.</div>`}
+    </div>
+  `;
+}
+
+async function runVisualDnsBench() {
+  try {
+    toast('Выполняется тест скорости DNS...');
+    S.diagDnsRes = await api('POST', '/api/diagnostics/dns-speed-test', {});
+    renderPage();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function runNativeDnsCheck() {
+  try {
+    const r = await api('POST', '/api/diagnostics/dns-check', { domain: 'cloudflare.com' });
+    openModal('Диагностика резолвера ядра (/tachyon/dns-check)', `<textarea readonly class="mono" style="min-height:220px">${esc(JSON.stringify(r, null, 2))}</textarea>`, `<button class="btn" onclick="closeModal()">Закрыть</button>`);
+  } catch (e) { toast(e.message, true); }
+}
+
+async function promoteDnsResolver(resolver, protocol) {
+  const cleanHost = resolver.split(' ')[0];
+  try {
+    await api('POST', '/api/settings/save', {
+      dns_type: (protocol || 'doh').toLowerCase(),
+      dns_servers: [cleanHost]
+    });
+    toast(`Резолвер ${cleanHost} (${protocol}) установлен основным`);
+    await bootstrap();
+  } catch (e) { toast(e.message, true); }
+}
+
+function vDiagSni() {
+  const res = S.diagSniRes;
+  return `
+    <div class="card">
+      <div class="card-head">
+        <div class="card-title">${ic('shield', 15)} Сканер кандидатов TLS 1.3 + HTTP/2 SNI для VLESS Reality</div>
+        <button class="btn btn-sm btn-primary" onclick="runVisualSniScan()">Просканировать кандидатов SNI</button>
+      </div>
+      ${res ? `
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Домен SNI</th>
+                <th>TLS 1.3</th>
+                <th>ALPN H2</th>
+                <th>Сертификат</th>
+                <th>CDN</th>
+                <th>Задержка</th>
+                <th style="text-align:right">Действие</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${(res.candidates || []).map(c => `
+                <tr>
+                  <td class="mono" style="font-weight:600">${esc(c.domain)}</td>
+                  <td><span class="badge ${c.tls13 ? 'badge-ok' : 'badge-err'}">${c.tls13 ? 'TLS 1.3' : 'Нет'}</span></td>
+                  <td><span class="badge ${c.h2 ? 'badge-ok' : 'badge-warn'}">${c.h2 ? 'H2' : 'HTTP/1.1'}</span></td>
+                  <td><span class="badge ${c.cert_valid ? 'badge-ok' : 'badge-err'}">${c.cert_valid ? 'Валиден' : 'Ошибка'}</span></td>
+                  <td class="mono">${c.cdn_detected ? 'CDN (не реком.)' : 'Прямой узел'}</td>
+                  <td class="mono">${c.latency_ms} мс</td>
+                  <td style="text-align:right">
+                    <button class="btn btn-sm" onclick="copyText('${esc(c.domain)}')">Скопировать SNI</button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      ` : `<div style="font-size:12px;color:var(--text-3)">Нажмите «Просканировать кандидатов SNI» для проверки задержки и поддержки TLS 1.3 / H2 без промежуточных CDN.</div>`}
+    </div>
+  `;
+}
+
+async function runVisualSniScan() {
+  try {
+    toast('Сканирование TLS SNI...');
+    S.diagSniRes = await api('POST', '/api/diagnostics/sni-scan', {});
+    renderPage();
+  } catch (e) { toast(e.message, true); }
+}
+
+function vDiagUnlock() {
+  const res = S.diagUnlockRes;
+  return `
+    <div class="card">
+      <div class="card-head">
+        <div class="card-title">${ic('check', 15)} Матрица доступности AI-платформ, видеохостингов и игровых сервисов</div>
+        <button class="btn btn-sm btn-primary" onclick="runVisualUnlockProbe()">Запустить проверку сервисов</button>
+      </div>
+      ${res ? `
+        <div class="grid-3">
+          ${(res.services || []).map(s => `
+            <div style="padding:12px;background:var(--bg-elev);border:1px solid var(--border);border-radius:var(--radius);display:flex;justify-content:space-between;align-items:center">
+              <div>
+                <div style="font-weight:600;font-size:13px">${esc(s.service)}</div>
+                <div class="mono" style="font-size:11px;color:var(--text-3)">HTTP ${s.status_code} · ${s.latency_ms} мс</div>
+              </div>
+              <span class="badge ${s.reachable ? 'badge-ok' : 'badge-err'}">${s.reachable ? 'Доступен' : 'Недоступен'}</span>
+            </div>
+          `).join('')}
+        </div>
+      ` : `<div style="font-size:12px;color:var(--text-3)">Нажмите «Запустить проверку сервисов» для тестирования доступности YouTube, Discord, OpenAI, Claude, Gemini, Netflix, Spotify, Steam и Telegram.</div>`}
+    </div>
+  `;
+}
+
+async function runVisualUnlockProbe() {
+  try {
+    toast('Проверка доступности сервисов...');
+    S.diagUnlockRes = await api('POST', '/api/diagnostics/unlock-probe', {});
+    renderPage();
+  } catch (e) { toast(e.message, true); }
+}
+
+function vDiagLeak() {
+  const res = S.diagLeakRes;
+  return `
+    <div class="card">
+      <div class="card-head">
+        <div class="card-title">${ic('shield', 15)} Аудит утечек (IPv4 / IPv6 / WebRTC STUN / Перехват DNS) и Config Plan</div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-sm" onclick="openConfigPlanModal()">Предпросмотр Config Plan (/api/config/plan)</button>
+          <button class="btn btn-sm btn-primary" onclick="runVisualLeakCheck()">Выполнить аудит утечек</button>
+        </div>
+      </div>
+      ${res ? `
+        <div class="grid-4">
+          <div style="padding:12px;background:var(--bg-elev);border:1px solid var(--border);border-radius:var(--radius)">
+            <div class="kpi-label">Внешний IP / ASN</div>
+            <div class="mono" style="font-size:14px;font-weight:600;margin-top:4px">${esc(res.direct_ip || '—')}</div>
+            <div class="mono" style="font-size:11px;color:var(--text-3)">${esc(res.country || '')} · ${esc(res.asn || '')}</div>
+          </div>
+          <div style="padding:12px;background:var(--bg-elev);border:1px solid var(--border);border-radius:var(--radius)">
+            <div class="kpi-label">Утечка IPv6</div>
+            <div style="margin-top:6px"><span class="badge ${!res.ipv6_leak ? 'badge-ok' : 'badge-warn'}">${!res.ipv6_leak ? 'Защищено' : 'IPv6 активен'}</span></div>
+          </div>
+          <div style="padding:12px;background:var(--bg-elev);border:1px solid var(--border);border-radius:var(--radius)">
+            <div class="kpi-label">Защита STUN / WebRTC</div>
+            <div style="margin-top:6px"><span class="badge ${res.webrtc_stun_protected ? 'badge-ok' : 'badge-warn'}">${res.webrtc_stun_protected ? 'Блокируется' : 'Открыт UDP STUN'}</span></div>
+          </div>
+          <div style="padding:12px;background:var(--bg-elev);border:1px solid var(--border);border-radius:var(--radius)">
+            <div class="kpi-label">Перехват стороннего DoH</div>
+            <div style="margin-top:6px"><span class="badge ${res.doh_blocked ? 'badge-ok' : 'badge-warn'}">${res.doh_blocked ? 'Активен' : 'Выключен'}</span></div>
+          </div>
+        </div>
+      ` : `<div style="font-size:12px;color:var(--text-3)">Нажмите «Выполнить аудит утечек» для сравнения внешнего IP и проверки перехвата DNS/STUN/IPv6.</div>`}
+    </div>
+  `;
+}
+
+async function runVisualLeakCheck() {
+  try {
+    toast('Выполняется аудит утечек...');
+    S.diagLeakRes = await api('GET', '/api/diagnostics/leak-check');
+    renderPage();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function openConfigPlanModal() {
+  try {
+    const plan = await api('GET', '/api/config/plan');
+    openModal('Предпросмотр сгенерированного плана конфигурации (/api/config/plan)', `
+      <textarea readonly class="mono" style="min-height:320px;font-size:11.5px">${esc(JSON.stringify(plan, null, 2))}</textarea>
+    `, `<button class="btn" onclick="closeModal()">Закрыть</button>`);
+  } catch (e) { toast(e.message, true); }
+}
+
+function vDiagNet() {
+  const out = S.diagNetRes;
+  return `
+    <div class="card">
+      <div class="card-head">
+        <div class="card-title">${ic('terminal', 15)} Сетевые утилиты маршрутизатора (Ping / Traceroute / Nslookup / Захват пакетов PCAP)</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <select id="netToolKind" style="width:170px" class="mono">
+          <option value="ping">ping (4 пакета)</option>
+          <option value="traceroute">traceroute (до 15 хопов)</option>
+          <option value="nslookup">nslookup (DNS-запрос)</option>
+          <option value="pcap">tcpdump PCAP (25 пакетов)</option>
+        </select>
+        <input type="text" id="netToolTarget" value="1.1.1.1" placeholder="Хост или IP (например 1.1.1.1)" class="mono" style="width:240px"/>
+        <input type="text" id="netToolIface" value="br-lan" placeholder="Интерфейс (для PCAP)" class="mono" style="width:140px"/>
+        <button class="btn btn-primary" onclick="runVisualNetTool()">Выполнить команду</button>
+      </div>
+      ${out ? `
+        <textarea readonly class="mono" style="min-height:220px;margin-top:10px;font-size:11.5px">${esc(out.output || JSON.stringify(out, null, 2))}</textarea>
+      ` : ''}
+    </div>
+  `;
+}
+
+async function runVisualNetTool() {
+  const tool = document.getElementById('netToolKind').value;
+  const target = document.getElementById('netToolTarget').value.trim();
+  const interface_name = document.getElementById('netToolIface').value.trim() || 'br-lan';
+  try {
+    toast(`Выполняется ${tool}...`);
+    S.diagNetRes = await api('POST', '/api/diagnostics/net-tool', { tool, target, interface: interface_name });
+    renderPage();
+  } catch (e) { toast(e.message, true); }
+}
+
+function vDiagAi() {
+  const res = S.diagAiRes;
+  return `
+    <div class="card">
+      <div class="card-head">
+        <div class="card-title">${ic('stethoscope', 15)} AI Doctor v3.0 и встроенная инженерная база знаний</div>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <input type="text" id="diagAiQuery" placeholder="Опишите симптом (например: не открывается YouTube, обрывы UDP в играх, высокий пинг, ошибка DNS)..." value="YouTube TLS timeout"/>
+        <button class="btn btn-primary" onclick="runVisualAiDoctor()">Проанализировать</button>
+      </div>
+      ${res ? `
+        <div style="padding:12px;background:var(--bg-elev);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:12px">
+          <div style="font-size:12px;font-weight:600;margin-bottom:4px">Инженерное заключение (${esc(res.engine || 'local-kb')})</div>
+          <div style="font-size:12.5px;color:var(--text-2)">${esc(res.diagnosis || '')}</div>
+          ${(res.recommended_actions || []).length ? `
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
+              ${(res.recommended_actions || []).map(a => `
+                <button class="btn btn-sm btn-signal" onclick="quickFixSubsystem('${esc(a.fix_id)}')">${ic('wrench', 11)} ${esc(a.label)}</button>
+              `).join('')}
+            </div>
+          ` : ''}
+        </div>
+        <div class="grid-2">
+          ${(res.matched_kb || []).map(k => `
+            <div style="padding:12px;background:var(--bg-elev);border:1px solid var(--border);border-radius:var(--radius)">
+              <div style="font-weight:600;font-size:12.5px;margin-bottom:4px">${esc(k.title)}</div>
+              <div style="font-size:12px;color:var(--text-2)">${esc(k.solution)}</div>
+            </div>
+          `).join('')}
+        </div>
+      ` : `<div style="font-size:12px;color:var(--text-3)">Введите описание проблемы или оставьте поле пустым для автоматического анализа всех предупреждений Local Doctor.</div>`}
+    </div>
+  `;
+}
+
+async function runVisualAiDoctor() {
+  const query = document.getElementById('diagAiQuery').value.trim();
+  try {
+    toast('Выполняется анализ AI Doctor...');
+    S.diagAiRes = await api('POST', '/api/diagnostics/ai-doctor', { query });
+    renderPage();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function downloadSupportBundle() {
+  try {
+    const bundle = await api('GET', '/api/diagnostics/support-bundle');
+    const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `tachyon-support-bundle-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    toast('Обезличенный Support Bundle выгружен');
+  } catch (e) { toast(e.message, true); }
+}
+
 async function runDiagTool(method, path, body) {
   try {
-    toast('Выполняется диагностика...');
-    const res = await api(method, path, body);
-    S.diagOut = JSON.stringify(res, null, 2);
-    const box = document.getElementById('diagOutputBox');
-    if (box) box.value = S.diagOut;
-    toast('Диагностика завершена');
+    toast('Выполняется операция...');
+    await api(method, path, body);
+    await bootstrap();
+    toast('Операция успешно выполнена');
   } catch (e) {
     toast(e.message, true);
   }
 }
 
 // ============================================================================
-// 8. ОБНОВЛЕНИЯ, TELEGRAM И СИСТЕМНЫЕ НАСТРОЙКИ
+// 8. ОБНОВЛЕНИЯ, ПРАВИЛА .SRS/.TRS, TELEGRAM И СИСТЕМНЫЕ НАСТРОЙКИ
 // ============================================================================
 function vUpdates() {
   const u = S.updates || {};
   const jobs = S.live.jobs || [];
+  const rulesets = u.rulesets || [];
   return `
     <div class="page-head">
       <div>
         <div class="page-title">Обновления компонентов и гео-баз маршрутизации</div>
-        <div class="page-desc">Атомарное обновление правил <code class="mono">.srs</code>, GeoIP/GeoSite, подписок и бинарного ядра <code class="mono">tachyon-core</code></div>
+        <div class="page-desc">Атомарное обновление правил <code class="mono">.srs / .trs</code>, GeoIP/GeoSite, подписок и бинарного ядра <code class="mono">tachyon-core</code></div>
       </div>
       <div class="toolbar">
         <button class="btn btn-primary" onclick="runUpdateJob('lists')">${ic('refresh', 13)} Обновить списки и подписки</button>
@@ -3754,13 +5001,66 @@ function vUpdates() {
       <div class="card">
         <div class="kpi-label">Автообновление списков</div>
         <div class="kpi-val">${S.store.settings?.list_update_enabled ? 'Активно' : 'Выкл'}</div>
-        <div class="kpi-meta">Интервал: ${esc(S.store.settings?.update_interval || '3h')}</div>
+        <div class="kpi-meta">Интервал: ${esc(S.store.settings?.update_interval || '3h')} · Файлов: ${rulesets.length}</div>
       </div>
     </div>
 
     <div class="card">
+      <div class="card-head">
+        <div class="card-title">Локальные скомпилированные наборы правил (.srs / .trs / .json) в /etc/tachyon/lists (${rulesets.length})</div>
+      </div>
+      ${rulesets.length === 0 ? `<div style="font-size:12px;color:var(--text-3)">В каталоге /etc/tachyon/lists пока нет загруженных файлов гео-баз.</div>` : `
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Файл набора правил</th>
+                <th>Размер</th>
+                <th>Контрольная сумма</th>
+                <th>Обновлён (Unix)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rulesets.map(r => `
+                <tr>
+                  <td class="mono" style="font-weight:600">${esc(r.name)}</td>
+                  <td class="mono">${fmtBytes(r.size_bytes || 0)}</td>
+                  <td class="mono">${esc(r.sha256_prefix || '—')}</td>
+                  <td class="mono">${r.modified_unix ? new Date(r.modified_unix * 1000).toLocaleString('ru-RU') : '—'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `}
+    </div>
+
+    <div class="card">
       <div class="card-title">Журнал фоновых заданий обновления (${jobs.length})</div>
-      <textarea readonly style="min-height:160px">${esc(JSON.stringify(jobs, null, 2))}</textarea>
+      ${jobs.length === 0 ? `<div style="font-size:12px;color:var(--text-3)">Фоновых заданий ещё не запускалось.</div>` : `
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID задания</th>
+                <th>Тип</th>
+                <th>Статус</th>
+                <th>Сообщение</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${jobs.map(j => `
+                <tr>
+                  <td class="mono">${esc(j.id)}</td>
+                  <td class="mono">${esc(j.kind)}</td>
+                  <td><span class="badge ${j.status === 'completed' ? 'badge-ok' : j.status === 'failed' ? 'badge-err' : 'badge-warn'}">${esc(j.status)}</span></td>
+                  <td class="mono" style="font-size:11.5px">${esc(j.message)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `}
     </div>
   `;
 }
@@ -3776,11 +5076,12 @@ async function runUpdateJob(target) {
 
 function vTelegram() {
   const tg = S.store.telegram || {};
+  const secs = S.store.sections || [];
   return `
     <div class="page-head">
       <div>
         <div class="page-title">Telegram-управление и оповещения</div>
-        <div class="page-desc">Встроенный клиент Telegram Bot API для уведомлений об отказах WAN, атаках Honeypot и переключения узлов</div>
+        <div class="page-desc">Встроенный клиент Telegram Bot API с поддержкой маршрутизации через прокси-секцию и фильтрацией уведомлений</div>
       </div>
       <div class="toolbar">
         <button class="btn" onclick="testTelegram()">Отправить тест</button>
@@ -3788,7 +5089,7 @@ function vTelegram() {
       </div>
     </div>
     <div class="card">
-      <div class="grid-3">
+      <div class="grid-4">
         <div class="field">
           <div class="field-label">Статус бота</div>
           <label class="check-row" style="padding-top:6px"><input type="checkbox" id="tgEn" ${tg.enabled ? 'checked' : ''}/><span>Включить Telegram-бота</span></label>
@@ -3801,6 +5102,20 @@ function vTelegram() {
           <div class="field-label">Разрешённые Chat ID (через запятую)</div>
           <input type="text" id="tgChats" value="${esc((tg.allowed_chat_ids || []).join(', '))}" class="mono"/>
         </div>
+        <div class="field">
+          <div class="field-label">Прокси-секция для api.telegram.org</div>
+          <select id="tgProxySec">
+            <option value="">— Прямое соединение (Direct) —</option>
+            ${secs.map(s => `<option value="${esc(s.id)}" ${tg.bot_proxy_section === s.id ? 'selected' : ''}>${esc(s.label || s.id)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="card-title" style="margin-top:8px">Категории автоматических уведомлений</div>
+      <div class="grid-4">
+        <label class="check-row"><input type="checkbox" id="tgNotWan" ${tg.notify_wan_failover !== false ? 'checked' : ''}/><span>Переключение Multi-WAN и Failover групп</span></label>
+        <label class="check-row"><input type="checkbox" id="tgNotHp" ${tg.notify_honeypot !== false ? 'checked' : ''}/><span>Атаки на порты-ловушки Honeypot</span></label>
+        <label class="check-row"><input type="checkbox" id="tgNotCrash" ${tg.notify_core_crash !== false ? 'checked' : ''}/><span>Перезапуск ядра Watchdog / Откат LKG</span></label>
+        <label class="check-row"><input type="checkbox" id="tgNotPar" ${tg.notify_parental ? 'checked' : ''}/><span>Исчерпание дневного лимита детских профилей</span></label>
       </div>
     </div>
   `;
@@ -3810,7 +5125,12 @@ async function saveTelegram() {
   const payload = Object.assign({}, S.store.telegram || {}, {
     enabled: document.getElementById('tgEn').checked,
     bot_token: document.getElementById('tgTok').value.trim(),
-    allowed_chat_ids: splitLines(document.getElementById('tgChats').value).map(Number).filter(Boolean)
+    allowed_chat_ids: splitLines(document.getElementById('tgChats').value).map(Number).filter(Boolean),
+    bot_proxy_section: document.getElementById('tgProxySec').value,
+    notify_wan_failover: document.getElementById('tgNotWan').checked,
+    notify_honeypot: document.getElementById('tgNotHp').checked,
+    notify_core_crash: document.getElementById('tgNotCrash').checked,
+    notify_parental: document.getElementById('tgNotPar').checked
   });
   try { await api('POST', '/api/telegram/save', payload); toast('Настройки Telegram сохранены'); await bootstrap(); } catch (e) { toast(e.message, true); }
 }
@@ -3826,30 +5146,53 @@ function vSettings() {
     <div class="page-head">
       <div>
         <div class="page-title">Системные параметры маршрутизатора</div>
-        <div class="page-desc">Конфигурация перехвата TProxy/TUN, каскадного DNS, файлов Hosts, Watchdog, AI Doctor и резервного копирования</div>
+        <div class="page-desc">Конфигурация перехвата TProxy/TUN, каскадного DNS, файлов Hosts, Multi-WAN Failover, Watchdog, AI Doctor и резервного копирования</div>
       </div>
       <div class="toolbar">
         <button class="btn" onclick="importLegacyFiles()">Импорт legacy-конфигов роутера</button>
         <button class="btn" onclick="downloadBackup()">${ic('download', 13)} Скачать бэкап JSON</button>
+        <button class="btn" onclick="openRestoreBackupModal()">${ic('upload', 13)} Восстановить из JSON</button>
         <button class="btn btn-primary" onclick="saveSettings()">${ic('check', 14)} Сохранить настройки</button>
       </div>
     </div>
 
     <div class="grid-2">
       <div class="card">
-        <div class="card-title">Сетевой стек, перехват TProxy / TUN и защита</div>
-        <div class="grid-2">
+        <div class="card-title">Сетевой стек, перехват TProxy / TUN и аппаратные оптимизации</div>
+        <div class="grid-3">
           <div class="field">
-            <div class="field-label">Режим перехвата трафика (proxy_mode)</div>
+            <div class="field-label">Режим перехвата (proxy_mode)</div>
             <select id="stProxyMode">
-              <option value="tproxy" ${st.proxy_mode === 'tproxy' ? 'selected' : ''}>tproxy — nftables TProxy (рекомендуется)</option>
-              <option value="tun" ${st.proxy_mode === 'tun' ? 'selected' : ''}>tun — Виртуальный интерфейс TUN</option>
+              <option value="tproxy" ${st.proxy_mode === 'tproxy' ? 'selected' : ''}>tproxy — nftables TProxy</option>
+              <option value="tun" ${st.proxy_mode === 'tun' ? 'selected' : ''}>tun — Виртуальный TUN</option>
               <option value="mixed" ${st.proxy_mode === 'mixed' ? 'selected' : ''}>mixed — TProxy + TUN</option>
             </select>
           </div>
           <div class="field">
             <div class="field-label">Входящие LAN-интерфейсы</div>
             <input type="text" id="stSrcIfaces" value="${esc((st.source_network_interfaces || ['br-lan']).join(', '))}" class="mono"/>
+          </div>
+          <div class="field">
+            <div class="field-label">Порт прямого обхода (Direct Port)</div>
+            <input type="number" id="stDirectPort" value="${st.direct_bypass_port || 0}" class="mono"/>
+          </div>
+        </div>
+        <div class="grid-3">
+          <div class="field">
+            <div class="field-label">Имя интерфейса TUN</div>
+            <input type="text" id="stTunName" value="${esc(st.tun_interface || 'tachyon0')}" class="mono"/>
+          </div>
+          <div class="field">
+            <div class="field-label">Стек TUN (system / gvisor / mixed)</div>
+            <select id="stTunStack">
+              <option value="system" ${st.tun_stack === 'system' ? 'selected' : ''}>system</option>
+              <option value="gvisor" ${st.tun_stack === 'gvisor' ? 'selected' : ''}>gvisor</option>
+              <option value="mixed" ${st.tun_stack === 'mixed' ? 'selected' : ''}>mixed</option>
+            </select>
+          </div>
+          <div class="field">
+            <div class="field-label">TUN MTU</div>
+            <input type="number" id="stTunMtu" value="${st.tun_mtu || 1420}" class="mono"/>
           </div>
         </div>
         <div class="grid-2">
@@ -3859,18 +5202,22 @@ function vSettings() {
           <label class="check-row"><input type="checkbox" id="stWebrtc" ${st.webrtc_leak_protect ? 'checked' : ''}/><span>Защита от утечек STUN/WebRTC</span></label>
           <label class="check-row"><input type="checkbox" id="stRouterSelf" ${st.route_router_traffic ? 'checked' : ''}/><span>Маршрутизировать трафик самого роутера</span></label>
           <label class="check-row"><input type="checkbox" id="stWatchdog" ${st.enable_watchdog ? 'checked' : ''}/><span>Сторожевой таймер (Watchdog) и LKG</span></label>
+          <label class="check-row"><input type="checkbox" id="stTorrDirect" ${st.torrserver_direct !== false ? 'checked' : ''}/><span>TorrServer Direct (прямой локальный поток)</span></label>
+          <label class="check-row"><input type="checkbox" id="stTorrIso" ${st.torrent_isolation ? 'checked' : ''}/><span>Изоляция P2P/BitTorrent от прокси</span></label>
+          <label class="check-row"><input type="checkbox" id="stWifiCall" ${st.wifi_calling_direct !== false ? 'checked' : ''}/><span>Wi-Fi Calling Direct (UDP 500/4500 VoWiFi)</span></label>
+          <label class="check-row"><input type="checkbox" id="stConsoleOpt" ${st.console_gaming_mode ? 'checked' : ''}/><span>Game Console Optimizer (Open NAT UDP)</span></label>
         </div>
       </div>
 
       <div class="card">
-        <div class="card-title">Резолвер DNS, кэширование и DNS Detour</div>
-        <div class="grid-2">
+        <div class="card-title">Каскадный резолвер DNS, кэширование, DNS Detour и DHCP</div>
+        <div class="grid-3">
           <div class="field">
-            <div class="field-label">Протокол апстрима DNS (dns_type)</div>
+            <div class="field-label">Протокол апстрима DNS</div>
             <select id="stDnsType">
               <option value="doh" ${st.dns_type === 'doh' ? 'selected' : ''}>doh — DNS-over-HTTPS</option>
               <option value="dot" ${st.dns_type === 'dot' ? 'selected' : ''}>dot — DNS-over-TLS</option>
-              <option value="udp" ${st.dns_type === 'udp' ? 'selected' : ''}>udp — Классический UDP 53</option>
+              <option value="udp" ${st.dns_type === 'udp' ? 'selected' : ''}>udp — UDP 53</option>
             </select>
           </div>
           <div class="field">
@@ -3881,10 +5228,24 @@ function vSettings() {
               <option value="prefer_ipv6" ${st.dns_strategy === 'prefer_ipv6' ? 'selected' : ''}>prefer_ipv6</option>
             </select>
           </div>
+          <div class="field">
+            <div class="field-label">Размер кэша DNS</div>
+            <input type="number" id="stDnsCacheSz" value="${st.dns_cache_size || 4096}" class="mono"/>
+          </div>
         </div>
-        <div class="field">
-          <div class="field-label">Основные серверы DNS (через запятую)</div>
-          <input type="text" id="stDnsSrvs" value="${esc((st.dns_servers || []).join(', '))}" class="mono"/>
+        <div class="grid-3">
+          <div class="field">
+            <div class="field-label">Основные серверы DNS</div>
+            <input type="text" id="stDnsSrvs" value="${esc((st.dns_servers || []).join(', '))}" class="mono"/>
+          </div>
+          <div class="field">
+            <div class="field-label">Bootstrap DNS (для резолва DoH)</div>
+            <input type="text" id="stBootDns" value="${esc((st.bootstrap_dns_servers || ['77.88.8.8', '1.1.1.1']).join(', '))}" class="mono"/>
+          </div>
+          <div class="field">
+            <div class="field-label">Резервный Fallback DNS</div>
+            <input type="text" id="stFallDns" value="${esc(st.fallback_dns_server || '1.1.1.1')}" class="mono"/>
+          </div>
         </div>
         <div class="grid-2">
           <label class="check-row"><input type="checkbox" id="stDnsDetour" ${st.dns_detour_enabled ? 'checked' : ''}/><span>Направлять DNS через секцию:</span></label>
@@ -3893,39 +5254,69 @@ function vSettings() {
             ${secs.map(s => `<option value="${esc(s.id)}" ${st.dns_detour_section === s.id ? 'selected' : ''}>${esc(s.label || s.id)}</option>`).join('')}
           </select>
         </div>
+        <div class="grid-3">
+          <label class="check-row"><input type="checkbox" id="stDnsLocCache" ${st.dns_local_cache !== false ? 'checked' : ''}/><span>Локальный кэш DNS</span></label>
+          <label class="check-row"><input type="checkbox" id="stDnsTurbo" ${st.dns_turbo_cache !== false ? 'checked' : ''}/><span>DNS Turbo Cache</span></label>
+          <label class="check-row"><input type="checkbox" id="stNoDhcp" ${st.dont_touch_dhcp ? 'checked' : ''}/><span>Не изменять настройки DHCP</span></label>
+        </div>
       </div>
     </div>
 
     <div class="grid-2">
       <div class="card">
-        <div class="card-title">Движок Hosts и автоопределение Smart Detect</div>
+        <div class="card-title">Движок Hosts, Multi-WAN Failover и контроль ресурсов</div>
         <div class="grid-2">
           <label class="check-row"><input type="checkbox" id="stHostsEn" ${st.hosts_enabled ? 'checked' : ''}/><span>Включить подмену Hosts</span></label>
           <label class="check-row"><input type="checkbox" id="stSmartEn" ${st.smart_detect ? 'checked' : ''}/><span>Smart Detect при сбросе соединения</span></label>
+          <label class="check-row"><input type="checkbox" id="stWanFoEn" ${st.wan_failover_enabled ? 'checked' : ''}/><span>Включить Multi-WAN Failover</span></label>
+          <label class="check-row"><input type="checkbox" id="stAutoHeal" ${st.auto_heal_enabled !== false ? 'checked' : ''}/><span>Автовосстановление (Auto-Heal)</span></label>
+        </div>
+        <div class="grid-3">
+          <div class="field">
+            <div class="field-label">Основной интерфейс WAN</div>
+            <input type="text" id="stWanPri" value="${esc(st.wan_failover_primary || 'wan')}" class="mono"/>
+          </div>
+          <div class="field">
+            <div class="field-label">Резервный интерфейс WAN (модем)</div>
+            <input type="text" id="stWanBak" value="${esc(st.wan_failover_backup || 'wan2')}" class="mono"/>
+          </div>
+          <div class="field">
+            <div class="field-label">Лимит памяти ядра (МБ)</div>
+            <input type="number" id="stMemLim" value="${st.memory_limit_mb || 48}" class="mono"/>
+          </div>
         </div>
         <div class="field">
           <div class="field-label">URL-списки внешних файлов Hosts</div>
-          <textarea id="stHostsUrls" style="min-height:60px">${esc((st.hosts_list_urls || []).join('\n'))}</textarea>
+          <textarea id="stHostsUrls" style="min-height:54px">${esc((st.hosts_list_urls || []).join('\n'))}</textarea>
         </div>
         <div class="field">
           <div class="field-label">Статические записи Hosts (IP домен)</div>
-          <textarea id="stStaticHosts" style="min-height:60px">${esc((st.static_hosts || []).join('\n'))}</textarea>
+          <textarea id="stStaticHosts" style="min-height:54px">${esc((st.static_hosts || []).join('\n'))}</textarea>
         </div>
       </div>
 
       <div class="card">
-        <div class="card-title">Интерфейс, безопасность панели и AI Doctor</div>
-        <div class="grid-2">
+        <div class="card-title">Интерфейс, акцентная тема, безопасность панели и AI Doctor</div>
+        <div class="grid-3">
           <div class="field">
-            <div class="field-label">Расположение боковой панели</div>
+            <div class="field-label">Боковая панель</div>
             <select id="stSidebarPos">
               <option value="left" ${st.sidebar_pos !== 'right' ? 'selected' : ''}>Слева (стандартно)</option>
               <option value="right" ${st.sidebar_pos === 'right' ? 'selected' : ''}>Справа</option>
             </select>
           </div>
           <div class="field">
-            <div class="field-label">Новый пароль администратора</div>
-            <input type="password" id="stNewPass" placeholder="Оставьте пустым, чтобы не менять"/>
+            <div class="field-label">Акцентная тема прибора</div>
+            <select id="stThemeAccent" onchange="applyThemeAccent(this.value)">
+              <option value="blue" ${(st.theme_accent || 'blue') === 'blue' ? 'selected' : ''}>Синий сигнал (#3b82f6)</option>
+              <option value="emerald" ${st.theme_accent === 'emerald' ? 'selected' : ''}>Изумрудный (#10b981)</option>
+              <option value="amber" ${st.theme_accent === 'amber' ? 'selected' : ''}>Янтарный (#f59e0b)</option>
+              <option value="zinc" ${st.theme_accent === 'zinc' ? 'selected' : ''}>Графитовый монохром</option>
+            </select>
+          </div>
+          <div class="field">
+            <div class="field-label">Новый пароль панели</div>
+            <input type="password" id="stNewPass" placeholder="Не менять"/>
           </div>
         </div>
         <div class="grid-2">
@@ -3950,22 +5341,42 @@ async function saveSettings() {
   const payload = {
     proxy_mode: document.getElementById('stProxyMode').value,
     source_network_interfaces: splitLines(document.getElementById('stSrcIfaces').value),
+    direct_bypass_port: Number(document.getElementById('stDirectPort').value || 0),
+    tun_interface: document.getElementById('stTunName').value.trim(),
+    tun_stack: document.getElementById('stTunStack').value,
+    tun_mtu: Number(document.getElementById('stTunMtu').value || 1420),
     enable_ipv6: document.getElementById('stIpv6').checked,
     disable_quic: document.getElementById('stNoQuic').checked,
     block_doh: document.getElementById('stBlockDoh').checked,
     webrtc_leak_protect: document.getElementById('stWebrtc').checked,
     route_router_traffic: document.getElementById('stRouterSelf').checked,
     enable_watchdog: document.getElementById('stWatchdog').checked,
+    torrserver_direct: document.getElementById('stTorrDirect').checked,
+    torrent_isolation: document.getElementById('stTorrIso').checked,
+    wifi_calling_direct: document.getElementById('stWifiCall').checked,
+    console_gaming_mode: document.getElementById('stConsoleOpt').checked,
     dns_type: document.getElementById('stDnsType').value,
     dns_strategy: document.getElementById('stDnsStrat').value,
+    dns_cache_size: Number(document.getElementById('stDnsCacheSz').value || 4096),
     dns_servers: splitLines(document.getElementById('stDnsSrvs').value),
+    bootstrap_dns_servers: splitLines(document.getElementById('stBootDns').value),
+    fallback_dns_server: document.getElementById('stFallDns').value.trim(),
     dns_detour_enabled: document.getElementById('stDnsDetour').checked,
     dns_detour_section: document.getElementById('stDnsDetourSec').value,
+    dns_local_cache: document.getElementById('stDnsLocCache').checked,
+    dns_turbo_cache: document.getElementById('stDnsTurbo').checked,
+    dont_touch_dhcp: document.getElementById('stNoDhcp').checked,
     hosts_enabled: document.getElementById('stHostsEn').checked,
     smart_detect: document.getElementById('stSmartEn').checked,
+    wan_failover_enabled: document.getElementById('stWanFoEn').checked,
+    auto_heal_enabled: document.getElementById('stAutoHeal').checked,
+    wan_failover_primary: document.getElementById('stWanPri').value.trim(),
+    wan_failover_backup: document.getElementById('stWanBak').value.trim(),
+    memory_limit_mb: Number(document.getElementById('stMemLim').value || 48),
     hosts_list_urls: splitLines(document.getElementById('stHostsUrls').value),
     static_hosts: splitLines(document.getElementById('stStaticHosts').value),
     sidebar_pos: document.getElementById('stSidebarPos').value,
+    theme_accent: document.getElementById('stThemeAccent').value,
     ai_doctor_provider: document.getElementById('stAiProv').value.trim(),
     ai_doctor_model: document.getElementById('stAiMod').value.trim(),
     ai_doctor_api_key: document.getElementById('stAiKey').value.trim(),
@@ -3973,10 +5384,33 @@ async function saveSettings() {
   };
   try {
     await api('POST', '/api/settings/save', payload);
+    applyThemeAccent(payload.theme_accent);
     toast('Настройки системы сохранены');
     await bootstrap();
   } catch (e) {
     toast(e.message, true);
+  }
+}
+
+function openRestoreBackupModal() {
+  openModal('Восстановление конфигурации из резервной копии JSON', `
+    <div class="field">
+      <div class="field-label">Вставьте содержимое файла резервной копии tachyon-backup.json</div>
+      <textarea id="mRestoreJson" class="mono" style="min-height:220px" placeholder='{"settings": ...}'></textarea>
+    </div>
+  `, `<button class="btn" onclick="closeModal()">Отмена</button><button class="btn btn-primary" onclick="submitRestoreBackup()">Восстановить конфигурацию</button>`);
+}
+
+async function submitRestoreBackup() {
+  const raw = document.getElementById('mRestoreJson').value.trim();
+  try {
+    const parsed = JSON.parse(raw);
+    await api('POST', '/api/restore', parsed);
+    closeModal();
+    toast('Конфигурация восстановлена из резервной копии');
+    await bootstrap();
+  } catch (e) {
+    toast('Ошибка JSON: ' + e.message, true);
   }
 }
 
@@ -4010,6 +5444,11 @@ async function bootstrap() {
     if (d.live) S.live = d.live;
     if (d.doctor) S.doctor = d.doctor;
     if (d.updates) S.updates = d.updates;
+    if (S.store && S.store.settings && S.store.settings.theme_accent) {
+      applyThemeAccent(S.store.settings.theme_accent);
+    } else {
+      applyThemeAccent(S.themeAccent);
+    }
     renderNav();
     renderTopbar();
     renderPage();
@@ -4031,6 +5470,7 @@ async function pollTelemetry() {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
+  applyThemeAccent(S.themeAccent);
   bootstrap();
   setInterval(pollTelemetry, 3000);
 });
