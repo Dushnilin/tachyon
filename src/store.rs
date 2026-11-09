@@ -640,6 +640,16 @@ pub struct OutboundSource {
     #[serde(default)]
     pub exclude_countries: Vec<String>,
     #[serde(default)]
+    pub sub_upload_bytes: u64,
+    #[serde(default)]
+    pub sub_download_bytes: u64,
+    #[serde(default)]
+    pub sub_total_bytes: u64,
+    #[serde(default)]
+    pub sub_expire_unix: i64,
+    #[serde(default)]
+    pub sub_last_error: String,
+    #[serde(default)]
     pub cached_nodes: Vec<ParsedProxyNode>,
     #[serde(default)]
     pub last_updated_unix: i64,
@@ -912,6 +922,10 @@ pub struct ParentalProfile {
     #[serde(default)]
     pub daily_quota_minutes: u32,
     #[serde(default)]
+    pub used_minutes_today: u32,
+    #[serde(default)]
+    pub paused_until_unix: i64,
+    #[serde(default)]
     pub blocked_categories: Vec<String>,
     #[serde(default, alias = "custom_blocked_domains")]
     pub blocked_domains: Vec<String>,
@@ -919,6 +933,24 @@ pub struct ParentalProfile {
     pub schedule_ref: String,
     #[serde(default)]
     pub notify: bool,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DeviceMeta {
+    #[serde(default)]
+    pub ip: String,
+    #[serde(default)]
+    pub mac: String,
+    #[serde(default)]
+    pub custom_name: String,
+    #[serde(default)]
+    pub note: String,
+    #[serde(default)]
+    pub static_lease: bool,
+    #[serde(default)]
+    pub limit_up_bps: u64,
+    #[serde(default)]
+    pub limit_down_bps: u64,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -1039,6 +1071,8 @@ pub struct RouterStoreData {
     pub guest_mode: GuestModeConfig,
     #[serde(default)]
     pub telegram: TgBotConfig,
+    #[serde(default)]
+    pub device_registry: HashMap<String, DeviceMeta>,
 }
 
 impl Default for RouterStoreData {
@@ -1069,6 +1103,7 @@ impl Default for RouterStoreData {
                 days: Vec::new(),
             },
             telegram: TgBotConfig::default(),
+            device_registry: HashMap::new(),
         };
         if s.import_legacy_router_files() == 0 {
             s.seed_defaults();
@@ -1919,6 +1954,13 @@ pub struct JobRecord {
     pub result: Value,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ThroughputSample {
+    pub ts: i64,
+    pub rx_bps: u64,
+    pub tx_bps: u64,
+}
+
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct LiveTelemetry {
     pub core_running: bool,
@@ -1942,6 +1984,8 @@ pub struct LiveTelemetry {
     pub node_latencies_ms: HashMap<String, u32>,
     /// Fixed ring of last 60 throughput points `(timestamp_sec, up_bps, down_bps)`.
     pub throughput_history: Vec<(i64, u64, u64)>,
+    /// Fixed ring of last 60 throughput points `{ ts, rx_bps, tx_bps }` for UI chart.
+    pub throughput: Vec<ThroughputSample>,
     /// Bounded recent core log lines (max `MAX_RECENT_LOGS`).
     pub recent_logs: Vec<String>,
     /// Bounded redacted event journal (max `MAX_EVENTS_RING`).

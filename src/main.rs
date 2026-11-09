@@ -42,6 +42,10 @@ fn main() -> anyhow::Result<()> {
     rt.block_on(async move {
         let subcommand = args.first().map(String::as_str).unwrap_or("daemon");
         match subcommand {
+            "version" | "-v" | "--version" => {
+                println!("tachyon {}", env!("CARGO_PKG_VERSION"));
+                Ok(())
+            }
             "status" | "doctor" => {
                 core.poll_telemetry_and_reconcile(0).await;
                 let doc = diagnostics::run_local_doctor(&state).await;
@@ -52,6 +56,29 @@ fn main() -> anyhow::Result<()> {
                 let fix_id = args.get(1).map(String::as_str).unwrap_or("restart_core");
                 let msg = diagnostics::apply_quick_fix(&state, &core, fix_id).await?;
                 println!("{msg}");
+                Ok(())
+            }
+            "rollback" => {
+                let msg =
+                    diagnostics::apply_quick_fix(&state, &core, "rollback_known_good").await?;
+                println!("{msg}");
+                Ok(())
+            }
+            "import-legacy" | "import_legacy" => {
+                let mut candidate = state.data.read().await.clone();
+                let count = candidate.import_legacy_router_files();
+                transaction::commit_transaction(&state, candidate).await?;
+                println!("Imported {count} legacy router configuration objects.");
+                Ok(())
+            }
+            "explain" => {
+                let target = args.get(1).map(String::as_str).unwrap_or("www.youtube.com");
+                let client_ip = args.get(2).map(String::as_str).unwrap_or("192.168.1.100");
+                let d = state.data.read().await.clone();
+                let res =
+                    diagnostics::explain_route_with_engine(&core, &d, client_ip, target, 443, "tcp")
+                        .await;
+                println!("{}", serde_json::to_string_pretty(&res)?);
                 Ok(())
             }
             "route_explain" => {

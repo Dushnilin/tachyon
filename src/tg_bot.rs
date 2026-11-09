@@ -86,25 +86,27 @@ pub fn spawn_tg_bot_loop(state: Arc<AppState>, core: Arc<CoreManager>) {
 async fn handle_bot_command(state: &Arc<AppState>, core: &Arc<CoreManager>, text: &str) -> String {
     let cmd = text.split_whitespace().next().unwrap_or("");
     match cmd {
-        "/start" | "/help" => "⚡ <b>Tachyon Router Bot</b>\n\n\
+        "/start" | "/help" => "<b>Tachyon Router Bot</b>\n\n\
              Доступные команды:\n\
-             • /status — статус ядра и трафика\n\
-             • /doctor — проверка 12 подсистем\n\
-             • /ai_doctor — заключение AI Doctor v3.0\n\
-             • /rules — список секций маршрутизации\n\
-             • /server — список серверов и узлов\n\
-             • /restart — перезапуск tachyon-core\n\
-             • /backup — выгрузка резервной копии"
+             - /status — статус ядра и трафика\n\
+             - /doctor — проверка 14 подсистем\n\
+             - /ai_doctor — заключение AI Doctor v3.0\n\
+             - /rules — список секций маршрутизации\n\
+             - /server — список серверов и узлов\n\
+             - /devices — список клиентов LAN\n\
+             - /restart — перезапуск tachyon-core\n\
+             - /rollback — откат к снимку Last Known Good\n\
+             - /backup — выгрузка резервной копии"
             .to_string(),
         "/status" => {
             let live = state.live.read().await;
             format!(
-                "🟢 <b>Tachyon Status</b>\n\
+                "<b>Tachyon Status</b>\n\
                  Ядро: <code>{}</code> (PID: {:?})\n\
                  Uptime: <code>{} с</code>\n\
                  Память RSS: <code>{:.2} МБ</code>\n\
                  Активных сессий: <code>{}</code>\n\
-                 Трафик: ↑ <code>{}</code> / ↓ <code>{}</code> байт",
+                 Трафик: TX <code>{}</code> / RX <code>{}</code> байт",
                 if live.core_running {
                     "Работает"
                 } else {
@@ -121,7 +123,7 @@ async fn handle_bot_command(state: &Arc<AppState>, core: &Arc<CoreManager>, text
         "/doctor" => {
             let rep = diagnostics::run_local_doctor(state).await;
             format!(
-                "🩺 <b>Диагностика Tachyon</b>\nСтатус: {}\nПроверено: {}/{}",
+                "<b>Диагностика Tachyon</b>\nСтатус: {}\nПроверено: {}/{}",
                 rep.summary, rep.checks_passed, rep.checks_total
             )
         }
@@ -132,23 +134,23 @@ async fn handle_bot_command(state: &Arc<AppState>, core: &Arc<CoreManager>, text
                 .unwrap_or("OK")
                 .to_string()
         }
-        "/rules" => {
+        "/rules" | "/sections" => {
             let d = state.data.read().await;
             let lines: Vec<String> = d
                 .sections
                 .iter()
                 .map(|s| {
                     format!(
-                        "{} <b>{}</b> (<code>{}</code>)",
-                        if s.enabled { "🟢" } else { "⚪" },
+                        "[{}] <b>{}</b> (<code>{}</code>)",
+                        if s.enabled { "ON" } else { "OFF" },
                         s.label,
                         s.connection_type
                     )
                 })
                 .collect();
-            format!("📋 <b>Секции маршрутизации:</b>\n{}", lines.join("\n"))
+            format!("<b>Секции маршрутизации:</b>\n{}", lines.join("\n"))
         }
-        "/server" => {
+        "/server" | "/servers" => {
             let d = state.data.read().await;
             let lines: Vec<String> = d
                 .servers
@@ -156,8 +158,8 @@ async fn handle_bot_command(state: &Arc<AppState>, core: &Arc<CoreManager>, text
                 .take(15)
                 .map(|s| {
                     format!(
-                        "{} <b>{}</b> — <code>{}:{}</code> ({})",
-                        if s.enabled { "🟢" } else { "⚪" },
+                        "[{}] <b>{}</b> — <code>{}:{}</code> ({})",
+                        if s.enabled { "ON" } else { "OFF" },
                         s.label,
                         s.public_host,
                         s.listen_port,
@@ -165,17 +167,42 @@ async fn handle_bot_command(state: &Arc<AppState>, core: &Arc<CoreManager>, text
                     )
                 })
                 .collect();
-            format!("🖥 <b>Входящие серверы:</b>\n{}", lines.join("\n"))
+            format!("<b>Входящие серверы:</b>\n{}", lines.join("\n"))
         }
-        "/restart" => match core.apply_or_reload().await {
-            Ok(()) => "✅ Ядро tachyon-core успешно перезапущено".to_string(),
-            Err(e) => format!("❌ Ошибка перезапуска: {e}"),
+        "/devices" => {
+            let live = state.live.read().await;
+            let lines: Vec<String> = live
+                .lan_devices
+                .iter()
+                .take(20)
+                .map(|dev| {
+                    let name = if !dev.custom_name.is_empty() {
+                        &dev.custom_name
+                    } else if !dev.hostname.is_empty() {
+                        &dev.hostname
+                    } else {
+                        "LAN Client"
+                    };
+                    format!("• <code>{}</code> — {} ({})", dev.ip, name, dev.mac)
+                })
+                .collect();
+            format!("<b>Клиенты LAN ({}):</b>\n{}", live.lan_devices.len(), lines.join("\n"))
+        }
+        "/restart" | "/reload" => match core.apply_or_reload().await {
+            Ok(()) => "[OK] Ядро tachyon-core успешно перезапущено".to_string(),
+            Err(e) => format!("[ERR] Ошибка перезапуска: {e}"),
         },
+        "/rollback" => {
+            match diagnostics::apply_quick_fix(state, core, "rollback_known_good").await {
+                Ok(msg) => format!("[OK] {msg}"),
+                Err(e) => format!("[ERR] {e}"),
+            }
+        }
         _ if cmd.starts_with("/fix") => {
             let fix_id = text.split_whitespace().nth(1).unwrap_or("restart_core");
             match diagnostics::apply_quick_fix(state, core, fix_id).await {
-                Ok(msg) => format!("✅ {msg}"),
-                Err(e) => format!("❌ {e}"),
+                Ok(msg) => format!("[OK] {msg}"),
+                Err(e) => format!("[ERR] {e}"),
             }
         }
         _ => "Используйте /start для списка команд.".to_string(),
@@ -186,8 +213,8 @@ async fn handle_bot_callback(state: &Arc<AppState>, core: &Arc<CoreManager>, dat
     if let Some(rest) = data.strip_prefix("srv:select:") {
         if let Some((sec_id, tag)) = rest.split_once(':') {
             match core.select_section_node(sec_id, tag).await {
-                Ok(()) => return format!("✅ Узел секции {sec_id} переключён на {tag}"),
-                Err(e) => return format!("❌ {e}"),
+                Ok(()) => return format!("[OK] Узел секции {sec_id} переключён на {tag}"),
+                Err(e) => return format!("[ERR] {e}"),
             }
         }
     } else if let Some(sec_id) = data.strip_prefix("rule:toggle:") {
@@ -209,9 +236,9 @@ async fn handle_bot_callback(state: &Arc<AppState>, core: &Arc<CoreManager>, dat
     } else if let Some(fix_id) = data.strip_prefix("fix:apply:")
         && let Ok(msg) = diagnostics::apply_quick_fix(state, core, fix_id).await
     {
-        return format!("✅ {msg}");
+        return format!("[OK] {msg}");
     }
-    "Команда выполнена".to_string()
+    handle_bot_command(state, core, data).await
 }
 
 pub async fn send_test_notification(state: &Arc<AppState>) -> anyhow::Result<usize> {
@@ -226,7 +253,7 @@ pub async fn send_test_notification(state: &Arc<AppState>) -> anyhow::Result<usi
         anyhow::bail!("Укажите Bot Token и хотя бы один Admin ID в настройках Telegram");
     }
     let mut sent = 0usize;
-    let text = "⚡ <b>Tachyon Router: Тестовое уведомление</b>\nСвязь с роутером установлена.";
+    let text = "<b>Tachyon Router: Тестовое уведомление</b>\nСвязь с роутером установлена.";
     for chat_id in admins {
         if send_tg_message(&token, chat_id, text).await.is_ok() {
             sent += 1;
@@ -240,7 +267,21 @@ async fn send_tg_message(token: &str, chat_id: i64, text: &str) -> anyhow::Resul
     let body = json!({
         "chat_id": chat_id,
         "text": text,
-        "parse_mode": "HTML"
+        "parse_mode": "HTML",
+        "reply_markup": {
+            "inline_keyboard": [
+                [
+                    {"text": "Статус", "callback_data": "/status"},
+                    {"text": "Doctor", "callback_data": "/doctor"},
+                    {"text": "Секции", "callback_data": "/rules"}
+                ],
+                [
+                    {"text": "Клиенты LAN", "callback_data": "/devices"},
+                    {"text": "Перезапуск", "callback_data": "/restart"},
+                    {"text": "Откат LKG", "callback_data": "/rollback"}
+                ]
+            ]
+        }
     })
     .to_string();
     let out = Command::new("curl")

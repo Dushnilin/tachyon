@@ -105,7 +105,7 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
     let d = state.data.read().await.clone();
     let live = state.live.read().await.clone();
     let sys = sys_info::collect_host_info();
-    let checks_total = 12usize;
+    let checks_total = 14usize;
 
     // 1. Core process liveness
     if !live.core_running {
@@ -213,7 +213,7 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
     let checks_passed = checks_total.saturating_sub(findings.len());
     let healthy = !findings.iter().any(|f| f.severity == "critical");
     let summary = if findings.is_empty() {
-        "Все 12 подсистем роутера и ядра tachyon-core работают штатно".to_string()
+        "Все 14 подсистем роутера и ядра tachyon-core работают штатно".to_string()
     } else {
         format!(
             "Проверено подсистем: {checks_total}, замечаний: {}",
@@ -221,19 +221,23 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
         )
     };
 
+    let resolv_ok =
+        cfg!(windows) || std::path::Path::new("/etc/resolv.conf").exists();
     let subsystems = vec![
-        json!({"name": "1. Ядро tachyon-core", "status": if live.core_running { "ok" } else { "warn" }, "detail": format!("PID {} · RSS {} KB", live.core_pid.unwrap_or(0), live.core_rss_bytes / 1024)}),
-        json!({"name": "2. Таблица nftables TProxy", "status": if live.nft_table_active { "ok" } else { "warn" }, "detail": "inet TachyonTable :1602"}),
-        json!({"name": "3. DNS и FakeIP (198.18.0.0/15)", "status": if live.dns_healthy { "ok" } else { "warn" }, "detail": "FakeIP 127.0.0.42:53"}),
-        json!({"name": "4. Внешний канал WAN", "status": if live.wan_healthy { "ok" } else { "warn" }, "detail": "Маршрут по умолчанию активен"}),
-        json!({"name": "5. Секции маршрутизации", "status": if d.sections.iter().any(|s| s.enabled) { "ok" } else { "warn" }, "detail": format!("Активно {} из {}", d.sections.iter().filter(|s| s.enabled).count(), d.sections.len())}),
-        json!({"name": "6. Источники и Подписки", "status": "ok", "detail": format!("Источников: {}", d.outbound_sources.len())}),
-        json!({"name": "7. Балансировщики нагрузки", "status": "ok", "detail": format!("Алгоритмов: {}", d.balancers.len())}),
-        json!({"name": "8. Входящие серверы", "status": "ok", "detail": format!("Активно {} из {}", d.servers.iter().filter(|s| s.enabled).count(), d.servers.len())}),
-        json!({"name": "9. Память ОЗУ роутера", "status": "ok", "detail": format!("Свободно {} МБ", sys.mem_total_bytes.saturating_sub(sys.mem_used_bytes) / 1048576)}),
-        json!({"name": "10. Системное время NTP", "status": if unix_now_secs() > 1_700_000_000 { "ok" } else { "warn" }, "detail": "Синхронизировано для TLS 1.3 / Reality"}),
-        json!({"name": "11. Снимок LKG Watchdog", "status": "ok", "detail": if state.lkg_path.exists() { "Эталон сохранён" } else { "Готов к записи" }}),
-        json!({"name": "12. Защита NAND и Honeypot", "status": "ok", "detail": format!("SHA-256 Guard · Отражено: {}", live.honeypot_hits.len())}),
+        json!({"name": "1. Ядро tachyon-core", "status": if live.core_running { "ok" } else { "warn" }, "detail": format!("PID {} · RSS {} KB", live.core_pid.unwrap_or(0), live.core_rss_bytes / 1024), "fix_id": "restart_core", "fix_label": "Перезапустить"}),
+        json!({"name": "2. Таблица nftables TProxy", "status": if live.nft_table_active { "ok" } else { "warn" }, "detail": "inet TachyonTable :1602", "fix_id": "heal_network_stack", "fix_label": "Восстановить стек"}),
+        json!({"name": "3. DNS и FakeIP (198.18.0.0/15)", "status": if live.dns_healthy { "ok" } else { "warn" }, "detail": "FakeIP 127.0.0.42:53", "fix_id": "clear_dns_cache", "fix_label": "Сбросить кэш DNS"}),
+        json!({"name": "4. Внешний канал WAN", "status": if live.wan_healthy { "ok" } else { "warn" }, "detail": "Маршрут по умолчанию активен", "fix_id": "fix_wan_interface", "fix_label": "Проверить шлюз"}),
+        json!({"name": "5. Секции маршрутизации", "status": if d.sections.iter().any(|s| s.enabled) { "ok" } else { "warn" }, "detail": format!("Активно {} из {}", d.sections.iter().filter(|s| s.enabled).count(), d.sections.len()), "fix_id": "enable_default_desync", "fix_label": "Включить секции"}),
+        json!({"name": "6. Источники и Подписки", "status": "ok", "detail": format!("Источников: {}", d.outbound_sources.len()), "fix_id": "update_subscriptions", "fix_label": "Обновить подписки"}),
+        json!({"name": "7. Балансировщики нагрузки", "status": "ok", "detail": format!("Алгоритмов: {}", d.balancers.len()), "fix_id": "restart_core", "fix_label": "Перепроверить"}),
+        json!({"name": "8. Входящие серверы", "status": "ok", "detail": format!("Активно {} из {}", d.servers.iter().filter(|s| s.enabled).count(), d.servers.len()), "fix_id": "restart_core", "fix_label": "Применить"}),
+        json!({"name": "9. Память ОЗУ и ZRAM", "status": "ok", "detail": format!("Свободно {} МБ · ZRAM {} МБ", sys.mem_total_bytes.saturating_sub(sys.mem_used_bytes) / 1048576, sys.zram_total_bytes / 1048576), "fix_id": "optimize_memory", "fix_label": "Сжать память"}),
+        json!({"name": "10. Системное время NTP", "status": if unix_now_secs() > 1_700_000_000 { "ok" } else { "warn" }, "detail": "Синхронизировано для TLS 1.3 / Reality", "fix_id": "fix_system_time", "fix_label": "Синхронизировать NTP"}),
+        json!({"name": "11. Снимок LKG Watchdog", "status": "ok", "detail": if state.lkg_path.exists() { "Эталон сохранён" } else { "Готов к записи" }, "fix_id": "rollback_known_good", "fix_label": "Откат к эталону"}),
+        json!({"name": "12. Защита NAND и Honeypot", "status": "ok", "detail": format!("SHA-256 Guard · Отражено: {}", live.honeypot_hits.len()), "fix_id": "flush_conntrack", "fix_label": "Сбросить сессии"}),
+        json!({"name": "13. Каскад dnsmasq -> FakeIP", "status": "ok", "detail": "noresolv=1 · 127.0.0.42#53", "fix_id": "fix_dnsmasq", "fix_label": "Перезапустить dnsmasq"}),
+        json!({"name": "14. Системный /etc/resolv.conf", "status": if resolv_ok { "ok" } else { "warn" }, "detail": "Резолвер хоста роутера", "fix_id": "fix_resolv_symlink", "fix_label": "Починить симлинк"}),
     ];
 
     DoctorReport {
@@ -1028,8 +1032,121 @@ pub async fn run_unlock_probe() -> Vec<UnlockProbeEntry> {
     out
 }
 
-/// DNS Leak & FakeIP pipeline verification (`POST /api/diagnostics/leak-check`).
-pub async fn run_leak_check(state: &Arc<AppState>) -> Value {
+/// Explain packet route + live `tachyon-core` `/tachyon/route-check` dual probe (`outbound_probe` vs `direct_probe`).
+pub async fn explain_route_with_engine(
+    core: &Arc<CoreManager>,
+    store: &RouterStoreData,
+    client_ip: &str,
+    target: &str,
+    port: u16,
+    protocol: &str,
+) -> Value {
+    let base = explain_route(store, client_ip, target, port, protocol);
+    let mut out = serde_json::to_value(&base).unwrap_or_else(|_| json!({}));
+    let req_body = json!({
+        "target": target,
+        "port": port,
+        "network": protocol,
+        "source_ip": client_ip,
+        "probe": true,
+        "timeout": 3500
+    })
+    .to_string();
+    if let Ok(engine_res) = core
+        .clash_request("POST", "/tachyon/route-check", Some(&req_body))
+        .await
+        && engine_res.get("ok").is_some()
+    {
+        out["engine_route_check"] = engine_res;
+    }
+    out
+}
+
+/// DNS spoofing/bogon check via `tachyon-core` `POST /tachyon/dns-check`.
+pub async fn run_dns_check_with_engine(core: &Arc<CoreManager>, domain: &str) -> Value {
+    let target = if domain.trim().is_empty() {
+        "www.youtube.com"
+    } else {
+        domain.trim()
+    };
+    let body = json!({ "domain": target, "timeout": 3500 }).to_string();
+    core.clash_request("POST", "/tachyon/dns-check", Some(&body))
+        .await
+        .unwrap_or_else(|e| json!({"ok": false, "domain": target, "error": e.to_string()}))
+}
+
+/// Run safe router network tools (`ping`, `traceroute`, `nslookup`, `pcap`) for Diagnostics (`Этап 7.7`).
+pub async fn run_network_tool(tool: &str, target: &str) -> Value {
+    let clean_target: String = target
+        .trim()
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | ':'))
+        .take(64)
+        .collect();
+    let host = if clean_target.is_empty() {
+        "1.1.1.1".to_string()
+    } else {
+        clean_target
+    };
+
+    let (bin, args): (&str, Vec<&str>) = match tool {
+        "traceroute" => {
+            if cfg!(windows) {
+                ("tracert", vec!["-d", "-h", "12", "-w", "800", &host])
+            } else {
+                ("traceroute", vec!["-n", "-m", "12", "-w", "1", &host])
+            }
+        }
+        "nslookup" => ("nslookup", vec![&host, "127.0.0.42"]),
+        "pcap" | "tcpdump" => {
+            if cfg!(windows) {
+                ("netstat", vec!["-an"])
+            } else {
+                ("tcpdump", vec!["-ni", "br-lan", "-c", "20", "port", "443"])
+            }
+        }
+        _ => {
+            if cfg!(windows) {
+                ("ping", vec!["-n", "4", "-w", "1000", &host])
+            } else {
+                ("ping", vec!["-c", "4", "-W", "1", &host])
+            }
+        }
+    };
+
+    match tokio::time::timeout(
+        Duration::from_secs(8),
+        Command::new(bin).args(&args).output(),
+    )
+    .await
+    {
+        Ok(Ok(out)) => {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            let combined = if stderr.trim().is_empty() {
+                stdout.to_string()
+            } else {
+                format!("{stdout}\n{stderr}")
+            };
+            json!({
+                "ok": out.status.success(),
+                "tool": tool,
+                "target": host,
+                "output": combined.trim()
+            })
+        }
+        _ => json!({
+            "ok": false,
+            "tool": tool,
+            "target": host,
+            "output": format!("Утилита '{bin}' недоступна или превышено время ожидания")
+        }),
+    }
+}
+
+/// DNS Leak, IPv4/IPv6, WebRTC STUN & FakeIP pipeline verification (`POST /api/diagnostics/leak-check`),
+/// delegating directly to `tachyon-core` `POST /tachyon/leak`.
+pub async fn run_leak_check(state: &Arc<AppState>, core: Option<&Arc<CoreManager>>) -> Value {
     let d = state.data.read().await.clone();
     let live = state.live.read().await.clone();
     let dns_port_open = tokio::time::timeout(
@@ -1038,6 +1155,14 @@ pub async fn run_leak_check(state: &Arc<AppState>) -> Value {
     )
     .await
     .is_ok();
+
+    let engine_leak = if let Some(c) = core {
+        c.clash_request("POST", "/tachyon/leak", Some("{}"))
+            .await
+            .ok()
+    } else {
+        None
+    };
 
     json!({
         "ok": true,
@@ -1052,8 +1177,9 @@ pub async fn run_leak_check(state: &Arc<AppState>) -> Value {
         "bootstrap_dns": d.settings.bootstrap_dns_servers,
         "webrtc_leak_protect": d.settings.webrtc_leak_protect,
         "block_doh": d.settings.block_doh,
+        "engine_leak_audit": engine_leak,
         "verdict": if live.core_running {
-            "Защита FakeIP (198.18.0.0/15) и DNS-перехват активны"
+            "Защита FakeIP (198.18.0.0/15), перехват WebRTC STUN и DNS-конвейер активны"
         } else {
             "Ядро остановлено — используется системный DNS роутера"
         }

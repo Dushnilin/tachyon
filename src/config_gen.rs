@@ -1134,6 +1134,23 @@ pub fn compile_core_config(store: &RouterStoreData) -> anyhow::Result<Value> {
         "independent_cache": store.settings.dns_local_cache
     });
 
+    let mut core_subscriptions = Vec::new();
+    for src in store
+        .outbound_sources
+        .iter()
+        .filter(|s| s.enabled && s.source_type == "subscription" && !s.subscription_urls.is_empty())
+    {
+        if let Some(first_url) = src.subscription_urls.first() {
+            core_subscriptions.push(json!({
+                "tag": src.id,
+                "url": first_url,
+                "update_interval": if src.subscription_update_interval.is_empty() { "6h" } else { &src.subscription_update_interval },
+                "filter": src.filter_allow_regex,
+                "exclude": src.filter_deny_regex,
+            }));
+        }
+    }
+
     Ok(json!({
         "log": {
             "level": store.settings.log_level,
@@ -1142,6 +1159,7 @@ pub fn compile_core_config(store: &RouterStoreData) -> anyhow::Result<Value> {
         "dns": dns_block,
         "inbounds": inbounds,
         "outbounds": outbounds,
+        "subscriptions": core_subscriptions,
         "route": {
             "rules": rules,
             "rule_set": rule_sets,
@@ -1851,19 +1869,81 @@ pub fn build_server_wg_conf(srv: &InboundServer, host_override: Option<&str>) ->
 }
 
 /// Build the router's universal subscription payload (`/sub/:token`) across all enabled `InboundServer`s.
+/// Supports formats/apps: `raw`/`plain`, `base64`, `happ`, `v2rayng`, `streisand`, `hiddify`, `clash`, `singbox`, `amnezia`, `wireguard`.
 pub fn build_router_subscription_payload(
     store: &RouterStoreData,
     host_override: Option<&str>,
     format: &str,
 ) -> String {
-    let uris: Vec<String> = store
-        .servers
+    let fmt = format.trim().to_ascii_lowercase();
+    let enabled_servers: Vec<&InboundServer> =
+        store.servers.iter().filter(|s| s.enabled).collect();
+
+    if matches!(fmt.as_str(), "wireguard" | "amnezia" | "conf" | "wg") {
+        if let Some(wg_srv) = enabled_servers
+            .iter()
+            .find(|s| s.protocol == "awg" || s.protocol == "wireguard")
+            .or_else(|| enabled_servers.first())
+        {
+            return build_server_wg_conf(wg_srv, host_override);
+        }
+    }
+
+    let uris: Vec<String> = enabled_servers
         .iter()
-        .filter(|s| s.enabled)
         .map(|s| build_server_share_uri(s, host_override))
         .collect();
+
+    if fmt == "clash" || fmt == "yaml" {
+        let mut yaml = String::from("mixed-port: 7890\nallow-lan: true\nmode: rule\nlog-level: info\nproxies:\n");
+        let mut names = Vec::new();
+        for (i, u) in uris.iter().enumerate() {
+            if let Some(node) = parse_proxy_uri(u, i) {
+                names.push(format!("  - \"{}\"", node.tag.replace('"', "")));
+                yaml.push_str(&format!(
+                    "  - name: \"{}\"\n    type: {}\n    server: {}\n    port: {}\n    udp: true\n",
+                    node.tag.replace('"', ""),
+                    node.protocol,
+                    node.server,
+                    node.server_port
+                ));
+            }
+        }
+        yaml.push_str("proxy-groups:\n  - name: \"Tachyon Router\"\n    type: select\n    proxies:\n");
+        for n in names {
+            yaml.push_str(&format!("    {n}\n"));
+        }
+        yaml.push_str("rules:\n  - MATCH,Tachyon Router\n");
+        return yaml;
+    }
+
+    if fmt == "singbox" || fmt == "json" || fmt == "tachyon" {
+        let mut outs = Vec::new();
+        let mut tags = Vec::new();
+        for (i, u) in uris.iter().enumerate() {
+            if let Some(node) = parse_proxy_uri(u, i) {
+                tags.push(node.tag);
+                outs.push(node.outbound_json);
+            }
+        }
+        outs.insert(
+            0,
+            json!({
+                "type": "selector",
+                "tag": "proxy",
+                "outbounds": tags
+            }),
+        );
+        outs.push(json!({"type": "direct", "tag": "direct"}));
+        return serde_json::to_string_pretty(&json!({
+            "outbounds": outs,
+            "route": { "final": "proxy" }
+        }))
+        .unwrap_or_default();
+    }
+
     let plain = uris.join("\n");
-    if format.eq_ignore_ascii_case("plain") || format.eq_ignore_ascii_case("raw") {
+    if fmt == "plain" || fmt == "raw" {
         plain
     } else {
         B64_STD.encode(plain.as_bytes())

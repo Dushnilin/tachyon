@@ -10,8 +10,14 @@ use serde::{Deserialize, Serialize};
 pub struct HostSysInfo {
     pub os: String,
     pub arch: String,
+    pub hostname: String,
     pub mem_total_bytes: u64,
     pub mem_used_bytes: u64,
+    pub memory_total_mb: u64,
+    pub memory_used_mb: u64,
+    pub zram_total_bytes: u64,
+    pub zram_used_bytes: u64,
+    pub cpu_temp_c: f32,
     pub panel_rss_bytes: u64,
     pub host_uptime_secs: u64,
     pub load_avg: String,
@@ -33,9 +39,41 @@ pub struct LanDevice {
     pub ip: String,
     pub mac: String,
     pub hostname: String,
+    #[serde(default)]
+    pub custom_name: String,
+    #[serde(default)]
+    pub note: String,
+    #[serde(default)]
+    pub vendor: String,
     pub interface: String,
     pub reachable: bool,
     pub lease_expires: i64,
+    #[serde(default)]
+    pub static_lease: bool,
+    #[serde(default)]
+    pub routed_section: String,
+    #[serde(default)]
+    pub upload_bytes: u64,
+    #[serde(default)]
+    pub download_bytes: u64,
+    #[serde(default)]
+    pub proxied_upload: u64,
+    #[serde(default)]
+    pub proxied_download: u64,
+    #[serde(default)]
+    pub direct_upload: u64,
+    #[serde(default)]
+    pub direct_download: u64,
+    #[serde(default)]
+    pub upload_bps: u64,
+    #[serde(default)]
+    pub download_bps: u64,
+    #[serde(default)]
+    pub limit_up_bps: u64,
+    #[serde(default)]
+    pub limit_down_bps: u64,
+    #[serde(default)]
+    pub active_sessions: usize,
 }
 
 pub fn read_boot_id() -> String {
@@ -127,16 +165,29 @@ pub fn find_running_process_by_name(comm_name: &str) -> Option<(u32, u64)> {
 }
 
 pub fn collect_host_info() -> HostSysInfo {
+    let model = read_router_model();
+    let hostname = std::fs::read_to_string("/proc/sys/kernel/hostname")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| model.clone());
+
     #[allow(unused_mut)]
     let mut info = HostSysInfo {
         os: std::env::consts::OS.to_string(),
         arch: std::env::consts::ARCH.to_string(),
+        hostname,
         mem_total_bytes: 0,
         mem_used_bytes: 0,
+        memory_total_mb: 0,
+        memory_used_mb: 0,
+        zram_total_bytes: 0,
+        zram_used_bytes: 0,
+        cpu_temp_c: 0.0,
         panel_rss_bytes: 0,
         host_uptime_secs: 0,
         load_avg: "0.00 / 0.00 / 0.00".to_string(),
-        router_model: read_router_model(),
+        router_model: model,
         openwrt_release: read_openwrt_release(),
     };
 
@@ -145,15 +196,36 @@ pub fn collect_host_info() -> HostSysInfo {
         if let Ok(meminfo) = std::fs::read_to_string("/proc/meminfo") {
             let mut total_kb = 0u64;
             let mut avail_kb = 0u64;
+            let mut swap_total_kb = 0u64;
+            let mut swap_free_kb = 0u64;
             for line in meminfo.lines() {
                 if let Some(rest) = line.strip_prefix("MemTotal:") {
                     total_kb = parse_kb(rest);
                 } else if let Some(rest) = line.strip_prefix("MemAvailable:") {
                     avail_kb = parse_kb(rest);
+                } else if let Some(rest) = line.strip_prefix("SwapTotal:") {
+                    swap_total_kb = parse_kb(rest);
+                } else if let Some(rest) = line.strip_prefix("SwapFree:") {
+                    swap_free_kb = parse_kb(rest);
                 }
             }
             info.mem_total_bytes = total_kb * 1024;
             info.mem_used_bytes = total_kb.saturating_sub(avail_kb) * 1024;
+            info.memory_total_mb = info.mem_total_bytes / 1_048_576;
+            info.memory_used_mb = info.mem_used_bytes / 1_048_576;
+            info.zram_total_bytes = swap_total_kb * 1024;
+            info.zram_used_bytes = swap_total_kb.saturating_sub(swap_free_kb) * 1024;
+        }
+        for tz in [
+            "/sys/class/thermal/thermal_zone0/temp",
+            "/sys/class/hwmon/hwmon0/temp1_input",
+        ] {
+            if let Ok(raw_t) = std::fs::read_to_string(tz)
+                && let Ok(v) = raw_t.trim().parse::<f32>()
+            {
+                info.cpu_temp_c = if v > 200.0 { v / 1000.0 } else { v };
+                break;
+            }
         }
         if let Ok(uptime_str) = std::fs::read_to_string("/proc/uptime")
             && let Some(first) = uptime_str.split_whitespace().next()
@@ -178,6 +250,8 @@ pub fn collect_host_info() -> HostSysInfo {
     #[cfg(target_os = "windows")]
     {
         win_sys::fill_host_info(&mut info);
+        info.memory_total_mb = info.mem_total_bytes / 1_048_576;
+        info.memory_used_mb = info.mem_used_bytes / 1_048_576;
     }
 
     info
@@ -224,15 +298,18 @@ pub fn discover_lan_devices() -> Vec<LanDevice> {
                 } else {
                     parts[3].to_string()
                 };
+                let vendor = lookup_mac_vendor(&mac);
                 by_ip.insert(
                     ip.clone(),
                     LanDevice {
                         ip,
                         mac,
                         hostname: host,
+                        vendor,
                         interface: "br-lan".to_string(),
                         reachable: true,
                         lease_expires: expires,
+                        ..Default::default()
                     },
                 );
             }
@@ -253,11 +330,15 @@ pub fn discover_lan_devices() -> Vec<LanDevice> {
                     continue;
                 }
                 let reachable = flags != "0x0";
+                let vendor = lookup_mac_vendor(&mac);
                 by_ip
                     .entry(ip.clone())
                     .and_modify(|d| {
                         if d.mac.is_empty() {
                             d.mac = mac.clone();
+                        }
+                        if d.vendor.is_empty() {
+                            d.vendor = vendor.clone();
                         }
                         d.interface = dev.clone();
                         d.reachable = reachable;
@@ -266,9 +347,11 @@ pub fn discover_lan_devices() -> Vec<LanDevice> {
                         ip,
                         mac,
                         hostname: String::new(),
+                        vendor,
                         interface: dev,
                         reachable,
                         lease_expires: 0,
+                        ..Default::default()
                     });
             }
         }
@@ -277,6 +360,39 @@ pub fn discover_lan_devices() -> Vec<LanDevice> {
     let mut list: Vec<LanDevice> = by_ip.into_values().collect();
     list.sort_by(|a, b| a.ip.cmp(&b.ip));
     list
+}
+
+/// Fast offline OUI vendor lookup for common LAN devices.
+pub fn lookup_mac_vendor(mac: &str) -> String {
+    let up = mac.trim().to_ascii_uppercase();
+    if up.len() < 8 {
+        return String::new();
+    }
+    let prefix = &up[..8];
+    // Locally administered / randomized MAC check (second hex digit is 2, 6, A, E)
+    if let Some(second) = up.chars().nth(1)
+        && matches!(second, '2' | '6' | 'A' | 'E')
+    {
+        return "Private MAC".to_string();
+    }
+    match prefix {
+        "00:1A:11" | "3C:5A:B4" | "F4:F5:D8" | "54:60:09" => "Google",
+        "00:17:F2" | "28:CF:E9" | "3C:06:30" | "A4:83:E7" | "F0:18:98" | "BC:D0:74" => "Apple",
+        "00:16:32" | "24:4B:03" | "50:01:BB" | "78:47:1D" | "BC:14:85" => "Samsung",
+        "28:6C:07" | "64:09:80" | "78:11:DC" | "F8:A4:5F" | "AC:F7:F3" => "Xiaomi",
+        "00:E0:4C" | "52:54:00" | "70:85:C2" | "18:C0:4D" => "Realtek / PC",
+        "00:1B:21" | "3C:97:0E" | "8C:8D:28" | "A4:34:D9" | "F8:63:3F" => "Intel",
+        "14:CC:20" | "50:C7:BF" | "C0:25:E9" | "E8:DE:27" | "B0:BE:76" => "TP-Link",
+        "50:FF:20" | "E4:18:6B" => "Keenetic",
+        "4C:5E:0C" | "64:D1:54" | "B8:69:F4" | "DC:2C:6E" => "MikroTik",
+        "04:D9:F5" | "10:7B:44" | "2C:56:DC" | "F0:2F:74" => "ASUS",
+        "00:13:A9" | "00:1D:0D" | "70:9E:29" | "F8:46:1C" => "Sony PlayStation",
+        "00:50:F2" | "28:18:78" | "7C:ED:8D" | "98:5F:D3" => "Microsoft / Xbox",
+        "B8:27:EB" | "DC:A6:32" | "E4:5F:01" | "2C:CF:67" => "Raspberry Pi",
+        "00:18:82" | "28:31:52" | "48:46:FB" | "88:28:B3" => "Huawei",
+        _ => "LAN Client",
+    }
+    .to_string()
 }
 
 /// Read the Resident Set Size (RSS / Working Set) in bytes for a given process PID.

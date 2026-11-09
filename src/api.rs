@@ -131,10 +131,11 @@ async fn handle_conn(
         return send_html(&mut stream, dynamic_ui.as_deref().unwrap_or(UI_HTML)).await;
     }
 
-    // Public Router Subscription Endpoint (`/sub/:token`)
+    // Public Router Subscription Endpoint (`/sub/:token` or `/sub/:token/:client_id`)
     if method == "GET"
-        && let Some(sub_tok) = path.strip_prefix("/sub/")
+        && let Some(sub_rest) = path.strip_prefix("/sub/")
     {
+        let sub_tok = sub_rest.split('/').next().unwrap_or(sub_rest);
         let d = state.data.read().await;
         if !d.settings.server_subscription_enabled {
             return send_json(
@@ -155,11 +156,11 @@ async fn handle_conn(
             )
             .await;
         }
-        let fmt = if query.contains("format=raw") || query.contains("format=plain") {
-            "plain"
-        } else {
-            &d.settings.server_subscription_format
-        };
+        let app_param = query.split('&').find_map(|kv| {
+            kv.strip_prefix("app=")
+                .or_else(|| kv.strip_prefix("format="))
+        });
+        let fmt = app_param.unwrap_or(&d.settings.server_subscription_format);
         let payload = config_gen::build_router_subscription_payload(&d, host_hdr.as_deref(), fmt);
         return send_plain(&mut stream, &payload).await;
     }
@@ -966,9 +967,11 @@ async fn dispatch_api(
                 .unwrap_or("www.youtube.com");
             let port = val.get("port").and_then(Value::as_u64).unwrap_or(443) as u16;
             let proto = val.get("protocol").and_then(Value::as_str).unwrap_or("tcp");
-            let d = state.data.read().await;
-            let res = diagnostics::explain_route(&d, client_ip, target, port, proto);
-            send_json(stream, 200, &json!(res)).await
+            let d = state.data.read().await.clone();
+            let res =
+                diagnostics::explain_route_with_engine(core, &d, client_ip, target, port, proto)
+                    .await;
+            send_json(stream, 200, &res).await
         }
         ("POST", "/api/diagnostics/dns-speed-test") | ("POST", "/api/diagnostics/dns-bench") => {
             let res = diagnostics::run_dns_speed_test().await;
@@ -976,7 +979,86 @@ async fn dispatch_api(
                 .first()
                 .map(|r| r.server.as_str())
                 .unwrap_or("Cloudflare");
-            send_json(stream, 200, &json!({"recommended": best, "results": res})).await
+            let dns_check = diagnostics::run_dns_check_with_engine(core, "www.youtube.com").await;
+            send_json(
+                stream,
+                200,
+                &json!({"recommended": best, "results": res, "engine_dns_check": dns_check}),
+            )
+            .await
+        }
+        ("POST", "/api/diagnostics/dns-check") => {
+            let val = serde_json::from_slice::<Value>(body).unwrap_or_else(|_| json!({}));
+            let dom = val
+                .get("domain")
+                .and_then(Value::as_str)
+                .unwrap_or("www.youtube.com");
+            let res = diagnostics::run_dns_check_with_engine(core, dom).await;
+            send_json(stream, 200, &res).await
+        }
+        ("POST", "/api/diagnostics/net-tool") => {
+            let val = serde_json::from_slice::<Value>(body).unwrap_or_else(|_| json!({}));
+            let tool = val.get("tool").and_then(Value::as_str).unwrap_or("ping");
+            let target = val
+                .get("target")
+                .and_then(Value::as_str)
+                .unwrap_or("1.1.1.1");
+            let res = diagnostics::run_network_tool(tool, target).await;
+            send_json(stream, 200, &res).await
+        }
+        ("GET", "/api/diagnostics/flight") => {
+            let res = core.get_core_flight_recorder().await;
+            send_json(stream, 200, &res).await
+        }
+        ("DELETE", "/api/diagnostics/flight") | ("POST", "/api/diagnostics/flight/clear") => {
+            let res = core.clear_core_flight_recorder().await;
+            send_json(stream, 200, &res).await
+        }
+        ("GET", "/api/diagnostics/failover") | ("POST", "/api/diagnostics/failover") => {
+            let res = core.get_core_failover().await;
+            send_json(stream, 200, &res).await
+        }
+        ("POST", "/api/diagnostics/failover-restore") => {
+            let val = serde_json::from_slice::<Value>(body).unwrap_or_else(|_| json!({}));
+            let tag = val.get("tag").and_then(Value::as_str).unwrap_or("");
+            let res = core.restore_core_failover(tag).await;
+            send_json(stream, 200, &res).await
+        }
+        ("GET", "/api/core/memory") => {
+            let res = core.get_core_memory().await;
+            send_json(stream, 200, &res).await
+        }
+        ("GET", "/api/core/stats") | ("POST", "/api/core/stats") => {
+            let reset = query.contains("reset=1");
+            let res = core.get_core_stats(reset).await;
+            send_json(stream, 200, &res).await
+        }
+        ("POST", "/api/core/kick") => {
+            let val = serde_json::from_slice::<Value>(body).unwrap_or_else(|_| json!({}));
+            let user = val.get("user").and_then(Value::as_str).unwrap_or("");
+            let inbound = val.get("inbound").and_then(Value::as_str).unwrap_or("");
+            let res = core.kick_core_session(user, inbound).await;
+            send_json(stream, 200, &res).await
+        }
+        ("POST", "/api/core/route-recheck") => {
+            let res = core.recheck_core_routes().await;
+            send_json(stream, 200, &res).await
+        }
+        ("POST", "/api/nodes/delay") => {
+            let val = serde_json::from_slice::<Value>(body).unwrap_or_else(|_| json!({}));
+            let tag = val.get("tag").and_then(Value::as_str).unwrap_or("");
+            let ms = core.probe_single_node_rtt(tag).await;
+            send_json(stream, 200, &json!({"ok": ms > 0, "tag": tag, "delay_ms": ms})).await
+        }
+        ("POST", "/api/nodes/exit") => {
+            let val = serde_json::from_slice::<Value>(body).unwrap_or_else(|_| json!({}));
+            let tag = val.get("tag").and_then(Value::as_str).unwrap_or("");
+            let res = core.probe_node_exit_ip(tag).await;
+            send_json(stream, 200, &res).await
+        }
+        ("GET", "/api/tailscale") => {
+            let res = core.get_tailscale_status().await;
+            send_json(stream, 200, &res).await
         }
         ("POST", "/api/diagnostics/fuzzer") | ("POST", "/api/diagnostics/desync-fuzzer") => {
             let val = serde_json::from_slice::<Value>(body).unwrap_or_else(|_| json!({}));
@@ -1039,7 +1121,7 @@ async fn dispatch_api(
             .await
         }
         ("POST", "/api/diagnostics/leak-check") | ("GET", "/api/diagnostics/leak-check") => {
-            let res = diagnostics::run_leak_check(state).await;
+            let res = diagnostics::run_leak_check(state, Some(core)).await;
             send_json(stream, 200, &res).await
         }
         ("POST", "/api/diagnostics/urltest") => {
@@ -1083,7 +1165,7 @@ async fn dispatch_api(
             )
             .await
         }
-        ("POST", "/api/diagnostics/known-good/promote") => {
+        ("POST", "/api/diagnostics/known-good/promote") | ("POST", "/api/lkg/confirm") => {
             let d = state.data.read().await.clone();
             match transaction::promote_to_known_good(&state.lkg_path, &d) {
                 Ok(_) => {
@@ -1102,7 +1184,7 @@ async fn dispatch_api(
                 }
             }
         }
-        ("POST", "/api/diagnostics/known-good/rollback") => {
+        ("POST", "/api/diagnostics/known-good/rollback") | ("POST", "/api/lkg/rollback") => {
             match diagnostics::apply_quick_fix(state, core, "rollback_known_good").await {
                 Ok(msg) => send_json(stream, 200, &json!({"ok": true, "message": msg})).await,
                 Err(e) => {
@@ -1173,6 +1255,94 @@ async fn dispatch_api(
                 .unwrap_or("br-lan");
             match core.send_wake_on_lan(mac, iface).await {
                 Ok(()) => send_json(stream, 200, &json!({"ok": true})).await,
+                Err(e) => {
+                    send_json(stream, 400, &json!({"ok": false, "error": e.to_string()})).await
+                }
+            }
+        }
+        ("POST", "/api/devices/limit") => {
+            let Ok(val) = serde_json::from_slice::<Value>(body) else {
+                return send_json(stream, 400, &json!({"error": "invalid json"})).await;
+            };
+            let ip = val.get("ip").and_then(Value::as_str).unwrap_or("");
+            let up_bps = val
+                .get("limit_up_bps")
+                .and_then(Value::as_u64)
+                .unwrap_or_else(|| {
+                    val.get("upload_mbps")
+                        .and_then(Value::as_u64)
+                        .unwrap_or(0)
+                        * 125_000
+                });
+            let down_bps = val
+                .get("limit_down_bps")
+                .and_then(Value::as_u64)
+                .unwrap_or_else(|| {
+                    val.get("download_mbps")
+                        .and_then(Value::as_u64)
+                        .unwrap_or(0)
+                        * 125_000
+                });
+            match core.set_device_rate_limit(ip, up_bps, down_bps).await {
+                Ok(res) => send_json(stream, 200, &res).await,
+                Err(e) => {
+                    send_json(stream, 400, &json!({"ok": false, "error": e.to_string()})).await
+                }
+            }
+        }
+        ("POST", "/api/devices/meta") => {
+            let Ok(val) = serde_json::from_slice::<Value>(body) else {
+                return send_json(stream, 400, &json!({"error": "invalid json"})).await;
+            };
+            let ip = val
+                .get("ip")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            if ip.is_empty() {
+                return send_json(stream, 400, &json!({"error": "missing ip"})).await;
+            }
+            let mut candidate = state.data.read().await.clone();
+            let entry = candidate.device_registry.entry(ip.clone()).or_default();
+            entry.ip = ip;
+            if let Some(m) = val.get("mac").and_then(Value::as_str) {
+                entry.mac = m.to_string();
+            }
+            if let Some(n) = val.get("custom_name").and_then(Value::as_str) {
+                entry.custom_name = n.to_string();
+            }
+            if let Some(note) = val.get("note").and_then(Value::as_str) {
+                entry.note = note.to_string();
+            }
+            if let Some(sl) = val.get("static_lease").and_then(Value::as_bool) {
+                entry.static_lease = sl;
+            }
+            match transaction::commit_transaction(state, candidate).await {
+                Ok(plan) => send_json(stream, 200, &json!({"ok": true, "plan": plan})).await,
+                Err(e) => {
+                    send_json(stream, 400, &json!({"ok": false, "error": e.to_string()})).await
+                }
+            }
+        }
+        ("POST", "/api/profiles/quota") => {
+            let Ok(val) = serde_json::from_slice::<Value>(body) else {
+                return send_json(stream, 400, &json!({"error": "invalid json"})).await;
+            };
+            let id = val.get("id").and_then(Value::as_str).unwrap_or("");
+            let action = val.get("action").and_then(Value::as_str).unwrap_or("add30");
+            let mut candidate = state.data.read().await.clone();
+            if let Some(p) = candidate.profiles.iter_mut().find(|x| x.id == id) {
+                match action {
+                    "add30" => p.daily_quota_minutes = p.daily_quota_minutes.saturating_add(30),
+                    "pause" => p.paused_until_unix = unix_now_secs() + 3600,
+                    "resume" => p.paused_until_unix = 0,
+                    "reset" => p.used_minutes_today = 0,
+                    _ => {}
+                }
+            }
+            match transaction::commit_transaction(state, candidate).await {
+                Ok(plan) => send_json(stream, 200, &json!({"ok": true, "plan": plan})).await,
                 Err(e) => {
                     send_json(stream, 400, &json!({"ok": false, "error": e.to_string()})).await
                 }
