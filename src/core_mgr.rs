@@ -68,6 +68,57 @@ impl CoreManager {
         configured
     }
 
+    /// Validate candidate config with `tachyon-core check -c` (when binary is present) and write it safely.
+    async fn write_validated_core_config(
+        &self,
+        store_snapshot: &crate::store::RouterStoreData,
+        cfg_val: &Value,
+    ) -> anyhow::Result<std::path::PathBuf> {
+        let state_dir = self
+            .state
+            .path
+            .parent()
+            .unwrap_or_else(|| Path::new("data"));
+        let is_tmp_staging = state_dir.to_string_lossy().starts_with("/tmp/tachyon-rs")
+            && Path::new("/etc/init.d/tachyon").exists();
+
+        let tmp_check_path = state_dir.join("tachyon-core-candidate.json");
+        crypto_gen::write_json_if_changed(&tmp_check_path, cfg_val)?;
+
+        let bin_path = self.resolve_bin_path().await;
+        if cfg!(target_os = "linux")
+            && Path::new(&bin_path).exists()
+            && let Ok(out) = Command::new(&bin_path)
+                .args(["check", "-c", &tmp_check_path.to_string_lossy()])
+                .output()
+                .await
+            && !out.status.success()
+        {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            anyhow::bail!(
+                "tachyon-core check failed: {}{}",
+                stderr.trim(),
+                stdout.trim()
+            );
+        }
+
+        if is_tmp_staging {
+            let staging_cfg = state_dir.join("tachyon-core-config.json");
+            crypto_gen::write_json_if_changed(&staging_cfg, cfg_val)?;
+            return Ok(staging_cfg);
+        }
+
+        let p = Path::new(&store_snapshot.settings.core_config_path);
+        if crypto_gen::write_json_if_changed(p, cfg_val).is_ok() {
+            Ok(p.to_path_buf())
+        } else {
+            let fallback = state_dir.join("tachyon-core-config.json");
+            crypto_gen::write_json_if_changed(&fallback, cfg_val)?;
+            Ok(fallback)
+        }
+    }
+
     /// Compile `/etc/tachyon-core/config.json`, apply network stack, and start `/usr/bin/tachyon-core`.
     pub async fn start(&self) -> anyhow::Result<()> {
         let _guard = self.reload_lock.lock().await;
@@ -75,21 +126,9 @@ impl CoreManager {
 
         let store_snapshot = { self.state.data.read().await.clone() };
         let cfg_val = config_gen::compile_core_config(&store_snapshot)?;
-        let cfg_path = {
-            let p = Path::new(&store_snapshot.settings.core_config_path);
-            if crypto_gen::write_json_if_changed(p, &cfg_val).is_ok() {
-                p.to_path_buf()
-            } else {
-                let fallback = self
-                    .state
-                    .path
-                    .parent()
-                    .unwrap_or_else(|| Path::new("data"))
-                    .join("tachyon-core-config.json");
-                crypto_gen::write_json_if_changed(&fallback, &cfg_val)?;
-                fallback
-            }
-        };
+        let cfg_path = self
+            .write_validated_core_config(&store_snapshot, &cfg_val)
+            .await?;
 
         let bin_path = self.resolve_bin_path().await;
         if !Path::new(&bin_path).exists() {
@@ -169,21 +208,11 @@ impl CoreManager {
         }
         let store_snapshot = { self.state.data.read().await.clone() };
         let cfg_val = config_gen::compile_core_config(&store_snapshot)?;
-        let cfg_path = {
-            let p = Path::new(&store_snapshot.settings.core_config_path);
-            if crypto_gen::write_json_if_changed(p, &cfg_val).is_ok() {
-                p.to_string_lossy().to_string()
-            } else {
-                let fallback = self
-                    .state
-                    .path
-                    .parent()
-                    .unwrap_or_else(|| Path::new("data"))
-                    .join("tachyon-core-config.json");
-                crypto_gen::write_json_if_changed(&fallback, &cfg_val)?;
-                fallback.to_string_lossy().to_string()
-            }
-        };
+        let cfg_path = self
+            .write_validated_core_config(&store_snapshot, &cfg_val)
+            .await?
+            .to_string_lossy()
+            .to_string();
         let _ = net_stack::apply_network_stack(&store_snapshot).await;
         let body = json!({ "path": cfg_path }).to_string();
         if self
@@ -800,52 +829,113 @@ impl CoreManager {
             core_ver
         };
 
-        let check_bin = |paths: &[&str], proc_name: &str, default_ver: &str| -> (bool, bool, u32, String) {
+        let read_ver_file = |paths: &[&str]| -> Option<String> {
+            for p in paths {
+                if let Ok(raw) = std::fs::read_to_string(p) {
+                    let s = raw.lines().next().unwrap_or("").trim();
+                    if !s.is_empty() {
+                        return Some(s.to_string());
+                    }
+                }
+            }
+            None
+        };
+
+        let check_bin = |paths: &[&str],
+                         proc_name: &str,
+                         ver_files: &[&str],
+                         fallback_ver: &str|
+         -> (bool, bool, u32, String) {
             let installed = paths.iter().any(|p| Path::new(p).exists());
-            let (running, pid) = if let Some((p, _)) = sys_info::find_running_process_by_name(proc_name) {
-                (true, p)
+            let (running, pid) = if installed {
+                if let Some((p, _)) = sys_info::find_running_process_by_name(proc_name) {
+                    (true, p)
+                } else {
+                    (false, 0)
+                }
             } else {
                 (false, 0)
             };
             let ver = if installed {
-                default_ver.to_string()
+                read_ver_file(ver_files).unwrap_or_else(|| fallback_ver.to_string())
             } else {
                 "не установлен".to_string()
             };
             (installed, running, pid, ver)
         };
 
-        let (z2_inst, z2_run, z2_pid, z2_ver) = check_bin(
-            &["/opt/zapret2/nfqws2", "/usr/bin/nfqws2", "/opt/zapret/nfqws"],
+        let (z1_inst, z1_run, z1_pid, z1_ver) = check_bin(
+            &["/etc/init.d/zapret"],
             "nfqws",
-            "0.8.2",
+            &["/opt/zapret/.version", "/etc/zapret/.version"],
+            "установлен",
         );
-        let (bd_inst, bd_run, bd_pid, bd_ver) =
-            check_bin(&["/usr/bin/ciadpi", "/opt/byedpi/ciadpi"], "ciadpi", "0.17.3");
+        let (z2_inst, z2_run, z2_pid, z2_ver) = check_bin(
+            &[
+                "/opt/zapret2/nfq2/nfqws2",
+                "/opt/zapret2/nfq/nfqws2",
+                "/opt/zapret2/nfqws2",
+                "/usr/bin/nfqws2",
+            ],
+            "nfqws2",
+            &["/opt/zapret2/.version", "/etc/zapret2/.version"],
+            "1.0.7",
+        );
+        let (bd_inst, bd_run, bd_pid, bd_ver) = check_bin(
+            &["/usr/bin/ciadpi", "/usr/bin/byedpi", "/opt/byedpi/ciadpi"],
+            "ciadpi",
+            &["/etc/byedpi/.version"],
+            "установлен",
+        );
         let (wd_inst, wd_run, wd_pid, wd_ver) = check_bin(
-            &["/usr/bin/wdtt-client", "/usr/bin/wdtt"],
-            "wdtt",
-            "0.2.1",
+            &[
+                "/usr/bin/qwdtt-client",
+                "/usr/bin/wdtt-client",
+                "/usr/bin/wdtt",
+            ],
+            "qwdtt",
+            &["/etc/qwdtt/.version", "/etc/wdtt/.version"],
+            "1.0.3",
         );
-        let (ol_inst, ol_run, ol_pid, ol_ver) =
-            check_bin(&["/usr/bin/olcrtc", "/opt/olcrtc/olcrtc"], "olcrtc", "0.1.4");
+        let (ol_inst, ol_run, ol_pid, ol_ver) = check_bin(
+            &["/usr/bin/olcrtc", "/opt/olcrtc/olcrtc"],
+            "olcrtc",
+            &["/etc/olcrtc/.version"],
+            "установлен",
+        );
         let (fp_inst, fp_run, fp_pid, fp_ver) = check_bin(
-            &["/usr/bin/fptn-client", "/opt/fptn/fptn-client"],
+            &[
+                "/usr/bin/fptn-client-cli",
+                "/usr/bin/fptn-client",
+                "/opt/fptn/fptn-client",
+            ],
             "fptn",
-            "0.3.2",
+            &["/etc/fptn/.version"],
+            "установлен",
         );
         let (ts_inst, ts_run, ts_pid, ts_ver) = check_bin(
             &["/usr/sbin/tailscaled", "/usr/bin/tailscale"],
             "tailscaled",
-            "1.80.2",
+            &["/etc/tailscale/.version"],
+            "установлен",
+        );
+        let (torr_inst, torr_run, torr_pid, _) = check_bin(
+            &[
+                "/usr/bin/torrserver",
+                "/opt/torrserver/torrserver",
+                "/usr/sbin/torrserver",
+            ],
+            "torrserver",
+            &[],
+            "установлен",
         );
 
         let components = vec![
             json!({
                 "id": "tachyon",
-                "name": "Tachyon Orchestrator",
+                "name": "Tachyon",
                 "category": "core",
-                "desc": "Единый Rust-оркестратор, веб-интерфейс, REST/MCP агент, Reconciler и автономный Watchdog",
+                "desc": "Основной сервис оркестрации, веб-интерфейс, REST/MCP агент и автономный Watchdog",
                 "installed": true,
                 "running": true,
                 "pid": std::process::id(),
@@ -856,9 +946,9 @@ impl CoreManager {
             }),
             json!({
                 "id": "tachyon-core",
-                "name": "Tachyon Core",
+                "name": "Tachyon Core / Sing-box",
                 "category": "core",
-                "desc": "Высокоскоростное маршрутизирующее ядро (24 протокола, Desync 2.0, XHTTP, AmneziaWG 2.0, FakeIP)",
+                "desc": "Универсальная платформа и движок маршрутизации (включает встроенный Desync 2.0, FPTN и Tailscale endpoint)",
                 "installed": true,
                 "running": core_running,
                 "pid": core_pid,
@@ -867,82 +957,95 @@ impl CoreManager {
                 "variant": if engine_variant.is_empty() { "tachyon-core" } else { &engine_variant },
                 "variants": ["tachyon-core", "sing-box-extended", "sing-box-lx", "sing-box-stable", "sing-box-tiny"],
                 "repo": "Dushnilin/tachyon-core",
-                "can_rollback": Path::new("/usr/bin/tachyon-core.bak").exists()
+                "can_rollback": Path::new("/usr/bin/tachyon-core.prev").exists() || Path::new("/usr/bin/tachyon-core.bak").exists()
             }),
             json!({
                 "id": "zapret2",
-                "name": "Zapret2 (nfqws2 / Lua)",
+                "name": "Zapret2",
                 "category": "dpi",
-                "desc": "Пакетная модификация трафика через NFQUEUE (Lua-десинхронизация TLS/QUIC) + встроенный контур Desync 2.0",
-                "installed": z2_inst || core_running,
-                "running": z2_run || core_running,
-                "pid": if z2_pid > 0 { z2_pid } else { core_pid },
-                "version": if z2_inst { z2_ver } else { format!("Desync 2.0 (в ядре {core_ver_str})") },
-                "latest": "0.8.2",
+                "desc": "Внешний движок модификации пакетов со скриптами Lua (nfqws2)",
+                "installed": z2_inst,
+                "running": z2_run,
+                "pid": z2_pid,
+                "version": z2_ver,
+                "latest": "1.0.7",
                 "repo": "Dushnilin/zapret2-openwrt",
                 "can_rollback": false
             }),
             json!({
-                "id": "byedpi",
-                "name": "ByeDPI (ciadpi)",
+                "id": "zapret",
+                "name": "Zapret",
                 "category": "dpi",
-                "desc": "Локальный SOCKS5-прокси адаптивной сегментации TCP/TLS-потоков",
-                "installed": bd_inst || core_running,
-                "running": bd_run || core_running,
-                "pid": if bd_pid > 0 { bd_pid } else { core_pid },
-                "version": if bd_inst { bd_ver } else { format!("Встроен в ядро ({core_ver_str})") },
+                "desc": "Классический внешний движок модификации пакетов (nfqws v1)",
+                "installed": z1_inst,
+                "running": z1_run,
+                "pid": z1_pid,
+                "version": z1_ver,
+                "latest": "70.5",
+                "repo": "remittor/zapret-openwrt",
+                "can_rollback": false
+            }),
+            json!({
+                "id": "byedpi",
+                "name": "ByeDPI",
+                "category": "dpi",
+                "desc": "Внешний локальный десинхронизатор SOCKS5 (ciadpi)",
+                "installed": bd_inst,
+                "running": bd_run,
+                "pid": bd_pid,
+                "version": bd_ver,
                 "latest": "0.17.3",
-                "repo": "hufrea/byedpi",
+                "repo": "DPITrickster/ByeDPI-OpenWrt",
                 "can_rollback": false
             }),
             json!({
                 "id": "wdtt",
-                "name": "WDTT (WebRTC DataChannel)",
+                "name": "WDTT",
                 "category": "transport",
-                "desc": "Транспорт туннелирования поверх шифрованных дата-каналов WebRTC DTLS/SCTP",
-                "installed": wd_inst || core_running,
-                "running": wd_run || core_running,
-                "pid": if wd_pid > 0 { wd_pid } else { core_pid },
-                "version": if wd_inst { wd_ver } else { format!("Нативный стек ({core_ver_str})") },
-                "latest": "0.2.1",
-                "repo": "Dushnilin/tachyon-core",
+                "desc": "Туннель WireGuard поверх TURN (пакет qwdtt-openwrt)",
+                "installed": wd_inst,
+                "running": wd_run,
+                "pid": wd_pid,
+                "version": wd_ver,
+                "latest": "1.0.3",
+                "repo": "Dushnilin/qwdtt-openwrt",
                 "can_rollback": false
             }),
             json!({
                 "id": "olcrtc",
-                "name": "OlcRTC (RTP/TURN Media)",
+                "name": "OlcRTC",
                 "category": "transport",
-                "desc": "Инкапсуляция сетевого трафика под видом мультимедийных потоков WebRTC RTP/SRTP",
-                "installed": ol_inst || core_running,
-                "running": ol_run || core_running,
-                "pid": if ol_pid > 0 { ol_pid } else { core_pid },
-                "version": if ol_inst { ol_ver } else { format!("Нативный стек ({core_ver_str})") },
+                "desc": "Внешний WebRTC-туннель реального времени (пакет openwrt-olcrtc)",
+                "installed": ol_inst,
+                "running": ol_run,
+                "pid": ol_pid,
+                "version": ol_ver,
                 "latest": "0.1.4",
-                "repo": "Dushnilin/tachyon-core",
+                "repo": "Dushnilin/openwrt-olcrtc",
                 "can_rollback": false
             }),
             json!({
                 "id": "fptn",
-                "name": "FPTN Client",
+                "name": "FPTN",
                 "category": "transport",
-                "desc": "Маскирующий HTTPS/TLS-клиент с мимикрией отпечатка браузера и балансировкой шлюзов",
-                "installed": fp_inst || core_running,
-                "running": fp_run || core_running,
-                "pid": if fp_pid > 0 { fp_pid } else { core_pid },
-                "version": if fp_inst { fp_ver } else { format!("Нативный стек ({core_ver_str})") },
+                "desc": "Клиент протокола FPTN (внешний пакет fptn-client; нативный режим доступен внутри tachyon-core)",
+                "installed": fp_inst,
+                "running": fp_run,
+                "pid": fp_pid,
+                "version": fp_ver,
                 "latest": "0.3.2",
-                "repo": "batchar2/fptn",
+                "repo": "Dushnilin/fptn",
                 "can_rollback": false
             }),
             json!({
                 "id": "tailscale",
-                "name": "Tailscale Mesh",
+                "name": "Tailscale",
                 "category": "transport",
-                "desc": "Координация узлов Mesh-сети Tailscale / Headscale и маршрутизация подсетей (Exit Node)",
-                "installed": ts_inst || core_running,
-                "running": ts_run || core_running,
-                "pid": if ts_pid > 0 { ts_pid } else { core_pid },
-                "version": if ts_inst { ts_ver } else { format!("Встроенный клиент ({core_ver_str})") },
+                "desc": "Mesh VPN демон tailscaled (нативный endpoint также доступен внутри tachyon-core)",
+                "installed": ts_inst,
+                "running": ts_run,
+                "pid": ts_pid,
+                "version": ts_ver,
                 "latest": "1.80.2",
                 "repo": "tailscale/tailscale",
                 "can_rollback": false
@@ -951,11 +1054,11 @@ impl CoreManager {
                 "id": "torrserver_direct",
                 "name": "TorrServer Direct",
                 "category": "service",
-                "desc": "Автоматический прямой маршрут для медиапотоков TorrServer и P2P-трафика в обход VPN-туннеля",
-                "installed": true,
-                "running": torr_enabled,
-                "pid": 0,
-                "version": if torr_enabled { "активен" } else { "выключен" },
+                "desc": "Прямой обход cgroup для локального медиасервера TorrServer",
+                "installed": torr_inst,
+                "running": torr_enabled && torr_run,
+                "pid": torr_pid,
+                "version": if torr_inst { if torr_enabled { "активен" } else { "выключен" } } else { "не установлен" },
                 "latest": "встроен",
                 "repo": "Dushnilin/tachyon",
                 "can_rollback": false
@@ -1091,8 +1194,8 @@ impl CoreManager {
             if l.is_empty() {
                 continue;
             }
-            if l.starts_with("http://") || l.starts_with("https://") {
-                if let Ok(out) = Command::new("curl")
+            if (l.starts_with("http://") || l.starts_with("https://"))
+                && let Ok(out) = Command::new("curl")
                     .args([
                         "-i",
                         "-fsSL",
@@ -1106,18 +1209,17 @@ impl CoreManager {
                     ])
                     .output()
                     .await
-                    && out.status.success()
-                {
-                    let raw_resp = String::from_utf8_lossy(&out.stdout);
-                    let (hdr, body) = split_http_response(&raw_resp);
-                    parse_subscription_headers(hdr, &mut sub_meta);
-                    for n in Self::parse_subscription_payload(body) {
-                        if !nodes
-                            .iter()
-                            .any(|existing: &ParsedProxyNode| existing.tag == n.tag)
-                        {
-                            nodes.push(n);
-                        }
+                && out.status.success()
+            {
+                let raw_resp = String::from_utf8_lossy(&out.stdout);
+                let (hdr, body) = split_http_response(&raw_resp);
+                parse_subscription_headers(hdr, &mut sub_meta);
+                for n in Self::parse_subscription_payload(body) {
+                    if !nodes
+                        .iter()
+                        .any(|existing: &ParsedProxyNode| existing.tag == n.tag)
+                    {
+                        nodes.push(n);
                     }
                 }
             }
@@ -1376,10 +1478,8 @@ impl CoreManager {
                         .get("limit_down_bps")
                         .and_then(Value::as_u64)
                         .unwrap_or(0);
-                    existing.active_sessions = cd
-                        .get("connections")
-                        .and_then(Value::as_u64)
-                        .unwrap_or(0) as usize;
+                    existing.active_sessions =
+                        cd.get("connections").and_then(Value::as_u64).unwrap_or(0) as usize;
                 }
             }
 

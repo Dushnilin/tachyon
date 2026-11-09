@@ -430,13 +430,27 @@ pub struct RoutingSection {
     pub label: String,
     #[serde(default)]
     pub icon: String,
-    /// `proxy`, `desync`, `wdtt`, `fptn`, `tailscale`, `direct`, `block`, `hosts`, `dns`
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub prefix_text: String,
+    #[serde(default)]
+    pub prefix_bg: String,
+    #[serde(default)]
+    pub prefix_color: String,
+    /// `proxy`, `desync`, `zapret2`, `zapret`, `byedpi`, `wdtt`, `olcrtc`, `fptn`, `awg`, `warp`, `tailscale`, `openvpn`, `openconnect`, `tewfai`, `direct`, `block`, `hosts`, `dns`
     #[serde(default, alias = "action_mode")]
     pub connection_type: String,
     #[serde(default)]
     pub action: String,
     #[serde(default)]
     pub condition_refs: Vec<String>,
+    #[serde(default)]
+    pub condition_operator: String,
+    #[serde(default)]
+    pub condition_expression: String,
+    #[serde(default)]
+    pub match_all: bool,
     #[serde(default, alias = "source_refs")]
     pub outbound_source_refs: Vec<String>,
     #[serde(default)]
@@ -444,17 +458,107 @@ pub struct RoutingSection {
     #[serde(default)]
     pub outbound_group_ref: String,
     #[serde(default)]
+    pub outbound_group_refs: Vec<String>,
+    #[serde(default)]
+    pub outbound_group_levels: Vec<String>,
+    #[serde(default)]
+    pub section_selection_mode: String,
+    #[serde(default)]
+    pub selector_auto_failover: bool,
+    #[serde(default)]
+    pub section_health_url: String,
+    #[serde(default)]
+    pub interfaces: Vec<String>,
+    #[serde(default)]
+    pub output_interface: String,
+    #[serde(default)]
+    pub server_domain_rules: Vec<String>,
+
+    // Section-level server pool narrowing & dashboard filter
+    #[serde(default)]
+    pub section_filter_mode: String,
+    #[serde(default)]
+    pub include_countries: Vec<String>,
+    #[serde(default)]
+    pub exclude_countries: Vec<String>,
+    #[serde(default)]
+    pub include_prefixes: Vec<String>,
+    #[serde(default)]
+    pub exclude_prefixes: Vec<String>,
+    #[serde(default)]
+    pub node_filter_allow: String,
+    #[serde(default)]
+    pub node_filter_deny: String,
+    #[serde(default)]
+    pub include_protocols: Vec<String>,
+    #[serde(default)]
+    pub exclude_protocols: Vec<String>,
+    #[serde(default)]
+    pub include_transports: Vec<String>,
+    #[serde(default)]
+    pub exclude_transports: Vec<String>,
+    #[serde(default)]
+    pub include_securities: Vec<String>,
+    #[serde(default)]
+    pub exclude_securities: Vec<String>,
+    #[serde(default)]
+    pub dashboard_hide_na_servers: bool,
+
+    // Traffic filters (Domains, Lists, Subnets, GeoIP, LAN devices, Ports, Protocols, DSCP)
+    #[serde(default)]
     pub community_lists: Vec<String>,
+    #[serde(default = "default_true")]
+    pub community_subnets: bool,
+    #[serde(default)]
+    pub rule_set_urls: Vec<String>,
+    #[serde(default)]
+    pub domain_ip_lists: Vec<String>,
+    #[serde(default)]
+    pub domains: Vec<String>,
     #[serde(default)]
     pub user_domains: Vec<String>,
     #[serde(default)]
+    pub exclude_domains: Vec<String>,
+    #[serde(default)]
     pub user_subnets: Vec<String>,
+    #[serde(default)]
+    pub exclude_subnets: Vec<String>,
+    #[serde(default)]
+    pub asn_list: Vec<String>,
     #[serde(default)]
     pub geoip_codes: Vec<String>,
     #[serde(default)]
     pub geoip_mode: String,
+    #[serde(default)]
+    pub geosite_codes: Vec<String>,
+    #[serde(default)]
+    pub global_rules: Vec<String>,
+    #[serde(default)]
+    pub source_ip_cidr: Vec<String>,
     #[serde(default, alias = "client_ips")]
     pub fully_routed_ips: Vec<String>,
+    #[serde(default)]
+    pub excluded_ips: Vec<String>,
+    #[serde(default)]
+    pub source_inbounds: Vec<String>,
+    #[serde(default)]
+    pub default_interface_address: Vec<String>,
+    #[serde(default)]
+    pub interface_address: Vec<String>,
+    #[serde(default)]
+    pub ports: Vec<String>,
+    #[serde(default)]
+    pub source_ports: Vec<String>,
+    #[serde(default)]
+    pub exclude_ports: Vec<String>,
+    #[serde(default)]
+    pub protocol: Vec<String>,
+    #[serde(default)]
+    pub excluded_protocol: Vec<String>,
+    #[serde(default)]
+    pub dscp: Vec<String>,
+
+    // Cascade Detour, Fail Policy, Packet Encoding, Local Mixed Proxy & Routed DNS
     #[serde(default)]
     pub outbound_detour_enabled: bool,
     #[serde(default)]
@@ -462,13 +566,139 @@ pub struct RoutingSection {
     #[serde(default)]
     pub sort_by_latency: bool,
     #[serde(default)]
+    pub packet_encoding: String,
+    #[serde(default)]
+    pub resolve_real_ip_for_routing: bool,
+    #[serde(default)]
     pub fail_policy: String,
+    #[serde(default)]
+    pub fail_policy_urls: Vec<String>,
+    #[serde(default)]
+    pub fail_policy_timeout: u32,
+    #[serde(default)]
+    pub fail_policy_threshold: u32,
+    #[serde(default)]
+    pub fail_policy_recover_threshold: u32,
+    #[serde(default)]
+    pub fail_policy_cooldown: u32,
+    #[serde(default = "default_true")]
+    pub fail_policy_check_direct: bool,
+    #[serde(default)]
+    pub fail_policy_check_interval: u32,
+    #[serde(default)]
+    pub fail_policy_recover_interval: u32,
+    #[serde(default)]
+    pub fail_policy_expected_status: String,
+    #[serde(default)]
+    pub mixed_proxy_enabled: bool,
+    #[serde(default)]
+    pub mixed_proxy_port: u16,
+    #[serde(default)]
+    pub mixed_proxy_auth_enabled: bool,
+    #[serde(default)]
+    pub mixed_proxy_username: String,
+    #[serde(default)]
+    pub mixed_proxy_password: String,
     #[serde(default)]
     pub routed_dns_enabled: bool,
     #[serde(default)]
+    pub routed_dns_type: String,
+    #[serde(default)]
     pub dns_servers: Vec<String>,
+    #[serde(default)]
+    pub dns_use_wan: bool,
+    #[serde(default)]
+    pub disable_fakeip: bool,
+    #[serde(default)]
+    pub dns_detour_enabled: bool,
+    #[serde(default)]
+    pub dns_detour_section: String,
     #[serde(default, alias = "selected_node_tag")]
     pub active_selected_tag: String,
+
+    // Provider-specific inline configuration (Desync 2.0, Zapret2, Zapret, ByeDPI, WDTT, OlcRTC, FPTN, AWG, Hosts)
+    #[serde(default)]
+    pub desync_preset: String,
+    #[serde(default)]
+    pub desync_mode: String,
+    #[serde(default)]
+    pub desync_fooling: String,
+    #[serde(default = "default_true")]
+    pub desync_auto_tune: bool,
+    #[serde(default)]
+    pub desync_split_pos: String,
+    #[serde(default)]
+    pub desync_fake_ttl: u8,
+    #[serde(default)]
+    pub desync_fake_sni: String,
+    #[serde(default)]
+    pub desync_repeats: u8,
+    #[serde(default)]
+    pub desync_split_delay_ms: u32,
+    #[serde(default)]
+    pub desync_tlsrec_first: bool,
+    #[serde(default)]
+    pub desync_seqovl: u16,
+    #[serde(default)]
+    pub desync_syndata: bool,
+    #[serde(default)]
+    pub desync_wsize: u32,
+    #[serde(default)]
+    pub desync_ipfrag: bool,
+    #[serde(default = "default_true")]
+    pub desync_udp_fake: bool,
+    #[serde(default)]
+    pub desync_udp_repeats: u8,
+    #[serde(default)]
+    pub desync_udp_fake_ttl: u8,
+    #[serde(default)]
+    pub desync_udplen: u16,
+    #[serde(default)]
+    pub desync_opts: String,
+    #[serde(default)]
+    pub nfqws2_opt: String,
+    #[serde(default)]
+    pub nfqws_opt: String,
+    #[serde(default)]
+    pub byedpi_cmd_opts: String,
+    #[serde(default)]
+    pub warp_flow_uri: String,
+    #[serde(default)]
+    pub warp_flow_mode: String,
+    #[serde(default)]
+    pub warp_flow_workers: String,
+    #[serde(default)]
+    pub warp_flow_mtu: String,
+    #[serde(default)]
+    pub warp_flow_subscription_links: Vec<String>,
+    #[serde(default)]
+    pub olcrtc_provider: String,
+    #[serde(default)]
+    pub olcrtc_transport: String,
+    #[serde(default)]
+    pub olcrtc_room_id: String,
+    #[serde(default)]
+    pub olcrtc_crypto_key: String,
+    #[serde(default)]
+    pub olcrtc_socks_port: String,
+    #[serde(default)]
+    pub olcrtc_subscription_links: Vec<String>,
+    #[serde(default)]
+    pub fptn_access_token: String,
+    #[serde(default)]
+    pub fptn_sni: String,
+    #[serde(default)]
+    pub fptn_bypass_method: String,
+    #[serde(default)]
+    pub fptn_preferred_server: String,
+    #[serde(default)]
+    pub dns_hosts: String,
+    #[serde(default)]
+    pub hosts_list_urls: Vec<String>,
+    #[serde(default)]
+    pub hosts_list_auto_update: bool,
+    #[serde(default)]
+    pub hosts_list_update_interval: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -485,10 +715,18 @@ pub struct TrafficCondition {
     pub children: Vec<String>,
     #[serde(default)]
     pub community_lists: Vec<String>,
+    #[serde(default = "default_true")]
+    pub community_subnets: bool,
     #[serde(default, alias = "domains")]
     pub user_domains: Vec<String>,
+    #[serde(default)]
+    pub exclude_domains: Vec<String>,
     #[serde(default, alias = "ip_cidrs")]
     pub user_subnets: Vec<String>,
+    #[serde(default)]
+    pub exclude_subnets: Vec<String>,
+    #[serde(default)]
+    pub asn_list: Vec<String>,
     #[serde(default)]
     pub remote_domain_lists: Vec<String>,
     #[serde(default)]
@@ -506,7 +744,17 @@ pub struct TrafficCondition {
     #[serde(default)]
     pub ports: Vec<String>,
     #[serde(default)]
+    pub source_ports: Vec<String>,
+    #[serde(default)]
+    pub exclude_ports: Vec<String>,
+    #[serde(default)]
     pub l4_proto: String,
+    #[serde(default)]
+    pub protocol: Vec<String>,
+    #[serde(default)]
+    pub excluded_protocol: Vec<String>,
+    #[serde(default)]
+    pub dscp: Vec<String>,
     /// Optional `time_window` schedule (e.g. `22:00-08:00` or `mon,tue,wed,thu,fri 09:00-18:00`).
     #[serde(default)]
     pub time_window: String,
@@ -639,6 +887,44 @@ pub struct OutboundSource {
     pub include_countries: Vec<String>,
     #[serde(default)]
     pub exclude_countries: Vec<String>,
+    #[serde(default = "default_true")]
+    pub subscription_update_enabled: bool,
+    #[serde(default)]
+    pub download_via_proxy_enabled: bool,
+    #[serde(default)]
+    pub download_via_proxy_section: String,
+    #[serde(default = "default_true")]
+    pub auto_user_agent: bool,
+    #[serde(default)]
+    pub user_agent: String,
+    #[serde(default = "default_true")]
+    pub auto_hwid: bool,
+    #[serde(default)]
+    pub hwid: String,
+    #[serde(default)]
+    pub custom_device_headers: bool,
+    #[serde(default)]
+    pub device_os: String,
+    #[serde(default)]
+    pub ver_os: String,
+    #[serde(default)]
+    pub device_model: String,
+    #[serde(default)]
+    pub app_version: String,
+    #[serde(default)]
+    pub prefix_nodes: bool,
+    #[serde(default)]
+    pub node_prefix: String,
+    #[serde(default)]
+    pub node_prefix_bg: String,
+    #[serde(default)]
+    pub node_prefix_color: String,
+    #[serde(default)]
+    pub nfqws2_opt: String,
+    #[serde(default)]
+    pub nfqws_opt: String,
+    #[serde(default)]
+    pub byedpi_cmd_opts: String,
     #[serde(default)]
     pub sub_upload_bytes: u64,
     #[serde(default)]
@@ -653,6 +939,29 @@ pub struct OutboundSource {
     pub cached_nodes: Vec<ParsedProxyNode>,
     #[serde(default)]
     pub last_updated_unix: i64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PriorityLevelConfig {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub direct: bool,
+    /// `include`, `exclude`, `mixed`, or `all_remaining`
+    #[serde(default)]
+    pub filter_mode: String,
+    #[serde(default)]
+    pub include_countries: Vec<String>,
+    #[serde(default)]
+    pub exclude_countries: Vec<String>,
+    #[serde(default)]
+    pub include_servers: Vec<String>,
+    #[serde(default)]
+    pub exclude_servers: Vec<String>,
+    #[serde(default)]
+    pub include_regex: String,
+    #[serde(default)]
+    pub exclude_regex: String,
 }
 
 /// Policy-only balancer configuration.
@@ -685,6 +994,20 @@ pub struct BalancerConfig {
     pub passive_check: bool,
     #[serde(default)]
     pub interrupt_exist_connections: bool,
+    #[serde(default)]
+    pub active_check_interval: String,
+    #[serde(default)]
+    pub check_timeout: String,
+    #[serde(default)]
+    pub recovery_check_interval: String,
+    #[serde(default)]
+    pub pick_fastest: bool,
+    #[serde(default)]
+    pub switch_to_faster_same_priority: bool,
+    #[serde(default)]
+    pub fastest_check_interval: String,
+    #[serde(default)]
+    pub priority_levels: Vec<PriorityLevelConfig>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -1161,6 +1484,7 @@ impl RouterStoreData {
                 sticky_hash: String::new(),
                 passive_check: true,
                 interrupt_exist_connections: false,
+                ..Default::default()
             });
         }
         if self.sections.is_empty() {
@@ -1313,11 +1637,21 @@ impl RouterStoreData {
                         name: b.opt("name").unwrap_or(&b.name).to_string(),
                         condition_type: b.opt("condition_type").unwrap_or("atomic").to_string(),
                         community_lists: b.list("community_lists"),
+                        community_subnets: b
+                            .opt("community_subnets")
+                            .is_none_or(|v| v == "1" || v == "true"),
                         user_domains,
                         user_subnets,
+                        remote_domain_lists: b.list("rule_set"),
+                        remote_subnet_lists: b.list("domain_ip_lists"),
                         geoip_codes: b.list("geoip_country"),
                         geoip_mode: b.opt("geoip_mode").unwrap_or("include").to_string(),
                         client_ips: b.list("fully_routed_ips"),
+                        exclude_client_ips: b.list("excluded_ips"),
+                        ports: b.list("ports"),
+                        protocol: b.list("protocol"),
+                        excluded_protocol: b.list("excluded_protocol"),
+                        dscp: b.list("dscp"),
                         ..Default::default()
                     });
                     imported += 1;
@@ -1335,6 +1669,7 @@ impl RouterStoreData {
                         mode: b.opt("mode").unwrap_or("least_test").to_string(),
                         testing_url: b
                             .opt("testing_url")
+                            .or_else(|| b.opt("health_url"))
                             .unwrap_or("https://www.gstatic.com/generate_204")
                             .to_string(),
                         check_interval,
@@ -1347,6 +1682,26 @@ impl RouterStoreData {
                         interrupt_exist_connections: b
                             .opt("interrupt_exist_connections")
                             .is_some_and(|v| v == "1" || v == "true"),
+                        active_check_interval: b
+                            .opt("active_check_interval")
+                            .unwrap_or("5s")
+                            .to_string(),
+                        check_timeout: b.opt("check_timeout").unwrap_or("2s").to_string(),
+                        recovery_check_interval: b
+                            .opt("recovery_check_interval")
+                            .unwrap_or("15s")
+                            .to_string(),
+                        pick_fastest: b
+                            .opt("pick_fastest")
+                            .is_some_and(|v| v == "1" || v == "true"),
+                        switch_to_faster_same_priority: b
+                            .opt("switch_to_faster_same_priority")
+                            .is_some_and(|v| v == "1" || v == "true"),
+                        fastest_check_interval: b
+                            .opt("fastest_check_interval")
+                            .unwrap_or("3m")
+                            .to_string(),
+                        ..Default::default()
                     });
                     imported += 1;
                 }
@@ -1373,10 +1728,35 @@ impl RouterStoreData {
                         name: b.opt("name").unwrap_or(&b.name).to_string(),
                         source_type: stype.clone(),
                         subscription_urls: urls,
+                        subscription_update_enabled: b
+                            .opt("subscription_update_enabled")
+                            .is_none_or(|v| v == "1" || v == "true"),
                         subscription_update_interval: b
                             .opt("subscription_update_interval")
                             .unwrap_or("3h")
                             .to_string(),
+                        download_via_proxy_enabled: b
+                            .opt("download_via_proxy_enabled")
+                            .is_some_and(|v| v == "1" || v == "true"),
+                        download_via_proxy_section: b
+                            .opt("download_via_proxy_section")
+                            .unwrap_or("")
+                            .to_string(),
+                        auto_user_agent: b
+                            .opt("auto_user_agent")
+                            .is_none_or(|v| v == "1" || v == "true"),
+                        user_agent: b.opt("user_agent").unwrap_or("").to_string(),
+                        auto_hwid: b.opt("auto_hwid").is_none_or(|v| v == "1" || v == "true"),
+                        hwid: b.opt("hwid").unwrap_or("").to_string(),
+                        prefix_nodes: b
+                            .opt("prefix_nodes")
+                            .is_some_and(|v| v == "1" || v == "true"),
+                        node_prefix: b.opt("node_prefix").unwrap_or("").to_string(),
+                        node_prefix_bg: b.opt("node_prefix_bg").unwrap_or("").to_string(),
+                        node_prefix_color: b.opt("node_prefix_color").unwrap_or("").to_string(),
+                        nfqws2_opt: b.opt("nfqws2_opt").unwrap_or("").to_string(),
+                        nfqws_opt: b.opt("nfqws_opt").unwrap_or("").to_string(),
+                        byedpi_cmd_opts: b.opt("byedpi_cmd_opts").unwrap_or("").to_string(),
                         desync_preset: preset,
                         desync_auto_tune: auto_tune,
                         desync_fake_sni: fake_sni,
@@ -1400,6 +1780,15 @@ impl RouterStoreData {
                         "block" => "block",
                         "bypass" | "direct" => "direct",
                         "dns" => "dns",
+                        "hosts" => "hosts",
+                        "zapret2" => "zapret2",
+                        "zapret" => "zapret",
+                        "byedpi" => "byedpi",
+                        "wdtt" => "wdtt",
+                        "olcrtc" => "olcrtc",
+                        "fptn" => "fptn",
+                        "awg" => "awg",
+                        "warp" => "warp",
                         _ => {
                             if out_refs.iter().any(|r| r.contains("desync")) {
                                 "desync"
@@ -1449,15 +1838,62 @@ impl RouterStoreData {
                         connection_type: conn_type.to_string(),
                         action: raw_action.to_string(),
                         condition_refs: b.list("condition_refs"),
+                        condition_operator: b
+                            .opt("condition_operator")
+                            .unwrap_or("and")
+                            .to_string(),
+                        condition_expression: b
+                            .opt("condition_expression")
+                            .unwrap_or("")
+                            .to_string(),
+                        match_all: b.opt("match_all").is_some_and(|v| v == "1" || v == "true"),
                         outbound_source_refs: out_refs,
                         balancer_refs: b.list("balancer_refs"),
-                        outbound_group_ref: String::new(),
+                        outbound_group_refs: b.list("outbound_group_refs"),
+                        outbound_group_levels: b.list("outbound_group_levels"),
+                        section_selection_mode: b
+                            .opt("section_selection_mode")
+                            .unwrap_or("auto")
+                            .to_string(),
+                        selector_auto_failover: b
+                            .opt("selector_auto_failover")
+                            .is_some_and(|v| v == "1" || v == "true"),
+                        section_health_url: b.opt("section_health_url").unwrap_or("").to_string(),
+                        interfaces: b.list("interfaces"),
+                        server_domain_rules: b.list("server_domain_rules"),
+                        section_filter_mode: b
+                            .opt("section_filter_mode")
+                            .or_else(|| b.opt("dashboard_filter_mode"))
+                            .unwrap_or("disabled")
+                            .to_string(),
+                        include_countries: b.list("dashboard_include_countries"),
+                        exclude_countries: b.list("dashboard_exclude_countries"),
+                        node_filter_allow: b.list("dashboard_include_regex").join("|"),
+                        node_filter_deny: b.list("dashboard_exclude_regex").join("|"),
+                        dashboard_hide_na_servers: b
+                            .opt("dashboard_hide_na_servers")
+                            .is_some_and(|v| v == "1" || v == "true"),
                         community_lists: b.list("community_lists"),
+                        community_subnets: b
+                            .opt("community_subnets")
+                            .is_none_or(|v| v == "1" || v == "true"),
+                        rule_set_urls: b.list("rule_set"),
+                        domain_ip_lists: b.list("domain_ip_lists"),
                         user_domains,
                         user_subnets,
                         geoip_codes: b.list("geoip_country"),
                         geoip_mode: b.opt("geoip_mode").unwrap_or("exclude").to_string(),
+                        global_rules: b.list("global_rules"),
+                        source_ip_cidr: b.list("source_ip_cidr"),
                         fully_routed_ips: b.list("fully_routed_ips"),
+                        excluded_ips: b.list("excluded_ips"),
+                        source_inbounds: b.list("source_inbounds"),
+                        default_interface_address: b.list("default_interface_address"),
+                        interface_address: b.list("interface_address"),
+                        ports: b.list("ports"),
+                        protocol: b.list("protocol"),
+                        excluded_protocol: b.list("excluded_protocol"),
+                        dscp: b.list("dscp"),
                         outbound_detour_enabled: b
                             .opt("outbound_detour_enabled")
                             .is_some_and(|v| v == "1" || v == "true"),
@@ -1468,12 +1904,93 @@ impl RouterStoreData {
                         sort_by_latency: b
                             .opt("sort_by_latency")
                             .is_some_and(|v| v == "1" || v == "true"),
+                        packet_encoding: b.opt("packet_encoding").unwrap_or("").to_string(),
+                        resolve_real_ip_for_routing: b
+                            .opt("resolve_real_ip_for_routing")
+                            .is_some_and(|v| v == "1" || v == "true"),
                         fail_policy: b.opt("fail_policy").unwrap_or("keep").to_string(),
+                        fail_policy_urls: b.list("fail_policy_urls"),
+                        fail_policy_timeout: b
+                            .opt("fail_policy_timeout")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(3000),
+                        fail_policy_threshold: b
+                            .opt("fail_policy_threshold")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(3),
+                        fail_policy_recover_threshold: b
+                            .opt("fail_policy_recover_threshold")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(2),
+                        fail_policy_cooldown: b
+                            .opt("fail_policy_cooldown")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(60),
+                        fail_policy_check_direct: b
+                            .opt("fail_policy_check_direct")
+                            .is_none_or(|v| v == "1" || v == "true"),
+                        mixed_proxy_enabled: b
+                            .opt("mixed_proxy_enabled")
+                            .is_some_and(|v| v == "1" || v == "true"),
+                        mixed_proxy_port: b
+                            .opt("mixed_proxy_port")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        mixed_proxy_auth_enabled: b
+                            .opt("mixed_proxy_auth_enabled")
+                            .is_some_and(|v| v == "1" || v == "true"),
+                        mixed_proxy_username: b
+                            .opt("mixed_proxy_username")
+                            .unwrap_or("")
+                            .to_string(),
+                        mixed_proxy_password: b
+                            .opt("mixed_proxy_password")
+                            .unwrap_or("")
+                            .to_string(),
                         routed_dns_enabled: b
                             .opt("routed_dns_enabled")
                             .is_some_and(|v| v == "1" || v == "true"),
+                        routed_dns_type: b.opt("routed_dns_type").unwrap_or("doh").to_string(),
                         dns_servers: b.list("dns_server"),
+                        dns_use_wan: b
+                            .opt("dns_use_wan")
+                            .is_some_and(|v| v == "1" || v == "true"),
+                        disable_fakeip: b
+                            .opt("disable_fakeip")
+                            .is_some_and(|v| v == "1" || v == "true"),
+                        dns_detour_enabled: b
+                            .opt("dns_detour_enabled")
+                            .is_some_and(|v| v == "1" || v == "true"),
+                        dns_detour_section: b.opt("dns_detour_section").unwrap_or("").to_string(),
                         active_selected_tag: active_sel,
+                        nfqws2_opt: b.opt("nfqws2_opt").unwrap_or("").to_string(),
+                        nfqws_opt: b.opt("nfqws_opt").unwrap_or("").to_string(),
+                        byedpi_cmd_opts: b.opt("byedpi_cmd_opts").unwrap_or("").to_string(),
+                        warp_flow_uri: b.opt("warp_flow_uri").unwrap_or("").to_string(),
+                        warp_flow_mode: b.opt("warp_flow_mode").unwrap_or("").to_string(),
+                        warp_flow_workers: b.opt("warp_flow_workers").unwrap_or("").to_string(),
+                        warp_flow_mtu: b.opt("warp_flow_mtu").unwrap_or("").to_string(),
+                        warp_flow_subscription_links: b.list("warp_flow_subscription_links"),
+                        olcrtc_provider: b.opt("olcrtc_provider").unwrap_or("jitsi").to_string(),
+                        olcrtc_transport: b.opt("olcrtc_transport").unwrap_or("whep").to_string(),
+                        olcrtc_room_id: b.opt("olcrtc_room_id").unwrap_or("").to_string(),
+                        olcrtc_crypto_key: b.opt("olcrtc_crypto_key").unwrap_or("").to_string(),
+                        olcrtc_socks_port: b.opt("olcrtc_socks_port").unwrap_or("1082").to_string(),
+                        olcrtc_subscription_links: b.list("olcrtc_subscription_links"),
+                        fptn_access_token: b.opt("access_token").unwrap_or("").to_string(),
+                        fptn_sni: b.opt("sni").unwrap_or("").to_string(),
+                        fptn_bypass_method: b.opt("bypass_method").unwrap_or("").to_string(),
+                        fptn_preferred_server: b.opt("preferred_server").unwrap_or("").to_string(),
+                        dns_hosts: b.opt("dns_hosts").unwrap_or("").to_string(),
+                        hosts_list_urls: b.list("hosts_list_urls"),
+                        hosts_list_auto_update: b
+                            .opt("hosts_list_auto_update")
+                            .is_some_and(|v| v == "1" || v == "true"),
+                        hosts_list_update_interval: b
+                            .opt("hosts_list_update_interval")
+                            .unwrap_or("24h")
+                            .to_string(),
+                        ..Default::default()
                     });
                     imported += 1;
                 }

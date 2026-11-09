@@ -1002,6 +1002,93 @@ pub fn compile_core_config(store: &RouterStoreData) -> anyhow::Result<Value> {
             &mut seen_outbound_tags,
         );
 
+        // Optional local Mixed Proxy port exposing this section
+        if sec.mixed_proxy_enabled && sec.mixed_proxy_port > 0 {
+            let mixed_in_tag = format!("mixed-sec-{}", sec.id);
+            let mut mixed_in = json!({
+                "type": "mixed",
+                "tag": mixed_in_tag,
+                "listen": "0.0.0.0",
+                "listen_port": sec.mixed_proxy_port,
+            });
+            if sec.mixed_proxy_auth_enabled && !sec.mixed_proxy_username.is_empty() {
+                mixed_in["users"] = json!([{
+                    "username": sec.mixed_proxy_username,
+                    "password": sec.mixed_proxy_password
+                }]);
+            }
+            inbounds.push(mixed_in);
+            rules.push(json!({
+                "inbound": [mixed_in_tag],
+                "outbound": target_outbound_tag
+            }));
+        }
+
+        // Capture traffic arriving on selected local Inbound Servers (`source_inbounds`)
+        if !sec.source_inbounds.is_empty() {
+            let in_tags: Vec<String> = sec
+                .source_inbounds
+                .iter()
+                .map(|id| {
+                    if id.starts_with("srv-") {
+                        id.clone()
+                    } else {
+                        format!("srv-{id}")
+                    }
+                })
+                .collect();
+            rules.push(json!({
+                "inbound": in_tags,
+                "outbound": target_outbound_tag
+            }));
+        }
+
+        // Section-level Exclusions (excluded LAN devices, domains, subnets) -> bypass to `direct`
+        if !sec.excluded_ips.is_empty() {
+            let cidrs: Vec<String> = sec
+                .excluded_ips
+                .iter()
+                .filter(|s| !s.contains(':'))
+                .cloned()
+                .collect();
+            if !cidrs.is_empty() {
+                rules.push(json!({
+                    "source_ip_cidr": cidrs,
+                    "outbound": "direct"
+                }));
+            }
+        }
+        if !sec.exclude_domains.is_empty() {
+            rules.push(json!({
+                "domain_suffix": sec.exclude_domains,
+                "outbound": "direct"
+            }));
+        }
+        if !sec.exclude_subnets.is_empty() {
+            rules.push(json!({
+                "ip_cidr": sec.exclude_subnets,
+                "outbound": "direct"
+            }));
+        }
+
+        // Pinned Server-to-Domain rules (`ServerName=domain1.com, domain2.com`)
+        for pin in &sec.server_domain_rules {
+            if let Some((srv_tag, doms_str)) = pin.split_once('=') {
+                let st = srv_tag.trim();
+                let doms: Vec<String> = doms_str
+                    .split([',', ' '])
+                    .map(|d| d.trim().to_string())
+                    .filter(|d| !d.is_empty())
+                    .collect();
+                if !st.is_empty() && !doms.is_empty() {
+                    rules.push(json!({
+                        "domain_suffix": doms,
+                        "outbound": st
+                    }));
+                }
+            }
+        }
+
         if !sec.fully_routed_ips.is_empty() {
             let cidrs: Vec<String> = sec
                 .fully_routed_ips
@@ -1038,11 +1125,20 @@ pub fn compile_core_config(store: &RouterStoreData) -> anyhow::Result<Value> {
             }
         }
 
-        // Also compile inline section lists/domains/subnets if the section has no condition_refs
+        // Also compile inline section lists/domains/subnets/ports/protocols
+        let mut combined_domains = sec.domains.clone();
+        for d in &sec.user_domains {
+            if !combined_domains.contains(d) {
+                combined_domains.push(d.clone());
+            }
+        }
         if !section_matched_any
             && (!sec.community_lists.is_empty()
-                || !sec.user_domains.is_empty()
-                || !sec.user_subnets.is_empty())
+                || !combined_domains.is_empty()
+                || !sec.user_subnets.is_empty()
+                || !sec.ports.is_empty()
+                || !sec.source_ip_cidr.is_empty()
+                || !sec.protocol.is_empty())
         {
             let synthetic = TrafficCondition {
                 id: format!("inline-{}", sec.id),
@@ -1050,10 +1146,16 @@ pub fn compile_core_config(store: &RouterStoreData) -> anyhow::Result<Value> {
                 name: sec.label.clone(),
                 condition_type: "atomic".to_string(),
                 community_lists: sec.community_lists.clone(),
-                user_domains: sec.user_domains.clone(),
+                community_subnets: sec.community_subnets,
+                user_domains: combined_domains,
                 user_subnets: sec.user_subnets.clone(),
                 geoip_codes: sec.geoip_codes.clone(),
                 geoip_mode: sec.geoip_mode.clone(),
+                client_ips: sec.source_ip_cidr.clone(),
+                ports: sec.ports.clone(),
+                source_ports: sec.source_ports.clone(),
+                protocol: sec.protocol.clone(),
+                dscp: sec.dscp.clone(),
                 ..Default::default()
             };
             if let Some(rule_obj) = build_condition_rule(
@@ -1069,7 +1171,7 @@ pub fn compile_core_config(store: &RouterStoreData) -> anyhow::Result<Value> {
             }
         }
 
-        if !section_matched_any && sec.condition_refs.is_empty() {
+        if (!section_matched_any && sec.condition_refs.is_empty()) || sec.match_all {
             rules.push(json!({
                 "outbound": target_outbound_tag
             }));
@@ -1164,7 +1266,8 @@ pub fn compile_core_config(store: &RouterStoreData) -> anyhow::Result<Value> {
             "rules": rules,
             "rule_set": rule_sets,
             "final": "direct",
-            "auto_detect_interface": true
+            "auto_detect_interface": true,
+            "default_domain_resolver": "dns-bootstrap"
         },
         "experimental": {
             "cache_file": {
@@ -1204,6 +1307,60 @@ fn resolve_section_outbound(
                     candidate_tags.push(t.clone());
                 }
             }
+        }
+    }
+
+    // Apply section-level server narrowing filters (country filter & keyword/regex filter)
+    if !sec.include_countries.is_empty()
+        || !sec.exclude_countries.is_empty()
+        || !sec.node_filter_allow.trim().is_empty()
+        || !sec.node_filter_deny.trim().is_empty()
+    {
+        let inc_c: Vec<String> = sec
+            .include_countries
+            .iter()
+            .map(|c| c.to_uppercase())
+            .collect();
+        let exc_c: Vec<String> = sec
+            .exclude_countries
+            .iter()
+            .map(|c| c.to_uppercase())
+            .collect();
+        let allow_kw: Vec<String> = sec
+            .node_filter_allow
+            .split('|')
+            .map(|s| s.trim().to_lowercase())
+            .filter(|s| !s.is_empty())
+            .collect();
+        let deny_kw: Vec<String> = sec
+            .node_filter_deny
+            .split('|')
+            .map(|s| s.trim().to_lowercase())
+            .filter(|s| !s.is_empty())
+            .collect();
+        let filtered: Vec<String> = candidate_tags
+            .iter()
+            .filter(|tag| {
+                let cc = detect_country_code(tag).to_uppercase();
+                let tl = tag.to_lowercase();
+                if !inc_c.is_empty() && !inc_c.contains(&cc) {
+                    return false;
+                }
+                if !exc_c.is_empty() && exc_c.contains(&cc) {
+                    return false;
+                }
+                if !allow_kw.is_empty() && !allow_kw.iter().any(|k| tl.contains(k)) {
+                    return false;
+                }
+                if !deny_kw.is_empty() && deny_kw.iter().any(|k| tl.contains(k)) {
+                    return false;
+                }
+                true
+            })
+            .cloned()
+            .collect();
+        if !filtered.is_empty() {
+            candidate_tags = filtered;
         }
     }
 
@@ -1344,6 +1501,32 @@ fn build_condition_rule(
     }
     if !cond.l4_proto.is_empty() {
         r.insert("network".into(), json!(cond.l4_proto));
+    }
+    if !cond.source_ports.is_empty() {
+        let mut exact_ports: Vec<u16> = Vec::new();
+        let mut port_ranges: Vec<String> = Vec::new();
+        for p in &cond.source_ports {
+            if p.contains('-') || p.contains(':') {
+                port_ranges.push(p.replace('-', ":"));
+            } else if let Ok(num) = p.parse::<u16>() {
+                exact_ports.push(num);
+            }
+        }
+        if !exact_ports.is_empty() {
+            r.insert("source_port".into(), json!(exact_ports));
+        }
+        if !port_ranges.is_empty() {
+            r.insert("source_port_range".into(), json!(port_ranges));
+        }
+    }
+    if !cond.protocol.is_empty() {
+        r.insert("protocol".into(), json!(cond.protocol));
+    }
+    if !cond.dscp.is_empty() {
+        r.insert("dscp".into(), json!(cond.dscp));
+    }
+    if !cond.geoip_codes.is_empty() {
+        r.insert("geoip".into(), json!(cond.geoip_codes));
     }
     if !cond.time_window.is_empty() {
         r.insert("time_window".into(), json!(cond.time_window));
@@ -1876,17 +2059,15 @@ pub fn build_router_subscription_payload(
     format: &str,
 ) -> String {
     let fmt = format.trim().to_ascii_lowercase();
-    let enabled_servers: Vec<&InboundServer> =
-        store.servers.iter().filter(|s| s.enabled).collect();
+    let enabled_servers: Vec<&InboundServer> = store.servers.iter().filter(|s| s.enabled).collect();
 
-    if matches!(fmt.as_str(), "wireguard" | "amnezia" | "conf" | "wg") {
-        if let Some(wg_srv) = enabled_servers
+    if matches!(fmt.as_str(), "wireguard" | "amnezia" | "conf" | "wg")
+        && let Some(wg_srv) = enabled_servers
             .iter()
             .find(|s| s.protocol == "awg" || s.protocol == "wireguard")
             .or_else(|| enabled_servers.first())
-        {
-            return build_server_wg_conf(wg_srv, host_override);
-        }
+    {
+        return build_server_wg_conf(wg_srv, host_override);
     }
 
     let uris: Vec<String> = enabled_servers
@@ -1895,7 +2076,9 @@ pub fn build_router_subscription_payload(
         .collect();
 
     if fmt == "clash" || fmt == "yaml" {
-        let mut yaml = String::from("mixed-port: 7890\nallow-lan: true\nmode: rule\nlog-level: info\nproxies:\n");
+        let mut yaml = String::from(
+            "mixed-port: 7890\nallow-lan: true\nmode: rule\nlog-level: info\nproxies:\n",
+        );
         let mut names = Vec::new();
         for (i, u) in uris.iter().enumerate() {
             if let Some(node) = parse_proxy_uri(u, i) {
@@ -1909,7 +2092,9 @@ pub fn build_router_subscription_payload(
                 ));
             }
         }
-        yaml.push_str("proxy-groups:\n  - name: \"Tachyon Router\"\n    type: select\n    proxies:\n");
+        yaml.push_str(
+            "proxy-groups:\n  - name: \"Tachyon Router\"\n    type: select\n    proxies:\n",
+        );
         for n in names {
             yaml.push_str(&format!("    {n}\n"));
         }
@@ -2005,7 +2190,32 @@ mod tests {
     fn test_compile_core_config_with_section_scoped_balancer_and_trs() {
         let mut store = RouterStoreData::default();
         store.sections[0].balancer_refs = vec!["bal_fastest".to_string()];
+        store.sections[0].mixed_proxy_enabled = true;
+        store.sections[0].mixed_proxy_port = 1085;
+        store.sections[0].exclude_domains = vec!["sberbank.ru".to_string()];
+        store.sections[0].excluded_ips = vec!["192.168.1.250".to_string()];
+        store.sections[0].server_domain_rules =
+            vec!["src-src_native_desync=netflix.com, fast.com".to_string()];
         let cfg = compile_core_config(&store).expect("compile core config");
+        assert_eq!(cfg["route"]["default_domain_resolver"], "dns-bootstrap");
+        let inbounds = cfg["inbounds"].as_array().unwrap();
+        assert!(
+            inbounds
+                .iter()
+                .any(|i| i["tag"] == "mixed-sec-sec_media_desync" && i["listen_port"] == 1085)
+        );
+        let rules = cfg["route"]["rules"].as_array().unwrap();
+        assert!(
+            rules
+                .iter()
+                .any(|r| r["inbound"] == json!(["mixed-sec-sec_media_desync"]))
+        );
+        assert!(
+            rules
+                .iter()
+                .any(|r| r["domain_suffix"] == json!(["netflix.com", "fast.com"])
+                    && r["outbound"] == "src-src_native_desync")
+        );
         let outbounds = cfg["outbounds"].as_array().unwrap();
         assert!(
             outbounds
