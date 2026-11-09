@@ -3633,6 +3633,105 @@ function createSettingsContent(section, capabilities) {
 
   o = section.taboption(
     "network",
+    form.Flag,
+    "tun_gso",
+    _tr("GSO для TUN-интерфейса", "TUN Generic Segmentation Offload (GSO)"),
+    _tr(
+      "Включает пакетную разгрузку сегментации (GSO) на tun-интерфейсе для снижения нагрузки на CPU при высокой скорости.",
+      "Enables Generic Segmentation Offload (GSO) on the tun interface to lower CPU usage at high throughput.",
+    ),
+  );
+  o.depends("proxy_mode", "tun");
+  o.default = "0";
+
+  o = section.taboption(
+    "network",
+    form.Flag,
+    "tun_endpoint_independent_nat",
+    _tr("Endpoint-Independent NAT в TUN", "TUN Endpoint-Independent NAT"),
+    _tr(
+      "Улучшает прохождение STUN/WebRTC и голосового UDP-трафика в стеке gVisor/Mixed.",
+      "Improves STUN/WebRTC and UDP voice traversal in the gVisor/Mixed stack.",
+    ),
+  );
+  o.depends("proxy_mode", "tun");
+  o.default = "0";
+
+  o = section.taboption(
+    "network",
+    form.Value,
+    "tun_udp_timeout",
+    _tr("Таймаут UDP-сессий в TUN", "TUN UDP Session Timeout"),
+    _tr(
+      "Время жизни неактивных UDP-сессий в TUN (например: 5m, 300s).",
+      "Idle timeout for UDP sessions in TUN mode (e.g. 5m, 300s).",
+    ),
+  );
+  o.depends("proxy_mode", "tun");
+  o.placeholder = "5m";
+  o.rmempty = true;
+
+  o = section.taboption(
+    "network",
+    form.Flag,
+    "smart_queue",
+    _tr(
+      "Приоритизация интерактивного трафика (Smart Queue)",
+      "Interactive Traffic Prioritization (Smart Queue)",
+    ),
+    _tr(
+      "Встроенный планировщик очередей tachyon-core (CAKE-lite): отдаёт приоритет DNS, рукопожатиям, голосовым пакетам и играм перед фоновыми загрузками.",
+      "Built-in tachyon-core queue scheduler (CAKE-lite): prioritizes DNS, handshakes, voice packets, and gaming ahead of bulk downloads.",
+    ),
+  );
+  o.default = "0";
+
+  o = section.taboption(
+    "network",
+    form.ListValue,
+    "tcp_profile",
+    _tr("Профиль TCP-стека ядра", "Core TCP Stack Profile"),
+    _tr(
+      "Профиль параметров TCP-сокетов для исходящих соединений tachyon-core.",
+      "TCP socket parameter profile for outbound connections in tachyon-core.",
+    ),
+  );
+  o.value("", _tr("По умолчанию (сбалансированный)", "Default (Balanced)"));
+  o.value(
+    "low_latency",
+    _tr("Минимальная задержка (low_latency)", "Low Latency (low_latency)"),
+  );
+  o.value(
+    "throughput",
+    _tr(
+      "Максимальная пропускная способность (throughput)",
+      "High Throughput (throughput)",
+    ),
+  );
+  o.value(
+    "conservative",
+    _tr("Экономия памяти (conservative)", "Memory Conservative (conservative)"),
+  );
+  o.default = "";
+  o.rmempty = true;
+
+  o = section.taboption(
+    "network",
+    form.Flag,
+    "selector_auto_failover",
+    _tr(
+      "Автопереключение при сбое (в ручном выборе)",
+      "Auto-switch on failure (manual selector)",
+    ),
+    _tr(
+      "Автоматически переключать селектор секции на рабочий узел, если выбранный вручную узел не отвечает при проверке задержки (без балансировщиков). Оставьте выключенным, чтобы исключить самопроизвольную смену IP-адреса.",
+      "Automatically switch the section selector to a working node if the manually selected node fails a latency check (without balancers). Leave disabled to prevent unexpected IP changes.",
+    ),
+  );
+  o.default = "0";
+
+  o = section.taboption(
+    "network",
     widgets.DeviceSelect,
     "source_network_interfaces",
     _("Source Network Interface"),

@@ -2129,12 +2129,15 @@ function add_interface_connection_outbound(config, state, section, interface_ind
         push(config.dns.servers, dns_server);
     }
 
+    let eff_mark = (type(config) == "object" && type(config.route) == "object" && int(config.route.default_mark || 0) > 0)
+        ? int(config.route.default_mark)
+        : runtime_constants.OUTBOUND_MARK;
     let outbound = {
         type: "direct",
         tag: tag_name,
         bind_interface: interface_name,
         domain_resolver,
-        routing_mark: runtime_constants.OUTBOUND_MARK
+        routing_mark: eff_mark
     };
     if (domain_resolver == "")
         delete outbound.domain_resolver;

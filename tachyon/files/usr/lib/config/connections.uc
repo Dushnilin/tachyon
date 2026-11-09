@@ -3298,6 +3298,8 @@ function merge_condition_into_section_object(base_section, positive_conds, negat
             merged.community_subnets = option(cond, "community_subnets", "");
         if (option(merged, "match_all", "") == "" && bool_option(cond, "match_all", false))
             merged.match_all = "1";
+        if (option(merged, "time_window", "") == "" && option(cond, "time_window", "") != "")
+            merged.time_window = option(cond, "time_window", "");
     }
 
     if (negative_conds != null && length(negative_conds) > 0)
@@ -3804,7 +3806,8 @@ function single_object_has_routing_matchers(section) {
     if (length(list_option(section, "default_interface_address")) > 0 ||
         length(list_option(section, "interface_address")) > 0 ||
         length(list_option(section, "network_interface_address")) > 0 ||
-        length(list_option(section, "preferred_by")) > 0)
+        length(list_option(section, "preferred_by")) > 0 ||
+        trim(option(section, "time_window", "")) != "")
         return true;
 
     return false;
@@ -4823,6 +4826,14 @@ function section_interrupt_exist_connections(section) {
             return false;
     }
     return bool_option(uci_core.get_all(CONFIG_NAME, "settings"), "interrupt_exist_connections", true);
+}
+
+function section_selector_auto_failover(section, settings) {
+    if (raw_option(section, "selector_auto_failover") != null)
+        return bool_option(section, "selector_auto_failover", false);
+    if (type(settings) == "object" && raw_option(settings, "selector_auto_failover") != null)
+        return bool_option(settings, "selector_auto_failover", false);
+    return bool_option(uci_core.get_all(CONFIG_NAME, "settings"), "selector_auto_failover", false);
 }
 
 function priority_group_pin_dashboard(section, value) {
@@ -6561,13 +6572,15 @@ function cli_delete_section(sec_name) {
     return 0;
 }
 
-let cli_mode = as_string(ARGV[0]);
-if (cli_mode == "delete-section")
-    exit(cli_delete_section(ARGV[1]));
-if (cli_mode == "trace-rules")
-    exit(cli_trace_rules(ARGV[1]));
-if (cli_mode == "probe-url")
-    exit(cli_probe_url(ARGV[1], ARGV[2], ARGV[3]));
+if ((sourcepath(1) == null || sourcepath(1) == "") && length(ARGV) > 0) {
+    let cli_mode = as_string(ARGV[0]);
+    if (cli_mode == "delete-section")
+        exit(cli_delete_section(ARGV[1]));
+    if (cli_mode == "trace-rules")
+        exit(cli_trace_rules(ARGV[1]));
+    if (cli_mode == "probe-url")
+        exit(cli_probe_url(ARGV[1], ARGV[2], ARGV[3]));
+}
 
 return {
     option,
@@ -6755,6 +6768,7 @@ return {
     priority_group_fastest_check_interval,
     priority_group_interrupt_exist_connections,
     section_interrupt_exist_connections,
+    section_selector_auto_failover,
     priority_group_pin_dashboard,
     priority_level_display_name,
     priority_level_order,

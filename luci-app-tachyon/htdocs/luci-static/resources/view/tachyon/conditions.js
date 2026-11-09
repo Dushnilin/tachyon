@@ -197,6 +197,10 @@ function summarizeCondition(sectionId) {
   if (proto.length) parts.push(`${_("Proto")}: ${proto.join("/")}`);
   const geo = asArray(uci.get(UCI_PACKAGE, sectionId, "geoip_country"));
   if (geo.length) parts.push(`${_("GeoIP")}: ${geo.join(", ").toUpperCase()}`);
+  const timeWin = String(
+    uci.get(UCI_PACKAGE, sectionId, "time_window") || "",
+  ).trim();
+  if (timeWin) parts.push(`${_("Schedule")}: ${timeWin}`);
 
   const summary = parts.length ? parts.join(" | ") : _("No matchers set");
   return invert ? `NOT (${summary})` : summary;
@@ -2406,6 +2410,30 @@ function createConditionsContent(section) {
   o.value("at", _("🇦🇹 Austria (at)"));
   o.value("cz", _("🇨🇿 Czechia (cz)"));
   o.value("hk", _("🇭🇰 Hong Kong (hk)"));
+
+  o = section.taboption(
+    "network",
+    form.Value,
+    "time_window",
+    _("Time Window (Schedule)"),
+    _(
+      "Optional schedule when this condition is active (tachyon-core), e.g. 09:00-18:00 or Mon-Fri 22:00-07:00.",
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends("condition_type", "atomic");
+  o.placeholder = "09:00-18:00, Mon-Fri 22:00-07:00";
+  o.write = function (sectionId, value) {
+    const next = String(value || "").trim();
+    if (next) uci.set(UCI_PACKAGE, sectionId, "time_window", next);
+    else unsetIfPresent(sectionId, "time_window");
+    syncConditionOptionToParentSection(sectionId, "time_window", next || null);
+  };
+  o.remove = function (sectionId) {
+    unsetIfPresent(sectionId, "time_window");
+    syncConditionOptionToParentSection(sectionId, "time_window", null);
+  };
 }
 
 return baseclass.extend({

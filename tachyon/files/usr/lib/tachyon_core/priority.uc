@@ -1220,7 +1220,7 @@ function warm_fixture(group_path, latency_path) {
     });
 }
 
-if (length(ARGV) == 0) {
+if ((sourcepath(1) != null && sourcepath(1) != "") || length(ARGV) == 0) {
     return {
         choose_fastest_same_level,
         warm_inactive_group_members,

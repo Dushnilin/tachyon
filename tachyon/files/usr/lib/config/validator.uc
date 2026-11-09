@@ -2803,17 +2803,7 @@ function validate_runtime_config(context) {
             continue;
         current_validating_section = ts_name;
         try {
-            if (option(ts_server, "tailscale_mode", "singbox") != "native") {
-                if (sing_box_is_tachyon_core(context, null)) {
-                    if (bool_option(ts_server, "tailscale_advertise_exit_node", false))
-                        fail_requirement("Server '" + ts_name + "' enables 'tailscale_advertise_exit_node' in sing-box endpoint mode, which is not supported by tachyon-core. Switch Tailscale mode to 'native' (tailscaled) or disable exit node advertising. Aborted.", "fatal");
-                    for (let adv_route in list_option(ts_server, "tailscale_advertise_routes")) {
-                        let r = trim(as_string(adv_route));
-                        if (r == "0.0.0.0/0" || r == "::/0")
-                            fail_requirement("Server '" + ts_name + "' advertises default exit route '" + r + "' in sing-box endpoint mode, which is not supported by tachyon-core. Switch Tailscale mode to 'native' (tailscaled) or remove the default route. Aborted.", "fatal");
-                    }
-                }
-            } else {
+            if (option(ts_server, "tailscale_mode", "singbox") == "native") {
                 // Without a key `tailscale up` falls back to interactive login and
                 // would block the runtime forever on a headless router.
                 if (trim(as_string(option(ts_server, "tailscale_auth_key", "") || "")) == "")
@@ -3208,16 +3198,6 @@ function validate_section_action_variant_support(ctx, sing_box_version) {
             let srv_proto = as_string(option(server, "protocol", "vless"));
             if (srv_proto == "mtproto" && sing_box_is_tachyon_core(ctx, sing_box_version) && match(as_string(sing_box_version), /^v?0\.0\./) != null)
                 fail_requirement("Server '" + name + "' uses MTProto, but tachyon-core does not implement MTProto yet. Use sing-box-extended or select another protocol. Aborted.", "fatal");
-
-            if (srv_proto == "tailscale" && option(server, "tailscale_mode", "singbox") != "native" && sing_box_is_tachyon_core(ctx, sing_box_version)) {
-                if (bool_option(server, "tailscale_advertise_exit_node", false))
-                    fail_requirement("Server '" + name + "' enables 'tailscale_advertise_exit_node' in sing-box endpoint mode, which is not supported by tachyon-core. Switch Tailscale mode to 'native' (tailscaled) or disable exit node advertising. Aborted.", "fatal");
-                for (let adv_route in list_option(server, "tailscale_advertise_routes")) {
-                    let r = trim(as_string(adv_route));
-                    if (r == "0.0.0.0/0" || r == "::/0")
-                        fail_requirement("Server '" + name + "' advertises default exit route '" + r + "' in sing-box endpoint mode, which is not supported by tachyon-core. Switch Tailscale mode to 'native' (tailscaled) or remove the default route. Aborted.", "fatal");
-                }
-            }
 
             if (srv_proto == "awg") {
                 // Same NB as on the section side: sing_box_is_lx() is true for

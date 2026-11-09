@@ -165,7 +165,8 @@ function config(settings, runtime) {
         { action: "sniff", inbound: sniff_inbounds },
         { action: "hijack-dns", inbound: dns_hijack_inbounds }
     ];
-    if (length(client_inbounds) == 1 && client_inbounds[0] == runtime_constants.TUN_INBOUND_TAG) {
+    let is_tun_mode = length(client_inbounds) == 1 && client_inbounds[0] == runtime_constants.TUN_INBOUND_TAG;
+    if (is_tun_mode) {
         push(rules, { action: "hijack-dns", inbound: runtime_constants.TUN_INBOUND_TAG, port: 53 });
         push(rules, { action: "hijack-dns", inbound: runtime_constants.TUN_INBOUND_TAG, protocol: "dns" });
     }
@@ -177,11 +178,16 @@ function config(settings, runtime) {
         default_domain_resolver: type(runtime) == "object" && as_string(runtime.default_domain_resolver) != ""
             ? as_string(runtime.default_domain_resolver)
             : runtime_constants.DNS_SERVER_TAG,
-        default_mark: runtime_constants.OUTBOUND_MARK
+        default_mark: is_tun_mode ? runtime_constants.TUN_AUTO_ROUTE_MARK : runtime_constants.OUTBOUND_MARK
     };
 
     if (output_network_interface != "")
         result.default_interface = output_network_interface;
+    if (bool_option(settings, "smart_queue", false))
+        result.smart_queue = true;
+    let tcp_prof = lc(trim(as_string(option(settings, "tcp_profile", ""))));
+    if (tcp_prof == "low_latency" || tcp_prof == "throughput" || tcp_prof == "conservative")
+        result.tcp_profile = tcp_prof;
     if (disable_quic_mode(option(settings, "disable_quic", "0")) != "off") {
         push(result.rules, { action: "reject", network: "udp", port: [ 443 ] });
         push(result.rules, { action: "reject", protocol: "quic", port: [ 443 ] });
@@ -262,7 +268,7 @@ function resolve_rule_for_section(section, route_rule) {
     }
 
     let resolve_rule = {};
-    for (let key in [ "inbound", "source_ip_cidr", "domain", "domain_suffix", "domain_keyword", "domain_regex", "rule_set", "port", "port_range" ]) {
+    for (let key in [ "inbound", "source_ip_cidr", "domain", "domain_suffix", "domain_keyword", "domain_regex", "rule_set", "port", "port_range", "interface_address", "network_interface_address", "default_interface_address", "time_window" ]) {
         if (route_rule[key] != null)
             resolve_rule[key] = route_rule[key];
     }

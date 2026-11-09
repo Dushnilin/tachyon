@@ -24,6 +24,8 @@ const TUN_INET6_ADDRESS = "";
 const TUN_MTU = 9000;
 // The firewall zone the tun device needs; sync_tun_firewall_zone() creates it.
 const TUN_FIREWALL_ZONE = "tachyon_tun";
+// The fwmark `tachyon-core` uses in `setup_auto_route` (`not fwmark 0x2022 lookup 2022`).
+const TUN_AUTO_ROUTE_MARK = 8226;
 
 // The client-facing SOCKS/HTTP inbound used by the socks proxy_mode. Distinct
 // from the direct-bypass mixed inbound on 2080, which is a hole on purpose: this
@@ -214,6 +216,7 @@ return {
     TUN_INET6_ADDRESS,
     TUN_MTU,
     TUN_FIREWALL_ZONE,
+    TUN_AUTO_ROUTE_MARK,
     CLIENT_MIXED_INBOUND_TAG,
     CLIENT_MIXED_INBOUND_ADDRESS,
     CLIENT_MIXED_INBOUND_PORT

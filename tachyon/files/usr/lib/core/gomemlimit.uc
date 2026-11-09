@@ -137,7 +137,7 @@ function gomemlimit_selftest() {
     return ok;
 }
 
-if (ARGV[0] == "selftest")
+if ((sourcepath(1) == null || sourcepath(1) == "") && ARGV[0] == "selftest")
     exit(gomemlimit_selftest() ? 0 : 1);
 
 return module_exports();

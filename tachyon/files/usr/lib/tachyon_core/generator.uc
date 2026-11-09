@@ -756,6 +756,9 @@ function tun_inbound(settings) {
         stack: trim(option(settings, "tun_stack", "mixed")) || "mixed",
         gso: bool_option(settings, "tun_gso", true)
     };
+    let udp_timeout = trim(option(settings, "tun_udp_timeout", ""));
+    if (udp_timeout != "")
+        inbound.udp_timeout = udp_timeout;
 
     return inbound;
 }
@@ -1291,10 +1294,13 @@ function add_direct_bypass_proxy(config, settings, service_address) {
         listen,
         listen_port
     });
+    let eff_mark = (type(config.route) == "object" && int(config.route.default_mark || 0) > 0)
+        ? int(config.route.default_mark)
+        : runtime_constants.OUTBOUND_MARK;
     push(config.outbounds, {
         type: "direct",
         tag: runtime_constants.DIRECT_BYPASS_OUTBOUND_TAG,
-        routing_mark: runtime_constants.OUTBOUND_MARK
+        routing_mark: eff_mark
     });
     if (type(config.route) == "object" && type(config.route.rules) == "array" &&
         length(config.route.rules) > 0 && config.route.rules[0].action == "sniff" &&

@@ -864,12 +864,14 @@ function add_dns_bypass(config, section) {
         endpoint: inbound,
         accept_default_resolvers: true
     });
-    push(config.dns.rules, {
-        action: "route",
-        server: dns_tag,
-        inbound,
-        __service_tag: rule_tag
-    });
+    if (!bool_option(section, "tailscale_advertise_exit_node", false)) {
+        push(config.dns.rules, {
+            action: "route",
+            server: dns_tag,
+            inbound,
+            __service_tag: rule_tag
+        });
+    }
     push(config.dns.rules, {
         action: "route",
         server: dns_tag,

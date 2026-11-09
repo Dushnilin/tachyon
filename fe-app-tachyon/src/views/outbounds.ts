@@ -6117,6 +6117,85 @@ function createOutboundsContent(section) {
   o = section.taboption(
     'general',
     form.Flag,
+    'desync_tlsrec_first',
+    _('TLS Record Split Before TCP Desync (tlsrec_first)'),
+    _(
+      'Fragment TLS ClientHello at the record layer before applying TCP split or fake injection.',
+    ),
+  );
+  o.modalonly = true;
+  o.default = '0';
+  o.depends({ source_type: 'desync', desync_preset: 'custom' });
+  o.depends({ source_type: 'desync', desync_preset: 'fake_split' });
+  o.depends({ source_type: 'desync', desync_preset: 'fake_disorder' });
+
+  o = section.taboption(
+    'general',
+    form.Value,
+    'desync_seqovl',
+    _('TCP Sequence Overlap Bytes (seqovl)'),
+    _('Prepend N decoy bytes via TCP sequence overlap (0 = disabled).'),
+  );
+  o.modalonly = true;
+  o.datatype = 'range(0,1400)';
+  o.placeholder = '0';
+  o.depends({ source_type: 'desync', desync_preset: 'custom' });
+
+  o = section.taboption(
+    'general',
+    form.Flag,
+    'desync_syndata',
+    _('TCP Fast Open SYN Data (syndata)'),
+    _('Attach initial payload to TCP SYN packet when supported by kernel.'),
+  );
+  o.modalonly = true;
+  o.default = '0';
+  o.depends({ source_type: 'desync', desync_preset: 'custom' });
+
+  o = section.taboption(
+    'general',
+    form.Value,
+    'desync_wsize',
+    _('TCP Window Clamp Bytes (wsize)'),
+    _(
+      'Clamp TCP receive window (SO_RCVBUF) during handshake to segment ServerHello (0 = disabled).',
+    ),
+  );
+  o.modalonly = true;
+  o.datatype = 'uinteger';
+  o.placeholder = '0';
+  o.depends({ source_type: 'desync', desync_preset: 'custom' });
+
+  o = section.taboption(
+    'general',
+    form.Flag,
+    'desync_ipfrag',
+    _('L3 IP Fragmentation (ipfrag)'),
+    _('Fragment fake/split packets at IPv4/IPv6 network layer.'),
+  );
+  o.modalonly = true;
+  o.default = '0';
+  o.depends({ source_type: 'desync', desync_preset: 'custom' });
+
+  o = section.taboption(
+    'general',
+    form.Value,
+    'desync_udplen',
+    _('UDP Fake Payload Size (udplen)'),
+    _('Custom byte length for UDP fake packets (0 = default).'),
+  );
+  o.modalonly = true;
+  o.datatype = 'range(0,1472)';
+  o.placeholder = '0';
+  o.depends({
+    source_type: 'desync',
+    desync_preset: 'custom',
+    desync_udp_fake: '1',
+  });
+
+  o = section.taboption(
+    'general',
+    form.Flag,
     'desync_udp_fake',
     _('UDP Fake (QUIC / Voice)'),
   );

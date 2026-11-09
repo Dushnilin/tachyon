@@ -3701,30 +3701,38 @@ let last_keepalive_write = 0;
         // lacks the uloop module.
         while (true) {
             let now = time();
+            try {
+                if (now - last_keepalive_write >= 30) {
+                    last_keepalive_write = now;
+                    write_state_file("/var/run/tachyon_watchdog.keepalive", as_string(now), "keepalive stamp");
+                }
 
-            if (now - last_fast_check >= 15) {
-                last_fast_check = now;
-                current_ctx = controller.create_tick_context ? controller.create_tick_context() : null;
-                perform_fast_checks();
-            }
-            if (now - last_normal_check >= 120 && now - last_normal_check >= controller.adaptive_normal_interval()) {
-                last_normal_check = now;
-                current_ctx = current_ctx || (controller.create_tick_context ? controller.create_tick_context() : null);
-                perform_normal_checks();
-            }
-            if (now - last_slow_check >= 300) {
-                last_slow_check = now;
-                current_ctx = current_ctx || (controller.create_tick_context ? controller.create_tick_context() : null);
-                perform_slow_checks();
-            }
+                if (now - last_fast_check >= 15) {
+                    last_fast_check = now;
+                    current_ctx = controller.create_tick_context ? controller.create_tick_context() : null;
+                    perform_fast_checks();
+                }
+                if (now - last_normal_check >= 120 && now - last_normal_check >= controller.adaptive_normal_interval()) {
+                    last_normal_check = now;
+                    current_ctx = current_ctx || (controller.create_tick_context ? controller.create_tick_context() : null);
+                    perform_normal_checks();
+                }
+                if (now - last_slow_check >= 300) {
+                    last_slow_check = now;
+                    current_ctx = current_ctx || (controller.create_tick_context ? controller.create_tick_context() : null);
+                    perform_slow_checks();
+                }
 
-            if (current_ctx && controller.clear_tick_context)
+                if (current_ctx && controller.clear_tick_context)
+                    controller.clear_tick_context();
+                current_ctx = null;
+
+                perform_smart_plus_checks();
                 controller.clear_tick_context();
-            current_ctx = null;
-
-            perform_smart_plus_checks();
-            controller.clear_tick_context();
-            current_ctx = null;
+                current_ctx = null;
+            } catch (e) {
+                log_message("Error in tick: " + as_string(e), "err");
+            }
             sleep(15000);
         }
     }

@@ -179,7 +179,7 @@ function dispatch_command(token, chat_id, text, msg_id) {
 
 // ─── CLI Entrypoint ──────────────────────────────────────────────────────────
 
-if (length(ARGV) > 0) {
+if ((sourcepath(1) == null || sourcepath(1) == "") && length(ARGV) > 0) {
     let mode = (ARGV[0] == "" || ARGV[0] == null) ? ARGV[1] : ARGV[0];
     if (!mode) mode = "";
 

@@ -2298,7 +2298,7 @@ function latency_boot_sweep() {
                         let cache = common.read_json_file("/tmp/tachyon-core/subscriptions/" + section_name + ".json");
                         let outbounds_map = (type(cache) == "object" && type(cache.outbounds) == "object") ? cache.outbounds : {};
                         let candidates = keys(outbounds_map);
-                        if (length(candidates) > 0) {
+                        if (connections.section_selector_auto_failover(section) && length(candidates) > 0) {
                             let first_tag = as_string(candidates[0]);
                             if (int(delays[first_tag] || 0) <= 0) {
                                 let fallback_tag = "";

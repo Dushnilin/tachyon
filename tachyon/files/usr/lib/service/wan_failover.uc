@@ -570,7 +570,7 @@ function status_json() {
     write_json(status_object());
 }
 
-if (length(ARGV) == 0) {
+if ((sourcepath(1) != null && sourcepath(1) != "") || length(ARGV) == 0) {
     return {
         enabled,
         check,

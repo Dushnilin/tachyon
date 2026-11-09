@@ -151,7 +151,7 @@ const CORE_PROTOCOLS = {
     "tachyon-core": [ "vless", "vmess", "trojan", "shadowsocks", "hysteria2", "tuic",
         "hysteria", "anytls", "snell", "naive", "shadowtls", "ssh", "tor",
         "socks", "http", "wireguard", "awg", "warp", "openvpn", "masque", "fptn", "selector", "urltest",
-        "cloudflared", "tailscale", "openconnect", "bridge", "mieru", "tewfai", "trusttunnel", "desync", "mtproto" ]
+        "cloudflared", "tailscale", "openconnect", "bridge", "mieru", "tewfai", "trusttunnel", "desync", "mtproto", "wdtt" ]
 };
 
 // Inbound kinds, which are a separate question from protocols: a core can speak
@@ -179,8 +179,8 @@ const CORE_INBOUNDS = {
     "lx": [ "mixed", "direct", "redirect", "tproxy", "socks", "http", "tun",
         "vless", "vmess", "trojan", "shadowsocks", "hysteria2", "tuic", "shadowtls" ],
     "tachyon-core": [ "mixed", "direct", "redirect", "tproxy", "socks", "http", "tun",
-        "vless", "vmess", "trojan", "shadowsocks", "hysteria2", "tuic", "anytls",
-        "naive", "shadowtls", "fptn", "mieru", "trusttunnel", "tewfai", "masque", "openconnect", "mtproto" ]
+        "vless", "vmess", "trojan", "shadowsocks", "hysteria2", "hysteria", "tuic", "anytls",
+        "snell", "naive", "shadowtls", "fptn", "mieru", "trusttunnel", "tewfai", "masque", "openconnect", "mtproto", "wdtt" ]
 };
 
 // Local, like every other module: core.common has no contains(), and the

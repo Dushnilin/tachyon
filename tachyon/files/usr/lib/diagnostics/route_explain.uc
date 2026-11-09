@@ -2385,37 +2385,39 @@ function selftest() {
 
 // ─── Module Exports & CLI Handling ────────────────────────────────────────────
 
-let mode = ARGV[0] || "";
+if ((sourcepath(1) == null || sourcepath(1) == "") && length(ARGV) > 0) {
+    let mode = ARGV[0] || "";
 
-if (mode == "selftest") {
-    exit(selftest());
-} else if (mode == "explain") {
-    let client = ARGV[1] || "";
-    let target = ARGV[2] || "";
-    let port = ARGV[3] || 0;
-    let proto = ARGV[4] || "tcp";
-    if (target == "" && client != "" && substr(client, 0, 2) != "--") {
-        target = client;
-        client = "";
-    }
-    let format = "text";
-
-    // Check for --format flag in any argument position
-    for (let i = 1; i < length(ARGV); i++) {
-        if (ARGV[i] == "--format" && i + 1 < length(ARGV)) {
-            format = ARGV[i + 1];
-        } else if (ARGV[i] == "--json") {
-            format = "json";
+    if (mode == "selftest") {
+        exit(selftest());
+    } else if (mode == "explain") {
+        let client = ARGV[1] || "";
+        let target = ARGV[2] || "";
+        let port = ARGV[3] || 0;
+        let proto = ARGV[4] || "tcp";
+        if (target == "" && client != "" && substr(client, 0, 2) != "--") {
+            target = client;
+            client = "";
         }
-    }
+        let format = "text";
 
-    let report = explain_route(client, target, port, proto);
-    if (format == "json") {
-        print(sprintf("%J\n", report));
-    } else {
-        print(format_text_report(report));
+        // Check for --format flag in any argument position
+        for (let i = 1; i < length(ARGV); i++) {
+            if (ARGV[i] == "--format" && i + 1 < length(ARGV)) {
+                format = ARGV[i + 1];
+            } else if (ARGV[i] == "--json") {
+                format = "json";
+            }
+        }
+
+        let report = explain_route(client, target, port, proto);
+        if (format == "json") {
+            print(sprintf("%J\n", report));
+        } else {
+            print(format_text_report(report));
+        }
+        exit(report.success ? 0 : 1);
     }
-    exit(report.success ? 0 : 1);
 }
 
 return {

@@ -156,7 +156,41 @@ if (!found_sniff)
     die("sniff rule must include tun-in in tun mode\n");
 if (!found_section_route)
     die("section route rule must match tun-in in tun mode\n");
+if (!cfg.route || cfg.route.default_mark != 8226)
+    die("tun mode must set route.default_mark to 8226 (0x2022) to bypass tun auto_route policy table\n");
+let vpn_sel = null;
+for (let ob in (cfg.outbounds || [])) {
+    if (ob.type == "selector" && ob.tag == "vpn-out")
+        vpn_sel = ob;
+}
+if (vpn_sel == null)
+    die("vpn-out selector missing\n");
+if (vpn_sel.auto_failover != null)
+    die("selector must not enable auto_failover by default\n");
 ' "$WORK_DIR/tun-config.json" || fail "tun mode config shape validation failed"
+ok
+
+sed 's/"proxy_mode": "tun"/"proxy_mode": "tun", "selector_auto_failover": "1"/' \
+  "$WORK_DIR/tun-fixture.json" > "$WORK_DIR/tun-failover-fixture.json"
+mkdir -p "$WORK_DIR/tun-failover-config.json.section-cache"
+SB_VERSION_STATE_FILE="$WORK_DIR/tun-version" \
+SB_VARIANT_STATE_FILE="$WORK_DIR/tun-variant" \
+  ucode -L "$LIB_DIR" "$GEN" generate-config-fixture \
+  "$WORK_DIR/tun-failover-fixture.json" "$WORK_DIR/tun-failover-config.json" "127.0.0.1" \
+  || fail "tun mode failover config generation failed"
+ok
+
+ucode -L "$LIB_DIR" -e '
+let fs = require("fs");
+let cfg = json(fs.readfile(ARGV[0]));
+let vpn_sel = null;
+for (let ob in (cfg.outbounds || [])) {
+    if (ob.type == "selector" && ob.tag == "vpn-out")
+        vpn_sel = ob;
+}
+if (vpn_sel == null || vpn_sel.auto_failover != true)
+    die("selector must emit auto_failover: true when selector_auto_failover=1\n");
+' "$WORK_DIR/tun-failover-config.json" || fail "selector_auto_failover validation failed"
 ok
 
 echo "ok - $pass_count checks passed"

@@ -160,6 +160,83 @@ function repair_unknown_outbound_field(config_file, reason) {
         }
     }
 
+    let ep_peer_m = match(as_string(reason), /endpoints\[(\d+)\]\.peers\[(\d+)\]\.([A-Za-z0-9_.]+): json: unknown field/);
+    if (ep_peer_m && ep_peer_m[1] && ep_peer_m[2] && ep_peer_m[3]) {
+        let ep_idx = int(ep_peer_m[1]);
+        let peer_idx = int(ep_peer_m[2]);
+        let field = ep_peer_m[3];
+        if (ep_idx < 0 || peer_idx < 0) return false;
+        let cfg_text = as_string(fs.readfile(config_file) || "");
+        if (length(cfg_text) == 0) return false;
+        let cfg = json(cfg_text);
+        if (type(cfg) != "object" || type(cfg.endpoints) != "array" || ep_idx >= length(cfg.endpoints))
+            return false;
+        let ep = cfg.endpoints[ep_idx];
+        if (type(ep) != "object" || type(ep.peers) != "array" || peer_idx >= length(ep.peers))
+            return false;
+        let target = ep.peers[peer_idx];
+        if (type(target) != "object" || target[field] == null)
+            return false;
+        delete target[field];
+        fs.writefile(config_file, sprintf("%J", cfg));
+        return true;
+    }
+
+    let rrule_m = match(as_string(reason), /route\.rules\[(\d+)\]\.([A-Za-z0-9_.]+): json: unknown field/);
+    let drule_m = match(as_string(reason), /dns\.rules\[(\d+)\]\.([A-Za-z0-9_.]+): json: unknown field/);
+    let dsrv_m = match(as_string(reason), /dns\.servers\[(\d+)\]\.([A-Za-z0-9_.]+): json: unknown field/);
+    let sub_m = rrule_m || drule_m || dsrv_m;
+    if (sub_m && sub_m[1] && sub_m[2]) {
+        let idx = int(sub_m[1]);
+        let field = sub_m[2];
+        if (idx < 0) return false;
+        let cfg_text = as_string(fs.readfile(config_file) || "");
+        if (length(cfg_text) == 0) return false;
+        let cfg = json(cfg_text);
+        if (type(cfg) != "object") return false;
+        let arr = null;
+        if (rrule_m) {
+            if (type(cfg.route) != "object" || type(cfg.route.rules) != "array" || idx >= length(cfg.route.rules))
+                return false;
+            arr = cfg.route.rules;
+        } else if (drule_m) {
+            if (type(cfg.dns) != "object" || type(cfg.dns.rules) != "array" || idx >= length(cfg.dns.rules))
+                return false;
+            arr = cfg.dns.rules;
+        } else if (dsrv_m) {
+            if (type(cfg.dns) != "object" || type(cfg.dns.servers) != "array" || idx >= length(cfg.dns.servers))
+                return false;
+            arr = cfg.dns.servers;
+        }
+        let target = arr[idx];
+        if (type(target) != "object") return false;
+        let parts = split(field, ".");
+        let leaf = parts[length(parts) - 1];
+        for (let step = 0; step < length(parts) - 1; step++) {
+            if (type(target) != "object") return false;
+            target = target[parts[step]];
+        }
+        if (type(target) != "object" || target[leaf] == null) return false;
+        delete target[leaf];
+        if (rrule_m || drule_m) {
+            let rule_obj = arr[idx];
+            let non_matcher = rrule_m
+                ? { action: true, outbound: true, server: true, strategy: true, override_address: true, override_port: true, method: true, no_drop: true, sniffer: true, timeout: true, inbound: true }
+                : { action: true, server: true, strategy: true, rewrite_ttl: true, client_subnet: true, disable_cache: true, rcode: true, answer: true, ns: true, extra: true, method: true, no_drop: true };
+            let has_matcher = false;
+            for (let k in keys(rule_obj)) {
+                if (!non_matcher[k]) {
+                    has_matcher = true;
+                    break;
+                }
+            }
+            if (!has_matcher)
+                splice(arr, idx, 1);
+        }
+        fs.writefile(config_file, sprintf("%J", cfg));
+        return true;
+    }
+
     let out_m = match(as_string(reason), /outbounds\[(\d+)\]\.([A-Za-z0-9_.]+): json: unknown field/);
     let ep_m = match(as_string(reason), /endpoints\[(\d+)\]\.([A-Za-z0-9_.]+): json: unknown field/);
     let inb_m = match(as_string(reason), /inbounds\[(\d+)\]\.([A-Za-z0-9_.]+): json: unknown field/);

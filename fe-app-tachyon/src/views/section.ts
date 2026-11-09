@@ -15242,6 +15242,88 @@ function createSectionContent(section) {
   o = section.taboption(
     'settings',
     form.Flag,
+    'desync_tlsrec_first',
+    _('TLS Record Split Before TCP Desync (tlsrec_first)'),
+    _(
+      'Fragment TLS ClientHello at the record layer before applying TCP split or fake injection',
+    ),
+  );
+  o.modalonly = true;
+  o.default = '0';
+  o.depends({ action: 'desync', desync_preset: 'custom' });
+  o.depends({ action: 'desync', desync_preset: 'fake_split' });
+  o.depends({ action: 'desync', desync_preset: 'fake_disorder' });
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'desync_seqovl',
+    _('TCP Sequence Overlap Bytes (seqovl)'),
+    _('Prepend N decoy bytes via TCP sequence overlap (0 = disabled)'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.datatype = 'range(0,1400)';
+  o.placeholder = '0';
+  o.depends({ action: 'desync', desync_preset: 'custom' });
+
+  o = section.taboption(
+    'settings',
+    form.Flag,
+    'desync_syndata',
+    _('TCP Fast Open SYN Data (syndata)'),
+    _('Attach initial payload to TCP SYN packet when supported by kernel'),
+  );
+  o.modalonly = true;
+  o.default = '0';
+  o.depends({ action: 'desync', desync_preset: 'custom' });
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'desync_wsize',
+    _('TCP Window Clamp Bytes (wsize)'),
+    _(
+      'Clamp TCP receive window (SO_RCVBUF) during handshake to segment ServerHello (0 = disabled)',
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.datatype = 'uinteger';
+  o.placeholder = '0';
+  o.depends({ action: 'desync', desync_preset: 'custom' });
+
+  o = section.taboption(
+    'settings',
+    form.Flag,
+    'desync_ipfrag',
+    _('L3 IP Fragmentation (ipfrag)'),
+    _('Fragment fake/split packets at IPv4/IPv6 network layer'),
+  );
+  o.modalonly = true;
+  o.default = '0';
+  o.depends({ action: 'desync', desync_preset: 'custom' });
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'desync_udplen',
+    _('UDP Fake Payload Size (udplen)'),
+    _('Custom byte length for UDP fake packets (0 = default)'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.datatype = 'range(0,1472)';
+  o.placeholder = '0';
+  o.depends({
+    action: 'desync',
+    desync_preset: 'custom',
+    desync_udp_fake: '1',
+  });
+
+  o = section.taboption(
+    'settings',
+    form.Flag,
     'desync_udp_fake',
     _('UDP Fake (QUIC / Voice)'),
     _('Send fake low-TTL UDP packets before real UDP/QUIC payload'),
@@ -16931,6 +17013,25 @@ function createSectionContent(section) {
     _('Priority Failover (2nd activates only after 1st fails)'),
   );
   o.value('default', _('Manual Selector on Dashboard'));
+  ['connection', 'proxy', 'outbound', 'vpn', 'awg', 'fptn', 'group'].forEach(
+    (act) => o.depends('action', act),
+  );
+
+  o = section.taboption(
+    'settings',
+    form.Flag,
+    'selector_auto_failover',
+    _tr(
+      'Автопереключение при сбое (в ручном выборе)',
+      'Auto-switch on failure (manual selector)',
+    ),
+    _tr(
+      'Автоматически переключать селектор секции на рабочий узел, если выбранный вручную узел не отвечает при проверке задержки (без балансировщиков). Оставьте выключенным, чтобы исключить самопроизвольную смену IP-адреса.',
+      'Automatically switch the section selector to a working node if the manually selected node fails a latency check (without balancers). Leave disabled to prevent unexpected IP changes.',
+    ),
+  );
+  o.modalonly = true;
+  o.default = '0';
   ['connection', 'proxy', 'outbound', 'vpn', 'awg', 'fptn', 'group'].forEach(
     (act) => o.depends('action', act),
   );

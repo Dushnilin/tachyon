@@ -858,36 +858,38 @@ function print_cli_summary(res) {
 }
 
 // --- CLI Dispatcher ---
-let mode = ARGV[0] || "";
-let test_mode = ARGV[1] == "plus" || ARGV[2] == "plus" ? "plus" : "default";
+if ((sourcepath(1) == null || sourcepath(1) == "") && length(ARGV) > 0) {
+    let mode = ARGV[0] || "";
+    let test_mode = ARGV[1] == "plus" || ARGV[2] == "plus" ? "plus" : "default";
 
-if (mode == "leak-check" || mode == "leak_check") {
-    let res = run_leak_check(null, null, test_mode);
-    if (ARGV[1] == "--pretty" || ARGV[1] == "-p" || ARGV[2] == "--pretty" || ARGV[2] == "-p") {
-        print_cli_summary(res);
-    } else {
-        print(sprintf("%J\n", res));
+    if (mode == "leak-check" || mode == "leak_check") {
+        let res = run_leak_check(null, null, test_mode);
+        if (ARGV[1] == "--pretty" || ARGV[1] == "-p" || ARGV[2] == "--pretty" || ARGV[2] == "-p") {
+            print_cli_summary(res);
+        } else {
+            print(sprintf("%J\n", res));
+        }
+        exit(0);
     }
-    exit(0);
-}
-else if (mode == "leak-check-async" || mode == "leak_check_async") {
-    start_leak_check_async(test_mode);
-}
-else if (mode == "leak-check-worker") {
-    leak_check_worker(ARGV[1], ARGV[2]);
-}
-else if (mode == "leak-check-status" || mode == "leak_check_status") {
-    get_leak_check_status(ARGV[1]);
-}
-else if (mode == "ip-leak" || mode == "check_ip_leak") {
-    let res = check_ip_leak(null, null);
-    print(sprintf("%J\n", res));
-    exit(0);
-}
-else if (mode == "dns-leak" || mode == "check_dns_leak") {
-    let res = check_dns_leak(null, null, null, null);
-    print(sprintf("%J\n", res));
-    exit(0);
+    else if (mode == "leak-check-async" || mode == "leak_check_async") {
+        start_leak_check_async(test_mode);
+    }
+    else if (mode == "leak-check-worker") {
+        leak_check_worker(ARGV[1], ARGV[2]);
+    }
+    else if (mode == "leak-check-status" || mode == "leak_check_status") {
+        get_leak_check_status(ARGV[1]);
+    }
+    else if (mode == "ip-leak" || mode == "check_ip_leak") {
+        let res = check_ip_leak(null, null);
+        print(sprintf("%J\n", res));
+        exit(0);
+    }
+    else if (mode == "dns-leak" || mode == "check_dns_leak") {
+        let res = check_dns_leak(null, null, null, null);
+        print(sprintf("%J\n", res));
+        exit(0);
+    }
 }
 
 return {

@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-09 13:45+0300\n"
-"PO-Revision-Date: 2026-11-09 13:45+0300\n"
+"POT-Creation-Date: 2026-11-09 20:13+0300\n"
+"PO-Revision-Date: 2026-11-09 20:13+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -923,6 +923,12 @@ msgstr "Атомарные условия"
 msgid "Atomic conditions match traffic properties directly. Composite conditions combine other conditions with AND, OR, and NOT."
 msgstr "Атомарные условия проверяют параметры трафика напрямую. Составные условия объединяют другие условия через И (AND), ИЛИ (OR) и НЕ (NOT)."
 
+msgid "Attach initial payload to TCP SYN packet when supported by kernel"
+msgstr ""
+
+msgid "Attach initial payload to TCP SYN packet when supported by kernel."
+msgstr ""
+
 msgid "Attach to existing routing section"
 msgstr "В существующую секцию"
 
@@ -1736,6 +1742,12 @@ msgstr "Шифр"
 msgid "Circular condition reference detected: %s"
 msgstr "Обнаружена циклическая ссылка в условиях: %s"
 
+msgid "Clamp TCP receive window (SO_RCVBUF) during handshake to segment ServerHello (0 = disabled)"
+msgstr ""
+
+msgid "Clamp TCP receive window (SO_RCVBUF) during handshake to segment ServerHello (0 = disabled)."
+msgstr ""
+
 msgid "Clean"
 msgstr "Чисто"
 
@@ -2371,6 +2383,12 @@ msgstr "Свои целевые URL..."
 
 msgid "Custom User-Agent / Client Profile"
 msgstr "Пользовательский User-Agent / Профиль клиента"
+
+msgid "Custom byte length for UDP fake packets (0 = default)"
+msgstr ""
+
+msgid "Custom byte length for UDP fake packets (0 = default)."
+msgstr ""
 
 msgid "Custom device headers"
 msgstr "Пользовательские заголовки устройства"
@@ -4190,6 +4208,18 @@ msgstr "Упреждающая коррекция ошибок (FEC)"
 msgid "Found"
 msgstr "Найдено"
 
+msgid "Fragment TLS ClientHello at the record layer before applying TCP split or fake injection"
+msgstr ""
+
+msgid "Fragment TLS ClientHello at the record layer before applying TCP split or fake injection."
+msgstr ""
+
+msgid "Fragment fake/split packets at IPv4/IPv6 network layer"
+msgstr ""
+
+msgid "Fragment fake/split packets at IPv4/IPv6 network layer."
+msgstr ""
+
 msgid "France (fr)"
 msgstr "Франция (fr)"
 
@@ -5513,6 +5543,9 @@ msgstr "Ключевое слово не должно содержать про�
 msgid "KiB/s"
 msgstr "КиБ/с"
 
+msgid "L3 IP Fragmentation (ipfrag)"
+msgstr ""
+
 msgid "LAN Clients"
 msgstr "Локальные клиенты (LAN)"
 
@@ -6800,6 +6833,9 @@ msgstr "Необязательное имя, отображаемое в вер�
 msgid "Optional raw WireGuard / AmneziaWG [Interface] + [Peer] configuration text."
 msgstr "Необязательный текст конфигурации WireGuard / AmneziaWG с секциями [Interface] и [Peer]."
 
+msgid "Optional schedule when this condition is active (tachyon-core), e.g. 09:00-18:00 or Mon-Fri 22:00-07:00."
+msgstr ""
+
 msgid "Optional server name or IP from the token to prefer."
 msgstr "Необязательное имя или IP-адрес предпочитаемого сервера из токена."
 
@@ -7309,6 +7345,12 @@ msgstr "Подготовка"
 
 msgid "Preparing strategies and isolated nftables queue..."
 msgstr "Подготовка стратегий и изолированной очереди nftables..."
+
+msgid "Prepend N decoy bytes via TCP sequence overlap (0 = disabled)"
+msgstr ""
+
+msgid "Prepend N decoy bytes via TCP sequence overlap (0 = disabled)."
+msgstr ""
 
 msgid "Prepend a custom badge/prefix to every server imported from this subscription."
 msgstr "Добавлять свой префикс/бейдж к каждому серверу, импортированному из этой подписки."
@@ -9638,6 +9680,9 @@ msgstr "Пакеты данных TCP без флага ACK + MD5 (datanoack)"
 msgid "TCP Desync (First-Flight ClientHello Split)"
 msgstr "Десинхронизация TCP (нарезка первого пакета ClientHello)"
 
+msgid "TCP Fast Open SYN Data (syndata)"
+msgstr ""
+
 msgid "TCP First-Flight Desync (ClientHello Split)"
 msgstr "TCP-десинк первого полёта (First-Flight ClientHello Split)"
 
@@ -9659,6 +9704,9 @@ msgstr "Получен TCP RST от ТСПУ/DPI — зафиксирована 
 msgid "TCP Reset Injection"
 msgstr "Внедрение пакетов TCP Reset (RST)"
 
+msgid "TCP Sequence Overlap Bytes (seqovl)"
+msgstr ""
+
 msgid "TCP Split Only (midsld)"
 msgstr "Только разделение TCP (midsld)"
 
@@ -9670,6 +9718,9 @@ msgstr "Устаревший TCP Timestamp PAWS (TSval в прошлом)"
 
 msgid "TCP Urgent OOB Desync (midsld)"
 msgstr "TCP Urgent OOB десинхронизация (midsld)"
+
+msgid "TCP Window Clamp Bytes (wsize)"
+msgstr ""
 
 msgid "TCP Window Sizes (wsize)"
 msgstr "Размеры окна TCP (wsize)"
@@ -9709,6 +9760,9 @@ msgstr "TLS-обфускация (по умолчанию)"
 
 msgid "TLS Record Fragmentation (tlsrec, midsld)"
 msgstr "Фрагментация записей TLS (tlsrec, midsld)"
+
+msgid "TLS Record Split Before TCP Desync (tlsrec_first)"
+msgstr ""
 
 msgid "TLS Record Split before SNI (clean, no fake packets)"
 msgstr "TLS Record Split (разбиение TLS-записи до SNI без fake)"
@@ -10220,6 +10274,9 @@ msgstr "Плитки"
 msgid "Time"
 msgstr "Время"
 
+msgid "Time Window (Schedule)"
+msgstr ""
+
 msgid "Time in seconds for DNS record caching (default: 60)"
 msgstr "Время кэширования DNS-записей в секундах (по умолчанию: 60)"
 
@@ -10444,6 +10501,9 @@ msgstr "UDP / QUIC протоколы"
 
 msgid "UDP Fake (QUIC / Voice)"
 msgstr "Фейковые пакеты UDP (QUIC / Голос)"
+
+msgid "UDP Fake Payload Size (udplen)"
+msgstr ""
 
 msgid "UDP Fake Repeats"
 msgstr "Повторы фейковых пакетов UDP"

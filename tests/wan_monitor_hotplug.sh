@@ -233,6 +233,27 @@ if command -v ucode >/dev/null 2>&1; then
         if (core_ip.valid_ip_or_cidr("not-an-ip"))
             exit(2);
     ' || fail "Test 11 failed: CIDR validation check failed"
+
+    # Test 12: Hybrid CLI/library modules must return exports when required from a worker with non-empty ARGV (e.g. watchdog.uc worker)
+    cat > "$TMP_DIR/test_require_worker.uc" << 'UCODE'
+let wf = require("service.wan_failover");
+if (type(wf) != "object" || type(wf.check) != "function") exit(1);
+let prio = require("tachyon_core.priority");
+if (type(prio) != "object" || type(prio.tick_group) != "function") exit(2);
+let tg = require("service.telegram");
+if (type(tg) != "object" || type(tg.mixed_port_alive) != "function") exit(3);
+let lc = require("diagnostics.leak_check");
+if (type(lc) != "object" || type(lc.run_leak_check) != "function") exit(4);
+let re = require("diagnostics.route_explain");
+if (type(re) != "object" || type(re.explain_route) != "function") exit(5);
+let conn = require("config.connections");
+if (type(conn) != "object" || type(conn.option) != "function") exit(6);
+let gml = require("core.gomemlimit");
+if (type(gml) != "object" || type(gml.gomemlimit_mb) != "function") exit(7);
+exit(0);
+UCODE
+    ucode -L "$ROOT_DIR/tachyon/files/usr/lib" "$TMP_DIR/test_require_worker.uc" worker || \
+        fail "Test 12 failed: requiring hybrid module when ARGV=['worker'] must return exports and not exit(1)"
 fi
 
-printf 'All 10 WAN monitor, failover, and interface matcher tests PASSED!\n'
+printf 'All 12 WAN monitor, failover, and interface matcher tests PASSED!\n'

@@ -2426,13 +2426,16 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
         }
     }
 
-    push(config.outbounds, {
+    let selector_outbound = {
         type: "selector",
         tag: selector_tag,
         outbounds: selector_outbounds,
         default: selector_default,
         interrupt_exist_connections: connections.section_interrupt_exist_connections(section)
-    });
+    };
+    if (variant_state.is_tachyon_core() && connections.section_selector_auto_failover(section, ctx.runtime_settings ? ctx.runtime_settings() : null))
+        selector_outbound.auto_failover = true;
+    push(config.outbounds, selector_outbound);
 }
 
 function plain_ruleset_kind(json_path, etc_json, srs_path, fallback_kind) {
@@ -4384,6 +4387,11 @@ function build_inverted_subrules(config, section_name, inverted_conditions) {
         add_port_matchers(sub, neg);
         add_protocol_matchers(sub, neg);
         add_interface_address_matchers(sub, neg);
+        if ((ctx.is_tachyon_core && ctx.is_tachyon_core()) || variant_state.is_tachyon_core()) {
+            let ntw = trim(option(neg, "time_window", ""));
+            if (ntw != "")
+                sub.time_window = ntw;
+        }
         let nrs = [];
         for (let comm in list_option(neg, "community_lists")) {
             let ens = ensure_community_ruleset(config, section_name, as_string(comm));
@@ -4555,6 +4563,11 @@ function add_combined_route_for_clause(config, section) {
         add_dscp_matchers(r, section);
         add_protocol_matchers(r, section);
         add_interface_address_matchers(r, section);
+        if ((ctx.is_tachyon_core && ctx.is_tachyon_core()) || variant_state.is_tachyon_core()) {
+            let tw = trim(option(section, "time_window", ""));
+            if (tw != "")
+                r.time_window = tw;
+        }
         return r;
     };
 
@@ -4645,6 +4658,7 @@ function add_combined_route_for_clause(config, section) {
                 fallback_rule.interface_address != null ||
                 fallback_rule.network_interface_address != null ||
                 fallback_rule.preferred_by != null ||
+                fallback_rule.time_window != null ||
                 (fallback_rule.__inv_subrules != null && length(fallback_rule.__inv_subrules) > 0);
             if (has_any_matcher)
                 push_section_route_rule(config, fallback_rule, target.outbound, excluded_cidrs);

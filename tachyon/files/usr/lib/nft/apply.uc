@@ -2334,6 +2334,7 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
         !nft_add_rule(table, "mangle_output", [ "ip", "daddr", "@" + as_string(localv4_set), "return" ]) ||
         !nft_add_rule(table, "mangle_output", [ "ip6", "daddr", "@" + as_string(localv6_set), "return" ]) ||
         !nft_add_rule(table, "mangle_output", [ "meta", "mark", outbound_mark, "counter", "return" ]) ||
+        !nft_add_rule(table, "mangle_output", [ "meta", "mark", "0x00002022", "counter", "return" ]) ||
         // Keep tailscaled's transport out of proxy/block IP lists, including
         // when the standalone service starts after this table was built.
         // FakeIP destinations still need the core to resolve their mapping.
@@ -3300,6 +3301,46 @@ function sync_server_firewall_uci_rules() {
         }
     }
 
+    let settings = uci_settings();
+    let mode = lc(trim(as_string(option(settings, "proxy_mode", "tproxy"))));
+    let tun_if = trim(as_string(option(settings, "tun_interface", runtime_constants.TUN_INTERFACE)));
+    if (tun_if == "")
+        tun_if = runtime_constants.TUN_INTERFACE;
+    let tun_zone = runtime_constants.TUN_FIREWALL_ZONE;
+    if (mode == "tun") {
+        if (uci_core.get("firewall.tachyon_tun.name") != tun_zone ||
+            uci_core.get("firewall.tachyon_tun.device") != tun_if ||
+            uci_core.get("firewall.tachyon_tun.input") != "ACCEPT" ||
+            uci_core.get("firewall.tachyon_tun.output") != "ACCEPT" ||
+            uci_core.get("firewall.tachyon_tun.forward") != "ACCEPT") {
+            uci_core.set_section("firewall.tachyon_tun", "zone");
+            uci_core.set("firewall.tachyon_tun.name", tun_zone);
+            uci_core.set("firewall.tachyon_tun.device", tun_if);
+            uci_core.set("firewall.tachyon_tun.input", "ACCEPT");
+            uci_core.set("firewall.tachyon_tun.output", "ACCEPT");
+            uci_core.set("firewall.tachyon_tun.forward", "ACCEPT");
+            uci_core.set("firewall.tachyon_tun.masq", "1");
+            uci_core.set("firewall.tachyon_tun.mtu_fix", "1");
+            changed = true;
+        }
+        if (uci_core.get("firewall.tachyon_lan_tun.src") != "lan" ||
+            uci_core.get("firewall.tachyon_lan_tun.dest") != tun_zone) {
+            uci_core.set_section("firewall.tachyon_lan_tun", "forwarding");
+            uci_core.set("firewall.tachyon_lan_tun.src", "lan");
+            uci_core.set("firewall.tachyon_lan_tun.dest", tun_zone);
+            changed = true;
+        }
+    } else {
+        if (uci_core.get("firewall.tachyon_tun.name") != null) {
+            uci_core.delete("firewall.tachyon_tun");
+            changed = true;
+        }
+        if (uci_core.get("firewall.tachyon_lan_tun.src") != null) {
+            uci_core.delete("firewall.tachyon_lan_tun");
+            changed = true;
+        }
+    }
+
     let srv_ports = collect_server_firewall_ports();
     let fw4_include_dir = "/usr/share/nftables.d/chain-pre/input";
     let fw4_include_file = fw4_include_dir + "/10-tachyon-servers.nft";
@@ -3344,7 +3385,31 @@ function sync_server_firewall_uci_rules() {
             if (index(fw4_input_out, "udp dport " + as_string(p)) < 0)
                 run_args_quiet([ "nft", "insert", "rule", "inet", "fw4", "input", "udp", "dport", as_string(p), "accept", "comment", "\"Allow Tachyon server inbound UDP\"" ]);
         }
+        if (mode == "tun" && index(fw4_input_out, "iifname \"" + tun_if + "\"") < 0) {
+            run_args_quiet([ "nft", "insert", "rule", "inet", "fw4", "input", "iifname", tun_if, "accept", "comment", "\"Allow Tachyon TUN input\"" ]);
+        }
     }
+    if (mode == "tun") {
+        let fw4_fwd_out = command_output_from_args([ "nft", "list", "chain", "inet", "fw4", "forward" ]);
+        if (fw4_fwd_out != "") {
+            if (index(fw4_fwd_out, "oifname \"" + tun_if + "\"") < 0)
+                run_args_quiet([ "nft", "insert", "rule", "inet", "fw4", "forward", "oifname", tun_if, "accept", "comment", "\"Allow Tachyon TUN forward\"" ]);
+            if (index(fw4_fwd_out, "iifname \"" + tun_if + "\"") < 0)
+                run_args_quiet([ "nft", "insert", "rule", "inet", "fw4", "forward", "iifname", tun_if, "accept", "comment", "\"Allow Tachyon TUN forward\"" ]);
+        }
+    }
+}
+
+function cleanup_tproxy_route_rule(table, mark) {
+    if (tproxy_marking_rule4_present(table, mark)) {
+        run_args_quiet([ "ip", "-4", "rule", "del", "fwmark", as_string(mark) + "/" + as_string(mark), "table", table, "priority", "105" ]);
+        run_args_quiet([ "ip", "-4", "rule", "del", "fwmark", as_string(mark) + "/" + as_string(mark), "table", table ]);
+    }
+    if (core_ip.ipv6_supported() && tproxy_marking_rule6_present(table, mark)) {
+        run_args_quiet([ "ip", "-6", "rule", "del", "fwmark", as_string(mark) + "/" + as_string(mark), "table", table, "priority", "105" ]);
+        run_args_quiet([ "ip", "-6", "rule", "del", "fwmark", as_string(mark) + "/" + as_string(mark), "table", table ]);
+    }
+    return true;
 }
 
 function ensure_tproxy_route_rule(table, mark, rt_tables_path) {
@@ -3671,6 +3736,8 @@ function nft_enable_router_output_intercept(table, localv4_set, outbound_mark, e
         return false;
     if (outbound_mark != "" && !nft_add_rule(table, "output_redirect", [ "meta", "mark", outbound_mark, "return" ]))
         return false;
+    if (!nft_add_rule(table, "output_redirect", [ "meta", "mark", "0x00002022", "return" ]))
+        return false;
     // A DPI section claims router-originated traffic in mangle_output, which is a
     // route hook at priority -150, and hands it to the provider queue right
     // there. This chain is nat output at priority -100, so it sees the same
@@ -3804,6 +3871,7 @@ function nft_create_full_runtime_from_uci(rt_table, table, localv4_set, common_s
     // removed its own rules and ours outlived the process.
     return ensure_bridge_netfilter_disabled() &&
         apply_connection_tuning() &&
+        (tproxy_intercept_enabled() || cleanup_tproxy_route_rule(rt_table, fakeip_mark)) &&
         (!tproxy_intercept_enabled() || ensure_tproxy_route_rule(rt_table, fakeip_mark)) &&
         nft_create_runtime_base_from_uci(table, localv4_set, common_set, port_set, ip_port_set, interface_set, fakeip_mark, outbound_mark, fakeip_range, tproxy_port, localv6_set, common6_set, ip_port6_set, fakeip6_range, tproxy6_address) &&
         nft_add_section_priority_rules_from_sections(uci_sections("section"), table, interface_set, localv4_set, localv6_set, fakeip_mark) &&

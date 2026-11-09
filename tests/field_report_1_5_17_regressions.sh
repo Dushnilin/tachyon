@@ -297,12 +297,8 @@ fs.writeFileSync(path.join(work, 'ts_bad.json'), JSON.stringify(makeFixture('1')
 fs.writeFileSync(path.join(work, 'ts_good.json'), JSON.stringify(makeFixture('0')));
 JS
 
-if ucode -L "$TACHYON_LIB" "$TACHYON_LIB/config/validator.uc" validate-section-action-variant-support "$WORK_DIR/ts_bad.json" "" "0.1.3" >"$WORK_DIR/ts_err" 2>&1; then
-  fail 'tailscale_advertise_exit_node in singbox mode must be rejected on tachyon-core'
-fi
-grep -Fq 'tailscale_advertise_exit_node' "$WORK_DIR/ts_err" || fail 'expected tailscale_advertise_exit_node error message'
-
-ucode -L "$TACHYON_LIB" "$TACHYON_LIB/config/validator.uc" validate-section-action-variant-support "$WORK_DIR/ts_good.json" "" "0.1.3" || fail 'tailscale without exit_node should pass'
+ucode -L "$TACHYON_LIB" "$TACHYON_LIB/config/validator.uc" validate-section-action-variant-support "$WORK_DIR/ts_bad.json" "" "0.4.5" || fail 'tailscale_advertise_exit_node in singbox mode should pass on tachyon-core'
+ucode -L "$TACHYON_LIB" "$TACHYON_LIB/config/validator.uc" validate-section-action-variant-support "$WORK_DIR/ts_good.json" "" "0.4.5" || fail 'tailscale without exit_node should pass'
 
 # 5: Cookie engine enabled in subscription/cache.uc
 grep -Fq '"-b", "/dev/null"' "$TACHYON_LIB/subscription/cache.uc" || fail 'expected -b /dev/null in subscription/cache.uc'

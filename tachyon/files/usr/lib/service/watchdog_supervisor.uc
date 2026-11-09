@@ -12,6 +12,7 @@ const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
 const PID_FILE = getenv("TACHYON_WATCHDOG_PID_FILE") || "/var/run/tachyon_watchdog.pid";
 const WATCHDOG_UC = LIB_DIR + "/service/watchdog.uc";
 const WORKER_UC = getenv("TACHYON_WATCHDOG_WORKER_UC") || WATCHDOG_UC;
+const WORKER_ERR_FILE = "/tmp/tachyon_watchdog_worker.err";
 const WORKER_RESTART_DELAY_MS = int(getenv("TACHYON_WATCHDOG_RESTART_DELAY_MS") || "5000");
 const WORKER_STABLE_SECONDS = int(getenv("TACHYON_WATCHDOG_STABLE_SECONDS") || "120");
 
@@ -47,6 +48,19 @@ function process_running(pid) {
     return fs.stat("/proc/" + pid) != null;
 }
 
+function last_worker_error() {
+    let raw = trim(as_string(fs.readfile(WORKER_ERR_FILE) || ""));
+    if (raw == "")
+        return "";
+    let lines = split(raw, "\n");
+    for (let i = length(lines) - 1; i >= 0; i--) {
+        let line = trim(as_string(lines[i] || ""));
+        if (line != "")
+            return " [" + substr(line, 0, 180) + "]";
+    }
+    return "";
+}
+
 function supervise() {
     log_message("Watchdog supervisor started", "info");
 
@@ -56,7 +70,7 @@ function supervise() {
     while (true) {
         let spawn = (force_legacy ? "TACHYON_WATCHDOG_LEGACY=1 " : "") +
             command_from_args([ "ucode", "-L", LIB_DIR, WORKER_UC, "worker" ]);
-        command_status(common.background_command_with_pid(spawn, ">/dev/null", ">" + shell_quote(PID_FILE)));
+        command_status(common.background_command_with_pid(spawn, ">" + shell_quote(WORKER_ERR_FILE), ">" + shell_quote(PID_FILE)));
 
         let started = time();
         while (true) {
@@ -67,18 +81,19 @@ function supervise() {
         }
 
         let lived = time() - started;
+        let err_detail = last_worker_error();
         if (lived >= WORKER_STABLE_SECONDS) {
             early_deaths = 0;
-            log_message("Watchdog worker exited after " + lived + "s; respawning", "warn");
+            log_message("Watchdog worker exited after " + lived + "s; respawning" + err_detail, "warn");
         } else {
             early_deaths++;
             if (early_deaths >= 2 && !force_legacy) {
                 force_legacy = true;
                 log_message("Watchdog worker exited after " + lived + "s (early exit " +
-                    early_deaths + "); respawning in legacy loop mode (uloop disabled)", "err");
+                    early_deaths + "); respawning in legacy loop mode (uloop disabled)" + err_detail, "err");
             } else {
                 log_message("Watchdog worker exited after " + lived + "s (early exit " +
-                    early_deaths + "); respawning", "warn");
+                    early_deaths + "); respawning" + err_detail, "warn");
             }
         }
         sleep(WORKER_RESTART_DELAY_MS);
