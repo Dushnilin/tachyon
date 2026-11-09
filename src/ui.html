@@ -4610,16 +4610,16 @@ function vDiagFuzzer() {
               </tr>
             </thead>
             <tbody>
-              ${(res.results || []).map(r => `
+              ${(res.results || res.strategies || []).map((r, idx) => `
                 <tr>
-                  <td style="font-weight:600">${esc(r.label)} ${r.recommended ? '<span class="badge badge-ok">Рекомендуется</span>' : ''}</td>
-                  <td class="mono" style="font-size:11.5px">${esc(r.params)}</td>
+                  <td style="font-weight:600">${esc(r.label)} ${(r.recommended || idx === 0) ? '<span class="badge badge-ok">Рекомендуется</span>' : ''}</td>
+                  <td class="mono" style="font-size:11.5px">${esc(r.preset || r.params || 'adaptive')}</td>
                   <td class="mono">${r.fake_ttl || 5}</td>
-                  <td><span class="badge ${r.tls_ok ? 'badge-ok' : 'badge-err'}">${r.tls_ok ? 'OK' : 'TIMEOUT'}</span></td>
-                  <td><span class="badge ${r.http_ok ? 'badge-ok' : 'badge-warn'}">${r.http_ok ? 'OK' : 'WARN'}</span></td>
+                  <td><span class="badge ${(r.success || r.tls_ok) ? 'badge-ok' : 'badge-err'}">${(r.success || r.tls_ok) ? 'OK' : 'TIMEOUT'}</span></td>
+                  <td><span class="badge ${(r.success || r.http_ok) ? 'badge-ok' : 'badge-warn'}">${(r.success || r.http_ok) ? 'OK' : 'WARN'}</span></td>
                   <td class="mono">${r.latency_ms} мс</td>
                   <td style="text-align:right">
-                    <button class="btn btn-sm btn-primary" onclick="applyFuzzerPreset('${esc(r.params)}', ${r.fake_ttl || 5})">Применить в секцию Desync</button>
+                    <button class="btn btn-sm btn-primary" onclick="applyFuzzerPreset('${esc(r.preset || r.params || 'adaptive')}', ${r.fake_ttl || 5})">Применить в секцию Desync</button>
                   </td>
                 </tr>
               `).join('')}
@@ -4642,10 +4642,12 @@ async function runVisualFuzzer() {
 }
 
 async function applyFuzzerPreset(params, fake_ttl) {
-  const sec = (S.store.sections || []).find(s => s.mode === 'desync') || (S.store.sections || [])[0];
+  const sec = (S.store.sections || []).find(s => s.mode === 'desync' || s.connection_type === 'desync') || (S.store.sections || [])[0];
   if (!sec) { toast('Секция десинхронизации не найдена', true); return; }
   const updated = Object.assign({}, sec, {
     mode: 'desync',
+    connection_type: 'desync',
+    desync_preset: params,
     desync_params: params,
     desync_fake_ttl: Number(fake_ttl || 5)
   });
@@ -4673,24 +4675,28 @@ function vDiagDns() {
             <thead>
               <tr>
                 <th>Резолвер</th>
-                <th>Протокол</th>
-                <th>Мин / Сред / Макс (мс)</th>
-                <th>Успешность</th>
+                <th>Протокол / Описание</th>
+                <th>Отклик (мс)</th>
+                <th>Статус</th>
                 <th style="text-align:right">Действие</th>
               </tr>
             </thead>
             <tbody>
-              ${(res.results || []).map(r => `
-                <tr>
-                  <td class="mono" style="font-weight:600">${esc(r.resolver)} ${r.recommended ? '<span class="badge badge-ok">Лучший отклик</span>' : ''}</td>
-                  <td><span class="badge mono">${esc(r.protocol)}</span></td>
-                  <td class="mono">${r.min_ms} / <b>${r.avg_ms}</b> / ${r.max_ms} мс</td>
-                  <td class="mono">${r.success_rate}%</td>
-                  <td style="text-align:right">
-                    <button class="btn btn-sm" onclick="promoteDnsResolver('${esc(r.resolver)}', '${esc(r.protocol)}')">Сделать основным DNS</button>
-                  </td>
-                </tr>
-              `).join('')}
+              ${(res.results || []).map((r, idx) => {
+                const srv = r.server || r.resolver || '';
+                const ok = r.reachable !== false;
+                return `
+                  <tr>
+                    <td class="mono" style="font-weight:600">${esc(srv)} ${(r.recommended || idx === 0) ? '<span class="badge badge-ok">Лучший отклик</span>' : ''}</td>
+                    <td><span class="badge mono">${esc(r.protocol || 'DoH')}</span></td>
+                    <td class="mono"><b>${r.latency_ms ?? r.avg_ms ?? 0}</b> мс</td>
+                    <td><span class="badge ${ok ? 'badge-ok' : 'badge-err'}">${ok ? 'Доступен' : 'Таймаут'}</span></td>
+                    <td style="text-align:right">
+                      <button class="btn btn-sm" onclick="promoteDnsResolver('${esc(srv)}', '${esc(r.protocol || 'doh')}')">Сделать основным DNS</button>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
             </tbody>
           </table>
         </div>
@@ -4716,12 +4722,13 @@ async function runNativeDnsCheck() {
 
 async function promoteDnsResolver(resolver, protocol) {
   const cleanHost = resolver.split(' ')[0];
+  const isDoh = (protocol || '').toLowerCase().includes('doh');
   try {
     await api('POST', '/api/settings/save', {
-      dns_type: (protocol || 'doh').toLowerCase(),
+      dns_type: isDoh ? 'doh' : 'udp',
       dns_servers: [cleanHost]
     });
-    toast(`Резолвер ${cleanHost} (${protocol}) установлен основным`);
+    toast(`Резолвер ${cleanHost} установлен основным`);
     await bootstrap();
   } catch (e) { toast(e.message, true); }
 }
@@ -4741,21 +4748,19 @@ function vDiagSni() {
               <tr>
                 <th>Домен SNI</th>
                 <th>TLS 1.3</th>
-                <th>ALPN H2</th>
-                <th>Сертификат</th>
-                <th>CDN</th>
+                <th>Доступность</th>
+                <th>Рекомендация</th>
                 <th>Задержка</th>
                 <th style="text-align:right">Действие</th>
               </tr>
             </thead>
             <tbody>
-              ${(res.candidates || []).map(c => `
+              ${(res.candidates || res.results || []).map(c => `
                 <tr>
                   <td class="mono" style="font-weight:600">${esc(c.domain)}</td>
                   <td><span class="badge ${c.tls13 ? 'badge-ok' : 'badge-err'}">${c.tls13 ? 'TLS 1.3' : 'Нет'}</span></td>
-                  <td><span class="badge ${c.h2 ? 'badge-ok' : 'badge-warn'}">${c.h2 ? 'H2' : 'HTTP/1.1'}</span></td>
-                  <td><span class="badge ${c.cert_valid ? 'badge-ok' : 'badge-err'}">${c.cert_valid ? 'Валиден' : 'Ошибка'}</span></td>
-                  <td class="mono">${c.cdn_detected ? 'CDN (не реком.)' : 'Прямой узел'}</td>
+                  <td><span class="badge ${(c.reachable !== false) ? 'badge-ok' : 'badge-err'}">${(c.reachable !== false) ? 'Доступен' : 'Ошибка'}</span></td>
+                  <td><span class="badge ${c.recommended ? 'badge-ok' : 'badge-warn'}">${c.recommended ? 'Оптимален' : 'Высокий пинг'}</span></td>
                   <td class="mono">${c.latency_ms} мс</td>
                   <td style="text-align:right">
                     <button class="btn btn-sm" onclick="copyText('${esc(c.domain)}')">Скопировать SNI</button>
@@ -4788,17 +4793,17 @@ function vDiagUnlock() {
       </div>
       ${res ? `
         <div class="grid-3">
-          ${(res.services || []).map(s => `
+          ${(res.services || res.results || []).map(s => `
             <div style="padding:12px;background:var(--bg-elev);border:1px solid var(--border);border-radius:var(--radius);display:flex;justify-content:space-between;align-items:center">
               <div>
                 <div style="font-weight:600;font-size:13px">${esc(s.service)}</div>
-                <div class="mono" style="font-size:11px;color:var(--text-3)">HTTP ${s.status_code} · ${s.latency_ms} мс</div>
+                <div class="mono" style="font-size:11px;color:var(--text-3)">${esc(s.category || s.host || '')} · ${s.latency_ms} мс</div>
               </div>
               <span class="badge ${s.reachable ? 'badge-ok' : 'badge-err'}">${s.reachable ? 'Доступен' : 'Недоступен'}</span>
             </div>
           `).join('')}
         </div>
-      ` : `<div style="font-size:12px;color:var(--text-3)">Нажмите «Запустить проверку сервисов» для тестирования доступности YouTube, Discord, OpenAI, Claude, Gemini, Netflix, Spotify, Steam и Telegram.</div>`}
+      ` : `<div style="font-size:12px;color:var(--text-3)">Нажмите «Запустить проверку сервисов» для тестирования доступности YouTube, Discord, OpenAI, Claude, GitHub, Docker Hub, Steam и Telegram.</div>`}
     </div>
   `;
 }
@@ -4818,31 +4823,34 @@ function vDiagLeak() {
       <div class="card-head">
         <div class="card-title">${ic('shield', 15)} Аудит утечек (IPv4 / IPv6 / WebRTC STUN / Перехват DNS) и Config Plan</div>
         <div style="display:flex;gap:6px">
-          <button class="btn btn-sm" onclick="openConfigPlanModal()">Предпросмотр Config Plan (/api/config/plan)</button>
+          <button class="btn btn-sm" onclick="openConfigPlanModal()">Предпросмотр Config Plan (/api/diagnostics/config-plan)</button>
           <button class="btn btn-sm btn-primary" onclick="runVisualLeakCheck()">Выполнить аудит утечек</button>
         </div>
       </div>
       ${res ? `
+        <div style="padding:10px 12px;background:var(--bg-elev);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:10px;font-size:12.5px">
+          <b>Вердикт:</b> ${esc(res.verdict || 'Проверка завершена')}
+        </div>
         <div class="grid-4">
           <div style="padding:12px;background:var(--bg-elev);border:1px solid var(--border);border-radius:var(--radius)">
-            <div class="kpi-label">Внешний IP / ASN</div>
-            <div class="mono" style="font-size:14px;font-weight:600;margin-top:4px">${esc(res.direct_ip || '—')}</div>
-            <div class="mono" style="font-size:11px;color:var(--text-3)">${esc(res.country || '')} · ${esc(res.asn || '')}</div>
+            <div class="kpi-label">Пул FakeIP и DNS-сокет</div>
+            <div class="mono" style="font-size:13px;font-weight:600;margin-top:4px">${esc(res.fakeip_range || '198.18.0.0/15')}</div>
+            <div class="mono" style="font-size:11px;color:var(--text-3)">Сокет: ${esc(res.dns_listener || '127.0.0.42:53')}</div>
           </div>
           <div style="padding:12px;background:var(--bg-elev);border:1px solid var(--border);border-radius:var(--radius)">
-            <div class="kpi-label">Утечка IPv6</div>
-            <div style="margin-top:6px"><span class="badge ${!res.ipv6_leak ? 'badge-ok' : 'badge-warn'}">${!res.ipv6_leak ? 'Защищено' : 'IPv6 активен'}</span></div>
+            <div class="kpi-label">Таблица nftables TProxy</div>
+            <div style="margin-top:6px"><span class="badge ${res.nft_table_active ? 'badge-ok' : 'badge-warn'}">${res.nft_table_active ? 'inet TachyonTable активна' : 'Не активна'}</span></div>
           </div>
           <div style="padding:12px;background:var(--bg-elev);border:1px solid var(--border);border-radius:var(--radius)">
             <div class="kpi-label">Защита STUN / WebRTC</div>
-            <div style="margin-top:6px"><span class="badge ${res.webrtc_stun_protected ? 'badge-ok' : 'badge-warn'}">${res.webrtc_stun_protected ? 'Блокируется' : 'Открыт UDP STUN'}</span></div>
+            <div style="margin-top:6px"><span class="badge ${res.webrtc_leak_protect ? 'badge-ok' : 'badge-warn'}">${res.webrtc_leak_protect ? 'Блокируется' : 'Открыт UDP STUN'}</span></div>
           </div>
           <div style="padding:12px;background:var(--bg-elev);border:1px solid var(--border);border-radius:var(--radius)">
             <div class="kpi-label">Перехват стороннего DoH</div>
-            <div style="margin-top:6px"><span class="badge ${res.doh_blocked ? 'badge-ok' : 'badge-warn'}">${res.doh_blocked ? 'Активен' : 'Выключен'}</span></div>
+            <div style="margin-top:6px"><span class="badge ${res.block_doh ? 'badge-ok' : 'badge-warn'}">${res.block_doh ? 'Активен' : 'Выключен'}</span></div>
           </div>
         </div>
-      ` : `<div style="font-size:12px;color:var(--text-3)">Нажмите «Выполнить аудит утечек» для сравнения внешнего IP и проверки перехвата DNS/STUN/IPv6.</div>`}
+      ` : `<div style="font-size:12px;color:var(--text-3)">Нажмите «Выполнить аудит утечек» для проверки FakeIP, перехвата DNS/STUN и таблицы inet TachyonTable.</div>`}
     </div>
   `;
 }
@@ -4857,8 +4865,8 @@ async function runVisualLeakCheck() {
 
 async function openConfigPlanModal() {
   try {
-    const plan = await api('GET', '/api/config/plan');
-    openModal('Предпросмотр сгенерированного плана конфигурации (/api/config/plan)', `
+    const plan = await api('GET', '/api/diagnostics/config-plan');
+    openModal('Предпросмотр сгенерированного плана конфигурации (/api/diagnostics/config-plan)', `
       <textarea readonly class="mono" style="min-height:320px;font-size:11.5px">${esc(JSON.stringify(plan, null, 2))}</textarea>
     `, `<button class="btn" onclick="closeModal()">Закрыть</button>`);
   } catch (e) { toast(e.message, true); }
@@ -4902,6 +4910,8 @@ async function runVisualNetTool() {
 
 function vDiagAi() {
   const res = S.diagAiRes;
+  const kbList = (res && (res.rag_docs || res.matched_kb)) || [];
+  const recs = (res && (res.recommendations || res.recommended_actions)) || [];
   return `
     <div class="card">
       <div class="card-head">
@@ -4913,21 +4923,21 @@ function vDiagAi() {
       </div>
       ${res ? `
         <div style="padding:12px;background:var(--bg-elev);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:12px">
-          <div style="font-size:12px;font-weight:600;margin-bottom:4px">Инженерное заключение (${esc(res.engine || 'local-kb')})</div>
-          <div style="font-size:12.5px;color:var(--text-2)">${esc(res.diagnosis || '')}</div>
-          ${(res.recommended_actions || []).length ? `
+          <div style="font-size:12px;font-weight:600;margin-bottom:4px">Инженерное заключение (${esc(res.provider || res.engine || 'local-kb')} · ${esc(res.model || '')})</div>
+          <div style="font-size:12.5px;color:var(--text-2);white-space:pre-wrap">${esc(res.analysis || res.diagnosis || '')}</div>
+          ${recs.length ? `
             <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
-              ${(res.recommended_actions || []).map(a => `
-                <button class="btn btn-sm btn-signal" onclick="quickFixSubsystem('${esc(a.fix_id)}')">${ic('wrench', 11)} ${esc(a.label)}</button>
+              ${recs.map(a => `
+                <button class="btn btn-sm btn-signal" onclick="quickFixSubsystem('${esc(a.fix_id)}')">${ic('wrench', 11)} ${esc(a.label || a.title || a.fix_id)}</button>
               `).join('')}
             </div>
           ` : ''}
         </div>
         <div class="grid-2">
-          ${(res.matched_kb || []).map(k => `
+          ${kbList.map(k => `
             <div style="padding:12px;background:var(--bg-elev);border:1px solid var(--border);border-radius:var(--radius)">
               <div style="font-weight:600;font-size:12.5px;margin-bottom:4px">${esc(k.title)}</div>
-              <div style="font-size:12px;color:var(--text-2)">${esc(k.solution)}</div>
+              <div style="font-size:12px;color:var(--text-2)">${esc(k.summary || k.solution || '')}</div>
             </div>
           `).join('')}
         </div>
