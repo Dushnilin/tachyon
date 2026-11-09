@@ -2092,7 +2092,7 @@ function vDashboard() {
             </div>
             <div class="kpi-val">${sys.memory_used_mb || 0} <span style="font-size:13px;color:var(--text-2);font-weight:400">/ ${sys.memory_total_mb || 0} МБ (${memPct}%)</span></div>
             <div class="meter"><span style="width:${memPct}%"></span></div>
-            <div class="kpi-meta">Load: ${esc((sys.load_avg || [0,0,0]).join('/'))}${zramMb ? ` · ZRAM ${zramUsedMb}/${zramMb} МБ` : ''}${sys.cpu_temp_c ? ` · SoC ${sys.cpu_temp_c.toFixed(1)}°C` : ''}</div>
+            <div class="kpi-meta">Load: ${esc(Array.isArray(sys.load_avg) ? sys.load_avg.join('/') : (sys.load_avg || '0.00'))}${zramMb ? ` · ZRAM ${zramUsedMb}/${zramMb} МБ` : ''}${sys.cpu_temp_c ? ` · SoC ${sys.cpu_temp_c.toFixed(1)}°C` : ''}</div>
           </div>
           <div class="card">
             <div class="kpi-label"><span>WAN и отказоустойчивость</span><span class="badge badge-ok">${esc(sys.wan_interface || 'wan')}</span></div>
@@ -3506,7 +3506,7 @@ function editSrc(id) {
       </div>
       <div class="field">
         <div class="field-label">Диапазоны портов (UDP Hopping)</div>
-        <input type="text" id="mSrcHopPorts" value="${esc((src.server_ports || []).join(', '))}" placeholder="51820, 40000-45000" class="mono"/>
+        <input type="text" id="mSrcHopPorts" value="${esc(Array.isArray(src.server_ports) ? src.server_ports.join(', ') : (src.server_ports || ''))}" placeholder="51820, 40000-45000" class="mono"/>
       </div>
       <div class="field">
         <div class="field-label">Интервал Hop (мин / макс)</div>
