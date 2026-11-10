@@ -2309,15 +2309,18 @@ function resolveSectionActiveInfo(
         ? selectedOutbound.displayName
         : `${selectedOutbound.displayName} (${modeTag})`;
 
-      const rawMemberName =
-        info?.selectedName ||
+      const fallbackMember =
         info?.outbounds?.find(
           (m) =>
             m.selected || (info.selectedCode && m.code === info.selectedCode),
-        )?.displayName ||
-        '';
+        ) ||
+        info?.outbounds?.find((m) => m.latency && m.latency > 0) ||
+        info?.outbounds?.[0];
+      const rawMemberName =
+        info?.selectedName || fallbackMember?.displayName || '';
       activeMemberCode =
         info?.selectedCode ||
+        fallbackMember?.code ||
         info?.outbounds?.find(
           (m) =>
             m.selected || (rawMemberName && m.displayName === rawMemberName),
@@ -2332,8 +2335,8 @@ function resolveSectionActiveInfo(
       if (rawMemberName) {
         serverName = ensureOutboundDisplayFlag({
           displayName: rawMemberName,
-          country: matchedNode?.country,
-          prefix: matchedNode?.prefix,
+          country: fallbackMember?.country || matchedNode?.country,
+          prefix: fallbackMember?.prefix || matchedNode?.prefix,
         });
       } else {
         serverName = selectedOutbound.displayName;
@@ -3019,6 +3022,9 @@ export function renderDashboardSectionsAndNodes(
           class: [
             'tachyon-routing-row',
             hideTrafficAndConns ? 'tachyon-routing-row--no-traffic' : '',
+            !hideTrafficAndConns && !engineMeta.isDpiOnly
+              ? 'tachyon-routing-row--has-mobile-node'
+              : '',
             isRowSelected ? 'is-selected' : '',
             isExpanded ? 'is-expanded' : '',
             section.configError ? 'has-error' : '',
@@ -3068,6 +3074,38 @@ export function renderDashboardSectionsAndNodes(
                     ]
                   : []),
               ]),
+              ...(!hideTrafficAndConns && !engineMeta.isDpiOnly
+                ? [
+                    E(
+                      'div',
+                      {
+                        class: 'tachyon-routing-row__mobile-node',
+                        title: `${activeInfo.serverName}${activeInfo.selectorLabel ? ` • ${activeInfo.selectorLabel}` : ''}`,
+                      },
+                      [
+                        E(
+                          'span',
+                          { class: 'tachyon-routing-row__mobile-server' },
+                          renderFlagEmojis(activeInfo.serverName),
+                        ),
+                        ...(activeInfo.selectorLabel
+                          ? [
+                              E(
+                                'span',
+                                { class: 'tachyon-routing-row__mobile-sep' },
+                                '•',
+                              ),
+                              E(
+                                'span',
+                                { class: 'tachyon-routing-row__mobile-sel' },
+                                activeInfo.selectorLabel,
+                              ),
+                            ]
+                          : []),
+                      ],
+                    ),
+                  ]
+                : []),
               E(
                 'div',
                 { class: 'tachyon-routing-row__subtitle' },

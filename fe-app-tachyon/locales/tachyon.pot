@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-10 08:53+0300\n"
-"PO-Revision-Date: 2026-11-10 08:53+0300\n"
+"POT-Creation-Date: 2026-11-10 09:15+0300\n"
+"PO-Revision-Date: 2026-11-10 09:15+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -431,7 +431,7 @@ msgstr ""
 #: src/tachyon/tabs/dashboard/initController.ts:6083
 #: src/tachyon/tabs/dashboard/initController.ts:6344
 #: src/tachyon/tabs/dashboard/initController.ts:6590
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3401
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3439
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:2124
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:2434
 #: src/tachyon/tabs/diagnostic/checks/runNftCheck.ts:107
@@ -1733,7 +1733,7 @@ msgstr ""
 msgid "Balancers"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3744
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3782
 msgid "Balancers & Failover Policies"
 msgstr ""
 
@@ -2309,7 +2309,7 @@ msgstr ""
 msgid "Check"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:3629
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:3672
 msgid "Check Connection"
 msgstr ""
 
@@ -2416,14 +2416,14 @@ msgstr ""
 
 #: src/tachyon/tabs/dashboard/initController.ts:5346
 #: src/tachyon/tabs/dashboard/initController.ts:5420
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2668
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2671
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1881
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1926
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:2306
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:2531
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:3286
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:3571
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:3618
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:3614
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:3661
 #: src/tachyon/tabs/diagnostic/partials/renderDiagnosticsModal.ts:243
 msgid "Checking..."
 msgstr ""
@@ -2592,7 +2592,7 @@ msgstr ""
 msgid "Click to customize prefix colors"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3029
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3035
 msgid "Click to expand section nodes, balancers and conditions"
 msgstr ""
 
@@ -2606,7 +2606,7 @@ msgstr ""
 msgid "Click to highlight in editor"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3117
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3155
 msgid "Click to inspect auto-selection details"
 msgstr ""
 
@@ -2623,7 +2623,7 @@ msgstr ""
 msgid "Click to test latency"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2728
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2731
 msgid "Click to test section latency"
 msgstr ""
 
@@ -2952,7 +2952,7 @@ msgstr ""
 msgid "Condition Type"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3637
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3675
 msgid "Condition active"
 msgstr ""
 
@@ -3025,7 +3025,7 @@ msgstr ""
 msgid "Configure User-Agent in the item settings"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3264
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3302
 msgid "Configure displayed section categories on dashboard"
 msgstr ""
 
@@ -3156,8 +3156,8 @@ msgstr ""
 msgid "Connectivity probe failed"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3000
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3209
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3003
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3247
 msgid "Conns"
 msgstr ""
 
@@ -3435,7 +3435,7 @@ msgstr ""
 msgid "Custom Domain Resolver for Interface"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3650
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3688
 msgid "Custom Domains"
 msgstr ""
 
@@ -4070,7 +4070,7 @@ msgstr ""
 msgid "Destination Port (dest_port)"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3672
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3710
 #: src/views/conditions.ts:2267
 msgid "Destination Ports"
 msgstr ""
@@ -4104,7 +4104,7 @@ msgstr ""
 msgid "Details"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3441
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3479
 msgid "Details & Nodes →"
 msgstr ""
 
@@ -4243,7 +4243,7 @@ msgstr ""
 msgid "Direct Route (Bypass)"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3685
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3723
 msgid "Direct Rule"
 msgstr ""
 
@@ -4715,7 +4715,7 @@ msgstr ""
 msgid "Eco Mode: On"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3518
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3556
 #: src/views/outbounds.ts:2632
 #: src/views/server.ts:3237
 #: src/views/tachyon.ts:85
@@ -4963,8 +4963,8 @@ msgid "Enforce SafeSearch & YouTube Restricted Mode"
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:1993
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2953
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3086
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2956
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3124
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:1348
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:1612
 #: src/tachyon/tabs/diagnostic/partials/renderStrategyFuzzerModal.ts:799
@@ -5086,8 +5086,8 @@ msgid "Err"
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1328
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2693
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2695
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2696
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2698
 #: src/views/section.ts:14153
 #: src/views/section.ts:14156
 #: src/views/section.ts:14168
@@ -6409,7 +6409,7 @@ msgstr ""
 msgid "Group members"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3460
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3498
 msgid "Group nodes"
 msgstr ""
 
@@ -6504,8 +6504,8 @@ msgstr ""
 msgid "Handshake timeout"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3066
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:3684
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3072
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:3727
 msgid "Has errors"
 msgstr ""
 
@@ -7378,7 +7378,7 @@ msgstr ""
 
 #: src/tachyon/studioDeck.ts:5088
 #: src/tachyon/tabs/dashboard/initController.ts:2625
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3468
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3506
 #: src/views/balancers.ts:475
 msgid "Interval"
 msgstr ""
@@ -8039,7 +8039,7 @@ msgstr ""
 msgid "L3 IP Fragmentation (ipfrag)"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3666
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3704
 msgid "LAN Clients"
 msgstr ""
 
@@ -8520,7 +8520,7 @@ msgstr ""
 #: src/tachyon/tabs/dashboard/initController.ts:1938
 #: src/tachyon/tabs/dashboard/initController.ts:3072
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2283
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2357
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2360
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:2037
 msgid "Manual"
 msgstr ""
@@ -9325,7 +9325,7 @@ msgstr ""
 msgid "No snapshots yet"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3733
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3771
 msgid "No specific domain filters are attached to this section — matches traffic by section priority."
 msgstr ""
 
@@ -9650,7 +9650,7 @@ msgid "Off (Allow)"
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/initController.ts:6663
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2672
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2675
 msgid "Offline"
 msgstr ""
 
@@ -9769,7 +9769,7 @@ msgstr ""
 msgid "Only the specified servers."
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3610
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3648
 msgid "Open Condition"
 msgstr ""
 
@@ -11943,7 +11943,7 @@ msgstr ""
 msgid "Routing & System"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3722
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3760
 msgid "Routing Conditions & Traffic Rules"
 msgstr ""
 
@@ -11992,7 +11992,7 @@ msgstr ""
 msgid "Routing section \"%s\" is disabled. Servers using it were also disabled: %s."
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3255
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3293
 msgid "Routing sections"
 msgstr ""
 
@@ -12099,9 +12099,9 @@ msgstr ""
 #: src/tachyon/tabs/dashboard/initController.ts:5938
 #: src/tachyon/tabs/dashboard/initController.ts:6041
 #: src/tachyon/tabs/dashboard/initController.ts:6706
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2679
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2687
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2726
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2682
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2690
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2729
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1687
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:223
 #: src/tachyon/tabs/diagnostic/checks/runSingBoxCheck.ts:77
@@ -12380,7 +12380,7 @@ msgstr ""
 msgid "Section Rules Content"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3278
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3316
 msgid "Section Types"
 msgstr ""
 
@@ -12400,7 +12400,7 @@ msgstr ""
 msgid "Section node transport"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:3711
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:3754
 msgid "Section quarantined due to error (other sections continue working):"
 msgstr ""
 
@@ -12448,7 +12448,7 @@ msgid "Security"
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/initController.ts:2407
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3423
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3461
 msgid "Select"
 msgstr ""
 
@@ -12677,7 +12677,7 @@ msgstr ""
 msgid "Selected Devices are Guests (Explicit list)"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3448
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3486
 msgid "Selected node"
 msgstr ""
 
@@ -12708,8 +12708,8 @@ msgstr ""
 
 #: src/tachyon/tabs/dashboard/initController.ts:5439
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:1965
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2972
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3107
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2975
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3145
 msgid "Selector"
 msgstr ""
 
@@ -12789,8 +12789,8 @@ msgstr ""
 #: src/tachyon/tabs/dashboard/initController.ts:2511
 #: src/tachyon/tabs/dashboard/initController.ts:5425
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:1964
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2954
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3087
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2957
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3125
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:2673
 #: src/views/outbounds.ts:2407
 #: src/views/outbounds.ts:2917
@@ -13020,7 +13020,7 @@ msgstr ""
 msgid "Service Lists"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3646
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3684
 msgid "Service Presets"
 msgstr ""
 
@@ -13746,7 +13746,7 @@ msgstr ""
 #: src/tachyon/tabs/dashboard/initController.ts:6042
 #: src/tachyon/tabs/dashboard/initController.ts:6084
 #: src/tachyon/tabs/dashboard/initController.ts:6599
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2727
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2730
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1691
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:2317
 #: src/tachyon/tabs/diagnostic/checks/runSectionsCheck.ts:235
@@ -13773,8 +13773,8 @@ msgid "Store auto-detected domains in /etc instead of /tmp to survive reboots."
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:1994
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2971
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3106
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2974
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3144
 msgid "Strategy"
 msgstr ""
 
@@ -13827,7 +13827,7 @@ msgstr ""
 msgid "Subnet %s is a shared Anycast/CDN range (%s). Third-party websites hosted on this CDN will also be routed through this section."
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3662
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3700
 msgid "Subnets / IP (CIDR)"
 msgstr ""
 
@@ -14626,7 +14626,7 @@ msgstr ""
 msgid "Test Telegram Connection"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3307
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3345
 msgid "Test all sections"
 msgstr ""
 
@@ -14641,7 +14641,7 @@ msgstr ""
 #: src/tachyon/tabs/dashboard/initController.ts:4216
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1022
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:1030
-#: src/tachyon/tabs/dashboard/partials/renderSections.ts:3630
+#: src/tachyon/tabs/dashboard/partials/renderSections.ts:3673
 msgid "Test latency"
 msgstr ""
 
@@ -14719,7 +14719,7 @@ msgstr ""
 msgid "Testing URLs"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3299
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3337
 msgid "Testing all sections..."
 msgstr ""
 
@@ -14883,7 +14883,7 @@ msgstr ""
 msgid "This router"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3755
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3793
 msgid "This section uses direct or manual node selection (no URLTest / Priority balancers attached)."
 msgstr ""
 
@@ -14996,7 +14996,7 @@ msgstr ""
 
 #: src/tachyon/studioDeck.ts:5100
 #: src/tachyon/tabs/dashboard/initController.ts:2627
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3478
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3516
 #: src/views/balancers.ts:475
 #: src/views/section.ts:5409
 msgid "Tolerance"
@@ -15079,8 +15079,8 @@ msgstr ""
 #: src/tachyon/studioDeck.ts:4282
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1128
 #: src/tachyon/tabs/dashboard/initController.ts:2251
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2990
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3171
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2993
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:3209
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:643
 msgid "Traffic"
 msgstr ""
@@ -16668,7 +16668,7 @@ msgstr ""
 #: src/tachyon/tabs/dashboard/partials/renderConnections.ts:328
 #: src/tachyon/tabs/dashboard/partials/renderConnections.ts:434
 #: src/tachyon/tabs/dashboard/partials/renderConnections.ts:56
-#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2816
+#: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2819
 msgid "conns"
 msgstr ""
 

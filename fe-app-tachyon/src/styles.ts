@@ -2603,6 +2603,41 @@ header .dropdown-menu {
     white-space: nowrap;
 }
 
+.tachyon-routing-row__mobile-node {
+    display: none;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-top: 1px;
+}
+
+.tachyon-routing-row__mobile-server {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-color-high, inherit);
+}
+
+.tachyon-routing-row__mobile-sep {
+    opacity: 0.45;
+    flex-shrink: 0;
+}
+
+.tachyon-routing-row__mobile-sel {
+    font-weight: 500;
+    opacity: 0.72;
+    flex-shrink: 0;
+}
+
 .tachyon-routing-row__status-badge {
     display: inline-flex;
     align-items: center;
@@ -3345,6 +3380,12 @@ header .dropdown-menu {
     }
     .tachyon-routing-row__col,
     .tachyon-routing-row__status-col {
+        display: none;
+    }
+    .tachyon-routing-row__mobile-node {
+        display: flex;
+    }
+    .tachyon-routing-row--has-mobile-node .tachyon-routing-row__subtitle {
         display: none;
     }
     .tachyon-nodes-grid {

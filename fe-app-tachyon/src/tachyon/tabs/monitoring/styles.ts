@@ -872,11 +872,11 @@ body.dark .tachyon_monitoring-page {
 }
 
 .tachyon_monitoring-page__table th:nth-child(1) {
-    width: 26%;
+    width: 25%;
 }
 
 .tachyon_monitoring-page__table th:nth-child(2) {
-    width: 7%;
+    width: 6.5%;
 }
 
 .tachyon_monitoring-page__table th:nth-child(3) {
@@ -884,23 +884,23 @@ body.dark .tachyon_monitoring-page {
 }
 
 .tachyon_monitoring-page__table th:nth-child(4) {
-    width: 8%;
+    width: 6.5%;
 }
 
 .tachyon_monitoring-page__table th:nth-child(5) {
-    width: 12%;
+    width: 9.5%;
 }
 
 .tachyon_monitoring-page__table th:nth-child(6) {
-    width: 10%;
+    width: 9.5%;
 }
 
 .tachyon_monitoring-page__table th:nth-child(7) {
-    width: 16%;
+    width: 23.5%;
 }
 
 .tachyon_monitoring-page__table th:nth-child(8) {
-    width: 8%;
+    width: 6.5%;
 }
 
 .tachyon_monitoring-page__table tbody tr:last-child td {
@@ -953,6 +953,7 @@ body.dark .tachyon_monitoring-page {
 }
 
 .tachyon_monitoring-page__source-name {
+    flex: 0 1 auto;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -960,7 +961,7 @@ body.dark .tachyon_monitoring-page {
 }
 
 .tachyon_monitoring-page__source-ip {
-    flex: 0 1 auto;
+    flex: 0 0 auto;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;

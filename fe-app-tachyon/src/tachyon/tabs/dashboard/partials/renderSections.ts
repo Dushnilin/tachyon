@@ -3424,7 +3424,46 @@ function renderDefaultState({
                         selectedOutbound?.priorityInfo,
                       );
                       const isInteractiveSelector = hasUrlTest || hasPriority;
-                      const selectorLabel = hasUrlTest
+                      const autoGroupInfo =
+                        selectedOutbound?.urlTestInfo ||
+                        selectedOutbound?.priorityInfo;
+                      const activeAutoMember =
+                        autoGroupInfo?.outbounds?.find(
+                          (m) =>
+                            m.selected ||
+                            (autoGroupInfo.selectedCode &&
+                              m.code === autoGroupInfo.selectedCode) ||
+                            (autoGroupInfo.selectedName &&
+                              m.displayName === autoGroupInfo.selectedName),
+                        ) ||
+                        autoGroupInfo?.outbounds?.find(
+                          (m) => m.latency && m.latency > 0,
+                        ) ||
+                        autoGroupInfo?.outbounds?.[0];
+                      const rawAutoServerName =
+                        autoGroupInfo?.selectedName ||
+                        activeAutoMember?.displayName ||
+                        '';
+                      const matchedAutoNode = rawAutoServerName
+                        ? section.outbounds.find(
+                            (o) =>
+                              (autoGroupInfo?.selectedCode &&
+                                o.code === autoGroupInfo.selectedCode) ||
+                              o.displayName === rawAutoServerName,
+                          )
+                        : undefined;
+                      const activeAutoServerLabel = rawAutoServerName
+                        ? ensureOutboundDisplayFlag({
+                            displayName: rawAutoServerName,
+                            country:
+                              activeAutoMember?.country ||
+                              matchedAutoNode?.country,
+                            prefix:
+                              activeAutoMember?.prefix ||
+                              matchedAutoNode?.prefix,
+                          })
+                        : '';
+                      const baseSelectorLabel = hasUrlTest
                         ? selectedOutbound?.displayName || 'URLTest'
                         : hasPriority
                           ? selectedOutbound?.displayName || 'Priority'
@@ -3435,6 +3474,10 @@ function renderDefaultState({
                             : isRu
                               ? 'Ручной выбор'
                               : 'Manual';
+                      const selectorLabel =
+                        isInteractiveSelector && activeAutoServerLabel
+                          ? `${baseSelectorLabel} → ${activeAutoServerLabel}`
+                          : baseSelectorLabel;
 
                       let latencyMs = selectedOutbound?.latency;
                       if (
@@ -3514,7 +3557,7 @@ function renderDefaultState({
                                 { class: 'tachyon-section-row__selector-dot' },
                                 [renderZapIcon(12)],
                               ),
-                              E('span', {}, selectorLabel),
+                              E('span', {}, renderFlagEmojis(selectorLabel)),
                               ...(isInteractiveSelector
                                 ? [renderInfoIcon24()]
                                 : []),
