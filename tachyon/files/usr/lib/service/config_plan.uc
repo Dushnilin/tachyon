@@ -637,13 +637,25 @@ function domain_covers_in_set(parent_set, child_dom) {
 }
 
 function ipv4_to_u32(ip) {
-    let parts = split(trim(as_string(ip)), ".");
+    let s = trim(as_string(ip));
+    if (type(global.iptoarr) == "function") {
+        let arr = iptoarr(s);
+        if (arr == null || length(arr) != 4) return -1;
+        return ((arr[0] * 256 + arr[1]) * 256 + arr[2]) * 256 + arr[3];
+    }
+    let parts = split(s, ".");
     if (length(parts) != 4) return -1;
     let val = 0;
     for (let p in parts) {
-        if (match(p, /^[0-9]+$/) == null) return -1;
-        let oct = int(p);
-        if (oct < 0 || oct > 255) return -1;
+        let plen = length(p);
+        if (plen == 0 || plen > 3) return -1;
+        let oct = 0;
+        for (let k = 0; k < plen; k++) {
+            let ch = ord(p, k);
+            if (ch < 48 || ch > 57) return -1;
+            oct = oct * 10 + (ch - 48);
+        }
+        if (oct > 255) return -1;
         val = val * 256 + oct;
     }
     return val;
@@ -659,8 +671,7 @@ function parse_ipv4_cidr_range(raw) {
     let ip_num = ipv4_to_u32(ip_part);
     if (ip_num < 0) return null;
     let host_bits = 32 - prefix;
-    let block_size = 1;
-    for (let b = 0; b < host_bits; b++) block_size = block_size * 2;
+    let block_size = host_bits == 32 ? 4294967296 : (1 << host_bits);
     let start = int(ip_num / block_size) * block_size;
     let end = start + block_size - 1;
     return { start: start, end: end, prefix: prefix, raw: s };
@@ -677,24 +688,84 @@ function cidr_covers(parent_raw, child_raw) {
     return p.start <= c.start && p.end >= c.end;
 }
 
-function parse_plain_list_entries(content, domains_out, cidrs_out, seen_domains, seen_cidrs) {
+function build_cidr_index(cidrs) {
+    let cidr_set = {};
+    let cidr_ranges = [];
+    let raw_intervals = [];
+    for (let c in cidrs) {
+        let key = lc(c);
+        if (cidr_set[key] == null) cidr_set[key] = c;
+        let r = parse_ipv4_cidr_range(c);
+        push(cidr_ranges, r);
+        if (r != null) push(raw_intervals, r);
+    }
+    sort(raw_intervals, function(a, b) {
+        if (a.start != b.start) return a.start < b.start ? -1 : 1;
+        if (a.end != b.end) return a.end > b.end ? -1 : 1;
+        return 0;
+    });
+    let ipv4_intervals = [];
+    for (let item in raw_intervals) {
+        let n = length(ipv4_intervals);
+        if (n > 0 && ipv4_intervals[n - 1].end >= item.end)
+            continue;
+        push(ipv4_intervals, item);
+    }
+    return {
+        cidr_set: cidr_set,
+        cidr_ranges: cidr_ranges,
+        ipv4_intervals: ipv4_intervals
+    };
+}
+
+function cidr_covered_by_meta(parent_meta, child_raw, child_range) {
+    if (parent_meta == null || child_raw == null || child_raw == "") return "";
+    let exact = parent_meta.cidr_set ? parent_meta.cidr_set[lc(child_raw)] : null;
+    if (exact != null) return exact;
+    let c = child_range != null ? child_range : parse_ipv4_cidr_range(child_raw);
+    if (c == null) return "";
+    let intervals = parent_meta.ipv4_intervals;
+    let n = type(intervals) == "array" ? length(intervals) : 0;
+    if (n == 0) return "";
+    let lo = 0;
+    let hi = n - 1;
+    let best = -1;
+    while (lo <= hi) {
+        let mid = (lo + hi) >> 1;
+        if (intervals[mid].start <= c.start) {
+            best = mid;
+            lo = mid + 1;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    if (best >= 0 && intervals[best].end >= c.end)
+        return intervals[best].raw;
+    return "";
+}
+
+function parse_plain_list_entries(content, domains_out, cidrs_out, seen_domains, seen_cidrs, entry_mode) {
     if (content == null || content == "") return;
     seen_domains = seen_domains || {};
     seen_cidrs = seen_cidrs || {};
+    let domains_only = (entry_mode == "domains");
+    let cidrs_only = (entry_mode == "cidrs");
     for (let line in split(as_string(content), "\n")) {
+        if (domains_only && length(domains_out) >= MAX_ANALYZED_LIST_ENTRIES) break;
+        if (cidrs_only && length(cidrs_out) >= MAX_ANALYZED_LIST_ENTRIES) break;
         if (length(domains_out) >= MAX_ANALYZED_LIST_ENTRIES && length(cidrs_out) >= MAX_ANALYZED_LIST_ENTRIES)
             break;
         let hash = index(line, "#");
         if (hash >= 0) line = substr(line, 0, hash);
-        line = trim(replace(line, "\r", ""));
+        line = trim(line);
         if (line == "" || substr(line, 0, 2) == "//") continue;
         if (substr(line, 0, 8) == "keyword:" || substr(line, 0, 6) == "regex:") continue;
-        if (core_ip.valid_ip_or_cidr(line)) {
+        if (!domains_only && core_ip.valid_ip_or_cidr(line)) {
             if (length(cidrs_out) < MAX_ANALYZED_LIST_ENTRIES && !seen_cidrs[line]) {
                 seen_cidrs[line] = true;
                 push(cidrs_out, line);
             }
-        } else {
+        } else if (!cidrs_only) {
             let norm = normalize_domain_token(line);
             if (norm != "" && index(norm, "/") < 0 && length(domains_out) < MAX_ANALYZED_LIST_ENTRIES && !seen_domains[norm]) {
                 seen_domains[norm] = true;
@@ -797,41 +868,80 @@ function resolve_list_contents(list_name, options) {
         if (index(folders, def_dir) < 0) push(folders, def_dir);
     }
 
+    let has_json = false;
+    let has_dom_lst = false;
+    let has_sub_lst = false;
+    let has_plain_lst = false;
+
     for (let dir in folders) {
-        let json_candidates = [
-            dir + "/community-" + raw_name + ".json",
-            dir + "/community-" + norm_name + ".json",
-            dir + "/" + raw_name + ".json"
-        ];
-        for (let jp in json_candidates) {
-            let st = fs.stat(jp);
-            if (st != null && st.type == "file" && (st.size || 0) > 0) {
-                if (found_path == "") found_path = jp;
-                if ((st.mtime || 0) > mtime) mtime = int(st.mtime || 0);
-                if ((st.size || 0) <= MAX_ANALYZED_LIST_FILE_BYTES) {
-                    let parsed = common.read_json_file(jp);
-                    parse_json_ruleset_entries(parsed, domains, cidrs, seen_domains, seen_cidrs);
-                    source = "local_file";
+        if (!has_json) {
+            let json_candidates = [ dir + "/community-" + raw_name + ".json" ];
+            if (norm_name != raw_name) push(json_candidates, dir + "/community-" + norm_name + ".json");
+            push(json_candidates, dir + "/" + raw_name + ".json");
+            for (let jp in json_candidates) {
+                let st = fs.stat(jp);
+                if (st != null && st.type == "file" && (st.size || 0) > 0) {
+                    if (found_path == "") found_path = jp;
+                    if ((st.mtime || 0) > mtime) mtime = int(st.mtime || 0);
+                    if ((st.size || 0) <= MAX_ANALYZED_LIST_FILE_BYTES) {
+                        let parsed = common.read_json_file(jp);
+                        parse_json_ruleset_entries(parsed, domains, cidrs, seen_domains, seen_cidrs);
+                        source = "local_file";
+                        has_json = true;
+                        break;
+                    }
                 }
             }
         }
 
-        let lst_candidates = [
-            dir + "/community-domains-" + raw_name + ".lst",
-            dir + "/community-domains-" + norm_name + ".lst",
-            dir + "/community-subnets-" + raw_name + ".lst",
-            dir + "/community-subnets-" + norm_name + ".lst",
-            dir + "/" + raw_name + ".lst",
-            dir + "/" + raw_name + ".txt"
-        ];
-        for (let lp in lst_candidates) {
-            let st = fs.stat(lp);
-            if (st != null && st.type == "file" && (st.size || 0) > 0) {
-                if (found_path == "") found_path = lp;
-                if ((st.mtime || 0) > mtime) mtime = int(st.mtime || 0);
-                if ((st.size || 0) <= MAX_ANALYZED_LIST_FILE_BYTES) {
-                    parse_plain_list_entries(fs.readfile(lp), domains, cidrs, seen_domains, seen_cidrs);
-                    source = "local_file";
+        if (!has_dom_lst) {
+            let dom_candidates = [ dir + "/community-domains-" + raw_name + ".lst" ];
+            if (norm_name != raw_name) push(dom_candidates, dir + "/community-domains-" + norm_name + ".lst");
+            for (let lp in dom_candidates) {
+                let st = fs.stat(lp);
+                if (st != null && st.type == "file" && (st.size || 0) > 0) {
+                    if (found_path == "") found_path = lp;
+                    if ((st.mtime || 0) > mtime) mtime = int(st.mtime || 0);
+                    if ((st.size || 0) <= MAX_ANALYZED_LIST_FILE_BYTES) {
+                        parse_plain_list_entries(fs.readfile(lp), domains, cidrs, seen_domains, seen_cidrs, "domains");
+                        source = "local_file";
+                        has_dom_lst = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (!has_sub_lst) {
+            let sub_candidates = [ dir + "/community-subnets-" + raw_name + ".lst" ];
+            if (norm_name != raw_name) push(sub_candidates, dir + "/community-subnets-" + norm_name + ".lst");
+            for (let lp in sub_candidates) {
+                let st = fs.stat(lp);
+                if (st != null && st.type == "file" && (st.size || 0) > 0) {
+                    if (found_path == "") found_path = lp;
+                    if ((st.mtime || 0) > mtime) mtime = int(st.mtime || 0);
+                    if ((st.size || 0) <= MAX_ANALYZED_LIST_FILE_BYTES) {
+                        parse_plain_list_entries(fs.readfile(lp), domains, cidrs, seen_domains, seen_cidrs, "cidrs");
+                        source = "local_file";
+                        has_sub_lst = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (!has_plain_lst) {
+            for (let lp in [ dir + "/" + raw_name + ".lst", dir + "/" + raw_name + ".txt" ]) {
+                let st = fs.stat(lp);
+                if (st != null && st.type == "file" && (st.size || 0) > 0) {
+                    if (found_path == "") found_path = lp;
+                    if ((st.mtime || 0) > mtime) mtime = int(st.mtime || 0);
+                    if ((st.size || 0) <= MAX_ANALYZED_LIST_FILE_BYTES) {
+                        parse_plain_list_entries(fs.readfile(lp), domains, cidrs, seen_domains, seen_cidrs, "mixed");
+                        source = "local_file";
+                        has_plain_lst = true;
+                        break;
+                    }
                 }
             }
         }
@@ -871,6 +981,7 @@ function resolve_list_contents(list_name, options) {
     }
 
     let verified = (length(domains) > 0 || length(cidrs) > 0);
+    let cidr_idx = build_cidr_index(cidrs);
     return {
         name: raw_name,
         source: source,
@@ -880,6 +991,9 @@ function resolve_list_contents(list_name, options) {
         domains: domains,
         domain_set: seen_domains,
         cidrs: cidrs,
+        cidr_set: cidr_idx.cidr_set,
+        cidr_ranges: cidr_idx.cidr_ranges,
+        ipv4_intervals: cidr_idx.ipv4_intervals,
         domains_count: length(domains),
         cidrs_count: length(cidrs),
         verified: verified
@@ -1118,21 +1232,31 @@ function collect_section_conditions(sec, conditions_map) {
     };
 }
 
+function is_domain_excluded(cond, target_domain) {
+    if (target_domain == null || target_domain == "" || length(cond.exclude_domains) == 0)
+        return false;
+    for (let ex_d in cond.exclude_domains) {
+        if (domain_covers(ex_d, target_domain))
+            return true;
+    }
+    return false;
+}
+
+function is_ip_excluded(cond, target_ip) {
+    if (target_ip == null || target_ip == "" || length(cond.exclude_ips) == 0)
+        return false;
+    for (let ex_ip in cond.exclude_ips) {
+        if (cidr_covers(ex_ip, target_ip))
+            return true;
+    }
+    return false;
+}
+
 function evaluate_condition_relation(earlier_cond, later_cond, target_domain, target_ip) {
-    if (target_domain != null && target_domain != "") {
-        for (let ex_d in earlier_cond.exclude_domains) {
-            if (domain_covers(ex_d, target_domain)) {
-                return { excluded: true, l3_disjoint: true, l4_disjoint: false, covers_all: false };
-            }
-        }
-    }
-    if (target_ip != null && target_ip != "") {
-        for (let ex_ip in earlier_cond.exclude_ips) {
-            if (cidr_covers(ex_ip, target_ip)) {
-                return { excluded: true, l3_disjoint: true, l4_disjoint: false, covers_all: false };
-            }
-        }
-    }
+    if (is_domain_excluded(earlier_cond, target_domain))
+        return { excluded: true, l3_disjoint: true, l4_disjoint: false, covers_all: false };
+    if (is_ip_excluded(earlier_cond, target_ip))
+        return { excluded: true, l3_disjoint: true, l4_disjoint: false, covers_all: false };
 
     let dev_overlap = token_sets_overlap(earlier_cond.devices, later_cond.devices, true);
     let iface_overlap = token_sets_overlap(earlier_cond.interfaces, later_cond.interfaces, false);
@@ -1554,8 +1678,7 @@ function analyze_rule_conflicts(candidate_uci, options) {
                     let covered_later_dom_count = 0;
 
                     for (let dl in l_later_meta.domains) {
-                        let d_rel = evaluate_condition_relation(earlier.conditions, later.conditions, dl, null);
-                        if (d_rel.excluded) continue;
+                        if (is_domain_excluded(earlier.conditions, dl)) continue;
                         let de = domain_covers_in_set(l_early_meta.domain_set, dl);
                         if (de != "") {
                             push(shared_domains, dl);
@@ -1565,15 +1688,15 @@ function analyze_rule_conflicts(candidate_uci, options) {
                     }
 
                     let shared_cidrs = [];
-                    for (let cl in l_later_meta.cidrs) {
-                        let c_rel = evaluate_condition_relation(earlier.conditions, later.conditions, null, cl);
-                        if (c_rel.excluded) continue;
-                        for (let ce in l_early_meta.cidrs) {
-                            if (cidr_covers(ce, cl)) {
-                                push(shared_cidrs, cl);
-                                parent_map[cl] = ce;
-                                break;
-                            }
+                    let later_ranges = l_later_meta.cidr_ranges;
+                    for (let cl_idx = 0; cl_idx < length(l_later_meta.cidrs); cl_idx++) {
+                        let cl = l_later_meta.cidrs[cl_idx];
+                        if (is_ip_excluded(earlier.conditions, cl)) continue;
+                        let cl_range = type(later_ranges) == "array" ? later_ranges[cl_idx] : null;
+                        let ce = cidr_covered_by_meta(l_early_meta, cl, cl_range);
+                        if (ce != "") {
+                            push(shared_cidrs, cl);
+                            parent_map[cl] = ce;
                         }
                     }
 
@@ -1661,8 +1784,7 @@ function analyze_rule_conflicts(candidate_uci, options) {
                     let manual_hit_count = 0;
                     let manual_parent = "";
                     for (let dl in l_later_meta.domains) {
-                        let d_rel = evaluate_condition_relation(earlier.conditions, later.conditions, dl, null);
-                        if (d_rel.excluded) continue;
+                        if (is_domain_excluded(earlier.conditions, dl)) continue;
                         for (let de in earlier.domains) {
                             if (domain_covers(de, dl)) {
                                 manual_hit_count++;
@@ -1736,18 +1858,17 @@ function analyze_rule_conflicts(candidate_uci, options) {
                     }
                 }
                 if (matched_cidr == "") {
+                    let ip_later_range = parse_ipv4_cidr_range(ip_later);
                     for (let l_early in earlier.lists) {
                         let lmeta = earlier.list_meta[l_early];
                         if (lmeta != null) {
-                            for (let lc_cidr in lmeta.cidrs) {
-                                if (cidr_covers(lc_cidr, ip_later)) {
-                                    matched_cidr = lc_cidr;
-                                    early_src = "list:" + l_early;
-                                    break;
-                                }
+                            let lc_cidr = cidr_covered_by_meta(lmeta, ip_later, ip_later_range);
+                            if (lc_cidr != "") {
+                                matched_cidr = lc_cidr;
+                                early_src = "list:" + l_early;
+                                break;
                             }
                         }
-                        if (matched_cidr != "") break;
                     }
                 }
                 if (matched_cidr != "") {
@@ -2380,6 +2501,25 @@ function selftest() {
         }
     });
     assert(length(rc_acknowledged.conflicts) == 0 && length(rc_acknowledged.acknowledged_conflicts) == 1, "expected overlap is moved to acknowledged_conflicts and suppressed from active warnings");
+
+    // Test 12: Indexed CIDR overlap scales to 2048x2048 entries in sub-second time
+    let big_cidrs_a = [ "10.0.0.0/8", "2001:db8::/32" ];
+    let big_cidrs_b = [ "10.42.1.0/24", "2001:db8::/32" ];
+    for (let i = 0; i < 2046; i++) {
+        push(big_cidrs_a, sprintf("100.%d.%d.0/24", int(i / 256), i % 256));
+        push(big_cidrs_b, sprintf("198.%d.%d.0/24", int(i / 256), i % 256));
+    }
+    let t_start = clock();
+    let rc_big_cidr = analyze_rule_conflicts(updated_list_uci, {
+        list_contents: {
+            custom_feed_a: { cidrs: big_cidrs_a },
+            custom_feed_b: { cidrs: big_cidrs_b }
+        }
+    });
+    let t_end = clock();
+    let elapsed_ms = (t_end[0] - t_start[0]) * 1000 + int((t_end[1] - t_start[1]) / 1000000);
+    assert(length(rc_big_cidr.conflicts) == 1 && rc_big_cidr.conflicts[0].overlap_count == 2, "indexed CIDR overlap detects subnet containment and exact IPv6 match across 2048x2048 lists");
+    assert(elapsed_ms < 2000, sprintf("2048x2048 CIDR conflict analysis completes quickly (%d ms)", elapsed_ms));
 
     print(sprintf("Config plan selftest: %d passed, %d failed\n", passed, failed));
     return failed == 0 ? 0 : 1;

@@ -2681,7 +2681,11 @@ function valid_plain_list_source(filepath, allow_domains) {
     if (data == null) return false;
     let parser = routing_rulesets_module();
     for (let line in split(as_string(data), "\n")) {
-        line = trim(replace(replace(line, /[ \t]*\/\/.*$/, ""), /[ \t]*#.*$/, ""));
+        let slash_comment = index(line, "//");
+        if (slash_comment >= 0) line = substr(line, 0, slash_comment);
+        let hash_comment = index(line, "#");
+        if (hash_comment >= 0) line = substr(line, 0, hash_comment);
+        line = trim(line);
         if (line == "" || substr(line, 0, 1) == ";") continue;
         if (parser.normalize_plain_ruleset_value(line, "subnets") != null) continue;
         if (allow_domains && parser.normalize_plain_ruleset_value(line, "domains") != null) continue;
@@ -3184,7 +3188,7 @@ function import_all_preset_lists(settings) {
             }
             let lines = split(as_string(fs.readfile(tmpfile)), "\n");
             for (let l in lines) {
-                l = trim(replace(as_string(l), /\r/g, ""));
+                l = trim(as_string(l));
                 if (l != "" && substr(l, 0, 1) != "#")
                     push(combined_lines, l);
             }
@@ -3196,6 +3200,8 @@ function import_all_preset_lists(settings) {
         if (length(combined_lines) > 0) {
             ensure_dir(TMP_RULESET_FOLDER);
             write_file(cached_file, join("\n", combined_lines) + "\n");
+            if (type(list_update_seen_builtin_subnets) == "object")
+                list_update_seen_builtin_subnets[as_string(service)] = true;
         }
     }
 
@@ -3203,6 +3209,8 @@ function import_all_preset_lists(settings) {
     for (let service in community_services) {
         if (!import_community_srs_file(service, settings, true))
             ok = false;
+        else if (type(list_update_seen_community_srs) == "object")
+            list_update_seen_community_srs[as_string(service)] = true;
     }
 
     // Pre-cache remote domain/subnet lists from all sections so they are
@@ -3339,7 +3347,7 @@ function import_builtin_subnets_from_rule(section, settings) {
             }
             let lines = split(as_string(fs.readfile(tmpfile)), "\n");
             for (let l in lines) {
-                l = trim(replace(as_string(l), /\r/g, ""));
+                l = trim(as_string(l));
                 if (l != "" && substr(l, 0, 1) != "#")
                     push(combined_lines, l);
             }
@@ -4081,6 +4089,8 @@ function list_update() {
     }
     list_nft_batch = nft_additions;
     list_nft_batch_failed = false;
+    list_update_seen_community_srs = {};
+    list_update_seen_builtin_subnets = {};
     // Фаза 1: скачивание файлов (без блокировки, не трогает nft)
     if (bool_option(settings, "download_all_presets", false)) {
         if (!import_all_preset_lists(settings))
@@ -4126,6 +4136,8 @@ function list_update() {
             log_message("Failed to save pending nft marker, this list update will not be re-applied", "err");
         update_list_status(false, false, "error", "Could not acquire reload lock for nft apply");
         list_nft_batch = "";
+        list_update_seen_community_srs = null;
+        list_update_seen_builtin_subnets = null;
         remove_files([ nft_additions, nft_prefix ]);
         list_update_pid_end();
         exit(1);
@@ -4136,8 +4148,6 @@ function list_update() {
             NFT_COMMON_SET_NAME, NFT_COMMON6_SET_NAME, NFT_IP_PORT_SET_NAME, NFT_IP_PORT6_SET_NAME ]))
         ok = false;
     list_nft_batch = nft_additions;
-    list_update_seen_community_srs = {};
-    list_update_seen_builtin_subnets = {};
     for (let section in sections)
         if (!import_builtin_subnets_from_rule(section, settings))
             ok = false;
