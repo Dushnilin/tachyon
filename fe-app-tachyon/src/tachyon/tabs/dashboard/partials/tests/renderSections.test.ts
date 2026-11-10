@@ -1304,4 +1304,48 @@ describe('renderSections', () => {
     expect(autoBadge?.textContent).toContain('Нидерланды');
     expect(autoBadge?.textContent).toContain('51ms');
   });
+
+  it('formats subscription traffic quota in binary GiB matching outbounds pool (#383)', () => {
+    const section: any = {
+      code: 'main',
+      sectionName: 'main',
+      displayName: 'main',
+      withTagSelect: true,
+      subscriptionMetadata: [
+        {
+          title: 'subscribeRiot',
+          traffic: {
+            used: Math.round(164.3 * 1024 * 1024 * 1024),
+            total: 800 * 1024 * 1024 * 1024,
+            isUnlimited: false,
+          },
+        },
+      ],
+      outbounds: [
+        {
+          code: 'nl-1',
+          displayName: '🇳🇱 Node 1',
+          selected: true,
+          latency: 40,
+        },
+      ],
+    };
+
+    const el = renderSections({
+      loading: false,
+      failed: false,
+      section,
+      onTestLatency: vi.fn(),
+      onChooseOutbound: vi.fn(),
+      onCopyOutbound: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+      onUpdateSubscription: vi.fn(),
+      latencyFetching: false,
+      subscriptionUpdating: false,
+    });
+
+    expect(el.textContent).toContain('164.3 GB / 800.0 GB');
+    expect(el.textContent).not.toContain('176 GB / 859 GB');
+  });
 });

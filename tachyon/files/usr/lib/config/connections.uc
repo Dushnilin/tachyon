@@ -673,7 +673,7 @@ function section_effective_outbound_sources(section) {
             for (let grp_id in bal_grps)
                 add_grp(grp_id);
         }
-        if (!has_explicit_non_dpi_sources && length(bal_srcs) == 0 && length(bal_grps) == 0) {
+        if (length(bal_srcs) == 0 && length(bal_grps) == 0) {
             let eff_mode = lc(trim(child_option_alias(bal_sec_st, [ "filter_mode", "urltest_filter_mode" ], child_option_alias(bal, [ "filter_mode", "urltest_filter_mode" ], ""))));
             if (eff_mode != "disabled" && eff_mode != "exclude") {
                 let inc_pfxs = child_list_alias(bal_sec_st, [ "include_prefixes", "urltest_include_prefixes" ], []);

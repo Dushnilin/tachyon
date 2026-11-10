@@ -64,15 +64,19 @@ grep -Fq '/usr/bin/tachyon package_prerm upgrade' "$BUILD_SCRIPT" ||
 # `exit(system(...))` returns a raw wait status, so a killed cleanup (the sweep used
 # to SIGKILL its own parent, giving 128+119=247) aborted the upgrade and rolled the
 # new build back.
-for hook in 'backend-pre-upgrade.sh' 'backend-pre-deinstall.sh'; do
+for hook in 'backend-pre-upgrade.sh' 'backend-pre-deinstall.sh' 'backend-post-install.sh' 'backend-post-upgrade.sh'; do
   sed -n "/cat > \"\$scripts_dir\/$hook\" <<'EOF'/,/^EOF$/p" "$BUILD_SCRIPT" >"$WORK_DIR/$hook"
   [ -s "$WORK_DIR/$hook" ] || fail "build.sh must write $hook"
-  grep -Fq 'timeout' "$WORK_DIR/$hook" ||
-    fail "build.sh $hook must bound package_prerm so a stuck cleanup cannot roll the upgrade back"
+  case "$hook" in
+    backend-pre-*)
+      grep -Fq 'timeout' "$WORK_DIR/$hook" ||
+        fail "build.sh $hook must bound package_prerm so a stuck cleanup cannot roll the upgrade back"
+      ;;
+  esac
   # Comments are stripped first: the hook documents the `exit(system(...))` form it
   # replaced, and matching prose would fail the very file that fixed the bug.
   if sed 's|//.*||' "$WORK_DIR/$hook" | grep -Fq 'exit(system('; then
-    fail "build.sh $hook must not return the cleanup's status; a nonzero hook aborts the upgrade"
+    fail "build.sh $hook must not return the raw system() status; a negative signal status fails apk hooks"
   fi
 done
 
@@ -88,7 +92,7 @@ grep -Fq 'timeout' "$WORK_DIR/ipk-prerm.sh" ||
 
 # These hooks live inside heredocs, so ucode_syntax_lint.sh never compiles them: a
 # syntax error would only surface on a router mid-upgrade, as a rolled-back package.
-for hook in 'backend-pre-upgrade.sh' 'backend-pre-deinstall.sh' 'ipk-prerm.sh'; do
+for hook in 'backend-pre-upgrade.sh' 'backend-pre-deinstall.sh' 'backend-post-install.sh' 'backend-post-upgrade.sh' 'ipk-prerm.sh'; do
   sed '1d;$d' "$WORK_DIR/$hook" >"$WORK_DIR/$hook.body.uc"
   ucode -c -o /dev/null "$WORK_DIR/$hook.body.uc" 2>"$WORK_DIR/$hook.err" ||
     fail "build.sh $hook must compile: $(cat "$WORK_DIR/$hook.err")"

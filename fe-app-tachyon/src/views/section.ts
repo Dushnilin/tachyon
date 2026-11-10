@@ -954,10 +954,18 @@ function filteredOutboundMetadataFromCache(cache, sectionId = '') {
   };
 
   const sectionSubSourceByIndex = new Map();
-  if (sectionId) {
-    const secSrcRefs = normalizeOptionValues(
-      uci.get(UCI_PACKAGE, sectionId, 'outbound_source_refs'),
-    );
+  if (
+    sectionId &&
+    typeof uci !== 'undefined' &&
+    uci &&
+    typeof uci.get === 'function'
+  ) {
+    const secSrcRefs =
+      typeof resolveEffectiveSectionOutboundSourceIds === 'function'
+        ? resolveEffectiveSectionOutboundSourceIds(sectionId).effectiveSourceIds
+        : normalizeOptionValues(
+            uci.get(UCI_PACKAGE, sectionId, 'outbound_source_refs'),
+          );
     let subIdx = 0;
     secSrcRefs.forEach((sid) => {
       const srcObj = uci.get(UCI_PACKAGE, sid);
@@ -1249,8 +1257,7 @@ function resolveEffectiveSectionOutboundSourceIds(section_id) {
       balSrcs.forEach(addSourceId);
       balGrps.forEach(addGroupById);
     }
-    let addedFromPrefixes = false;
-    if (!hasExplicitNonDpi && balSrcs.length === 0 && balGrps.length === 0) {
+    if (balSrcs.length === 0 && balGrps.length === 0) {
       const effMode = String(
         balSt.filter_mode ||
           balSt.urltest_filter_mode ||
@@ -1297,12 +1304,11 @@ function resolveEffectiveSectionOutboundSourceIds(section_id) {
               (spfxL && pfxSet.has(spfxL))
             ) {
               addSourceId(src['.name']);
-              addedFromPrefixes = true;
             }
           });
         }
       }
-      if (!addedFromPrefixes && balLvls.length === 0) {
+      if (!hasExplicitNonDpi) {
         allNonDpiSourceIds.forEach(addSourceId);
       }
     }
@@ -1331,6 +1337,195 @@ function resolveEffectiveSectionOutboundSourceIds(section_id) {
     effectiveSourceIds: resultIds,
     memberIds,
   };
+}
+
+function readPoolFallbackMetadataForSources(sourceIds) {
+  const ids = Array.isArray(sourceIds) ? sourceIds.filter(Boolean) : [];
+  if (
+    ids.length === 0 ||
+    typeof uci === 'undefined' ||
+    !uci ||
+    typeof uci.get !== 'function'
+  ) {
+    return Promise.resolve(emptySectionCacheMetadata());
+  }
+  const subCacheDir =
+    typeof SUBSCRIPTION_CACHE_DIR !== 'undefined'
+      ? SUBSCRIPTION_CACHE_DIR
+      : '/etc/tachyon/subscription-cache';
+  const readTextFileSafe = (filePath) => {
+    if (typeof fs === 'undefined' || !fs || typeof fs.read !== 'function') {
+      return Promise.resolve('');
+    }
+    return fs
+      .read(filePath)
+      .then((t) => String(t || ''))
+      .catch(() => '');
+  };
+  const readJsonFileSafe = (filePath) =>
+    readTextFileSafe(filePath).then((raw) => {
+      try {
+        return JSON.parse(raw || '{}');
+      } catch (_e) {
+        return {};
+      }
+    });
+
+  const out = emptySectionCacheMetadata();
+  const subTasks = [];
+  let cachedDirEntriesPromise = null;
+  const getSubCacheEntries = () => {
+    if (!cachedDirEntriesPromise) {
+      cachedDirEntriesPromise =
+        typeof fs !== 'undefined' && fs && typeof fs.list === 'function'
+          ? fs.list(subCacheDir).catch(() => [])
+          : Promise.resolve([]);
+    }
+    return cachedDirEntriesPromise;
+  };
+
+  ids.forEach((sid) => {
+    const srcObj = uci.get(UCI_PACKAGE, sid);
+    if (!srcObj || srcObj.enabled === '0') return;
+    const stype = String(srcObj.source_type || 'subscription')
+      .trim()
+      .toLowerCase();
+    const sname = String(srcObj.name || srcObj.label || sid).trim();
+    const prefix =
+      srcObj.prefix_nodes === '0'
+        ? ''
+        : String(srcObj.node_prefix || '').trim();
+    const url = String(srcObj.url || '').trim();
+
+    if (stype === 'subscription' || url) {
+      const resolveSubData = () =>
+        readJsonFileSafe(`${subCacheDir}/Pool_${sid}-subscription-1.json`)
+          .then((d) =>
+            Array.isArray(d && d.outbounds) && d.outbounds.length > 0
+              ? d
+              : readJsonFileSafe(
+                  `${subCacheDir}/src-${sid}-subscription-1.json`,
+                ),
+          )
+          .then((d) => {
+            if (Array.isArray(d && d.outbounds) && d.outbounds.length > 0) {
+              return d;
+            }
+            if (!url) return {};
+            return getSubCacheEntries().then((entries) => {
+              const list = Array.isArray(entries) ? entries : [];
+              const urlFiles = list
+                .map((e) => String((e && e.name) || ''))
+                .filter((n) => n.endsWith('.url'));
+              return Promise.all(
+                urlFiles.map((uf) =>
+                  readTextFileSafe(`${subCacheDir}/${uf}`).then((u) => ({
+                    base: uf.slice(0, -4),
+                    url: u.trim(),
+                  })),
+                ),
+              ).then((infos) => {
+                const hit = infos.find((inf) => inf.url === url);
+                return hit
+                  ? readJsonFileSafe(`${subCacheDir}/${hit.base}.json`)
+                  : {};
+              });
+            });
+          });
+
+      subTasks.push(
+        resolveSubData().then((data) => {
+          const outbounds = Array.isArray(data && data.outbounds)
+            ? data.outbounds
+            : [];
+          outbounds.forEach((ob, idx) => {
+            if (!ob || typeof ob !== 'object') return;
+            const rawTag = String(ob.remark || ob.tag || ob.name || '').trim();
+            const proto = String(ob.type || '')
+              .trim()
+              .toLowerCase();
+            if (
+              !rawTag ||
+              proto === 'urltest' ||
+              proto === 'selector' ||
+              proto === 'direct' ||
+              proto === 'dns' ||
+              proto === 'block'
+            ) {
+              return;
+            }
+            const displayName =
+              prefix &&
+              !rawTag.startsWith(`${prefix} `) &&
+              !rawTag.startsWith(`${prefix}: `) &&
+              !rawTag.startsWith(`[${prefix}]`)
+                ? `${prefix} ${rawTag}`
+                : rawTag;
+            const tagKey = `${sid}_sub_${idx + 1}`;
+            out.names[tagKey] = displayName;
+            const cc = extractCountryFromFlagEmojiName(displayName);
+            if (cc) out.countries[tagKey] = cc;
+            if (proto) out.protocols[tagKey] = proto;
+            const trans = String((ob.transport && ob.transport.type) || 'tcp')
+              .trim()
+              .toLowerCase();
+            if (trans) out.transports[tagKey] = trans;
+            const sec =
+              ob.tls && ob.tls.enabled
+                ? ob.tls.reality && ob.tls.reality.enabled
+                  ? 'reality'
+                  : 'tls'
+                : 'none';
+            out.securities[tagKey] = sec;
+            const port = Number(ob.server_port || ob.port || 0);
+            if (port > 0) out.ports[tagKey] = port;
+            if (prefix) out.prefixes[tagKey] = prefix;
+            out.sources[tagKey] = sid;
+            out.source_ids[tagKey] = sid;
+            if (sname) out.source_names[tagKey] = sname;
+          });
+        }),
+      );
+      return;
+    }
+
+    const rawLinks = [
+      ...normalizeOptionValues(srcObj.proxy_links),
+      ...normalizeOptionValues(srcObj.selector_proxy_links),
+      ...`${srcObj.proxy_links_text || ''}`
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean),
+      ...`${srcObj.selector_proxy_links_text || ''}`
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean),
+    ];
+    rawLinks.forEach((link, idx) => {
+      const lname =
+        typeof main !== 'undefined' &&
+        main &&
+        typeof main.getProxyUrlName === 'function'
+          ? main.getProxyUrlName(link)
+          : '';
+      const displayName = String(lname || sname || `${sid}-${idx + 1}`).trim();
+      if (!displayName) return;
+      const tagKey = `${sid}_link_${idx + 1}`;
+      out.names[tagKey] = displayName;
+      const cc = extractCountryFromFlagEmojiName(displayName);
+      if (cc) out.countries[tagKey] = cc;
+      const schemeMatch = String(link || '').match(/^([a-z0-9+-]+):\/\//i);
+      if (schemeMatch && schemeMatch[1]) {
+        out.protocols[tagKey] = normalizeProtocolName(schemeMatch[1]);
+      }
+      if (prefix) out.prefixes[tagKey] = prefix;
+      out.sources[tagKey] = sid;
+      out.source_ids[tagKey] = sid;
+      if (sname) out.source_names[tagKey] = sname;
+    });
+  });
+
+  return Promise.all(subTasks).then(() => out);
 }
 
 function readOutboundMetadataFromSectionCache(section_id) {
@@ -1389,11 +1584,7 @@ function readOutboundMetadataFromSectionCache(section_id) {
             allowedPrefixesLower.has(srcName.toLowerCase()))) ||
         (src && allowedSourcesLower.has(src.toLowerCase())) ||
         (pfx && allowedPrefixesLower.has(pfx.toLowerCase())) ||
-        (isTargetSectionCache &&
-          !srcId &&
-          !srcName &&
-          !pfx &&
-          /^sub:\d+$/i.test(src));
+        (!srcId && !srcName && !pfx && /^sub:\d+$/i.test(src));
       if (matched) {
         out.names[tag] = meta.names[tag];
         if (meta.countries && meta.countries[tag] != null)
@@ -1426,6 +1617,74 @@ function readOutboundMetadataFromSectionCache(section_id) {
     ...new Set([...memberIds, 'Main', ...otherSectionIds]),
   ].filter((id) => id && id !== targetId && safeCacheSectionName(id));
 
+  const mergeMetaListWithPoolFallback = (metaList) => {
+    const merged = emptySectionCacheMetadata();
+    const seenSourceServerKey = new Set();
+    const appendMeta = (meta) => {
+      if (!meta || !meta.names) return;
+      Object.keys(meta.names).forEach((tag) => {
+        const name = String(meta.names[tag] || '').trim();
+        const sid = String(
+          (meta.source_ids && meta.source_ids[tag]) ||
+            (meta.source_names && meta.source_names[tag]) ||
+            (meta.prefixes && meta.prefixes[tag]) ||
+            (meta.sources && meta.sources[tag]) ||
+            '',
+        )
+          .trim()
+          .toLowerCase();
+        const proto = String((meta.protocols && meta.protocols[tag]) || '')
+          .trim()
+          .toLowerCase();
+        const port = String((meta.ports && meta.ports[tag]) || '').trim();
+        const dedupKey = `${sid}|${name}|${proto}|${port}`;
+        if (name && seenSourceServerKey.has(dedupKey)) return;
+        if (name) seenSourceServerKey.add(dedupKey);
+        const targetTag =
+          merged.names[tag] != null
+            ? `${tag}_${seenSourceServerKey.size}`
+            : tag;
+        merged.names[targetTag] = meta.names[tag];
+        if (meta.countries && meta.countries[tag] != null)
+          merged.countries[targetTag] = meta.countries[tag];
+        if (meta.protocols && meta.protocols[tag] != null)
+          merged.protocols[targetTag] = meta.protocols[tag];
+        if (meta.transports && meta.transports[tag] != null)
+          merged.transports[targetTag] = meta.transports[tag];
+        if (meta.securities && meta.securities[tag] != null)
+          merged.securities[targetTag] = meta.securities[tag];
+        if (meta.ports && meta.ports[tag] != null)
+          merged.ports[targetTag] = meta.ports[tag];
+        if (meta.prefixes && meta.prefixes[tag] != null)
+          merged.prefixes[targetTag] = meta.prefixes[tag];
+        if (meta.sources && meta.sources[tag] != null)
+          merged.sources[targetTag] = meta.sources[tag];
+        if (meta.source_ids && meta.source_ids[tag] != null)
+          merged.source_ids[targetTag] = meta.source_ids[tag];
+        if (meta.source_names && meta.source_names[tag] != null)
+          merged.source_names[targetTag] = meta.source_names[tag];
+      });
+    };
+    metaList.forEach(appendMeta);
+
+    const coveredSourceIds = new Set();
+    Object.values(merged.source_ids || {}).forEach((sid) => {
+      if (sid) coveredSourceIds.add(String(sid).toLowerCase());
+    });
+    const missingSourceIds = effectiveSourceIds.filter(
+      (sid) => !coveredSourceIds.has(String(sid).toLowerCase()),
+    );
+    if (missingSourceIds.length === 0) {
+      return Promise.resolve(merged);
+    }
+    return readPoolFallbackMetadataForSources(missingSourceIds).then(
+      (poolMeta) => {
+        appendMeta(poolMeta);
+        return merged;
+      },
+    );
+  };
+
   return readSingleSectionCacheMetadata(targetId)
     .then((targetMeta) => filterMetaByAllowedSources(targetMeta, true))
     .then((filteredTargetMeta) => {
@@ -1440,13 +1699,13 @@ function readOutboundMetadataFromSectionCache(section_id) {
         );
       if (
         Object.keys(filteredTargetMeta.names || {}).length > 0 &&
-        (allSourcesCovered || fallbackSectionIds.length === 0)
+        allSourcesCovered
       ) {
         return filteredTargetMeta;
       }
 
       if (fallbackSectionIds.length === 0) {
-        return filteredTargetMeta;
+        return mergeMetaListWithPoolFallback([filteredTargetMeta]);
       }
 
       return Promise.all(
@@ -1455,58 +1714,9 @@ function readOutboundMetadataFromSectionCache(section_id) {
             filterMetaByAllowedSources(m, memberIds.includes(secId)),
           ),
         ),
-      ).then((extraMetaList) => {
-        const merged = emptySectionCacheMetadata();
-        const seenSourceServerKey = new Set();
-        const appendMeta = (meta) => {
-          if (!meta || !meta.names) return;
-          Object.keys(meta.names).forEach((tag) => {
-            const name = String(meta.names[tag] || '').trim();
-            const sid = String(
-              (meta.source_ids && meta.source_ids[tag]) ||
-                (meta.source_names && meta.source_names[tag]) ||
-                (meta.prefixes && meta.prefixes[tag]) ||
-                (meta.sources && meta.sources[tag]) ||
-                '',
-            )
-              .trim()
-              .toLowerCase();
-            const proto = String((meta.protocols && meta.protocols[tag]) || '')
-              .trim()
-              .toLowerCase();
-            const port = String((meta.ports && meta.ports[tag]) || '').trim();
-            const dedupKey = `${sid}|${name}|${proto}|${port}`;
-            if (name && seenSourceServerKey.has(dedupKey)) return;
-            if (name) seenSourceServerKey.add(dedupKey);
-            const targetTag =
-              merged.names[tag] != null
-                ? `${tag}_${seenSourceServerKey.size}`
-                : tag;
-            merged.names[targetTag] = meta.names[tag];
-            if (meta.countries && meta.countries[tag] != null)
-              merged.countries[targetTag] = meta.countries[tag];
-            if (meta.protocols && meta.protocols[tag] != null)
-              merged.protocols[targetTag] = meta.protocols[tag];
-            if (meta.transports && meta.transports[tag] != null)
-              merged.transports[targetTag] = meta.transports[tag];
-            if (meta.securities && meta.securities[tag] != null)
-              merged.securities[targetTag] = meta.securities[tag];
-            if (meta.ports && meta.ports[tag] != null)
-              merged.ports[targetTag] = meta.ports[tag];
-            if (meta.prefixes && meta.prefixes[tag] != null)
-              merged.prefixes[targetTag] = meta.prefixes[tag];
-            if (meta.sources && meta.sources[tag] != null)
-              merged.sources[targetTag] = meta.sources[tag];
-            if (meta.source_ids && meta.source_ids[tag] != null)
-              merged.source_ids[targetTag] = meta.source_ids[tag];
-            if (meta.source_names && meta.source_names[tag] != null)
-              merged.source_names[targetTag] = meta.source_names[tag];
-          });
-        };
-        appendMeta(filteredTargetMeta);
-        extraMetaList.forEach(appendMeta);
-        return merged;
-      });
+      ).then((extraMetaList) =>
+        mergeMetaListWithPoolFallback([filteredTargetMeta, ...extraMetaList]),
+      );
     });
 }
 
@@ -1733,12 +1943,22 @@ function evaluateLiveServerFilterPreview(metadata, filterSpec) {
       compiledRegexes.some((rx) => rx.test(entry.name));
     const countryMatched =
       Boolean(entry.country) && countryFilter.includes(entry.country);
-    const baseConfigured =
-      prefixFilter.length > 0 ||
+    const hasPrefixFilter = prefixFilter.length > 0;
+    const hasNameOrCountryFilter =
       nameFilter.length > 0 ||
       compiledRegexes.length > 0 ||
       countryFilter.length > 0;
-    let baseMatches = prefixMatched || nameMatched || countryMatched;
+    const baseConfigured = hasPrefixFilter || hasNameOrCountryFilter;
+    let baseMatches = false;
+    if (operator === 'or') {
+      baseMatches = prefixMatched || nameMatched || countryMatched;
+    } else if (hasPrefixFilter && hasNameOrCountryFilter) {
+      baseMatches = prefixMatched && (nameMatched || countryMatched);
+    } else if (hasPrefixFilter) {
+      baseMatches = prefixMatched;
+    } else if (hasNameOrCountryFilter) {
+      baseMatches = nameMatched || countryMatched;
+    }
 
     const attrMatches = (val, selected) =>
       selected.length === 0 ? true : Boolean(val) && selected.includes(val);
@@ -2768,7 +2988,7 @@ const ButtonAddSettingsDynamicList = SettingsDynamicList.extend({
   buttonAdd: true,
 });
 
-function configureLiveDynamicListChoices(option, getChoices) {
+function configureLiveDynamicListChoices(option, getChoices, targetSecId) {
   option.renderWidget = function (section_id, _option_index, cfgvalue) {
     const values = L.toArray(cfgvalue != null ? cfgvalue : this.default);
     const choices = getChoices(section_id, values);
@@ -2852,7 +3072,8 @@ function configureLiveDynamicListChoices(option, getChoices) {
     }
     dashboardFilterChoiceRefreshers.get(section_id).add(refreshChoices);
 
-    const targetSectionId = parentSectionIdForItem(section_id) || 'Main';
+    const targetSectionId =
+      targetSecId || parentSectionIdForItem(section_id) || 'Main';
     if (targetSectionId && targetSectionId !== section_id) {
       if (!dashboardFilterChoiceRefreshers.has(targetSectionId)) {
         dashboardFilterChoiceRefreshers.set(targetSectionId, new Set());
@@ -16608,8 +16829,11 @@ function createSectionContent(section) {
           );
           return vals;
         };
-        configureLiveDynamicListChoices(tiersOpt, (_itemId, vals) =>
-          currentSectionPriorityTierChoices(targetSectionId, vals),
+        configureLiveDynamicListChoices(
+          tiersOpt,
+          (_itemId, vals) =>
+            currentSectionPriorityTierChoices(targetSectionId, vals),
+          targetSectionId,
         );
       } else {
         let fOpt = itemSection.option(
@@ -16773,8 +16997,11 @@ function createSectionContent(section) {
               return vals;
             };
             list.placeholder = _('-- Select connection of this section --');
-            configureLiveDynamicListChoices(list, (_itemId, vals) =>
-              currentSectionPrefixChoices(targetSectionId, vals),
+            configureLiveDynamicListChoices(
+              list,
+              (_itemId, vals) =>
+                currentSectionPrefixChoices(targetSectionId, vals),
+              targetSectionId,
             );
           } else if (key.endsWith('_outbounds')) {
             list.load = function (itemId) {
@@ -16788,8 +17015,11 @@ function createSectionContent(section) {
               return vals;
             };
             list.placeholder = _('-- Select server of this section --');
-            configureLiveDynamicListChoices(list, (_itemId, vals) =>
-              currentOutboundNameChoices(targetSectionId, vals),
+            configureLiveDynamicListChoices(
+              list,
+              (_itemId, vals) =>
+                currentOutboundNameChoices(targetSectionId, vals),
+              targetSectionId,
             );
           }
           if (validator) {

@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { parseValueList } from '../helpers/parseValueList';
+import { formatSubscriptionBytes } from '../helpers/prettyBytes';
 import { getProxyUrlTransport } from '../helpers/getProxyUrlTransport';
 import { formatOutboundType } from '../helpers/formatOutboundType';
 import { openConnectionWizardModal } from './connectionWizard';
@@ -3753,15 +3754,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
         return fromUrl || fromSid;
       };
       const subCache = resolveSubscriptionCache();
-
-      const formatBytes = (bytes?: number) => {
-        const b = Number(bytes || 0);
-        if (!Number.isFinite(b) || b <= 0) return '0 B';
-        const gb = b / (1024 * 1024 * 1024);
-        if (gb >= 1) return `${gb.toFixed(1)} GB`;
-        const mb = b / (1024 * 1024);
-        return `${mb.toFixed(0)} MB`;
-      };
+      const formatBytes = formatSubscriptionBytes;
 
       const formatUpdatedTime = (epochSec?: number) => {
         const ts = Number(epochSec || 0);

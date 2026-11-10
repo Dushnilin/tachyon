@@ -602,7 +602,7 @@ function kill_matching_command(grep_args) {
         "__anc=\"$__anc$__p \"; " +
         "__p=$(awk '{ sub(/.*\\) /, \"\"); print $2 }' \"/proc/$__p/stat\" 2>/dev/null); " +
         "done; " +
-        "ps 2>/dev/null | grep " + grep_args + " | grep -v grep | grep -v -E 'action[.]uc|updates[.]uc' | awk '{print $1}' | " +
+        "ps 2>/dev/null | grep " + grep_args + " | grep -v grep | grep -v -E 'action[.]uc|updates[.]uc|package[.]uc|migration[.]uc|package_postinst|package_prerm|luci_postinst' | awk '{print $1}' | " +
         "while read _pid; do case \"$__anc\" in *\" $_pid \"*) continue;; esac; " +
         "kill -9 \"$_pid\" 2>/dev/null; done; true";
 }

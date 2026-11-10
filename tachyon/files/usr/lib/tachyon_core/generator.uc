@@ -518,13 +518,14 @@ function ruleset_registered(config, tag_name) {
 
 function clash_api_config(settings, service_address) {
     let yacd_enabled = bool_option(settings, "enable_yacd", false);
+    let wan_enabled = bool_option(settings, "enable_yacd_wan_access", false);
     let secret = trim(as_string(option(settings, "yacd_secret_key", "")));
     let controller = "127.0.0.1";
-    if (yacd_enabled && secret != "") {
+    if (yacd_enabled) {
         controller = trim(as_string(service_address || ""));
-        if (bool_option(settings, "enable_yacd_wan_access", false))
+        if (wan_enabled && secret != "")
             controller = "0.0.0.0";
-        else if (controller == "")
+        else if (controller == "" || wan_enabled)
             controller = "127.0.0.1";
     }
 
@@ -533,7 +534,7 @@ function clash_api_config(settings, service_address) {
     };
     if (secret != "")
         result.secret = secret;
-    if (yacd_enabled && secret != "")
+    if (yacd_enabled && (!wan_enabled || secret != ""))
         result.external_ui = "ui";
     return result;
 }

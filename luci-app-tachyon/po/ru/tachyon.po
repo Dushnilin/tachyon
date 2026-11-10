@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-09 01:14+0300\n"
-"PO-Revision-Date: 2026-11-09 01:14+0300\n"
+"POT-Creation-Date: 2026-11-10 11:20+0300\n"
+"PO-Revision-Date: 2026-11-10 11:20+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -8495,10 +8495,10 @@ msgstr "Поиск серверов в пуле..."
 msgid "Secret"
 msgstr "Секрет"
 
-msgid "Secret key for authenticating access to YACD and Clash API (required when YACD is enabled)."
+msgid "Secret key for authenticating access to YACD and Clash API (required when YACD WAN access is enabled, optional for LAN)."
 msgstr ""
 
-msgid "Secret key is required when YACD is enabled"
+msgid "Secret key is required when YACD WAN access is enabled"
 msgstr ""
 
 msgid "Secret token for authorizing WRITE operations (POST/PUT) on /cgi-bin/tachyon-agent/. Leave empty if auth is not required."
@@ -10086,7 +10086,7 @@ msgid "Test only selected servers."
 msgstr "Тестировать только выбранные серверы."
 
 msgid "Test only servers from the selected connections added to this section."
-msgstr "Использовать только серверы из выбранных подключений, добавленных в эту секцию."
+msgstr "Необязательно: по умолчанию уже используются все подключения секции. Укажите конкретную подписку, только если в секцию добавлено несколько подписок и нужно ограничить балансировщик частью из них."
 
 msgid "Test only servers with one of the selected ports or port ranges (e.g. 443, 8443, 2000-3000)."
 msgstr "Тестировать только серверы с одним из выбранных портов или диапазонов портов (напр., 443, 8443, 2000-3000)."
@@ -11929,6 +11929,12 @@ msgstr "🇱🇻 Латвия (lv)"
 
 msgid "🇵🇱 Poland (pl)"
 msgstr "🇵🇱 Польша (pl)"
+
+msgid "Secret key for authenticating access to YACD and Clash API (required when YACD is enabled)."
+msgstr ""
+
+msgid "Secret key is required when YACD is enabled"
+msgstr ""
 
 msgid "Secret key for authenticating remote access to YACD when WAN access is enabled."
 msgstr "Секретный ключ для аутентификации удалённого доступа к YACD при включённом WAN-доступе."

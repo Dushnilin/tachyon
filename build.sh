@@ -846,26 +846,36 @@ if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "") {
     if (system("test -f /etc/config/netshift") == 0) {
         system("mv /etc/config/netshift /etc/config/tachyon");
         system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop");
-        exit(system("/usr/bin/tachyon package_postinst"));
+        system("/etc/init.d/tachyon enable >/dev/null 2>&1 || true");
+        system("/usr/bin/tachyon package_postinst >/dev/null 2>&1 || true");
+        exit(0);
     } else if (system("test -f /etc/config/forkop") == 0) {
         system("mv /etc/config/forkop /etc/config/tachyon");
         system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop");
-        exit(system("/usr/bin/tachyon package_postinst"));
+        system("/etc/init.d/tachyon enable >/dev/null 2>&1 || true");
+        system("/usr/bin/tachyon package_postinst >/dev/null 2>&1 || true");
+        exit(0);
     } else if (system("test -f /etc/config/forkop_plus") == 0) {
         system("mv /etc/config/forkop_plus /etc/config/tachyon");
         system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop");
-        exit(system("/usr/bin/tachyon package_postinst"));
+        system("/etc/init.d/tachyon enable >/dev/null 2>&1 || true");
+        system("/usr/bin/tachyon package_postinst >/dev/null 2>&1 || true");
+        exit(0);
     } else if (system("test -f /etc/config/podkop") == 0) {
         system("mv /etc/config/podkop /etc/config/tachyon");
         system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop");
-        exit(system("/usr/bin/tachyon package_postinst"));
+        system("/etc/init.d/tachyon enable >/dev/null 2>&1 || true");
+        system("/usr/bin/tachyon package_postinst >/dev/null 2>&1 || true");
+        exit(0);
     } else if (system("test -f /etc/config/podkop_plus") == 0) {
         system("mv /etc/config/podkop_plus /etc/config/tachyon");
         system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop");
-        exit(system("/usr/bin/tachyon package_postinst"));
+        system("/etc/init.d/tachyon enable >/dev/null 2>&1 || true");
+        system("/usr/bin/tachyon package_postinst >/dev/null 2>&1 || true");
+        exit(0);
     }
     restore_cfg_from_backup();
-    exit(system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate && /usr/bin/tachyon package_postinst"));
+    system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate && /etc/init.d/tachyon enable >/dev/null 2>&1 || true; /usr/bin/tachyon package_postinst >/dev/null 2>&1 || true");
 }
 exit(0);
 EOF
@@ -964,26 +974,36 @@ if (getenv("IPKG_INSTROOT") == null || getenv("IPKG_INSTROOT") == "") {
     if (system("test -f /etc/config/netshift") == 0) {
         system("mv /etc/config/netshift /etc/config/tachyon");
         system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop");
-        exit(system("/usr/bin/tachyon package_postinst"));
+        system("/etc/init.d/tachyon enable >/dev/null 2>&1 || true");
+        system("/usr/bin/tachyon package_postinst >/dev/null 2>&1 || true");
+        exit(0);
     } else if (system("test -f /etc/config/forkop") == 0) {
         system("mv /etc/config/forkop /etc/config/tachyon");
         system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop");
-        exit(system("/usr/bin/tachyon package_postinst"));
+        system("/etc/init.d/tachyon enable >/dev/null 2>&1 || true");
+        system("/usr/bin/tachyon package_postinst >/dev/null 2>&1 || true");
+        exit(0);
     } else if (system("test -f /etc/config/forkop_plus") == 0) {
         system("mv /etc/config/forkop_plus /etc/config/tachyon");
         system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop");
-        exit(system("/usr/bin/tachyon package_postinst"));
+        system("/etc/init.d/tachyon enable >/dev/null 2>&1 || true");
+        system("/usr/bin/tachyon package_postinst >/dev/null 2>&1 || true");
+        exit(0);
     } else if (system("test -f /etc/config/podkop") == 0) {
         system("mv /etc/config/podkop /etc/config/tachyon");
         system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop");
-        exit(system("/usr/bin/tachyon package_postinst"));
+        system("/etc/init.d/tachyon enable >/dev/null 2>&1 || true");
+        system("/usr/bin/tachyon package_postinst >/dev/null 2>&1 || true");
+        exit(0);
     } else if (system("test -f /etc/config/podkop_plus") == 0) {
         system("mv /etc/config/podkop_plus /etc/config/tachyon");
         system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate-podkop");
-        exit(system("/usr/bin/tachyon package_postinst"));
+        system("/etc/init.d/tachyon enable >/dev/null 2>&1 || true");
+        system("/usr/bin/tachyon package_postinst >/dev/null 2>&1 || true");
+        exit(0);
     }
     restore_cfg_from_backup();
-    exit(system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate && /usr/bin/tachyon package_postinst"));
+    system("TACHYON_LIB=/usr/lib/tachyon ucode -L /usr/lib/tachyon /usr/lib/tachyon/config/migration.uc migrate && /etc/init.d/tachyon enable >/dev/null 2>&1 || true; /usr/bin/tachyon package_postinst >/dev/null 2>&1 || true");
 }
 exit(0);
 EOF

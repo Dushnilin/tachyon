@@ -4075,7 +4075,7 @@ function createSettingsContent(section, capabilities) {
     form.Flag,
     "enable_yacd",
     _("Enable YACD"),
-    `<a href="${main.getClashUIUrl()}" target="_blank">${main.getClashUIUrl()}</a>`,
+    `<a id="tachyon-yacd-ui-link" href="${main.getClashUIUrl()}" target="_blank">${main.getClashUIUrl()}</a>`,
   );
   o.default = "0";
   o.rmempty = false;
@@ -4099,17 +4099,27 @@ function createSettingsContent(section, capabilities) {
     "yacd_secret_key",
     _("YACD Secret Key"),
     _(
-      "Secret key for authenticating access to YACD and Clash API (required when YACD is enabled).",
+      "Secret key for authenticating access to YACD and Clash API (required when YACD WAN access is enabled, optional for LAN).",
     ),
   );
   o.depends("enable_yacd", "1");
   o.rmempty = true;
+  o.onchange = function (_ev, _section_id, value) {
+    if (typeof document === "undefined") return;
+    const link = document.getElementById("tachyon-yacd-ui-link");
+    if (link) {
+      const nextUrl = main.getClashUIUrl(String(value || ""));
+      link.setAttribute("href", nextUrl);
+      link.textContent = nextUrl;
+    }
+  };
   o.validate = function (section_id, value) {
     if (
       this.section.formvalue(section_id, "enable_yacd") === "1" &&
+      this.section.formvalue(section_id, "enable_yacd_wan_access") === "1" &&
       (!value || !`${value}`.trim())
     ) {
-      return _("Secret key is required when YACD is enabled");
+      return _("Secret key is required when YACD WAN access is enabled");
     }
     return true;
   };

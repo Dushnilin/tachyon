@@ -16,7 +16,10 @@ import {
   resolvePrefixBadgeStyle,
   svgEl,
 } from '../../../../helpers';
-import { prettyBytes } from '../../../../helpers/prettyBytes';
+import {
+  formatSubscriptionBytes,
+  prettyBytes,
+} from '../../../../helpers/prettyBytes';
 import { showToast } from '../../../../helpers/showToast';
 import { TachyonShellMethods } from '../../../methods/shell';
 import { Tachyon } from '../../../types';
@@ -522,7 +525,7 @@ function formatBytes(value?: number) {
     return undefined;
   }
 
-  return prettyBytes(value);
+  return formatSubscriptionBytes(value);
 }
 
 function formatDate(seconds?: number) {
