@@ -489,4 +489,24 @@ if [ "$HAS_CORE" = "1" ]; then
     fail "expected 198.51.100.77 peer address in core_wg_hdr.json"
 fi
 
+# Regression guard: tachyon-core subscription hwid stdout must never leak into
+# caller stdout (which prepare-caches captures as deferred_sections).
+cat >"$WORK_DIR/mock-tachyon-core" <<'EOF'
+#!/usr/bin/env sh
+if [ "$1" = "subscription" ] && [ "$2" = "hwid" ]; then
+  printf '{\n  "X-HWID": "246b-ed76-8739-2440",\n  "X-Device-OS": "OpenWrt"\n}\n'
+  exit 0
+fi
+exit 1
+EOF
+chmod +x "$WORK_DIR/mock-tachyon-core"
+
+LEAKED_STDOUT="$(TACHYON_CORE_BIN="$WORK_DIR/mock-tachyon-core" ucode "$PARSER" normalize-content-validated \
+  "$WORK_DIR/bundle_raw.txt" "$WORK_DIR/mock_core_out.json" "" "core")" ||
+  fail "normalize-content-validated failed when falling back from mock-tachyon-core"
+
+if [ -n "$LEAKED_STDOUT" ]; then
+  fail "subscription hwid stdout leaked into normalize-content-validated stdout: $LEAKED_STDOUT"
+fi
+
 printf 'Subscription core <-> ucode interop checks passed\n'

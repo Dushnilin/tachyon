@@ -5870,7 +5870,7 @@ function core_subscription_cli_supported() {
         return false;
     }
 
-    _core_subscription_cli_supported = common.command_status_from_args([ bin, "subscription", "hwid" ]) == 0;
+    _core_subscription_cli_supported = common.command_success_from_args([ bin, "subscription", "hwid" ]);
     return _core_subscription_cli_supported;
 }
 
@@ -5906,8 +5906,7 @@ function try_normalize_with_core_cli(input_file, output_file, headers_file, forc
         push(args, "--headers");
         push(args, as_string(headers_file));
     }
-    let status = common.command_status_from_args(args);
-    if (status != 0) {
+    if (!common.command_success_from_args(args)) {
         fs.unlink(core_tmp);
         return false;
     }

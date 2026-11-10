@@ -992,6 +992,16 @@ function configure_service() {
         fs.mkdir(workdir, 0755);
     }
 
+    if (fs.stat("/www")?.type == "directory" && fs.stat(workdir + "/ui")?.type == "directory") {
+        let yacd_link = "/www/yacd";
+        let yacd_target = workdir + "/ui";
+        let current_target = fs.readlink(yacd_link);
+        if (current_target != yacd_target) {
+            try { fs.unlink(yacd_link); } catch (e) {}
+            try { fs.symlink(yacd_target, yacd_link); } catch (e) {}
+        }
+    }
+
     if (uci_get_option("tachyon-core", "main", "enabled") != "1") {
         if (!uci_set_option("tachyon-core", "main", "enabled", "1"))
             exit(1);
@@ -1309,7 +1319,12 @@ function prepare_subscription_caches(prepared, no_refresh) {
         log_lines(result.output, "debug", "subscription cache: ");
         return null;
     }
-    return trim(result.output);
+    let cleaned = [];
+    for (let token in split(trim(as_string(result.output)), /[ \t\r\n]+/)) {
+        if (token != "" && match(token, /^[A-Za-z0-9_-]+$/) != null)
+            push(cleaned, token);
+    }
+    return join(" ", cleaned);
 }
 
 function listening_endpoints_changed(old_cfg, new_cfg) {

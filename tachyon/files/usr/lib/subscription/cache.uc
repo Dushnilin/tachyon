@@ -2341,8 +2341,7 @@ function try_fetch_subscription_with_core(
         push(args, "-k");
 
     unlink_path(full_tmpfile);
-    let status = command_status_from_args(args);
-    if (status != 0) {
+    if (!command_success_from_args(args)) {
         unlink_path(full_tmpfile);
         return -1;
     }
@@ -3309,6 +3308,15 @@ function trigger_subscription_recovery_reload(worker) {
         mark_pending_subscription_recovery_reload();
 }
 
+function sanitize_deferred_sections(deferred_sections) {
+    let cleaned = "";
+    for (let token in whitespace_values(deferred_sections)) {
+        if (safe_section(token))
+            cleaned = append_word_once(cleaned, token);
+    }
+    return cleaned;
+}
+
 function subscription_bootstrap_retry_result(deferred_sections) {
     let sections = uci_sections();
     let default_user_agent = get_subscription_user_agent("");
@@ -3317,11 +3325,12 @@ function subscription_bootstrap_retry_result(deferred_sections) {
         remaining: ""
     };
 
-    for (let section in whitespace_values(deferred_sections)) {
+    for (let section in whitespace_values(sanitize_deferred_sections(deferred_sections))) {
         let value = find_section(sections, section);
         if (!section_is_subscription_proxy(value)) {
             log_message("Deferred subscription rule '" + section + "' no longer has subscription proxy sources; removing it from bootstrap retry list", "warn");
-            result.recovered = append_word_once(result.recovered, section);
+            if (section_name(value) != "")
+                result.recovered = append_word_once(result.recovered, section);
             continue;
         }
 
@@ -3417,7 +3426,7 @@ function stop_deferred_subscription_bootstrap_retry_worker() {
 }
 
 function run_deferred_subscription_bootstrap(deferred_sections) {
-    deferred_sections = trim(as_string(deferred_sections));
+    deferred_sections = sanitize_deferred_sections(deferred_sections);
     if (deferred_sections == "")
         return;
 

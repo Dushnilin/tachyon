@@ -271,7 +271,7 @@ const NAV_ITEMS: NavItemDef[] = [
     uciTabId: 'dashboard',
     luciTab: 'dashboard',
     simpleVisible: true,
-    labelRu: 'Дашбоард',
+    labelRu: 'Дашборд',
     labelEn: 'Dashboard',
     subtitleRu: 'Состояние маршрутов и инфраструктуры в реальном времени',
     subtitleEn: 'Real-time routing and infrastructure status',

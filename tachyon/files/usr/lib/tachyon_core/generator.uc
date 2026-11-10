@@ -532,7 +532,7 @@ function clash_api_config(settings, service_address) {
     let result = {
         external_controller: controller + ":9090"
     };
-    if (secret != "")
+    if (wan_enabled && secret != "")
         result.secret = secret;
     if (yacd_enabled && (!wan_enabled || secret != ""))
         result.external_ui = "ui";
