@@ -163,9 +163,21 @@ function getClashApiSecret(configSections: Tachyon.ConfigSection[]) {
   return getSettingsSection(configSections)?.yacd_secret_key || '';
 }
 
-function canFetchClashApiDirectly() {
+function canFetchClashApiDirectly(configSections?: Tachyon.ConfigSection[]) {
   if (Date.now() - directClashApiFailedAt < DIRECT_CLASH_API_COOLDOWN_MS) {
     return false;
+  }
+  if (configSections) {
+    const loc = typeof window !== 'undefined' ? window.location : undefined;
+    const host = loc?.hostname || '';
+    const isLoopback =
+      host === '127.0.0.1' || host === 'localhost' || host === '::1';
+    if (
+      !isLoopback &&
+      getSettingsSection(configSections)?.enable_yacd === '0'
+    ) {
+      return false;
+    }
   }
   return canUseDirectClashApi() && typeof fetch === 'function';
 }
@@ -173,7 +185,7 @@ function canFetchClashApiDirectly() {
 async function getClashApiProxies(
   configSections: Tachyon.ConfigSection[],
 ): Promise<Tachyon.MethodResponse<ClashAPI.Proxies>> {
-  if (canFetchClashApiDirectly()) {
+  if (canFetchClashApiDirectly(configSections)) {
     const secret = getClashApiSecret(configSections);
     const controller = new AbortController();
     const timeoutId = setTimeout(

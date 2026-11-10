@@ -8,7 +8,10 @@ import {
   renderXIcon24,
 } from '../../../icons';
 import { CustomTachyonMethods, TachyonShellMethods } from '../../methods';
-import { getClashApiSecret } from '../../methods/custom/getClashApiSecret';
+import {
+  getClashApiSecret,
+  isDirectClashApiExposed,
+} from '../../methods/custom/getClashApiSecret';
 import { logger, socket, store, StoreType } from '../../services';
 import {
   getCachedRuntimeUiState,
@@ -1792,7 +1795,10 @@ function startConnectionsPolling() {
 
 async function connectToConnectionsSocket(updatesId: number) {
   const mountId = monitoringMountId;
-  const clashApiSecret = await getClashApiSecret();
+  const [clashApiSecret, directExposed] = await Promise.all([
+    getClashApiSecret(),
+    isDirectClashApiExposed(),
+  ]);
 
   if (
     !monitoringMounted ||
@@ -1803,8 +1809,16 @@ async function connectToConnectionsSocket(updatesId: number) {
     return;
   }
 
+  if (!directExposed) {
+    startConnectionsPolling();
+    return;
+  }
+
   unsubscribeConnectionsSocket();
-  connectionsSocketUrl = `${getClashWsUrl()}/connections?token=${clashApiSecret}`;
+  connectionsSocketUrl = `${getClashWsUrl()}/connections?token=${encodeURIComponent(clashApiSecret)}`;
+  if (loading) {
+    void pollConnectionsSnapshot();
+  }
   startConntrackSupplementPolling();
 
   trackConnectionsSocketSubscription(

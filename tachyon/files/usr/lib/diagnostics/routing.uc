@@ -1500,6 +1500,7 @@ function clash_api(action, arg1, arg2, arg3) {
     }
 
     if (action == "get_connections") {
+        let ui_state_dir = (getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon") + "/ui-state";
         if (as_string(arg1) == "conntrack") {
             let existing_tuples = {};
             let ip_host_map = load_conntrack_ip_host_map(null, null);
@@ -1529,7 +1530,26 @@ function clash_api(action, arg1, arg2, arg3) {
             }
             let mark_info = build_conntrack_mark_map();
             let ct_conns = read_conntrack_connections(mark_info, existing_tuples, ip_host_map);
-            printf("%J\n", { connections: ct_conns });
+            let ct_payload = { connections: ct_conns };
+            let ct_json = sprintf("%J\n", ct_payload);
+            if (getenv("FAKE_CURL_LOG") == null) {
+                common.ensure_dir(ui_state_dir);
+                common.write_file(ui_state_dir + "/clash-conntrack.json", ct_json);
+            }
+            while (length(ct_json) > 56000 && length(ct_payload.connections) > 10) {
+                ct_payload.truncated = true;
+                let target_len = int(length(ct_payload.connections) * 50000 / length(ct_json));
+                if (target_len >= length(ct_payload.connections))
+                    target_len = length(ct_payload.connections) - 10;
+                if (target_len < 10)
+                    target_len = 10;
+                let trimmed = [];
+                for (let i = 0; i < target_len; i++)
+                    push(trimmed, ct_payload.connections[i]);
+                ct_payload.connections = trimmed;
+                ct_json = sprintf("%J\n", ct_payload);
+            }
+            print(ct_json);
             return 0;
         }
         if (getenv("FAKE_CURL_LOG") != null && getenv("TACHYON_CONNTRACK_FILE") == null) {
@@ -1550,11 +1570,14 @@ function clash_api(action, arg1, arg2, arg3) {
 
         let existing_tuples = {};
         let ip_host_map = load_conntrack_ip_host_map(parsed.connections, parsed.reverseDns);
+        delete parsed.reverseDns;
         for (let c in parsed.connections) {
             if (type(c) != "object")
                 continue;
             if (!c.dataSource)
                 c.dataSource = "core";
+            if (type(c.rule) == "string" && type(c.rulePayload) == "string" && substr(c.rulePayload, 0, 9) == "rule_set=" && index(c.rule, "rule_set=[") >= 0)
+                c.rule = replace(c.rule, /rule_set=\[[^\]]+\]/, c.rulePayload);
             let meta = object_or_empty(c.metadata);
             let c_proto = lc(as_string(meta.network || "tcp"));
             let c_src = as_string(meta.sourceIP || "");
@@ -1574,7 +1597,25 @@ function clash_api(action, arg1, arg2, arg3) {
                 break;
             push(parsed.connections, ct);
         }
-        printf("%J\n", parsed);
+        let serialized = sprintf("%J\n", parsed);
+        if (getenv("FAKE_CURL_LOG") == null) {
+            common.ensure_dir(ui_state_dir);
+            common.write_file(ui_state_dir + "/clash-connections.json", serialized);
+        }
+        while (length(serialized) > 56000 && length(parsed.connections) > 10) {
+            parsed.truncated = true;
+            let target_len = int(length(parsed.connections) * 50000 / length(serialized));
+            if (target_len >= length(parsed.connections))
+                target_len = length(parsed.connections) - 10;
+            if (target_len < 10)
+                target_len = 10;
+            let trimmed = [];
+            for (let i = 0; i < target_len; i++)
+                push(trimmed, parsed.connections[i]);
+            parsed.connections = trimmed;
+            serialized = sprintf("%J\n", parsed);
+        }
+        print(serialized);
         return 0;
     }
 

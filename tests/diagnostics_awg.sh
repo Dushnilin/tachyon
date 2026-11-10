@@ -145,4 +145,86 @@ if (
 }
 NODE
 
+# ---- 5. clash_api get_connections strips reverseDns, compacts rule_set=[...] and caps stdout <= 56 KB while writing full state file
+mkdir -p "$WORK_DIR/mock_bin" "$WORK_DIR/runtime"
+cat >"$WORK_DIR/mock_bin/curl" <<'CURL'
+#!/usr/bin/env bash
+node - <<'GEN'
+const rev = {};
+for (let i = 1; i <= 200; i++) rev[`198.51.100.${i}`] = `host-${i}.example.net`;
+const conns = [];
+const bigRuleSet = Array.from({ length: 40 }, (_, i) => `cat-${i}-geosite`).join(" ");
+for (let i = 1; i <= 180; i++) {
+  conns.push({
+    id: `conn-${i}`,
+    upload: 1024 * i,
+    download: 4096 * i,
+    start: "2026-11-10T08:00:00Z",
+    chains: ["proxy-out", "main-out"],
+    rule: `protocol=tls rule_set=[${bigRuleSet}] => main-out`,
+    rulePayload: "rule_set=cat-0-geosite",
+    metadata: {
+      network: "tcp",
+      type: "tproxy",
+      sourceIP: "192.168.1.50",
+      sourcePort: String(40000 + i),
+      destinationIP: `198.51.100.${(i % 200) + 1}`,
+      destinationPort: "443",
+      host: ""
+    }
+  });
+}
+process.stdout.write(JSON.stringify({
+  downloadTotal: 1000000,
+  uploadTotal: 200000,
+  memory: 16777216,
+  reverseDns: rev,
+  connections: conns
+}));
+GEN
+CURL
+chmod +x "$WORK_DIR/mock_bin/curl"
+
+conn_stdout="$(
+  PATH="$WORK_DIR/mock_bin:$PATH" \
+  TACHYON_RUNTIME_STATE_DIR="$WORK_DIR/runtime" \
+  TACHYON_CONNTRACK_FILE="$WORK_DIR/nf_conntrack" \
+  ucode -L "$TACHYON_LIB" -e '
+    let routing = require("diagnostics.routing");
+    routing.clash_api("get_connections");
+  '
+)"
+
+STDOUT_JSON="$conn_stdout" STATE_FILE="$WORK_DIR/runtime/ui-state/clash-connections.json" node - <<'NODE'
+const fs = require("fs");
+const rawStdout = process.env.STDOUT_JSON || "";
+if (Buffer.byteLength(rawStdout, "utf8") > 56000) {
+  console.error(`stdout must be capped <= 56000 bytes for rpcd, got ${Buffer.byteLength(rawStdout, "utf8")}`);
+  process.exit(1);
+}
+const stdoutObj = JSON.parse(rawStdout);
+if ("reverseDns" in stdoutObj) {
+  console.error("reverseDns must be stripped from clash_api get_connections payload");
+  process.exit(1);
+}
+if (!stdoutObj.truncated) {
+  console.error("truncated flag must be set when connections are capped for stdout");
+  process.exit(1);
+}
+const first = stdoutObj.connections[0];
+if (!first || first.rule !== "protocol=tls rule_set=cat-0-geosite => main-out") {
+  console.error(`expected compacted rule_set rule, got ${first && first.rule}`);
+  process.exit(1);
+}
+if (!first.metadata || first.metadata.host !== "host-2.example.net") {
+  console.error(`expected reverseDns host enrichment before stripping, got ${JSON.stringify(first && first.metadata)}`);
+  process.exit(1);
+}
+const fullObj = JSON.parse(fs.readFileSync(process.env.STATE_FILE, "utf8"));
+if (!Array.isArray(fullObj.connections) || fullObj.connections.length < 180) {
+  console.error(`expected full connections array in state file, got ${fullObj.connections && fullObj.connections.length}`);
+  process.exit(1);
+}
+NODE
+
 printf 'Diagnostics AWG checks passed\n'

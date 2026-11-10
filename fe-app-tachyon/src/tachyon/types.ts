@@ -784,6 +784,7 @@ export namespace Tachyon {
     hide_urltest_group_outbounds?: '0' | '1';
     urltest_idle_timeout?: string;
     hide_detour_outbounds?: '0' | '1';
+    enable_yacd?: '0' | '1' | string;
     yacd_secret_key?: string;
     fully_routed_ips?: string | string[];
     excluded_ips?: string | string[];

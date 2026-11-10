@@ -177,7 +177,10 @@ function toggleRoutingSectionExpanded(sectionCode: string) {
     }
   });
 }
-import { getClashApiSecret } from '../../methods/custom/getClashApiSecret';
+import {
+  getClashApiSecret,
+  isDirectClashApiExposed,
+} from '../../methods/custom/getClashApiSecret';
 import { measurePriorityLatencies } from './priorityLatency';
 import { Tachyon } from '../../types';
 import {
@@ -798,7 +801,10 @@ function stopActionStateWatcher() {
 
 async function connectToClashSockets(dataUpdatesId: number) {
   const mountId = dashboardMountId;
-  const clashApiSecret = await getClashApiSecret();
+  const [clashApiSecret, directExposed] = await Promise.all([
+    getClashApiSecret(),
+    isDirectClashApiExposed(),
+  ]);
 
   if (
     !dashboardMounted ||
@@ -809,7 +815,7 @@ async function connectToClashSockets(dataUpdatesId: number) {
     return;
   }
 
-  if (!canUseDirectClashApi()) {
+  if (!canUseDirectClashApi() || !directExposed) {
     directSocketsFailed = true;
     logger.info(
       '[DASHBOARD]',
@@ -821,7 +827,7 @@ async function connectToClashSockets(dataUpdatesId: number) {
   unsubscribeClashSockets();
 
   trackClashSocketSubscription(
-    `${getClashWsUrl()}/traffic?token=${clashApiSecret}`,
+    `${getClashWsUrl()}/traffic?token=${encodeURIComponent(clashApiSecret)}`,
     (msg) => {
       if (
         dataUpdatesId !== dashboardDataUpdatesId ||
@@ -868,7 +874,7 @@ async function connectToClashSockets(dataUpdatesId: number) {
   }
 
   trackClashSocketSubscription(
-    `${getClashWsUrl()}/connections?token=${clashApiSecret}`,
+    `${getClashWsUrl()}/connections?token=${encodeURIComponent(clashApiSecret)}`,
     (msg) => {
       if (
         dataUpdatesId !== dashboardDataUpdatesId ||

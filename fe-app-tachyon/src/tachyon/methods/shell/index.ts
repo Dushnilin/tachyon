@@ -374,15 +374,92 @@ export const TachyonShellMethods = {
     }
     return res;
   },
-  getClashApiConnections: async () =>
-    callBaseMethod<unknown>(Tachyon.AvailableMethods.CLASH_API, [
-      Tachyon.AvailableClashAPIMethods.GET_CONNECTIONS,
-    ]),
-  getConntrackConnections: async () =>
-    callBaseMethod<unknown>(Tachyon.AvailableMethods.CLASH_API, [
-      Tachyon.AvailableClashAPIMethods.GET_CONNECTIONS,
-      'conntrack',
-    ]),
+  getClashApiConnections: async () => {
+    const res = await callBaseMethod<unknown>(
+      Tachyon.AvailableMethods.CLASH_API,
+      [Tachyon.AvailableClashAPIMethods.GET_CONNECTIONS],
+    );
+    const dataObj = res.success
+      ? (res.data as { connections?: unknown[]; truncated?: boolean } | null)
+      : null;
+    if (
+      res.success &&
+      Array.isArray(dataObj?.connections) &&
+      !dataObj?.truncated
+    ) {
+      return res;
+    }
+    try {
+      if (typeof fs !== 'undefined') {
+        const fsWithDirect = fs as unknown as {
+          read_direct?: (path: string, type?: string) => Promise<string>;
+        };
+        const readFn =
+          typeof fsWithDirect.read_direct === 'function'
+            ? (p: string) => fsWithDirect.read_direct!(p, 'text')
+            : typeof fs.read === 'function'
+              ? (p: string) => fs.read(p)
+              : null;
+        if (readFn) {
+          const raw = await readFn(
+            '/var/run/tachyon/ui-state/clash-connections.json',
+          );
+          const parsed = parseJsonObjectOutput<{ connections?: unknown[] }>(
+            typeof raw === 'string' ? raw : '',
+          );
+          if (Array.isArray(parsed?.connections)) {
+            return { success: true as const, data: parsed };
+          }
+        }
+      }
+    } catch (_error) {
+      // Fallback file unavailable
+    }
+    return res;
+  },
+  getConntrackConnections: async () => {
+    const res = await callBaseMethod<unknown>(
+      Tachyon.AvailableMethods.CLASH_API,
+      [Tachyon.AvailableClashAPIMethods.GET_CONNECTIONS, 'conntrack'],
+    );
+    const dataObj = res.success
+      ? (res.data as { connections?: unknown[]; truncated?: boolean } | null)
+      : null;
+    if (
+      res.success &&
+      Array.isArray(dataObj?.connections) &&
+      !dataObj?.truncated
+    ) {
+      return res;
+    }
+    try {
+      if (typeof fs !== 'undefined') {
+        const fsWithDirect = fs as unknown as {
+          read_direct?: (path: string, type?: string) => Promise<string>;
+        };
+        const readFn =
+          typeof fsWithDirect.read_direct === 'function'
+            ? (p: string) => fsWithDirect.read_direct!(p, 'text')
+            : typeof fs.read === 'function'
+              ? (p: string) => fs.read(p)
+              : null;
+        if (readFn) {
+          const raw = await readFn(
+            '/var/run/tachyon/ui-state/clash-conntrack.json',
+          );
+          const parsed = parseJsonObjectOutput<{ connections?: unknown[] }>(
+            typeof raw === 'string' ? raw : '',
+          );
+          if (Array.isArray(parsed?.connections)) {
+            return { success: true as const, data: parsed };
+          }
+        }
+      }
+    } catch (_error) {
+      // Fallback file unavailable
+    }
+    return res;
+  },
   getClashApiProxyLatency: async (
     tag: string,
     timeout = '5000',
