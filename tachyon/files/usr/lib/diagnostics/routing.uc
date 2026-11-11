@@ -1363,16 +1363,16 @@ function read_conntrack_connections(mark_info, existing_tuples, ip_host_map) {
             continue;
         if (index(line, "TIME_WAIT") >= 0 || index(line, "CLOSE") >= 0 || index(line, "FIN_WAIT") >= 0 || index(line, "LAST_ACK") >= 0)
             continue;
-        let fields = words(line);
+        let fields = split(line, /[ \t]+/);
         if (length(fields) < 6)
             continue;
-        let proto = lc(as_string(fields[2]));
+        let proto = lc(fields[2]);
         if (proto != "tcp" && proto != "udp")
             continue;
         if (proto == "tcp") {
             let tcp_closed = false;
             for (let fi = 3; fi < length(fields); fi++) {
-                let st = as_string(fields[fi]);
+                let st = fields[fi];
                 if (substr(st, 0, 4) == "src=")
                     break;
                 if (st == "TIME_WAIT" || st == "CLOSE" || st == "CLOSE_WAIT" || st == "LAST_ACK" || st == "FIN_WAIT" || st == "FIN_WAIT2") {
@@ -1390,39 +1390,42 @@ function read_conntrack_connections(mark_info, existing_tuples, ip_host_map) {
         let mark_val = 0;
 
         for (let tok in fields) {
-            tok = as_string(tok);
-            if (substr(tok, 0, 4) == "src=") {
+            let eq = index(tok, "=");
+            if (eq < 3)
+                continue;
+            let key = substr(tok, 0, eq);
+            if (key == "src") {
                 src_seen++;
                 if (src_seen == 1)
                     orig_src = substr(tok, 4);
-            } else if (substr(tok, 0, 4) == "dst=") {
+            } else if (key == "dst") {
                 dst_seen++;
                 if (dst_seen == 1)
                     orig_dst = substr(tok, 4);
                 else if (dst_seen == 2)
                     reply_dst = substr(tok, 4);
-            } else if (substr(tok, 0, 6) == "sport=") {
+            } else if (key == "sport") {
                 sport_seen++;
                 if (sport_seen == 1)
                     orig_sport = substr(tok, 6);
-            } else if (substr(tok, 0, 6) == "dport=") {
+            } else if (key == "dport") {
                 dport_seen++;
                 if (dport_seen == 1)
                     orig_dport = substr(tok, 6);
-            } else if (substr(tok, 0, 6) == "bytes=") {
+            } else if (key == "bytes") {
                 bytes_seen++;
                 if (bytes_seen == 1)
                     orig_bytes = int(substr(tok, 6), 10) || 0;
                 else if (bytes_seen == 2)
                     reply_bytes = int(substr(tok, 6), 10) || 0;
-            } else if (substr(tok, 0, 5) == "mark=") {
+            } else if (key == "mark") {
                 mark_val = int(substr(tok, 5), 0) || 0;
             }
         }
 
         if (orig_src == "" || orig_dst == "" || orig_sport == "" || orig_dport == "")
             continue;
-        if (!valid_public_ip(orig_dst) || valid_public_ip(orig_src) || substr(orig_src, 0, 4) == "127." || orig_src == "::1")
+        if (substr(orig_src, 0, 4) == "127." || orig_src == "::1")
             continue;
         if ((mark_val & 0x0c000000) != 0)
             continue;
@@ -1431,6 +1434,8 @@ function read_conntrack_connections(mark_info, existing_tuples, ip_host_map) {
 
         let tkey = connection_tuple_key(proto, orig_src, orig_sport, orig_dst, orig_dport);
         if (type(existing_tuples) == "object" && existing_tuples[tkey])
+            continue;
+        if (!valid_public_ip(orig_dst) || valid_public_ip(orig_src))
             continue;
         if (type(existing_tuples) == "object")
             existing_tuples[tkey] = true;
