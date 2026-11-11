@@ -4826,6 +4826,85 @@ function createSettingsContent(section, capabilities) {
     return _('Enter a valid time in HH:MM format (00:00 to 23:59)');
   };
 
+  const validateWindowTime = function (_section_id, value) {
+    const normalized = value ? `${value}`.trim() : '';
+    if (
+      normalized === '' ||
+      /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(normalized)
+    ) {
+      return true;
+    }
+    return _('Enter a valid time in HH:MM format (00:00 to 23:59)');
+  };
+
+  o = section.taboption(
+    'updates',
+    form.Value,
+    'component_auto_update_window_start',
+    _('Update window start'),
+    _(
+      'Start of the daily update window in HH:MM (24h). Inside the window the router waits for a quiet moment instead of updating at a fixed minute. Empty uses the scheduled time above.',
+    ),
+  );
+  o.depends({
+    component_auto_update_enabled: '1',
+    component_auto_update_mode: 'schedule',
+  });
+  o.placeholder = '04:00';
+  o.rmempty = true;
+  o.validate = validateWindowTime;
+
+  o = section.taboption(
+    'updates',
+    form.Value,
+    'component_auto_update_window_end',
+    _('Update window end'),
+    _(
+      'End of the daily update window in HH:MM (24h). An end earlier than the start means the window crosses midnight, e.g. 22:00 to 06:00. Empty means one hour after the start.',
+    ),
+  );
+  o.depends({
+    component_auto_update_enabled: '1',
+    component_auto_update_mode: 'schedule',
+  });
+  o.placeholder = '05:00';
+  o.rmempty = true;
+  o.validate = validateWindowTime;
+
+  o = section.taboption(
+    'updates',
+    form.Value,
+    'component_auto_update_max_connections',
+    _('Max active connections'),
+    _(
+      'Skip scheduled updates while the core has more active connections than this. 0 disables the limit.',
+    ),
+  );
+  o.depends({
+    component_auto_update_enabled: '1',
+    component_auto_update_mode: 'schedule',
+  });
+  o.datatype = 'uinteger';
+  o.placeholder = '0';
+  o.rmempty = true;
+
+  o = section.taboption(
+    'updates',
+    form.Value,
+    'component_auto_update_max_clients',
+    _('Max active clients'),
+    _(
+      'Skip scheduled updates while more LAN clients have active connections. 0 disables the limit.',
+    ),
+  );
+  o.depends({
+    component_auto_update_enabled: '1',
+    component_auto_update_mode: 'schedule',
+  });
+  o.datatype = 'uinteger';
+  o.placeholder = '0';
+  o.rmempty = true;
+
   o = section.taboption(
     'updates',
     form.MultiValue,
@@ -4833,6 +4912,7 @@ function createSettingsContent(section, capabilities) {
     _('Eligible components for auto-update'),
     _('Select which components are permitted to update automatically'),
   );
+  o.depends('component_auto_update_enabled', '1');
   o.depends('component_auto_update_enabled', '1');
   o.value('all', _('All components'));
   o.value('tachyon', _('Tachyon'));
