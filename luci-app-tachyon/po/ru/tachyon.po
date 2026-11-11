@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-11 09:17+0300\n"
-"PO-Revision-Date: 2026-11-11 09:17+0300\n"
+"POT-Creation-Date: 2026-11-11 16:54+0300\n"
+"PO-Revision-Date: 2026-11-11 16:54+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -1177,6 +1177,9 @@ msgstr "Ср. задержка"
 
 msgid "Awaiting measurement"
 msgstr "Ожидание замера"
+
+msgid "B"
+msgstr "Б"
 
 msgid "BLOCKED"
 msgstr "БЛОКИРОВКА"
@@ -3464,6 +3467,9 @@ msgstr "Введите число или диапазон, например 25 �
 msgid "Enter a positive whole number in megabytes"
 msgstr "Введите положительное целое число в мегабайтах"
 
+msgid "Enter a snapshot name or leave the field empty to assign a unique random ID automatically."
+msgstr "Введите название снапшота или оставьте поле пустым, чтобы автоматически присвоить уникальный ID."
+
 msgid "Enter a target domain or IP address to trace how Tachyon routes its traffic across all 7 pipeline stages."
 msgstr "Введите целевой домен или IP-адрес, чтобы отследить маршрутизацию трафика в Tachyon по всем 7 этапам конвейера."
 
@@ -4366,9 +4372,6 @@ msgstr "Получить глобальную проверку"
 
 msgid "GitHub API Token (optional)"
 msgstr "Токен GitHub API (необязательно)"
-
-msgid "Give the snapshot a name. It is saved with the current date and can be restored from this list later."
-msgstr "Дайте снапшоту имя. Он сохраняется с текущей датой, и его можно будет восстановить из этого списка позже."
 
 msgid "Global check"
 msgstr "Глобальная проверка"
@@ -5501,6 +5504,9 @@ msgstr "Размер мусора для пакета ответа"
 msgid "Junk size for transport packet"
 msgstr "Размер мусора для транспортного пакета"
 
+msgid "KB"
+msgstr "КБ"
+
 msgid "Kazakhstan (kz)"
 msgstr "Казахстан (kz)"
 
@@ -5854,6 +5860,9 @@ msgstr "URI для MASQUE"
 
 msgid "MASQUE URI Template"
 msgstr "MASQUE URI шаблон (необязательно)"
+
+msgid "MB"
+msgstr "МБ"
 
 msgid "MTProto is not implemented in tachyon-core yet"
 msgstr "MTProto еще не реализован в tachyon-core"
@@ -9194,8 +9203,8 @@ msgstr "Детерминированное распределение трафи
 msgid "Snapshot Diff"
 msgstr "Сравнение снапшота"
 
-msgid "Snapshot name"
-msgstr "Имя снапшота"
+msgid "Snapshot name (optional)"
+msgstr "Название снапшота (необязательно)"
 
 msgid "Snapshot restored. The service restarts and the page will reload."
 msgstr "Снапшот восстановлен. Сервис перезапускается, страница будет перезагружена."
@@ -11947,6 +11956,12 @@ msgstr "🇱🇻 Латвия (lv)"
 
 msgid "🇵🇱 Poland (pl)"
 msgstr "🇵🇱 Польша (pl)"
+
+msgid "Give the snapshot a name. It is saved with the current date and can be restored from this list later."
+msgstr "Дайте снапшоту имя. Он сохраняется с текущей датой, и его можно будет восстановить из этого списка позже."
+
+msgid "Snapshot name"
+msgstr "Имя снапшота"
 
 msgid "Secret key for authenticating access to YACD and Clash API (required when YACD is enabled)."
 msgstr ""

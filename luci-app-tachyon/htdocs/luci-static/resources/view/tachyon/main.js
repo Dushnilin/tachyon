@@ -14700,6 +14700,149 @@ button.tachyon-studio-chip:hover {
     align-items: center;
     justify-content: center;
 }
+
+/* Config Snapshots Widget (Settings -> Advanced) */
+.tachyon-snapshots-widget {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 4px 0;
+    width: 100%;
+}
+
+.tachyon-snapshots-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.tachyon-snapshots-hint {
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--tachyon-text-secondary, var(--text-color-medium, #888));
+}
+
+.tachyon-snapshots-list {
+    display: grid;
+    grid-template-columns: minmax(84px, max-content) max-content minmax(0, 1fr) max-content;
+    column-gap: 12px;
+    row-gap: 6px;
+    align-items: center;
+    width: 100%;
+    margin-top: 2px;
+}
+
+.tachyon-snapshots-list--empty {
+    display: flex;
+    flex-direction: column;
+}
+
+.tachyon-snapshot-row {
+    display: contents;
+}
+
+.tachyon-snapshot-name {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--tachyon-text-main, var(--text-color-high, inherit));
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tachyon-snapshot-name--id {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12.5px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.01em;
+}
+
+.tachyon-snapshot-meta {
+    font-size: 12px;
+    line-height: 1.3;
+    color: var(--tachyon-text-secondary, var(--text-color-medium, #888));
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.tachyon-snapshot-badges {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.tachyon-snapshot-badge {
+    display: inline-flex;
+    align-items: center;
+    height: 22px;
+    padding: 0 8px;
+    border-radius: 4px;
+    font-size: 11.5px;
+    font-weight: 500;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    box-sizing: border-box;
+    border: 1px solid var(--tachyon-border-subtle, var(--border-color-medium, rgba(128, 128, 128, 0.24)));
+    background: var(--tachyon-bg-card-elevated, var(--background-color-low, rgba(128, 128, 128, 0.08)));
+    color: var(--tachyon-text-secondary, var(--text-color-medium, inherit));
+}
+
+.tachyon-snapshot-badge--primary {
+    border-color: var(--tachyon-accent-border, rgba(56, 189, 248, 0.36));
+    background: var(--tachyon-accent-soft, rgba(56, 189, 248, 0.14));
+    color: var(--tachyon-accent-text, var(--text-color-high, inherit));
+}
+
+.tachyon-snapshot-actions {
+    display: grid;
+    grid-template-columns: repeat(4, max-content);
+    gap: 6px;
+    justify-content: end;
+    align-items: center;
+}
+
+.tachyon-snapshot-actions > .cbi-button {
+    min-height: 28px !important;
+    height: 28px !important;
+    padding: 0 12px !important;
+    font-size: 12px !important;
+    line-height: 26px !important;
+    margin: 0 !important;
+    white-space: nowrap;
+}
+
+@media (max-width: 960px) {
+    .tachyon-snapshots-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .tachyon-snapshot-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px 10px;
+        width: 100%;
+        padding: 8px 10px;
+        border-radius: 8px;
+        border: 1px solid var(--tachyon-border-subtle, var(--border-color-medium, rgba(128, 128, 128, 0.2)));
+        background: var(--tachyon-bg-card-elevated, var(--background-color-low, rgba(128, 128, 128, 0.04)));
+        box-sizing: border-box;
+    }
+
+    .tachyon-snapshot-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-left: auto;
+    }
+}
 `;var Tx="tachyon-global-styles";function c2(){if(document.getElementById(Tx)){return}document.head.insertAdjacentHTML("beforeend",`
         <style id="${Tx}">
           ${Sx}

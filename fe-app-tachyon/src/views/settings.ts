@@ -818,7 +818,7 @@ function createResetSettingsWidget() {
 function createSnapshotsWidget() {
   const wrapper = E('div', {
     id: 'tachyon-snapshots-widget',
-    style: 'display:flex;flex-direction:column;gap:8px;padding:4px 0;',
+    class: 'tachyon-snapshots-widget',
   });
 
   const btnSave = E('button', {
@@ -846,7 +846,7 @@ function createSnapshotsWidget() {
   btnPasteCode.textContent = _('Paste Transfer Code');
 
   const listEl = E('div', {
-    style: 'display:flex;flex-direction:column;gap:6px;',
+    class: 'tachyon-snapshots-list tachyon-snapshots-list--empty',
   });
 
   function formatStamp(stamp) {
@@ -859,9 +859,9 @@ function createSnapshotsWidget() {
 
   function formatSize(size) {
     if (size == null) return '';
-    if (size >= 1048576) return (size / 1048576).toFixed(1) + ' MB';
-    if (size >= 1024) return Math.round(size / 1024) + ' KB';
-    return size + ' B';
+    if (size >= 1048576) return (size / 1048576).toFixed(1) + ' ' + _('MB');
+    if (size >= 1024) return Math.round(size / 1024) + ' ' + _('KB');
+    return size + ' ' + _('B');
   }
 
   function execSnapshotJson(args) {
@@ -1087,6 +1087,7 @@ function createSnapshotsWidget() {
 
   function loadSnapshots() {
     listEl.innerHTML = '';
+    listEl.className = 'tachyon-snapshots-list tachyon-snapshots-list--empty';
     fs.exec('/usr/bin/tachyon', ['snapshot_list'])
       .then(function (res) {
         let snapshots = [];
@@ -1102,32 +1103,75 @@ function createSnapshotsWidget() {
             E(
               'span',
               {
-                style: 'font-size:12px;color:var(--text-color-medium,#888);',
+                class: 'tachyon-snapshots-hint',
               },
               _('No snapshots yet'),
             ),
           );
           return;
         }
+        listEl.className = 'tachyon-snapshots-list';
         snapshots.forEach(function (snap) {
+          const snapName = String(snap.name || '');
+          const isHexId = /^[0-9a-f]{8}$/.test(snapName);
           const row = E('div', {
-            style:
-              'display:flex;align-items:center;gap:10px;padding:2px 0;flex-wrap:wrap;',
+            class: 'tachyon-snapshot-row',
           });
           row.appendChild(
-            E('span', { style: 'font-weight: 600;' }, snap.name || ''),
+            E(
+              'span',
+              {
+                class:
+                  'tachyon-snapshot-name' +
+                  (isHexId ? ' tachyon-snapshot-name--id' : ''),
+                title: snapName,
+              },
+              snapName,
+            ),
           );
           row.appendChild(
             E(
               'span',
               {
-                style: 'font-size:12px;color:var(--text-color-medium,#888);',
+                class: 'tachyon-snapshot-meta',
               },
               formatStamp(snap.stamp) +
                 (snap.size != null ? ' \u00b7 ' + formatSize(snap.size) : ''),
             ),
           );
-          row.appendChild(
+
+          const badgesWrap = E('div', {
+            class: 'tachyon-snapshot-badges',
+          });
+          const components = Array.isArray(snap.components)
+            ? snap.components
+            : [];
+          components.forEach(function (comp: any) {
+            if (!comp || typeof comp !== 'object') return;
+            const cName = String(comp.name || '').trim();
+            const cVer = String(comp.version || '').trim();
+            if (!cName || !cVer) return;
+            const isPrimary =
+              String(comp.id || '').toLowerCase() === 'tachyon' ||
+              cName.toLowerCase() === 'tachyon';
+            badgesWrap.appendChild(
+              E(
+                'span',
+                {
+                  class:
+                    'tachyon-snapshot-badge' +
+                    (isPrimary ? ' tachyon-snapshot-badge--primary' : ''),
+                },
+                cName + ' ' + cVer,
+              ),
+            );
+          });
+          row.appendChild(badgesWrap);
+
+          const actionsWrap = E('div', {
+            class: 'tachyon-snapshot-actions',
+          });
+          actionsWrap.appendChild(
             E(
               'button',
               {
@@ -1140,7 +1184,7 @@ function createSnapshotsWidget() {
               _('Diff'),
             ),
           );
-          row.appendChild(
+          actionsWrap.appendChild(
             E(
               'button',
               {
@@ -1153,7 +1197,7 @@ function createSnapshotsWidget() {
               _('Export'),
             ),
           );
-          row.appendChild(
+          actionsWrap.appendChild(
             E(
               'button',
               {
@@ -1170,7 +1214,7 @@ function createSnapshotsWidget() {
                           'This will replace the current Tachyon settings with the snapshot',
                         ) +
                           ': \u201c' +
-                          (snap.name || '') +
+                          snapName +
                           '\u201d. The service will restart.',
                       ),
                       E('div', { class: 'button-row' }, [
@@ -1206,7 +1250,7 @@ function createSnapshotsWidget() {
               _('Restore'),
             ),
           );
-          row.appendChild(
+          actionsWrap.appendChild(
             E(
               'button',
               {
@@ -1221,7 +1265,7 @@ function createSnapshotsWidget() {
                         {},
                         _('Delete the snapshot') +
                           ': \u201c' +
-                          (snap.name || '') +
+                          snapName +
                           '\u201d?',
                       ),
                       E('div', { class: 'button-row' }, [
@@ -1257,15 +1301,18 @@ function createSnapshotsWidget() {
               _('Delete'),
             ),
           );
+          row.appendChild(actionsWrap);
           listEl.appendChild(row);
         });
       })
       .catch(function () {
+        listEl.className =
+          'tachyon-snapshots-list tachyon-snapshots-list--empty';
         listEl.appendChild(
           E(
             'span',
             {
-              style: 'font-size:12px;color:var(--text-color-medium,#888);',
+              class: 'tachyon-snapshots-hint',
             },
             _('Failed to load snapshots'),
           ),
@@ -1279,8 +1326,37 @@ function createSnapshotsWidget() {
       class: 'cbi-input-text',
       style: 'width:100%;',
       maxlength: 64,
+    }) as HTMLInputElement;
+    input.placeholder = _('Snapshot name (optional)');
+
+    function submitSaveSnapshot() {
+      const name = (input.value || '').trim();
+      ui.hideModal();
+      execSnapshot(['snapshot_save', name])
+        .then(function () {
+          loadSnapshots();
+        })
+        .catch(function (err: any) {
+          ui.addNotification(
+            null,
+            E(
+              'p',
+              {},
+              _('Failed to save snapshot') +
+                (err && err.message ? ': ' + err.message : ''),
+            ),
+            'error',
+          );
+        });
+    }
+
+    input.addEventListener('keydown', function (ev: KeyboardEvent) {
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        submitSaveSnapshot();
+      }
     });
-    input.placeholder = _('Snapshot name');
+
     ui.showModal(
       _('Save Snapshot'),
       [
@@ -1288,7 +1364,7 @@ function createSnapshotsWidget() {
           'p',
           {},
           _(
-            'Give the snapshot a name. It is saved with the current date and can be restored from this list later.',
+            'Enter a snapshot name or leave the field empty to assign a unique random ID automatically.',
           ),
         ),
         input,
@@ -1309,22 +1385,7 @@ function createSnapshotsWidget() {
             {
               class: 'btn cbi-button cbi-button-positive',
               type: 'button',
-              click: function () {
-                const name = (input.value || '').trim();
-                if (!name) return;
-                ui.hideModal();
-                execSnapshot(['snapshot_save', name])
-                  .then(function () {
-                    loadSnapshots();
-                  })
-                  .catch(function () {
-                    ui.addNotification(
-                      null,
-                      E('p', {}, _('Failed to save snapshot')),
-                      'error',
-                    );
-                  });
-              },
+              click: submitSaveSnapshot,
             },
             _('Save'),
           ),
@@ -1332,6 +1393,13 @@ function createSnapshotsWidget() {
       ],
       'cbi-modal',
     );
+    setTimeout(function () {
+      try {
+        input.focus();
+      } catch (_e) {
+        // ignore focus errors
+      }
+    }, 30);
   });
 
   btnImport.addEventListener('click', function () {
@@ -2100,23 +2168,20 @@ function createSnapshotsWidget() {
     E(
       'div',
       {
-        style: 'display:flex;align-items:center;gap:12px;flex-wrap:wrap;',
+        class: 'tachyon-snapshots-toolbar',
       },
-      [
-        btnSave,
-        btnImport,
-        btnCopyCode,
-        btnPasteCode,
-        E(
-          'span',
-          {
-            style: 'font-size:12px;color:var(--text-color-medium,#888);',
-          },
-          _(
-            'Up to 10 snapshots are kept; the oldest ones are removed automatically.',
-          ),
-        ),
-      ],
+      [btnSave, btnImport, btnCopyCode, btnPasteCode],
+    ),
+  );
+  wrapper.appendChild(
+    E(
+      'div',
+      {
+        class: 'tachyon-snapshots-hint',
+      },
+      _(
+        'Up to 10 snapshots are kept; the oldest ones are removed automatically.',
+      ),
     ),
   );
   wrapper.appendChild(listEl);

@@ -152,6 +152,322 @@ function snapshot_file_valid(file) {
     return match(as_string(file), /^[A-Za-z0-9_\-]+-[0-9]{8}-[0-9]{6}\.tar\.gz$/) != null;
 }
 
+function snapshot_id_taken(id) {
+    if (fs.stat(SNAPSHOTS_DIR) == null)
+        return false;
+    let items = fs.lsdir(SNAPSHOTS_DIR);
+    if (type(items) != "array")
+        return false;
+    let prefix = as_string(id) + "-";
+    for (let item in items) {
+        item = as_string(item);
+        if (substr(item, 0, length(prefix)) == prefix)
+            return true;
+    }
+    return false;
+}
+
+function generate_snapshot_id() {
+    for (let attempt = 0; attempt < 16; attempt++) {
+        let hex = "";
+        let fp = fs.open("/dev/urandom", "r");
+        if (fp != null) {
+            let bytes = fp.read(4);
+            fp.close();
+            if (bytes != null && length(bytes) == 4) {
+                hex = sprintf("%02x%02x%02x%02x",
+                    ord(bytes, 0), ord(bytes, 1), ord(bytes, 2), ord(bytes, 3));
+            }
+        }
+        if (hex == "") {
+            let clk = clock();
+            let seed = ((int(clk[0] || 0) * 1103515245) + int(clk[1] || 0) + (attempt * 2654435761)) & 0x7fffffff;
+            let seed2 = ((seed * 1664525) + 1013904223 + attempt) & 0x7fffffff;
+            hex = sprintf("%04x%04x", seed & 0xffff, seed2 & 0xffff);
+        }
+        hex = lc(hex);
+        if (match(hex, /^[0-9a-f]{8}$/) != null && !snapshot_id_taken(hex))
+            return hex;
+    }
+    let fallback_clk = clock();
+    return lc(sprintf("%08x", int(fallback_clk[0] || 0) & 0xffffffff));
+}
+
+function snapshot_meta_path_for_archive(archive_basename) {
+    archive_basename = as_string(archive_basename);
+    if (!snapshot_file_valid(archive_basename))
+        return "";
+    let base = substr(archive_basename, 0, length(archive_basename) - length(".tar.gz"));
+    return SNAPSHOTS_DIR + "/" + base + ".meta.json";
+}
+
+function normalize_snapshot_components(list) {
+    if (type(list) != "array")
+        return [];
+    let out = [];
+    let seen = {};
+    for (let item in list) {
+        if (type(item) != "object")
+            continue;
+        let cid = trim(as_string(item.id || ""));
+        let cname = trim(as_string(item.name || ""));
+        let cver = trim(as_string(item.version || ""));
+        if (cname == "" || cver == "" || cver == "not installed" || cver == "unknown")
+            continue;
+        if (cid == "")
+            cid = lc(replace(cname, /[^A-Za-z0-9_-]+/g, "_"));
+        if (seen[cid])
+            continue;
+        seen[cid] = true;
+        push(out, { id: cid, name: cname, version: cver });
+    }
+    return out;
+}
+
+function read_snapshot_components_meta(archive_basename) {
+    let meta_path = snapshot_meta_path_for_archive(archive_basename);
+    if (meta_path == "" || fs.stat(meta_path) == null)
+        return [];
+    let parsed = common.read_json_file(meta_path);
+    if (type(parsed) != "object")
+        return [];
+    return normalize_snapshot_components(parsed.components);
+}
+
+function write_snapshot_components_meta(archive_basename, components) {
+    let meta_path = snapshot_meta_path_for_archive(archive_basename);
+    if (meta_path == "")
+        return false;
+    let normalized = normalize_snapshot_components(components);
+    if (length(normalized) == 0)
+        return false;
+    let ok = common.write_json_file(meta_path, { components: normalized });
+    if (ok)
+        command_success_from_args([ "chmod", "600", meta_path ]);
+    return ok;
+}
+
+function remove_snapshot_components_meta(archive_basename) {
+    let meta_path = snapshot_meta_path_for_archive(archive_basename);
+    if (meta_path != "" && fs.stat(meta_path) != null)
+        command_success_from_args([ "rm", "-f", meta_path ]);
+}
+
+function clean_version_token(raw) {
+    raw = trim(as_string(raw || ""));
+    if (raw == "" || raw == "not installed" || raw == "unknown")
+        return "";
+    if (substr(raw, 0, 1) == "v" || substr(raw, 0, 1) == "V") {
+        let rest = substr(raw, 1);
+        if (match(rest, /^[0-9]/) != null)
+            raw = rest;
+    }
+    return raw;
+}
+
+function parse_core_banner(output) {
+    output = as_string(output || "");
+    for (let line in split(output, "\n")) {
+        line = trim(line);
+        if (line == "")
+            continue;
+        let fields = split(line, /[ \t\r\n]+/);
+        if (length(fields) >= 3 && (lc(fields[0]) == "sing-box" || lc(fields[0]) == "tachyon-core") && lc(fields[1]) == "version" && match(fields[2], /^[vV]?[0-9]+/) != null)
+            return { identity: lc(fields[0]), version: clean_version_token(fields[2]) };
+        if (length(fields) >= 2 && (lc(fields[0]) == "tachyon-core" || lc(fields[0]) == "sing-box" || lc(fields[0]) == "version") && match(fields[1], /^[vV]?[0-9]+/) != null)
+            return { identity: lc(fields[0]) == "version" ? "" : lc(fields[0]), version: clean_version_token(fields[1]) };
+    }
+    return { identity: "", version: "" };
+}
+
+function detect_snapshot_core_component(engine_opt) {
+    let state_ver_file = env("SB_VERSION_STATE_FILE", PERSISTENT_DIR + "/tachyon-core-version");
+    let state_var_file = env("SB_VARIANT_STATE_FILE", PERSISTENT_DIR + "/tachyon-core-variant");
+    let state_ver = clean_version_token(fs.readfile(state_ver_file));
+    if (state_ver == "" && getenv("SB_VERSION_STATE_FILE") == null)
+        state_ver = clean_version_token(fs.readfile("/etc/tachyon/tachyon-core-version") || fs.readfile("/etc/tachyon/sing-box-version"));
+    let marker = lc(trim(as_string(fs.readfile(state_var_file) || "")));
+    if (marker == "" && getenv("SB_VARIANT_STATE_FILE") == null)
+        marker = lc(trim(as_string(fs.readfile("/etc/tachyon/tachyon-core-variant") || fs.readfile("/etc/tachyon/sing-box-variant") || "")));
+
+    let prefer_sing_box = (lc(as_string(engine_opt || "")) == "sing-box") ||
+        marker == "extended" || marker == "extended-compressed" || marker == "lx" || marker == "tiny" || marker == "stable";
+
+    let banner = { identity: "", version: "" };
+    if (marker != "extended-compressed" && marker != "lx") {
+        let bins = prefer_sing_box
+            ? [ env("TACHYON_SING_BOX_BIN", "/usr/bin/sing-box"), "/usr/bin/tachyon-core" ]
+            : [ env("TACHYON_CORE_BIN", "/usr/bin/tachyon-core"), "/usr/bin/sing-box" ];
+        for (let bin_path in bins) {
+            if (bin_path != "" && fs.access(bin_path, "x")) {
+                banner = parse_core_banner(command_output_from_args([ bin_path, "version" ]));
+                if (banner.version != "")
+                    break;
+            }
+        }
+    }
+
+    let ver = banner.version != "" ? banner.version : state_ver;
+    if (ver == "")
+        ver = clean_version_token(getenv("TACHYON_CORE_VERSION"));
+    if (ver == "")
+        return null;
+
+    let is_sing_box = false;
+    if (banner.identity == "sing-box")
+        is_sing_box = true;
+    else if (banner.identity == "tachyon-core")
+        is_sing_box = false;
+    else if (marker == "lx" || marker == "extended" || marker == "extended-compressed" || marker == "tiny" || marker == "stable")
+        is_sing_box = true;
+    else if (match(ver, /^[1-9]\.[0-9]+/) != null && index(ver, "-tachyon.") < 0)
+        is_sing_box = true;
+    else if (prefer_sing_box && marker != "tachyon-core" && match(ver, /^0\.[0-9]+/) == null)
+        is_sing_box = true;
+
+    if (is_sing_box)
+        return { id: "sing-box", name: "sing-box", version: ver };
+    return { id: "tachyon-core", name: "Tachyon Core", version: ver };
+}
+
+function detect_optional_component_version(comp_id, pkgs_mod) {
+    let env_key = "TACHYON_COMPONENT_VERSION_" + uc(replace(as_string(comp_id), /[^A-Za-z0-9]+/g, "_"));
+    let env_override = clean_version_token(getenv(env_key));
+    if (env_override != "")
+        return env_override;
+
+    let pkg_ver = "";
+    if (pkgs_mod != null && type(pkgs_mod.version) == "function") {
+        if (comp_id == "fptn")
+            pkg_ver = clean_version_token(pkgs_mod.version("fptn") || pkgs_mod.version("fptn-client"));
+        else
+            pkg_ver = clean_version_token(pkgs_mod.version(comp_id));
+    }
+    if (pkg_ver != "")
+        return pkg_ver;
+
+    if (comp_id == "tailscale") {
+        let ts_bin = env("TAILSCALE_BIN", "/usr/sbin/tailscale");
+        if (fs.access(ts_bin, "x")) {
+            let out = trim(command_output_from_args([ ts_bin, "version" ]));
+            if (out != "")
+                return clean_version_token(split(out, "\n")[0]);
+        }
+    }
+    return "";
+}
+
+function parse_config_active_flags(config_text) {
+    let flags = {
+        engine: "tachyon-core",
+        zapret2: false,
+        zapret: false,
+        byedpi: false,
+        fptn: false,
+        tailscale: false
+    };
+    let cur_type = "";
+    let cur_enabled = true;
+    let cur_action = "";
+    let cur_protocol = "";
+    let cur_ts_mode = "";
+    let cur_fptn_url = "";
+
+    let flush_section = function() {
+        if (cur_type == "" || !cur_enabled)
+            return;
+        if (cur_type == "section") {
+            if (cur_action == "zapret2") flags.zapret2 = true;
+            else if (cur_action == "zapret") flags.zapret = true;
+            else if (cur_action == "byedpi") flags.byedpi = true;
+            else if (cur_action == "fptn") flags.fptn = true;
+            else if (cur_action == "tailscale") flags.tailscale = true;
+        } else if (cur_type == "outbound_source") {
+            if (cur_action == "fptn" || cur_fptn_url != "")
+                flags.fptn = true;
+        } else if (cur_type == "server") {
+            if (cur_protocol == "tailscale" && cur_ts_mode == "native")
+                flags.tailscale = true;
+        }
+    };
+
+    for (let raw_line in split(as_string(config_text || ""), "\n")) {
+        let line = trim(replace(as_string(raw_line), /\r$/, ""));
+        if (line == "" || substr(line, 0, 1) == "#")
+            continue;
+        let hdr = match(line, /^config[ \t]+([A-Za-z0-9_-]+)/);
+        if (hdr != null) {
+            flush_section();
+            cur_type = as_string(hdr[1]);
+            cur_enabled = true;
+            cur_action = "";
+            cur_protocol = "";
+            cur_ts_mode = "";
+            cur_fptn_url = "";
+            continue;
+        }
+        let opt = match(line, /^option[ \t]+([A-Za-z0-9_]+)[ \t]+['"]?([^'"\r\n]*)['"]?/);
+        if (opt == null)
+            continue;
+        let k = as_string(opt[1]);
+        let v = trim(as_string(opt[2]));
+        if (cur_type == "settings" && k == "engine" && v != "")
+            flags.engine = v;
+        else if (k == "enabled" && (v == "0" || lc(v) == "false" || lc(v) == "off" || lc(v) == "no"))
+            cur_enabled = false;
+        else if (k == "action" || k == "type")
+            cur_action = lc(v);
+        else if (k == "protocol")
+            cur_protocol = lc(v);
+        else if (k == "tailscale_mode")
+            cur_ts_mode = lc(v);
+        else if (k == "access_token" && substr(lc(v), 0, 5) == "fptn:")
+            cur_fptn_url = v;
+    }
+    flush_section();
+    return flags;
+}
+
+function collect_active_components(config_path) {
+    let raw_cfg = as_string(fs.readfile(config_path || CONFIG_PATH) || "");
+    let flags = parse_config_active_flags(raw_cfg);
+    let list = [];
+
+    let constants_mod = null;
+    try { constants_mod = require("core.constants"); } catch (e) { constants_mod = null; }
+    let pkgs_mod = null;
+    try { pkgs_mod = require("core.packages"); } catch (e) { pkgs_mod = null; }
+
+    let tachyon_ver = clean_version_token(getenv("TACHYON_VERSION"));
+    if (tachyon_ver == "" && constants_mod != null)
+        tachyon_ver = clean_version_token(constants_mod.TACHYON_VERSION);
+    if (tachyon_ver == "" && pkgs_mod != null && type(pkgs_mod.version) == "function")
+        tachyon_ver = clean_version_token(pkgs_mod.version("tachyon") || pkgs_mod.version("luci-app-tachyon"));
+    if (tachyon_ver != "")
+        push(list, { id: "tachyon", name: "Tachyon", version: tachyon_ver });
+
+    let core_comp = detect_snapshot_core_component(flags.engine);
+    if (core_comp != null)
+        push(list, core_comp);
+
+    let extras = [
+        [ "zapret2", "Zapret2", flags.zapret2 ],
+        [ "zapret", "Zapret", flags.zapret ],
+        [ "byedpi", "ByeDPI", flags.byedpi ],
+        [ "fptn", "FPTN", flags.fptn ],
+        [ "tailscale", "Tailscale", flags.tailscale ]
+    ];
+    for (let entry in extras) {
+        if (!entry[2])
+            continue;
+        let ver = detect_optional_component_version(entry[0], pkgs_mod);
+        if (ver != "")
+            push(list, { id: entry[0], name: entry[1], version: ver });
+    }
+
+    return normalize_snapshot_components(list);
+}
+
 function backup_archive_safe(members) {
     let config_member = "config/" + CONFIG_NAME;
     let data_prefix = CONFIG_NAME + "/";
@@ -188,8 +504,10 @@ function prune_snapshots() {
         if (line == "" || !snapshot_file_valid(line))
             continue;
         kept++;
-        if (kept > SNAPSHOT_LIMIT)
+        if (kept > SNAPSHOT_LIMIT) {
             command_success_from_args([ "rm", "-f", SNAPSHOTS_DIR + "/" + line ]);
+            remove_snapshot_components_meta(line);
+        }
     }
 }
 
@@ -239,11 +557,12 @@ function compact_bloated_snapshot_if_needed(archive_path) {
 }
 
 function snapshot_save(name) {
-    let safe = snapshot_name_safe(name);
-    if (safe == null)
-        return fail("invalid snapshot name");
     if (!command_success_from_args([ "mkdir", "-p", SNAPSHOTS_DIR ]))
         return fail("unable to create snapshots directory");
+    let raw_name = trim(as_string(name || ""));
+    let safe = raw_name == "" ? generate_snapshot_id() : snapshot_name_safe(raw_name);
+    if (safe == null)
+        return fail("invalid snapshot name");
     if (fs.stat(CONFIG_PATH) == null)
         return fail("config file not found");
 
@@ -264,7 +583,8 @@ function snapshot_save(name) {
         return fail("unable to stage snapshot data");
     }
 
-    let file = SNAPSHOTS_DIR + "/" + safe + "-" + snapshot_stamp() + ".tar.gz";
+    let archive_name = safe + "-" + snapshot_stamp() + ".tar.gz";
+    let file = SNAPSHOTS_DIR + "/" + archive_name;
     let packed = command_success_from_args([ "tar", "-czf", file, "-C", stage, "config/" + CONFIG_NAME, CONFIG_NAME ]);
     command_status(command_from_args([ "rm", "-rf", stage ]));
     if (!packed) {
@@ -272,10 +592,17 @@ function snapshot_save(name) {
         return fail("unable to create snapshot archive");
     }
     command_success_from_args([ "chmod", "600", file ]);
+    let components = collect_active_components(CONFIG_PATH);
+    write_snapshot_components_meta(archive_name, components);
     prune_snapshots();
 
     log_message("Config snapshot saved: " + safe);
-    print(sprintf("%J\n", { success: true, file: common.path_basename(file) }));
+    print(sprintf("%J\n", {
+        success: true,
+        file: archive_name,
+        name: safe,
+        components: components
+    }));
     return 0;
 }
 
@@ -299,7 +626,8 @@ function snapshot_list() {
         let mid_dash = last_dash >= 0 ? rindex(substr(base, 0, last_dash), "-") : -1;
         let name = mid_dash >= 0 ? substr(base, 0, mid_dash) : base;
         let stamp = mid_dash >= 0 ? substr(base, mid_dash + 1) : "";
-        push(entries, { file: line, name: name, stamp: stamp, size: size });
+        let components = read_snapshot_components_meta(line);
+        push(entries, { file: line, name: name, stamp: stamp, size: size, components: components });
     }
     return entries;
 }
@@ -312,6 +640,7 @@ function snapshot_delete(file) {
         return fail("snapshot not found");
     if (!command_success_from_args([ "rm", "-f", path ]))
         return fail("unable to remove snapshot");
+    remove_snapshot_components_meta(file);
     log_message("Config snapshot deleted: " + file);
     print(sprintf("%J\n", { success: true }));
     return 0;
@@ -1316,6 +1645,7 @@ function snapshot_export(file) {
 
     let archive_b64 = raw_archive != null ? b64enc(raw_archive) : "";
     let meta = parse_snapshot_meta(file);
+    let snap_components = read_snapshot_components_meta(file);
 
     let profile = {
         format: "tachyon-profile-v1",
@@ -1323,6 +1653,7 @@ function snapshot_export(file) {
         stamp: meta.stamp,
         file: file,
         created_at: time(),
+        components: snap_components,
         config_text: config_text,
         archive_base64: archive_b64
     };
@@ -1347,6 +1678,7 @@ function snapshot_export(file) {
                 stamp: meta.stamp,
                 file: file,
                 created_at: profile.created_at,
+                components: snap_components,
                 config_text: "",
                 archive_base64: archive_b64
             };
@@ -1358,6 +1690,7 @@ function snapshot_export(file) {
                 stamp: meta.stamp,
                 file: file,
                 created_at: profile.created_at,
+                components: snap_components,
                 chunked_export: true
             };
         }
@@ -1536,13 +1869,18 @@ function snapshot_import(source_arg) {
 
     command_status(command_from_args([ "rm", "-rf", stage ]));
     command_success_from_args([ "chmod", "600", target_file ]);
+    let target_basename = common.path_basename(target_file);
+    let imported_components = normalize_snapshot_components(profile.components);
+    if (length(imported_components) > 0)
+        write_snapshot_components_meta(target_basename, imported_components);
     prune_snapshots();
 
     log_message("Config snapshot imported: " + safe_name);
     print(sprintf("%J\n", {
         success: true,
-        file: common.path_basename(target_file),
-        name: safe_name
+        file: target_basename,
+        name: safe_name,
+        components: imported_components
     }));
     return 0;
 }
@@ -1550,9 +1888,7 @@ function snapshot_import(source_arg) {
 let mode = as_string(ARGV[0]);
 
 if (mode == "snapshot-save") {
-    let name = as_string(ARGV[1]);
-    if (name == "")
-        exit(fail("snapshot name required"));
+    let name = ARGV[1] == null ? "" : as_string(ARGV[1]);
     exit(snapshot_save(name));
 }
 
@@ -1596,5 +1932,5 @@ if (mode == "snapshot-import") {
     exit(snapshot_import(source_arg));
 }
 
-warn("Usage: service/snapshot.uc snapshot-list|snapshot-save <name>|snapshot-restore <file>|snapshot-delete <file>|snapshot-diff <file>|snapshot-export <file>|snapshot-import <file|json>\n");
+warn("Usage: service/snapshot.uc snapshot-list|snapshot-save [name]|snapshot-restore <file>|snapshot-delete <file>|snapshot-diff <file>|snapshot-export <file>|snapshot-import <file|json>\n");
 exit(1);

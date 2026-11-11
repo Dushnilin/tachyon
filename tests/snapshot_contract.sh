@@ -201,17 +201,108 @@ run_uc snapshot-delete "evil" >"$WORK_DIR/result.json" &&
 grep -Fq 'invalid snapshot name' "$WORK_DIR/result.json" ||
   fail "invalid file name delete must be rejected"
 
-# ---- argument validation
+# ---- argument validation and auto-generated random ID on empty name
 
-run_uc snapshot-save >"$WORK_DIR/result.json" && fail "snapshot-save without a name must fail"
-grep -Fq 'snapshot name required' "$WORK_DIR/result.json" ||
-  fail "snapshot-save without a name must explain itself"
+run_uc snapshot-save >"$WORK_DIR/auto1.json" ||
+  fail "snapshot-save without a name must auto-generate a unique hex ID"
+grep -Fq '"success": true' "$WORK_DIR/auto1.json" ||
+  fail "snapshot-save without a name must report success"
+AUTO_NAME_1="$(sed -n 's/.*"name": "\([^"]*\)".*/\1/p' "$WORK_DIR/auto1.json")"
+AUTO_FILE_1="$(sed -n 's/.*"file": "\([^"]*\)".*/\1/p' "$WORK_DIR/auto1.json")"
+[[ "$AUTO_NAME_1" =~ ^[0-9a-f]{8}$ ]] ||
+  fail "auto-generated snapshot ID must be an 8-char lowercase hex string, got: $AUTO_NAME_1"
+[[ "$AUTO_FILE_1" =~ ^${AUTO_NAME_1}-[0-9]{8}-[0-9]{6}\.tar\.gz$ ]] ||
+  fail "auto-generated snapshot file must start with its hex ID: $AUTO_FILE_1"
+
+run_uc snapshot-save "" >"$WORK_DIR/auto2.json" ||
+  fail "snapshot-save with empty string must auto-generate a unique hex ID"
+AUTO_NAME_2="$(sed -n 's/.*"name": "\([^"]*\)".*/\1/p' "$WORK_DIR/auto2.json")"
+[[ "$AUTO_NAME_2" =~ ^[0-9a-f]{8}$ ]] ||
+  fail "second auto-generated snapshot ID must be an 8-char lowercase hex string, got: $AUTO_NAME_2"
+[ "$AUTO_NAME_1" != "$AUTO_NAME_2" ] ||
+  fail "auto-generated snapshot IDs must be unique across consecutive saves ($AUTO_NAME_1)"
+
 run_uc snapshot-save "./" >"$WORK_DIR/result.json" && fail "unsafe name must be rejected"
 grep -Fq 'invalid snapshot name' "$WORK_DIR/result.json" ||
   fail "unsafe name must be rejected as invalid"
 run_uc snapshot-restore "evil" >"$WORK_DIR/result.json" && fail "restore must reject invalid files"
 grep -Fq 'invalid snapshot name' "$WORK_DIR/result.json" ||
   fail "restore of an invalid file name must be rejected"
+
+# ---- active component versions in snapshot-save, snapshot-list, export/import, delete & rotation
+
+printf '%s\n' '0.4.9' >"$WORK_DIR/tachyon/tachyon-core-version"
+printf '%s\n' 'tachyon-core' >"$WORK_DIR/tachyon/tachyon-core-variant"
+cat >"$WORK_DIR/config/tachyon" <<'EOF'
+config settings 'settings'
+	option dns_type 'udp'
+	option dns '8.8.8.8'
+	option engine 'tachyon-core'
+
+config section 's_z2'
+	option label 'Active Z2'
+	option enabled '1'
+	option action 'zapret2'
+
+config section 's_disabled_bd'
+	option label 'Disabled ByeDPI'
+	option enabled '0'
+	option action 'byedpi'
+EOF
+
+TACHYON_VERSION="1.7.24" \
+SB_VERSION_STATE_FILE="$WORK_DIR/tachyon/tachyon-core-version" \
+SB_VARIANT_STATE_FILE="$WORK_DIR/tachyon/tachyon-core-variant" \
+TACHYON_CORE_BIN="$WORK_DIR/nonexistent-core-bin" \
+TACHYON_SING_BOX_BIN="$WORK_DIR/nonexistent-sb-bin" \
+TACHYON_COMPONENT_VERSION_ZAPRET2="0.8.5" \
+TACHYON_COMPONENT_VERSION_BYEDPI="0.17.3" \
+  run_uc snapshot-save "" >"$WORK_DIR/comp-save.json"
+grep -Fq '"success": true' "$WORK_DIR/comp-save.json" ||
+  fail "snapshot-save with active component metadata must succeed"
+COMP_FILE="$(sed -n 's/.*"file": "\([^"]*\)".*/\1/p' "$WORK_DIR/comp-save.json")"
+COMP_BASE="${COMP_FILE%.tar.gz}"
+[ -f "$WORK_DIR/snapshots/${COMP_BASE}.meta.json" ] ||
+  fail "snapshot-save must write sidecar .meta.json for active components"
+[ "$(ucode -e "let fs = require('fs'); printf('%o', fs.stat('$WORK_DIR/snapshots/${COMP_BASE}.meta.json').mode & 511);")" = "600" ] ||
+  fail "snapshot .meta.json sidecar must be chmod 600"
+
+run_uc snapshot-list >"$WORK_DIR/comp-list.json"
+grep -Fq '"version": "1.7.24"' "$WORK_DIR/comp-list.json" ||
+  fail "snapshot-list must expose Tachyon version from snapshot metadata"
+grep -Fq '"name": "Tachyon Core"' "$WORK_DIR/comp-list.json" ||
+  fail "snapshot-list must expose Tachyon Core name from snapshot metadata"
+grep -Fq '"version": "0.4.9"' "$WORK_DIR/comp-list.json" ||
+  fail "snapshot-list must expose Tachyon Core version from snapshot metadata"
+grep -Fq '"version": "0.8.5"' "$WORK_DIR/comp-list.json" ||
+  fail "snapshot-list must expose enabled Zapret2 component version"
+if grep -Fq '"0.17.3"' "$WORK_DIR/comp-list.json"; then
+  fail "snapshot-list must NOT include versions of disabled sections (ByeDPI)"
+fi
+
+run_uc snapshot-export "$COMP_FILE" >"$WORK_DIR/comp-export.json"
+grep -Fq '"version": "0.4.9"' "$WORK_DIR/comp-export.json" ||
+  fail "snapshot-export must preserve components array in tachyon-profile-v1"
+
+run_uc snapshot-delete "$COMP_FILE" >/dev/null
+[ ! -e "$WORK_DIR/snapshots/${COMP_BASE}.meta.json" ] ||
+  fail "snapshot-delete must clean up the .meta.json sidecar file"
+
+run_uc snapshot-import "$WORK_DIR/comp-export.json" >"$WORK_DIR/comp-import.json"
+COMP_IMP_FILE="$(sed -n 's/.*"file": "\([^"]*\)".*/\1/p' "$WORK_DIR/comp-import.json")"
+COMP_IMP_BASE="${COMP_IMP_FILE%.tar.gz}"
+[ -f "$WORK_DIR/snapshots/${COMP_IMP_BASE}.meta.json" ] ||
+  fail "snapshot-import must restore .meta.json sidecar from exported profile"
+run_uc snapshot-list >"$WORK_DIR/comp-list-after-imp.json"
+grep -Fq '"version": "0.8.5"' "$WORK_DIR/comp-list-after-imp.json" ||
+  fail "snapshot-list after import must return preserved component versions"
+
+sleep 1
+SNAPSHOT_LIMIT=1 TACHYON_VERSION="1.7.24" SB_VERSION_STATE_FILE="$WORK_DIR/tachyon/tachyon-core-version" \
+  TACHYON_CORE_BIN="$WORK_DIR/nonexistent-core-bin" TACHYON_SING_BOX_BIN="$WORK_DIR/nonexistent-sb-bin" \
+  run_uc snapshot-save newest_only >/dev/null
+[ ! -e "$WORK_DIR/snapshots/${COMP_IMP_BASE}.meta.json" ] ||
+  fail "prune_snapshots rotation must remove .meta.json sidecars of pruned snapshots"
 
 # ---- snapshot-diff (with secret masking), snapshot-export, and snapshot-import
 
