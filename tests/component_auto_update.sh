@@ -36,6 +36,10 @@ function get_all(_config, section) {
             component_auto_update_enabled: getenv("TEST_COMPONENT_AUTO_UPDATE_ENABLED") || "0",
             component_auto_update_mode: getenv("TEST_COMPONENT_AUTO_UPDATE_MODE") || "immediate",
             component_auto_update_time: getenv("TEST_COMPONENT_AUTO_UPDATE_TIME") || "04:00",
+            component_auto_update_window_start: getenv("TEST_COMPONENT_AUTO_UPDATE_WINDOW_START") || "",
+            component_auto_update_window_end: getenv("TEST_COMPONENT_AUTO_UPDATE_WINDOW_END") || "",
+            component_auto_update_max_connections: getenv("TEST_COMPONENT_AUTO_UPDATE_MAX_CONNECTIONS") || "0",
+            component_auto_update_max_clients: getenv("TEST_COMPONENT_AUTO_UPDATE_MAX_CLIENTS") || "0",
             component_auto_update_targets: getenv("TEST_COMPONENT_AUTO_UPDATE_TARGETS") ? split(getenv("TEST_COMPONENT_AUTO_UPDATE_TARGETS"), " ") : [ "all" ]
         };
     }
@@ -110,6 +114,10 @@ updates_ucode() {
     TEST_COMPONENT_AUTO_UPDATE_ENABLED="${TEST_COMPONENT_AUTO_UPDATE_ENABLED:-0}" \
     TEST_COMPONENT_AUTO_UPDATE_MODE="${TEST_COMPONENT_AUTO_UPDATE_MODE:-immediate}" \
     TEST_COMPONENT_AUTO_UPDATE_TIME="${TEST_COMPONENT_AUTO_UPDATE_TIME:-04:00}" \
+    TEST_COMPONENT_AUTO_UPDATE_WINDOW_START="${TEST_COMPONENT_AUTO_UPDATE_WINDOW_START:-}" \
+    TEST_COMPONENT_AUTO_UPDATE_WINDOW_END="${TEST_COMPONENT_AUTO_UPDATE_WINDOW_END:-}" \
+    TEST_COMPONENT_AUTO_UPDATE_MAX_CONNECTIONS="${TEST_COMPONENT_AUTO_UPDATE_MAX_CONNECTIONS:-0}" \
+    TEST_COMPONENT_AUTO_UPDATE_MAX_CLIENTS="${TEST_COMPONENT_AUTO_UPDATE_MAX_CLIENTS:-0}" \
     TEST_COMPONENT_AUTO_UPDATE_TARGETS="${TEST_COMPONENT_AUTO_UPDATE_TARGETS:-all}" \
     TACHYON_LIB="$fake_lib" \
     TACHYON_BIN="/usr/bin/tachyon" \
@@ -138,10 +146,26 @@ rm -rf "$job_dir"/*
 TEST_COMPONENT_AUTO_UPDATE_ENABLED=1 \
   TEST_COMPONENT_AUTO_UPDATE_MODE=schedule \
   TEST_COMPONENT_AUTO_UPDATE_TIME="04:00" \
-  updates_ucode component-auto-update-apply
+  updates_ucode component-auto-update-apply force
 
 sleep 1
 job_files=( "$job_dir"/*.json )
 [ -f "${job_files[0]}" ] || fail "scheduled auto-update should create background job state"
+
+# 2a. A window that does not contain the current time must block the run
+rm -rf "$job_dir"/*
+WIN_START=$(date -d '+3 hours' +%H:%M)
+WIN_END=$(date -d '+4 hours' +%H:%M)
+TEST_COMPONENT_AUTO_UPDATE_ENABLED=1 \
+  TEST_COMPONENT_AUTO_UPDATE_MODE=schedule \
+  TEST_COMPONENT_AUTO_UPDATE_WINDOW_START="$WIN_START" \
+  TEST_COMPONENT_AUTO_UPDATE_WINDOW_END="$WIN_END" \
+  updates_ucode component-auto-update-apply
+
+sleep 1
+job_files=( "$job_dir"/*.json )
+if [ -f "${job_files[0]}" ]; then
+  fail "scheduled auto-update must not run outside the configured window"
+fi
 
 printf 'component auto update test passed\n'
