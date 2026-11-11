@@ -54,6 +54,7 @@ const PRIORITY_UC = getenv("TACHYON_PRIORITY_UC") || LIB_DIR + "/tachyon_core/pr
 const DNS_FAILOVER_UC = getenv("TACHYON_DNS_FAILOVER_UC") || LIB_DIR + "/tachyon_core/dns_failover.uc";
 const COMPONENT_JOB_DIR = getenv("UPDATES_JOB_DIR") || getenv("TACHYON_UI_COMPONENT_ACTION_DIR") || "/var/run/tachyon/component-actions";
 const AUTO_UPDATE_PENDING_FILE = COMPONENT_JOB_DIR + "/.auto-update-pending";
+const COMPONENT_AUTO_UPDATE_LAST_RUN_FILE = getenv("TACHYON_COMPONENT_AUTO_UPDATE_LAST_RUN_FILE") || RUNTIME_STATE_DIR + "/component-auto-update.last-run";
 const COMPONENT_UPDATE_CHECK_CACHE_DIR = getenv("TACHYON_COMPONENT_UPDATE_CHECK_CACHE_DIR") || RUNTIME_STATE_DIR + "/component-update-checks";
 const COMPONENT_UPDATE_CHECK_STATE_FILE = getenv("TACHYON_COMPONENT_UPDATE_CHECK_STATE_FILE") || RUNTIME_STATE_DIR + "/component-update-check.timestamp";
 const COMPONENT_UPDATE_CHECK_LOCK_DIR = getenv("TACHYON_COMPONENT_UPDATE_CHECK_LOCK_DIR") || RUNTIME_STATE_DIR + "/component-update-check.lock";
@@ -683,6 +684,122 @@ function settings_component_auto_update_time(settings) {
     return match(time, /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/) != null ? time : "04:00";
 }
 
+function parse_hhmm_to_minutes(value, fallback) {
+    let m = match(trim(as_string(value)), /^([01]?[0-9]|2[0-3]):([0-5][0-9])$/);
+    if (m == null)
+        return fallback;
+    return int(m[1]) * 60 + int(m[2]);
+}
+
+function format_minutes_hhmm(minutes) {
+    minutes = int(minutes) % 1440;
+    if (minutes < 0)
+        minutes += 1440;
+    return sprintf("%02d:%02d", int(minutes / 60), minutes % 60);
+}
+
+// Scheduled updates run inside a window instead of at a single minute: the exact
+// minute may be the moment a game download saturates the WAN, and a missed minute
+// used to mean "no update today". An end earlier than the start means the window
+// crosses midnight (22:00-06:00).
+function settings_component_auto_update_window(settings) {
+    settings = object_or_empty(settings);
+    let fallback_start = parse_hhmm_to_minutes(option(settings, "component_auto_update_time", "04:00"), 4 * 60);
+    let start = parse_hhmm_to_minutes(option(settings, "component_auto_update_window_start", ""), fallback_start);
+    let end = parse_hhmm_to_minutes(option(settings, "component_auto_update_window_end", ""), (start + 60) % 1440);
+    return { start: start, end: end };
+}
+
+function auto_update_window_contains(start, end, minute) {
+    if (minute == null)
+        return true;
+    if (start == end)
+        return true;
+    if (start < end)
+        return minute >= start && minute < end;
+    return minute >= start || minute < end;
+}
+
+function auto_update_minutes_now() {
+    let tm = localtime(now_seconds());
+    if (tm == null)
+        return null;
+    return int(tm.hour) * 60 + int(tm.min);
+}
+
+function settings_auto_update_threshold(settings, name) {
+    let raw = trim(as_string(option(object_or_empty(settings), name, "0")));
+    if (!match(raw, /^[0-9]+$/))
+        return 0;
+    return int(raw);
+}
+
+// Current load from the core's own connection table. Both counters are optional,
+// 0 disables the check, and without connection data the update is allowed: a
+// broken stats endpoint must not silently disable updates forever.
+function auto_update_load_snapshot() {
+    let out = command_output_from_args([ "curl", "-s", "--max-time", "2", "http://127.0.0.1:9090/connections" ]);
+    if (out == null || out == "")
+        return null;
+    try {
+        let parsed = json(out);
+        let conns = parsed != null ? parsed.connections : null;
+        if (type(conns) != "array")
+            return null;
+        let clients = {};
+        for (let conn in conns) {
+            let ip = conn != null && conn.metadata != null ? trim(as_string(conn.metadata.sourceIP)) : "";
+            if (ip != "")
+                clients[ip] = true;
+        }
+        let client_count = 0;
+        for (let ip in clients)
+            client_count++;
+        return { connections: length(conns), clients: client_count };
+    } catch (e) {
+        return null;
+    }
+}
+
+function auto_update_load_allows(settings) {
+    let max_connections = settings_auto_update_threshold(settings, "component_auto_update_max_connections");
+    let max_clients = settings_auto_update_threshold(settings, "component_auto_update_max_clients");
+    if (max_connections <= 0 && max_clients <= 0)
+        return true;
+    let snapshot = auto_update_load_snapshot();
+    if (snapshot == null)
+        return true;
+    if (max_connections > 0 && snapshot.connections > max_connections)
+        return false;
+    if (max_clients > 0 && snapshot.clients > max_clients)
+        return false;
+    return true;
+}
+
+function auto_update_today_stamp() {
+    let tm = localtime(now_seconds());
+    if (tm == null)
+        return "";
+    return sprintf("%04d-%02d-%02d", int(tm.year), int(tm.mon), int(tm.mday));
+}
+
+// One update cycle per day, but at the first quiet moment inside the window
+// instead of a fixed minute. The marker survives cron ticks; a crash mid-cycle
+// leaves no marker and the next tick retries.
+function auto_update_attempted_today() {
+    let stamp = trim(as_string(fs.readfile(COMPONENT_AUTO_UPDATE_LAST_RUN_FILE)));
+    if (stamp == "")
+        return false;
+    let today = auto_update_today_stamp();
+    return today != "" && stamp == today;
+}
+
+function mark_auto_update_attempted_today() {
+    let today = auto_update_today_stamp();
+    if (today != "")
+        write_file(COMPONENT_AUTO_UPDATE_LAST_RUN_FILE, today + "\n");
+}
+
 function settings_component_auto_update_targets(settings) {
     settings = object_or_empty(settings);
     let raw = list_option(settings, "component_auto_update_targets");
@@ -881,12 +998,10 @@ function cron_refresh_plan_rows(settings, sections, bin, list_marker, subscripti
 
     if (settings_component_auto_update_enabled(settings) &&
         settings_component_auto_update_mode(settings) == "schedule") {
-        let time_str = settings_component_auto_update_time(settings);
-        let parts = split(time_str, ":");
-        let hour = int(parts[0] || "4");
-        let minute = int(parts[1] || "0");
-        let cron_time = sprintf("%d %d * * *", minute, hour);
-        push(rows, "component-auto-update\t" + cron_time + " " + as_string(bin) + " component_auto_update_apply " + as_string(component_marker));
+        // The window and the load limits are evaluated by the command itself, so
+        // tick often and let it decide: it exits immediately outside the window,
+        // waits for a quiet moment inside it and runs at most once per day.
+        push(rows, "component-auto-update\t*/10 * * * * " + as_string(bin) + " component_auto_update_apply " + as_string(component_marker));
     }
 
     return {
@@ -2354,11 +2469,33 @@ function component_action_worker(state_file, output_file, component, action, ext
     finish_component_job(state_file, component, action, status, output_file);
 }
 
-function component_auto_update_apply() {
+function component_auto_update_apply(force) {
     let settings = uci_settings();
     if (!settings_component_auto_update_enabled(settings)) {
         log_message("[auto-update] Automatic component updates are disabled", "info");
         exit(0);
+    }
+
+    // "force" is for manual runs (CLI/tests): skip the schedule gates but keep
+    // the rest of the cycle identical.
+    if (trim(as_string(force)) != "force") {
+        let window = settings_component_auto_update_window(settings);
+        let minute = auto_update_minutes_now();
+        if (!auto_update_window_contains(window.start, window.end, minute)) {
+            log_message("[auto-update] Outside the update window (" +
+                format_minutes_hhmm(window.start) + "-" + format_minutes_hhmm(window.end) + "), skipping", "info");
+            exit(0);
+        }
+
+        if (!auto_update_load_allows(settings)) {
+            log_message("[auto-update] Router is busy (active connections/clients above the configured limit), skipping", "info");
+            exit(0);
+        }
+
+        if (auto_update_attempted_today()) {
+            log_message("[auto-update] Update already attempted today, skipping", "info");
+            exit(0);
+        }
     }
 
     let checked_components = automatic_component_check_names();
@@ -2383,6 +2520,9 @@ function component_auto_update_apply() {
             }
         }
     }
+
+    if (trim(as_string(force)) != "force")
+        mark_auto_update_attempted_today();
 
     exit(0);
 }
@@ -4710,7 +4850,7 @@ else if (mode == "component-action-log")
 else if (mode == "component-updates-if-due")
     component_updates_if_due();
 else if (mode == "component-auto-update-apply")
-    component_auto_update_apply();
+    component_auto_update_apply(ARGV[1]);
 else if (mode == "component-update-check-cache")
     component_update_check_cache();
 else {
