@@ -201,7 +201,7 @@ cat >"$WORK_DIR/cron-plan-auto-update.json" <<'JSON'
 }
 JSON
 
-assert_eq $'component\t0 0 * * * /usr/bin/tachyon component_updates_if_due # component\ncomponent-auto-update\t30 3 * * * /usr/bin/tachyon component_auto_update_apply # component' \
+assert_eq $'component\t0 0 * * * /usr/bin/tachyon component_updates_if_due # component\ncomponent-auto-update\t*/10 * * * * /usr/bin/tachyon component_auto_update_apply # component' \
   "$(updates_ucode cron-refresh-plan-fixture "$WORK_DIR/cron-plan-auto-update.json" /usr/bin/tachyon '# list' '# subscription' '# component')" \
   "component auto-update cron plan"
 
