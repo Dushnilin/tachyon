@@ -1884,7 +1884,10 @@ function add_subscription_source_with_state(config, section, source_index, sourc
     let sub_src_obj = (connections && connections.outbound_source_section && sub_src_id_for_bind != "")
         ? connections.outbound_source_section(sub_src_id_for_bind)
         : null;
+    let sub_src_name = sub_src_obj != null ? trim(option(sub_src_obj, "name", option(sub_src_obj, "label", ""))) : "";
     let sub_bind_iface = sub_src_obj != null ? trim(option(sub_src_obj, "bind_interface", "")) : "";
+    let sub_idle_timeout = connections.subscription_urltest_idle_timeout(section, source_entry);
+    let sec_idle_timeout = sub_idle_timeout == "" ? ctx.routes.urltest_idle_timeout(section, "urltest") : "";
     let sub_url_cfg = (connections && connections.subscription_url_settings)
         ? connections.subscription_url_settings(section, source_entry)
         : null;
@@ -1966,8 +1969,11 @@ function add_subscription_source_with_state(config, section, source_index, sourc
         push(prepared, copied_outbound);
         push(display_names, display_name);
         let source_link = as_string(outbound.share_link || "");
-        if (!subscription_share_link.is_copyable_link(source_link))
+        if (!subscription_share_link.is_copyable_link(source_link)) {
             source_link = subscription_share_link.serialize_outbound_link(outbound);
+            if (source_link != "")
+                outbound.share_link = source_link;
+        }
         push(source_links, source_link);
         push(group_flags, subscription_group_outbound(outbound));
         let is_internal_member = preserved_urltest_members[orig_tag] === true;
@@ -2009,14 +2015,10 @@ function add_subscription_source_with_state(config, section, source_index, sourc
             continue;
 
         if (outbound.type == "urltest") {
-            let sub_idle_timeout = connections.subscription_urltest_idle_timeout(section, source_entry);
             if (sub_idle_timeout != "")
                 outbound.idle_timeout = sub_idle_timeout;
-            else if (as_string(outbound.idle_timeout || "") == "") {
-                let sec_idle = ctx.routes.urltest_idle_timeout(section, "urltest");
-                if (sec_idle != "")
-                    outbound.idle_timeout = sec_idle;
-            }
+            else if (as_string(outbound.idle_timeout || "") == "" && sec_idle_timeout != "")
+                outbound.idle_timeout = sec_idle_timeout;
         }
         if (outbound.type == "wireguard") {
             add_imported_wireguard_endpoint(config, outbound);
@@ -2053,23 +2055,14 @@ function add_subscription_source_with_state(config, section, source_index, sourc
             node_prefix,
             "sub:" + source_index
         );
-        let sub_src_id = (connections && connections.source_id_for_manual_item)
-            ? connections.source_id_for_manual_item(section, source_entry)
-            : "";
-        if (sub_src_id != "") {
+        if (sub_src_id_for_bind != "") {
             if (!state.outboundMetadata.source_ids)
                 state.outboundMetadata.source_ids = {};
-            state.outboundMetadata.source_ids[outbound.tag] = sub_src_id;
-            let src_sec = (connections && type(connections.outbound_source_section) == "function")
-                ? connections.outbound_source_section(sub_src_id)
-                : null;
-            if (src_sec != null) {
-                let src_nm = trim(option(src_sec, "name", option(src_sec, "label", "")));
-                if (src_nm != "") {
-                    if (!state.outboundMetadata.source_names)
-                        state.outboundMetadata.source_names = {};
-                    state.outboundMetadata.source_names[outbound.tag] = src_nm;
-                }
+            state.outboundMetadata.source_ids[outbound.tag] = sub_src_id_for_bind;
+            if (sub_src_name != "") {
+                if (!state.outboundMetadata.source_names)
+                    state.outboundMetadata.source_names = {};
+                state.outboundMetadata.source_names[outbound.tag] = sub_src_name;
             }
         }
         if (hidden_flags[i] !== true) {
@@ -4177,7 +4170,20 @@ function add_fptn_token_members(config, section, token) {
     let urltest_candidate_tags = [];
     let detour = outbound_detour_tag_for_section(section);
 
-    for (let server in decoded.servers) {
+    let fptn_sni = trim(option(section, "sni", option(section, "fptn_sni", "")));
+    let fptn_bypass = trim(option(section, "bypass_method", option(section, "fptn_bypass_method", "")));
+    let fptn_pref = lc(trim(option(section, "preferred_server", option(section, "fptn_server_host", ""))));
+    let ordered_servers = [];
+    for (let s in decoded.servers) {
+        if (fptn_pref != "" && (lc(as_string(s.name || "")) == fptn_pref || lc(as_string(s.host || "")) == fptn_pref))
+            push(ordered_servers, s);
+    }
+    for (let s in decoded.servers) {
+        if (fptn_pref == "" || (lc(as_string(s.name || "")) != fptn_pref && lc(as_string(s.host || "")) != fptn_pref))
+            push(ordered_servers, s);
+    }
+
+    for (let server in ordered_servers) {
         let member = {
             type: "fptn",
             tag: tag + "/" + server.name,
@@ -4188,6 +4194,10 @@ function add_fptn_token_members(config, section, token) {
         };
         if (server.md5_fingerprint != "")
             member.md5_fingerprint = server.md5_fingerprint;
+        if (fptn_sni != "")
+            member.sni = fptn_sni;
+        if (fptn_bypass != "")
+            member.bypass_method = fptn_bypass;
         if (detour != "")
             member.detour = detour;
         push(config.outbounds, member);

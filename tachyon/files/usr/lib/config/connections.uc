@@ -68,6 +68,9 @@ const GLOBAL_RULE_TEXT_OPTIONS = {
 };
 
 let item_sections = null;
+let last_priority_section_by_group = {};
+let last_priority_force_pool_by_group = {};
+let synthesized_priority_levels_cache = {};
 
 function raw_option(section, key) {
     return object_or_empty(section)[key];
@@ -148,6 +151,12 @@ function item_index_from_cursor(cursor, config_name) {
             // error itself to the system log.
         }
     }
+    try {
+        cursor.foreach(config_name, "section", function(section) {
+            add_item_section(index, "section", section);
+        });
+    }
+    catch (e) {}
 
     return index;
 }
@@ -179,11 +188,16 @@ function item_index_from_uci() {
     for (let type_name in ITEM_TYPES)
         for (let section in uci_core.section_objects(CONFIG_NAME, type_name))
             add_item_section(index, type_name, section);
+    for (let section in uci_core.section_objects(CONFIG_NAME, "section"))
+        add_item_section(index, "section", section);
     return index;
 }
 
 function set_item_sections(index) {
     item_sections = type(index) == "object" ? index : empty_item_sections();
+    last_priority_section_by_group = {};
+    last_priority_force_pool_by_group = {};
+    synthesized_priority_levels_cache = {};
 }
 
 function set_item_sections_from_cursor(cursor, config_name) {
@@ -1227,12 +1241,6 @@ function is_dpi_or_desync_only_section(section) {
         return true;
     if (!is_connections_action(act))
         return false;
-    if (length(connection_urls(section)) > 0 ||
-        length(subscription_urls(section)) > 0 ||
-        length(interfaces(section)) > 0 ||
-        length(list_value(section, "outbound_jsons")) > 0 ||
-        trim(option(section, "outbound_json", "")) != "")
-        return false;
     let eff_sources = section_effective_outbound_sources(section);
     if (length(eff_sources) == 0)
         return false;
@@ -1241,6 +1249,12 @@ function is_dpi_or_desync_only_section(section) {
         if (!is_dpi_or_desync_source_type(stype))
             return false;
     }
+    if (length(connection_urls(section)) > 0 ||
+        length(subscription_urls(section)) > 0 ||
+        length(interfaces(section)) > 0 ||
+        length(list_value(section, "outbound_jsons")) > 0 ||
+        trim(option(section, "outbound_json", "")) != "")
+        return false;
     return true;
 }
 
@@ -2325,9 +2339,6 @@ function child_effective_include_prefixes(child, section, keep_all_source_prefix
     return prefixes;
 }
 
-let last_priority_section_by_group = {};
-let last_priority_force_pool_by_group = {};
-
 function resolve_balancer_owner_section(group_id, section) {
     if (type(section) == "object")
         return section;
@@ -2459,6 +2470,16 @@ function synthesized_priority_levels_for_balancer(group_id, section, force_from_
         last_priority_force_pool_by_group[as_string(group_id)] = false;
     let use_force_pool = last_priority_force_pool_by_group[as_string(group_id)] == true;
     let owner_sec = resolve_balancer_owner_section(group_id, section);
+    let owner_sec_name = type(owner_sec) == "object" ? section_name(owner_sec) : "";
+    let cache_key = as_string(group_id) + "|" + owner_sec_name + "|" + (use_force_pool ? "1" : "0") + "|" +
+        (type(owner_sec) == "object"
+            ? (option(owner_sec, "section_selection_mode", "") + "|" +
+               join(",", list_value(owner_sec, "priority_level_refs")) + "|" +
+               join(",", list_value(owner_sec, "outbound_group_refs")) + "|" +
+               join(",", list_value(owner_sec, "outbound_source_refs")))
+            : "");
+    if (synthesized_priority_levels_cache[cache_key] != null)
+        return synthesized_priority_levels_cache[cache_key];
     let group_refs = [];
     if (use_force_pool) {
         group_refs = section_combined_pool_tier_refs(owner_sec);
@@ -2477,8 +2498,8 @@ function synthesized_priority_levels_for_balancer(group_id, section, force_from_
         }
         if (length(group_refs) == 0) {
             let has_legacy = false;
-            let owner_sec_name = type(owner_sec) == "object" ? section_name(owner_sec) : "";
-            for (let pg in uci_core.section_objects(CONFIG_NAME, "priority_group")) {
+            let pg_list = object_or_empty(object_or_empty(get_item_sections())["priority_group"]).list || [];
+            for (let pg in pg_list) {
                 if (section_name(pg) == as_string(group_id) ||
                     (option(pg, "name", "") == option(bal, "name", "") &&
                      (owner_sec_name == "" || option(pg, "section", "") == owner_sec_name))) {
@@ -2506,8 +2527,10 @@ function synthesized_priority_levels_for_balancer(group_id, section, force_from_
             }
         }
     }
-    if (length(group_refs) == 0)
+    if (length(group_refs) == 0) {
+        synthesized_priority_levels_cache[cache_key] = [];
         return [];
+    }
     let result = [];
     for (let i = 0; i < length(group_refs); i++) {
         let ref = trim(as_string(group_refs[i]));
@@ -2689,6 +2712,7 @@ function synthesized_priority_levels_for_balancer(group_id, section, force_from_
         };
         push(result, clone);
     }
+    synthesized_priority_levels_cache[cache_key] = result;
     return result;
 }
 
@@ -2732,7 +2756,8 @@ function priority_level_items(group_id, section, force_from_section_pool) {
         if (bal != null) {
             let owner_sec = resolve_balancer_owner_section(group_id, section);
             let owner_sec_name = type(owner_sec) == "object" ? section_name(owner_sec) : "";
-            for (let pg in uci_core.section_objects(CONFIG_NAME, "priority_group")) {
+            let pg_list = object_or_empty(object_or_empty(get_item_sections())["priority_group"]).list || [];
+            for (let pg in pg_list) {
                 if (option(pg, "name", "") == option(bal, "name", "") &&
                     (owner_sec_name == "" || option(pg, "section", "") == owner_sec_name)) {
                     result = child_items_by_owner("priority_level", "group", section_name(pg));
@@ -2741,7 +2766,7 @@ function priority_level_items(group_id, section, force_from_section_pool) {
                 }
             }
             if (length(result) == 0 && owner_sec_name != "") {
-                for (let pg in uci_core.section_objects(CONFIG_NAME, "priority_group")) {
+                for (let pg in pg_list) {
                     if (option(pg, "name", "") == option(bal, "name", "")) {
                         result = child_items_by_owner("priority_level", "group", section_name(pg));
                         if (length(result) > 0)
@@ -3538,14 +3563,14 @@ function rule_condition_csv(section, key, kind) {
 }
 
 function has_dns_matchers_single(section) {
-    return rule_condition_csv(section, "domain", "domains") != "" ||
-        rule_condition_csv(section, "domain_suffix", "domains") != "" ||
-        rule_condition_csv(section, "domain_keyword", "generic") != "" ||
-        rule_condition_csv(section, "domain_regex", "generic") != "" ||
-        length(whitespace_list_value(section, "community_lists")) > 0 ||
+    return length(whitespace_list_value(section, "community_lists")) > 0 ||
         length(whitespace_list_value(section, "rule_set")) > 0 ||
         length(whitespace_list_value(section, "rule_set_with_subnets")) > 0 ||
-        option(section, "domain_ip_lists", "") != "";
+        option(section, "domain_ip_lists", "") != "" ||
+        rule_condition_csv(section, "domain", "domains") != "" ||
+        rule_condition_csv(section, "domain_suffix", "domains") != "" ||
+        rule_condition_csv(section, "domain_keyword", "generic") != "" ||
+        rule_condition_csv(section, "domain_regex", "generic") != "";
 }
 
 function has_dns_matchers(section) {

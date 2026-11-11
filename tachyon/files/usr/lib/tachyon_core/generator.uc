@@ -199,15 +199,66 @@ function use_fixture_cursor(path) {
     runtime_settings_cache = null;
 }
 
+let runtime_uci_all_cache = null;
+let runtime_uci_by_type_cache = null;
+let in_process_quarantine_enabled = false;
+let in_process_quarantine_hit = null;
+
+function ensure_runtime_uci_cache(package_name) {
+    package_name = as_string(package_name);
+    if (package_name != CONFIG_NAME)
+        return false;
+    if (runtime_uci_all_cache != null)
+        return true;
+    let all = object_or_empty(uci_core.get_all(package_name));
+    let by_type = {};
+    for (let _name, sec in all) {
+        if (type(sec) != "object")
+            continue;
+        let t = as_string(sec[".type"] || "");
+        if (t == "")
+            continue;
+        if (by_type[t] == null)
+            by_type[t] = [];
+        push(by_type[t], sec);
+    }
+    runtime_uci_all_cache = all;
+    runtime_uci_by_type_cache = by_type;
+    connections.set_item_sections_from_data(by_type);
+    return true;
+}
+
 function runtime_uci_cursor() {
     return {
         load: function(package_name) {
+            if (as_string(package_name) == CONFIG_NAME)
+                return ensure_runtime_uci_cache(package_name);
             return uci_core.load(package_name);
         },
         get_all: function(package_name, section_name) {
+            if (ensure_runtime_uci_cache(package_name)) {
+                if (section_name == null || as_string(section_name) == "")
+                    return runtime_uci_all_cache;
+                let sname = as_string(section_name);
+                if (runtime_uci_all_cache[sname] != null)
+                    return runtime_uci_all_cache[sname];
+                if (sname == "settings" || sname == "telegram" || sname == "guest_mode") {
+                    let typed = runtime_uci_by_type_cache[sname];
+                    if (type(typed) == "array" && length(typed) > 0)
+                        return typed[0];
+                }
+            }
             return uci_core.get_all(package_name, section_name);
         },
         foreach: function(package_name, type_name, callback) {
+            if (ensure_runtime_uci_cache(package_name)) {
+                let list = runtime_uci_by_type_cache[as_string(type_name)];
+                if (type(list) == "array") {
+                    for (let section in list)
+                        callback(section);
+                }
+                return;
+            }
             for (let section in uci_core.section_objects(package_name, type_name))
                 callback(section);
         }
@@ -220,19 +271,26 @@ function uci_cursor() {
     return uci;
 }
 
+function valid_section_name(name) {
+    return match(name, /^[A-Za-z0-9_]+$/);
+}
+
 // Section-scoped failures must be attributable: the runtime quarantines the
 // named section and regenerates without it instead of losing the whole start.
 // A failure raised outside any section loop (ctx.current_section == null) is a
 // whole-config problem and keeps the old exit(2) semantics with no marker.
 function runtime_generate_unsupported(reason) {
+    if (in_process_quarantine_enabled && ctx.current_section != null && valid_section_name(as_string(ctx.current_section))) {
+        in_process_quarantine_hit = {
+            section: as_string(ctx.current_section),
+            reason: as_string(reason)
+        };
+        die("__TACHYON_GEN_QUARANTINE__");
+    }
     if (ctx.current_section != null)
         warn("tachyon-section-error:", ctx.current_section, ":", reason, "\n");
     warn(reason, "\n");
     exit(2);
-}
-
-function valid_section_name(name) {
-    return match(name, /^[A-Za-z0-9_]+$/);
 }
 
 
@@ -469,6 +527,16 @@ function collect_proxy_endpoint_domains(config, sections) {
                 sub_url = trim(substr(sub_url, 0, delim_idx));
             if (sub_url != "")
                 add_domain(url_host(sub_url));
+        }
+    }
+    for (let src in array_or_empty(uci_core.sections(CONFIG_NAME, "outbound_source"))) {
+        if (bool_option(src, "enabled", true) && lc(trim(option(src, "source_type", ""))) == "subscription") {
+            let src_url = trim(option(src, "subscription_url", ""));
+            let delim_idx = index(src_url, " | ");
+            if (delim_idx >= 0)
+                src_url = trim(substr(src_url, 0, delim_idx));
+            if (src_url != "")
+                add_domain(url_host(src_url));
         }
     }
 
@@ -2259,7 +2327,7 @@ function prune_dangling_group_members(config) {
     }
 }
 
-function generate_config(output_path, service_address, mwan3_active, supports_xhttp, deferred_sections, quarantined_sections) {
+function generate_config_once(output_path, service_address, mwan3_active, supports_xhttp, deferred_sections, quarantined_sections) {
     ctx.deferred_sections = parse_deferred_sections(deferred_sections);
     // Quarantine reuses the same skip set the deferred sections use: every
     // consumer (outbounds, routes, failover candidates, mixed proxies) already
@@ -2464,6 +2532,60 @@ function generate_config(output_path, service_address, mwan3_active, supports_xh
         warn("failed to write ", output_path, "\n");
         exit(1);
     }
+}
+
+function generate_config(output_path, service_address, mwan3_active, supports_xhttp, deferred_sections, quarantined_sections) {
+    let quarantine_out = trim(as_string(getenv("TACHYON_GENERATOR_QUARANTINE_OUT") || ""));
+    if (quarantine_out == "") {
+        generate_config_once(output_path, service_address, mwan3_active, supports_xhttp, deferred_sections, quarantined_sections);
+        return;
+    }
+
+    let extra_quarantined = {};
+    let extra_order = [];
+    let current_quarantined = as_string(quarantined_sections || "");
+    in_process_quarantine_enabled = true;
+    for (let attempt = 0; attempt < 16; attempt++) {
+        in_process_quarantine_hit = null;
+        ctx.current_section = null;
+        generator_outbounds.init(ctx);
+        generator_routes.init(ctx);
+        let succeeded = false;
+        try {
+            generate_config_once(output_path, service_address, mwan3_active, supports_xhttp, deferred_sections, current_quarantined);
+            succeeded = true;
+        }
+        catch (e) {
+            if (in_process_quarantine_hit == null) {
+                in_process_quarantine_enabled = false;
+                die(e);
+            }
+            let sec = in_process_quarantine_hit.section;
+            let reason = in_process_quarantine_hit.reason;
+            if (sec == "" || extra_quarantined[sec] != null || parse_name_set(current_quarantined)[sec]) {
+                in_process_quarantine_enabled = false;
+                warn("tachyon-section-error:", sec, ":", reason, "\n");
+                warn(reason, "\n");
+                exit(2);
+            }
+            extra_quarantined[sec] = reason;
+            push(extra_order, sec);
+            current_quarantined = current_quarantined != "" ? (current_quarantined + "," + sec) : sec;
+        }
+        if (succeeded) {
+            in_process_quarantine_enabled = false;
+            if (length(extra_order) > 0) {
+                let entries = [];
+                for (let sec in extra_order)
+                    push(entries, { section: sec, reason: extra_quarantined[sec] });
+                common.write_json_file(quarantine_out, entries);
+            }
+            return;
+        }
+    }
+    in_process_quarantine_enabled = false;
+    warn("too many quarantined sections\n");
+    exit(2);
 }
 
 function generate_config_fixture(fixture_path, output_path, service_address, mwan3_active, supports_xhttp, deferred_sections, quarantined_sections) {

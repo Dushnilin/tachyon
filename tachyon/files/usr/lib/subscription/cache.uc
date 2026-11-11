@@ -520,6 +520,7 @@ function maintenance_plan(sections, section_cache_dir) {
 
 let auto_user_agent_profiles = [
     "Happ",
+    "Happ/4.6.2",
     "v2rayN",
     "v2rayNG",
     "Mihomo",
@@ -565,6 +566,8 @@ function user_agent_matches_config(configured_user_agent, cached_user_agent, def
 }
 
 let parser_module = null;
+let _usable_subscription_cache = null;
+const USABLE_SUBSCRIPTION_STAMPS_FILE = TACHYON_RUNTIME_STATE_DIR + "/usable-subscriptions.json";
 
 function subscription_parser() {
     if (parser_module == null)
@@ -573,9 +576,24 @@ function subscription_parser() {
 }
 
 function subscription_cache_is_usable(path) {
-    if (fs.stat(as_string(path)) == null)
+    let p = as_string(path);
+    let st = fs.stat(p);
+    if (st == null)
         return false;
-    return subscription_parser().validate_subscription(path);
+    if (_usable_subscription_cache == null) {
+        let loaded = read_json(USABLE_SUBSCRIPTION_STAMPS_FILE);
+        _usable_subscription_cache = type(loaded) == "object" ? loaded : {};
+    }
+    let stamp = p + "|" + as_string(st.size || 0) + "|" + as_string(st.mtime || 0);
+    if (exists(_usable_subscription_cache, stamp))
+        return _usable_subscription_cache[stamp] === true;
+    let ok = subscription_parser().validate_subscription(p);
+    _usable_subscription_cache[stamp] = ok;
+    if (ok) {
+        common.ensure_dir(TACHYON_RUNTIME_STATE_DIR);
+        common.write_json_file(USABLE_SUBSCRIPTION_STAMPS_FILE, _usable_subscription_cache);
+    }
+    return ok;
 }
 
 function usable_subscription_outbound_count(path) {
@@ -689,22 +707,43 @@ function command_args_with(base, extra) {
 let command_status_from_args = common.command_status_from_args;
 
 // curl --dns-servers requires libcurl built with c-ares (not available on all OpenWrt builds).
-// Fall back to --doh-url https://1.1.1.1/dns-query if --dns-servers is unsupported.
+// When c-ares is absent, rely on the system resolver first so an unreachable DoH provider
+// (e.g. 1.1.1.1; issue #387) never blocks downloads. Only fall back to DoH resolvers after
+// an actual host-resolution failure.
+const CURL_DOH_FALLBACK_URLS = [
+    "https://dns.google/dns-query",
+    "https://common.dot.dns.yandex.net/dns-query",
+    "https://1.1.1.1/dns-query"
+];
 let _curl_has_dns_servers = null;
 let _curl_has_doh_url = null;
-function curl_push_dns_servers(args) {
-    if (_curl_has_dns_servers === null)
-        _curl_has_dns_servers = (system("curl --dns-servers 8.8.8.8 -V >/dev/null 2>&1") == 0);
+let _curl_working_doh_url = "";
+function curl_push_dns_servers(args, doh_fallback_index) {
+    if (_curl_has_dns_servers === null) {
+        let cap = common.command_capture(command_from_args([ "curl", "--dns-servers", "8.8.8.8", "-V" ]));
+        _curl_has_dns_servers = (cap != null && int(cap.status) == 0);
+    }
     if (_curl_has_dns_servers) {
-        push(args, "--dns-servers", "8.8.8.8,1.1.1.1");
-        return;
+        push(args, "--dns-servers", "8.8.8.8,77.88.8.8,1.1.1.1");
+        return "";
     }
 
-    if (_curl_has_doh_url === null)
-        _curl_has_doh_url = (system("curl --doh-url https://1.1.1.1/dns-query -V >/dev/null 2>&1") == 0);
-    if (_curl_has_doh_url) {
-        push(args, "--doh-url", "https://1.1.1.1/dns-query");
+    let idx = int(doh_fallback_index || 0);
+    if (idx <= 0 && _curl_working_doh_url == "")
+        return "";
+
+    if (_curl_has_doh_url === null) {
+        let cap = common.command_capture(command_from_args([ "curl", "--doh-url", "https://dns.google/dns-query", "-V" ]));
+        _curl_has_doh_url = (cap != null && int(cap.status) == 0);
     }
+    if (!_curl_has_doh_url)
+        return "";
+
+    let chosen = (_curl_working_doh_url != "" && idx <= 0)
+        ? _curl_working_doh_url
+        : CURL_DOH_FALLBACK_URLS[(idx > 0 ? idx - 1 : 0) % length(CURL_DOH_FALLBACK_URLS)];
+    push(args, "--doh-url", chosen);
+    return chosen;
 }
 
 function run_silent(command) {
@@ -1493,6 +1532,10 @@ function write_subscription_metadata(cache_dir, format_version, section, metadat
             }
         }
     }
+    if (int(cache.version || 0) == int(format_version || 0) &&
+        as_string(cache.section) == as_string(section) &&
+        sprintf("%J", prev_items) == sprintf("%J", next_items))
+        return;
     cache.subscriptionMetadata = next_items;
     save_cache(cache_dir, section, format_version, cache);
 }
@@ -1915,9 +1958,11 @@ function download_subscription(url, filepath, http_proxy_address, headers_filepa
     let candidates = core_url_mod && type(core_url_mod.download_candidates) == "function" ? core_url_mod.download_candidates(url) : [ url ];
 
     for (let target_url in candidates) {
+        let doh_retry_index = 0;
+        let force_http11 = false;
         for (let attempt = 1; attempt <= retries; attempt++) {
             let args = [
-                "curl", "-fL", "-sS",
+                "curl", "-fL", "-s",
                 "--connect-timeout", timeout,
                 "--max-time", "15",
                 "--speed-time", timeout,
@@ -1926,14 +1971,17 @@ function download_subscription(url, filepath, http_proxy_address, headers_filepa
                 "-b", "/dev/null",
                 "--max-filesize", "15728640"
             ];
+            if (force_http11)
+                push(args, "--http1.1");
 
+            let active_doh_url = "";
             if (http_proxy_address != "") {
                 push(args, "-x");
                 push(args, "http://" + http_proxy_address);
             } else {
-                // Bootstrap DNS: use public resolvers in case system DNS is
-                // unavailable during startup or when proxy falls back to direct.
-                curl_push_dns_servers(args);
+                // Bootstrap DNS: use public resolvers only when c-ares is present
+                // or after system DNS fails to resolve the host (#387).
+                active_doh_url = curl_push_dns_servers(args, doh_retry_index);
             }
             if (bool_value(allow_insecure, false))
                 push(args, "-k");
@@ -1963,6 +2011,8 @@ function download_subscription(url, filepath, http_proxy_address, headers_filepa
             let status = response == null ? 1 : response.status;
             let http_status = response == null ? 0 : int(response.output);
             if (status == 0 && file_nonempty(tmpfile)) {
+                if (active_doh_url != "")
+                    _curl_working_doh_url = active_doh_url;
                 let downloaded_body = fs.readfile(tmpfile);
                 if (downloaded_body != null && headers_tmpfile != "" && file_nonempty(headers_tmpfile) && type(happ.decrypt_response_body) == "function") {
                     let dec_body = happ.decrypt_response_body(downloaded_body, target_url, read_text(headers_tmpfile));
@@ -1991,9 +2041,18 @@ function download_subscription(url, filepath, http_proxy_address, headers_filepa
             unlink_path(tmpfile);
             unlink_path(headers_tmpfile);
 
-            // Provider subscriptions need a different client profile after
-            // rejection. GitHub may be IP-blocked, so keep its mirror fallback.
-            if (status == 22 && (http_status == 401 || http_status == 403)) {
+            // Cloudflare Workers / Anycast edges can return HTTP 421 on HTTP/2 SNI
+            // coalescing or packet-desynchronization collisions; retry once over HTTP/1.1.
+            if (status == 22 && http_status == 421 && !force_http11 && attempt < retries) {
+                force_http11 = true;
+                saw_http_or_other_failure = true;
+                continue;
+            }
+
+            // Provider subscriptions and Worker reverse proxies often reject non-matching
+            // client User-Agent profiles with 400/401/403/404/406/421. Fail fast on single
+            // URLs so download_subscription_into_cache rotates to Happ/v2rayNG immediately.
+            if (status == 22 && http_status >= 400 && http_status < 500 && http_status != 408 && http_status != 429) {
                 if (length(candidates) == 1)
                     return 22;
                 saw_http_or_other_failure = true;
@@ -2008,13 +2067,17 @@ function download_subscription(url, filepath, http_proxy_address, headers_filepa
             }
 
             if (status == 6) {
-                // DNS resolution failure: this often happens transiently right
-                // after a sing-box restart (Tachyon's intercepting resolver is
-                // briefly unavailable). Retry with an increasing pause so DNS
-                // has time to recover before giving up (issue #24).
+                // DNS resolution failure: switch to DoH fallback resolvers immediately
+                // on the first failure, then back off if all resolvers are transiently down (#24, #387).
                 saw_transport_failure = true;
-                let dns_wait = attempt * 5;
+                if (http_proxy_address == "")
+                    doh_retry_index++;
                 if (attempt < retries) {
+                    if (doh_retry_index <= 1 && http_proxy_address == "") {
+                        log_message("Subscription DNS resolution failed via system resolver; retrying via fallback DoH resolver", "debug");
+                        continue;
+                    }
+                    let dns_wait = attempt * 3;
                     log_message("Subscription DNS resolution failed for rule; retrying in " + dns_wait + "s (attempt " + attempt + "/" + retries + ")", "debug");
                     system("sleep " + dns_wait);
                     continue;
@@ -2341,7 +2404,8 @@ function try_fetch_subscription_with_core(
         push(args, "-k");
 
     unlink_path(full_tmpfile);
-    if (!command_success_from_args(args)) {
+    let fetch_cap = common.command_capture(command_from_args(args) + " 2>/dev/null");
+    if (fetch_cap == null || int(fetch_cap.status) != 0) {
         unlink_path(full_tmpfile);
         return -1;
     }
@@ -2400,40 +2464,33 @@ function try_fetch_subscription_with_core(
     write_file(headers_tmpfile, length(header_lines) > 0 ? (join("\r\n", header_lines) + "\r\n") : "");
 
     let raw_body = type(full_obj.raw_body) == "string" ? full_obj.raw_body : "";
+    let requires_ucode = (raw_body != "" && (index(raw_body, "fptn:") >= 0 || index(raw_body, "fptnb:") >= 0));
+    write_file(raw_tmpfile, raw_body);
+    parser.extract_ui_metadata_file(headers_tmpfile, raw_tmpfile, metadata_tmpfile) || unlink_path(metadata_tmpfile);
+    copy_valid_metadata_output(metadata_tmpfile, metadata_output_path);
+
     let normalized_ok = false;
-    if (raw_body != "") {
-        write_file(raw_tmpfile, raw_body);
-        parser.extract_ui_metadata_file(headers_tmpfile, raw_tmpfile, metadata_tmpfile) || unlink_path(metadata_tmpfile);
-        copy_valid_metadata_output(metadata_tmpfile, metadata_output_path);
-        normalized_ok = parser.normalize_content_validated(raw_tmpfile, normalized_tmpfile, headers_tmpfile, "core");
-    }
-    if (!normalized_ok) {
+    if (!requires_ucode && type(full_obj.outbounds) == "array" && length(full_obj.outbounds) > 0) {
         let fallback_peer = parser.extract_peer_params_from_headers_file(headers_tmpfile);
         let outbounds = parser.normalize_sing_box_json_outbounds(full_obj.outbounds, fallback_peer);
-        if (length(outbounds) == 0) {
-            unlink_path(raw_tmpfile);
-            unlink_path(headers_tmpfile);
-            unlink_path(normalized_tmpfile);
-            unlink_path(metadata_tmpfile);
-            return -1;
+        if (length(outbounds) > 0) {
+            let norm_payload = {
+                version: 1,
+                format: "sing-box-json",
+                outbounds: outbounds
+            };
+            if (common.write_json_file(normalized_tmpfile, norm_payload) && parser.validate_subscription(normalized_tmpfile))
+                normalized_ok = true;
         }
-        let norm_payload = {
-            version: 1,
-            format: "sing-box-json",
-            outbounds: outbounds
-        };
-        if (!common.write_json_file(normalized_tmpfile, norm_payload) || !parser.validate_subscription(normalized_tmpfile)) {
-            unlink_path(raw_tmpfile);
-            unlink_path(headers_tmpfile);
-            unlink_path(normalized_tmpfile);
-            unlink_path(metadata_tmpfile);
-            return -1;
-        }
-        if (raw_body == "") {
-            write_file(raw_tmpfile, "");
-            parser.extract_ui_metadata_file(headers_tmpfile, raw_tmpfile, metadata_tmpfile) || unlink_path(metadata_tmpfile);
-            copy_valid_metadata_output(metadata_tmpfile, metadata_output_path);
-        }
+    }
+    if (!normalized_ok && raw_body != "")
+        normalized_ok = parser.normalize_content_validated(raw_tmpfile, normalized_tmpfile, headers_tmpfile, "core");
+    if (!normalized_ok) {
+        unlink_path(raw_tmpfile);
+        unlink_path(headers_tmpfile);
+        unlink_path(normalized_tmpfile);
+        unlink_path(metadata_tmpfile);
+        return -1;
     }
 
     return finalize_downloaded_subscription_cache(
@@ -2507,6 +2564,7 @@ function download_subscription_into_cache(section_name_value, subscription_url, 
 
     let attempt_index = 0;
     let deferred_proxy_fallback = false;
+    let prefer_fallback_proxy = false;
     for (let effective_user_agent in user_agent_candidates(subscription_user_agent, cached_user_agent, default_user_agent)) {
         attempt_index++;
         unlink_path(raw_tmpfile);
@@ -2515,10 +2573,13 @@ function download_subscription_into_cache(section_name_value, subscription_url, 
         unlink_path(metadata_tmpfile);
 
         let effective_hwid = get_subscription_hwid(subscription_hwid);
-        let download_status = download_subscription(subscription_url, raw_tmpfile, service_proxy_address_value, headers_tmpfile, effective_user_agent, effective_hwid, subscription_device_headers, allow_insecure);
-        let direct_transport_failed = _last_download_transport_failed;
-        if (download_status != 0 && service_proxy_address_value == "" && sing_box_service_running()) {
-            let fallback_proxy = SB_SERVICE_MIXED_INBOUND_ADDRESS + ":" + SB_SERVICE_MIXED_INBOUND_PORT;
+        let fallback_proxy = SB_SERVICE_MIXED_INBOUND_ADDRESS + ":" + SB_SERVICE_MIXED_INBOUND_PORT;
+        let primary_proxy = (service_proxy_address_value == "" && prefer_fallback_proxy && sing_box_service_running())
+            ? fallback_proxy
+            : service_proxy_address_value;
+        let download_status = download_subscription(subscription_url, raw_tmpfile, primary_proxy, headers_tmpfile, effective_user_agent, effective_hwid, subscription_device_headers, allow_insecure);
+        let direct_transport_failed = (primary_proxy == "") ? _last_download_transport_failed : true;
+        if (download_status != 0 && primary_proxy == "" && service_proxy_address_value == "" && sing_box_service_running()) {
             if (download_status == 22 && subscription_user_agent == "") {
                 // Try the other direct client profiles before a potentially
                 // slow proxy retry. Keep proxy fallback for IP-based rejection.
@@ -2527,6 +2588,8 @@ function download_subscription_into_cache(section_name_value, subscription_url, 
             else {
                 log_message("Direct subscription download failed for rule '" + section_name_value + "'; retrying via active service proxy " + fallback_proxy, "info");
                 download_status = download_subscription(subscription_url, raw_tmpfile, fallback_proxy, headers_tmpfile, effective_user_agent, effective_hwid, subscription_device_headers, allow_insecure);
+                if (direct_transport_failed && !_last_download_transport_failed)
+                    prefer_fallback_proxy = true;
             }
         }
         if (download_status != 0) {

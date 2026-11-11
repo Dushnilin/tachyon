@@ -441,6 +441,35 @@ function configureGridSection(sectionRef, type, title, addTitle) {
     return renderSectionAdd(sectionRef, extra_class);
   };
 
+  if (!Object.prototype.hasOwnProperty.call(sectionRef, "load")) {
+    sectionRef.load = function () {
+      const sectionIds = this.cfgsections();
+      const tasks = [];
+      for (let i = 0; i < sectionIds.length; i += 1) {
+        const sectionId = sectionIds[i];
+        for (let j = 0; j < this.children.length; j += 1) {
+          const option = this.children[j];
+          if (option.disable || option.modalonly) {
+            continue;
+          }
+          tasks.push(
+            Promise.resolve(option.load.call(option, sectionId))
+              .then((value) => {
+                option.cfgvalue(
+                  sectionId,
+                  value !== undefined && value !== null
+                    ? value
+                    : option.default,
+                );
+              })
+              .catch(() => null),
+          );
+        }
+      }
+      return Promise.all(tasks);
+    };
+  }
+
   const origMoreModal = Object.prototype.hasOwnProperty.call(
     sectionRef,
     "renderMoreOptionsModal",
@@ -486,6 +515,23 @@ function configureGridSection(sectionRef, type, title, addTitle) {
           }
         }
         return r;
+      })
+      .catch((err) => {
+        if (typeof ui !== "undefined" && typeof ui.hideModal === "function") {
+          ui.hideModal();
+        }
+        if (
+          typeof ui !== "undefined" &&
+          typeof ui.addNotification === "function" &&
+          err
+        ) {
+          ui.addNotification(
+            null,
+            E("p", {}, String(err.message || err)),
+            "warning",
+          );
+        }
+        return null;
       })
       .finally(() => {
         if (typeof sectionRef._refreshStudioDeck === "function") {
@@ -580,7 +626,20 @@ function configureGridSection(sectionRef, type, title, addTitle) {
     } else {
       let saveTasks;
       try {
-        saveTasks = targetMap.save(beforeUciSave, true);
+        if (typeof targetMap.checkDepends === "function") {
+          targetMap.checkDepends();
+        }
+        if (
+          typeof targetMap.parse === "function" &&
+          targetMap.data &&
+          typeof targetMap.data.save === "function"
+        ) {
+          saveTasks = Promise.resolve(targetMap.parse())
+            .then(beforeUciSave)
+            .then(() => targetMap.data.save());
+        } else {
+          saveTasks = targetMap.save(beforeUciSave, true);
+        }
       } catch (e) {
         if (origCallDelete) {
           uci.callDelete = origCallDelete;
@@ -595,6 +654,22 @@ function configureGridSection(sectionRef, type, title, addTitle) {
         while (curr.parent) {
           curr = curr.parent;
           const parentMap = curr;
+          if (!parentMap.parent) {
+            reloadChain = reloadChain
+              .then(() =>
+                typeof sectionRef.load === "function"
+                  ? sectionRef.load()
+                  : null,
+              )
+              .then(() =>
+                typeof sectionRef._refreshStudioDeck !== "function" &&
+                typeof parentMap.reset === "function"
+                  ? parentMap.reset()
+                  : null,
+              )
+              .catch(() => null);
+            break;
+          }
           reloadChain = reloadChain
             .then(() =>
               typeof parentMap.load === "function" ? parentMap.load() : null,
@@ -2813,23 +2888,23 @@ const EntryPoint = {
     }
 
     return this.handleSave(ev)
-      .then(() => ui.changes.apply(mode == "0"))
-      .then((result) => {
+      .then(() => {
         if (
-          main.TachyonShellMethods &&
-          typeof main.TachyonShellMethods.serviceActionStart === "function"
+          typeof document !== "undefined" &&
+          typeof document.addEventListener === "function"
         ) {
-          return main.TachyonShellMethods.serviceActionStart("reload")
-            .then(() => {
-              window.setTimeout(refreshUiState, 500);
-              return result;
-            })
-            .catch(() => {
-              window.setTimeout(refreshUiState, 500);
-              return result;
-            });
+          document.addEventListener(
+            "uci-applied",
+            () => {
+              window.setTimeout(refreshUiState, 400);
+            },
+            { once: true },
+          );
         }
-        window.setTimeout(refreshUiState, 500);
+        return ui.changes.apply(mode == "0");
+      })
+      .then((result) => {
+        window.setTimeout(refreshUiState, 1200);
         return result;
       })
       .catch((error) => {

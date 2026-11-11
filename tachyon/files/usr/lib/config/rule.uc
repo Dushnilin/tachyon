@@ -97,8 +97,15 @@ function prefixed_domain_kind_value(value) {
 }
 
 function prefixed_domain_value(value, requested_kind) {
-    let normalized = prefixed_domain_kind_value(value);
+    value = trim(as_string(value));
+    if (value == "")
+        return null;
+
     requested_kind = as_string(requested_kind);
+    if (requested_kind != "domain_suffix" && index(value, ":") <= 0)
+        return null;
+
+    let normalized = prefixed_domain_kind_value(value);
 
     return normalized != null && normalized.kind == requested_kind ? normalized.value : null;
 }
@@ -171,9 +178,16 @@ function legacy_condition_csv_value(kind, text_mode, conditions_text_mode, text_
 }
 
 function combined_domain_csv_value(value, requested_kind) {
+    value = as_string(value);
+    if (value == "")
+        return "";
+    requested_kind = as_string(requested_kind);
+    if (requested_kind != "domain_suffix" && index(value, ":") < 0)
+        return "";
+
     let result = [];
 
-    for (let item in split(as_string(value), ",")) {
+    for (let item in split(value, ",")) {
         let normalized = prefixed_domain_value(item, requested_kind);
         if (normalized != null)
             push(result, normalized);
@@ -183,6 +197,13 @@ function combined_domain_csv_value(value, requested_kind) {
 }
 
 function combined_domain_text_csv_value(value, requested_kind) {
+    value = as_string(value);
+    if (value == "")
+        return "";
+    requested_kind = as_string(requested_kind);
+    if (requested_kind != "domain_suffix" && index(value, ":") < 0)
+        return "";
+
     let result = [];
 
     for (let item in text_list_values(value, "comma-space")) {

@@ -833,7 +833,7 @@ body.dark .tachyon_monitoring-page {
 
 .tachyon_monitoring-page__table {
     width: 100%;
-    min-width: 820px;
+    min-width: 860px;
     table-layout: fixed;
     border-collapse: collapse !important;
     border-spacing: 0;
@@ -872,23 +872,29 @@ body.dark .tachyon_monitoring-page {
 }
 
 .tachyon_monitoring-page__table th:nth-child(1) {
-    width: 25%;
+    width: 23%;
 }
 
 .tachyon_monitoring-page__table th:nth-child(2) {
-    width: 6.5%;
+    width: 8%;
+}
+
+.tachyon_monitoring-page__table th:nth-child(2),
+.tachyon_monitoring-page__table td:nth-child(2) {
+    padding-left: 8px;
+    padding-right: 8px;
 }
 
 .tachyon_monitoring-page__table th:nth-child(3) {
-    width: 13%;
+    width: 16%;
 }
 
 .tachyon_monitoring-page__table th:nth-child(4) {
-    width: 6.5%;
+    width: 8%;
 }
 
 .tachyon_monitoring-page__table th:nth-child(5) {
-    width: 9.5%;
+    width: 10%;
 }
 
 .tachyon_monitoring-page__table th:nth-child(6) {
@@ -896,11 +902,17 @@ body.dark .tachyon_monitoring-page {
 }
 
 .tachyon_monitoring-page__table th:nth-child(7) {
-    width: 23.5%;
+    width: 19%;
 }
 
 .tachyon_monitoring-page__table th:nth-child(8) {
     width: 6.5%;
+}
+
+.tachyon_monitoring-page__table th:nth-child(8),
+.tachyon_monitoring-page__table td:nth-child(8) {
+    padding-left: 6px;
+    padding-right: 6px;
 }
 
 .tachyon_monitoring-page__table tbody tr:last-child td {
@@ -933,6 +945,7 @@ body.dark .tachyon_monitoring-page {
 
 .tachyon_monitoring-page__value {
     display: block;
+    box-sizing: border-box;
     max-width: 100%;
     min-width: 0;
     overflow: hidden;
@@ -989,8 +1002,10 @@ body.dark .tachyon_monitoring-page {
 
 .tachyon_monitoring-page__route {
     display: inline-block;
+    box-sizing: border-box;
     width: auto;
-    padding: 2px 7px;
+    max-width: 100%;
+    padding: 2px 8px;
     border-radius: 6px;
     background: rgba(148, 163, 184, 0.14);
     border: 1px solid rgba(148, 163, 184, 0.28);
@@ -1029,8 +1044,12 @@ body.dark .tachyon_monitoring-page {
 
 .tachyon_monitoring-page__network {
     display: inline-block;
+    box-sizing: border-box;
     width: auto;
-    padding: 2px 7px;
+    max-width: none;
+    overflow: visible;
+    text-overflow: clip;
+    padding: 2px 8px;
     border-radius: 6px;
     background: rgba(148, 163, 184, 0.14);
     border: 1px solid rgba(148, 163, 184, 0.24);
@@ -1038,7 +1057,7 @@ body.dark .tachyon_monitoring-page {
     font-family: var(--tachyon-font-mono, monospace);
     font-size: 11px;
     font-weight: 600;
-    }
+}
 
 .tachyon_monitoring-page__network--tcp {
     background: rgba(56, 189, 248, 0.14) !important;

@@ -2332,6 +2332,76 @@ header .dropdown-menu {
     background: color-mix(in srgb, var(--tachyon-accent) 10%, transparent);
 }
 
+.tachyon-section-order-warning {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(217, 119, 6, 0.34);
+    background: rgba(217, 119, 6, 0.08);
+    color: inherit;
+    font-size: 12.5px;
+    line-height: 1.45;
+}
+
+.tachyon-section-order-warning__icon {
+    flex-shrink: 0;
+    margin-top: 1px;
+    color: #d97706;
+    display: inline-flex;
+    align-items: center;
+}
+
+.tachyon-section-order-warning__body {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.tachyon-section-order-warning__title {
+    font-weight: 600;
+    font-size: 12.5px;
+    color: inherit;
+}
+
+.tachyon-section-order-warning__desc {
+    font-size: 12px;
+    opacity: 0.88;
+}
+
+.tachyon-section-order-warning__btn {
+    flex-shrink: 0;
+    align-self: center;
+    padding: 5px 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(217, 119, 6, 0.38);
+    background: rgba(217, 119, 6, 0.12);
+    color: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color 0.14s ease, border-color 0.14s ease;
+}
+
+.tachyon-section-order-warning__btn:hover {
+    border-color: rgba(217, 119, 6, 0.6);
+    background: rgba(217, 119, 6, 0.2);
+}
+
+@media (max-width: 640px) {
+    .tachyon-section-order-warning {
+        flex-wrap: wrap;
+    }
+
+    .tachyon-section-order-warning__btn {
+        margin-left: 25px;
+    }
+}
+
 .tachyon-section-types-modal {
     display: flex;
     flex-direction: column;

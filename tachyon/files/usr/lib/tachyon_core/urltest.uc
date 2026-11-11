@@ -319,8 +319,15 @@ function country_from_text_name(value) {
     return country_from_iso_token(raw);
 }
 
+let COUNTRY_BY_NAME_CACHE = {};
+
 function country_from_flag_emoji(value) {
     value = as_string(value);
+    if (value == "")
+        return "";
+    let cached = COUNTRY_BY_NAME_CACHE[value];
+    if (cached != null)
+        return cached;
 
     for (let i = 0; i + 7 < length(value); i++) {
         let first = regional_indicator_letter(value, i);
@@ -328,15 +335,28 @@ function country_from_flag_emoji(value) {
             continue;
 
         let second = regional_indicator_letter(value, i + 4);
-        if (second != "")
-            return first + second;
+        if (second != "") {
+            let code = first + second;
+            COUNTRY_BY_NAME_CACHE[value] = code;
+            return code;
+        }
     }
 
-    return country_from_text_name(value);
+    let resolved = country_from_text_name(value);
+    COUNTRY_BY_NAME_CACHE[value] = resolved;
+    return resolved;
 }
+
+let _last_flag_names_ref = null;
+let _last_flag_names_len = -1;
+let _last_flag_countries_res = null;
 
 function countries_from_flag_names(names) {
     names = object_or_empty(names);
+    let n_len = length(names);
+    if (names == _last_flag_names_ref && n_len == _last_flag_names_len && _last_flag_countries_res != null)
+        return _last_flag_countries_res;
+
     let result = {};
 
     for (let tag, name in names) {
@@ -345,6 +365,9 @@ function countries_from_flag_names(names) {
             result[tag] = country;
     }
 
+    _last_flag_names_ref = names;
+    _last_flag_names_len = n_len;
+    _last_flag_countries_res = result;
     return result;
 }
 

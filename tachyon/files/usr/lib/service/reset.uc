@@ -149,6 +149,9 @@ function abort_inflight_init_and_retries() {
                 index(text, "wait-tachyon-core-service-stable") >= 0 ||
                 index(text, "wait-tachyon-stable-start") >= 0 ||
                 index(text, "/etc/init.d/" + CONFIG_NAME) >= 0 ||
+                index(text, "components/updates.uc") >= 0 ||
+                index(text, "service/lifecycle.uc") >= 0 ||
+                index(text, "__service_action_worker") >= 0 ||
                 (lock_fd != null && index(as_string(lock_fd), "procd_" + CONFIG_NAME) >= 0)) {
                 push(kill_args, entry);
             }
@@ -160,6 +163,13 @@ function abort_inflight_init_and_retries() {
 }
 
 function reset_settings(no_start) {
+    let source = default_config_source();
+    if (source == null) {
+        log_message("Reset settings failed: default config source not found");
+        print("{\"success\":false,\"message\":\"default config source not found\"}\n");
+        return 1;
+    }
+
     fs.mkdir(RUNTIME_STATE_DIR, 0755);
     common.write_file(RUNTIME_STATE_DIR + "/reset-stopped", "1\n");
     abort_inflight_init_and_retries();
@@ -171,19 +181,14 @@ function reset_settings(no_start) {
 
     command_success_from_args([ "rm", "-rf",
         RUNTIME_STATE_DIR,
+        "/var/run/" + CONFIG_NAME + ".reload.lock",
+        "/tmp/.uci/" + CONFIG_NAME,
         SING_BOX_TMP_DIR,
         SING_BOX_CONFIG_PATH
     ]);
     if (!remove_persistent_state()) {
         log_message("Reset settings failed: unable to clean " + PERSISTENT_DIR);
         print("{\"success\":false,\"message\":\"unable to clean persistent state\"}\n");
-        return 1;
-    }
-
-    let source = default_config_source();
-    if (source == null) {
-        log_message("Reset settings failed: default config source not found");
-        print("{\"success\":false,\"message\":\"default config source not found\"}\n");
         return 1;
     }
 

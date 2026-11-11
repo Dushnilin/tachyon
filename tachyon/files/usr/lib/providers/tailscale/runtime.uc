@@ -702,11 +702,15 @@ function check_json() {
 
 function peer_entry(peer) {
     peer = object_or_empty(peer);
+    let rx_bytes = int(peer["RxBytes"] || 0);
+    let tx_bytes = int(peer["TxBytes"] || 0);
     return {
         name: as_string(peer["HostName"] || ""),
         dns_name: as_string(peer["DNSName"] || ""),
         ips: array_or_empty(peer["TailscaleIPs"]),
-        online: peer["Online"] == true
+        online: peer["Online"] == true,
+        rx_bytes: rx_bytes > 0 ? rx_bytes : 0,
+        tx_bytes: tx_bytes > 0 ? tx_bytes : 0
     };
 }
 

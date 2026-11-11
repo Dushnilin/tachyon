@@ -165,22 +165,43 @@ function command_exists(name) {
 }
 
 // curl --dns-servers requires libcurl built with c-ares (not available on all OpenWrt builds).
-// Fall back to --doh-url https://1.1.1.1/dns-query if --dns-servers is unsupported.
+// When c-ares is absent, use the system resolver first so an unreachable DoH provider
+// (e.g. 1.1.1.1; issue #387) never blocks list or component updates. Fall back to DoH
+// resolvers only when host resolution via system DNS fails.
+const CURL_DOH_FALLBACK_URLS = [
+    "https://dns.google/dns-query",
+    "https://common.dot.dns.yandex.net/dns-query",
+    "https://1.1.1.1/dns-query"
+];
 let _curl_has_dns_servers = null;
 let _curl_has_doh_url = null;
-function curl_push_dns_servers(args) {
-    if (_curl_has_dns_servers === null)
-        _curl_has_dns_servers = (system("curl --dns-servers 8.8.8.8 -V >/dev/null 2>&1") == 0);
+let _curl_working_doh_url = "";
+function curl_push_dns_servers(args, doh_fallback_index) {
+    if (_curl_has_dns_servers === null) {
+        let cap = common.command_capture(command_from_args([ "curl", "--dns-servers", "8.8.8.8", "-V" ]));
+        _curl_has_dns_servers = (cap != null && int(cap.status) == 0);
+    }
     if (_curl_has_dns_servers) {
-        push(args, "--dns-servers", "8.8.8.8,1.1.1.1");
-        return;
+        push(args, "--dns-servers", "8.8.8.8,77.88.8.8,1.1.1.1");
+        return "";
     }
 
-    if (_curl_has_doh_url === null)
-        _curl_has_doh_url = (system("curl --doh-url https://1.1.1.1/dns-query -V >/dev/null 2>&1") == 0);
-    if (_curl_has_doh_url) {
-        push(args, "--doh-url", "https://1.1.1.1/dns-query");
+    let idx = int(doh_fallback_index || 0);
+    if (idx <= 0 && _curl_working_doh_url == "")
+        return "";
+
+    if (_curl_has_doh_url === null) {
+        let cap = common.command_capture(command_from_args([ "curl", "--doh-url", "https://dns.google/dns-query", "-V" ]));
+        _curl_has_doh_url = (cap != null && int(cap.status) == 0);
     }
+    if (!_curl_has_doh_url)
+        return "";
+
+    let chosen = (_curl_working_doh_url != "" && idx <= 0)
+        ? _curl_working_doh_url
+        : CURL_DOH_FALLBACK_URLS[(idx > 0 ? idx - 1 : 0) % length(CURL_DOH_FALLBACK_URLS)];
+    push(args, "--doh-url", chosen);
+    return chosen;
 }
 
 function now_seconds() {
@@ -2495,16 +2516,34 @@ function download_to_file(url, filepath, proxy_address, allow_empty) {
     function download_one(target_url, proxy_addr) {
         remove_file(filepath);
         if (command_exists("curl")) {
-            let curl_args = [ "curl", "--connect-timeout", "3", "-m", "10", "-y", "5", "-Y", "32768", "-fsSL" ];
-            if (as_string(proxy_addr) != "") {
-                push(curl_args, "-x", "http://" + as_string(proxy_addr));
-            } else {
-                // Bootstrap DNS: use public resolvers in case Tachyon DNS isn't
-                // active yet (e.g., during startup before sing-box is running)
-                curl_push_dns_servers(curl_args);
+            let max_dns_tries = as_string(proxy_addr) == "" ? (1 + length(CURL_DOH_FALLBACK_URLS)) : 1;
+            for (let dns_try = 0; dns_try < max_dns_tries; dns_try++) {
+                remove_file(filepath);
+                let curl_args = [ "curl", "--connect-timeout", "3", "-m", "10", "-y", "5", "-Y", "32768", "-fsSL" ];
+                let active_doh = "";
+                if (as_string(proxy_addr) != "") {
+                    push(curl_args, "-x", "http://" + as_string(proxy_addr));
+                } else {
+                    active_doh = curl_push_dns_servers(curl_args, dns_try);
+                    if (dns_try > 0 && active_doh == "")
+                        break;
+                }
+                push(curl_args, target_url, "-o", filepath);
+                let cap = common.command_capture(command_from_args(curl_args));
+                let rc = cap == null ? 1 : int(cap.status);
+                if (rc == 0 && (allow_empty ? file_exists_value(filepath) : file_nonempty(filepath))) {
+                    if (active_doh != "")
+                        _curl_working_doh_url = active_doh;
+                    return true;
+                }
+                // Retry via fallback DoH resolvers only when host resolution failed (exit 6)
+                // or when a previously cached DoH endpoint timed out before connecting.
+                if (rc != 6 && !(active_doh != "" && rc == 28))
+                    break;
+                if (active_doh != "" && _curl_working_doh_url == active_doh)
+                    _curl_working_doh_url = "";
             }
-            push(curl_args, target_url, "-o", filepath);
-            return command_success_from_args(curl_args) && (allow_empty ? file_exists_value(filepath) : file_nonempty(filepath));
+            return false;
         } else {
             let command = command_from_args([ "wget", "-q", "-T", "15", "-O", filepath, target_url ]);
             if (as_string(proxy_addr) != "")
@@ -3232,12 +3271,13 @@ let builtin_subnets_need_reload = false;
 let list_update_seen_community_srs = null;
 let list_update_seen_builtin_subnets = null;
 
-function import_builtin_subnets_from_rule(section, settings) {
+function import_builtin_subnets_from_rule(section, settings, apply_nft) {
     if (!bool_option(section, "enabled", true))
         return true;
     if (option(section, "action", "") == "dns" || option(section, "action", "") == "hosts")
         return true;
 
+    let should_apply_nft = apply_nft == null ? true : (apply_nft != false);
     let ok = true;
     let section_services = [];
     for (let s in connections.community_lists(section))
@@ -3259,7 +3299,7 @@ function import_builtin_subnets_from_rule(section, settings) {
         if (!singbox_rulesets_module().is_community(service))
             continue;
 
-        if (type(list_update_seen_community_srs) != "object" || list_update_seen_community_srs[service] !== true) {
+        if (type(list_update_seen_community_srs) != "object" || list_update_seen_community_srs[service] != true) {
             if (!import_community_srs_file(service, settings) && list_nft_batch != "")
                 ok = false;
             if (type(list_update_seen_community_srs) == "object")
@@ -3273,8 +3313,8 @@ function import_builtin_subnets_from_rule(section, settings) {
         let cached_file = TMP_RULESET_FOLDER + "/community-subnets-" + service + ".lst";
         let persistent_file = "/etc/tachyon/rulesets/community-subnets-" + service + ".lst";
 
-        if (type(list_update_seen_builtin_subnets) == "object" && list_update_seen_builtin_subnets[service] === true) {
-            if (file_exists_value(cached_file)) {
+        if (type(list_update_seen_builtin_subnets) == "object" && list_update_seen_builtin_subnets[service] == true) {
+            if (should_apply_nft && file_exists_value(cached_file)) {
                 nft_module_success([
                     "nft-add-community-subnet-file-for-uci-section",
                     section_name(section),
@@ -3296,7 +3336,6 @@ function import_builtin_subnets_from_rule(section, settings) {
         }
 
         let combined_lines = [];
-        let used_telegram_fallback = false;
         for (let url in urls) {
             let tmpfile = temp_path();
             if (tmpfile == "") {
@@ -3330,7 +3369,6 @@ function import_builtin_subnets_from_rule(section, settings) {
                     let core_ip = require("core.ip");
                     for (let s in (core_ip.DEFAULT_TELEGRAM_SUBNETS || [])) push(combined_lines, s);
                     for (let s in (core_ip.DEFAULT_TELEGRAM_SUBNETS6 || [])) push(combined_lines, s);
-                    used_telegram_fallback = true;
                     log_message("Seeded community subnet list telegram with built-in fallbacks", "info");
                     continue;
                 } else {
@@ -3351,23 +3389,6 @@ function import_builtin_subnets_from_rule(section, settings) {
                 if (l != "" && substr(l, 0, 1) != "#")
                     push(combined_lines, l);
             }
-
-            nft_module_success([
-                "nft-add-community-subnet-file-for-uci-section",
-                section_name(section),
-                service,
-                tmpfile,
-                NFT_TABLE_NAME,
-                NFT_COMMON_SET_NAME,
-                NFT_IP_PORT_SET_NAME,
-                NFT_INTERFACE_SET_NAME,
-                NFT_DISCORD_SET_NAME,
-                NFT_FAKEIP_MARK,
-                "5000",
-                NFT_COMMON6_SET_NAME,
-                NFT_IP_PORT6_SET_NAME,
-                NFT_DISCORD6_SET_NAME
-            ]);
 
             if (downloaded)
                 remove_file(tmpfile);
@@ -3392,12 +3413,14 @@ function import_builtin_subnets_from_rule(section, settings) {
                 list_update_seen_builtin_subnets[service] = true;
             if (changed)
                 builtin_subnets_need_reload = true;
-            if (used_telegram_fallback && !nft_module_success([
+            if (should_apply_nft && !nft_module_success([
                     "nft-add-community-subnet-file-for-uci-section", section_name(section), service, cached_file,
                     NFT_TABLE_NAME, NFT_COMMON_SET_NAME, NFT_IP_PORT_SET_NAME, NFT_INTERFACE_SET_NAME,
                     NFT_DISCORD_SET_NAME, NFT_FAKEIP_MARK, "5000", NFT_COMMON6_SET_NAME,
                     NFT_IP_PORT6_SET_NAME, NFT_DISCORD6_SET_NAME ]))
                 ok = false;
+        } else if (!should_apply_nft && type(list_update_seen_builtin_subnets) == "object") {
+            list_update_seen_builtin_subnets[service] = true;
         }
     }
 
@@ -4114,6 +4137,9 @@ function list_update() {
     for (let section in sections)
         if (!update_remote_plain_rulesets_from_rule(section, settings))
             ok = false;
+    for (let section in sections)
+        if (!import_builtin_subnets_from_rule(section, settings, false))
+            ok = false;
 
     // Фаза 2: применение к nft (захватываем лок reload, чтобы не конфликтовать
     // с reload-firewall, который пересоздаёт таблицы и сеты nftables)
@@ -4149,7 +4175,7 @@ function list_update() {
         ok = false;
     list_nft_batch = nft_additions;
     for (let section in sections)
-        if (!import_builtin_subnets_from_rule(section, settings))
+        if (!import_builtin_subnets_from_rule(section, settings, true))
             ok = false;
     list_update_seen_community_srs = null;
     list_update_seen_builtin_subnets = null;

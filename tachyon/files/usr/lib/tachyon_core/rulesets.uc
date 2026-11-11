@@ -650,9 +650,10 @@ function hash12(value) {
     value = as_string(value);
     let first = 2166136261;
     let second = 16777619;
+    let len = length(value);
 
-    for (let i = 0; i < length(value); i++) {
-        let code = ord(substr(value, i, 1));
+    for (let i = 0; i < len; i++) {
+        let code = ord(value, i);
         first = (first * 33 + code) % 4294967296;
         second = (second * 131 + code) % 4294967296;
     }

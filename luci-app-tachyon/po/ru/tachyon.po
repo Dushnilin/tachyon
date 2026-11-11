@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-10 16:53+0300\n"
-"PO-Revision-Date: 2026-11-10 16:53+0300\n"
+"POT-Creation-Date: 2026-11-11 09:04+0300\n"
+"PO-Revision-Date: 2026-11-11 09:04+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -1648,6 +1648,9 @@ msgstr "Интервал проверки"
 
 msgid "Check mode:"
 msgstr "Режим проверки:"
+
+msgid "Check routing section order"
+msgstr "Обратите внимание на порядок секций"
 
 msgid "Check timeout after which the server is considered dead"
 msgstr "Таймаут проверки, после которого сервер считается недоступным"
@@ -5942,6 +5945,9 @@ msgstr "Совпавшие секции"
 msgid "Matched Services, Domains & Subnets"
 msgstr "Сводка правила (сервисы, домены, подсети)"
 
+msgid "Matched condition"
+msgstr "Сработавшее условие"
+
 msgid "Matched rule"
 msgstr "Сработавшее правило"
 
@@ -6472,6 +6478,9 @@ msgstr "Версии не найдены"
 
 msgid "No working strategy to apply"
 msgstr "Нет рабочей стратегии для применения"
+
+msgid "Node"
+msgstr "Узел"
 
 msgid "Node list is empty"
 msgstr "Список узлов пуст"
@@ -7909,6 +7918,9 @@ msgstr "Удаление"
 
 msgid "Rendezvous HRW hashing keeps each client + eTLD+1 domain pinned to the same healthy exit IP"
 msgstr "Консистентное хэширование Rendezvous HRW: сохраняет один выходной IP для клиента и домена (банки, ИИ, игры)"
+
+msgid "Reorder sections →"
+msgstr "Изменить порядок →"
 
 msgid "Replace current routes"
 msgstr "Заменить текущие маршруты"
@@ -11636,6 +11648,9 @@ msgstr ""
 msgid "padencap (max.ru + exact-length TLS Padding)"
 msgstr "padencap (max.ru + TLS Padding 1:1 по длине)"
 
+msgid "peers online"
+msgstr "устр. в сети"
+
 msgid "pkts"
 msgstr "пакетов"
 
@@ -11695,6 +11710,9 @@ msgstr "остановлен"
 
 msgid "strategy to section configured for"
 msgstr "стратегия настроена для секции с действием"
+
+msgid "tailscaled daemon is running"
+msgstr "Демон tailscaled работает"
 
 msgid "timeout"
 msgstr "таймаут"

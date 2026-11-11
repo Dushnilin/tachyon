@@ -1310,6 +1310,8 @@ export namespace Tachyon {
     dns_name: string;
     ips: string[];
     online: boolean;
+    rx_bytes?: number;
+    tx_bytes?: number;
   }
 
   export interface GetTailscalePeers {

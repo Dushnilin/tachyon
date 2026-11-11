@@ -949,6 +949,23 @@ function add_sniff_rule(config, section) {
     config.route.rules = result;
 }
 
+function clone_rule_value(val) {
+    let t = type(val);
+    if (t == "array") {
+        let out = [];
+        for (let item in val)
+            push(out, clone_rule_value(item));
+        return out;
+    }
+    if (t == "object") {
+        let out = {};
+        for (let k, v in val)
+            out[k] = clone_rule_value(v);
+        return out;
+    }
+    return val;
+}
+
 function clone_rules_for_inbound(config, source_inbound, target_inbound, skip_domain) {
     let cloned_rules = [];
     for (let rule in array_or_empty(config.route.rules)) {
@@ -992,7 +1009,7 @@ function clone_rules_for_inbound(config, source_inbound, target_inbound, skip_do
         if (has_positive_source_ip)
             continue;
 
-        let cloned = json(sprintf("%J", rule));
+        let cloned = clone_rule_value(rule);
         if (type(cloned) != "object")
             continue;
         if (value_contains(cloned.inbound, source_inbound))

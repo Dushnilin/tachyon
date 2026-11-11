@@ -109,7 +109,7 @@ function install_shims() {
         "[ -z \"$REAL_IP\" ] && REAL_IP='ip'\n" +
         "CMD_LINE=\"$*\"\n" +
         "case \"$CMD_LINE\" in\n" +
-        "    *route*default*|*default*route*)\n" +
+        "    *route*default*|*default*route*|*0.0.0.0/1*|*128.0.0.0/1*|*::/0*|*::/1*|*8000::/1*)\n" +
         "        case \"$CMD_LINE\" in\n" +
         "            *replace*|*add*|*del*)\n" +
         "                exit 0\n" +
@@ -173,6 +173,10 @@ function sanitize_system() {
         log_message("Sanitizing rogue default route dev " + cfg.tun_interface + " in table main", "warn");
         command_status("ip -4 route del default dev " + shell_quote(cfg.tun_interface) + " table main 2>/dev/null; true");
     }
+    for (let split_prefix in [ "0.0.0.0/1", "128.0.0.0/1" ])
+        command_status("ip -4 route del " + split_prefix + " dev " + shell_quote(cfg.tun_interface) + " table main 2>/dev/null; true");
+    for (let v6_prefix in [ "default", "::/1", "8000::/1" ])
+        command_status("ip -6 route del " + v6_prefix + " dev " + shell_quote(cfg.tun_interface) + " table main 2>/dev/null; true");
 }
 
 function remove_kernel_routing(keep_link) {

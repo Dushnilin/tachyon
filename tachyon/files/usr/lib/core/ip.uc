@@ -118,10 +118,27 @@ function valid_ip_cidr(value) {
     return valid_ipv4_cidr(value, false) || valid_ipv6_cidr(value);
 }
 
+// Quick character-level filter before calling iptoarr() or legacy split/regex
+// validators on domain names (e.g. 100k domains in plain lists).
+function can_be_ip_or_cidr(value) {
+    let text = as_string(value);
+    let len = length(text);
+    if (len < 2 || len > 49)
+        return false;
+    if (index(text, ":") >= 0)
+        return true;
+    let b0 = ord(text, 0);
+    if (b0 < 48 || b0 > 57)
+        return false;
+    return match(text, /^[0-9.\/]+$/) != null;
+}
+
 // Native parsing avoids repeatedly walking every octet/hextet in large lists.
 // Keep the existing validators as a fallback for older ucode and legacy forms
 // such as IPv4 with leading zeroes or nft's optional trailing dot.
 function native_ip_cidr_family(value, strict_decimal) {
+    if (!can_be_ip_or_cidr(value))
+        return 0;
     if (type(global.iptoarr) != "function")
         return 0;
 
@@ -151,18 +168,24 @@ function native_ip_cidr_family(value, strict_decimal) {
 }
 
 function valid_ip_or_cidr(value) {
+    if (!can_be_ip_or_cidr(value))
+        return false;
     if (native_ip_cidr_family(value, false) != 0)
         return true;
     return valid_ip(value) || valid_ip_cidr(value);
 }
 
 function nft_ip_or_cidr(value) {
+    if (!can_be_ip_or_cidr(value))
+        return false;
     if (native_ip_cidr_family(value, true) != 0)
         return true;
     return valid_ipv4(value, true, true) || valid_ipv4_cidr(value, true) || valid_ipv6(value) || valid_ipv6_cidr(value);
 }
 
 function ip_family(value) {
+    if (!can_be_ip_or_cidr(value))
+        return 0;
     let family = native_ip_cidr_family(value, false);
     if (family != 0)
         return family;

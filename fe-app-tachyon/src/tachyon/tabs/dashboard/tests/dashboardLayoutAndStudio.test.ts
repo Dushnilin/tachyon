@@ -807,4 +807,121 @@ xiaomi.com`,
       '/var/run/tachyon/section-cache/Section_1.json',
     ]);
   });
+
+  it('shows warning banner when block or bypass section is placed below other routing sections', () => {
+    // 1. Correct order (block & bypass at top): no warning
+    const okIssues = renderOverviewMod.detectMisorderedPolicySections([
+      {
+        code: 'block',
+        sectionName: 'block',
+        displayName: 'Block Ads',
+        action: 'block',
+        outbounds: [],
+      },
+      {
+        code: 'ByPass',
+        sectionName: 'ByPass',
+        displayName: 'RU Direct',
+        action: 'bypass',
+        outbounds: [],
+      },
+      {
+        code: 'YandexDns',
+        sectionName: 'YandexDns',
+        displayName: 'YandexDns',
+        action: 'dns',
+        outbounds: [],
+      },
+      {
+        code: 'Main',
+        sectionName: 'Main',
+        displayName: 'Main Proxy',
+        action: 'connection',
+        outbounds: [],
+      },
+    ]);
+    expect(okIssues).toEqual([]);
+
+    // 2. Misordered: block and bypass placed after Main Proxy and Youtube desync
+    const misorderedSections = [
+      {
+        code: 'Main',
+        sectionName: 'Main',
+        displayName: 'Main Proxy',
+        action: 'connection',
+        outbounds: [
+          {
+            code: 'node-1',
+            displayName: 'NL 1',
+            type: 'vless',
+            selected: true,
+            latency: 40,
+          },
+        ],
+      },
+      {
+        code: 'Youtube',
+        sectionName: 'Youtube',
+        displayName: 'Youtube',
+        action: 'desync',
+        outbounds: [],
+      },
+      {
+        code: 'ByPass',
+        sectionName: 'ByPass',
+        displayName: 'RU Direct',
+        action: 'bypass',
+        outbounds: [],
+      },
+      {
+        code: 'block',
+        sectionName: 'block',
+        displayName: 'Block Telemetry',
+        action: 'block',
+        outbounds: [],
+      },
+    ];
+
+    const detected =
+      renderOverviewMod.detectMisorderedPolicySections(misorderedSections);
+    expect(detected).toHaveLength(2);
+    expect(detected[0]).toMatchObject({
+      sectionName: 'ByPass',
+      displayName: 'RU Direct',
+      kind: 'bypass',
+    });
+    expect(detected[1]).toMatchObject({
+      sectionName: 'block',
+      displayName: 'Block Telemetry',
+      kind: 'block',
+    });
+
+    const blocks = renderOverviewMod.renderDashboardSectionsAndNodes({
+      sections: misorderedSections,
+      selectedSectionCode: '',
+      onSelectSection: vi.fn(),
+      getSectionStats: () => ({
+        download: 0,
+        upload: 0,
+        downloadSpeed: 0,
+        uploadSpeed: 0,
+        conns: 0,
+      }),
+      isTestingAllSections: false,
+      onTestAllSections: vi.fn(),
+      latencyFetchingSections: {},
+      onTestSectionLatency: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+    });
+
+    const wrap = createDummyElement('div');
+    blocks.forEach((b: any) => wrap.appendChild(b));
+
+    const warnings = wrap.querySelectorAll('.tachyon-section-order-warning');
+    expect(warnings.length).toBe(1);
+    expect(warnings[0].textContent).toContain('RU Direct');
+    expect(warnings[0].textContent).toContain('Block Telemetry');
+    expect(warnings[0].textContent).toContain('Main Proxy');
+  });
 });

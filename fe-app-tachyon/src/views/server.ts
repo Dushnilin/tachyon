@@ -5157,7 +5157,20 @@ function configureServerSection(sectionRef, options = {}) {
 
     let saveTasks;
     try {
-      saveTasks = targetMap.save(beforeUciSave, true);
+      if (typeof targetMap.checkDepends === 'function') {
+        targetMap.checkDepends();
+      }
+      if (
+        typeof targetMap.parse === 'function' &&
+        targetMap.data &&
+        typeof targetMap.data.save === 'function'
+      ) {
+        saveTasks = Promise.resolve(targetMap.parse())
+          .then(beforeUciSave)
+          .then(() => targetMap.data.save());
+      } else {
+        saveTasks = targetMap.save(beforeUciSave, true);
+      }
     } catch (e) {
       if (origCallDelete) {
         uci.callDelete = origCallDelete;
@@ -5168,9 +5181,15 @@ function configureServerSection(sectionRef, options = {}) {
     let curr = targetMap;
     while (curr.parent) {
       curr = curr.parent;
+      const parentMap = curr;
       saveTasks = saveTasks
-        .then(curr.load.bind(curr))
-        .then(curr.reset.bind(curr));
+        .then(() =>
+          typeof parentMap.load === 'function' ? parentMap.load() : null,
+        )
+        .then(() =>
+          typeof parentMap.reset === 'function' ? parentMap.reset() : null,
+        )
+        .catch(() => null);
     }
 
     return saveTasks

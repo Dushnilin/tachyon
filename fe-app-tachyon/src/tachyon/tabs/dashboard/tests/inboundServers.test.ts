@@ -641,44 +641,160 @@ describe('inboundServers', () => {
     });
 
     it('falls back to window.L.showModal when ui is not on window/globalThis', () => {
+      const prevWindow = (globalThis as any).window;
       delete (globalThis as any).ui;
       delete (globalThis as any).window?.ui;
       const lShowModal = vi.fn();
-      (globalThis as any).window = (globalThis as any).window || {};
-      (globalThis as any).window.L = {
-        showModal: lShowModal,
-        hideModal: vi.fn(),
+      (globalThis as any).window = {
+        ...(prevWindow || {}),
+        L: {
+          showModal: lShowModal,
+          hideModal: vi.fn(),
+        },
+        addEventListener: prevWindow?.addEventListener || vi.fn(),
       };
 
-      const server = {
-        sectionId: 'test_sec',
-        label: 'Shadowsocks Node',
-        country: '',
-        enabled: true,
-        protocol: 'shadowsocks',
-        protocolShort: 'SS',
-        protocolFull: 'Shadowsocks',
-        security: '',
-        port: '8388',
-      };
-      const summary = {
-        totalCount: 1,
-        enabledCount: 1,
-        activeInboundsCount: 1,
-        totalActiveConns: 0,
-        totalActiveClients: 0,
-        totalDownload: 0,
-        totalUpload: 0,
-        totalDownSpeed: 0,
-        totalUpSpeed: 0,
-        bySection: new Map(),
-        recentClients: [],
-      };
+      try {
+        const server = {
+          sectionId: 'test_sec',
+          label: 'Shadowsocks Node',
+          country: '',
+          enabled: true,
+          protocol: 'shadowsocks',
+          protocolShort: 'SS',
+          protocolFull: 'Shadowsocks',
+          security: '',
+          port: '8388',
+        };
+        const summary = {
+          totalCount: 1,
+          enabledCount: 1,
+          activeInboundsCount: 1,
+          totalActiveConns: 0,
+          totalActiveClients: 0,
+          totalDownload: 0,
+          totalUpload: 0,
+          totalDownSpeed: 0,
+          totalUpSpeed: 0,
+          bySection: new Map(),
+          recentClients: [],
+        };
 
-      showInboundClientsModal(server, summary, true);
+        showInboundClientsModal(server, summary, true);
 
-      expect(lShowModal).toHaveBeenCalledTimes(1);
-      expect(lShowModal.mock.calls[0][0]).toContain('Shadowsocks Node');
+        expect(lShowModal).toHaveBeenCalledTimes(1);
+        expect(lShowModal.mock.calls[0][0]).toContain('Shadowsocks Node');
+      } finally {
+        if (prevWindow === undefined) {
+          delete (globalThis as any).window;
+        } else {
+          (globalThis as any).window = prevWindow;
+        }
+      }
+    });
+
+    it('merges native Tailscale online peers into inbound summary, card chip, and clients modal', () => {
+      const inbounds = getConfiguredServerInbounds([
+        {
+          '.name': 'tailscale_srv',
+          enabled: '1',
+          label: 'tailscale',
+          server_country: 'RU',
+          protocol: 'tailscale',
+          tailscale_mode: 'native',
+          routing_mode: 'rules',
+        },
+      ]);
+
+      expect(inbounds).toHaveLength(1);
+      expect(inbounds[0].tailscaleMode).toBe('native');
+      expect(inbounds[0].port).toBe('Mesh');
+
+      const summary = computeInboundsRuntimeSummary(
+        inbounds,
+        [],
+        new Map(),
+        Date.now(),
+        {
+          configured: true,
+          backend_state: 'Running',
+          self: {
+            name: 'router',
+            dns_name: 'router.tailnet.ts.net.',
+            ips: ['100.75.187.73'],
+            online: true,
+          },
+          peers: [
+            {
+              name: 'PCHOME2',
+              dns_name: 'pchome2.tailnet.ts.net.',
+              ips: ['100.75.187.10'],
+              online: true,
+              rx_bytes: 2048,
+              tx_bytes: 4096,
+            },
+            {
+              name: 'OnePlus 12',
+              dns_name: 'oneplus12.tailnet.ts.net.',
+              ips: ['100.75.187.11'],
+              online: false,
+              rx_bytes: 0,
+              tx_bytes: 0,
+            },
+            {
+              name: 'papa4',
+              dns_name: 'papa4.tailnet.ts.net.',
+              ips: ['100.75.187.12'],
+              online: true,
+              rx_bytes: 1024,
+              tx_bytes: 2048,
+            },
+          ],
+        },
+      );
+
+      expect(summary.totalActiveClients).toBe(2);
+      expect(summary.totalActiveConns).toBe(0);
+      expect(summary.activeInboundsCount).toBe(1);
+      expect(summary.totalUpload).toBe(3072);
+      expect(summary.totalDownload).toBe(6144);
+
+      const secStats = summary.bySection.get('tailscale_srv');
+      expect(secStats?.meshRunning).toBe(true);
+      expect(secStats?.meshOnlinePeers).toBe(2);
+      expect(secStats?.meshTotalPeers).toBe(3);
+      expect(secStats?.activeClientsCount).toBe(2);
+      expect(secStats?.clients.map((c: any) => c.name)).toEqual([
+        'PCHOME2',
+        'papa4',
+        'OnePlus 12',
+      ]);
+
+      const container = new MockElement('div') as any;
+      renderCollapsibleInboundsBlock({
+        container,
+        servers: inbounds,
+        summary,
+        isTachyonRunning: true,
+        storageKey: 'tachyon_test_ts_collapse',
+        showGoToServersLink: true,
+        onRerender: vi.fn(),
+        viewMode: 'expanded_cards',
+      });
+
+      expect(container.textContent).toContain('2 устр. • 0 соед.');
+      expect(container.textContent).toContain('2 в сети');
+      expect(container.textContent).not.toContain('Ожидание');
+
+      const showModalMock = vi.fn();
+      (globalThis as any).ui = { showModal: showModalMock, hideModal: vi.fn() };
+      showInboundClientsModal(inbounds[0], summary, true);
+      expect(showModalMock).toHaveBeenCalledTimes(1);
+      const modalEl = showModalMock.mock.calls[0][1];
+      expect(modalEl.textContent).toContain('PCHOME2');
+      expect(modalEl.textContent).toContain('papa4');
+      expect(modalEl.textContent).toContain('OnePlus 12');
+      expect(modalEl.textContent).toContain('Не в сети');
     });
   });
 });

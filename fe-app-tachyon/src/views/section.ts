@@ -1138,7 +1138,7 @@ function readSingleSectionCacheMetadata(targetId) {
   const cachePath = `${SECTION_CACHE_DIR}/${targetId}.json`;
   const isNotFoundErr = (err) => {
     const msg = `${String((err && err.name) || '')} ${String((err && err.message) || err || '')}`;
-    return /NotFoundError|ENOENT|No such file or directory|Object not found|-32000/i.test(
+    return /NotFoundError|ENOENT|No such file or directory|Object not found|-32000|NoDataError|No data received|TimeoutError|timed out|RPCError/i.test(
       msg,
     );
   };
@@ -1610,12 +1610,9 @@ function readOutboundMetadataFromSectionCache(section_id) {
     return out;
   };
 
-  const otherSectionIds = (uci.sections(UCI_PACKAGE, 'section') || [])
-    .map((s) => s && s['.name'])
-    .filter((id) => id && id !== targetId && safeCacheSectionName(id));
-  const fallbackSectionIds = [
-    ...new Set([...memberIds, 'Main', ...otherSectionIds]),
-  ].filter((id) => id && id !== targetId && safeCacheSectionName(id));
+  const fallbackSectionIds = [...new Set([...memberIds, 'Main'])].filter(
+    (id) => id && id !== targetId && safeCacheSectionName(id),
+  );
 
   const mergeMetaListWithPoolFallback = (metaList) => {
     const merged = emptySectionCacheMetadata();
@@ -5584,13 +5581,15 @@ function addUrlTestItemOptions(itemSection, options = {}) {
           optionMapValue(this, itemId, key),
         );
 
-        return loadOutboundNameChoices(sectionId).then(() => {
-          refreshOptionChoices(
-            this,
-            currentOutboundNameChoices(sectionId, values),
-          );
-          return values;
-        });
+        loadOutboundNameChoices(sectionId)
+          .then(() => {
+            refreshOptionChoices(
+              this,
+              currentOutboundNameChoices(sectionId, values),
+            );
+          })
+          .catch(() => null);
+        return values;
       };
       list.placeholder = _('-- Select --');
       configureLiveDynamicListChoices(list, (itemId, values) =>
@@ -5818,13 +5817,15 @@ function addPriorityLevelItemOptions(itemSection, options = {}) {
           optionMapValue(this, itemId, key),
         );
 
-        return loadOutboundNameChoices(sectionId).then(() => {
-          refreshOptionChoices(
-            this,
-            currentOutboundNameChoices(sectionId, values),
-          );
-          return values;
-        });
+        loadOutboundNameChoices(sectionId)
+          .then(() => {
+            refreshOptionChoices(
+              this,
+              currentOutboundNameChoices(sectionId, values),
+            );
+          })
+          .catch(() => null);
+        return values;
       };
       list.placeholder = _('-- Select --');
       configureLiveDynamicListChoices(list, (itemId, values) =>
@@ -12436,14 +12437,16 @@ function createSectionContent(section) {
     return getRuleConfiguredAction(section_id);
   };
   o.load = function (section_id) {
-    return ensureActionProvidersAvailabilityLoaded().then(() => {
-      populateActionOptionValues(this);
-      const configured = getRuleConfiguredAction(section_id);
-      if (configured && !this.keylist.includes(configured)) {
-        this.value(configured, getActionOptionLabel(configured));
-      }
-      return this.cfgvalue(section_id);
-    });
+    return ensureActionProvidersAvailabilityLoaded()
+      .catch(() => null)
+      .then(() => {
+        populateActionOptionValues(this);
+        const configured = getRuleConfiguredAction(section_id);
+        if (configured && !this.keylist.includes(configured)) {
+          this.value(configured, getActionOptionLabel(configured));
+        }
+        return this.cfgvalue(section_id);
+      });
   };
 
   o = section.taboption(

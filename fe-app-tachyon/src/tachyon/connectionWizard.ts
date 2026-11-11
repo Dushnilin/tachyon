@@ -6009,23 +6009,34 @@ export function openConnectionWizardModal(
         uiObj.changes &&
         typeof uiObj.changes.apply === 'function'
       ) {
-        await Promise.resolve(uiObj.changes.apply(true));
-        try {
-          await TachyonShellMethods.serviceActionStart('reload');
-          if (
-            typeof window !== 'undefined' &&
-            typeof window.setTimeout === 'function'
-          ) {
-            window.setTimeout(() => {
+        if (
+          typeof document !== 'undefined' &&
+          typeof document.addEventListener === 'function'
+        ) {
+          document.addEventListener(
+            'uci-applied',
+            () => {
               TachyonShellMethods.getUiState()
                 .then((res) => {
                   if (res?.success) applyUiStateToStore(res.data);
                 })
                 .catch(() => null);
-            }, 600);
-          }
-        } catch {
-          // ignore reload trigger error
+            },
+            { once: true },
+          );
+        }
+        await Promise.resolve(uiObj.changes.apply(true));
+        if (
+          typeof window !== 'undefined' &&
+          typeof window.setTimeout === 'function'
+        ) {
+          window.setTimeout(() => {
+            TachyonShellMethods.getUiState()
+              .then((res) => {
+                if (res?.success) applyUiStateToStore(res.data);
+              })
+              .catch(() => null);
+          }, 1200);
         }
       }
     } catch {

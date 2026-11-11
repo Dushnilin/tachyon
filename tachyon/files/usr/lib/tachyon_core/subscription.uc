@@ -7,10 +7,25 @@ let subscription_share_link = require("subscription.share_link");
 let subscription_wireguard = require("subscription.wireguard");
 
 let as_string = common.as_string;
-let read_json_file = common.read_json_file;
+let _raw_read_json_file = common.read_json_file;
 let array_or_empty = common.array_or_empty;
 let object_or_empty = common.object_or_empty;
 let object_key_count = common.object_key_count;
+
+let _json_file_cache = {};
+
+function read_json_file(path) {
+    let p = as_string(path);
+    let st = fs.stat(p);
+    if (st == null)
+        return null;
+    let stamp = p + "|" + as_string(st.size || 0) + "|" + as_string(st.mtime || 0);
+    if (exists(_json_file_cache, stamp))
+        return _json_file_cache[stamp];
+    let val = _raw_read_json_file(p);
+    _json_file_cache[stamp] = val;
+    return val;
+}
 
 const TMP_SUBSCRIPTION_FOLDER = getenv("TMP_SUBSCRIPTION_FOLDER") || "/tmp/tachyon-core/subscriptions";
 const TACHYON_RUNTIME_STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon";
@@ -74,12 +89,20 @@ function valid_metadata_object(value) {
 function metadata_items_from_value(value) {
     let result = [];
     if (type(value) == "array") {
-        for (let item in value)
-            if (valid_metadata_object(item))
-                push(result, item);
+        for (let item in value) {
+            if (valid_metadata_object(item)) {
+                let copy = {};
+                for (let k, v in item)
+                    copy[k] = v;
+                push(result, copy);
+            }
+        }
     }
     else if (valid_metadata_object(value)) {
-        push(result, value);
+        let copy = {};
+        for (let k, v in value)
+            copy[k] = v;
+        push(result, copy);
     }
     return result;
 }

@@ -6619,7 +6619,9 @@ function createOutboundsContent(section) {
       }
     }
     const self = this;
-    return loadGlobalPoolChoices()
+    const currentVals =
+      uci.get(UCI_PACKAGE, sectionId, 'server_interfaces') || [];
+    loadGlobalPoolChoices()
       .then((pool) => {
         const servers = (pool && pool.servers) || [];
         const matched = servers.filter(
@@ -6639,9 +6641,9 @@ function createOutboundsContent(section) {
             self.value(val, `${sname} → ${ifc}`);
           });
         });
-        return uci.get(UCI_PACKAGE, sectionId, 'server_interfaces') || [];
       })
-      .catch(() => uci.get(UCI_PACKAGE, sectionId, 'server_interfaces') || []);
+      .catch(() => null);
+    return currentVals;
   };
 }
 

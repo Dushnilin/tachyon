@@ -1319,9 +1319,16 @@ function prepare_subscription_caches(prepared, no_refresh) {
         log_lines(result.output, "debug", "subscription cache: ");
         return null;
     }
+    let known_sections = {};
+    for (let sec in array_or_empty(uci_core.sections(CONFIG_NAME, "section"))) {
+        let name = common.section_name(sec);
+        if (name != "")
+            known_sections[name] = true;
+    }
     let cleaned = [];
     for (let token in split(trim(as_string(result.output)), /[ \t\r\n]+/)) {
-        if (token != "" && match(token, /^[A-Za-z0-9_-]+$/) != null)
+        if (token != "" && match(token, /^[A-Za-z0-9_-]+$/) != null &&
+            (length(keys(known_sections)) == 0 || known_sections[token] == true))
             push(cleaned, token);
     }
     return join(" ", cleaned);
@@ -2298,9 +2305,18 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
 
     // Cleanup stale temp config files from previous failed runs
     try {
-        let stale = trim(command_output_from_args([ "find", "/tmp", "-maxdepth", "1", "-name", "config.json.*.tmp.*", "-mmin", "+5", "-type", "f" ]));
-        for (let path in split(stale, "\n"))
-            if (trim(path) != "") remove_file(trim(path));
+        let now_sec = int(clock()[0]);
+        let entries = fs.lsdir("/tmp");
+        if (type(entries) == "array") {
+            for (let name in entries) {
+                if (!wildcard(as_string(name), "config.json.*.tmp.*"))
+                    continue;
+                let path = "/tmp/" + name;
+                let st = fs.stat(path);
+                if (st != null && st.type == "file" && (now_sec - int(st.mtime || 0)) > 300)
+                    remove_file(path);
+            }
+        }
     }
     catch (e) {
         // Housekeeping for temp files left by earlier failed runs. Failing here
@@ -2337,9 +2353,12 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
                 quarantined[qname] = as_string(pre_quarantined[qname]);
         }
     }
+    let gen_quarantined_file = temp_config + ".quarantined.json";
     let check_result = { status: 1, reason: "configuration was not generated" };
     for (let attempt = 0; attempt < 16; attempt++) {
+        remove_file(gen_quarantined_file);
         let generate_status = command_status(
+            command_env({ TACHYON_GENERATOR_QUARANTINE_OUT: gen_quarantined_file }) + " " +
             module_command([
                 LIB_DIR + "/tachyon_core/generator.uc",
                 "generate-config",
@@ -2351,6 +2370,22 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
                 join(",", keys(quarantined))
             ]) + " >" + shell_quote(runtime_log) + " 2>&1"
         );
+        let in_proc_entries = common.read_json_file(gen_quarantined_file);
+        remove_file(gen_quarantined_file);
+        if (type(in_proc_entries) == "array") {
+            for (let entry in in_proc_entries) {
+                if (type(entry) != "object")
+                    continue;
+                let qsec = as_string(entry.section || "");
+                let qreason = as_string(entry.reason || "");
+                if (qsec != "" && quarantined[qsec] == null && section_exists(qsec)) {
+                    let expanded_gen_reason = expand_check_error_reason(qreason);
+                    log_message("Section '" + qsec + "' failed to generate: " + expanded_gen_reason +
+                        ". Not loading it; the rest of the configuration starts normally", "warn");
+                    quarantined[qsec] = expanded_gen_reason;
+                }
+            }
+        }
         if (generate_status != 0) {
             let reason = generator_failure_reason(runtime_log, generate_status);
             let section = section_from_generator_log(runtime_log);
@@ -2363,7 +2398,7 @@ function init_config(populate_nft, caches_prepared, no_refresh) {
             }
             log_message("Failed to generate " + core_name + " configuration: " + reason, "fatal");
             log_file_lines(runtime_log, "debug", core_name + " config generator output: ");
-            remove_files([ temp_config, temp_config + ".owners.json", runtime_log ]);
+            remove_files([ temp_config, temp_config + ".owners.json", gen_quarantined_file, runtime_log ]);
             exit(1);
         }
         log_file_lines(runtime_log, "warn", core_name + " config generator: ");

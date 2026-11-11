@@ -2,6 +2,7 @@
 import { svgEl } from '../../../../helpers';
 import { prettyBytes } from '../../../../helpers/prettyBytes';
 import {
+  renderAlertTriangleIcon,
   renderCheckIcon,
   renderCloudIcon,
   renderCompassIcon,
@@ -2503,6 +2504,93 @@ export function resolveSectionCategory(
   return 'proxy';
 }
 
+export interface MisorderedPolicySectionIssue {
+  sectionName: string;
+  displayName: string;
+  kind: 'block' | 'bypass';
+  precedingSections: string[];
+}
+
+export function detectMisorderedPolicySections(
+  sections: Tachyon.OutboundGroup[],
+): MisorderedPolicySectionIssue[] {
+  if (!Array.isArray(sections) || sections.length < 2) {
+    return [];
+  }
+
+  const precedingRoutingSections: string[] = [];
+  const issues: MisorderedPolicySectionIssue[] = [];
+
+  for (const section of sections) {
+    if (!section) continue;
+    const action = `${section.action || ''}`.trim().toLowerCase();
+    const label =
+      `${section.displayName || section.sectionName || section.code || ''}`.trim();
+
+    const isBlockAction = action === 'block' || action === 'reject';
+    const isBypassAction = action === 'bypass' || action === 'direct';
+    const engineMeta = !action ? resolveSectionEngineMeta(section) : undefined;
+    const category =
+      !action && engineMeta
+        ? resolveSectionCategory(section, engineMeta)
+        : undefined;
+
+    if (isBlockAction || category === 'block') {
+      if (precedingRoutingSections.length > 0) {
+        issues.push({
+          sectionName: section.sectionName || section.code || label,
+          displayName: label || section.sectionName || 'block',
+          kind: 'block',
+          precedingSections: [...precedingRoutingSections],
+        });
+      }
+      continue;
+    }
+
+    if (isBypassAction || category === 'direct') {
+      if (precedingRoutingSections.length > 0) {
+        issues.push({
+          sectionName: section.sectionName || section.code || label,
+          displayName: label || section.sectionName || 'bypass',
+          kind: 'bypass',
+          precedingSections: [...precedingRoutingSections],
+        });
+      }
+      continue;
+    }
+
+    if (action === 'dns' || category === 'dns') {
+      continue;
+    }
+
+    precedingRoutingSections.push(label || section.sectionName || section.code);
+  }
+
+  return issues;
+}
+
+function navigateToRoutingSectionsTab() {
+  if (typeof document === 'undefined' || !document.querySelector) {
+    return;
+  }
+  const navSub = document.querySelector<HTMLElement>(
+    '.tachyon-sidebar__subitem[data-nav-key="section:sections"]',
+  );
+  if (navSub && typeof navSub.click === 'function') {
+    navSub.click();
+    return;
+  }
+  const topTab = document.querySelector<HTMLElement>(
+    '.cbi-tabmenu > li[data-tab="cbi-tachyon-section"] a, ' +
+      '.cbi-tab[data-tab="cbi-tachyon-section"] a, ' +
+      '.cbi-tab-disabled[data-tab="cbi-tachyon-section"] a, ' +
+      'li[data-tab="section"] a',
+  );
+  if (topTab && typeof topTab.click === 'function') {
+    topTab.click();
+  }
+}
+
 export function renderDashboardSectionsAndNodes(
   props: RenderDashboardSectionsAndNodesProps,
 ): HTMLElement[] {
@@ -2550,7 +2638,12 @@ export function renderDashboardSectionsAndNodes(
     }
   });
 
-  if (!routingSections || routingSections.length === 0) {
+  const misorderedPolicyIssues = detectMisorderedPolicySections(sections);
+
+  if (
+    (!routingSections || routingSections.length === 0) &&
+    misorderedPolicyIssues.length === 0
+  ) {
     return [];
   }
 
@@ -3285,6 +3378,71 @@ export function renderDashboardSectionsAndNodes(
           ? 'tachyon-routing-sections-list tachyon-routing-sections-list--matrix'
           : 'tachyon-routing-sections-list';
 
+  const policyOrderWarningBanner =
+    misorderedPolicyIssues.length > 0
+      ? (() => {
+          const quotedNames = misorderedPolicyIssues
+            .map(
+              (item) =>
+                `«${item.displayName}» (${item.kind === 'block' ? 'Block' : 'Bypass'})`,
+            )
+            .join(', ');
+          const firstPreceding =
+            misorderedPolicyIssues[0]?.precedingSections[0] || '';
+          const warningText =
+            misorderedPolicyIssues.length === 1
+              ? tr(
+                  `Секция ${quotedNames} расположена ниже секции «${firstPreceding}». Правила проверяются сверху вниз: домены и подсети из этой секции могут перехватываться вышестоящими секциями и вызывать проблемы с маршрутизацией. Переместите Block / Bypass в начало списка.`,
+                  `Section ${quotedNames} is placed below "${firstPreceding}". Rules are evaluated top-to-bottom: overlapping domains and subnets may be matched by earlier sections and cause routing issues. Move Block / Bypass sections to the top of the list.`,
+                )
+              : tr(
+                  `Секции ${quotedNames} расположены ниже других секций маршрутизации (например, «${firstPreceding}»). Правила проверяются сверху вниз: пересекающиеся домены и подсети могут перехватываться вышестоящими секциями и вызывать проблемы с маршрутизацией. Переместите Block / Bypass в начало списка.`,
+                  `Sections ${quotedNames} are placed below other routing sections (e.g. "${firstPreceding}"). Rules are evaluated top-to-bottom: overlapping domains and subnets may be matched by earlier sections and cause routing issues. Move Block / Bypass sections to the top of the list.`,
+                );
+
+          return E(
+            'div',
+            {
+              class: 'tachyon-section-order-warning',
+              'data-section-order-warning': '1',
+            } as any,
+            [
+              E('div', { class: 'tachyon-section-order-warning__icon' }, [
+                renderAlertTriangleIcon(15),
+              ]),
+              E('div', { class: 'tachyon-section-order-warning__body' }, [
+                E(
+                  'div',
+                  { class: 'tachyon-section-order-warning__title' },
+                  tr(
+                    'Обратите внимание на порядок секций',
+                    'Check routing section order',
+                  ),
+                ),
+                E(
+                  'div',
+                  { class: 'tachyon-section-order-warning__desc' },
+                  warningText,
+                ),
+              ]),
+              E(
+                'button',
+                {
+                  type: 'button',
+                  class: 'tachyon-section-order-warning__btn',
+                  click: (ev: MouseEvent) => {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    navigateToRoutingSectionsTab();
+                  },
+                } as any,
+                tr('Изменить порядок →', 'Reorder sections →'),
+              ),
+            ],
+          );
+        })()
+      : null;
+
   const sectionsBlock = E('div', { class: 'tachyon-routing-sections-block' }, [
     E('div', { class: 'tachyon-routing-sections-block__header' }, [
       E(
@@ -3349,6 +3507,7 @@ export function renderDashboardSectionsAndNodes(
           : '',
       ]),
     ]),
+    ...(policyOrderWarningBanner ? [policyOrderWarningBanner] : []),
     E('div', { class: listClass }, sectionItems),
   ]);
 

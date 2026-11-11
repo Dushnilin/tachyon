@@ -5860,17 +5860,37 @@ function core_subscription_bin_path() {
 
 function core_subscription_cli_supported() {
     let bin = core_subscription_bin_path();
-    if (_core_subscription_cli_supported != null && _core_subscription_cli_bin == bin)
-        return _core_subscription_cli_supported;
-
-    _core_subscription_cli_bin = bin;
     let st = fs.stat(bin);
     if (st == null || st.type != "file" || (int(st.mode || 0) & 73) == 0) {
         _core_subscription_cli_supported = false;
+        _core_subscription_cli_bin = bin;
         return false;
     }
 
-    _core_subscription_cli_supported = common.command_success_from_args([ bin, "subscription", "hwid" ]);
+    let stamp = bin + "|" + as_string(st.size || 0) + "|" + as_string(st.mtime || 0);
+    if (_core_subscription_cli_supported != null && _core_subscription_cli_bin == stamp)
+        return _core_subscription_cli_supported;
+
+    let stamp_file = "/var/run/tachyon/core-subscription-cli.stamp";
+    if (getenv("TACHYON_CORE_BIN") == null) {
+        let cached_stamp = trim(as_string(read_file(stamp_file) || ""));
+        if (cached_stamp == stamp + "|1") {
+            _core_subscription_cli_bin = stamp;
+            _core_subscription_cli_supported = true;
+            return true;
+        }
+        if (cached_stamp == stamp + "|0") {
+            _core_subscription_cli_bin = stamp;
+            _core_subscription_cli_supported = false;
+            return false;
+        }
+    }
+
+    let cap = common.command_capture(common.command_from_args([ bin, "subscription", "hwid" ]) + " 2>/dev/null");
+    _core_subscription_cli_bin = stamp;
+    _core_subscription_cli_supported = cap != null && int(cap.status) == 0;
+    if (getenv("TACHYON_CORE_BIN") == null && fs.stat("/var/run/tachyon") != null)
+        common.write_file(stamp_file, stamp + "|" + (_core_subscription_cli_supported ? "1" : "0") + "\n");
     return _core_subscription_cli_supported;
 }
 
@@ -5906,7 +5926,8 @@ function try_normalize_with_core_cli(input_file, output_file, headers_file, forc
         push(args, "--headers");
         push(args, as_string(headers_file));
     }
-    if (!common.command_success_from_args(args)) {
+    let parse_cap = common.command_capture(common.command_from_args(args) + " 2>/dev/null");
+    if (parse_cap == null || int(parse_cap.status) != 0) {
         fs.unlink(core_tmp);
         return false;
     }

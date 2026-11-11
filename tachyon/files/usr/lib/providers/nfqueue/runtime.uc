@@ -298,7 +298,7 @@ function legacy_runtime_path_present(cfg) {
 }
 
 function stop_legacy_runtime_processes(cfg) {
-    if (cfg.legacy_runtime_base == "")
+    if (cfg.legacy_runtime_base == "" || fs.stat(cfg.legacy_runtime_base) == null)
         return;
     let needle = cfg.legacy_runtime_base + "/nfq/nfqws";
     for (let line in split(command_output_from_args([ "ps", "w" ]), "\n")) {
@@ -311,7 +311,7 @@ function stop_legacy_runtime_processes(cfg) {
 }
 
 function cleanup_legacy_runtime(cfg) {
-    if (cfg.legacy_runtime_base == "")
+    if (cfg.legacy_runtime_base == "" || fs.stat(cfg.legacy_runtime_base) == null)
         return;
     stop_legacy_runtime_processes(cfg);
     command_success_from_args([ "rm", "-rf", cfg.legacy_runtime_base ]);
@@ -425,17 +425,21 @@ function supervisor(cfg, section, queue, raw_opt, child_pidfile) {
 }
 
 function stop_runtime(cfg) {
-    for (let pidfile in pidfiles_in_dir(cfg.pid_dir))
+    let parent_pids = pidfiles_in_dir(cfg.pid_dir);
+    let child_pids = pidfiles_in_dir(cfg.child_pid_dir);
+    for (let pidfile in parent_pids)
         kill_pidfile_process(pidfile, "");
-    for (let pidfile in pidfiles_in_dir(cfg.child_pid_dir))
+    for (let pidfile in child_pids)
         kill_pidfile_process(pidfile, "");
 
-    command_success_from_args([ "sleep", "1" ]);
+    if (length(parent_pids) > 0 || length(child_pids) > 0) {
+        command_success_from_args([ "sleep", "1" ]);
 
-    for (let pidfile in pidfiles_in_dir(cfg.pid_dir))
-        kill_pidfile_process(pidfile, "9");
-    for (let pidfile in pidfiles_in_dir(cfg.child_pid_dir))
-        kill_pidfile_process(pidfile, "9");
+        for (let pidfile in pidfiles_in_dir(cfg.pid_dir))
+            kill_pidfile_process(pidfile, "9");
+        for (let pidfile in pidfiles_in_dir(cfg.child_pid_dir))
+            kill_pidfile_process(pidfile, "9");
+    }
 
     let remove_args = [ "rm", "-rf", cfg.pid_dir, cfg.child_pid_dir, cfg.log_dir ];
     if (cfg.hostlist_dir != "")

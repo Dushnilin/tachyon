@@ -712,6 +712,26 @@ function createResetSettingsWidget() {
     if (btnReset.disabled) return;
     btnReset.disabled = true;
     msgEl.textContent = _("Resetting\u2026");
+    try {
+      if (typeof uci !== "undefined" && typeof uci.unload === "function") {
+        uci.unload(UCI_PACKAGE);
+      }
+    } catch (_e) {}
+    const finishResetUi = function () {
+      msgEl.textContent = "";
+      ui.addNotification(
+        null,
+        E(
+          "p",
+          {},
+          _("Settings have been reset to defaults. The page will reload."),
+        ),
+        "info",
+      );
+      setTimeout(function () {
+        location.reload();
+      }, 1500);
+    };
     fs.exec("/usr/bin/tachyon", ["reset_settings"])
       .then(function (res) {
         let success = false;
@@ -733,21 +753,14 @@ function createResetSettingsWidget() {
           success = false;
         }
         if (!success) throw new Error("reset failed");
-        msgEl.textContent = "";
-        ui.addNotification(
-          null,
-          E(
-            "p",
-            {},
-            _("Settings have been reset to defaults. The page will reload."),
-          ),
-          "info",
-        );
-        setTimeout(function () {
-          location.reload();
-        }, 1500);
+        finishResetUi();
       })
-      .catch(function () {
+      .catch(function (err) {
+        const msg = `${String((err && err.name) || "")} ${String((err && err.message) || err || "")}`;
+        if (/TimeoutError|timed out|NetworkError|Failed to fetch/i.test(msg)) {
+          finishResetUi();
+          return;
+        }
         msgEl.textContent = _("Failed to reset settings");
         btnReset.disabled = false;
       });

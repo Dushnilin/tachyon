@@ -490,8 +490,12 @@ function tag_prefixed_name_with_type(tag, names, metadata) {
 }
 
 function tag_name_filter_matches(tag, names, name_filter, regex_set, metadata, name_with_type_indexed, prefixed_with_type_indexed, is_first_for_type, is_first_for_prefixed_type) {
+    if (regex_set && regex_set[tag])
+        return true;
+    if (type(name_filter) != "array" || length(name_filter) == 0)
+        return false;
     let name = tag_display_name(tag, names);
-    if (array_contains(name_filter, name) || array_contains(name_filter, tag) || regex_set[tag])
+    if (array_contains(name_filter, name) || array_contains(name_filter, tag))
         return true;
     let name_with_type = tag_display_name_with_type(tag, names, metadata);
     if (name_with_type != name && (is_first_for_type != false) && array_contains(name_filter, name_with_type))
@@ -652,18 +656,27 @@ function urltest_matching_candidate_outbounds(urltest_candidate_tags, names, cou
 
     let seen_type_counts = {};
     let seen_prefixed_type_counts = {};
+    let has_name_filter = length(array_or_empty(name_filter)) > 0;
     for (let tag in array_or_empty(urltest_candidate_tags)) {
-        let name_with_type = tag_display_name_with_type(tag, names, metadata);
-        seen_type_counts[name_with_type] = (seen_type_counts[name_with_type] || 0) + 1;
-        let count = seen_type_counts[name_with_type];
-        let name_with_type_indexed = count > 1 ? (name_with_type + " (#" + count + ")") : name_with_type;
+        let name_with_type_indexed = null;
+        let prefixed_with_type_indexed = null;
+        let is_first_type = false;
+        let is_first_pref_type = false;
+        if (has_name_filter) {
+            let name_with_type = tag_display_name_with_type(tag, names, metadata);
+            seen_type_counts[name_with_type] = (seen_type_counts[name_with_type] || 0) + 1;
+            let count = seen_type_counts[name_with_type];
+            name_with_type_indexed = count > 1 ? (name_with_type + " (#" + count + ")") : name_with_type;
+            is_first_type = (count == 1);
 
-        let prefixed_with_type = tag_prefixed_name_with_type(tag, names, metadata);
-        seen_prefixed_type_counts[prefixed_with_type] = (seen_prefixed_type_counts[prefixed_with_type] || 0) + 1;
-        let p_count = seen_prefixed_type_counts[prefixed_with_type];
-        let prefixed_with_type_indexed = p_count > 1 ? (prefixed_with_type + " (#" + p_count + ")") : prefixed_with_type;
+            let prefixed_with_type = tag_prefixed_name_with_type(tag, names, metadata);
+            seen_prefixed_type_counts[prefixed_with_type] = (seen_prefixed_type_counts[prefixed_with_type] || 0) + 1;
+            let p_count = seen_prefixed_type_counts[prefixed_with_type];
+            prefixed_with_type_indexed = p_count > 1 ? (prefixed_with_type + " (#" + p_count + ")") : prefixed_with_type;
+            is_first_pref_type = (p_count == 1);
+        }
 
-        let base_matches = tag_name_filter_matches(tag, names, name_filter, regex_set, metadata, name_with_type_indexed, prefixed_with_type_indexed, count == 1, p_count == 1) ||
+        let base_matches = tag_name_filter_matches(tag, names, name_filter, regex_set, metadata, name_with_type_indexed, prefixed_with_type_indexed, is_first_type, is_first_pref_type) ||
             tag_country_filter_matches(tag, countries, country_filter);
         let matches = additional_set[tag] || base_matches;
         if (proxy_parameters_enabled && proxy_parameters_operator == "or") {
@@ -721,22 +734,25 @@ function filter_candidate_outbounds(filter_mode, urltest_candidate_tags, names, 
     if (!supported_urltest_filter_mode(filter_mode))
         return visible_outbounds;
 
-    let include_outbounds = urltest_matching_candidate_outbounds(
-        urltest_candidate_tags,
-        names,
-        countries,
-        include_names,
-        include_regex,
-        include_countries,
-        metadata,
-        include_proxy_parameters,
-        "and",
-        include_protocols,
-        include_transports,
-        include_securities,
-        include_ports,
-        include_additional_matches
-    );
+    if (filter_mode == "include") {
+        return urltest_matching_candidate_outbounds(
+            urltest_candidate_tags,
+            names,
+            countries,
+            include_names,
+            include_regex,
+            include_countries,
+            metadata,
+            include_proxy_parameters,
+            "and",
+            include_protocols,
+            include_transports,
+            include_securities,
+            include_ports,
+            include_additional_matches
+        );
+    }
+
     let exclude_outbounds = urltest_matching_candidate_outbounds(
         urltest_candidate_tags,
         names,
@@ -754,6 +770,9 @@ function filter_candidate_outbounds(filter_mode, urltest_candidate_tags, names, 
         exclude_additional_matches
     );
 
+    if (filter_mode == "exclude")
+        return urltest_exclude_outbounds(visible_outbounds, exclude_outbounds);
+
     let has_include_criteria =
         length(array_or_empty(include_names)) > 0 ||
         length(array_or_empty(include_regex)) > 0 ||
@@ -766,12 +785,25 @@ function filter_candidate_outbounds(filter_mode, urltest_candidate_tags, names, 
             length(array_or_empty(include_ports)) > 0
         ));
 
-    if (filter_mode == "include")
-        return include_outbounds;
-    if (filter_mode == "exclude")
-        return urltest_exclude_outbounds(visible_outbounds, exclude_outbounds);
-    if (filter_mode == "mixed")
-        return urltest_exclude_outbounds(has_include_criteria ? include_outbounds : visible_outbounds, exclude_outbounds);
+    if (filter_mode == "mixed") {
+        let base_list = has_include_criteria ? urltest_matching_candidate_outbounds(
+            urltest_candidate_tags,
+            names,
+            countries,
+            include_names,
+            include_regex,
+            include_countries,
+            metadata,
+            include_proxy_parameters,
+            "and",
+            include_protocols,
+            include_transports,
+            include_securities,
+            include_ports,
+            include_additional_matches
+        ) : visible_outbounds;
+        return urltest_exclude_outbounds(base_list, exclude_outbounds);
+    }
     return visible_outbounds;
 }
 
@@ -895,35 +927,53 @@ function filter_tags_by_group_spec(candidate_tags, spec, state) {
     let seen_type_counts = {};
     let seen_prefixed_type_counts = {};
     let intersect_country_and_name = false;
+    let has_inc_names_only = length(inc_names) > 0;
+    let need_indexed_type_names = has_inc_names_only || length(exc_names) > 0;
     if (has_inc_country && has_inc_name_regex) {
         let pre_type_counts = {};
         let pre_prefixed_counts = {};
         for (let t in all_tags) {
-            let nwt = tag_display_name_with_type(t, names, metadata);
-            pre_type_counts[nwt] = (pre_type_counts[nwt] || 0) + 1;
-            let c_idx = pre_type_counts[nwt];
-            let nwt_idx = c_idx > 1 ? (nwt + " (#" + c_idx + ")") : nwt;
-            let pwt = tag_prefixed_name_with_type(t, names, metadata);
-            pre_prefixed_counts[pwt] = (pre_prefixed_counts[pwt] || 0) + 1;
-            let pc_idx = pre_prefixed_counts[pwt];
-            let pwt_idx = pc_idx > 1 ? (pwt + " (#" + pc_idx + ")") : pwt;
+            let nwt_idx = null;
+            let pwt_idx = null;
+            let c_first = false;
+            let pc_first = false;
+            if (has_inc_names_only) {
+                let nwt = tag_display_name_with_type(t, names, metadata);
+                pre_type_counts[nwt] = (pre_type_counts[nwt] || 0) + 1;
+                let c_idx = pre_type_counts[nwt];
+                nwt_idx = c_idx > 1 ? (nwt + " (#" + c_idx + ")") : nwt;
+                c_first = (c_idx == 1);
+                let pwt = tag_prefixed_name_with_type(t, names, metadata);
+                pre_prefixed_counts[pwt] = (pre_prefixed_counts[pwt] || 0) + 1;
+                let pc_idx = pre_prefixed_counts[pwt];
+                pwt_idx = pc_idx > 1 ? (pwt + " (#" + pc_idx + ")") : pwt;
+                pc_first = (pc_idx == 1);
+            }
             if (tag_country_filter_matches(t, countries, inc_countries) &&
-                tag_name_filter_matches(t, names, inc_names, inc_regex_set, metadata, nwt_idx, pwt_idx, c_idx == 1, pc_idx == 1)) {
+                tag_name_filter_matches(t, names, inc_names, inc_regex_set, metadata, nwt_idx, pwt_idx, c_first, pc_first)) {
                 intersect_country_and_name = true;
                 break;
             }
         }
     }
     for (let t in all_tags) {
-        let name_with_type = tag_display_name_with_type(t, names, metadata);
-        seen_type_counts[name_with_type] = (seen_type_counts[name_with_type] || 0) + 1;
-        let count = seen_type_counts[name_with_type];
-        let name_with_type_indexed = count > 1 ? (name_with_type + " (#" + count + ")") : name_with_type;
+        let name_with_type_indexed = null;
+        let prefixed_with_type_indexed = null;
+        let is_first_type = false;
+        let is_first_pref_type = false;
+        if (need_indexed_type_names) {
+            let name_with_type = tag_display_name_with_type(t, names, metadata);
+            seen_type_counts[name_with_type] = (seen_type_counts[name_with_type] || 0) + 1;
+            let count = seen_type_counts[name_with_type];
+            name_with_type_indexed = count > 1 ? (name_with_type + " (#" + count + ")") : name_with_type;
+            is_first_type = (count == 1);
 
-        let prefixed_with_type = tag_prefixed_name_with_type(t, names, metadata);
-        seen_prefixed_type_counts[prefixed_with_type] = (seen_prefixed_type_counts[prefixed_with_type] || 0) + 1;
-        let p_count = seen_prefixed_type_counts[prefixed_with_type];
-        let prefixed_with_type_indexed = p_count > 1 ? (prefixed_with_type + " (#" + p_count + ")") : prefixed_with_type;
+            let prefixed_with_type = tag_prefixed_name_with_type(t, names, metadata);
+            seen_prefixed_type_counts[prefixed_with_type] = (seen_prefixed_type_counts[prefixed_with_type] || 0) + 1;
+            let p_count = seen_prefixed_type_counts[prefixed_with_type];
+            prefixed_with_type_indexed = p_count > 1 ? (prefixed_with_type + " (#" + p_count + ")") : prefixed_with_type;
+            is_first_pref_type = (p_count == 1);
+        }
 
         if (has_inc_prefix && !tag_prefix_filter_matches(t, names, metadata, inc_prefixes))
             continue;
@@ -931,7 +981,7 @@ function filter_tags_by_group_spec(candidate_tags, spec, state) {
         if ((mode == "include" || mode == "mixed") && any_inc_category) {
             if (has_inc_base) {
                 let c_match = has_inc_country && tag_country_filter_matches(t, countries, inc_countries);
-                let n_match = has_inc_name_regex && tag_name_filter_matches(t, names, inc_names, inc_regex_set, metadata, name_with_type_indexed, prefixed_with_type_indexed, count == 1, p_count == 1);
+                let n_match = has_inc_name_regex && tag_name_filter_matches(t, names, inc_names, inc_regex_set, metadata, name_with_type_indexed, prefixed_with_type_indexed, is_first_type, is_first_pref_type);
                 let base_matches = intersect_country_and_name ? (c_match && n_match) : (c_match || n_match);
                 if (!base_matches)
                     continue;
@@ -949,7 +999,7 @@ function filter_tags_by_group_spec(candidate_tags, spec, state) {
             if (!is_excluded && length(exc_countries) > 0 && tag_country_filter_matches(t, countries, exc_countries))
                 is_excluded = true;
             if (!is_excluded && (length(exc_names) > 0 || length(exc_regex) > 0) &&
-                tag_name_filter_matches(t, names, exc_names, exc_regex_set, metadata, name_with_type_indexed, prefixed_with_type_indexed, count == 1, p_count == 1))
+                tag_name_filter_matches(t, names, exc_names, exc_regex_set, metadata, name_with_type_indexed, prefixed_with_type_indexed, is_first_type, is_first_pref_type))
                 is_excluded = true;
             if (!is_excluded && exc_params && proxy_parameter_filter_matches_any(
                 t, metadata, spec.exclude_protocols, spec.exclude_transports, spec.exclude_securities, spec.exclude_ports
@@ -1809,19 +1859,49 @@ function add_group_urltest_outbounds(config, sections) {
     ctx.current_section = null;
 }
 
-function is_mieru_detour(config, tag, depth) {
+let cached_outbounds_map_config = null;
+let cached_outbounds_map_len = -1;
+let cached_outbounds_by_tag = {};
+let cached_valid_detour_by_tag = {};
+let cached_udp_support_by_tag = {};
+
+function get_outbounds_by_tag_index(config) {
+    if (type(config) != "object")
+        return {};
+    let outs = array_or_empty(config.outbounds);
+    let len = length(outs);
+    if (cached_outbounds_map_config != config || cached_outbounds_map_len != len) {
+        cached_outbounds_map_config = config;
+        cached_outbounds_map_len = len;
+        cached_outbounds_by_tag = {};
+        cached_valid_detour_by_tag = {};
+        cached_udp_support_by_tag = {};
+        for (let out in outs) {
+            if (type(out) == "object" && out.tag != null && out.tag != "")
+                cached_outbounds_by_tag[as_string(out.tag)] = out;
+        }
+    }
+    return cached_outbounds_by_tag;
+}
+
+function is_mieru_detour(config, tag, depth, visited) {
     depth = int(depth || 0);
     if (depth > 5 || tag == null || tag == "")
         return false;
-    for (let out in array_or_empty(config.outbounds)) {
-        if (type(out) == "object" && out.tag == tag) {
-            if (out.type == "mieru")
-                return true;
-            if ((out.type == "selector" || out.type == "urltest") && type(out.outbounds) == "array") {
-                for (let sub in out.outbounds) {
-                    if (is_mieru_detour(config, sub, depth + 1))
-                        return true;
-                }
+    visited = visited || {};
+    let tag_str = as_string(tag);
+    if (visited[tag_str])
+        return false;
+    visited[tag_str] = true;
+    let by_tag = get_outbounds_by_tag_index(config);
+    let out = by_tag[tag_str];
+    if (type(out) == "object") {
+        if (out.type == "mieru")
+            return true;
+        if ((out.type == "selector" || out.type == "urltest") && type(out.outbounds) == "array") {
+            for (let sub in out.outbounds) {
+                if (is_mieru_detour(config, sub, depth + 1, visited))
+                    return true;
             }
         }
     }
@@ -1831,26 +1911,32 @@ function is_mieru_detour(config, tag, depth) {
 function is_valid_detour(config, tag) {
     if (tag == null || tag == "")
         return false;
-    if (tag == runtime_constants.DIRECT_OUTBOUND_TAG || tag == runtime_constants.BYPASS_OUTBOUND_TAG)
+    let tag_str = as_string(tag);
+    if (tag_str == runtime_constants.DIRECT_OUTBOUND_TAG || tag_str == runtime_constants.BYPASS_OUTBOUND_TAG)
         return true;
-    for (let out in array_or_empty(config.outbounds)) {
-        if (type(out) == "object" && out.tag == tag) {
-            if (out.tag == "DPI-out" || (out.type == "socks" && (out.server == "127.0.0.1" || out.server == "::1")))
-                return false;
-            if (out.routing_mark != null)
-                return false;
-            if (out.type == "mieru" || is_mieru_detour(config, tag, 0))
-                return false;
-            return true;
-        }
+    let by_tag = get_outbounds_by_tag_index(config);
+    if (cached_valid_detour_by_tag[tag_str] != null)
+        return cached_valid_detour_by_tag[tag_str];
+    let out = by_tag[tag_str];
+    if (type(out) == "object") {
+        let valid = true;
+        if (out.tag == "DPI-out" || (out.type == "socks" && (out.server == "127.0.0.1" || out.server == "::1")))
+            valid = false;
+        else if (out.routing_mark != null)
+            valid = false;
+        else if (out.type == "mieru" || is_mieru_detour(config, tag_str, 0, {}))
+            valid = false;
+        cached_valid_detour_by_tag[tag_str] = valid;
+        return valid;
     }
     for (let ep in array_or_empty(config.endpoints)) {
-        if (type(ep) == "object" && ep.tag == tag) {
-            if (ep.routing_mark != null)
-                return false;
-            return true;
+        if (type(ep) == "object" && as_string(ep.tag) == tag_str) {
+            let valid = ep.routing_mark == null;
+            cached_valid_detour_by_tag[tag_str] = valid;
+            return valid;
         }
     }
+    cached_valid_detour_by_tag[tag_str] = false;
     return false;
 }
 
@@ -3509,49 +3595,66 @@ function outbound_supports_udp(config, tag_name, visited) {
         return false;
     if (tag_name == runtime_constants.DIRECT_OUTBOUND_TAG || tag_name == runtime_constants.BYPASS_OUTBOUND_TAG)
         return true;
+    let top_level = (visited == null);
+    let by_tag = get_outbounds_by_tag_index(config);
+    if (top_level && cached_udp_support_by_tag[tag_name] != null)
+        return cached_udp_support_by_tag[tag_name];
     visited = visited || {};
     if (visited[tag_name])
         return true;
     visited[tag_name] = true;
-    for (let outb in (config.outbounds || [])) {
-        if (as_string(outb.tag) == tag_name) {
-            let t = as_string(outb.type);
-            if (t == "http" || (t == "socks" && as_string(outb.version) == "4") || t == "block")
-                return false;
-            if (t == "desync") {
-                if (outb.udp_fake === true)
-                    return true;
-                if (outb.udp_fake === false)
-                    return false;
+    let outb = by_tag[tag_name];
+    if (type(outb) == "object") {
+        let t = as_string(outb.type);
+        let res = true;
+        if (t == "http" || (t == "socks" && as_string(outb.version) == "4") || t == "block")
+            res = false;
+        else if (t == "desync") {
+            if (outb.udp_fake === true)
+                res = true;
+            else if (outb.udp_fake === false)
+                res = false;
+            else {
                 let p = lc(trim(as_string(outb.preset || "")));
                 let m = lc(trim(as_string(outb.mode || "")));
                 if (p == "split" || p == "disorder" || p == "tlsrec" || p == "tls_rec" || p == "oob" || p == "multi_split" || p == "multisplit")
-                    return false;
-                if (p == "" && (m == "split" || m == "disorder" || m == "tlsrec" || m == "tls_rec" || m == "oob" || m == "multi_split" || m == "multisplit"))
-                    return false;
-                return true;
+                    res = false;
+                else if (p == "" && (m == "split" || m == "disorder" || m == "tlsrec" || m == "tls_rec" || m == "oob" || m == "multi_split" || m == "multisplit"))
+                    res = false;
+                else
+                    res = true;
             }
-            if (t == "socks" && as_string(outb.server) == runtime_constants.BYEDPI_LISTEN_ADDRESS &&
-                int(outb.server_port || 0) >= runtime_constants.BYEDPI_PORT_BASE &&
-                int(outb.server_port || 0) < runtime_constants.BYEDPI_PORT_BASE + 100)
-                return false;
-            if (t == "selector" || t == "urltest") {
-                if (type(outb.outbounds) == "array" && length(outb.outbounds) > 0) {
-                    for (let nested_tag in outb.outbounds) {
-                        if (!outbound_supports_udp(config, nested_tag, visited))
-                            return false;
+        }
+        else if (t == "socks" && as_string(outb.server) == runtime_constants.BYEDPI_LISTEN_ADDRESS &&
+            int(outb.server_port || 0) >= runtime_constants.BYEDPI_PORT_BASE &&
+            int(outb.server_port || 0) < runtime_constants.BYEDPI_PORT_BASE + 100)
+            res = false;
+        else if (t == "selector" || t == "urltest") {
+            if (type(outb.outbounds) == "array" && length(outb.outbounds) > 0) {
+                res = true;
+                for (let nested_tag in outb.outbounds) {
+                    if (!outbound_supports_udp(config, nested_tag, visited)) {
+                        res = false;
+                        break;
                     }
-                    return true;
                 }
-                return false;
+            } else {
+                res = false;
             }
+        }
+        if (top_level)
+            cached_udp_support_by_tag[tag_name] = res;
+        return res;
+    }
+    for (let ep in (config.endpoints || [])) {
+        if (as_string(ep.tag) == tag_name) {
+            if (top_level)
+                cached_udp_support_by_tag[tag_name] = true;
             return true;
         }
     }
-    for (let ep in (config.endpoints || [])) {
-        if (as_string(ep.tag) == tag_name)
-            return true;
-    }
+    if (top_level)
+        cached_udp_support_by_tag[tag_name] = false;
     return false;
 }
 
@@ -4612,8 +4715,10 @@ function add_combined_route_for_clause(config, section) {
     if (length(discord_cf_subnets) > 0 && !closed_geo) {
         if (target.outbound) {
             for (let outb in (config.outbounds || [])) {
-                if (as_string(outb.tag) == target.outbound && as_string(outb.type) == "desync" && outb.udp_fake !== false)
+                if (as_string(outb.tag) == target.outbound && as_string(outb.type) == "desync" && outb.udp_fake !== false) {
                     outb.udp_fake = true;
+                    cached_udp_support_by_tag = {};
+                }
             }
         }
         let voice_rule = create_section_route_rule();

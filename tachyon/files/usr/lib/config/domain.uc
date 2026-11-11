@@ -13,15 +13,11 @@ let common = require("core.common");
 let as_string = common.as_string;
 
 function ascii_lower(value) {
-    let upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    let lower = "abcdefghijklmnopqrstuvwxyz";
-    return replace(as_string(value), /[A-Z]/g, function(ch) {
-        return substr(lower, index(upper, ch), 1);
-    });
+    return lc(as_string(value));
 }
 
 function byte_at(value, offset) {
-    return ord(substr(value, offset, 1));
+    return ord(value, offset);
 }
 
 function valid_continuation(value, offset) {
@@ -222,6 +218,11 @@ function label_to_ascii(value) {
     value = as_string(value);
     if (value == "")
         return null;
+
+    if (match(value, /^[A-Za-z0-9-]+$/) != null) {
+        let lower = lc(value);
+        return valid_ascii_label(lower) ? lower : null;
+    }
 
     let codepoints = utf8_codepoints(value);
     if (codepoints == null)

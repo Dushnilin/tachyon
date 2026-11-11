@@ -133,6 +133,17 @@ function prepare_list(name, source) {
         else
             return false;
     }
+    let src_st = fs.stat(source);
+    let dst_st = fs.stat(path);
+    let stamps_path = (getenv("TACHYON_RUNTIME_DIR") || "/var/run/tachyon") + "/smart-detect-exclusions-stamps.json";
+    let cur_stamp = (src_st && dst_st && dst_st.size > 20 && getenv("DECODE_FIXTURE") == null)
+        ? (source + "|" + src_st.size + "|" + src_st.mtime + "|" + path + "|" + dst_st.size + "|" + dst_st.mtime)
+        : null;
+    if (cur_stamp != null) {
+        let stamps = common.read_json_file(stamps_path);
+        if (type(stamps) == "object" && stamps[name] == cur_stamp)
+            return true;
+    }
     if (!common.command_success_from_args(["mkdir", "-p", cache_dir])) return false;
     let stamp = clock();
     let temporary = sprintf("%s.%d.%d.decode", path, stamp[0], stamp[1]);
@@ -146,7 +157,15 @@ function prepare_list(name, source) {
     let payload = { version: 1, service: name, domains: parsed.domains };
     if (length(parsed.keywords)) payload.keywords = parsed.keywords;
     if (length(parsed.regexes)) payload.regexes = parsed.regexes;
-    return common.write_json_file(path, payload);
+    if (!common.write_json_file(path, payload)) return false;
+    let new_dst_st = fs.stat(path);
+    if (src_st && new_dst_st) {
+        let stamps = common.read_json_file(stamps_path);
+        if (type(stamps) != "object") stamps = {};
+        stamps[name] = source + "|" + src_st.size + "|" + src_st.mtime + "|" + path + "|" + new_dst_st.size + "|" + new_dst_st.mtime;
+        try { common.write_json_file(stamps_path, stamps); } catch (e) {}
+    }
+    return true;
 }
 
 function add_domain(indexes, domain) {
@@ -214,7 +233,12 @@ function state(cfg) {
         let valid = true;
         if (type(data.domains) == "array") {
             for (let value in data.domains) {
-                let domain = normalize(value, true);
+                let domain = (type(value) == "string" && length(value) >= 1 && length(value) <= 253 &&
+                    substr(value, 0, 1) != "." && substr(value, -1) != "." && substr(value, -1) != "-" &&
+                    index(value, "..") < 0 && match(value, /^[a-z0-9.-]+$/) != null &&
+                    match(value, /[a-z]/) != null)
+                    ? value
+                    : normalize(value, true);
                 if (domain == null) { valid = false; break; }
                 add_domain(result, domain);
             }

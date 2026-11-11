@@ -4743,7 +4743,12 @@ function renderStoreWidget(
   container.replaceChildren(renderedWidget);
 }
 
+let fetchConnectionsInFlight = false;
+
 async function fetchConnections() {
+  if (fetchConnectionsInFlight) {
+    return;
+  }
   const isLiteMode = Boolean(store.get().servicesInfoWidget.data?.liteMode);
 
   if (isLiteMode && !expandedSections.has('active_clients')) {
@@ -4764,8 +4769,9 @@ async function fetchConnections() {
   if (!needsFallbackPolling && !shouldFetchHostnames) {
     return;
   }
+  fetchConnectionsInFlight = true;
   try {
-    if (!needsFallbackPolling && lastRawConnections.length > 0) {
+    if (!needsFallbackPolling) {
       const hostnames = await fetchHostnames();
       if (hostnames.size > 0) {
         cachedHostnames = hostnames;
@@ -4848,6 +4854,8 @@ async function fetchConnections() {
     }
   } catch (_e) {
     // Ignore connections fetch errors
+  } finally {
+    fetchConnectionsInFlight = false;
   }
   scheduleConnectionsWidgetRender();
 }
@@ -6753,8 +6761,9 @@ async function onStoreUpdate(
       const dataChanged =
         prev.sectionsWidget.loading !== next.sectionsWidget.loading ||
         prev.sectionsWidget.failed !== next.sectionsWidget.failed ||
-        JSON.stringify(prev.sectionsWidget.data) !==
-          JSON.stringify(next.sectionsWidget.data);
+        (prev.sectionsWidget.data !== next.sectionsWidget.data &&
+          JSON.stringify(prev.sectionsWidget.data) !==
+            JSON.stringify(next.sectionsWidget.data));
 
       if (dataChanged) {
         scheduleSectionsWidgetRender();
@@ -6776,6 +6785,10 @@ async function onStoreUpdate(
 
   if (diff.tailscaleWidget) {
     renderTailscaleWidget();
+    renderInboundServersDashboardWidget({
+      rawConnections: lastRawConnections,
+      hostnames: cachedHostnames,
+    });
   }
 }
 

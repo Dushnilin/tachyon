@@ -37,15 +37,7 @@ function array_from_value(value) {
 }
 
 function trim_string(value) {
-    let text = as_string(value);
-    let start_match = match(text, /^[ \t\r\n]*/);
-    let start = start_match ? length(start_match[0]) : 0;
-    let end = length(text);
-
-    while (end > start && match(substr(text, end - 1, 1), /[ \t\r\n]/))
-        end--;
-
-    return substr(text, start, end - start);
+    return trim(as_string(value));
 }
 
 function sort_values(values) {
@@ -145,8 +137,11 @@ function import_plain_list(plain_path, ruleset_path, key, kind, chunk_size_text,
     let invalid = [];
 
     for (let line in split(as_string(data), "\n")) {
-        line = replace(as_string(line), /[ \t]*\/\/.*$/, "");
-        line = replace(line, /[ \t]*#.*$/, "");
+        line = as_string(line);
+        if (index(line, "//") >= 0)
+            line = replace(line, /[ \t]*\/\/.*$/, "");
+        if (index(line, "#") >= 0)
+            line = replace(line, /[ \t]*#.*$/, "");
         line = trim_string(line);
 
         if (line == "" || substr(line, 0, 1) == "#" || substr(line, 0, 1) == ";")
@@ -649,14 +644,46 @@ function has_rules(path) {
 }
 
 function compile_plain_list(plain_path, ruleset_srs_path, ruleset_json_path) {
-    create_source(ruleset_json_path);
-    import_plain_list(plain_path, ruleset_json_path, "domain_suffix", "domains", "5000");
-    import_plain_list(plain_path, ruleset_json_path, "ip_cidr", "subnets", "5000");
+    let data = fs.readfile(plain_path);
+    let domains = [];
+    let subnets = [];
 
-    let has_doms = has_domain_matchers(ruleset_json_path);
-    let has_ips = has_ip_matchers(ruleset_json_path);
+    if (data != null) {
+        for (let line in split(as_string(data), "\n")) {
+            line = as_string(line);
+            if (index(line, "//") >= 0)
+                line = replace(line, /[ \t]*\/\/.*$/, "");
+            if (index(line, "#") >= 0)
+                line = replace(line, /[ \t]*#.*$/, "");
+            line = trim_string(line);
+
+            if (line == "" || substr(line, 0, 1) == "#" || substr(line, 0, 1) == ";")
+                continue;
+
+            if (ip.valid_ip_or_cidr(line)) {
+                push(subnets, line);
+            } else {
+                let dom = domain_config.suffix_to_ascii(line);
+                if (dom != null)
+                    push(domains, dom);
+            }
+        }
+    }
+
+    domains = unique_values(domains);
+    subnets = unique_values(subnets);
+    let has_doms = length(domains) > 0;
+    let has_ips = length(subnets) > 0;
     let kind = (has_doms && has_ips) ? "mixed" : (has_ips ? "subnets" : (has_doms ? "domains" : "unknown"));
-    let rules_exist = has_rules(ruleset_json_path);
+    let rules = [];
+    if (has_doms)
+        push(rules, { domain_suffix: domains });
+    if (has_ips)
+        push(rules, { ip_cidr: subnets });
+    let rules_exist = length(rules) > 0;
+
+    if (!write_json_file(ruleset_json_path, { version: 3, rules }))
+        exit(1);
 
     if (rules_exist) {
         let compile_ok = common.command_success_from_args([

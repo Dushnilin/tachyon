@@ -836,6 +836,17 @@ function is_udp_port_busy(port) {
 }
 
 function generate_awg_header_int() {
+    let f = fs.open("/dev/urandom", "r");
+    if (f) {
+        let bytes = f.read(4);
+        f.close();
+        if (bytes != null && length(bytes) == 4) {
+            let val = ((ord(bytes, 0) & 0x7F) << 24) | (ord(bytes, 1) << 16) | (ord(bytes, 2) << 8) | ord(bytes, 3);
+            if (val < 100000000)
+                val += 100000000;
+            return as_string(val);
+        }
+    }
     let hex = replace(output("head -c 4 /dev/urandom | hexdump -ve '1/1 \"%02x\"' 2>/dev/null"), /\n/g, "");
     if (hex != "" && length(hex) == 8) {
         let val = int(hex, 16);
@@ -1012,7 +1023,12 @@ function detect_router_country() {
     return "RU";
 }
 
+let _cached_router_network_env = null;
+
 function get_router_network_env() {
+    if (_cached_router_network_env != null)
+        return _cached_router_network_env;
+
     let ddns_domain = get_router_ddns_domain();
     let has_ddns = ddns_domain != "";
     let wan_ips = get_router_wan_ips();
@@ -1055,7 +1071,7 @@ function get_router_network_env() {
 
     let terminating_sni = has_ddns ? ddns_domain : (valid_domain(public_host) ? public_host : "tachyon.lan");
 
-    return {
+    _cached_router_network_env = {
         public_host: public_host,
         country_code: country_code,
         is_public_ip: is_public_ip,
@@ -1104,6 +1120,12 @@ function get_router_network_env() {
             h4: awg_headers[3]
         }
     };
+    return _cached_router_network_env;
+}
+
+function nonempty_file(path) {
+    let st = fs.stat(as_string(path));
+    return st != null && int(st.size || 0) > 0;
 }
 
 function server_detect_default_public_host() {
@@ -1148,7 +1170,7 @@ function get_tls_certificate_sha256_cli(section) {
             uci_commit(CONFIG_NAME);
     }
 
-    if (!run("[ -s " + shell_quote(certificate_path) + " ] && [ -s " + shell_quote(key_path) + " ]")) {
+    if (!(nonempty_file(certificate_path) && nonempty_file(key_path))) {
         server_generate_tls_keypair_files(tls_server_name, certificate_path, key_path);
     }
 
@@ -1178,7 +1200,7 @@ function generate_tls_keypair_cli(section) {
     let certificate_path = config_get(section, "tls_certificate_path", default_dir + "/" + safe_name + ".crt");
     let key_path = config_get(section, "tls_key_path", default_dir + "/" + safe_name + ".key");
 
-    if (!run("[ -s " + shell_quote(certificate_path) + " ] && [ -s " + shell_quote(key_path) + " ]")) {
+    if (!(nonempty_file(certificate_path) && nonempty_file(key_path))) {
         if (!server_generate_tls_keypair_files(tls_server_name, certificate_path, key_path)) {
             error_response("Failed to generate TLS certificate");
             exit(1);
@@ -1261,7 +1283,7 @@ function server_prepare_tls_defaults(section, protocol, security) {
     if (certificate_path == key_path)
         fatal("Server '" + section + "' has the same TLS certificate and key path. Specify different files. Aborted.");
 
-    if (!run("[ -s " + shell_quote(certificate_path) + " ] && [ -s " + shell_quote(key_path) + " ]")) {
+    if (!(nonempty_file(certificate_path) && nonempty_file(key_path))) {
         log("Generating self-signed TLS certificate for server '" + section + "'", "info");
         if (!server_generate_tls_keypair_files(tls_server_name, certificate_path, key_path))
             fatal("Failed to generate TLS certificate for server '" + section + "'. Aborted.");

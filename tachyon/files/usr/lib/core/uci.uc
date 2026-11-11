@@ -67,8 +67,17 @@ function resolve_section_name(c, package_name, raw_section_name) {
     raw_section_name = as_string(raw_section_name);
 
     let selector = anonymous_section_selector(raw_section_name);
-    if (selector == null)
-        return raw_section_name;
+    if (selector == null) {
+        if (raw_section_name == "settings" || raw_section_name == "telegram" || raw_section_name == "guest_mode") {
+            try {
+                if (c.get(as_string(package_name), raw_section_name) == null)
+                    selector = { type: raw_section_name, index: 0 };
+            }
+            catch (e) {}
+        }
+        if (selector == null)
+            return raw_section_name;
+    }
 
     let found = "";
     let current = 0;

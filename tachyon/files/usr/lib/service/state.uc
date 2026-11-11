@@ -1370,13 +1370,15 @@ function download_via_proxy_enabled(settings, purpose) {
 }
 
 function signature_add_value(body, key, value) {
-    return body + "[" + as_string(key) + "]\n" + as_string(value) + "\n";
+    return body + ("[" + as_string(key) + "]\n" + as_string(value) + "\n");
 }
 
+let _sig_counter = 0;
+
 function signature_hash(body) {
-    let path = trim(command_output_from_args([ "mktemp" ]));
-    if (path == "")
-        return "";
+    let stamp = clock();
+    _sig_counter++;
+    let path = sprintf("/tmp/tachyon-sig.%d.%d.%d.tmp", stamp[0], stamp[1], _sig_counter);
 
     if (!write_text_file(path, body)) {
         unlink_file(path);
@@ -1388,6 +1390,54 @@ function signature_hash(body) {
     hash_line = trim(hash_line);
 
     return length(hash_line) >= 32 ? substr(hash_line, 0, 32) : "";
+}
+
+function signature_hashes_batch(bodies) {
+    let stamp = clock();
+    let keys_list = keys(bodies);
+    let paths = [];
+    let key_by_path = {};
+    let result = {};
+
+    for (let k in keys_list) {
+        _sig_counter++;
+        let p = sprintf("/tmp/tachyon-sig.%d.%d.%d.tmp", stamp[0], stamp[1], _sig_counter);
+        if (!write_text_file(p, bodies[k])) {
+            for (let old_p in paths)
+                unlink_file(old_p);
+            unlink_file(p);
+            for (let k2 in keys_list)
+                result[k2] = signature_hash(bodies[k2]);
+            return result;
+        }
+        push(paths, p);
+        key_by_path[p] = k;
+        result[k] = "";
+    }
+
+    if (length(paths) > 0) {
+        let args = [ "md5sum" ];
+        for (let p in paths)
+            push(args, p);
+        let out = command_output_from_args(args);
+        for (let p in paths)
+            unlink_file(p);
+        let idx = 0;
+        for (let line in split(trim(out), "\n")) {
+            let trimmed = trim(line);
+            if (length(trimmed) >= 32 && idx < length(keys_list)) {
+                let hash = substr(trimmed, 0, 32);
+                let rest = trim(substr(trimmed, 32));
+                if (substr(rest, 0, 1) == "*")
+                    rest = trim(substr(rest, 1));
+                let matched_key = key_by_path[rest] || keys_list[idx];
+                result[matched_key] = hash;
+                idx++;
+            }
+        }
+    }
+
+    return result;
 }
 
 function print_signature_hash(body) {
@@ -1457,8 +1507,20 @@ function settings_component_update_check_interval(settings) {
     return value != "" ? value : "1d";
 }
 
+let _rule_ports_csv_cache = {};
+let _rule_cond_csv_cache = {};
+
 function single_rule_ports_csv(section) {
-    return rule_config.rule_ports_csv_value(option(section, "ports", ""), option(section, "ports_text", ""));
+    let p_val = option(section, "ports", "");
+    let pt_val = option(section, "ports_text", "");
+    if (p_val == "" && pt_val == "")
+        return "";
+    let cache_key = p_val + "\x1f" + pt_val;
+    if (exists(_rule_ports_csv_cache, cache_key))
+        return _rule_ports_csv_cache[cache_key];
+    let res = rule_config.rule_ports_csv_value(p_val, pt_val);
+    _rule_ports_csv_cache[cache_key] = res;
+    return res;
 }
 
 function section_rule_ports_csv(section) {
@@ -1485,16 +1547,29 @@ function combined_domain_condition_text(section) {
 }
 
 function single_rule_condition_csv(section, key, kind) {
-    return rule_config.rule_condition_csv_value(
+    let k_tm = option(section, key + "_text_mode", "0");
+    let c_tm = option(section, "conditions_text_mode", "0");
+    let k_txt = option(section, key + "_text", "");
+    let k_val = option(section, key, "");
+    let comb_txt = combined_domain_condition_text(section);
+    let comb_val = option(section, "domain_suffix", "");
+    if (k_txt == "" && k_val == "" && comb_txt == "" && comb_val == "")
+        return "";
+    let cache_key = key + "\x1f" + kind + "\x1f" + k_tm + "\x1f" + c_tm + "\x1f" + k_txt + "\x1f" + k_val + "\x1f" + comb_txt + "\x1f" + comb_val;
+    if (exists(_rule_cond_csv_cache, cache_key))
+        return _rule_cond_csv_cache[cache_key];
+    let res = rule_config.rule_condition_csv_value(
         key,
         kind,
-        option(section, key + "_text_mode", "0"),
-        option(section, "conditions_text_mode", "0"),
-        option(section, key + "_text", ""),
-        option(section, key, ""),
-        combined_domain_condition_text(section),
-        option(section, "domain_suffix", "")
+        k_tm,
+        c_tm,
+        k_txt,
+        k_val,
+        comb_txt,
+        comb_val
     );
+    _rule_cond_csv_cache[cache_key] = res;
+    return res;
 }
 
 function section_rule_condition_csv(section, key, kind) {
@@ -1573,25 +1648,37 @@ function nft_guest_mode_signature_body(body, guest_mode) {
     return body;
 }
 
+let _fail_state_cache_stamp = "";
+let _fail_state_cache_obj = null;
+
 function section_runtime_failed(name) {
     let path = getenv("TACHYON_SECTION_FAIL_STATE_FILE") || "/var/run/tachyon/section-fail-state.json";
-    let raw = "";
-    try {
-        raw = trim(as_string(fs.readfile(path)) || "");
-    } catch (e) {
-        raw = "";
-    }
-    if (raw == "")
+    let st = fs.stat(path);
+    if (st == null)
         return false;
-    let parsed = null;
-    try {
-        parsed = json(raw);
-    } catch (e) {
-        parsed = null;
+    let stamp = path + "|" + as_string(st.size || 0) + "|" + as_string(st.mtime || 0);
+    if (_fail_state_cache_stamp != stamp) {
+        _fail_state_cache_stamp = stamp;
+        _fail_state_cache_obj = null;
+        let raw = "";
+        try {
+            raw = trim(as_string(fs.readfile(path)) || "");
+        } catch (e) {
+            raw = "";
+        }
+        if (raw != "") {
+            try {
+                let parsed = json(raw);
+                if (type(parsed) == "object")
+                    _fail_state_cache_obj = parsed;
+            } catch (e) {
+                _fail_state_cache_obj = null;
+            }
+        }
     }
-    if (type(parsed) != "object")
+    if (type(_fail_state_cache_obj) != "object")
         return false;
-    let entry = object_or_empty(parsed[as_string(name)]);
+    let entry = object_or_empty(_fail_state_cache_obj[as_string(name)]);
     return entry.failed == true || as_string(entry.failed || "") == "1";
 }
 
@@ -1624,65 +1711,72 @@ function nft_runtime_signature_body(settings, sections, schedules, profiles, gue
     if (bool_option(settings, "lite_mode", false))
         body = signature_add_value(body, "settings.lite_mode", "1");
 
+    let chunks = [ body ];
+
     for (let section in sections) {
         section = object_or_empty(section);
         let name = section_name(section);
         if (name == "" || !bool_option(section, "enabled", true))
             continue;
 
+        let s_body = "";
         let action = option(section, "action", "");
-        body = signature_add_value(body, "rule." + name + ".action", action);
-        if (action == "hosts")
-            continue;
-        if (action == "dns") {
-            body = signature_add_value(body, "rule." + name + ".source_ip_cidr", section_rule_condition_csv(section, "source_ip_cidr", "subnets"));
-            body = signature_add_value(body, "rule." + name + ".source_aware_dns", connections.has_dns_matchers(section) ? "1" : "0");
-            body = signature_add_value(body, "rule." + name + ".fully_routed_ips", section_leaf_option_text(section, "fully_routed_ips"));
+        s_body = signature_add_value(s_body, "rule." + name + ".action", action);
+        if (action == "hosts") {
+            push(chunks, s_body);
             continue;
         }
-        body = signature_add_value(body, "rule." + name + ".ip_cidr", section_rule_condition_csv(section, "ip_cidr", "subnets"));
-        body = signature_add_value(body, "rule." + name + ".source_ip_cidr", section_rule_condition_csv(section, "source_ip_cidr", "subnets"));
-        body = signature_add_value(body, "rule." + name + ".source_aware_dns", connections.has_dns_matchers(section) ? "1" : "0");
-        body = signature_add_value(body, "rule." + name + ".ports", section_rule_ports_csv(section));
-        body = signature_add_value(body, "rule." + name + ".fully_routed_ips", section_leaf_option_text(section, "fully_routed_ips"));
-        body = signature_add_value(body, "rule." + name + ".excluded_ips", section_leaf_option_text(section, "excluded_ips"));
-        body = signature_add_value(body, "rule." + name + ".excluded_protocol", section_leaf_option_text(section, "excluded_protocol"));
-        body = signature_add_value(body, "rule." + name + ".routed_dns_enabled", bool_option(section, "routed_dns_enabled", false) ? "1" : "0");
-        body = signature_add_value(body, "rule." + name + ".routed_dns_type", option(section, "routed_dns_type", ""));
-        body = signature_add_value(body, "rule." + name + ".routed_dns_server", option(section, "routed_dns_server", ""));
-        body = signature_add_value(body, "rule." + name + ".protocol", section_leaf_option_text(section, "protocol"));
+        if (action == "dns") {
+            s_body = signature_add_value(s_body, "rule." + name + ".source_ip_cidr", section_rule_condition_csv(section, "source_ip_cidr", "subnets"));
+            s_body = signature_add_value(s_body, "rule." + name + ".source_aware_dns", connections.has_dns_matchers(section) ? "1" : "0");
+            s_body = signature_add_value(s_body, "rule." + name + ".fully_routed_ips", section_leaf_option_text(section, "fully_routed_ips"));
+            push(chunks, s_body);
+            continue;
+        }
+        s_body = signature_add_value(s_body, "rule." + name + ".ip_cidr", section_rule_condition_csv(section, "ip_cidr", "subnets"));
+        s_body = signature_add_value(s_body, "rule." + name + ".source_ip_cidr", section_rule_condition_csv(section, "source_ip_cidr", "subnets"));
+        s_body = signature_add_value(s_body, "rule." + name + ".source_aware_dns", connections.has_dns_matchers(section) ? "1" : "0");
+        s_body = signature_add_value(s_body, "rule." + name + ".ports", section_rule_ports_csv(section));
+        s_body = signature_add_value(s_body, "rule." + name + ".fully_routed_ips", section_leaf_option_text(section, "fully_routed_ips"));
+        s_body = signature_add_value(s_body, "rule." + name + ".excluded_ips", section_leaf_option_text(section, "excluded_ips"));
+        s_body = signature_add_value(s_body, "rule." + name + ".excluded_protocol", section_leaf_option_text(section, "excluded_protocol"));
+        s_body = signature_add_value(s_body, "rule." + name + ".routed_dns_enabled", bool_option(section, "routed_dns_enabled", false) ? "1" : "0");
+        s_body = signature_add_value(s_body, "rule." + name + ".routed_dns_type", option(section, "routed_dns_type", ""));
+        s_body = signature_add_value(s_body, "rule." + name + ".routed_dns_server", option(section, "routed_dns_server", ""));
+        s_body = signature_add_value(s_body, "rule." + name + ".protocol", section_leaf_option_text(section, "protocol"));
         let comm_subnets = bool_option(section, "community_subnets", true) ? rule_config.filter_community_subnet_lists_value(connections.community_lists_value(section)) : "";
-        body = signature_add_value(body, "rule." + name + ".community_subnet_lists", comm_subnets);
+        s_body = signature_add_value(s_body, "rule." + name + ".community_subnet_lists", comm_subnets);
 
-        body = signature_add_value(body, "rule." + name + ".remote_subnet_lists", section_leaf_option_text(section, "remote_subnet_lists"));
-        body = signature_add_value(body, "rule." + name + ".rule_set_with_subnets", connections.rule_sets_with_subnets_value(section));
-        body = signature_add_value(body, "rule." + name + ".domain_ip_lists", section_leaf_option_text(section, "domain_ip_lists"));
-        body = signature_add_value(body, "rule." + name + ".dscp", connections.dscp_value(section));
+        s_body = signature_add_value(s_body, "rule." + name + ".remote_subnet_lists", section_leaf_option_text(section, "remote_subnet_lists"));
+        s_body = signature_add_value(s_body, "rule." + name + ".rule_set_with_subnets", connections.rule_sets_with_subnets_value(section));
+        s_body = signature_add_value(s_body, "rule." + name + ".domain_ip_lists", section_leaf_option_text(section, "domain_ip_lists"));
+        s_body = signature_add_value(s_body, "rule." + name + ".dscp", connections.dscp_value(section));
         let geo_val = connections.geoip_country_value(section);
         if (geo_val != "")
-            body = signature_add_value(body, "rule." + name + ".geoip_country", connections.geoip_country_mode(section) + ":" + geo_val);
+            s_body = signature_add_value(s_body, "rule." + name + ".geoip_country", connections.geoip_country_mode(section) + ":" + geo_val);
         if (length(connections.section_condition_refs(section)) > 0 || option(section, "condition_expression", "") != "")
-            body = signature_add_value(body, "rule." + name + ".condition_clauses", sprintf("%J", connections.section_effective_clauses(section)));
+            s_body = signature_add_value(s_body, "rule." + name + ".condition_clauses", sprintf("%J", connections.section_effective_clauses(section)));
         let fail_policy = lc(trim(option(section, "fail_policy", "keep")));
         if (fail_policy == "block" || fail_policy == "direct") {
-            body = signature_add_value(body, "rule." + name + ".fail_policy", fail_policy);
+            s_body = signature_add_value(s_body, "rule." + name + ".fail_policy", fail_policy);
             if (section_runtime_failed(name))
-                body = signature_add_value(body, "rule." + name + ".runtime_failed", "1");
+                s_body = signature_add_value(s_body, "rule." + name + ".runtime_failed", "1");
         }
+        push(chunks, s_body);
     }
 
     for (let profile in profiles)
-        body = nft_profile_signature_body(body, object_or_empty(profile));
+        push(chunks, nft_profile_signature_body("", object_or_empty(profile)));
 
     for (let schedule in schedules)
-        body = nft_schedule_signature_body(body, object_or_empty(schedule));
+        push(chunks, nft_schedule_signature_body("", object_or_empty(schedule)));
 
     if (guest_modes) {
         for (let gm in guest_modes)
-            body = nft_guest_mode_signature_body(body, object_or_empty(gm));
+            push(chunks, nft_guest_mode_signature_body("", object_or_empty(gm)));
     }
 
-    return body;
+    return join("", chunks);
 }
 
 function section_subscription_update_interval(section) {
@@ -2499,19 +2593,21 @@ function sing_box_signature_body(settings, sections, servers, mwan3_active, sche
         body = signature_add_value(body, "settings.p2p_ports", option(settings, "p2p_ports", ""));
     }
 
+    let chunks = [ body ];
+
     for (let section in sections)
-        body = append_sing_box_rule_signature_body(body, object_or_empty(section), sections);
+        push(chunks, append_sing_box_rule_signature_body("", object_or_empty(section), sections));
 
     for (let server in servers)
-        body = append_sing_box_server_signature_body(body, object_or_empty(server));
+        push(chunks, append_sing_box_server_signature_body("", object_or_empty(server)));
 
     for (let profile in profiles)
-        body = append_sing_box_profile_signature_body(body, object_or_empty(profile));
+        push(chunks, append_sing_box_profile_signature_body("", object_or_empty(profile)));
 
     for (let schedule in schedules)
-        body = append_sing_box_schedule_signature_body(body, object_or_empty(schedule));
+        push(chunks, append_sing_box_schedule_signature_body("", object_or_empty(schedule)));
 
-    return body;
+    return join("", chunks);
 }
 
 function section_provider_for_action(section, action) {
@@ -2716,23 +2812,40 @@ function fptn_runtime_signature_body(sections) {
 }
 
 function reload_state_values_from_sources(format, settings, sections, servers, dnsmasq, legacy_dnsmasq_present, mwan3_active_value, schedules, profiles, guest_modes, telegram) {
+    let hashes = signature_hashes_batch({
+        service_trigger_signature: service_trigger_signature_body(settings),
+        dnsmasq_signature: dnsmasq_signature_body(settings, dnsmasq, legacy_dnsmasq_present),
+        sing_box_signature: sing_box_signature_body(settings, sections, servers, mwan3_active_value, schedules, profiles, telegram),
+        nft_signature: nft_runtime_signature_body(settings, sections, schedules, profiles, guest_modes),
+        zapret_queue_signature: action_queue_signature_body(sections, "zapret", "zapret_queue.section"),
+        zapret_runtime_signature: zapret_runtime_signature_body(sections),
+        zapret2_queue_signature: action_queue_signature_body(sections, "zapret2", "zapret2_queue.section"),
+        zapret2_runtime_signature: zapret2_runtime_signature_body(sections),
+        byedpi_runtime_signature: byedpi_runtime_signature_body(sections),
+        wdtt_runtime_signature: wdtt_runtime_signature_body(sections),
+        olcrtc_runtime_signature: olcrtc_runtime_signature_body(sections),
+        fptn_runtime_signature: fptn_runtime_signature_body(sections),
+        list_signature: list_update_signature_body(sections),
+        hosts_list_signature: hosts_list_signature_body(sections),
+        cron_signature: cron_signature_body(settings, sections)
+    });
     return {
         format: as_string(format),
-        service_trigger_signature: signature_hash(service_trigger_signature_body(settings)),
-        dnsmasq_signature: signature_hash(dnsmasq_signature_body(settings, dnsmasq, legacy_dnsmasq_present)),
-        sing_box_signature: signature_hash(sing_box_signature_body(settings, sections, servers, mwan3_active_value, schedules, profiles, telegram)),
-        nft_signature: signature_hash(nft_runtime_signature_body(settings, sections, schedules, profiles, guest_modes)),
-        zapret_queue_signature: signature_hash(action_queue_signature_body(sections, "zapret", "zapret_queue.section")),
-        zapret_runtime_signature: signature_hash(zapret_runtime_signature_body(sections)),
-        zapret2_queue_signature: signature_hash(action_queue_signature_body(sections, "zapret2", "zapret2_queue.section")),
-        zapret2_runtime_signature: signature_hash(zapret2_runtime_signature_body(sections)),
-        byedpi_runtime_signature: signature_hash(byedpi_runtime_signature_body(sections)),
-        wdtt_runtime_signature: signature_hash(wdtt_runtime_signature_body(sections)),
-        olcrtc_runtime_signature: signature_hash(olcrtc_runtime_signature_body(sections)),
-        fptn_runtime_signature: signature_hash(fptn_runtime_signature_body(sections)),
-        list_signature: signature_hash(list_update_signature_body(sections)),
-        hosts_list_signature: signature_hash(hosts_list_signature_body(sections)),
-        cron_signature: signature_hash(cron_signature_body(settings, sections)),
+        service_trigger_signature: hashes.service_trigger_signature,
+        dnsmasq_signature: hashes.dnsmasq_signature,
+        sing_box_signature: hashes.sing_box_signature,
+        nft_signature: hashes.nft_signature,
+        zapret_queue_signature: hashes.zapret_queue_signature,
+        zapret_runtime_signature: hashes.zapret_runtime_signature,
+        zapret2_queue_signature: hashes.zapret2_queue_signature,
+        zapret2_runtime_signature: hashes.zapret2_runtime_signature,
+        byedpi_runtime_signature: hashes.byedpi_runtime_signature,
+        wdtt_runtime_signature: hashes.wdtt_runtime_signature,
+        olcrtc_runtime_signature: hashes.olcrtc_runtime_signature,
+        fptn_runtime_signature: hashes.fptn_runtime_signature,
+        list_signature: hashes.list_signature,
+        hosts_list_signature: hashes.hosts_list_signature,
+        cron_signature: hashes.cron_signature,
         urltest_enabled_sections: urltest_enabled_sections_value(sections),
         dont_touch_dhcp: dont_touch_dhcp_value(settings)
     };

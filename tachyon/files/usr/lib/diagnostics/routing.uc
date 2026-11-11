@@ -804,7 +804,7 @@ function check_nft() {
     }
 
     nolog("Checking " + NFT_TABLE_NAME + " rules...");
-    if (!command_success_from_args([ "nft", "list", "table", "inet", NFT_TABLE_NAME ])) {
+    if (!command_success_from_args([ "nft", "-t", "list", "table", "inet", NFT_TABLE_NAME ])) {
         nolog("❌ " + NFT_TABLE_NAME + " not found");
         return 1;
     }
@@ -913,7 +913,7 @@ function line_marks_are_all_ours(line) {
 }
 
 function nft_table_has_other_mark_rules(family, table_name) {
-    let output = command_output_from_args([ "nft", "list", "table", family, table_name ]);
+    let output = command_output_from_args([ "nft", "-t", "list", "table", family, table_name ]);
     if (output == null)
         return false;
     for (let line in split(output, "\n")) {
@@ -949,7 +949,7 @@ function check_nft_rules() {
     let proxy_packets = 0;
     let rules_other_mark_exist = 0;
 
-    if (command_success_from_args([ "nft", "list", "table", "inet", NFT_TABLE_NAME ])) {
+    if (command_success_from_args([ "nft", "-t", "list", "table", "inet", NFT_TABLE_NAME ])) {
         table_exist = 1;
         if (command_success_from_args([ "nft", "list", "chain", "inet", NFT_TABLE_NAME, "mangle" ])) {
             let status = nft_chain_counter_status("mangle");
@@ -1251,25 +1251,43 @@ function build_conntrack_mark_map() {
             default_zapret2 = tag;
     }
 
+    let mark_cache_file = (getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon") + "/conntrack-mark-map.json";
     for (let cfg_path in [ TMP_SING_BOX_FOLDER + "/config.json", "/etc/tachyon-core/config.json" ]) {
+        let st = fs.stat(cfg_path);
+        if (st == null)
+            continue;
+        let stamp = cfg_path + "|" + as_string(st.size || 0) + "|" + as_string(st.mtime || 0);
+        let cached_obj = common.read_json_file(mark_cache_file);
+        if (type(cached_obj) == "object" && cached_obj.stamp == stamp && type(cached_obj.marks) == "object") {
+            for (let mk, mv in cached_obj.marks)
+                marks[mk] = mv;
+            break;
+        }
         let cfg = common.read_json_file(cfg_path);
         if (type(cfg) == "object" && (type(cfg.outbounds) == "array" || type(cfg.endpoints) == "array")) {
+            let cfg_marks = {};
             for (let ob in (cfg.outbounds || [])) {
                 if (type(ob) != "object")
                     continue;
                 let rmark = int(as_string(ob.routing_mark || "0"), 0) || 0;
                 let ob_tag = as_string(ob.tag || "");
-                if (rmark > 0 && ob_tag != "")
+                if (rmark > 0 && ob_tag != "") {
                     marks[as_string(rmark)] = ob_tag;
+                    cfg_marks[as_string(rmark)] = ob_tag;
+                }
             }
             for (let ep in (cfg.endpoints || [])) {
                 if (type(ep) != "object")
                     continue;
                 let rmark = int(as_string(ep.routing_mark || "0"), 0) || 0;
                 let ep_tag = as_string(ep.tag || "");
-                if (rmark > 0 && ep_tag != "")
+                if (rmark > 0 && ep_tag != "") {
                     marks[as_string(rmark)] = ep_tag;
+                    cfg_marks[as_string(rmark)] = ep_tag;
+                }
             }
+            if (fs.stat(getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon") != null)
+                common.write_json_file(mark_cache_file, { stamp: stamp, marks: cfg_marks }, 0);
             break;
         }
     }
@@ -1341,6 +1359,10 @@ function read_conntrack_connections(mark_info, existing_tuples, ip_host_map) {
     for (let line in split(raw, "\n")) {
         line = trim(as_string(line));
         if (line == "")
+            continue;
+        if (index(line, "src=127.") >= 0 || index(line, "src=::1 ") >= 0)
+            continue;
+        if (index(line, "TIME_WAIT") >= 0 || index(line, "CLOSE") >= 0 || index(line, "FIN_WAIT") >= 0 || index(line, "LAST_ACK") >= 0)
             continue;
         let fields = words(line);
         if (length(fields) < 6)

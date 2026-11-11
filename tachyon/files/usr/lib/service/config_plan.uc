@@ -1407,6 +1407,36 @@ function build_dns_and_route_decisions(earlier, later, target, winner_source, sh
     };
 }
 
+function rule_conflicts_cache_signature(sections_map, conditions_map, expected_list) {
+    let seen_lists = {};
+    let list_stamps = [];
+    for (let name, sec in sections_map) {
+        if (type(sec) != "object" || sec.enabled == "0")
+            continue;
+        for (let lname in words_list(sec.community_lists)) {
+            let norm = lc(trim(as_string(lname)));
+            if (norm == "" || seen_lists[norm])
+                continue;
+            seen_lists[norm] = true;
+            for (let dir in [ "/tmp/tachyon-core/rulesets", "/etc/tachyon/rulesets", "/usr/share/tachyon/rulesets" ]) {
+                for (let cand in [
+                    dir + "/community-" + lname + ".json",
+                    dir + "/community-domains-" + lname + ".lst",
+                    dir + "/community-subnets-" + lname + ".lst",
+                    dir + "/" + lname + ".lst",
+                    dir + "/community-" + lname + ".trs",
+                    dir + "/community-" + lname + ".srs"
+                ]) {
+                    let st = fs.stat(cand);
+                    if (st != null && st.type == "file")
+                        push(list_stamps, cand + ":" + as_string(st.size || 0) + ":" + as_string(st.mtime || 0));
+                }
+            }
+        }
+    }
+    return sprintf("%J|%J|%J|%s", sections_map, conditions_map, expected_list, join(",", list_stamps));
+}
+
 function analyze_rule_conflicts(candidate_uci, options) {
     let conflicts = [];
     let acknowledged_conflicts = [];
@@ -1422,6 +1452,22 @@ function analyze_rule_conflicts(candidate_uci, options) {
     let sections_map = (candidate_uci && type(candidate_uci.sections) == "object") ? candidate_uci.sections : {};
     let conditions_map = (candidate_uci && type(candidate_uci.conditions) == "object") ? candidate_uci.conditions : {};
     let expected_list = collect_expected_overlaps(candidate_uci, options);
+
+    let can_use_conflict_cache = (
+        (options == null || (options.list_contents == null && options.rulesets_dir == null)) &&
+        getenv("TACHYON_PACKAGE_TEST_MODE") == null &&
+        getenv("TACHYON_UCI_STATE_FILE") == null &&
+        getenv("TMP_RULESET_FOLDER") == null
+    );
+    let conflict_cache_sig = "";
+    let conflict_cache_path = "/var/run/tachyon/rule-conflicts-cache.json";
+    if (can_use_conflict_cache) {
+        conflict_cache_sig = rule_conflicts_cache_signature(sections_map, conditions_map, expected_list);
+        let cached_entry = common.read_json_file(conflict_cache_path);
+        if (type(cached_entry) == "object" && cached_entry.sig == conflict_cache_sig && type(cached_entry.result) == "object")
+            return cached_entry.result;
+    }
+
     let sec_names = keys(sections_map);
 
     let entries = [];
@@ -1933,7 +1979,7 @@ function analyze_rule_conflicts(candidate_uci, options) {
     }
     let is_complete = (length(unverified_lists) == 0 && length(unverified_conditions) == 0);
 
-    return {
+    let final_res = {
         conflicts: conflicts,
         acknowledged_conflicts: acknowledged_conflicts,
         duplicates: duplicates,
@@ -1949,6 +1995,14 @@ function analyze_rule_conflicts(candidate_uci, options) {
             limitations: limitations
         }
     };
+    if (can_use_conflict_cache && conflict_cache_sig != "") {
+        common.ensure_dir("/var/run/tachyon");
+        common.write_json_file(conflict_cache_path, {
+            sig: conflict_cache_sig,
+            result: final_res
+        });
+    }
+    return final_res;
 }
 
 function refresh_conflict_diagnostics(options) {
@@ -2197,22 +2251,33 @@ function plan(candidate_source, options) {
     let engine_check = { checked: false, status: "ok" };
     let cand_engine = candidate_uci.settings ? (candidate_uci.settings.engine || "tachyon-core") : "tachyon-core";
 
-    if ((cand_engine == "tachyon-core" || cand_engine == "sing-box") && fs.stat(SING_BOX_BIN) != null) {
-        // Run a lightweight structure test
-        let mock_cfg = {
-            log: { level: "warn" },
-            inbounds: [
-                { type: "tproxy", tag: "tproxy-in", listen: "::", listen_port: 1602 }
-            ],
-            outbounds: [
-                { type: "direct", tag: "direct-out" }
-            ],
-            route: {
-                rules: [],
-                final: "direct-out"
-            }
-        };
-        let b_check = check_singbox_candidate_binary(mock_cfg);
+    let bin_st = fs.stat(SING_BOX_BIN);
+    if ((cand_engine == "tachyon-core" || cand_engine == "sing-box") && bin_st != null) {
+        let bin_stamp = SING_BOX_BIN + "|" + as_string(bin_st.size || 0) + "|" + as_string(bin_st.mtime || 0);
+        let cache_file = "/var/run/tachyon/engine-binary-check.json";
+        let cached_check = common.read_json_file(cache_file);
+        let b_check = null;
+        if (type(cached_check) == "object" && cached_check.stamp == bin_stamp && type(cached_check.result) == "object") {
+            b_check = cached_check.result;
+        } else {
+            // Run a lightweight structure test
+            let mock_cfg = {
+                log: { level: "warn" },
+                inbounds: [
+                    { type: "tproxy", tag: "tproxy-in", listen: "::", listen_port: 1602 }
+                ],
+                outbounds: [
+                    { type: "direct", tag: "direct-out" }
+                ],
+                route: {
+                    rules: [],
+                    final: "direct-out"
+                }
+            };
+            b_check = check_singbox_candidate_binary(mock_cfg);
+            if (fs.stat("/var/run/tachyon") != null)
+                common.write_json_file(cache_file, { stamp: bin_stamp, result: b_check }, 0);
+        }
         engine_check = b_check;
         if (b_check.status == "failed" && b_check.error) {
             push(all_errors, "sing-box compiler check failed: " + b_check.error);

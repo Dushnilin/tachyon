@@ -1,4 +1,5 @@
 import { prettyBytes } from '../../../helpers/prettyBytes';
+import { tr } from '../../helpers/i18n';
 import { cleanBalancerTagId, getOutboundTagBySection } from '../../runtimeTags';
 import { Tachyon } from '../../types';
 import { getDashboardSectionTypeFilter } from '../dashboard/dashboardLayout';
@@ -649,24 +650,23 @@ export function getRouteTooltip(
   connection: MonitoredConnection,
   routeLabel?: string,
 ): string {
-  const tr = (key: string) => (typeof _ === 'function' ? _(key) : key);
   const resolvedRoute = routeLabel || getRoute(connection);
   const lines: string[] = [];
   if (resolvedRoute && resolvedRoute !== '-') {
-    lines.push(`${tr('Section')}: ${resolvedRoute}`);
+    lines.push(`${tr('Секция', 'Section')}: ${resolvedRoute}`);
   }
 
   const payload = normalizeString(connection.rulePayload);
   const rule = normalizeString(connection.rule);
   if (payload) {
     lines.push(
-      `${tr('Matched condition')}: ${extractReadableRulePart(payload)}`,
+      `${tr('Сработавшее условие', 'Matched condition')}: ${extractReadableRulePart(payload)}`,
     );
   }
   if (rule) {
     const cleanedRule = extractReadableRulePart(rule);
     if (cleanedRule && cleanedRule !== extractReadableRulePart(payload)) {
-      lines.push(`${tr('Rule')}: ${cleanedRule}`);
+      lines.push(`${tr('Правило', 'Rule')}: ${cleanedRule}`);
     }
   }
 
@@ -682,7 +682,7 @@ export function getRouteTooltip(
     leafNode !== `${resolvedRoute}-out` &&
     !leafNode.endsWith('-out')
   ) {
-    lines.push(`${tr('Node')}: ${leafNode}`);
+    lines.push(`${tr('Узел', 'Node')}: ${leafNode}`);
   }
 
   return lines.join('\n') || resolvedRoute || '-';

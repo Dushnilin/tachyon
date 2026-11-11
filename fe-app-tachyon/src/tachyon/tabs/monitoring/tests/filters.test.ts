@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect } from 'vitest';
+import { styles as monitoringStyles } from '../styles';
 import {
   normalizeConnectionsPayload,
   getConnectionDataSource,
@@ -405,6 +406,39 @@ describe('monitoring filters and resolution', () => {
       'Matched condition: rule_set=community:google_ai',
     );
     expect(tooltip).toContain('Node: NL VLESS #1');
+
+    const prevL = (globalThis as any).L;
+    try {
+      (globalThis as any).L = { env: { lang: 'ru' } };
+      const ruTooltip = getRouteTooltip(quicByPort443Host, 'Main');
+      expect(ruTooltip).toContain('Секция: Main');
+      expect(ruTooltip).toContain(
+        'Сработавшее условие: rule_set=community:google_ai',
+      );
+      expect(ruTooltip).toContain('Правило:');
+      expect(ruTooltip).toContain('Узел: NL VLESS #1');
+      expect(ruTooltip).not.toContain('Matched condition:');
+    } finally {
+      (globalThis as any).L = prevL;
+    }
+  });
+
+  it('prevents protocol badges from truncating tcp/udp/quic into single-letter ellipsis', () => {
+    const networkRuleMatch = monitoringStyles.match(
+      /\.tachyon_monitoring-page__network\s*\{([^}]+)\}/,
+    );
+    expect(networkRuleMatch).not.toBeNull();
+    const networkDeclarations = networkRuleMatch?.[1] || '';
+    expect(networkDeclarations).toContain('box-sizing: border-box');
+    expect(networkDeclarations).toContain('max-width: none');
+    expect(networkDeclarations).toContain('overflow: visible');
+    expect(networkDeclarations).toContain('text-overflow: clip');
+
+    const col2WidthMatch = monitoringStyles.match(
+      /\.tachyon_monitoring-page__table th:nth-child\(2\)\s*\{\s*width:\s*([\d.]+)%/,
+    );
+    expect(col2WidthMatch).not.toBeNull();
+    expect(Number(col2WidthMatch?.[1])).toBeGreaterThanOrEqual(8);
   });
 
   it('filters connections by multiple selected routes, sources, and network protocols', () => {

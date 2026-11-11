@@ -14,17 +14,19 @@ assert_file() {
 }
 
 default_ua="sing-box/1.12.0"
-default_candidates="$(printf '%s\n%s\n%s\n%s\n%s\n%s' \
+default_candidates="$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s' \
   "$default_ua" \
   Happ \
+  Happ/4.6.2 \
   v2rayN \
   v2rayNG \
   Mihomo \
   Clash.Meta)"
-preferred_candidates="$(printf '%s\n%s\n%s\n%s\n%s\n%s' \
+preferred_candidates="$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s' \
   Mihomo \
   "$default_ua" \
   Happ \
+  Happ/4.6.2 \
   v2rayN \
   v2rayNG \
   Clash.Meta)"

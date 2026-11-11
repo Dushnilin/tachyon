@@ -120,7 +120,7 @@ assert_requests $'direct|Happ|https://provider.example/sub/private-token\ndirect
 # IP-based HTTP rejection must keep proxy fallback, after direct profiles.
 : >"$CURL_LOG"
 PROVIDER_MODE=blocked update_source
-assert_requests $'direct|Happ|https://provider.example/sub/private-token\ndirect|sing-box/1.12.0|https://provider.example/sub/private-token\ndirect|v2rayN|https://provider.example/sub/private-token\ndirect|v2rayNG|https://provider.example/sub/private-token\ndirect|Mihomo|https://provider.example/sub/private-token\ndirect|Clash.Meta|https://provider.example/sub/private-token\nproxy|Happ|https://provider.example/sub/private-token'
+assert_requests $'direct|Happ|https://provider.example/sub/private-token\ndirect|sing-box/1.12.0|https://provider.example/sub/private-token\ndirect|Happ/4.6.2|https://provider.example/sub/private-token\ndirect|v2rayN|https://provider.example/sub/private-token\ndirect|v2rayNG|https://provider.example/sub/private-token\ndirect|Mihomo|https://provider.example/sub/private-token\ndirect|Clash.Meta|https://provider.example/sub/private-token\nproxy|Happ|https://provider.example/sub/private-token'
 
 # Failure must leave both the active node list and its profile intact.
 cp "$source_base.json" "$WORK_DIR/last-good.json"
@@ -138,8 +138,8 @@ cmp "$source_base.json" "$WORK_DIR/last-good.json" || fail "failure replaced the
 if PROVIDER_MODE=blocked REQUIRED_UA=Unavailable cache_ucode update-source proxy 1 https://provider.example/sub/private-token; then
   fail "rejection of all profiles must report failure"
 fi
-[ "$(grep -c '^direct|' "$CURL_LOG")" -eq 6 ] || fail "direct profiles were retried after HTTP rejection"
-[ "$(grep -c '^proxy|' "$CURL_LOG")" -eq 6 ] || fail "proxy fallback must run at most once per profile"
+[ "$(grep -c '^direct|' "$CURL_LOG")" -eq 7 ] || fail "direct profiles were retried after HTTP rejection"
+[ "$(grep -c '^proxy|' "$CURL_LOG")" -eq 7 ] || fail "proxy fallback must run at most once per profile"
 cmp "$source_base.json" "$WORK_DIR/last-good.json" || fail "HTTP rejection replaced the working node list"
 
 # An explicitly configured profile overrides the cached automatic one, and must

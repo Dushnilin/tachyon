@@ -861,7 +861,22 @@ function prepare_subscription_caches(mode) {
         subscription_runtime_no_refresh
     ]);
     if (result.status == 0) {
-        subscription_deferred_sections = trim(result.output);
+        let known_sections = {};
+        for (let sec in common.array_or_empty(uci_core.sections(CONFIG_NAME, "section"))) {
+            let name = common.section_name(sec);
+            if (name != "")
+                known_sections[name] = true;
+        }
+        let cleaned = [];
+        let seen = {};
+        for (let token in split(trim(as_string(result.output)), /[ \t\r\n]+/)) {
+            if (token != "" && !seen[token] && match(token, /^[A-Za-z0-9_-]+$/) != null &&
+                (length(keys(known_sections)) == 0 || known_sections[token] == true)) {
+                seen[token] = true;
+                push(cleaned, token);
+            }
+        }
+        subscription_deferred_sections = join(" ", cleaned);
         subscription_caches_prepared = "1";
     }
     return result.status;
@@ -901,6 +916,8 @@ function restore_rulesets_from_cache() {
             remove_file(etc_path);
             continue;
         }
+        if (tmp_st && tmp_st.size > 0)
+            continue;
         if (match(entry, /\.trs$/) && type(runtime_rulesets_mod.is_referenceable_trs_file) == "function" &&
             !runtime_rulesets_mod.is_referenceable_trs_file(etc_path))
             continue;
@@ -910,11 +927,9 @@ function restore_rulesets_from_cache() {
         // the generator went on to reference.
         if (match(entry, /\.srs$/) && !runtime_rulesets_mod.is_referenceable_srs_file(etc_path))
             continue;
-        if (!tmp_st || tmp_st.size == 0) {
-            if (common.copy_file_stream(etc_path, tmp_path)) {
-                if (match(entry, /\.srs$/) && runtime_rulesets_mod.is_populated_srs_file(tmp_path))
-                    runtime_rulesets_mod.remember_srs_file_verified(tmp_path);
-            }
+        if (common.copy_file_stream(etc_path, tmp_path)) {
+            if (match(entry, /\.srs$/) && runtime_rulesets_mod.is_populated_srs_file(tmp_path))
+                runtime_rulesets_mod.remember_srs_file_verified(tmp_path);
         }
     }
     dir.close();
@@ -1020,9 +1035,13 @@ function prepare_community_rulesets() {
                         if (!(ex in trs_candidates))
                             push(trs_candidates, ex);
                 }
+                let trs_attempts = 0;
                 for (let trs_candidate in trs_candidates) {
+                    if (trs_attempts >= 2)
+                        break;
+                    trs_attempts++;
                     let dl_tmp = tmp_dir + "/.fetch-" + service + ".trs.tmp";
-                    let args = [ "curl", "-fsSL", "--connect-timeout", "3", "-m", "5", trs_candidate, "-o", dl_tmp ];
+                    let args = [ "curl", "-fsSL", "--connect-timeout", "2", "-m", "3", trs_candidate, "-o", dl_tmp ];
                     if (command_success_from_args(args) && runtime_rulesets_mod.is_usable_trs_file(dl_tmp)) {
                         let st_trs = fs.stat(dl_tmp);
                         let sz_trs = st_trs != null ? int(st_trs.size || 0) : 0;
@@ -1077,9 +1096,13 @@ function prepare_community_rulesets() {
             core_url_mod.download_candidates(url) : [ url ];
 
         if (has_curl && !fetched) {
+            let srs_attempts = 0;
             for (let candidate in candidates) {
+                if (srs_attempts >= 2)
+                    break;
+                srs_attempts++;
                 let dl_tmp = tmp_dir + "/.fetch-" + service + ".tmp";
-                let args = [ "curl", "-fsSL", "--connect-timeout", "3", "-m", "5", candidate, "-o", dl_tmp ];
+                let args = [ "curl", "-fsSL", "--connect-timeout", "2", "-m", "3", candidate, "-o", dl_tmp ];
                 if (command_success_from_args(args) && runtime_rulesets_mod.is_usable_srs_file(dl_tmp)) {
                     let st = fs.stat(dl_tmp);
                     if (st && st.size > runtime_rulesets_mod.EMPTY_SRS_SIZE) {
