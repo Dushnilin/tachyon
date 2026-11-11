@@ -2115,29 +2115,53 @@ function cleanup_modular_entities_v1(ctx) {
     // 1b. Normalize outbound_source entries:
     // - convert legacy proxy_links_text / selector_proxy_links_text / selector_proxy_links into list proxy_links
     // - backfill missing url on subscription outbound_source when name holds an http(s):// URL
+    // - prune stale payload options left behind when an outbound_source changed type or ID was reused
     for (let src in (ctx.model.outbound_source || [])) {
-        let stype = lc(trim(option(src, "source_type", "subscription")));
+        let explicit_stype = lc(trim(option(src, "source_type", "")));
+        let stype = explicit_stype != "" ? explicit_stype : "subscription";
         if (stype == "subscription") {
             let cur_url = trim(option(src, "url", ""));
             let cur_name = trim(option(src, "name", ""));
             if (cur_url == "" && (substr(lc(cur_name), 0, 7) == "http://" || substr(lc(cur_name), 0, 8) == "https://"))
                 set_option(ctx, src, "url", cur_name);
         }
-        let existing_links = list_option(src, "proxy_links");
-        for (let sl in list_option(src, "selector_proxy_links"))
-            push(existing_links, sl);
-        let text_links = trim(option(src, "proxy_links_text", ""));
-        let sel_text_links = trim(option(src, "selector_proxy_links_text", ""));
-        let combined_text = text_links != "" && sel_text_links != ""
-            ? (text_links + "\n" + sel_text_links)
-            : (text_links != "" ? text_links : sel_text_links);
-        if (combined_text != "" || option_exists(src, "selector_proxy_links")) {
-            let merged_links = extract_proxy_links_from_text_and_list(existing_links, combined_text);
-            if (length(merged_links) > 0)
-                set_list_option(ctx, src, "proxy_links", merged_links);
-            delete_option(ctx, src, "proxy_links_text");
-            delete_option(ctx, src, "selector_proxy_links_text");
-            delete_option(ctx, src, "selector_proxy_links");
+        if (stype == "proxy_links" || stype == "links" || explicit_stype == "") {
+            let existing_links = list_option(src, "proxy_links");
+            for (let sl in list_option(src, "selector_proxy_links"))
+                push(existing_links, sl);
+            let text_links = trim(option(src, "proxy_links_text", ""));
+            let sel_text_links = trim(option(src, "selector_proxy_links_text", ""));
+            let combined_text = text_links != "" && sel_text_links != ""
+                ? (text_links + "\n" + sel_text_links)
+                : (text_links != "" ? text_links : sel_text_links);
+            if (combined_text != "" || option_exists(src, "selector_proxy_links")) {
+                let merged_links = extract_proxy_links_from_text_and_list(existing_links, combined_text);
+                if (length(merged_links) > 0)
+                    set_list_option(ctx, src, "proxy_links", merged_links);
+                delete_option(ctx, src, "proxy_links_text");
+                delete_option(ctx, src, "selector_proxy_links_text");
+                delete_option(ctx, src, "selector_proxy_links");
+            }
+        }
+        if (explicit_stype != "") {
+            if (explicit_stype != "proxy_links" && explicit_stype != "links") {
+                delete_option(ctx, src, "proxy_links");
+                delete_option(ctx, src, "proxy_links_text");
+                delete_option(ctx, src, "selector_proxy_links");
+                delete_option(ctx, src, "selector_proxy_links_text");
+            }
+            if (explicit_stype != "outbound_json" && explicit_stype != "json") {
+                delete_option(ctx, src, "outbound_jsons");
+                delete_option(ctx, src, "outbound_json");
+            }
+            if (explicit_stype != "amnezia_config" && explicit_stype != "awg") {
+                delete_option(ctx, src, "amnezia_configs");
+                delete_option(ctx, src, "selector_amnezia_configs");
+                delete_option(ctx, src, "amnezia_conf_text");
+            }
+            if (explicit_stype != "subscription") {
+                delete_option(ctx, src, "url");
+            }
         }
     }
 
@@ -2389,6 +2413,34 @@ function cleanup_modular_entities_v1(ctx) {
             push(kept_children, child);
         }
         ctx.model[legacy_type] = kept_children;
+    }
+
+    if (index(list_option(ctx.model.settings, APPLIED_MIGRATIONS_OPTION), "modular_entities_v1") >= 0) {
+        for (let sec in (ctx.model.sections || [])) {
+            let sid = section_name(sec);
+            if (sid == "")
+                continue;
+            let safe_sid = sanitize_uci_id(sid);
+            let sec_refs = list_option(sec, "outbound_source_refs");
+            if (index(sec_refs, "src_json_" + safe_sid) < 0) {
+                delete_option(ctx, sec, "outbound_jsons");
+                delete_option(ctx, sec, "outbound_json");
+            }
+            if (index(sec_refs, "src_links_" + safe_sid) < 0) {
+                delete_option(ctx, sec, "selector_proxy_links");
+                delete_option(ctx, sec, "selector_proxy_links_text");
+                delete_option(ctx, sec, "proxy_links");
+                delete_option(ctx, sec, "proxy_links_text");
+            }
+            let sec_act = lc(trim(option(sec, "action", "")));
+            if (sec_act != "awg" &&
+                index(sec_refs, "src_amnezia_" + safe_sid) < 0 &&
+                index(sec_refs, "src_awg_" + safe_sid) < 0) {
+                delete_option(ctx, sec, "selector_amnezia_configs");
+                delete_option(ctx, sec, "amnezia_configs");
+                delete_option(ctx, sec, "amnezia_conf_text");
+            }
+        }
     }
 }
 

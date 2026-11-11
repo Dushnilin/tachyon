@@ -2216,4 +2216,43 @@ describe('getDashboardSections', () => {
     ).toBe(34);
     expect(activeNodeCard?.latency).toBe(34);
   });
+
+  it('ignores stale inline outbound_jsons and proxy_links when modular outbound_source_refs are attached', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      {
+        '.name': 'xhttp_443',
+        '.type': 'outbound_source',
+        enabled: '1',
+        name: 'xhttp 443',
+        source_type: 'subscription',
+        url: 'https://sub.example.com/api/v1/sub',
+        proxy_links: [
+          'vless://11111111-1111-4111-8111-111111111111@stale.example:443#StaleSourceLink',
+        ],
+      } as Tachyon.ConfigSection,
+      proxySection({
+        '.name': 'main',
+        outbound_source_refs: ['xhttp_443'],
+        selector_proxy_links: [
+          'vless://22222222-2222-4222-8222-222222222222@stale-inline.example:443#StaleInlineLink',
+        ],
+        outbound_jsons: [
+          '{"type":"vless","tag":"stale-json-out","server":"stale-json.example","server_port":443,"uuid":"33333333-3333-4333-8333-333333333333"}',
+        ],
+      }),
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: false,
+      message: 'core starting',
+    });
+
+    const result = await getDashboardSections();
+    expect(result.success).toBe(true);
+    const [section] = result.data;
+    const codes = section.outbounds.map((o) => o.code);
+    const names = section.outbounds.map((o) => o.displayName);
+    expect(codes).not.toContain('stale-json-out');
+    expect(names).not.toContain('StaleSourceLink');
+    expect(names).not.toContain('StaleInlineLink');
+  });
 });

@@ -4978,7 +4978,6 @@ function createSettingsContent(section, capabilities) {
     _('Select which components are permitted to update automatically'),
   );
   o.depends('component_auto_update_enabled', '1');
-  o.depends('component_auto_update_enabled', '1');
   o.value('all', _('All components'));
   o.value('tachyon', _('Tachyon'));
   o.value('tachyon-core', _('Tachyon Core'));

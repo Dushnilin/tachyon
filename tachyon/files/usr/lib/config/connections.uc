@@ -157,6 +157,10 @@ function item_index_from_cursor(cursor, config_name) {
         });
     }
     catch (e) {}
+    try {
+        index.settings = object_or_empty(cursor.get_all(config_name, "settings"));
+    }
+    catch (e) {}
 
     return index;
 }
@@ -180,6 +184,8 @@ function item_index_from_data(data) {
             add_item_section(index, type_name, section);
     for (let section in fixture_section_list(data, "section"))
         add_item_section(index, "section", section);
+    let settings_list = fixture_section_list(data, "settings");
+    index.settings = length(settings_list) > 0 ? object_or_empty(settings_list[0]) : {};
     return index;
 }
 
@@ -190,6 +196,7 @@ function item_index_from_uci() {
             add_item_section(index, type_name, section);
     for (let section in uci_core.section_objects(CONFIG_NAME, "section"))
         add_item_section(index, "section", section);
+    index.settings = object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
     return index;
 }
 
@@ -558,8 +565,33 @@ function is_dpi_or_desync_source_type(stype) {
     return stype == "zapret" || stype == "zapret2" || stype == "byedpi" || stype == "desync";
 }
 
+function has_modular_entities_migration() {
+    let st = object_or_empty(object_or_empty(get_item_sections()).settings);
+    for (let m in whitespace_list_value(st, "applied_migrations"))
+        if (m == "modular_entities_v1")
+            return true;
+    return false;
+}
+
+function section_has_direct_non_dpi_source_refs(section) {
+    if (type(section) != "object" || length(outbound_source_sections()) == 0)
+        return false;
+    for (let src_id in section_outbound_source_refs(section)) {
+        let src = outbound_source_section(src_id);
+        if (src != null && !is_dpi_or_desync_source_type(option(src, "source_type", "")))
+            return true;
+    }
+    return false;
+}
+
+function section_ignores_legacy_inline_items(section) {
+    return has_modular_entities_migration() && section_has_direct_non_dpi_source_refs(section);
+}
+
 function section_has_inline_connection_items(section) {
     if (type(section) != "object")
+        return false;
+    if (section_ignores_legacy_inline_items(section))
         return false;
     let raw_amn = raw_option(section, "selector_amnezia_configs");
     if (raw_amn == null || raw_amn == "")
@@ -587,11 +619,8 @@ function section_allows_legacy_subscription_url(section, url) {
     url = trim(as_string(url || ""));
     if (url != "" && outbound_source_by_url(url) != null)
         return false;
-    for (let src_id in section_outbound_source_refs(section)) {
-        let src = outbound_source_section(src_id);
-        if (src != null && !is_dpi_or_desync_source_type(option(src, "source_type", "")))
-            return false;
-    }
+    if (section_has_direct_non_dpi_source_refs(section))
+        return false;
     if (section_has_inline_connection_items(section))
         return false;
     return true;
@@ -1033,16 +1062,21 @@ function amnezia_configs(section) {
     let seen = {};
     let seen_bodies = {};
     let is_awg_action = lc(trim(option(section, "action", ""))) == "awg";
+    let ignore_legacy_inline = section_ignores_legacy_inline_items(section);
     let raw_list = [];
     for (let src in section_effective_outbound_sources(section)) {
-        let stype = lc(option(src, "source_type", "subscription"));
-        if (stype == "amnezia_config" || stype == "awg" || raw_option(src, "amnezia_configs") != null || raw_option(src, "selector_amnezia_configs") != null || raw_option(src, "amnezia_conf_text") != null) {
+        let explicit_stype = lc(trim(option(src, "source_type", "")));
+        let stype = explicit_stype != "" ? explicit_stype : "subscription";
+        if (stype == "amnezia_config" || stype == "awg" ||
+            (explicit_stype == "" && (raw_option(src, "amnezia_configs") != null || raw_option(src, "selector_amnezia_configs") != null || raw_option(src, "amnezia_conf_text") != null))) {
             for (let c in raw_amnezia_configs_from_obj(src))
                 push(raw_list, c);
         }
     }
-    for (let c in raw_amnezia_configs_from_obj(section))
-        push(raw_list, c);
+    if (!ignore_legacy_inline) {
+        for (let c in raw_amnezia_configs_from_obj(section))
+            push(raw_list, c);
+    }
 
     // For a legacy action='awg' section with no imported .conf files, keep
     // amnezia_configs() empty so add_awg_endpoint emits a single wireguard
@@ -1053,9 +1087,11 @@ function amnezia_configs(section) {
     let has_awg_source = false;
 
     for (let src in section_effective_outbound_sources(section)) {
-        let stype = lc(option(src, "source_type", "subscription"));
+        let explicit_stype = lc(trim(option(src, "source_type", "")));
+        let stype = explicit_stype != "" ? explicit_stype : "subscription";
         let src_cfgs = [];
-        if (stype == "amnezia_config" || stype == "awg" || raw_option(src, "amnezia_configs") != null || raw_option(src, "selector_amnezia_configs") != null || raw_option(src, "amnezia_conf_text") != null) {
+        if (stype == "amnezia_config" || stype == "awg" ||
+            (explicit_stype == "" && (raw_option(src, "amnezia_configs") != null || raw_option(src, "selector_amnezia_configs") != null || raw_option(src, "amnezia_conf_text") != null))) {
             src_cfgs = raw_amnezia_configs_from_obj(src);
             for (let c in src_cfgs) {
                 has_awg_source = true;
@@ -1070,26 +1106,31 @@ function amnezia_configs(section) {
             }
         }
     }
-    let sec_cfgs = raw_amnezia_configs_from_obj(section);
-    if (include_synthesized && !has_awg_source) {
-        let sec_synth = synthesize_awg_conf_from_source(section);
-        if (sec_synth != "")
-            push_unique_amnezia_cfg(result, seen, seen_bodies, sec_synth);
+    if (!ignore_legacy_inline) {
+        let sec_cfgs = raw_amnezia_configs_from_obj(section);
+        if (include_synthesized && !has_awg_source) {
+            let sec_synth = synthesize_awg_conf_from_source(section);
+            if (sec_synth != "")
+                push_unique_amnezia_cfg(result, seen, seen_bodies, sec_synth);
+        }
+        for (let c in sec_cfgs)
+            push_unique_amnezia_cfg(result, seen, seen_bodies, c);
     }
-    for (let c in sec_cfgs)
-        push_unique_amnezia_cfg(result, seen, seen_bodies, c);
     return result;
 }
 
 function connection_urls(section) {
     let links = [];
     let seen = {};
-    for (let l in whitespace_list_value(section, "selector_proxy_links"))
-        push_unique_str(links, seen, l);
-    for (let l in whitespace_list_value(section, "proxy_links"))
-        push_unique_str(links, seen, l);
-    for (let l in whitespace_list_value(section, "connection_urls"))
-        push_unique_str(links, seen, l);
+    let ignore_legacy_inline = section_ignores_legacy_inline_items(section);
+    if (!ignore_legacy_inline) {
+        for (let l in whitespace_list_value(section, "selector_proxy_links"))
+            push_unique_str(links, seen, l);
+        for (let l in whitespace_list_value(section, "proxy_links"))
+            push_unique_str(links, seen, l);
+        for (let l in whitespace_list_value(section, "connection_urls"))
+            push_unique_str(links, seen, l);
+    }
     let importer = require("subscription.amnezia_config");
     let all_amnezia_cfgs = amnezia_configs(section);
     for (let value in all_amnezia_cfgs) {
@@ -1115,12 +1156,14 @@ function connection_urls(section) {
         }
         push_unique_str(links, seen, item.link);
     }
-    let text = option(section, "selector_proxy_links_text", "");
-    if (text != "") {
-        for (let line in split(text, /[\r\n]+/)) {
-            line = trim(line);
-            if (line != "" && match(line, /^[^#\s]/))
-                push_unique_str(links, seen, line);
+    if (!ignore_legacy_inline) {
+        let text = option(section, "selector_proxy_links_text", "");
+        if (text != "") {
+            for (let line in split(text, /[\r\n]+/)) {
+                line = trim(line);
+                if (line != "" && match(line, /^[^#\s]/))
+                    push_unique_str(links, seen, line);
+            }
         }
     }
     for (let u in child_values(section, "subscription_url", "url", "subscription_urls")) {
@@ -1130,9 +1173,11 @@ function connection_urls(section) {
     }
     let sec_action = action(section);
     for (let src in section_effective_outbound_sources(section)) {
-        let stype = lc(option(src, "source_type", "subscription"));
+        let explicit_stype = lc(trim(option(src, "source_type", "")));
+        let stype = explicit_stype != "" ? explicit_stype : "subscription";
         let su = trim(option(src, "url", ""));
-        if (su != "" && !core_url.is_subscription_url(su)) {
+        if ((stype == "subscription" || stype == "proxy_links" || stype == "links" || explicit_stype == "") &&
+            su != "" && !core_url.is_subscription_url(su)) {
             if (index(su, "#") < 0) {
                 let sname = trim(option(src, "name", ""));
                 if (sname != "")
@@ -1140,7 +1185,8 @@ function connection_urls(section) {
             }
             push_unique_str(links, seen, su);
         }
-        if (stype == "proxy_links" || stype == "links" || raw_option(src, "proxy_links") != null || raw_option(src, "selector_proxy_links") != null) {
+        if (stype == "proxy_links" || stype == "links" ||
+            (explicit_stype == "" && (raw_option(src, "proxy_links") != null || raw_option(src, "selector_proxy_links") != null))) {
             for (let l in whitespace_list_value(src, "proxy_links"))
                 push_unique_str(links, seen, l);
             for (let l in whitespace_list_value(src, "selector_proxy_links"))
@@ -2062,7 +2108,7 @@ function outbound_jsons(section, raw) {
             }
         }
     }
-    if (!has_migrated_json_source) {
+    if (!has_migrated_json_source && !section_ignores_legacy_inline_items(section)) {
         let sec_jsons = list_value(section, "outbound_jsons");
         for (let j in sec_jsons) {
             if (!src_seen[trim(as_string(j))])

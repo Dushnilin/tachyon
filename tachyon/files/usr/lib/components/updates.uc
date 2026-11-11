@@ -720,13 +720,6 @@ function auto_update_window_contains(start, end, minute) {
     return minute >= start || minute < end;
 }
 
-function auto_update_minutes_now() {
-    let tm = localtime(now_seconds());
-    if (tm == null)
-        return null;
-    return int(tm.hour) * 60 + int(tm.min);
-}
-
 function settings_auto_update_threshold(settings, name) {
     let raw = trim(as_string(option(object_or_empty(settings), name, "0")));
     if (!match(raw, /^[0-9]+$/))
@@ -734,11 +727,81 @@ function settings_auto_update_threshold(settings, name) {
     return int(raw);
 }
 
+function auto_update_clash_api_endpoint(settings) {
+    let env_url = trim(as_string(getenv("TACHYON_CLASH_API_URL") || ""));
+    if (env_url != "") {
+        return {
+            url: replace(env_url, /\/+$/, "") + "/connections",
+            secret: trim(as_string(option(object_or_empty(settings), "clash_api_secret", "")))
+        };
+    }
+
+    settings = object_or_empty(settings);
+    let candidates = [];
+    let cfg_opt = trim(as_string(option(settings, "config_path", "")));
+    if (cfg_opt != "")
+        push(candidates, cfg_opt);
+    push(candidates, "/etc/tachyon-core/config.json");
+    push(candidates, "/etc/sing-box/config.json");
+
+    for (let path in candidates) {
+        let cfg = read_json_file(path);
+        if (type(cfg) != "object")
+            continue;
+        let api = cfg.experimental && cfg.experimental.clash_api;
+        if (type(api) != "object")
+            continue;
+        let address = trim(as_string(api.external_controller || ""));
+        if (address == "")
+            continue;
+        if (substr(address, 0, 1) == ":")
+            address = "127.0.0.1" + address;
+        address = replace(address, /^0\.0\.0\.0:/, "127.0.0.1:");
+        address = replace(address, /^\[::\]:/, "[::1]:");
+        return {
+            url: "http://" + address + "/connections",
+            secret: trim(as_string(api.secret || option(settings, "clash_api_secret", "")))
+        };
+    }
+
+    let ctrl = trim(as_string(option(settings, "clash_api_controller", "127.0.0.1:9090")));
+    if (ctrl == "")
+        ctrl = "127.0.0.1:9090";
+    if (substr(ctrl, 0, 1) == ":")
+        ctrl = "127.0.0.1" + ctrl;
+    ctrl = replace(ctrl, /^0\.0\.0\.0:/, "127.0.0.1:");
+    ctrl = replace(ctrl, /^\[::\]:/, "[::1]:");
+    return {
+        url: "http://" + ctrl + "/connections",
+        secret: trim(as_string(option(settings, "clash_api_secret", "")))
+    };
+}
+
 // Current load from the core's own connection table. Both counters are optional,
 // 0 disables the check, and without connection data the update is allowed: a
 // broken stats endpoint must not silently disable updates forever.
-function auto_update_load_snapshot() {
-    let out = command_output_from_args([ "curl", "-s", "--max-time", "2", "http://127.0.0.1:9090/connections" ]);
+function auto_update_load_snapshot(settings) {
+    let endpoint = auto_update_clash_api_endpoint(settings);
+    let out = null;
+    if (endpoint.secret != "") {
+        let request_config = temp_path();
+        if (request_config != "") {
+            let content = "silent\nheader = " + sprintf("%J", "Authorization: Bearer " + endpoint.secret) + "\n";
+            if (write_file(request_config, content)) {
+                try { fs.chmod(request_config, 0600); } catch (e) {}
+                out = command_output_from_args([
+                    "curl", "--config", request_config, "--fail", "--noproxy", "*",
+                    "--connect-timeout", "1", "--max-time", "2", endpoint.url
+                ]);
+            }
+            remove_file(request_config);
+        }
+    } else {
+        out = command_output_from_args([
+            "curl", "-s", "--fail", "--noproxy", "*",
+            "--connect-timeout", "1", "--max-time", "2", endpoint.url
+        ]);
+    }
     if (out == null || out == "")
         return null;
     try {
@@ -749,7 +812,7 @@ function auto_update_load_snapshot() {
         let clients = {};
         for (let conn in conns) {
             let ip = conn != null && conn.metadata != null ? trim(as_string(conn.metadata.sourceIP)) : "";
-            if (ip != "")
+            if (ip != "" && ip != "127.0.0.1" && ip != "::1")
                 clients[ip] = true;
         }
         let client_count = 0;
@@ -766,7 +829,7 @@ function auto_update_load_allows(settings) {
     let max_clients = settings_auto_update_threshold(settings, "component_auto_update_max_clients");
     if (max_connections <= 0 && max_clients <= 0)
         return true;
-    let snapshot = auto_update_load_snapshot();
+    let snapshot = auto_update_load_snapshot(settings);
     if (snapshot == null)
         return true;
     if (max_connections > 0 && snapshot.connections > max_connections)
@@ -776,28 +839,35 @@ function auto_update_load_allows(settings) {
     return true;
 }
 
-function auto_update_today_stamp() {
-    let tm = localtime(now_seconds());
+function auto_update_window_stamp(window, now_ts, minute) {
+    let ref_ts = now_ts != null ? int(now_ts) : now_seconds();
+    if (window != null && window.start > window.end && minute != null && minute < window.end) {
+        // Post-midnight half of an overnight window (e.g. 22:00-06:00 at 01:30):
+        // anchor the stamp to noon of the calendar day when this window opened so
+        // crossing 00:00 does not trigger a second update in the same night.
+        ref_ts -= (int(minute) + 12 * 60) * 60;
+    }
+    let tm = localtime(ref_ts);
     if (tm == null)
         return "";
     return sprintf("%04d-%02d-%02d", int(tm.year), int(tm.mon), int(tm.mday));
 }
 
-// One update cycle per day, but at the first quiet moment inside the window
+// One update cycle per window, at the first quiet moment inside the window
 // instead of a fixed minute. The marker survives cron ticks; a crash mid-cycle
 // leaves no marker and the next tick retries.
-function auto_update_attempted_today() {
+function auto_update_attempted_in_window(window, now_ts, minute) {
     let stamp = trim(as_string(fs.readfile(COMPONENT_AUTO_UPDATE_LAST_RUN_FILE)));
     if (stamp == "")
         return false;
-    let today = auto_update_today_stamp();
-    return today != "" && stamp == today;
+    let current = auto_update_window_stamp(window, now_ts, minute);
+    return current != "" && stamp == current;
 }
 
-function mark_auto_update_attempted_today() {
-    let today = auto_update_today_stamp();
-    if (today != "")
-        write_file(COMPONENT_AUTO_UPDATE_LAST_RUN_FILE, today + "\n");
+function mark_auto_update_attempted_in_window(window, now_ts, minute) {
+    let current = auto_update_window_stamp(window, now_ts, minute);
+    if (current != "")
+        write_file(COMPONENT_AUTO_UPDATE_LAST_RUN_FILE, current + "\n");
 }
 
 function settings_component_auto_update_targets(settings) {
@@ -2471,35 +2541,42 @@ function component_action_worker(state_file, output_file, component, action, ext
 
 function component_auto_update_apply(force) {
     let settings = uci_settings();
+    let is_forced = trim(as_string(force)) == "force";
     if (!settings_component_auto_update_enabled(settings)) {
-        log_message("[auto-update] Automatic component updates are disabled", "info");
+        if (is_forced)
+            log_message("[auto-update] Automatic component updates are disabled", "info");
         exit(0);
     }
 
+    let now = now_seconds();
+    let window = null;
+    let minute = null;
+
     // "force" is for manual runs (CLI/tests): skip the schedule gates but keep
     // the rest of the cycle identical.
-    if (trim(as_string(force)) != "force") {
-        let window = settings_component_auto_update_window(settings);
-        let minute = auto_update_minutes_now();
-        if (!auto_update_window_contains(window.start, window.end, minute)) {
-            log_message("[auto-update] Outside the update window (" +
-                format_minutes_hhmm(window.start) + "-" + format_minutes_hhmm(window.end) + "), skipping", "info");
+    if (!is_forced) {
+        window = settings_component_auto_update_window(settings);
+        let tm = localtime(now);
+        minute = tm != null ? (int(tm.hour) * 60 + int(tm.min)) : null;
+        if (!auto_update_window_contains(window.start, window.end, minute))
             exit(0);
-        }
+
+        if (auto_update_attempted_in_window(window, now, minute))
+            exit(0);
 
         if (!auto_update_load_allows(settings)) {
-            log_message("[auto-update] Router is busy (active connections/clients above the configured limit), skipping", "info");
+            log_message("[auto-update] Router is busy (active connections/clients above the configured limit), deferring inside window " +
+                format_minutes_hhmm(window.start) + "-" + format_minutes_hhmm(window.end), "info");
             exit(0);
         }
 
-        if (auto_update_attempted_today()) {
-            log_message("[auto-update] Update already attempted today, skipping", "info");
+        if (component_has_running_job())
             exit(0);
-        }
     }
 
     let checked_components = automatic_component_check_names();
-    let now = now_seconds();
+    let had_check_failure = false;
+    let triggered = false;
     for (let component in checked_components) {
         if (!component_is_auto_update_target(settings, component))
             continue;
@@ -2509,6 +2586,7 @@ function component_auto_update_apply(force) {
         if (cached.status == null || cached.status == "" || cache_age < 0 || cache_age >= 900) {
             let ok = run_automatic_component_update_check(component);
             if (!ok) {
+                had_check_failure = true;
                 log_message("[auto-update] Fresh update check failed for " + component + ", skipping", "warn");
                 continue;
             }
@@ -2516,13 +2594,15 @@ function component_auto_update_apply(force) {
         }
         if (cached.status == "outdated" || cached.status == "outdated_same_release") {
             if (trigger_component_auto_update(component, cached.latest_version)) {
+                triggered = true;
                 break;
             }
+            had_check_failure = true;
         }
     }
 
-    if (trim(as_string(force)) != "force")
-        mark_auto_update_attempted_today();
+    if (!is_forced && (triggered || !had_check_failure))
+        mark_auto_update_attempted_in_window(window, now, minute);
 
     exit(0);
 }

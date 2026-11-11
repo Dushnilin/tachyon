@@ -6125,6 +6125,33 @@ export function openConnectionWizardModal(
     uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'name', finalName);
     uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'source_type', actualSourceType);
 
+    const unsetUciOpt = (key: string) => {
+      if (typeof uciObj.unset === 'function') {
+        uciObj.unset(TACHYON_UCI_PACKAGE, srcId, key);
+      }
+    };
+    if (actualSourceType !== 'subscription') {
+      unsetUciOpt('url');
+    }
+    if (actualSourceType !== 'proxy_links' && actualSourceType !== 'links') {
+      unsetUciOpt('proxy_links');
+      unsetUciOpt('proxy_links_text');
+      unsetUciOpt('selector_proxy_links');
+      unsetUciOpt('selector_proxy_links_text');
+    }
+    if (actualSourceType !== 'amnezia_config' && actualSourceType !== 'awg') {
+      unsetUciOpt('amnezia_configs');
+      unsetUciOpt('selector_amnezia_configs');
+      unsetUciOpt('amnezia_conf_text');
+    }
+    if (actualSourceType !== 'outbound_json' && actualSourceType !== 'json') {
+      unsetUciOpt('outbound_jsons');
+      unsetUciOpt('outbound_json');
+    }
+    if (actualSourceType !== 'fptn') {
+      unsetUciOpt('access_token');
+    }
+
     if (outboundMethod === 'subscription') {
       uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'url', subUrl.trim());
     } else if (outboundMethod === 'proxy_links') {
@@ -6154,7 +6181,7 @@ export function openConnectionWizardModal(
       if (confBody && vpnLines.length === 0) {
         uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'amnezia_conf_text', confBody);
       } else {
-        uciObj.unset(TACHYON_UCI_PACKAGE, srcId, 'amnezia_conf_text');
+        unsetUciOpt('amnezia_conf_text');
       }
     } else if (outboundMethod === 'warp') {
       if (!warpPrivateKey.trim()) {

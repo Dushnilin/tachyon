@@ -2038,6 +2038,10 @@ function hosts_list_signature_body(sections) {
 function cron_signature_body(settings, sections) {
     let body = signature_add_value("", "settings.update_interval", settings_update_interval(settings));
     body = signature_add_value(body, "settings.component_update_check_interval", settings_component_update_check_interval(settings));
+    if (bool_option(settings, "component_auto_update_enabled", false)) {
+        body = signature_add_value(body, "settings.component_auto_update_enabled", "1");
+        body = signature_add_value(body, "settings.component_auto_update_mode", option(settings, "component_auto_update_mode", "immediate"));
+    }
 
     for (let section in sections)
         body = append_list_update_signature_body(body, object_or_empty(section));

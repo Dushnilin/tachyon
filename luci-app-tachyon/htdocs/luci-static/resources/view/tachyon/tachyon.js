@@ -1872,6 +1872,40 @@ const EntryPoint = {
             ...validSources,
             ...validBalancers,
           ]);
+          const hasModularEntitiesMigration = appliedMigrations.includes(
+            "modular_entities_v1",
+          );
+          (uci.sections(self.config, "outbound_source") || []).forEach(
+            (src) => {
+              const sid = src ? src[".name"] : null;
+              if (!sid) return;
+              const explicitSt = String(src.source_type || "")
+                .trim()
+                .toLowerCase();
+              if (!explicitSt) return;
+              if (explicitSt !== "subscription") {
+                uci.unset(self.config, sid, "url");
+              }
+              if (explicitSt !== "proxy_links" && explicitSt !== "links") {
+                uci.unset(self.config, sid, "proxy_links");
+                uci.unset(self.config, sid, "proxy_links_text");
+                uci.unset(self.config, sid, "selector_proxy_links");
+                uci.unset(self.config, sid, "selector_proxy_links_text");
+              }
+              if (explicitSt !== "amnezia_config" && explicitSt !== "awg") {
+                uci.unset(self.config, sid, "amnezia_configs");
+                uci.unset(self.config, sid, "selector_amnezia_configs");
+                uci.unset(self.config, sid, "amnezia_conf_text");
+              }
+              if (explicitSt !== "outbound_json" && explicitSt !== "json") {
+                uci.unset(self.config, sid, "outbound_jsons");
+                uci.unset(self.config, sid, "outbound_json");
+              }
+              if (explicitSt !== "fptn") {
+                uci.unset(self.config, sid, "access_token");
+              }
+            },
+          );
           (uci.sections(self.config, "section") || []).forEach((sec) => {
             const sid = sec ? sec[".name"] : null;
             if (!sid) return;
@@ -1886,6 +1920,30 @@ const EntryPoint = {
               false,
               true,
             );
+            if (hasModularEntitiesMigration) {
+              const safeSid = String(sid).replace(/[^A-Za-z0-9_]/g, "_");
+              const remainingRefs = toArr(
+                uci.get(self.config, sid, "outbound_source_refs"),
+              );
+              if (!remainingRefs.includes(`src_json_${safeSid}`)) {
+                uci.unset(self.config, sid, "outbound_jsons");
+                uci.unset(self.config, sid, "outbound_json");
+              }
+              if (!remainingRefs.includes(`src_links_${safeSid}`)) {
+                uci.unset(self.config, sid, "selector_proxy_links");
+                uci.unset(self.config, sid, "selector_proxy_links_text");
+                uci.unset(self.config, sid, "proxy_links");
+                uci.unset(self.config, sid, "proxy_links_text");
+              }
+              if (
+                !remainingRefs.includes(`src_amnezia_${safeSid}`) &&
+                !remainingRefs.includes(`src_awg_${safeSid}`)
+              ) {
+                uci.unset(self.config, sid, "selector_amnezia_configs");
+                uci.unset(self.config, sid, "amnezia_configs");
+                uci.unset(self.config, sid, "amnezia_conf_text");
+              }
+            }
           });
           (uci.sections(self.config, "balancer") || []).forEach((bal) => {
             const bid = bal ? bal[".name"] : null;

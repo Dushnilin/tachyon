@@ -3041,20 +3041,32 @@ function configureOutboundsSection(sectionRef) {
     (uci.sections(UCI_PACKAGE, 'section') || []).forEach((s) => {
       const sid = s['.name'];
       if (!sid) return;
+      const safeSid = String(sid).replace(/[^A-Za-z0-9_]/g, '_');
       const cur = asArray(s.outbound_source_refs);
       const hasRef = cur.includes(sectionId);
       const isLegacyChild =
         sectionId === `src_${sid}_links` ||
         sectionId === `src_links_${sid}` ||
+        sectionId === `src_${safeSid}_links` ||
+        sectionId === `src_links_${safeSid}` ||
         sectionId === `src_${sid}_awg` ||
         sectionId === `src_awg_${sid}` ||
         sectionId === `src_amnezia_${sid}` ||
+        sectionId === `src_${safeSid}_awg` ||
+        sectionId === `src_awg_${safeSid}` ||
+        sectionId === `src_amnezia_${safeSid}` ||
         sectionId === `src_${sid}_fptn` ||
         sectionId === `src_fptn_${sid}` ||
+        sectionId === `src_${safeSid}_fptn` ||
+        sectionId === `src_fptn_${safeSid}` ||
         sectionId === `src_${sid}_json` ||
         sectionId === `src_json_${sid}` ||
+        sectionId === `src_${safeSid}_json` ||
+        sectionId === `src_json_${safeSid}` ||
         sectionId === `src_${sid}_desync` ||
-        sectionId === `src_desync_${sid}`;
+        sectionId === `src_desync_${sid}` ||
+        sectionId === `src_${safeSid}_desync` ||
+        sectionId === `src_desync_${safeSid}`;
       if (hasRef) {
         const next = cur.filter((id) => id !== sectionId);
         if (next.length)
@@ -3084,7 +3096,7 @@ function configureOutboundsSection(sectionRef) {
           uci.unset(UCI_PACKAGE, sid, 'amnezia_conf_text');
         } else if (srcType === 'fptn') {
           uci.unset(UCI_PACKAGE, sid, 'access_token');
-        } else if (srcType === 'json') {
+        } else if (srcType === 'json' || srcType === 'outbound_json') {
           uci.unset(UCI_PACKAGE, sid, 'outbound_jsons');
           uci.unset(UCI_PACKAGE, sid, 'outbound_json');
         }
@@ -3371,6 +3383,33 @@ function createOutboundsContent(section) {
   o.value('tailscale', _('Tailscale Mesh VPN'));
   o.value('interface', _('Network Interface (WireGuard / OpenVPN / TUN)'));
   o.value('outbound_json', _('Sing-box Outbound JSON'));
+  o.write = function (sectionId, value) {
+    const st = String(value || 'subscription')
+      .trim()
+      .toLowerCase();
+    uci.set(UCI_PACKAGE, sectionId, 'source_type', st);
+    if (st !== 'subscription') {
+      uci.unset(UCI_PACKAGE, sectionId, 'url');
+    }
+    if (st !== 'proxy_links' && st !== 'links') {
+      uci.unset(UCI_PACKAGE, sectionId, 'proxy_links');
+      uci.unset(UCI_PACKAGE, sectionId, 'proxy_links_text');
+      uci.unset(UCI_PACKAGE, sectionId, 'selector_proxy_links');
+      uci.unset(UCI_PACKAGE, sectionId, 'selector_proxy_links_text');
+    }
+    if (st !== 'amnezia_config' && st !== 'awg') {
+      uci.unset(UCI_PACKAGE, sectionId, 'amnezia_configs');
+      uci.unset(UCI_PACKAGE, sectionId, 'selector_amnezia_configs');
+      uci.unset(UCI_PACKAGE, sectionId, 'amnezia_conf_text');
+    }
+    if (st !== 'outbound_json' && st !== 'json') {
+      uci.unset(UCI_PACKAGE, sectionId, 'outbound_jsons');
+      uci.unset(UCI_PACKAGE, sectionId, 'outbound_json');
+    }
+    if (st !== 'fptn') {
+      uci.unset(UCI_PACKAGE, sectionId, 'access_token');
+    }
+  };
 
   o = section.taboption(
     'general',
@@ -3812,6 +3851,16 @@ function createOutboundsContent(section) {
     return list;
   };
   o.write = function (sectionId, value) {
+    const activeType = String(
+      this.section.formvalue(sectionId, 'source_type') ||
+        uci.get(UCI_PACKAGE, sectionId, 'source_type') ||
+        'subscription',
+    )
+      .trim()
+      .toLowerCase();
+    if (activeType !== 'proxy_links' && activeType !== 'links') {
+      return;
+    }
     const list = asArray(value);
     if (list.length) {
       uci.set(UCI_PACKAGE, sectionId, 'proxy_links', list);
@@ -3821,18 +3870,27 @@ function createOutboundsContent(section) {
     }
   };
   o.remove = function (sectionId) {
-    try {
-      const bulkId = `cbid.${UCI_PACKAGE}.${sectionId}._proxy_links_bulk`;
-      const bulkEl =
-        typeof document !== 'undefined'
-          ? document.getElementById(`widget.${bulkId}`) ||
-            document.querySelector(`textarea[name="${bulkId}"]`) ||
-            document.querySelector(`[data-field="${bulkId}"] textarea`)
-          : null;
-      if (bulkEl && String(bulkEl.value || '').trim()) {
-        return;
-      }
-    } catch (_e) {}
+    const activeType = String(
+      this.section.formvalue(sectionId, 'source_type') ||
+        uci.get(UCI_PACKAGE, sectionId, 'source_type') ||
+        'subscription',
+    )
+      .trim()
+      .toLowerCase();
+    if (activeType === 'proxy_links' || activeType === 'links') {
+      try {
+        const bulkId = `cbid.${UCI_PACKAGE}.${sectionId}._proxy_links_bulk`;
+        const bulkEl =
+          typeof document !== 'undefined'
+            ? document.getElementById(`widget.${bulkId}`) ||
+              document.querySelector(`textarea[name="${bulkId}"]`) ||
+              document.querySelector(`[data-field="${bulkId}"] textarea`)
+            : null;
+        if (bulkEl && String(bulkEl.value || '').trim()) {
+          return;
+        }
+      } catch (_e) {}
+    }
     uci.unset(UCI_PACKAGE, sectionId, 'proxy_links');
     uci.unset(UCI_PACKAGE, sectionId, 'proxy_links_text');
     uci.unset(UCI_PACKAGE, sectionId, 'selector_proxy_links_text');
@@ -3852,19 +3910,33 @@ function createOutboundsContent(section) {
   o.rows = 8;
   o.depends('source_type', 'proxy_links');
   o.cfgvalue = function (sectionId) {
-    return getSourceProxyLinks(sectionId).join('\n');
+    const all = getSourceProxyLinks(sectionId);
+    return all.length > 50 ? all.join('\n') : '';
   };
   o.write = function (sectionId, value) {
+    const activeType = String(
+      this.section.formvalue(sectionId, 'source_type') ||
+        uci.get(UCI_PACKAGE, sectionId, 'source_type') ||
+        'subscription',
+    )
+      .trim()
+      .toLowerCase();
+    if (activeType !== 'proxy_links' && activeType !== 'links') {
+      return;
+    }
     const lines = String(value || '')
       .split(/\r?\n/)
       .map((s) => s.trim())
       .filter(Boolean);
     if (lines.length) {
       const existing = getSourceProxyLinks(sectionId);
+      const dynamicLinks = asArray(
+        this.section.formvalue(sectionId, 'proxy_links'),
+      );
       const merged =
         existing.length > 50
           ? Array.from(new Set(lines))
-          : Array.from(new Set([...existing, ...lines]));
+          : Array.from(new Set([...dynamicLinks, ...lines]));
       uci.set(UCI_PACKAGE, sectionId, 'proxy_links', merged);
       uci.unset(UCI_PACKAGE, sectionId, 'proxy_links_text');
       uci.unset(UCI_PACKAGE, sectionId, 'selector_proxy_links_text');

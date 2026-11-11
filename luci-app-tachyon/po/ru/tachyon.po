@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-11 16:54+0300\n"
-"PO-Revision-Date: 2026-11-11 16:54+0300\n"
+"POT-Creation-Date: 2026-11-11 20:59+0300\n"
+"PO-Revision-Date: 2026-11-11 20:59+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -3407,6 +3407,9 @@ msgstr "Время окончания (ЧЧ:ММ)"
 msgid "End of allowed daily access window in HH:MM format (24-hour clock)."
 msgstr "Конец разрешенного ежедневного интервала доступа в формате ЧЧ:ММ (24-часовой формат)."
 
+msgid "End of the daily update window in HH:MM (24h). An end earlier than the start means the window crosses midnight, e.g. 22:00 to 06:00. Empty means one hour after the start."
+msgstr "Конец ежедневного окна обновления в формате ЧЧ:ММ (24 ч). Если конец раньше начала, окно переходит через полночь, например 22:00–06:00. Пусто — через час после начала."
+
 msgid "End of the schedule interval (e.g. 08:00). Supports spans crossing midnight."
 msgstr "Конец интервала расписания (например, 08:00). Поддерживает переход через полночь."
 
@@ -5971,6 +5974,12 @@ msgstr "Максимум попыток рукопожатия"
 
 msgid "Max Streams"
 msgstr "Макс. потоков (Max Streams)"
+
+msgid "Max active clients"
+msgstr "Максимум активных клиентов"
+
+msgid "Max active connections"
+msgstr "Максимум активных соединений"
 
 msgid "Max reconnects per hour before alert (default 10)."
 msgstr "Макс. переподключений в час до оповещения (по умолчанию 10)."
@@ -9185,6 +9194,12 @@ msgstr "Пропустить проверку TLS-сертификатов (не
 msgid "Skip loopback & local entries (127.0.0.1, ::1, 0.0.0.0, localhost)"
 msgstr "Пропустить loopback и локальные записи (127.0.0.1, ::1, 0.0.0.0, localhost)"
 
+msgid "Skip scheduled updates while more LAN clients have active connections. 0 disables the limit."
+msgstr "Не обновлять по расписанию, пока активные соединения есть у большего числа клиентов LAN. 0 — без ограничения."
+
+msgid "Skip scheduled updates while the core has more active connections than this. 0 disables the limit."
+msgstr "Не обновлять по расписанию, пока у ядра больше активных соединений. 0 — без ограничения."
+
 msgid "Skip subscription servers whose name matches any of these keywords."
 msgstr "Пропускать серверы подписки, чьё имя содержит любое из указанных ключевых слов."
 
@@ -9412,6 +9427,9 @@ msgstr "Запустить бота"
 
 msgid "Start of allowed daily access window in HH:MM format (24-hour clock)."
 msgstr "Начало разрешенного ежедневного интервала доступа в формате ЧЧ:ММ (24-часовой формат)."
+
+msgid "Start of the daily update window in HH:MM (24h). Inside the window the router waits for a quiet moment instead of updating at a fixed minute. Empty uses the scheduled time above."
+msgstr "Начало ежедневного окна обновления в формате ЧЧ:ММ (24 ч). Внутри окна роутер ждёт спокойного момента, а не обновляется в фиксированную минуту. Пусто — используется время выше."
 
 msgid "Start sing-box"
 msgstr "Запустить sing-box"
@@ -10783,6 +10801,12 @@ msgstr "Обновлять эту подписку автоматически"
 
 msgid "Update this subscription now"
 msgstr "Обновить эту подписку сейчас"
+
+msgid "Update window end"
+msgstr "Конец окна обновления"
+
+msgid "Update window start"
+msgstr "Начало окна обновления"
 
 msgid "Updated"
 msgstr "Обновлено"
@@ -14125,27 +14149,3 @@ msgstr "По алфавиту (А–Я)"
 
 msgid "Further narrow the selected Outbound Groups/Sources for this section (e.g. exclude |WL| or Bypass) before feeding servers into Balancers."
 msgstr "Дополнительное сужение выбранных групп/источников серверов для этой секции перед передачей в балансировщики (URLTest / Priority)."
-
-msgid "Update window start"
-msgstr "Начало окна обновления"
-
-msgid "Start of the daily update window in HH:MM (24h). Inside the window the router waits for a quiet moment instead of updating at a fixed minute. Empty uses the scheduled time above."
-msgstr "Начало ежедневного окна обновления в формате ЧЧ:ММ (24 ч). Внутри окна роутер ждёт спокойного момента, а не обновляется в фиксированную минуту. Пусто — используется время выше."
-
-msgid "Update window end"
-msgstr "Конец окна обновления"
-
-msgid "End of the daily update window in HH:MM (24h). An end earlier than the start means the window crosses midnight, e.g. 22:00 to 06:00. Empty means one hour after the start."
-msgstr "Конец ежедневного окна обновления в формате ЧЧ:ММ (24 ч). Если конец раньше начала, окно переходит через полночь, например 22:00–06:00. Пусто — через час после начала."
-
-msgid "Max active connections"
-msgstr "Максимум активных соединений"
-
-msgid "Skip scheduled updates while the core has more active connections than this. 0 disables the limit."
-msgstr "Не обновлять по расписанию, пока у ядра больше активных соединений. 0 — без ограничения."
-
-msgid "Max active clients"
-msgstr "Максимум активных клиентов"
-
-msgid "Skip scheduled updates while more LAN clients have active connections. 0 disables the limit."
-msgstr "Не обновлять по расписанию, пока активные соединения есть у большего числа клиентов LAN. 0 — без ограничения."

@@ -16656,6 +16656,37 @@ function createSectionContent(section) {
     if (refs.length)
       uci.set(UCI_PACKAGE, sectionId, 'outbound_source_refs', refs);
     else unsetIfPresent(sectionId, 'outbound_source_refs');
+    const safeSid = String(sectionId).replace(/[^A-Za-z0-9_]/g, '_');
+    const rawMigrations = uci.get(
+      UCI_PACKAGE,
+      'settings',
+      'applied_migrations',
+    );
+    const hasModularMigration = (
+      Array.isArray(rawMigrations)
+        ? rawMigrations
+        : String(rawMigrations || '').split(/\s+/)
+    ).includes('modular_entities_v1');
+    if (hasModularMigration || refs.length > 0) {
+      if (!refs.includes(`src_json_${safeSid}`)) {
+        unsetIfPresent(sectionId, 'outbound_jsons');
+        unsetIfPresent(sectionId, 'outbound_json');
+      }
+      if (!refs.includes(`src_links_${safeSid}`)) {
+        unsetIfPresent(sectionId, 'selector_proxy_links');
+        unsetIfPresent(sectionId, 'selector_proxy_links_text');
+        unsetIfPresent(sectionId, 'proxy_links');
+        unsetIfPresent(sectionId, 'proxy_links_text');
+      }
+      if (
+        !refs.includes(`src_amnezia_${safeSid}`) &&
+        !refs.includes(`src_awg_${safeSid}`)
+      ) {
+        unsetIfPresent(sectionId, 'selector_amnezia_configs');
+        unsetIfPresent(sectionId, 'amnezia_configs');
+        unsetIfPresent(sectionId, 'amnezia_conf_text');
+      }
+    }
     const attachedUrls = new Set(
       refs
         .map((id) => String(uci.get(UCI_PACKAGE, id, 'url') || '').trim())

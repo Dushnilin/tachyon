@@ -344,18 +344,29 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
     const effectiveSources: Tachyon.ConfigSection[] = [];
     const seenSrcIds = new Set<string>();
     const dpiSourceTypes = new Set(['zapret', 'zapret2', 'byedpi', 'desync']);
+    const hasDirectNonDpiSourceRefs =
+      outboundSources.length > 0 &&
+      getListValues(next.outbound_source_refs).some((sid) => {
+        const s = sourceById.get(sid);
+        return (
+          Boolean(s) &&
+          !dpiSourceTypes.has((s?.source_type || '').toLowerCase())
+        );
+      });
     const hasInlineConnectionItems =
-      getListValues(next.selector_proxy_links).length > 0 ||
-      getListValues(next.proxy_links).length > 0 ||
-      getListValues(next.connection_urls).length > 0 ||
-      Boolean((next.selector_proxy_links_text || '').trim()) ||
-      Boolean((next.proxy_links_text || '').trim()) ||
-      Boolean((next.urltest_proxy_links_text || '').trim()) ||
-      getRawListValues(next.selector_amnezia_configs || next.amnezia_configs)
-        .length > 0 ||
-      Boolean((next.amnezia_conf_text || '').trim()) ||
-      getRawListValues(next.outbound_jsons || next.outbound_json).length > 0 ||
-      Boolean((next.access_token || '').trim());
+      !hasDirectNonDpiSourceRefs &&
+      (getListValues(next.selector_proxy_links).length > 0 ||
+        getListValues(next.proxy_links).length > 0 ||
+        getListValues(next.connection_urls).length > 0 ||
+        Boolean((next.selector_proxy_links_text || '').trim()) ||
+        Boolean((next.proxy_links_text || '').trim()) ||
+        Boolean((next.urltest_proxy_links_text || '').trim()) ||
+        getRawListValues(next.selector_amnezia_configs || next.amnezia_configs)
+          .length > 0 ||
+        Boolean((next.amnezia_conf_text || '').trim()) ||
+        getRawListValues(next.outbound_jsons || next.outbound_json).length >
+          0 ||
+        Boolean((next.access_token || '').trim()));
     const addSource = (src?: Tachyon.ConfigSection) => {
       if (!src || src.enabled === '0') return;
       const sid = src['.name'];
@@ -367,15 +378,6 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
     getListValues(next.outbound_source_refs).forEach((sid) =>
       addSource(sourceById.get(sid)),
     );
-
-    const hasDirectNonDpiSourceRefs = getListValues(
-      next.outbound_source_refs,
-    ).some((sid) => {
-      const s = sourceById.get(sid);
-      return (
-        Boolean(s) && !dpiSourceTypes.has((s?.source_type || '').toLowerCase())
-      );
-    });
 
     let hasExplicitNonDpiSources =
       hasInlineConnectionItems ||
@@ -501,7 +503,10 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
     };
 
     effectiveSources.forEach((src) => {
-      const stype = (src.source_type || 'subscription').toLowerCase();
+      const explicitStype = String(src.source_type || '')
+        .trim()
+        .toLowerCase();
+      const stype = explicitStype || 'subscription';
       const srcPfx =
         src.prefix_nodes !== '0' && typeof src.node_prefix === 'string'
           ? src.node_prefix.trim()
@@ -523,7 +528,7 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
           latestSourcePrefixStyles[srcPfx] = sourcePrefixStyles[srcPfx];
         }
       }
-      if (stype === 'subscription' || src.url) {
+      if (stype === 'subscription' || (!explicitStype && src.url)) {
         const isSubUrl = (val: string) =>
           /^https?:\/\//i.test(val) || /^(happ:\/\/)?crypt[2-5]?\//i.test(val);
         const rawSubName = (src.name || '').trim();
@@ -716,23 +721,49 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
       subscriptionUrlItems.push(it);
     });
 
-    if (extraProxyLinks.length) {
-      next.selector_proxy_links = uniqueCodes([
-        ...getListValues(next.selector_proxy_links),
-        ...extraProxyLinks,
-      ]);
-    }
-    if (extraAmneziaConfigs.length) {
-      next.selector_amnezia_configs = uniqueCodes([
-        ...getRawListValues(next.selector_amnezia_configs),
-        ...extraAmneziaConfigs,
-      ]);
-    }
-    if (extraOutboundJsons.length) {
-      next.outbound_jsons = uniqueCodes([
-        ...getRawListValues(next.outbound_jsons),
-        ...extraOutboundJsons,
-      ]);
+    if (hasDirectNonDpiSourceRefs) {
+      if (extraProxyLinks.length) {
+        next.selector_proxy_links = uniqueCodes(extraProxyLinks);
+      } else {
+        delete next.selector_proxy_links;
+      }
+      delete next.proxy_links;
+      delete next.selector_proxy_links_text;
+      delete next.proxy_links_text;
+
+      if (extraAmneziaConfigs.length) {
+        next.selector_amnezia_configs = uniqueCodes(extraAmneziaConfigs);
+      } else {
+        delete next.selector_amnezia_configs;
+      }
+      delete next.amnezia_configs;
+      delete next.amnezia_conf_text;
+
+      if (extraOutboundJsons.length) {
+        next.outbound_jsons = uniqueCodes(extraOutboundJsons);
+      } else {
+        delete next.outbound_jsons;
+      }
+      delete next.outbound_json;
+    } else {
+      if (extraProxyLinks.length) {
+        next.selector_proxy_links = uniqueCodes([
+          ...getListValues(next.selector_proxy_links),
+          ...extraProxyLinks,
+        ]);
+      }
+      if (extraAmneziaConfigs.length) {
+        next.selector_amnezia_configs = uniqueCodes([
+          ...getRawListValues(next.selector_amnezia_configs),
+          ...extraAmneziaConfigs,
+        ]);
+      }
+      if (extraOutboundJsons.length) {
+        next.outbound_jsons = uniqueCodes([
+          ...getRawListValues(next.outbound_jsons),
+          ...extraOutboundJsons,
+        ]);
+      }
     }
 
     // Hydrate urltests from balancer_refs + legacy urltest child sections (mirrors connections.uc:urltests)
