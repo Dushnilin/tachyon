@@ -13,6 +13,7 @@ let i18n = require("service.i18n");
 let rendering = require("service.telegram.rendering");
 let transport = require("service.telegram.transport");
 let update_jobs = require("service.telegram.update_jobs");
+let notifications = require("service.telegram.notifications");
 let _commands = null;
 function get_commands() {
     if (_commands == null) _commands = require("service.telegram.commands");
@@ -153,17 +154,17 @@ function send_api(message, smart_entries) {
     if (!is_critical && in_quiet_hours(cfg)) return 0;
     
     let admins = split(cfg.admin_ids, /,/);
+    let accepted = true;
+    let recipients = 0;
     for (let admin in admins) {
         let chat_id = trim(admin);
         if (chat_id != "") {
-            let actions = smart_entries ? require("service.telegram.smart_detect_actions") : null;
-            let id = actions ? actions.create(smart_entries, chat_id) : null;
-            let res = send_message(cfg.bot_token, chat_id, message, "Markdown", id ? actions.keyboard(id, i18n.bind(cfg.language)) : null);
-            if (id && res?.ok && res.result?.message_id)
-                actions.bind_message(id, chat_id, res.result.message_id);
+            recipients++;
+            if (!notifications.submit(cfg.bot_token, chat_id, message, "Markdown", null, smart_entries))
+                accepted = false;
         }
     }
-    return 0;
+    return accepted && recipients > 0 ? 0 : 1;
 }
 
 function send_daily_digest(token, admin_ids) {
@@ -180,10 +181,15 @@ function send_daily_digest(token, admin_ids) {
     }
     
     let admins = split(admin_ids, /,/);
+    let accepted = true;
+    let recipients = 0;
     for (let admin in admins) {
         let chat_id = trim(admin);
-        if (chat_id != "") send_message(token, chat_id, text, "HTML", null);
+        if (chat_id == "") continue;
+        recipients++;
+        if (!notifications.submit(token, chat_id, text, "HTML", null)) accepted = false;
     }
+    return accepted && recipients > 0;
 }
 
 function check_notified_updates(token, admin_ids) {
@@ -243,12 +249,18 @@ function check_notified_updates(token, admin_ids) {
                     let kb = [[{text: t("btn_update_component") + " " + title, callback_data: "/update_component " + name}]];
 
                     let admins = split(admin_ids, /,/);
+                    let accepted = true;
+                    let recipients = 0;
                     for (let admin in admins) {
                         let cid = trim(admin);
-                        if (cid != "") send_message(token, cid, msg, "HTML", kb);
+                        if (cid == "") continue;
+                        recipients++;
+                        if (!notifications.submit(token, cid, msg, "HTML", kb)) accepted = false;
                     }
-                    notified[name] = key;
-                    changed = true;
+                    if (accepted && recipients > 0) {
+                        notified[name] = key;
+                        changed = true;
+                    }
                 }
             }
         }
@@ -315,11 +327,15 @@ function notify_auto_update_cli(component, old_ver, new_ver) {
     }
 
     let admins = split(cfg.admin_ids, /,/);
+    let accepted = true;
+    let recipients = 0;
     for (let admin in admins) {
         let cid = trim(admin);
-        if (cid != "") send_message(cfg.bot_token, cid, msg, "HTML", null);
+        if (cid == "") continue;
+        recipients++;
+        if (!notifications.submit(cfg.bot_token, cid, msg, "HTML", null)) accepted = false;
     }
-    return 0;
+    return accepted && recipients > 0 ? 0 : 1;
 }
 
 function block_schedules_with_notify() {
@@ -892,7 +908,6 @@ function worker() {
     let poll_interval = int(cfg.poll_interval || "5");
     if (poll_interval < 1) poll_interval = 1;
 
-    let last_report_day = -1;
     let last_update_check = 0;
     let last_update_check_mtime = 0;
     let last_blocked_check = 0;
@@ -907,39 +922,19 @@ function worker() {
             if (cfg.enabled != "1") break;
             t = i18n.bind(cfg.language);
             write_heartbeat();
-            let res = process_updates(cfg.bot_token, cfg.admin_ids);
-
-            if (res === false) {
-                consecutive_failures++;
-                let backoff = poll_interval * (1 << min(consecutive_failures - 1, 4));
-                if (backoff > 300) backoff = 300;
-                let log_level = consecutive_failures >= 3 ? "[warn]" : "[info]";
-                command_success_from_args(["logger", "-t", "tachyon-telegram", log_level + " API poll retry " + as_string(consecutive_failures) + ", backing off " + as_string(backoff) + "s"]);
-
-                // Tell the admin once per failure episode that the usual
-                // proxy route is down and the direct fallback carries the
-                // bot meanwhile.
-                if (!route_alert_sent && consecutive_failures >= 5) {
-                    route_alert_sent = true;
-                    alert_route_failure(consecutive_failures, mixed_port_alive());
-                }
-
-                sleep(backoff * 1000);
-                continue;
-            }
-            consecutive_failures = 0;
-            route_alert_sent = false;
-            write_heartbeat();
-
             let now = time();
             // localtime() yields { sec, min, hour, mday, mon, year, ... }.
             // clock() returns [seconds, microseconds] and has no calendar fields.
             let tm = localtime(now);
             let daily_hour = int(cfg.daily_report_hour || "8");
 
-            if (cfg.daily_report_enabled == "1" && tm && tm.hour == daily_hour && tm.mday != last_report_day) {
-                last_report_day = tm.mday;
-                send_daily_digest(cfg.bot_token, cfg.admin_ids);
+            let report_day = tm ? sprintf("%d:%d:%d", tm.year, tm.mon, tm.mday) : "";
+            common.ensure_dir("/var/run/tachyon");
+            let daily_marker = "/var/run/tachyon/telegram-daily-" + split(cfg.bot_token, /:/)[0] + ".date";
+            if (cfg.daily_report_enabled == "1" && tm && tm.hour == daily_hour &&
+                trim(fs.readfile(daily_marker) || "") != report_day) {
+                if (send_daily_digest(cfg.bot_token, cfg.admin_ids))
+                    common.write_file(daily_marker, report_day + "\n");
             }
             
             let ts_stat = fs.stat(COMPONENT_UPDATE_CHECK_TIMESTAMP);
@@ -970,6 +965,21 @@ function worker() {
                 rotate_log_if_needed();
                 last_log_check = now;
             }
+            notifications.drain(cfg.bot_token);
+            write_heartbeat();
+            let res = process_updates(cfg.bot_token, cfg.admin_ids);
+            if (res === false) {
+                consecutive_failures++;
+                let backoff = min(300, poll_interval * (1 << min(consecutive_failures - 1, 4)));
+                let log_level = consecutive_failures >= 3 ? "[warn]" : "[info]";
+                command_success_from_args(["logger", "-t", "tachyon-telegram", log_level + " API poll retry " + as_string(consecutive_failures) + ", backing off " + as_string(backoff) + "s"]);
+                if (!route_alert_sent && consecutive_failures >= 5)
+                    route_alert_sent = alert_route_failure(consecutive_failures, mixed_port_alive()) === true;
+                sleep(backoff * 1000);
+                continue;
+            }
+            consecutive_failures = 0;
+            route_alert_sent = false;
         } catch (e) {
             consecutive_failures++;
             command_success_from_args(["logger", "-t", "tachyon-telegram", "[err] Worker loop error: " + as_string(e)]);
@@ -1135,7 +1145,8 @@ function diagnose() {
     if (cfg.bot_token && cfg.admin_ids) {
         let first_admin = trim(split(cfg.admin_ids, /,/)[0] || "");
         if (first_admin !== "") {
-            let s_ok = send_message(cfg.bot_token, first_admin, "✅ Tachyon connection test passed");
+            let send_result = send_message(cfg.bot_token, first_admin, "✅ Tachyon connection test passed");
+            let s_ok = send_result && send_result.ok === true;
             push(checks, {
                 name: "send_message",
                 ok: s_ok,
