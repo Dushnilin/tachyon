@@ -32,6 +32,7 @@ const TAILSCALED_PORT = getenv("TAILSCALED_PORT") || "41641";
 const DEFAULT_CONTROL_URL = "https://controlplane.tailscale.com";
 const MAGICDNS_DNSMASQ_FILE = getenv("TAILSCALE_DNSMASQ_FILE") || "/tmp/dnsmasq.d/tachyon-tailscale.conf";
 const MAGICDNS_ADDRESS = getenv("TAILSCALE_MAGICDNS_ADDRESS") || "100.100.100.100";
+const DNSMASQ_INIT = getenv("DNSMASQ_INIT") || "/etc/init.d/dnsmasq";
 
 // Marks live inside the mask reserved by the config validator (0x00ff0000):
 // no other Tachyon engine may allocate bits there.
@@ -248,8 +249,12 @@ function tailscale_client_args(section) {
 }
 
 function remove_magicdns_dns() {
+    // Every tachyon reload runs stop_runtime when no tailnet is configured; an
+    // unconditional restart left LAN clients without DNS for seconds each time.
+    if (fs.stat(MAGICDNS_DNSMASQ_FILE) == null)
+        return;
     fs.unlink(MAGICDNS_DNSMASQ_FILE);
-    command_status(command_from_args([ "/etc/init.d/dnsmasq", "restart" ]) + " >/dev/null 2>&1");
+    command_status(command_from_args([ DNSMASQ_INIT, "restart" ]) + " >/dev/null 2>&1");
 }
 
 function remove_kernel_routing(keep_dns) {
@@ -422,18 +427,21 @@ function configure_dnsmasq_localservice() {
 function configure_magicdns_dns() {
     // Hand *.ts.net to the tailnet resolver without letting tailscaled touch
     // resolv.conf; dnsmasq picks the file up from its conf-dir.
-    configure_dnsmasq_localservice();
+    let localservice_changed = configure_dnsmasq_localservice();
     if (!command_success_from_args([ "mkdir", "-p", parent_dir(MAGICDNS_DNSMASQ_FILE) ]))
         return false;
     let lines = [
         "# Managed by Tachyon native Tailscale runtime",
         "server=/ts.net/" + MAGICDNS_ADDRESS
     ];
-    if (!write_file(MAGICDNS_DNSMASQ_FILE, join("\n", lines) + "\n")) {
+    let content = join("\n", lines) + "\n";
+    if (!localservice_changed && fs.readfile(MAGICDNS_DNSMASQ_FILE) == content)
+        return true;
+    if (!write_file(MAGICDNS_DNSMASQ_FILE, content)) {
         log_message("Failed to write MagicDNS dnsmasq config", "warn");
         return false;
     }
-    command_status(command_from_args([ "/etc/init.d/dnsmasq", "restart" ]) + " >/dev/null 2>&1");
+    command_status(command_from_args([ DNSMASQ_INIT, "restart" ]) + " >/dev/null 2>&1");
     return true;
 }
 

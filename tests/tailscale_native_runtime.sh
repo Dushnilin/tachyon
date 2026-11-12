@@ -76,6 +76,18 @@ export TAILSCALE_STATE_BASE="$WORK_DIR/state"
 export TAILSCALE_RUNTIME_DIR="$WORK_DIR/run"
 export TAILSCALE_DNSMASQ_FILE="$WORK_DIR/dnsmasq.d/tachyon-tailscale.conf"
 
+# A dnsmasq restart drops LAN DNS for seconds, so count them.
+DNSMASQ_LOG="$WORK_DIR/dnsmasq-init.log"
+cat >"$STUB_BIN/dnsmasq-init" <<EOF
+#!/bin/sh
+printf '%s\n' "\$*" >> '$DNSMASQ_LOG'
+EOF
+chmod +x "$STUB_BIN/dnsmasq-init"
+export DNSMASQ_INIT="$STUB_BIN/dnsmasq-init"
+dnsmasq_restarts() {
+  cat "$DNSMASQ_LOG" 2>/dev/null | grep -c restart || true
+}
+
 run() {
   ucode -L "$TACHYON_LIB" "$RUNTIME_UC" "$@"
 }
@@ -126,6 +138,8 @@ nft list table inet tachyon_tailscale | grep -Fq "masquerade" ||
 grep -Fq "server=/ts.net/100.100.100.100" \
   "$WORK_DIR/dnsmasq.d/tachyon-tailscale.conf" ||
   fail "MagicDNS forward entry missing"
+[ "$(dnsmasq_restarts)" = "1" ] ||
+  fail "writing the MagicDNS config must restart dnsmasq once, got $(dnsmasq_restarts)"
 
 STATUS="$(run status)"
 printf '%s' "$STATUS" | grep -Fq '"configured": true' ||
@@ -145,6 +159,8 @@ printf '%s' "$PEERS" | grep -Fq '"online": false' ||
 run start-runtime || fail "second start-runtime failed"
 RULE_COUNT=$(ip rule list | grep -cF "lookup 4247")
 [ "$RULE_COUNT" = "1" ] || fail "restart duplicated route rules ($RULE_COUNT)"
+[ "$(dnsmasq_restarts)" = "1" ] ||
+  fail "an unchanged MagicDNS config must not restart dnsmasq again, got $(dnsmasq_restarts)"
 
 # --- stop -------------------------------------------------------------------
 run stop-runtime || fail "stop-runtime exited non-zero"
@@ -155,6 +171,12 @@ nft list table inet tachyon_tailscale >/dev/null 2>&1 &&
   fail "nft table survived stop"
 [ -f "$WORK_DIR/dnsmasq.d/tachyon-tailscale.conf" ] &&
   fail "dnsmasq config survived stop"
+[ "$(dnsmasq_restarts)" = "2" ] ||
+  fail "removing the MagicDNS config must restart dnsmasq once, got $(dnsmasq_restarts)"
+# Every tachyon reload runs stop-runtime when no tailnet is configured.
+run stop-runtime || fail "repeated stop-runtime exited non-zero"
+[ "$(dnsmasq_restarts)" = "2" ] ||
+  fail "stop-runtime without a MagicDNS config must not restart dnsmasq, got $(dnsmasq_restarts)"
 
 # --- exit node mode ---------------------------------------------------------
 printf '%s\n' 'tachyon.ts_native.tailscale_use_exit_node=1' >>"$STATE_FILE"
