@@ -2159,7 +2159,7 @@ function loadOutboundNameChoices(section_id) {
       outboundNameChoicesCache.set(targetId, choices);
       outboundNameChoicesFetchedAt.set(targetId, Date.now());
 
-      refreshDashboardFilterChoiceWidgets(targetId);
+      notifyDashboardFilterChoiceWidgets(targetId);
 
       return choices;
     })
@@ -3065,7 +3065,7 @@ function configureLiveDynamicListChoices(option, getChoices, targetSecId) {
     dashboardFilterChoiceRefreshers.get(section_id).add(refreshChoices);
 
     const targetSectionId =
-      targetSecId || parentSectionIdForItem(section_id) || "Main";
+      targetSecId || parentSectionIdForItem(section_id) || section_id || "Main";
     if (targetSectionId && targetSectionId !== section_id) {
       if (!dashboardFilterChoiceRefreshers.has(targetSectionId)) {
         dashboardFilterChoiceRefreshers.set(targetSectionId, new Set());
@@ -3380,7 +3380,11 @@ function currentDraftOutboundNames(section_id) {
     if (fptnToken) {
       fptnTokenServerNames(fptnToken).forEach((sName) => names.push(sName));
     }
-    if (stype !== "subscription" && stype !== "proxy_links") {
+    if (
+      stype !== "subscription" &&
+      stype !== "proxy_links" &&
+      stype !== "fptn"
+    ) {
       const sname =
         `${uci.get(UCI_PACKAGE, sid, "name") || uci.get(UCI_PACKAGE, sid, "label") || sid}`.trim();
       if (sname) names.push(sname);
@@ -3623,24 +3627,32 @@ function invalidateSectionOutboundChoicesCache(section_id) {
   outboundNameChoicesInflight.delete(targetId);
 }
 
+function notifyDashboardFilterChoiceWidgets(section_id) {
+  const targetId = section_id || "Main";
+  const currentRefreshers = dashboardFilterChoiceRefreshers.get(targetId);
+  if (!currentRefreshers) {
+    return;
+  }
+  currentRefreshers.forEach((refresh) => {
+    if (refresh() === false) {
+      currentRefreshers.delete(refresh);
+    }
+  });
+  if (currentRefreshers.size === 0) {
+    dashboardFilterChoiceRefreshers.delete(targetId);
+  }
+}
+
 function refreshDashboardFilterChoiceWidgets(section_id) {
   invalidateSectionOutboundChoicesCache(section_id);
-  const refreshers = dashboardFilterChoiceRefreshers.get(section_id);
+  const targetId = section_id || "Main";
+  const refreshers = dashboardFilterChoiceRefreshers.get(targetId);
   if (!refreshers) {
     return;
   }
 
-  loadOutboundNameChoices(section_id).finally(() => {
-    const currentRefreshers = dashboardFilterChoiceRefreshers.get(section_id);
-    if (!currentRefreshers) return;
-    currentRefreshers.forEach((refresh) => {
-      if (refresh() === false) {
-        currentRefreshers.delete(refresh);
-      }
-    });
-    if (currentRefreshers.size === 0) {
-      dashboardFilterChoiceRefreshers.delete(section_id);
-    }
+  loadOutboundNameChoices(targetId).finally(() => {
+    notifyDashboardFilterChoiceWidgets(targetId);
   });
 }
 
@@ -6258,7 +6270,7 @@ function addDashboardServerFilterOptions(section) {
       list.load = function (section_id) {
         const values = getConfigListValues(section_id, key);
         loadOutboundNameChoices(section_id).then(() => {
-          refreshDashboardFilterChoiceWidgets(section_id);
+          notifyDashboardFilterChoiceWidgets(section_id);
         });
         return values;
       };

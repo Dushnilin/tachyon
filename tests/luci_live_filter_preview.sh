@@ -33,15 +33,30 @@ const source = fs.readFileSync(process.argv[2], "utf8");
 const startIdx = source.indexOf("function normalizeProtocolName(protocol)");
 const regionFallbacksIdx = source.indexOf("const REGION_NAME_FALLBACKS =");
 const plainObjIdx = source.indexOf("function plainObject(value)");
-const endIdx = source.indexOf("function loadOutboundNameChoices(section_id)");
+const endIdx = source.indexOf("function normalizeDynamicListItems(value)");
+const draftStartIdx = source.indexOf("function getOutboundTypeForName(section_id, name)");
+const draftEndIdx = source.indexOf("function currentSectionPrefixChoices(section_id");
+const notifyStartIdx = source.indexOf("function invalidateSectionOutboundChoicesCache(section_id)");
+const notifyEndIdx = source.indexOf("function isDownloadThroughTargetSection(section");
 
-if (startIdx < 0 || regionFallbacksIdx < 0 || plainObjIdx < 0 || endIdx < 0) {
+if (
+  startIdx < 0 ||
+  regionFallbacksIdx < 0 ||
+  plainObjIdx < 0 ||
+  endIdx < 0 ||
+  draftStartIdx < 0 ||
+  draftEndIdx < 0 ||
+  notifyStartIdx < 0 ||
+  notifyEndIdx < 0
+) {
   console.error("FAIL: could not locate filter preview helper functions in section.js");
   process.exit(1);
 }
 
 const protocolBlock = source.slice(startIdx, regionFallbacksIdx);
 const filterBlock = source.slice(plainObjIdx, endIdx);
+const draftBlock = source.slice(draftStartIdx, draftEndIdx);
+const notifyBlock = source.slice(notifyStartIdx, notifyEndIdx);
 
 const contextCode = `
 const mockFiles = {
@@ -74,9 +89,24 @@ const mockUciSections = {
       action: "connection",
       outbound_source_refs: ["src_sub_riot", "src_manual_de"],
       balancer_refs: ["urltest", "priority"]
+    },
+    {
+      ".name": "FptnSec",
+      ".type": "section",
+      enabled: "1",
+      action: "connection",
+      outbound_source_refs: ["src_fptn_pool"]
     }
   ],
   outbound_source: [
+    {
+      ".name": "src_fptn_pool",
+      ".type": "outbound_source",
+      enabled: "1",
+      name: "FPTN",
+      source_type: "fptn",
+      access_token: "fptnb://compressed-brotli-token"
+    },
     {
       ".name": "src_sub_riot",
       ".type": "outbound_source",
@@ -127,6 +157,9 @@ function normalizeDynamicListItems(val) {
 function currentSourceOptionValues(secId, opt) {
   return normalizeOptionValues(uci.get(UCI_PACKAGE, secId, opt));
 }
+function getConfigListValues(secId, opt) {
+  return normalizeOptionValues(uci.get(UCI_PACKAGE, secId, opt));
+}
 function getRuleResolvedAction(secId) {
   return uci.get(UCI_PACKAGE, secId, "action") || "connection";
 }
@@ -139,13 +172,27 @@ const fs = {
 };
 const SECTION_CACHE_DIR = "/var/run/tachyon/section-cache";
 const SUBSCRIPTION_CACHE_DIR = "/etc/tachyon/subscription-cache";
+const OUTBOUND_NAME_CHOICES_TTL_MS = 10000;
+const outboundNameChoicesCache = new Map();
+const outboundNameChoicesFetchedAt = new Map();
+const outboundNameChoicesInflight = new Map();
+const outboundTypeByNameCache = new Map();
+const dashboardFilterChoiceRefreshers = new Map();
+const outboundNameSourceOptions = new Map();
 ${protocolBlock}
 ${filterBlock}
+${draftBlock}
+${notifyBlock}
 return {
   filteredOutboundMetadataFromCache,
   readOutboundMetadataFromSectionCache,
   extractCountryFromFlagEmojiName,
-  evaluateLiveServerFilterPreview
+  evaluateLiveServerFilterPreview,
+  loadOutboundNameChoices,
+  currentOutboundNameChoices,
+  currentDraftOutboundNames,
+  outboundNameChoicesCache,
+  dashboardFilterChoiceRefreshers
 };
 `;
 
@@ -258,6 +305,22 @@ helpers.readOutboundMetadataFromSectionCache("VPN").then((vpnMeta) => {
   assert.strictEqual(preview.totalCount, 3);
   assert.strictEqual(preview.matchedCount, 1);
   assert.strictEqual(preview.matchedServers[0].name, "🇩🇪 Germany Pool 1");
+
+  // 8. Verify loadOutboundNameChoices populates cache AND keeps it intact for refresher callbacks
+  let refreshedChoices = null;
+  helpers.dashboardFilterChoiceRefreshers.set("VPN", new Set([
+    () => {
+      refreshedChoices = helpers.currentOutboundNameChoices("VPN", []);
+      return true;
+    }
+  ]));
+  return helpers.loadOutboundNameChoices("VPN").then((loadedChoices) => {
+    assert.strictEqual(loadedChoices.length, 3, "loadOutboundNameChoices must return 3 servers for VPN");
+    assert(helpers.outboundNameChoicesCache.has("VPN"), "outboundNameChoicesCache must retain VPN choices after loadOutboundNameChoices resolves");
+    assert(Array.isArray(refreshedChoices) && refreshedChoices.length === 3, "refresher must see 3 populated choices instead of an invalidated empty cache");
+    const fptnDraftNames = helpers.currentDraftOutboundNames("FptnSec");
+    assert(!fptnDraftNames.includes("FPTN"), "currentDraftOutboundNames must not inject the FPTN source name as a server choice");
+  });
 }).catch((err) => {
   console.error(err);
   process.exit(1);

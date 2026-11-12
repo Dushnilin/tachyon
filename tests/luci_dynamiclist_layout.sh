@@ -106,6 +106,15 @@ if grep -Fq 'form.DynamicList.prototype.renderWidget' <<<"$live_choices"; then
 fi
 grep -Fq 'dashboardFilterChoiceRefreshers.get(section_id).add(refreshChoices);' <<<"$live_choices" ||
   fail "dashboard selectors must register the rendered modal widget for source changes"
+grep -Fq 'targetSecId || parentSectionIdForItem(section_id) || section_id || "Main";' <<<"$live_choices" ||
+  fail "dashboard selectors on a section must load choices for that section instead of falling back to Main"
+grep -Fq 'notifyDashboardFilterChoiceWidgets(targetId);' "$SECTION_JS" ||
+  fail "loadOutboundNameChoices must notify refreshers without invalidating the freshly populated cache"
+if grep -Fq 'refreshDashboardFilterChoiceWidgets(targetId);' <<<"$(sed -n '/^function loadOutboundNameChoices(/,/^function normalizeDynamicListItems(/p' "$SECTION_JS")"; then
+  fail "loadOutboundNameChoices must not invalidate its own cache right after populating it"
+fi
+grep -Fq 'stype !== "fptn"' <<<"$(sed -n '/^function currentDraftOutboundNames(/,/^function currentSectionPrefixChoices(/p' "$SECTION_JS")" ||
+  fail "currentDraftOutboundNames must not push the FPTN outbound_source name as a server choice"
 grep -Fq 'node.addEventListener("mousedown", refreshBeforeOpening, true);' <<<"$live_choices" ||
   fail "dashboard selectors must refresh choices before opening"
 grep -Fq 'if (currentSignature === choiceSignature)' "$SECTION_JS" ||
