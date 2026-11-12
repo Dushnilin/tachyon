@@ -477,17 +477,15 @@ function sync_selector_defaults_after_reload(proxies_payload) {
         let def_target = as_string(ob.default || "");
         if (tag == "" || def_target == "" || index(tag, "-priority-") >= 0)
             continue;
+        let ob_outbounds = type(ob.outbounds) == "array" ? ob.outbounds : [];
         let desired = as_string(disk_state[tag] || "");
-        if (desired == "") {
-            let def_is_balancer = index(def_target, "-urltest-") >= 0 || index(def_target, "-priority-") >= 0;
-            if (!def_is_balancer)
-                continue;
+        if (desired == "" || (length(ob_outbounds) > 0 && !string_array_contains(ob_outbounds, desired)))
             desired = def_target;
-        }
         let proxy = object_or_empty(proxies[tag]);
         if (lc(as_string(proxy.type || "")) != "selector")
             continue;
-        if (!string_array_contains(proxy.all, desired))
+        let candidates = length(ob_outbounds) > 0 ? ob_outbounds : proxy.all;
+        if (!string_array_contains(candidates, desired))
             continue;
         if (as_string(proxy.now || "") != desired)
             module_success(DIAGNOSTICS_UC, [ "clash-api", "set_group_proxy", tag, desired, "ephemeral" ]);

@@ -2611,6 +2611,37 @@ const EntryPoint = {
       };
     }
 
+    // Index [data-field] once per synchronous checkDepends pass instead of one DOM query per lookup.
+    const origCheckDepends = tachyonMap.checkDepends;
+    const origFindElements = tachyonMap.findElements;
+    let dataFieldIndex = null;
+    tachyonMap.findElements = function (...args) {
+      if (dataFieldIndex && args.length === 2 && args[0] === "data-field") {
+        return dataFieldIndex.get(String(args[1])) || [];
+      }
+      return origFindElements.apply(this, args);
+    };
+    tachyonMap.checkDepends = function (...args) {
+      if (dataFieldIndex || !this.root) {
+        return origCheckDepends.apply(this, args);
+      }
+      dataFieldIndex = new Map();
+      for (const el of this.root.querySelectorAll("[data-field]")) {
+        const key = el.dataset.field;
+        const list = dataFieldIndex.get(key);
+        if (list) {
+          list.push(el);
+        } else {
+          dataFieldIndex.set(key, [el]);
+        }
+      }
+      try {
+        return origCheckDepends.apply(this, args);
+      } finally {
+        dataFieldIndex = null;
+      }
+    };
+
     const sectionFactories = {
       dashboard: () => {
         const s = tachyonMap.section(

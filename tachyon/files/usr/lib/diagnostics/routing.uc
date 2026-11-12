@@ -1291,11 +1291,36 @@ function build_conntrack_mark_map() {
         }
     }
 
+    let tailscale_section_id = "";
+    for (let srv in uci_sections("server")) {
+        if (option(srv, "enabled", "1") == "0")
+            continue;
+        if (lc(option(srv, "protocol", "")) == "tailscale") {
+            tailscale_section_id = as_string(srv[".name"] || "");
+            break;
+        }
+    }
+
     return {
         marks: marks,
         default_zapret: default_zapret,
-        default_zapret2: default_zapret2
+        default_zapret2: default_zapret2,
+        tailscale_section_id: tailscale_section_id
     };
+}
+
+function is_tailscale_ip(value) {
+    value = lc(trim(as_string(value)));
+    if (value == "")
+        return false;
+    if (index(value, "fd7a:115c:a1e0:") == 0)
+        return true;
+    if (!valid_ipv4(value))
+        return false;
+    let parts = split(value, ".");
+    let a = int(parts[0], 10);
+    let b = int(parts[1], 10);
+    return a == 100 && b >= 64 && b <= 127;
 }
 
 function load_conntrack_ip_host_map(parsed_connections, parsed_reverse_dns) {
@@ -1353,6 +1378,7 @@ function read_conntrack_connections(mark_info, existing_tuples, ip_host_map) {
     let marks = (type(mark_info) == "object" && type(mark_info.marks) == "object") ? mark_info.marks : {};
     let def_z1 = type(mark_info) == "object" ? as_string(mark_info.default_zapret || "") : "";
     let def_z2 = type(mark_info) == "object" ? as_string(mark_info.default_zapret2 || "") : "";
+    let ts_sec_id = type(mark_info) == "object" ? as_string(mark_info.tailscale_section_id || "") : "";
     let host_map = type(ip_host_map) == "object" ? ip_host_map : {};
 
     for (let line in split(raw, "\n")) {
@@ -1435,14 +1461,16 @@ function read_conntrack_connections(mark_info, existing_tuples, ip_host_map) {
         let tkey = connection_tuple_key(proto, orig_src, orig_sport, orig_dst, orig_dport);
         if (type(existing_tuples) == "object" && existing_tuples[tkey])
             continue;
-        if (!valid_public_ip(orig_dst) || valid_public_ip(orig_src))
+        let is_ts_conn = ts_sec_id != "" && (is_tailscale_ip(orig_src) || is_tailscale_ip(orig_dst));
+        if (!is_ts_conn && (!valid_public_ip(orig_dst) || valid_public_ip(orig_src)))
             continue;
         if (type(existing_tuples) == "object")
             existing_tuples[tkey] = true;
 
         let route_mark = mark_val & 0x0fffffff;
-        let route_tag = "direct-out";
-        let rule_str = "conntrack => direct-out";
+        let ts_tag = "server-" + ts_sec_id + "-in";
+        let route_tag = is_ts_conn ? ts_tag : "direct-out";
+        let rule_str = is_ts_conn ? ("inbound=[" + ts_tag + "] => tailscale") : "conntrack => direct-out";
         let rmark_key = as_string(route_mark);
 
         if (marks[rmark_key] != null && marks[rmark_key] != "") {
@@ -1457,12 +1485,24 @@ function read_conntrack_connections(mark_info, existing_tuples, ip_host_map) {
         } else if ((mark_val & 0x60000000) != 0) {
             route_tag = def_z2 != "" ? def_z2 : (def_z1 != "" ? def_z1 : "zapret2-out");
             rule_str = sprintf("conntrack nfqueue mark=0x%x => route(%s)", mark_val, route_tag);
-        } else if (orig_dport == "53") {
+        } else if (orig_dport == "53" && !is_ts_conn) {
             route_tag = "dns-out";
             rule_str = "conntrack => dns-out";
         }
 
         let resolved_host = as_string(host_map[orig_dst] || "");
+
+        let meta = {
+            network: proto,
+            type: is_ts_conn ? ts_tag : "conntrack",
+            sourceIP: orig_src,
+            sourcePort: orig_sport,
+            destinationIP: orig_dst,
+            destinationPort: orig_dport,
+            host: resolved_host
+        };
+        if (is_ts_conn)
+            meta.inbound = ts_tag;
 
         push(result, {
             id: sprintf("ct:%s:%s:%s:%s:%s", proto, orig_src, orig_sport, orig_dst, orig_dport),
@@ -1472,15 +1512,7 @@ function read_conntrack_connections(mark_info, existing_tuples, ip_host_map) {
             chains: [ route_tag ],
             rule: rule_str,
             rulePayload: "",
-            metadata: {
-                network: proto,
-                type: "conntrack",
-                sourceIP: orig_src,
-                sourcePort: orig_sport,
-                destinationIP: orig_dst,
-                destinationPort: orig_dport,
-                host: resolved_host
-            }
+            metadata: meta
         });
         if (length(result) >= 250)
             break;

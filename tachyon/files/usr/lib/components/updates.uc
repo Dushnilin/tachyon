@@ -179,7 +179,7 @@ let _curl_has_doh_url = null;
 let _curl_working_doh_url = "";
 function curl_push_dns_servers(args, doh_fallback_index) {
     if (_curl_has_dns_servers === null) {
-        let cap = common.command_capture(command_from_args([ "curl", "--dns-servers", "8.8.8.8", "-V" ]));
+        let cap = common.command_capture(command_from_args([ "curl", "--dns-servers", "8.8.8.8", "-V" ]) + " 2>/dev/null");
         _curl_has_dns_servers = (cap != null && int(cap.status) == 0);
     }
     if (_curl_has_dns_servers) {
@@ -192,7 +192,7 @@ function curl_push_dns_servers(args, doh_fallback_index) {
         return "";
 
     if (_curl_has_doh_url === null) {
-        let cap = common.command_capture(command_from_args([ "curl", "--doh-url", "https://dns.google/dns-query", "-V" ]));
+        let cap = common.command_capture(command_from_args([ "curl", "--doh-url", "https://dns.google/dns-query", "-V" ]) + " 2>/dev/null");
         _curl_has_doh_url = (cap != null && int(cap.status) == 0);
     }
     if (!_curl_has_doh_url)

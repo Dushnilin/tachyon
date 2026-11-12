@@ -12620,17 +12620,7 @@ function createSectionContent(section) {
       }
     }
 
-    const refreshers = dashboardFilterChoiceRefreshers.get(section_id);
-    if (refreshers) {
-      refreshers.forEach((fn) => {
-        if (fn() === false) {
-          refreshers.delete(fn);
-        }
-      });
-      if (refreshers.size === 0) {
-        dashboardFilterChoiceRefreshers.delete(section_id);
-      }
-    }
+    notifyDashboardFilterChoiceWidgets(section_id);
   };
 
   o = section.taboption(

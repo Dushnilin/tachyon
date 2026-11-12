@@ -1789,6 +1789,28 @@ function add_group_urltest_outbounds(config, sections) {
         if (section_has_direct_priority_level(section))
             state.outboundMetadata.names[runtime_constants.DIRECT_OUTBOUND_TAG] = "Direct";
 
+        let group_refs = connections.section_outbound_group_refs(section);
+        if (length(group_refs) > 0) {
+            let union_cand = [];
+            for (let grp_id in group_refs) {
+                let gspec = connections.outbound_group_filter_spec(grp_id, section);
+                if (gspec == null)
+                    continue;
+                for (let t in filter_tags_by_group_spec(tags, gspec, state))
+                    push(union_cand, t);
+            }
+            tags = unique_string_array(union_cand);
+        }
+
+        let sec_pool_spec = connections.section_pool_filter_spec(section);
+        if (sec_pool_spec != null)
+            tags = filter_tags_by_group_spec(tags, sec_pool_spec, state);
+
+        if (length(tags) == 0) {
+            warn("Section group " + group_name + " has no member servers matching its pool filter, the group is not generated\n");
+            continue;
+        }
+
         let configured_urltests = connections.urltests(section);
         let urltest_ids = length(configured_urltests) > 0 ? configured_urltests : [ "urltest" ];
         let urltest_tags = [];

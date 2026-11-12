@@ -1687,6 +1687,11 @@ function current_ui_state_json() {
     let dnsmasq_uptime = dnsmasq_pid ? get_process_uptime(dnsmasq_pid) : null;
     let dnsmasq_uptime_pretty = format_uptime_pretty(dnsmasq_uptime);
     let lite_mode_enabled = truthy(uci_core.get(CONFIG_NAME + ".settings.lite_mode"));
+    let watchdog_pid = first_alive_pid_from_files([
+        "/var/run/tachyon_watchdog.pid",
+        "/var/run/tachyon_watchdog.supervisor.pid"
+    ]);
+    let watchdog_is_running = watchdog_pid != null ? 1 : 0;
 
     write_json({
         active_engine: active_engine,
@@ -1703,6 +1708,10 @@ function current_ui_state_json() {
                 uptime_pretty: tachyon_uptime_pretty,
                 cpu_load_percent: read_cpu_load_percent(),
                 cpu_temp_c: read_cpu_temperature_c()
+            },
+            watchdog: {
+                running: watchdog_is_running,
+                pid: watchdog_pid
             },
             sing_box: {
                 running: sing_box_is_running,

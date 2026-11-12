@@ -1159,6 +1159,10 @@ export namespace Tachyon {
     service: {
       tachyon: GetStatus;
       sing_box: GetSingBoxStatus;
+      watchdog?: {
+        running: number;
+        pid?: number | null;
+      };
       zapret2?: {
         running: number;
         memory_rss_mb?: number;

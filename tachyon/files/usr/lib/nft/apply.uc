@@ -2299,6 +2299,8 @@ function nft_add_tproxy_rules(table, fakeip_mark, tproxy_port, tproxy6_address, 
     if (!nft_add_rule(table, "proxy", [ "ct", "status", "dnat", "meta", "mark", "set", "meta", "mark", "&", clear_mask, "return" ]))
         return false;
     nft_try_add_rule(table, "proxy", [ "fib", "daddr", "type", "local", "return" ]);
+    if (!nft_add_rule(table, "proxy", [ "meta", "mark", "&", fakeip_mark, "==", "0", "return" ]))
+        return false;
     if (!nft_add_rule(table, "proxy", [ "ip", "saddr", ".", "tcp", "sport", "@tachyon_dnat_tcp_v4", "meta", "mark", "set", "meta", "mark", "&", clear_mask, "return" ]) ||
         !nft_add_rule(table, "proxy", [ "ip", "daddr", ".", "tcp", "dport", "@tachyon_dnat_tcp_v4", "meta", "mark", "set", "meta", "mark", "&", clear_mask, "return" ]) ||
         !nft_add_rule(table, "proxy", [ "ip", "saddr", ".", "udp", "sport", "@tachyon_dnat_udp_v4", "meta", "mark", "set", "meta", "mark", "&", clear_mask, "return" ]) ||

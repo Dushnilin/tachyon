@@ -140,7 +140,9 @@ function applyServiceState(uiState: Tachyon.UiState) {
         tachyonUptimePretty: uiState.service.tachyon.uptime_pretty,
         cpuLoadPercent: uiState.service.tachyon.cpu_load_percent,
         cpuTempC: uiState.service.tachyon.cpu_temp_c,
-        watchdogRunning: store.get().servicesInfoWidget.data.watchdogRunning,
+        watchdogRunning:
+          uiState.service.watchdog?.running ??
+          store.get().servicesInfoWidget.data.watchdogRunning,
         zapret2Running: uiState.service.zapret2
           ? uiState.service.zapret2.running
           : undefined,

@@ -8,13 +8,17 @@ let require=function(name){
         prepare_list:function(name,path){push(prepared,{name,path});return prepare_ok;}
     };
     if(name=="tachyon_core.rulesets")return {is_community:actual.supported,
+        is_adoptable_srs_file:function(path){push(probed,path);return true;},
         is_referenceable_srs_file:function(path){push(probed,path);return true;}};
     if(name=="config.connections")return {};
     if(name=="core.url")return {};
     return real_require(name);
 };
 let TMP_RULESET_FOLDER="/test-rulesets";let CONFIG_NAME="fixture";
-let uci_core={get_all:function(config,type){return type=="settings"?cfg:{};}};
+let uci_core={
+    get_all:function(config,type){return type=="settings"?cfg:{};},
+    section_objects:function(config,type){return [];}
+};
 function command_success_from_args(args){return true;}
 function command_status(command){return 0;}
 function log_message(message,level){if(level=="warn")push(warnings,message);}

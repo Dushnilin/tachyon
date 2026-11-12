@@ -683,6 +683,15 @@ export function computeInboundsRuntimeSummary(
       server.protocol === 'tailscale' &&
       server.tailscaleMode === 'native' &&
       !nativeTailscaleApplied;
+    const isSingboxTailscale =
+      server.enabled &&
+      server.protocol === 'tailscale' &&
+      server.tailscaleMode !== 'native';
+
+    if (isSingboxTailscale) {
+      const svcInfo = store.get()?.servicesInfoWidget?.data;
+      meshRunning = Boolean(svcInfo?.tachyonRunning || svcInfo?.singbox);
+    }
 
     if (isNativeTailscale && tailscaleData && tailscaleData.configured) {
       nativeTailscaleApplied = true;
