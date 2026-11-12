@@ -126,14 +126,12 @@ function native_tailscale_enabled() {
 
 // Marks used for tunnel forwarding inside 0x00ff0000:
 //  - 0x00200000: Tailscale native exit-node mark (providers/tailscale/runtime.uc)
-//  - 0x00300000: FPTN tunnel mark (providers/fptn/common.uc)
 //  - 0x00040000: Standalone tailscaled subnet-router forward mark
 // tailscaled uses 0x00080000 for its own outer sockets, not ordinary LAN
 // packets. Protect those sockets separately in output so IP-list rules cannot
 // recapture the transport that carries the tunnel (#318).
-const TAILSCALE_TUNNEL_BYPASS_MARK_MASK = "0x00340000";
+const TAILSCALE_TUNNEL_BYPASS_MARK_MASK = "0x00240000";
 const TAILSCALE_DAEMON_BYPASS_MARK = "0x00080000";
-const FPTN_TUNNEL_BYPASS_MARK = "0x00300000";
 
 function tailscale_bypass_active() {
     if (native_tailscale_enabled())
@@ -212,7 +210,7 @@ function collect_fptn_bypass_state() {
     if (_fptn_state_cache != null)
         return _fptn_state_cache;
 
-    let active = fs.stat("/sys/class/net/tun-fptn") != null;
+    let active = false;
     let seen_v4 = {};
     let seen_v6 = {};
     let v4 = [];
@@ -2499,14 +2497,6 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
                 !nft_add_set_elements(table, "tachyon_fptn_servers6", join(",", fptn_state.v6)))
                 return false;
         }
-        if (!tailscale_bypass_active()) {
-            if (!nft_add_rule(table, "mangle", [ "ip", "daddr", "!=", fakeip_range, "meta", "mark", "&", FPTN_TUNNEL_BYPASS_MARK, "==", FPTN_TUNNEL_BYPASS_MARK, "return" ]) ||
-                !nft_add_rule(table, "mangle", [ "ip6", "daddr", "!=", fakeip6_range, "meta", "mark", "&", FPTN_TUNNEL_BYPASS_MARK, "==", FPTN_TUNNEL_BYPASS_MARK, "return" ]))
-                return false;
-        }
-        if (!nft_add_rule(table, "mangle", [ "iifname", "\"tun-fptn*\"", "ip", "daddr", "!=", fakeip_range, "return" ]) ||
-            !nft_add_rule(table, "mangle", [ "iifname", "\"tun-fptn*\"", "ip6", "daddr", "!=", fakeip6_range, "return" ]))
-            return false;
     }
 
     if (!nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip", "daddr", "@" + as_string(localv4_set), "return" ]) ||
@@ -2614,9 +2604,6 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
         !nft_add_rule(table, "mangle_output", [ "meta", "mark", outbound_mark, "counter", "return" ]) ||
         !nft_add_rule(table, "mangle_output", [ "meta", "mark", "0x00002022", "counter", "return" ]) ||
         (fptn_state.active && (
-            !nft_add_rule(table, "mangle_output", [ "meta", "mark", "&", FPTN_TUNNEL_BYPASS_MARK, "==", FPTN_TUNNEL_BYPASS_MARK, "counter", "return" ]) ||
-            !nft_add_rule(table, "mangle_output", [ "oifname", "\"tun-fptn*\"", "ip", "daddr", "!=", fakeip_range, "return" ]) ||
-            !nft_add_rule(table, "mangle_output", [ "oifname", "\"tun-fptn*\"", "ip6", "daddr", "!=", fakeip6_range, "return" ]) ||
             (length(fptn_state.v4) > 0 && !nft_add_rule(table, "mangle_output", [ "ip", "daddr", "@tachyon_fptn_servers", "counter", "return" ])) ||
             (length(fptn_state.v6) > 0 && !nft_add_rule(table, "mangle_output", [ "ip6", "daddr", "@tachyon_fptn_servers6", "counter", "return" ]))
         )) ||
@@ -2671,12 +2658,6 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
             !nft_add_rule(table, "mangle_forward", [ "oifname", "tailscale0", "return" ]) ||
             !nft_add_rule(table, "mangle_forward", [ "ip", "daddr", "100.64.0.0/10", "return" ]) ||
             !nft_add_rule(table, "mangle_forward", [ "ip6", "daddr", "fd7a:115c:a1e0::/48", "return" ]))
-            return false;
-    }
-    if (fptn_state.active) {
-        if ((!tailscale_bypass_active() && !nft_add_rule(table, "mangle_forward", [ "meta", "mark", "&", FPTN_TUNNEL_BYPASS_MARK, "==", FPTN_TUNNEL_BYPASS_MARK, "return" ])) ||
-            !nft_add_rule(table, "mangle_forward", [ "iifname", "\"tun-fptn*\"", "return" ]) ||
-            !nft_add_rule(table, "mangle_forward", [ "oifname", "\"tun-fptn*\"", "return" ]))
             return false;
     }
 
@@ -4190,9 +4171,7 @@ function nft_enable_router_output_intercept(table, localv4_set, outbound_mark, e
     }
     let fptn_redirect_state = collect_fptn_bypass_state();
     if (fptn_redirect_state.active) {
-        if (!nft_add_rule(table, "output_redirect", [ "meta", "mark", "&", FPTN_TUNNEL_BYPASS_MARK, "==", FPTN_TUNNEL_BYPASS_MARK, "return" ]) ||
-            !nft_add_rule(table, "output_redirect", [ "oifname", "\"tun-fptn*\"", "return" ]) ||
-            (length(fptn_redirect_state.v4) > 0 && !nft_add_rule(table, "output_redirect", [ "ip", "daddr", "{ " + join(", ", fptn_redirect_state.v4) + " }", "return" ])) ||
+        if ((length(fptn_redirect_state.v4) > 0 && !nft_add_rule(table, "output_redirect", [ "ip", "daddr", "{ " + join(", ", fptn_redirect_state.v4) + " }", "return" ])) ||
             (length(fptn_redirect_state.v6) > 0 && !nft_add_rule(table, "output_redirect", [ "ip6", "daddr", "{ " + join(", ", fptn_redirect_state.v6) + " }", "return" ])))
             return false;
     }

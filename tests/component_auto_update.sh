@@ -32,7 +32,6 @@ mkdir -p \
   "$fake_lib/providers/byedpi" \
   "$fake_lib/providers/wdtt" \
   "$fake_lib/providers/olcrtc" \
-  "$fake_lib/providers/fptn" \
   "$job_dir" \
   "$cache_dir"
 
@@ -113,7 +112,6 @@ cp "$fake_lib/providers/zapret/runtime.uc" "$fake_lib/providers/zapret2/runtime.
 cp "$fake_lib/providers/zapret/runtime.uc" "$fake_lib/providers/byedpi/runtime.uc"
 cp "$fake_lib/providers/zapret/runtime.uc" "$fake_lib/providers/wdtt/runtime.uc"
 cp "$fake_lib/providers/zapret/runtime.uc" "$fake_lib/providers/olcrtc/runtime.uc"
-cp "$fake_lib/providers/zapret/runtime.uc" "$fake_lib/providers/fptn/runtime.uc"
 
 cat >"$fake_lib/service/state.uc" <<'UCODE'
 #!/usr/bin/env ucode

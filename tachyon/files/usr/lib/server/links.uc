@@ -227,7 +227,10 @@ function build(s, fallback_host, pin) {
     }
     let port = int(s.listen_port || defaults[protocol] || 443);
     if (port < 1 || port > 65535) return "";
-    pin = match(pin || "", /^[0-9a-f]{64}$/) ? pin : "";
+    let raw_md5 = type(pin) == "object" ? lc(str(pin.md5 || "")) : lc(str(pin || ""));
+    let md5_pin = match(raw_md5, /^[0-9a-f]{32}$/) ? raw_md5 : "";
+    let raw_sha256 = type(pin) == "object" ? lc(str(pin.sha256 || "")) : lc(str(pin || ""));
+    pin = match(raw_sha256, /^[0-9a-f]{64}$/) ? raw_sha256 : "";
     if (protocol == "vless" || protocol == "trojan") return vless_trojan(s, user, address, port, pin);
     if (protocol == "vmess") return vmess(s, user, address, port, pin);
     if (index([ "hysteria2", "tuic", "anytls", "shadowtls" ], protocol) >= 0)
@@ -349,7 +352,7 @@ function build(s, fallback_host, pin) {
     if (protocol == "fptn") {
         if (!user.password) return "";
         let payload = { version: 1, service_name: "Tachyon", username: user.username, password: user.password,
-            servers: [{ name: user.name, host: address, port, md5_fingerprint: "" }], censored_zone_servers: [] };
+            servers: [{ name: user.name, host: address, port, md5_fingerprint: md5_pin }], censored_zone_servers: [] };
         return "fptn://" + replace(b64enc(sprintf("%J", payload)), /=+$/, "") + "#" + encode(user.name);
     }
     let scheme = protocol == "mixed" || protocol == "socks" ? "socks5" : (protocol == "naive" ? "naive+https" : "http");

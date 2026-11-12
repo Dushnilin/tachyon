@@ -35,7 +35,6 @@ function componentDisplayName(component: string) {
     byedpi: 'ByeDPI',
     wdtt: 'WDTT',
     olcrtc: 'OlcRTC',
-    fptn: 'FPTN',
   };
 
   return names[component] || component;

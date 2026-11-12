@@ -65,7 +65,6 @@ function emit_reload_plan(previous, current, context) {
         byedpi_runtime: current.byedpi_runtime != previous.byedpi_runtime,
         wdtt_runtime: current.wdtt_runtime != previous.wdtt_runtime,
         olcrtc_runtime: current.olcrtc_runtime != previous.olcrtc_runtime,
-        fptn_runtime: current.fptn_runtime != previous.fptn_runtime,
         list: current.list != previous.list,
         hosts_list: current.hosts_list != previous.hosts_list,
         cron: current.cron != previous.cron
@@ -79,7 +78,6 @@ function emit_reload_plan(previous, current, context) {
         byedpi_restart: false,
         wdtt_restart: false,
         olcrtc_restart: false,
-        fptn_restart: false,
         dnsmasq_configure: false,
         dnsmasq_restore: false,
         cron_refresh: false,
@@ -124,9 +122,6 @@ function emit_reload_plan(previous, current, context) {
     if (changed.olcrtc_runtime)
         needs.olcrtc_restart = true;
 
-    if (changed.fptn_runtime)
-        needs.fptn_restart = true;
-
     if (changed.dnsmasq) {
         if (!current.dont_touch_dhcp)
             needs.dnsmasq_configure = true;
@@ -161,7 +156,6 @@ function emit_reload_plan(previous, current, context) {
         !needs.byedpi_restart &&
         !needs.wdtt_restart &&
         !needs.olcrtc_restart &&
-        !needs.fptn_restart &&
         !needs.dnsmasq_configure &&
         !needs.dnsmasq_restore)
         needs.sing_box_reload = true;
@@ -174,7 +168,6 @@ function emit_reload_plan(previous, current, context) {
         needs.byedpi_restart ||
         needs.wdtt_restart ||
         needs.olcrtc_restart ||
-        needs.fptn_restart ||
         needs.dnsmasq_configure ||
         needs.dnsmasq_restore ||
         needs.cron_refresh ||
@@ -198,7 +191,6 @@ function emit_reload_plan(previous, current, context) {
     emit_bool("changed_byedpi_runtime", changed.byedpi_runtime);
     emit_bool("changed_wdtt_runtime", changed.wdtt_runtime);
     emit_bool("changed_olcrtc_runtime", changed.olcrtc_runtime);
-    emit_bool("changed_fptn_runtime", changed.fptn_runtime);
     emit_bool("changed_cron", changed.cron);
     emit_bool("changed_list", changed.list);
     emit_bool("changed_hosts_list", changed.hosts_list);
@@ -210,7 +202,6 @@ function emit_reload_plan(previous, current, context) {
     emit_bool("needs_byedpi_restart", needs.byedpi_restart);
     emit_bool("needs_wdtt_restart", needs.wdtt_restart);
     emit_bool("needs_olcrtc_restart", needs.olcrtc_restart);
-    emit_bool("needs_fptn_restart", needs.fptn_restart);
     emit_bool("needs_dnsmasq_configure", needs.dnsmasq_configure);
     emit_bool("needs_dnsmasq_restore", needs.dnsmasq_restore);
     emit_bool("needs_cron_refresh", needs.cron_refresh);
@@ -306,7 +297,6 @@ function plan_state_from_file(path) {
         byedpi_runtime: as_string(state.byedpi_runtime_signature),
         wdtt_runtime: as_string(state.wdtt_runtime_signature),
         olcrtc_runtime: as_string(state.olcrtc_runtime_signature),
-        fptn_runtime: as_string(state.fptn_runtime_signature),
         list: as_string(state.list_signature),
         hosts_list: as_string(state.hosts_list_signature),
         cron: as_string(state.cron_signature),

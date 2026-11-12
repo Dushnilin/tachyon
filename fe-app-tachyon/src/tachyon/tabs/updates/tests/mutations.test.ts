@@ -23,8 +23,6 @@ const initialSystemInfo: StoreType['diagnosticsSystemInfo'] = {
   wdtt_version: 'not installed',
   olcrtc_installed: 0,
   olcrtc_version: 'not installed',
-  fptn_installed: 0,
-  fptn_version: 'not installed',
   tailscale_version: 'not installed',
   direct_bypass_enabled: 0,
   torrserver_direct_enabled: 0,
@@ -77,26 +75,6 @@ describe('computeSystemInfoMutation', () => {
     expect(nextSystemInfo.sing_box_tiny).toBe(0);
     expect(nextSystemInfo.sing_box_cert_pin).toBe(1);
     expect(nextSystemInfo.sing_box_tailscale).toBe(1);
-  });
-
-  it('updates fptn transport mode for set_native_mode', () => {
-    const { nextSystemInfo } = computeSystemInfoMutation(initialSystemInfo, {
-      component: 'fptn',
-      action: 'set_native_mode',
-      current_version: '',
-    });
-
-    expect(nextSystemInfo.fptn_mode).toBe('native');
-  });
-
-  it('updates fptn transport mode for set_component_mode', () => {
-    const { nextSystemInfo } = computeSystemInfoMutation(initialSystemInfo, {
-      component: 'fptn',
-      action: 'set_component_mode',
-      current_version: '',
-    });
-
-    expect(nextSystemInfo.fptn_mode).toBe('component');
   });
 
   it('clears tachyon-core flags when another variant is installed', () => {

@@ -28,17 +28,16 @@ ok() { pass_count=$((pass_count + 1)); }
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
 TAILSCALE_RT="$TACHYON_LIB/providers/tailscale/runtime.uc"
-FPTN_RT="$TACHYON_LIB/providers/fptn/runtime.uc"
 ROUTES="$TACHYON_LIB/tachyon_core/generator_routes.uc"
 GEN="$TACHYON_LIB/tachyon_core/generator.uc"
 STATE="$TACHYON_LIB/service/state.uc"
 ROUTING_DIAG="$TACHYON_LIB/diagnostics/routing.uc"
 STATUS_DIAG="$TACHYON_LIB/diagnostics/status.uc"
-for f in "$TAILSCALE_RT" "$FPTN_RT" "$ROUTES" "$GEN" "$STATE" "$ROUTING_DIAG" "$STATUS_DIAG"; do
+for f in "$TAILSCALE_RT" "$ROUTES" "$GEN" "$STATE" "$ROUTING_DIAG" "$STATUS_DIAG"; do
   [ -f "$f" ] || fail "missing $f"
 done
 
-# --- #94: no hand-rolled background spawn in the two runtimes -------------
+# --- #94: no hand-rolled background spawn in tailscale runtime ------------
 grep -q 'background_command_with_pid' "$TAILSCALE_RT" ||
   fail "tailscaled must be spawned through background_command_with_pid, or it inherits procd's fd 1000 and every later reload deadlocks on flock 1000"
 ok
@@ -46,14 +45,6 @@ ok
 # The fix's own comment names the construct it removed, so only executable lines count here.
 grep 'echo \$!' "$TAILSCALE_RT" | grep -qv '^[[:space:]]*//' &&
   fail "tailscale/runtime.uc still spawns with a raw '& echo \$!', which redirects only 0/1/2 and leaks the lock descriptor into tailscaled"
-ok
-
-grep -q 'background_command_with_pid' "$FPTN_RT" ||
-  fail "fptn/runtime.uc must spawn through background_command_with_pid for the same fd-1000 reason"
-ok
-
-grep 'echo \$! > ' "$FPTN_RT" | grep -qv '^[[:space:]]*//' &&
-  fail "fptn/runtime.uc still spawns with a raw '& echo \$! > pid', same descriptor leak"
 ok
 
 # --- #97: fakeip-routed DNS rules must declare the types fakeip can answer --

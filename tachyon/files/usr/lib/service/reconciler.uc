@@ -338,14 +338,6 @@ function build_desired_daemons(opts) {
             critical: false
         });
     }
-    if (has_provider_sections("fptn")) {
-        push(daemons, {
-            id: "fptn",
-            name: "fptn",
-            kind: "provider",
-            critical: false
-        });
-    }
 
     return daemons;
 }
@@ -896,9 +888,6 @@ function repair_daemons_subsystem(drift_items, opts) {
             ok = command_status(cmd) == 0;
         } else if (daemon_id == "byedpi") {
             let cmd = sprintf("ucode -L %s %s/providers/byedpi/runtime.uc start-runtime >/dev/null 2>&1", LIB_DIR, LIB_DIR);
-            ok = command_status(cmd) == 0;
-        } else if (daemon_id == "fptn") {
-            let cmd = sprintf("ucode -L %s %s/providers/fptn/runtime.uc start-runtime >/dev/null 2>&1", LIB_DIR, LIB_DIR);
             ok = command_status(cmd) == 0;
         }
 

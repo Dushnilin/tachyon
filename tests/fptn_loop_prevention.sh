@@ -2,19 +2,16 @@
 # Prevents router hard-freeze / TCP loopback storm when saving an FPTN section
 # or outbound_source:
 # 1. nft/apply.uc decodes fptn:/fptnb: server IPs into @tachyon_fptn_servers and
-#    inserts early returns for FPTN_TUNNEL_BYPASS_MARK (0x00300000), tun-fptn*,
-#    and FPTN server IPs in mangle, mangle_output, mangle_forward, and
-#    importantly output_redirect (nat output priority -100).
-# 2. providers/fptn/runtime.uc ip shim blocks split-default routes (0.0.0.0/1,
-#    128.0.0.0/1, ::/0, ::/1, 8000::/1) from hijacking table main.
-# 3. tachyon_core/generator_outbounds.uc forwards sni, bypass_method, and
+#    inserts early returns for FPTN server IPs in mangle_output and
+#    importantly output_redirect (nat output priority -100), without emitting
+#    legacy external tun-fptn* or 0x00300000 component bypasses.
+# 2. tachyon_core/generator_outbounds.uc forwards sni, bypass_method, and
 #    preferred_server ordering to expanded FPTN member outbounds.
 . "$(dirname "${BASH_SOURCE[0]}")/lib/harness.sh"
 set -eo pipefail
 
 NFT_RUNTIME="$ROOT_DIR/tachyon/files/usr/lib/nft/apply.uc"
 GENERATOR_UC="$ROOT_DIR/tachyon/files/usr/lib/tachyon_core/generator.uc"
-FPTN_RUNTIME_UC="$ROOT_DIR/tachyon/files/usr/lib/providers/fptn/runtime.uc"
 NFT_LOG="$WORK_DIR/nft.log"
 UCI_STATE="$WORK_DIR/uci.state"
 
@@ -71,47 +68,28 @@ grep -Fq "203.0.113.20" "$NFT_LOG" || fail "missing decoded FPTN server 203.0.11
 grep -Fq "192.0.2.30" "$NFT_LOG" || fail "missing decoded FPTN censorship_zone_server 192.0.2.30 in nft set"
 grep -Fq "mangle_output ip daddr @tachyon_fptn_servers counter return" "$NFT_LOG" ||
   fail "missing @tachyon_fptn_servers return rule in mangle_output"
-grep -Fq "mangle_output meta mark & 0x00300000 == 0x00300000 counter return" "$NFT_LOG" ||
-  fail "missing FPTN_TUNNEL_BYPASS_MARK return rule in mangle_output"
-grep -Fq 'mangle iifname "tun-fptn*"' "$NFT_LOG" ||
-  fail "missing tun-fptn* bypass in mangle"
-grep -Fq 'mangle_forward oifname "tun-fptn*" return' "$NFT_LOG" ||
-  fail "missing tun-fptn* bypass in mangle_forward"
+if grep -Fq "0x00300000" "$NFT_LOG"; then
+  fail "nft-create-runtime-base must not emit legacy 0x00300000 FPTN component mark"
+fi
+if grep -Fq "tun-fptn" "$NFT_LOG"; then
+  fail "nft-create-runtime-base must not emit legacy tun-fptn* component rules"
+fi
 
 # Critical check: output_redirect (router self-traffic NAT redirect) MUST bypass
-# FPTN server IPs, tun-fptn*, and mark 0x00300000 before redirecting all TCP to :1601!
+# FPTN server IPs before redirecting all TCP to :1601!
 : >"$NFT_LOG"
 TACHYON_UCI_STATE_FILE="$UCI_STATE" \
   ucode -L "$TACHYON_LIB" "$NFT_RUNTIME" nft-enable-router-output-intercept \
   TachyonTable localv4 0x08000000 0
 
-grep -Fq "output_redirect meta mark & 0x00300000 == 0x00300000 return" "$NFT_LOG" || {
-  cat "$NFT_LOG" >&2
-  fail "output_redirect is missing 0x00300000 return rule (causes loopback storm)"
-}
-grep -Fq 'output_redirect oifname "tun-fptn*" return' "$NFT_LOG" ||
-  fail "output_redirect is missing tun-fptn* return rule"
 grep -Fq "198.51.100.10" "$NFT_LOG" ||
   fail "output_redirect is missing decoded FPTN server IP 198.51.100.10 return rule"
-
-# Verify ip shim blocks 0.0.0.0/1 and 128.0.0.0/1 split-default routes
-REAL_IP_LOG="$WORK_DIR/real_ip.log"
-mkdir -p "$WORK_DIR/realbin" "$WORK_DIR/fptn-state/bin"
-cat >"$WORK_DIR/realbin/ip" <<'EOF_REAL_IP'
-#!/bin/sh
-printf '%s\n' "$*" >> "${REAL_IP_LOG_TEST:?}"
-exit 0
-EOF_REAL_IP
-chmod +x "$WORK_DIR/realbin/ip"
-
-ucode -L "$TACHYON_LIB" -e '
-let fs = require("fs");
-let src = fs.readfile(ARGV[0]);
-if (index(src, "*0.0.0.0/1*|*128.0.0.0/1*") < 0 || index(src, "*::/0*|*::/1*|*8000::/1*") < 0) {
-    warn("ip_shim in providers/fptn/runtime.uc does not block /1 split-default routes\n");
-    exit(1);
-}
-' "$FPTN_RUNTIME_UC"
+if grep -Fq "0x00300000" "$NFT_LOG"; then
+  fail "output_redirect must not emit legacy 0x00300000 FPTN component mark"
+fi
+if grep -Fq "tun-fptn" "$NFT_LOG"; then
+  fail "output_redirect must not emit legacy tun-fptn* component rules"
+fi
 
 # Verify generator forwards sni, bypass_method, and preferred_server ordering
 printf 'tachyon-core\n' > "$WORK_DIR/sing-box-variant"

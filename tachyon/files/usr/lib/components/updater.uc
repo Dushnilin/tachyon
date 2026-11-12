@@ -383,7 +383,7 @@ function openwrt_release_series(path) {
 
 function updates_arch_package_version(package_name, package_arch) {
     let version = str_remove_suffix(str_remove_suffix(package_name, ".ipk"), ".apk");
-    let prefixes = ["zapret2_", "zapret2-", "zapret_", "zapret-", "byedpi_", "byedpi-", "fptn-client-", "fptn-client_", "fptn_", "fptn-", "wdtt_", "wdtt-", "olcrtc_", "olcrtc-"];
+    let prefixes = ["zapret2_", "zapret2-", "zapret_", "zapret-", "byedpi_", "byedpi-", "wdtt_", "wdtt-", "olcrtc_", "olcrtc-"];
 
     for (let prefix in prefixes) {
         if (str_startswith(version, prefix)) {
@@ -1075,50 +1075,6 @@ function byedpi_select_asset(series, asset_ext, arch_candidates) {
     }
 }
 
-function fptn_asset_matches(name, series, arch, ext) {
-    if (!str_startswith(name, "fptn-client-") && !str_startswith(name, "fptn-"))
-        return false;
-    if (!str_endswith(name, "." + ext))
-        return false;
-    if (series != "" && !str_contains(name, series))
-        return false;
-    return str_contains(name, "-" + arch + "." + ext) || str_contains(name, "_" + arch + "." + ext);
-}
-
-function select_fptn_asset_from_release(release, series, asset_ext, arch_candidates) {
-    for (let arch in split(as_string(arch_candidates), " ")) {
-        if (arch == "")
-            continue;
-        for (let asset in array_or_empty(release.assets)) {
-            if (type(asset) != "object")
-                continue;
-            let name = as_string(asset.name || "");
-            let url = as_string(asset.browser_download_url || "");
-            if (url != "" && fptn_asset_matches(name, series, arch, asset_ext)) {
-                print(arch, "\t", name, "\t", url, "\t", as_string(release.html_url || ""), "\n");
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-function fptn_select_asset(series, asset_ext, arch_candidates) {
-    let releases = releases_array_or_wrapped(read_stdin_json());
-
-    for (let pass = 0; pass < 2; pass++) {
-        let current_series = pass == 0 ? as_string(series) : "";
-        for (let release in releases) {
-            if (type(release) != "object")
-                continue;
-            if (release.draft === true || (length(releases) > 1 && release.prerelease === true))
-                continue;
-            if (select_fptn_asset_from_release(release, current_series, asset_ext, arch_candidates))
-                return;
-        }
-    }
-}
-
 function wdtt_select_asset(series, asset_ext, arch_candidates) {
     let releases = releases_array_or_wrapped(read_stdin_json());
 
@@ -1769,8 +1725,6 @@ else if (mode == "wdtt-select-asset")
     wdtt_select_asset(ARGV[1], ARGV[2], ARGV[3]);
 else if (mode == "olcrtc-select-asset")
     olcrtc_select_asset(ARGV[1], ARGV[2], ARGV[3]);
-else if (mode == "fptn-select-asset")
-    fptn_select_asset(ARGV[1], ARGV[2], ARGV[3]);
 else if (mode == "sing-box-extended-release-tag")
     sing_box_extended_release_tag();
 else if (mode == "sing-box-lx-release-tag")

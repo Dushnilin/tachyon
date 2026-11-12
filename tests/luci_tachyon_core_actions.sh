@@ -106,7 +106,7 @@ const fromSystemInfo = functionBody(
 if (!fromSystemInfo.includes("singBoxTachyonCore: Boolean(systemInfo.sing_box_tachyon_core)")) {
   fail("system-info must feed singBoxTachyonCore into the action providers state");
 }
-if (!fromSystemInfo.includes("systemInfo.fptn_installed || systemInfo.sing_box_fptn")) {
+if (!fromSystemInfo.includes("fptnInstalled: Boolean(systemInfo.sing_box_fptn)")) {
   fail("the built-in FPTN flag must make the FPTN action available");
 }
 

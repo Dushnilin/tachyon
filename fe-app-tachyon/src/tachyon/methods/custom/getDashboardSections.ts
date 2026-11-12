@@ -3228,14 +3228,7 @@ export async function getDashboardSections(
   >();
 
   const getServiceStatus = (
-    serviceType:
-      | 'zapret'
-      | 'zapret2'
-      | 'byedpi'
-      | 'desync'
-      | 'wdtt'
-      | 'olcrtc'
-      | 'fptn',
+    serviceType: 'zapret' | 'zapret2' | 'byedpi' | 'desync' | 'wdtt' | 'olcrtc',
   ) => {
     if (!serviceStatusCache.has(serviceType)) {
       serviceStatusCache.set(
@@ -3320,23 +3313,6 @@ export async function getDashboardSections(
                   restartCount: s.restart_count,
                   unstable: Boolean(s.runtime_unstable),
                   statusMessage: s.status_message,
-                };
-              }
-            } else if (serviceType === 'fptn') {
-              const result = await TachyonShellMethods.getFptnStatus();
-              if (result.success && result.data) {
-                const s = result.data;
-                return {
-                  serviceType: 'fptn',
-                  configured: Boolean(s.configured),
-                  ready: Boolean(s.ready),
-                  conflict: false,
-                  runningProcesses: s.service_running ? 1 : 0,
-                  expectedProcesses: s.configured ? 1 : 0,
-                  restartCount: 0,
-                  unstable: false,
-                  statusMessage:
-                    s.status_message || (s.ready ? _('Running') : _('Stopped')),
                 };
               }
             } else if (serviceType === 'desync') {

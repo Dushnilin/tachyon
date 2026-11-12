@@ -3565,7 +3565,7 @@ function reap_dead_jobs() {
 // that holds it open (O_APPEND) writing into the shortened file.
 const TMPFS_LOG_MAX_BYTES = 524288;
 const TMPFS_LOG_KEEP_BYTES = 102400;
-const TMPFS_LOG_PROVIDER_DIRS = [ "zapret", "zapret2", "byedpi", "fptn", "tailscale" ];
+const TMPFS_LOG_PROVIDER_DIRS = [ "zapret", "zapret2", "byedpi", "tailscale" ];
 
 function trim_tmpfs_log(path) {
     let st = fs.stat(path);

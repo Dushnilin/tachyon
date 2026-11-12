@@ -2971,16 +2971,6 @@ function createComponentsVisibilityWidget(option, section_id) {
       fixed: false,
     },
     {
-      id: 'fptn',
-      label: 'FPTN',
-      desc: _tr(
-        'Клиент быстрого протокола FPTN',
-        'Fast packet transport network client',
-      ),
-      defaultVisible: true,
-      fixed: false,
-    },
-    {
       id: 'tailscale',
       label: 'Tailscale',
       desc: _tr(

@@ -184,7 +184,6 @@ export namespace Tachyon {
     // get
     GET_BYEDPI_STATUS = 'get_byedpi_status',
     GET_ENGINE_STATUS = 'get_engine_status',
-    GET_FPTN_STATUS = 'get_fptn_status',
     GET_LITE_MODE = 'get_lite_mode',
     GET_OLCRTC_STATUS = 'get_olcrtc_status',
     GET_OUTBOUND_METADATA = 'get_outbound_metadata',
@@ -440,14 +439,7 @@ export namespace Tachyon {
   }
 
   export interface ServiceStatus {
-    serviceType:
-      | 'zapret'
-      | 'zapret2'
-      | 'byedpi'
-      | 'wdtt'
-      | 'olcrtc'
-      | 'fptn'
-      | 'desync';
+    serviceType: 'zapret' | 'zapret2' | 'byedpi' | 'wdtt' | 'olcrtc' | 'desync';
     configured: boolean;
     ready: boolean;
     conflict: boolean;
@@ -1062,12 +1054,6 @@ export namespace Tachyon {
     olcrtc_installed: 0 | 1;
     tailscale_version: string;
     tailscale_installed: 0 | 1;
-    fptn_version: string;
-    fptn_installed: 0 | 1;
-    fptn_supported?: 0 | 1;
-    fptn_mode?: 'native' | 'component';
-    fptn_backup_version?: string;
-    fptn_backup_time?: number;
     direct_bypass_enabled?: 0 | 1;
     direct_bypass_address?: string;
     direct_bypass_port?: string;
@@ -1082,7 +1068,6 @@ export namespace Tachyon {
     show_component_byedpi?: 0 | 1;
     show_component_wdtt?: 0 | 1;
     show_component_olcrtc?: 0 | 1;
-    show_component_fptn?: 0 | 1;
     show_component_tailscale?: 0 | 1;
     show_component_direct_bypass?: 0 | 1;
     show_component_torrserver_direct?: 0 | 1;
@@ -1212,7 +1197,6 @@ export namespace Tachyon {
     | 'byedpi'
     | 'wdtt'
     | 'olcrtc'
-    | 'fptn'
     | 'tailscale'
     | 'direct_bypass'
     | 'torrserver_direct'
@@ -1233,8 +1217,6 @@ export namespace Tachyon {
     | 'install_stable'
     | 'enable'
     | 'disable'
-    | 'set_native_mode'
-    | 'set_component_mode'
     | 'set_language'
     | 'switch';
 
@@ -1462,21 +1444,6 @@ export namespace Tachyon {
     ready: 0 | 1;
     conflict: 0 | 1;
     status_message: string;
-  }
-
-  export interface GetFptnStatus {
-    installed: boolean;
-    configured: boolean;
-    enabled_rule_count: number;
-    service_running: boolean;
-    pid?: number | null;
-    version?: string;
-    binary?: string;
-    tun_interface?: string;
-    route_table?: string;
-    log_file?: string;
-    ready: boolean;
-    status_message?: string;
   }
 
   export interface ByedpiCheckResult {

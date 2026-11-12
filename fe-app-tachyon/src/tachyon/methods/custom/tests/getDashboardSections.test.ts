@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   getConfigSections: vi.fn(),
   getClashApiProxies: vi.fn(),
-  getFptnStatus: vi.fn(),
   canUseDirectClashApi: vi.fn(),
   fsRead: vi.fn(),
 }));
@@ -15,7 +14,6 @@ vi.mock('../getConfigSections', () => ({
 vi.mock('../../shell', () => ({
   TachyonShellMethods: {
     getClashApiProxies: mocks.getClashApiProxies,
-    getFptnStatus: mocks.getFptnStatus,
   },
 }));
 

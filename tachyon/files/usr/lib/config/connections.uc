@@ -417,27 +417,11 @@ function is_fptn_action(action) {
     return as_string(action) == "fptn";
 }
 
-// How FPTN traffic leaves the box.
-//
-//   component - the external fptn-client owns tun-fptn and the fwmark route.
-//   native    - tachyon-core dials FPTN from the generated config itself.
-//
-// "native" only exists on tachyon-core; every other engine is component mode.
-// With no explicit setting the current behaviour is preserved: an installed
-// component keeps the component path, a core-only box gets the native one.
-// The explicit choice exists only so the two tunnels cannot fight when both
-// are possible.
+// FPTN is spoken natively by tachyon-core; there is no external client package
+// or TUN daemon. Returns "native" when tachyon-core is the active engine and
+// "" on engines that do not support the FPTN outbound protocol.
 function fptn_transport_mode() {
-    if (!require("tachyon_core.variant_state").is_tachyon_core())
-        return "component";
-
-    let settings = object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
-    let mode = trim(as_string(common.option(settings, "fptn_mode", "") || ""));
-    if (mode == "native" || mode == "component")
-        return mode;
-
-    let has_binary = fs.stat("/usr/bin/fptn-client-cli") != null || fs.stat("/usr/bin/fptn-client") != null;
-    return has_binary ? "component" : "native";
+    return require("tachyon_core.variant_state").is_tachyon_core() ? "native" : "";
 }
 
 function normalize_action(action) {

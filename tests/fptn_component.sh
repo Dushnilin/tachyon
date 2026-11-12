@@ -3,11 +3,14 @@
 set -eo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-UPDATER_UC="$ROOT_DIR/tachyon/files/usr/lib/components/updater.uc"
+UPDATES_UC="$ROOT_DIR/tachyon/files/usr/lib/components/updates.uc"
+ACTION_UC="$ROOT_DIR/tachyon/files/usr/lib/components/action.uc"
 PACKAGES_UC="$ROOT_DIR/tachyon/files/usr/lib/core/packages.uc"
-FPTN_RUNTIME_UC="$ROOT_DIR/tachyon/files/usr/lib/providers/fptn/runtime.uc"
 STATE_UC="$ROOT_DIR/tachyon/files/usr/lib/service/state.uc"
-DIAGNOSTICS_UC="$ROOT_DIR/tachyon/files/usr/lib/diagnostics/runtime.uc"
+SNAPSHOT_UC="$ROOT_DIR/tachyon/files/usr/lib/service/snapshot.uc"
+SYSTEM_INFO_UC="$ROOT_DIR/tachyon/files/usr/lib/diagnostics/system_info.uc"
+TACHYON_BIN="$ROOT_DIR/tachyon/files/usr/bin/tachyon"
+TACHYON_READ_BIN="$ROOT_DIR/tachyon/files/usr/bin/tachyon-read"
 
 assert_eq() {
   local expected="$1"
@@ -20,57 +23,23 @@ ucode_run() {
   ucode -L "$TACHYON_LIB" "$@"
 }
 
-# 1. Test updater.uc asset selection for FPTN
-cat >"$WORK_DIR/releases.json" <<'EOF_JSON'
-[
-  {
-    "tag_name": "v0.4.5",
-    "name": "0.4.5",
-    "html_url": "https://github.com/fptn-project/fptn/releases/tag/v0.4.5",
-    "assets": [
-      {
-        "name": "fptn-client-0.4.5-openwrt-23.05.x-x86_64.ipk",
-        "browser_download_url": "https://github.com/fptn-project/fptn/releases/download/v0.4.5/fptn-client-0.4.5-openwrt-23.05.x-x86_64.ipk"
-      },
-      {
-        "name": "fptn-client-0.4.5-openwrt-24.10.x-x86_64.apk",
-        "browser_download_url": "https://github.com/fptn-project/fptn/releases/download/v0.4.5/fptn-client-0.4.5-openwrt-24.10.x-x86_64.apk"
-      },
-      {
-        "name": "fptn-client-0.4.5-openwrt-24.10.x-aarch64_cortex-a53.apk",
-        "browser_download_url": "https://github.com/fptn-project/fptn/releases/download/v0.4.5/fptn-client-0.4.5-openwrt-24.10.x-aarch64_cortex-a53.apk"
-      }
-    ]
-  }
-]
-EOF_JSON
+# 1. Verify standalone FPTN package component is rejected by component manager & absent from CLI
+if grep -Fq 'get_fptn_status' "$TACHYON_BIN" "$TACHYON_READ_BIN"; then
+  fail "get_fptn_status must be removed from /usr/bin/tachyon and /usr/bin/tachyon-read"
+fi
+if grep -Fq 'fptn-client' "$PACKAGES_UC" "$ACTION_UC"; then
+  fail "fptn-client package handling must be removed from packages.uc and components/action.uc"
+fi
+if grep -Fq '"fptn"' "$UPDATES_UC" "$SNAPSHOT_UC"; then
+  fail "fptn component must be removed from components/updates.uc and service/snapshot.uc"
+fi
+if grep -Fq 'fptn_installed' "$SYSTEM_INFO_UC"; then
+  fail "fptn_installed component field must be removed from diagnostics/system_info.uc"
+fi
+grep -Fq 'sing_box_fptn' "$SYSTEM_INFO_UC" ||
+  fail "native sing_box_fptn core capability flag must remain in diagnostics/system_info.uc"
 
-SELECTED_APK="$(cat "$WORK_DIR/releases.json" | ucode_run "$UPDATER_UC" fptn-select-asset "24.10" "apk" "aarch64_cortex-a53 aarch64_generic")"
-ARCH_MATCH="$(echo "$SELECTED_APK" | awk '{print $1}')"
-NAME_MATCH="$(echo "$SELECTED_APK" | awk '{print $2}')"
-assert_eq "aarch64_cortex-a53" "$ARCH_MATCH" "fptn asset arch match"
-assert_eq "fptn-client-0.4.5-openwrt-24.10.x-aarch64_cortex-a53.apk" "$NAME_MATCH" "fptn asset name match"
-
-# 2. Test package version extraction
-PARSED_VER="$(ucode_run "$UPDATER_UC" updates-arch-package-version "fptn-client-0.4.5-openwrt-24.10.x-x86_64.ipk" "x86_64")"
-assert_eq "0.4.5-openwrt-24.10.x" "$PARSED_VER" "fptn package version strip"
-
-# 3. Test packages.uc binary detection and version
-MOCK_BIN="$WORK_DIR/fptn-client-cli"
-cat >"$MOCK_BIN" <<'EOF_BIN'
-#!/usr/bin/env sh
-echo "fptn-client 0.4.5"
-EOF_BIN
-chmod 0755 "$MOCK_BIN"
-
-export TACHYON_FPTN_BIN="$MOCK_BIN"
-FPTN_VER="$(TACHYON_LIB_DIR="$TACHYON_LIB" ucode_run "$FPTN_RUNTIME_UC" version)"
-assert_eq "0.4.5" "$FPTN_VER" "fptn runtime version command"
-
-FPTN_INSTALLED="$(TACHYON_LIB_DIR="$TACHYON_LIB" ucode_run "$FPTN_RUNTIME_UC" installed && echo "1" || echo "0")"
-assert_eq "1" "$FPTN_INSTALLED" "fptn runtime installed check"
-
-# 4. Test state.uc fptn runtime signature fixture
+# 2. Verify state.uc sing-box-signature-fixture changes when FPTN section options change
 cat >"$WORK_DIR/state_fixture.json" <<'EOF_FIXTURE'
 {
   "section": [
@@ -79,14 +48,16 @@ cat >"$WORK_DIR/state_fixture.json" <<'EOF_FIXTURE'
       "enabled": "1",
       "action": "fptn",
       "access_token": "secret_token_123",
-      "sni": "my.domain.com"
+      "sni": "my.domain.com",
+      "bypass_method": "obfuscation",
+      "preferred_server": "198.51.100.10"
     }
   ]
 }
 EOF_FIXTURE
 
-SIG_1="$(ucode_run "$STATE_UC" fptn-runtime-signature-fixture "$WORK_DIR/state_fixture.json")"
-[ -n "$SIG_1" ] || fail "fptn signature should not be empty"
+SIG_1="$(ucode_run "$STATE_UC" sing-box-signature-fixture "$WORK_DIR/state_fixture.json")"
+[ -n "$SIG_1" ] || fail "sing-box signature should not be empty"
 
 cat >"$WORK_DIR/state_fixture2.json" <<'EOF_FIXTURE2'
 {
@@ -96,29 +67,37 @@ cat >"$WORK_DIR/state_fixture2.json" <<'EOF_FIXTURE2'
       "enabled": "1",
       "action": "fptn",
       "access_token": "secret_token_diff",
-      "sni": "my.domain.com"
+      "sni": "my.domain.com",
+      "bypass_method": "obfuscation",
+      "preferred_server": "198.51.100.10"
     }
   ]
 }
 EOF_FIXTURE2
 
-SIG_2="$(ucode_run "$STATE_UC" fptn-runtime-signature-fixture "$WORK_DIR/state_fixture2.json")"
-[ "$SIG_1" != "$SIG_2" ] || fail "fptn signature should differ when token changes"
+SIG_2="$(ucode_run "$STATE_UC" sing-box-signature-fixture "$WORK_DIR/state_fixture2.json")"
+[ "$SIG_1" != "$SIG_2" ] || fail "sing-box signature must differ when FPTN token changes"
 
-# 5. Test diagnostics runtime dispatch for get-fptn-status
-STATUS_OUT="$(TACHYON_LIB="$TACHYON_LIB" ucode_run "$DIAGNOSTICS_UC" get-fptn-status)"
-echo "$STATUS_OUT" | grep -q '"ready":' || fail "get-fptn-status should return status json"
-echo "$STATUS_OUT" | grep -q '"process_running":' || fail "get-fptn-status should include process_running"
-echo "$STATUS_OUT" | grep -q '"tun_up":' || fail "get-fptn-status should include tun_up"
-echo "$STATUS_OUT" | grep -q '"route_installed":' || fail "get-fptn-status should include route_installed"
-echo "$STATUS_OUT" | grep -q '"rule_installed":' || fail "get-fptn-status should include rule_installed"
-echo "$STATUS_OUT" | grep -q '"status_message":' || fail "get-fptn-status should include status_message"
+cat >"$WORK_DIR/state_fixture3.json" <<'EOF_FIXTURE3'
+{
+  "section": [
+    {
+      ".name": "sec1",
+      "enabled": "1",
+      "action": "fptn",
+      "access_token": "secret_token_123",
+      "sni": "alt.domain.com",
+      "bypass_method": "reality",
+      "preferred_server": "203.0.113.20"
+    }
+  ]
+}
+EOF_FIXTURE3
 
-# 6. Test fptn ensure-routing command syntax
-ENSURE_RES="$(TACHYON_LIB_DIR="$TACHYON_LIB" ucode_run "$FPTN_RUNTIME_UC" ensure-routing && echo "1" || echo "0")"
-assert_eq "1" "$ENSURE_RES" "ensure-routing should execute successfully"
+SIG_3="$(ucode_run "$STATE_UC" sing-box-signature-fixture "$WORK_DIR/state_fixture3.json")"
+[ "$SIG_1" != "$SIG_3" ] || fail "sing-box signature must differ when FPTN sni/bypass_method/preferred_server change"
 
-# 7. Test validator supports fptn rule action
+# 3. Verify validator supports native fptn rule action without external binary
 cat >"$WORK_DIR/fptn_valid.json" <<'JSON'
 {
   "settings": {
@@ -139,39 +118,9 @@ cat >"$WORK_DIR/fptn_valid.json" <<'JSON'
 JSON
 TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" "$ROOT_DIR/tachyon/files/usr/lib/config/validator.uc" validate-runtime-fixture "$WORK_DIR/fptn_valid.json" "{}" || fail "validator rejected valid fptn config"
 
-# 8. Test telegram token masking subcommand
+# 4. Verify telegram token masking subcommand
 TG_MASK_OUT="$(ucode -L "$TACHYON_LIB" "$ROOT_DIR/tachyon/files/usr/lib/service/telegram.uc" mask-token "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9Q7Fx")"
 assert_eq "••••••••Q7Fx" "$TG_MASK_OUT" "telegram token masking"
 
-# 9. Test shims creation and isolation behavior
-export TACHYON_FPTN_STATE_DIR="$WORK_DIR/fptn_state"
-mkdir -p "$TACHYON_FPTN_STATE_DIR"
-TACHYON_LIB_DIR="$TACHYON_LIB" ucode_run "$FPTN_RUNTIME_UC" install-shims
-
-SHIMS_DIR="$TACHYON_FPTN_STATE_DIR/bin"
-[ -x "$SHIMS_DIR/ip" ] || fail "ip shim not created or not executable"
-[ -x "$SHIMS_DIR/sed" ] || fail "sed shim not created or not executable"
-[ -x "$SHIMS_DIR/iptables" ] || fail "iptables shim not created or not executable"
-[ -x "$SHIMS_DIR/chattr" ] || fail "chattr shim not created or not executable"
-
-# Test ip shim blocks default route replace/del/add
-IP_REPLACE_STATUS=0
-"$SHIMS_DIR/ip" route replace default dev tun-fptn scope link || IP_REPLACE_STATUS=$?
-assert_eq "0" "$IP_REPLACE_STATUS" "ip shim should return 0 for route replace default"
-
-IP_DEL_STATUS=0
-"$SHIMS_DIR/ip" route del default dev tun-fptn scope link || IP_DEL_STATUS=$?
-assert_eq "0" "$IP_DEL_STATUS" "ip shim should return 0 for route del default"
-
-# Test sed shim blocks modifying /etc/resolv.conf
-SED_STATUS=0
-"$SHIMS_DIR/sed" -i '1i nameserver 172.20.0.1' /etc/resolv.conf || SED_STATUS=$?
-assert_eq "0" "$SED_STATUS" "sed shim should return 0 for resolv.conf"
-
-# Test dummy shims exit 0
-IPT_STATUS=0
-"$SHIMS_DIR/iptables" -A OUTPUT -p udp --dport 53 -j DROP || IPT_STATUS=$?
-assert_eq "0" "$IPT_STATUS" "iptables shim should return 0"
-
-echo "fptn component tests passed"
+echo "fptn native protocol & component removal tests passed"
 

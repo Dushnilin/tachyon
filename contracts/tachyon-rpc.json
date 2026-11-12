@@ -1840,20 +1840,6 @@
       }
     },
     {
-      "name": "get_fptn_status",
-      "cli_command": "get_fptn_status",
-      "category": "diagnostics",
-      "acl": "read",
-      "description": "get-fptn-status (diagnostics/runtime.uc)",
-      "async": false,
-      "timeout_ms": 5000,
-      "params": [],
-      "returns": {
-        "type": "object",
-        "description": "command output"
-      }
-    },
-    {
       "name": "get_lite_mode",
       "cli_command": "get_lite_mode",
       "category": "system",

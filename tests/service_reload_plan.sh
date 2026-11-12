@@ -212,19 +212,4 @@ assert_state_plan_exit 2 "$previous_state" "$current_state" 0 0 0 0 0
 rm -f "$previous_state"
 assert_state_plan_exit 2 "$previous_state" "$current_state" 0 0 0 0 0
 
-cat >"$previous_state" <<EOF
-format=1
-service_trigger_signature=svc
-fptn_runtime_signature=tokenA
-EOF
-cat >"$current_state" <<EOF
-format=1
-service_trigger_signature=svc
-fptn_runtime_signature=tokenB
-EOF
-plan="$(run_state_case state_fptn_changed "$previous_state" "$current_state" 0 0 0 0 0)"
-assert_plan_value "$plan" changed_fptn_runtime 1
-assert_plan_value "$plan" needs_fptn_restart 1
-assert_plan_value "$plan" has_work 1
-
 printf 'service reload plan checks passed\n'

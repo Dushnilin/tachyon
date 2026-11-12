@@ -2949,9 +2949,6 @@ function context_from_runtime() {
         zapret2_installed: file_executable(constant_value(constants, "ZAPRET2_PROVIDER_NFQWS2_BIN")),
         wdtt_installed: file_executable(constant_value(constants, "WDTT_BIN")),
         olcrtc_installed: file_executable(constant_value(constants, "OLCRTC_BIN")),
-        fptn_installed: file_executable("/usr/bin/fptn-client-cli") || file_executable("/usr/bin/fptn-client"),
-        fptn_bin: file_executable("/usr/bin/fptn-client-cli") ? "/usr/bin/fptn-client-cli" : "/usr/bin/fptn-client",
-        fptn_state_dir: "/var/run/tachyon/fptn",
         zapret_provider_nfqws_bin: constant_value(constants, "ZAPRET_PROVIDER_NFQWS_BIN"),
         zapret2_provider_nfqws2_bin: constant_value(constants, "ZAPRET2_PROVIDER_NFQWS2_BIN"),
         zapret_route_mark_base: constant_value(constants, "ZAPRET_ROUTE_MARK_BASE"),
@@ -3324,26 +3321,6 @@ function check_provider_requirements(ctx) {
         "ByeDPI provider is not available at " + ctx.byedpi_bin + ". Rules with action 'byedpi' will be skipped until the byedpi package is installed.",
         "Failed to prepare the Tachyon ByeDPI state directory in " + ctx.byedpi_state_dir + ". Aborted."
     );
-
-    // FPTN is not always a provider process. With tachyon-core the core dials
-    // FPTN straight from the generated config - generator_outbounds emits an
-    // fptn outbound and there is no external client, no shims, no state dir.
-    // Probing for /usr/bin/fptn-client there produced an error telling the
-    // admin to install a package their setup never uses, and skipped preparing
-    // a directory only the component runtime would have touched. The transport
-    // decision belongs to the single resolver in config.connections, which the
-    // generator and the provider runtime already ask - ask it here too instead
-    // of sniffing a binary behind its back.
-    if (connections.fptn_transport_mode() == "component") {
-        check_provider_requirement(
-            "fptn",
-            "FPTN",
-            ctx.fptn_bin,
-            [ ctx.fptn_state_dir ],
-            "FPTN provider is not available at " + ctx.fptn_bin + ". Rules with action 'fptn' will be skipped until the fptn package is installed.",
-            "Failed to prepare the Tachyon FPTN state directory in " + ctx.fptn_state_dir + ". Aborted."
-        );
-    }
 }
 
 function check_runtime_requirements() {

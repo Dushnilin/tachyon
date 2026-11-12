@@ -124,8 +124,8 @@ ucode -L "$TACHYON_LIB" "$RUNTIME_UC" status >/dev/null ||
 # different roles. FakeIP must remain eligible for interception in either case.
 # Generated-rule behavior is covered by tailscale_fakeip_nft.sh.
 NFT_APPLY_UC="$TACHYON_LIB/nft/apply.uc"
-grep -Fq 'const TAILSCALE_TUNNEL_BYPASS_MARK_MASK = "0x00340000";' "$NFT_APPLY_UC" ||
-  fail "nft/apply.uc must use 0x00340000 tunnel bypass mask (excluding standalone tailscaled 0x00080000 bit)"
+grep -Fq 'const TAILSCALE_TUNNEL_BYPASS_MARK_MASK = "0x00240000";' "$NFT_APPLY_UC" ||
+  fail "nft/apply.uc must use 0x00240000 tunnel bypass mask (excluding standalone tailscaled 0x00080000 bit)"
 grep -Fq '"ip", "daddr", "!=", fakeip_range, "meta", "mark", "&", TAILSCALE_TUNNEL_BYPASS_MARK_MASK' "$NFT_APPLY_UC" ||
   fail "nft/apply.uc mangle bypass must guard FakeIP range from early return (#318)"
 grep -Fq '"198.18.0.0/15"' "$RUNTIME_UC" ||

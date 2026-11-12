@@ -94,4 +94,10 @@ for (let protocol in ["vmess", "trojan", "shadowsocks", "socks", "mixed", "http"
     let server = { protocol, label:"Server", security:"tls", server_uuid:"uuid", server_password:"password", mtproto_secret:"0123456789abcdef0123456789abcdef", awg_client_private_key:wg_priv, awg_server_public_key:wg_pub };
     check(links.build(server, "vpn.example.com", "") != "", "supported URI: " + protocol);
 }
+let fptn_pin = "0123456789abcdef0123456789abcdef";
+let fptn_sub_uri = links.build({ protocol: "fptn", label: "FptnSub", server_username: "u", server_password: "p" }, "vpn.example.com", fptn_pin);
+let fptn_sub_b64 = split(substr(fptn_sub_uri, length("fptn://")), "#")[0];
+while (length(fptn_sub_b64) % 4 != 0)
+    fptn_sub_b64 += "=";
+check(json(b64dec(fptn_sub_b64)).servers[0].md5_fingerprint == fptn_pin, "FPTN subscription link carries 32-hex MD5 certificate fingerprint");
 printf("PASS: server subscription (%d checks)\n", checks);

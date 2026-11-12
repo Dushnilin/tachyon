@@ -263,25 +263,6 @@ function get_daemon_pids(name) {
         return pids;
     }
 
-    if (name == "fptn") {
-        let pids = [];
-        let seen = {};
-        let val = safe_read_file("/var/run/tachyon/fptn/fptn.pid");
-        if (val != "" && match(val, /^[0-9]+$/) && fs.stat("/proc/" + val) != null) {
-            push(pids, val);
-            seen[val] = true;
-        }
-        for (let comm_name in [ "fptn-client-cli", "fptn-client" ]) {
-            for (let pid in (pmap[comm_name] || [])) {
-                if (!seen[pid]) {
-                    push(pids, pid);
-                    seen[pid] = true;
-                }
-            }
-        }
-        return pids;
-    }
-
     if (name == "tailscale") {
         return pmap["tailscaled"] || [];
     }
@@ -367,9 +348,6 @@ function get_relevant_daemons() {
 
     if ((has_action("olcrtc") && has_bin([ "/usr/bin/olcrtc" ])) || length(get_daemon_pids("olcrtc")) > 0)
         push(list, "olcrtc");
-
-    if ((has_action("fptn") && has_bin([ "/usr/bin/fptn-client-cli", "/usr/bin/fptn-client" ])) || length(get_daemon_pids("fptn")) > 0)
-        push(list, "fptn");
 
     let has_native_ts = false;
     for (let srv in servers) {

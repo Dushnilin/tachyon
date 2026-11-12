@@ -123,7 +123,7 @@ function apply_quick_fix(codes_str) {
             // `ln -sf` succeeds even when the target does not exist, so the old
             // `a || b` fallback never fired and could leave /etc/resolv.conf
             // pointing at the pre-22.03 path that no OpenWrt writes any more.
-            // Link a target that actually exists — same order as providers/fptn.
+            // Link a target that actually exists on current OpenWrt releases.
             let resolv_target = fs.stat("/tmp/resolv.conf.d/resolv.conf.auto") != null
                 ? "/tmp/resolv.conf.d/resolv.conf.auto"
                 : (fs.stat("/tmp/resolv.conf.auto") != null ? "/tmp/resolv.conf.auto" : "");
@@ -220,9 +220,9 @@ function apply_quick_fix(codes_str) {
             status = (rc == 0);
             msg = status ? "Bootstrap DNS reset to reliable public resolver (77.88.8.8) and reloaded" : "Bootstrap DNS fix failed (exit " + rc + ")";
         } else if (c == "restart_providers") {
-            let rc = command_status("ucode -L " + LIB_DIR + " " + LIB_DIR + "/providers/wdtt/runtime.uc start-runtime >/dev/null 2>&1; ucode -L " + LIB_DIR + " " + LIB_DIR + "/providers/olcrtc/runtime.uc start-runtime >/dev/null 2>&1; ucode -L " + LIB_DIR + " " + LIB_DIR + "/providers/fptn/runtime.uc start-runtime >/dev/null 2>&1");
+            let rc = command_status("ucode -L " + LIB_DIR + " " + LIB_DIR + "/providers/wdtt/runtime.uc start-runtime >/dev/null 2>&1; ucode -L " + LIB_DIR + " " + LIB_DIR + "/providers/olcrtc/runtime.uc start-runtime >/dev/null 2>&1");
             status = (rc == 0);
-            msg = status ? "WDTT/OLCRTC/FPTN provider runtimes restarted" : "Provider runtimes restart failed (exit " + rc + ")";
+            msg = status ? "WDTT/OLCRTC provider runtimes restarted" : "Provider runtimes restart failed (exit " + rc + ")";
         } else if (c == "optimize_mtu") {
             let rc = command_status("/usr/bin/tachyon discover-awg-mtu 2>/dev/null; /etc/init.d/tachyon reload >/dev/null 2>&1");
             status = (rc == 0);

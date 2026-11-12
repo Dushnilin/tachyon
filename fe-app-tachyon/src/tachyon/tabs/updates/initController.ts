@@ -937,14 +937,7 @@ function getOptionalComponentActions({
   removeKey,
   rollbackKey,
 }: {
-  component:
-    | 'zapret'
-    | 'zapret2'
-    | 'byedpi'
-    | 'wdtt'
-    | 'olcrtc'
-    | 'fptn'
-    | 'tailscale';
+  component: 'zapret' | 'zapret2' | 'byedpi' | 'wdtt' | 'olcrtc' | 'tailscale';
   installed: boolean;
   checkKey: UpdatesActionKey;
   installKey: UpdatesActionKey;
@@ -984,7 +977,6 @@ function getComponentCards(): ComponentCard[] {
   const byedpiInstalled = Boolean(systemInfo.byedpi_installed);
   const wdttInstalled = Boolean(systemInfo.wdtt_installed);
   const olcrtcInstalled = Boolean(systemInfo.olcrtc_installed);
-  const fptnInstalled = Boolean(systemInfo.fptn_installed);
   const tailscaleInstalled = Boolean(systemInfo.tailscale_installed);
   const singBoxInstalled = !isNotInstalled(systemInfo.sing_box_version);
   const tachyonCore = Boolean(systemInfo.sing_box_tachyon_core);
@@ -1123,36 +1115,6 @@ function getComponentCards(): ComponentCard[] {
     removeKey: 'olcrtcRemove',
     rollbackKey: 'olcrtcRollback',
   });
-  const fptnActions = getOptionalComponentActions({
-    component: 'fptn',
-    installed: fptnInstalled,
-    checkKey: 'fptnCheck',
-    installKey: 'fptnInstall',
-    removeKey: 'fptnRemove',
-    rollbackKey: 'fptnRollback',
-  });
-  // With tachyon-core and the fptn-client component both present, only one of
-  // them may own the tunnel; the explicit choice keeps them from fighting.
-  const fptnModeChoiceAvailable = tachyonCore && fptnInstalled;
-  if (fptnModeChoiceAvailable) {
-    fptnActions.push(
-      systemInfo.fptn_mode === 'native'
-        ? {
-            key: 'fptnSetComponentMode' as const,
-            text: _('Via component'),
-            icon: renderRotateCcwIcon24,
-            component: 'fptn' as const,
-            action: 'set_component_mode' as const,
-          }
-        : {
-            key: 'fptnSetNativeMode' as const,
-            text: _('Native (core)'),
-            icon: renderRotateCcwIcon24,
-            component: 'fptn' as const,
-            action: 'set_native_mode' as const,
-          },
-    );
-  }
   const tailscaleActions = getOptionalComponentActions({
     component: 'tailscale',
     installed: tailscaleInstalled,
@@ -1400,27 +1362,6 @@ function getComponentCards(): ComponentCard[] {
       releaseUrl: getGitHubReleaseUrl('olcrtc'),
       repoUrl: COMPONENT_REPO_URLS.olcrtc,
       actions: olcrtcActions,
-      supportsVersions: true,
-    },
-    {
-      component: 'fptn',
-      column: 2,
-      title: 'FPTN',
-      version: systemInfoLoading
-        ? cachedVersionOrLoading('fptn')
-        : fptnInstalled
-          ? fptnModeChoiceAvailable
-            ? `${systemInfo.fptn_version} · ${
-                systemInfo.fptn_mode === 'native'
-                  ? _('native (core)')
-                  : _('component')
-              }`
-            : systemInfo.fptn_version
-          : _('Not installed'),
-      latestVersion: getLatestVersion('fptn'),
-      releaseUrl: getGitHubReleaseUrl('fptn'),
-      repoUrl: COMPONENT_REPO_URLS.fptn,
-      actions: fptnActions,
       supportsVersions: true,
     },
     {
@@ -2397,16 +2338,6 @@ function isComponentCardVisible(
   const component = card.component;
   if (component === 'tachyon' || component === 'sing_box') {
     return true;
-  }
-  if (component === 'fptn') {
-    const fptnInstalled = Boolean(systemInfo.fptn_installed);
-    const fptnSupported =
-      systemInfo.fptn_supported === undefined
-        ? true
-        : Boolean(systemInfo.fptn_supported);
-    if (!fptnInstalled && !fptnSupported) {
-      return false;
-    }
   }
 
   const optKey = `show_component_${component}`;

@@ -368,53 +368,6 @@ function resolve_olcrtc_release(arch, tag) {
     return null;
 }
 
-function resolve_fptn_release(arch, tag) {
-    let asset_ext = helpers.is_apk() ? "apk" : "ipk";
-    let release_series = trim(helpers.helper_output("openwrt-release-series", [ "/etc/openwrt_release" ]));
-    let owner = "Dushnilin";
-    let repo = "fptn";
-    let releases_json = (tag != null && tag != "") ?
-        downloader.fetch_github_release_by_tag_json(owner, repo, tag) :
-        downloader.fetch_github_releases_json(owner, repo, "30");
-    if (releases_json == "" || releases_json == "[]") {
-        owner = "fptn-project";
-        releases_json = (tag != null && tag != "") ?
-            downloader.fetch_github_release_by_tag_json(owner, repo, tag) :
-            downloader.fetch_github_releases_json(owner, repo, "30");
-    }
-    if (releases_json != "" && releases_json != "[]") {
-        let resolved = trim(helpers.helper_output_input(releases_json, "fptn-select-asset", [ release_series, asset_ext, arch.candidates ]));
-        let fields = split(resolved, "\t");
-        if (length(fields) >= 4) {
-            let ver = versions.extract_arch_package_version(fields[1], fields[0]);
-            let m = match(ver, /^([0-9]+\.[0-9]+\.[0-9]+)/);
-            if (m) ver = m[1];
-            return {
-                arch: fields[0],
-                package_name: fields[1],
-                package_url: fields[2],
-                release_url: fields[3],
-                version: ver
-            };
-        }
-    }
-    if (tag != null && tag != "") {
-        let distrib_arch = helpers.read_openwrt_release_value("DISTRIB_ARCH");
-        let tag_clean = replace(tag, /^v/, "");
-        let pkg_name = "fptn-client-" + tag_clean + "-openwrt-" + (release_series != "" ? release_series + ".x" : "24.10.x") + "-" + distrib_arch + "." + asset_ext;
-        let dushnilin_url = "https://github.com/Dushnilin/fptn/releases/download/" + tag + "/" + pkg_name;
-        let target_owner = downloader.url_exists(dushnilin_url) ? "Dushnilin" : "fptn-project";
-        return {
-            arch: distrib_arch,
-            package_name: pkg_name,
-            package_url: "https://github.com/" + target_owner + "/fptn/releases/download/" + tag + "/" + pkg_name,
-            release_url: "https://github.com/" + target_owner + "/fptn/releases/tag/" + tag,
-            version: tag_clean
-        };
-    }
-    return null;
-}
-
 function resolve_tachyon_release(latest_version) {
     let asset_ext = helpers.is_apk() ? "apk" : "ipk";
     let i18n_required = helpers.pkg_is_installed("luci-i18n-tachyon-ru") ? "1" : "0";
@@ -595,7 +548,6 @@ function module_exports() {
         resolve_byedpi_release,
         resolve_wdtt_release,
         resolve_olcrtc_release,
-        resolve_fptn_release,
         resolve_tachyon_release,
         resolve_tachyon_i18n_release,
         resolve_torrserver_arch_suffix,

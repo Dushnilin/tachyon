@@ -194,16 +194,6 @@ function handle_fptn_token_update(token, chat_id, raw_input, target_sec) {
 
     c.commit(CONFIG_NAME);
 
-    try {
-        let fc = uci_core.cursor();
-        if (fc.load("fptn")) {
-            if (fc.get_all("fptn", "config")) {
-                fc.set("fptn", "config", "access_token", clean_tok);
-                fc.commit("fptn");
-            }
-        }
-    } catch (e) {}
-
     let masked = mask_fptn_token(clean_tok);
 
     if (fptn_count == 0) {
@@ -216,27 +206,10 @@ function handle_fptn_token_update(token, chat_id, raw_input, target_sec) {
 
     send_message(token, chat_id, "⏳ <b>" + t("fptn_token_saved_connecting") + "</b>\nToken: <code>" + escape_html(masked) + "</code>", "HTML");
 
-    // Restart FPTN runtime
-    command_status(command_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/providers/fptn/runtime.uc", "restart-runtime" ]));
-
-    // Poll up to 5 seconds for tun-fptn and table 4249 routing
-    let connected = false;
-    for (let i = 0; i < 5; i++) {
-        let out = command_output_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/providers/fptn/runtime.uc", "status" ]);
-        try {
-            let st = json(out);
-            if (st && st.running && st.tun_up && st.route_installed) {
-                connected = true;
-                break;
-            }
-        } catch (e) {}
-        command_status(command_from_args([ "sleep", "1" ]));
-    }
-
-    if (connected) {
+    let rc = command_status(command_from_args([ "/usr/bin/tachyon", "reload", "force" ]));
+    if (rc == 0) {
         let msg = "✅ <b>" + t("fptn_token_updated_title") + "</b>\n" +
-                  "Token: <code>" + escape_html(masked) + "</code>\n" +
-                  "Status: 🟢 Connected (tun-fptn & routing ready)";
+                  "Token: <code>" + escape_html(masked) + "</code>";
         send_message(token, chat_id, msg, "HTML", [
             [{ text: "⬅️ " + t("nav_menu"), callback_data: "/menu" }]
         ]);

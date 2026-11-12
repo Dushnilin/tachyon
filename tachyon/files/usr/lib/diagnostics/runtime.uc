@@ -32,7 +32,6 @@ const ZAPRET2_RUNTIME_UC = LIB_DIR + "/providers/zapret2/runtime.uc";
 const BYEDPI_RUNTIME_UC = LIB_DIR + "/providers/byedpi/runtime.uc";
 const WDTT_RUNTIME_UC = LIB_DIR + "/providers/wdtt/runtime.uc";
 const OLCRTC_RUNTIME_UC = LIB_DIR + "/providers/olcrtc/runtime.uc";
-const FPTN_RUNTIME_UC = LIB_DIR + "/providers/fptn/runtime.uc";
 const TAILSCALE_RUNTIME_UC = LIB_DIR + "/providers/tailscale/runtime.uc";
 
 let as_string = common.as_string;
@@ -254,8 +253,6 @@ else if (mode == "get-wdtt-status")
     exit(module_passthrough(WDTT_RUNTIME_UC, [ "status" ]));
 else if (mode == "get-olcrtc-status")
     exit(module_passthrough(OLCRTC_RUNTIME_UC, [ "status" ]));
-else if (mode == "get-fptn-status")
-    exit(module_passthrough(FPTN_RUNTIME_UC, [ "status" ]));
 else if (mode == "get-tailscale-status")
     exit(module_passthrough(TAILSCALE_RUNTIME_UC, [ "status" ]));
 else if (mode == "get-tailscale-peers")

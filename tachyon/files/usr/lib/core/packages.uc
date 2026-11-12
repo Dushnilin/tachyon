@@ -93,8 +93,6 @@ function binary_installed(package_name) {
         return fs.stat("/opt/zapret/nfq/nfqws") != null || fs.stat("/opt/zapret/nfqws") != null;
     if (package_name == "byedpi")
         return fs.stat("/usr/bin/ciadpi") != null;
-    if (package_name == "fptn" || package_name == "fptn-client")
-        return fs.stat("/usr/bin/fptn-client-cli") != null || fs.stat("/usr/bin/fptn-client") != null;
     if (package_name == "sing-box" || package_name == "sing-box-extended" || package_name == "sing-box-lx")
         return fs.stat("/usr/bin/tachyon-core") != null || fs.stat("/usr/bin/sing-box") != null;
     return false;
@@ -207,15 +205,6 @@ function binary_version(package_name) {
         let out = command_output_args([ "/usr/bin/ciadpi", "--version" ]);
         let m = match(out, /([0-9a-zA-Z._-]+)/);
         if (m) return m[1];
-    }
-    if ((package_name == "fptn" || package_name == "fptn-client")) {
-        for (let p in [ "/usr/bin/fptn-client-cli", "/usr/bin/fptn-client" ]) {
-            if (fs.stat(p) != null) {
-                let out = command_output_args([ p, "--version" ]);
-                let m = match(out, /version[ \t]*([0-9a-zA-Z._-]+)/i) || match(out, /([0-9]+\.[0-9a-zA-Z._-]+)/);
-                if (m) return m[1];
-            }
-        }
     }
     if (package_name == "sing-box" || package_name == "sing-box-extended" || package_name == "sing-box-lx") {
         for (let p in [ "/usr/bin/tachyon-core", "/usr/bin/sing-box" ]) {

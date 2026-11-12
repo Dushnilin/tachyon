@@ -511,7 +511,6 @@ function valid_updatable_component(name) {
         byedpi: 1,
         wdtt: 1,
         olcrtc: 1,
-        fptn: 1,
         tailscale: 1,
         torrserver_direct: 1
     };

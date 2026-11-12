@@ -4248,48 +4248,28 @@ function add_fptn_token_members(config, section, token) {
     return true;
 }
 
-// FPTN routes traffic through its TUN interface (tun-fptn) via kernel routing.
-// fwmark 0x00300000 (3145728) → ip rule → routing table 4249 → dev tun-fptn.
-//
-// tachyon-core speaks FPTN itself: in native mode the section expands into
-// per-server outbounds plus a selector — the same shape a connection section
-// gets — instead of a single outbound carrying the access token. The mode
-// comes from the single resolver in config.connections so the generator and
-// the provider runtime can never disagree.
+// tachyon-core speaks FPTN natively: the section expands into per-server
+// outbounds plus a selector — the same shape a connection section gets — or
+// falls back to a raw-token outbound when the token cannot be decoded locally.
 function add_fptn_outbound(config, section, sections) {
     if (connections && !connections.section_is_active_provider(section, "fptn"))
         return;
+    ensure_fptn_outbound_supported();
     let tag = outbound_tag(section[".name"]);
-
-    if (connections && connections.fptn_transport_mode() == "native") {
-        // access_token is the canonical field; an fptn:// link pasted into the
-        // section URL list feeds the same resolver, so a pasted token works
-        // everywhere the section is read.
-        let token = connections.fptn_section_token(section);
-        if (token == "")
-            return;
-        if (add_fptn_token_members(config, section, token))
-            return;
-        // Undecodable on this box (brotli without the core binary, malformed
-        // token): hand the raw token to the core, which expands it into the
-        // same members itself.
-        let fptn_out = {
-            type: "fptn",
-            tag,
-            token: url_strip_fragment_value(token)
-        };
-        let detour = outbound_detour_tag_for_section(section);
-        if (detour != "")
-            fptn_out.detour = detour;
-        push(config.outbounds, fptn_out);
+    let token = connections ? connections.fptn_section_token(section) : "";
+    if (token == "")
         return;
-    }
-
-    push(config.outbounds, {
-        type: "direct",
+    if (add_fptn_token_members(config, section, token))
+        return;
+    let fptn_out = {
+        type: "fptn",
         tag,
-        routing_mark: 3145728
-    });
+        token: url_strip_fragment_value(token)
+    };
+    let detour = outbound_detour_tag_for_section(section);
+    if (detour != "")
+        fptn_out.detour = detour;
+    push(config.outbounds, fptn_out);
 }
 
 return {

@@ -59,8 +59,6 @@ export function getComponentCardTitle(
       return 'WDTT';
     case 'olcrtc':
       return 'OlcRTC';
-    case 'fptn':
-      return 'FPTN';
     case 'tailscale':
       return 'Tailscale';
     case 'torrserver_direct':
@@ -95,8 +93,6 @@ export function getComponentCurrentVersion(
       return sys.wdtt_version;
     case 'olcrtc':
       return sys.olcrtc_version;
-    case 'fptn':
-      return sys.fptn_version;
     case 'tailscale':
       return sys.tailscale_version;
     case 'torrserver_direct':
@@ -123,8 +119,6 @@ export function getComponentBackupVersion(
       return sys.wdtt_backup_version || '';
     case 'olcrtc':
       return sys.olcrtc_backup_version || '';
-    case 'fptn':
-      return sys.fptn_backup_version || '';
     case 'tailscale':
       return sys.tailscale_backup_version || '';
     default:
@@ -257,14 +251,7 @@ export function getOptionalComponentActions({
   hasUpdate = false,
   backupVersion = '',
 }: {
-  component:
-    | 'zapret'
-    | 'zapret2'
-    | 'byedpi'
-    | 'wdtt'
-    | 'olcrtc'
-    | 'fptn'
-    | 'tailscale';
+  component: 'zapret' | 'zapret2' | 'byedpi' | 'wdtt' | 'olcrtc' | 'tailscale';
   installed: boolean;
   checkKey: UpdatesActionKey;
   installKey: UpdatesActionKey;
@@ -313,7 +300,6 @@ export const COMPONENT_REPO_URLS: Record<Tachyon.ComponentName, string> = {
   byedpi: 'https://github.com/DPITrickster/ByeDPI-OpenWrt',
   wdtt: 'https://github.com/Dushnilin/qwdtt-openwrt',
   olcrtc: 'https://github.com/Dushnilin/openwrt-olcrtc',
-  fptn: 'https://github.com/Dushnilin/fptn',
   tailscale: 'https://openwrt.org/packages/pkgdata/tailscale',
   direct_bypass: '',
   torrserver_direct: 'https://github.com/YouROK/TorrServer',

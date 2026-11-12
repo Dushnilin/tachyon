@@ -503,10 +503,11 @@ function reality_keypair_response(private_key, public_key) {
     });
 }
 
-function tls_fingerprint_response(fingerprint) {
+function tls_fingerprint_response(fingerprint, md5) {
     write_json({
         success: true,
-        sha256: as_string(fingerprint)
+        sha256: as_string(fingerprint),
+        md5: as_string(md5 || "")
     });
 }
 
@@ -592,6 +593,10 @@ function certificate_base64(path) {
 
 function valid_sha256_hex(value) {
     return regex_matches(value, "^[0-9a-f]{64}$");
+}
+
+function valid_md5_hex(value) {
+    return regex_matches(value, "^[0-9a-f]{32}$");
 }
 
 function command_first_nonempty_line(command) {
@@ -773,26 +778,33 @@ function certificate_base64_text(path) {
     return length(lines) == 0 ? "" : join("\n", lines) + "\n";
 }
 
-function server_tls_certificate_sha256_from_file(certificate_path) {
+function server_tls_certificate_fingerprints_from_file(certificate_path) {
+    let empty = { sha256: "", md5: "" };
     if (!valid_file_path(certificate_path))
-        return "";
+        return empty;
     let base64_text = certificate_base64_text(certificate_path);
     if (base64_text == "")
-        return "";
+        return empty;
 
     let tmp_path = output("mktemp 2>/dev/null");
     if (tmp_path == "")
-        return "";
+        return empty;
 
     if (!fs.writefile(tmp_path, base64_text)) {
         fs.unlink(tmp_path);
-        return "";
+        return empty;
     }
 
-    let fingerprint = output("base64 -d " + shell_quote(tmp_path) + " 2>/dev/null | sha256sum 2>/dev/null");
+    let raw_sha256 = lc(output("base64 -d " + shell_quote(tmp_path) + " 2>/dev/null | sha256sum 2>/dev/null"));
+    let raw_md5 = lc(output("base64 -d " + shell_quote(tmp_path) + " 2>/dev/null | md5sum 2>/dev/null"));
     fs.unlink(tmp_path);
-    fingerprint = substr(fingerprint, 0, index(fingerprint, " ") >= 0 ? index(fingerprint, " ") : length(fingerprint));
-    return valid_sha256_hex(fingerprint) ? fingerprint : "";
+
+    let sha256 = substr(raw_sha256, 0, index(raw_sha256, " ") >= 0 ? index(raw_sha256, " ") : length(raw_sha256));
+    let md5 = substr(raw_md5, 0, index(raw_md5, " ") >= 0 ? index(raw_md5, " ") : length(raw_md5));
+    return {
+        sha256: valid_sha256_hex(sha256) ? sha256 : "",
+        md5: valid_md5_hex(md5) ? md5 : ""
+    };
 }
 
 
@@ -1174,13 +1186,13 @@ function get_tls_certificate_sha256_cli(section) {
         server_generate_tls_keypair_files(tls_server_name, certificate_path, key_path);
     }
 
-    let fingerprint = server_tls_certificate_sha256_from_file(certificate_path);
-    if (fingerprint == "") {
+    let fps = server_tls_certificate_fingerprints_from_file(certificate_path);
+    if (fps.sha256 == "") {
         error_response("Failed to read TLS certificate fingerprint");
         exit(1);
     }
 
-    tls_fingerprint_response(fingerprint);
+    tls_fingerprint_response(fps.sha256, fps.md5);
 }
 
 function generate_tls_keypair_cli(section) {
@@ -1207,8 +1219,8 @@ function generate_tls_keypair_cli(section) {
         }
     }
 
-    let fingerprint = server_tls_certificate_sha256_from_file(certificate_path);
-    tls_fingerprint_response(fingerprint);
+    let fps = server_tls_certificate_fingerprints_from_file(certificate_path);
+    tls_fingerprint_response(fps.sha256, fps.md5);
 }
 
 function first_server_user(section) {

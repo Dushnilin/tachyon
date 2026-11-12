@@ -22,7 +22,7 @@ function selected(settings, server) {
     return index(ids, server[".name"]) >= 0;
 }
 
-function collect(settings, servers, certificate_pin) {
+function collect(settings, servers, pin_fn) {
     let result = { links: [], skipped: [] };
     for (let server in servers) {
         if (!selected(settings, server)) continue;
@@ -30,7 +30,7 @@ function collect(settings, servers, certificate_pin) {
             push(result.skipped, server[".name"]);
             continue;
         }
-        let pin = certificate_pin ? certificate_pin(server) : "";
+        let pin = pin_fn ? pin_fn(server) : "";
         let uri = links.build(server, settings.server_subscription_host || "", pin);
         if (uri != "") push(result.links, uri);
         else push(result.skipped, server[".name"]);
@@ -39,12 +39,17 @@ function collect(settings, servers, certificate_pin) {
 }
 
 function certificate_pin(server) {
-    if (index([ "vless", "trojan", "hysteria2", "tuic", "anytls", "naive", "trusttunnel", "tewfai", "masque", "openconnect", "vmess" ], server.protocol) < 0)
+    if (index([ "vless", "trojan", "hysteria2", "tuic", "anytls", "naive", "fptn", "trusttunnel", "tewfai", "masque", "openconnect", "vmess" ], server.protocol) < 0)
         return "";
     let output = common.command_output_from_args([
         getenv("TACHYON_BIN") || "/usr/bin/tachyon", "get_tls_certificate_sha256", server[".name"]
     ]);
-    try { return json(output || "{}").sha256 || ""; } catch (e) { return ""; }
+    try {
+        let parsed = json(output || "{}");
+        if (server.protocol == "fptn")
+            return parsed.md5 || "";
+        return parsed.sha256 || "";
+    } catch (e) { return ""; }
 }
 
 function response(settings, servers, request, pin_reader) {

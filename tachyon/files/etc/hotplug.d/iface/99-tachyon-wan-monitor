@@ -9,7 +9,6 @@ case "$INTERFACE" in
                 echo "up" > "/var/run/tachyon/wan_transport_${INTERFACE}" 2>/dev/null
                 date +%s > /var/run/tachyon/wan-event.timestamp 2>/dev/null
                 /etc/init.d/tachyon retry_start_on_wan_up >/dev/null 2>&1 &
-                [ -f /usr/lib/tachyon/providers/fptn/runtime.uc ] && ucode -L /usr/lib/tachyon /usr/lib/tachyon/providers/fptn/runtime.uc ensure-routing >/dev/null 2>&1 &
                 (
                     sleep 1
                     for p in $(pidof tachyon-core sing-box 2>/dev/null); do
@@ -33,7 +32,6 @@ case "$INTERFACE" in
         case "$ACTION" in
             ifup)
                 /etc/init.d/tachyon retry_start_on_wan_up >/dev/null 2>&1 &
-                [ -f /usr/lib/tachyon/providers/fptn/runtime.uc ] && ucode -L /usr/lib/tachyon /usr/lib/tachyon/providers/fptn/runtime.uc ensure-routing >/dev/null 2>&1 &
                 ;;
         esac
         ;;

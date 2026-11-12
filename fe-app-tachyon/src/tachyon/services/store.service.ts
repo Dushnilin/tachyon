@@ -272,11 +272,6 @@ export interface StoreType {
     tailscale_installed: number;
     tailscale_backup_version?: string;
     tailscale_backup_time?: number;
-    fptn_version: string;
-    fptn_installed: number;
-    fptn_mode?: 'native' | 'component';
-    fptn_backup_version?: string;
-    fptn_backup_time?: number;
     server_inbounds_enabled_count: number;
     direct_bypass_enabled?: number;
     direct_bypass_address?: string;
@@ -341,12 +336,6 @@ export interface StoreType {
     olcrtcInstall: { loading: boolean };
     olcrtcRemove: { loading: boolean };
     olcrtcRollback: { loading: boolean };
-    fptnCheck: { loading: boolean };
-    fptnInstall: { loading: boolean };
-    fptnRemove: { loading: boolean };
-    fptnRollback: { loading: boolean };
-    fptnSetNativeMode: { loading: boolean };
-    fptnSetComponentMode: { loading: boolean };
     tailscaleCheck: { loading: boolean };
     tailscaleInstall: { loading: boolean };
     tailscaleRemove: { loading: boolean };

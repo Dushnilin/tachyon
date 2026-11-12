@@ -409,7 +409,7 @@ function analyze_subsystem_impact(diff_result, active_uci, candidate_uci) {
     for (let sec in diff_result.added_sections) {
         if (sec.type == "section") {
             affected["engine"] = true;
-            if (sec.action == "zapret" || sec.action == "zapret2" || sec.action == "byedpi" || sec.action == "fptn") {
+            if (sec.action == "zapret" || sec.action == "zapret2" || sec.action == "byedpi") {
                 affected["daemons"] = true;
             }
             affected["nftables"] = true;

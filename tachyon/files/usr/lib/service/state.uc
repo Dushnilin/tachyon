@@ -148,7 +148,6 @@ const RELOAD_STATE_FIELDS = [
     "byedpi_runtime_signature",
     "wdtt_runtime_signature",
     "olcrtc_runtime_signature",
-    "fptn_runtime_signature",
     "list_signature",
     "hosts_list_signature",
     "cron_signature",
@@ -2231,7 +2230,8 @@ function append_sing_box_rule_signature_body(body, section, sections) {
         let pkeys = keys(section);
         sort(pkeys);
         for (let pk in pkeys) {
-            if (index(pk, action + "_") == 0 || pk == "access_token" || pk == "label") {
+            if (index(pk, action + "_") == 0 || pk == "access_token" || pk == "label" ||
+                (action == "fptn" && (pk == "sni" || pk == "bypass_method" || pk == "preferred_server"))) {
                 let pv = section[pk];
                 let pv_str = type(pv) == "array" ? join(",", pv) : as_string(pv || "");
                 if (pv_str != "")
@@ -2797,24 +2797,6 @@ function olcrtc_runtime_signature_body(sections) {
     return body;
 }
 
-function fptn_runtime_signature_body(sections) {
-    let body = "";
-
-    for (let raw_section in sections) {
-        let section = section_provider_for_action(object_or_empty(raw_section), "fptn");
-        if (section == null)
-            continue;
-
-        let name = section_name(section);
-        body = signature_add_value(body, "fptn." + name + ".access_token", option(section, "access_token", ""));
-        body = signature_add_value(body, "fptn." + name + ".sni", option(section, "sni", ""));
-        body = signature_add_value(body, "fptn." + name + ".bypass_method", option(section, "bypass_method", ""));
-        body = signature_add_value(body, "fptn." + name + ".preferred_server", option(section, "preferred_server", ""));
-    }
-
-    return body;
-}
-
 function reload_state_values_from_sources(format, settings, sections, servers, dnsmasq, legacy_dnsmasq_present, mwan3_active_value, schedules, profiles, guest_modes, telegram) {
     let hashes = signature_hashes_batch({
         service_trigger_signature: service_trigger_signature_body(settings),
@@ -2828,7 +2810,6 @@ function reload_state_values_from_sources(format, settings, sections, servers, d
         byedpi_runtime_signature: byedpi_runtime_signature_body(sections),
         wdtt_runtime_signature: wdtt_runtime_signature_body(sections),
         olcrtc_runtime_signature: olcrtc_runtime_signature_body(sections),
-        fptn_runtime_signature: fptn_runtime_signature_body(sections),
         list_signature: list_update_signature_body(sections),
         hosts_list_signature: hosts_list_signature_body(sections),
         cron_signature: cron_signature_body(settings, sections)
@@ -2846,7 +2827,6 @@ function reload_state_values_from_sources(format, settings, sections, servers, d
         byedpi_runtime_signature: hashes.byedpi_runtime_signature,
         wdtt_runtime_signature: hashes.wdtt_runtime_signature,
         olcrtc_runtime_signature: hashes.olcrtc_runtime_signature,
-        fptn_runtime_signature: hashes.fptn_runtime_signature,
         list_signature: hashes.list_signature,
         hosts_list_signature: hashes.hosts_list_signature,
         cron_signature: hashes.cron_signature,
@@ -3344,12 +3324,6 @@ else if (mode == "olcrtc-runtime-signature")
 else if (mode == "olcrtc-runtime-signature-fixture") {
     let data = fixture_data(ARGV[1]);
     exit(print_signature_hash(olcrtc_runtime_signature_body(fixture_section_list(data))) ? 0 : 1);
-}
-else if (mode == "fptn-runtime-signature")
-    exit(print_signature_hash(fptn_runtime_signature_body(uci_sections("section"))) ? 0 : 1);
-else if (mode == "fptn-runtime-signature-fixture") {
-    let data = fixture_data(ARGV[1]);
-    exit(print_signature_hash(fptn_runtime_signature_body(fixture_section_list(data))) ? 0 : 1);
 }
 else if (mode == "dont-touch-dhcp")
     print(dont_touch_dhcp_value(uci_settings()), "\n");

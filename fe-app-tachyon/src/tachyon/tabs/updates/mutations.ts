@@ -178,22 +178,6 @@ export function computeSystemInfoMutation(
     }
   }
 
-  if (result.component === 'fptn') {
-    nextSystemInfo.providerInfoLoaded = true;
-
-    if (result.action === 'remove') {
-      nextSystemInfo.fptn_installed = 0;
-      nextSystemInfo.fptn_version = 'not installed';
-    } else if (result.action === 'set_native_mode') {
-      nextSystemInfo.fptn_mode = 'native';
-    } else if (result.action === 'set_component_mode') {
-      nextSystemInfo.fptn_mode = 'component';
-    } else {
-      nextSystemInfo.fptn_installed = 1;
-      nextSystemInfo.fptn_version = version;
-    }
-  }
-
   if (result.component === 'direct_bypass') {
     nextSystemInfo.direct_bypass_enabled = result.action === 'enable' ? 1 : 0;
   }
@@ -230,8 +214,7 @@ export function computeSystemInfoMutation(
     result.component === 'zapret2' ||
     result.component === 'byedpi' ||
     result.component === 'wdtt' ||
-    result.component === 'olcrtc' ||
-    result.component === 'fptn';
+    result.component === 'olcrtc';
 
   return {
     nextSystemInfo: normalizedSystemInfo,

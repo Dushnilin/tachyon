@@ -664,7 +664,7 @@ function normalize_component_name(component) {
 function valid_component_name(component) {
     component = normalize_component_name(component);
     return component == "tachyon" || component == "sing_box" || component == "zapret" ||
-        component == "zapret2" || component == "byedpi" || component == "wdtt" || component == "olcrtc" || component == "fptn" || component == "tailscale" || component == "torrserver_direct";
+        component == "zapret2" || component == "byedpi" || component == "wdtt" || component == "olcrtc" || component == "tailscale" || component == "torrserver_direct";
 }
 
 function settings_component_auto_update_enabled(settings) {
@@ -1909,7 +1909,7 @@ function component_update_check_cache() {
     let results = [];
 
     if (enabled) {
-        for (let component in [ "tachyon", "sing_box", "zapret", "zapret2", "byedpi", "wdtt", "olcrtc", "fptn" ]) {
+        for (let component in [ "tachyon", "sing_box", "zapret", "zapret2", "byedpi", "wdtt", "olcrtc" ]) {
             let value = read_json_file(component_update_check_cache_path(component));
             if (component_update_check_result_cacheable(value))
                 push(results, value);
@@ -2319,8 +2319,6 @@ function automatic_component_check_names() {
         push(result, "wdtt");
     if (module_success([ LIB_DIR + "/providers/olcrtc/runtime.uc", "installed" ]))
         push(result, "olcrtc");
-    if (module_success([ LIB_DIR + "/providers/fptn/runtime.uc", "installed" ]))
-        push(result, "fptn");
 
     return result;
 }

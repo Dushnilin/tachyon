@@ -44,7 +44,6 @@ const ZAPRET2_RUNTIME_UC = LIB_DIR + "/providers/zapret2/runtime.uc";
 const BYEDPI_RUNTIME_UC = LIB_DIR + "/providers/byedpi/runtime.uc";
 const WDTT_RUNTIME_UC = LIB_DIR + "/providers/wdtt/runtime.uc";
 const OLCRTC_RUNTIME_UC = LIB_DIR + "/providers/olcrtc/runtime.uc";
-const FPTN_RUNTIME_UC = LIB_DIR + "/providers/fptn/runtime.uc";
 const TAILSCALE_RUNTIME_UC = LIB_DIR + "/providers/tailscale/runtime.uc";
 const ZAPRET_VALIDATOR_UC = LIB_DIR + "/providers/zapret/validator.uc";
 const ZAPRET2_VALIDATOR_UC = LIB_DIR + "/providers/zapret2/validator.uc";
@@ -1670,10 +1669,10 @@ function run_doctor_checks_impl(repair) {
         }
     }
 
-    // 6d. DPI bypass / tunnel provider health (Zapret, Zapret2, ByeDPI, WDTT,
-    // OLCRTC, FPTN). Two readiness shapes share this loop: the worker-based
-    // engines report running/expected process counts, while the service-based
-    // tunnels (WDTT/OLCRTC/FPTN) report a single service state plus a
+    // 6d. Packet desynchronization / tunnel provider health (Zapret, Zapret2,
+    // ByeDPI, WDTT, OLCRTC). Two readiness shapes share this loop: worker-based
+    // engines report running/expected process counts, while service-based
+    // tunnels (WDTT/OLCRTC) report a single service state plus a
     // human-readable status_message. Both shapes expose "ready" and accept
     // "start-runtime", so one loop covers all of them.
     let providers_to_check = [
@@ -1681,8 +1680,7 @@ function run_doctor_checks_impl(repair) {
         { name: "Zapret2", kind: "zapret2", runtime: ZAPRET2_RUNTIME_UC, style: "workers" },
         { name: "ByeDPI", kind: "byedpi", runtime: BYEDPI_RUNTIME_UC, style: "workers" },
         { name: "WDTT", kind: "wdtt", runtime: WDTT_RUNTIME_UC, style: "service" },
-        { name: "OLCRTC", kind: "olcrtc", runtime: OLCRTC_RUNTIME_UC, style: "service" },
-        { name: "FPTN", kind: "fptn", runtime: FPTN_RUNTIME_UC, style: "service" }
+        { name: "OLCRTC", kind: "olcrtc", runtime: OLCRTC_RUNTIME_UC, style: "service" }
     ];
 
     for (let p in providers_to_check) {
@@ -1693,7 +1691,7 @@ function run_doctor_checks_impl(repair) {
         }
 
         // Every provider is always listed so the report shows the full
-        // Zapret/Zapret2/ByeDPI/WDTT/OLCRTC/FPTN picture. Providers that are
+        // Zapret/Zapret2/ByeDPI/WDTT/OLCRTC picture. Providers that are
         // absent or unused are informational, not failures.
         if (!st || st.installed != true) {
             doc_check("➖", p.name + " runtime", "not installed", "");
@@ -3899,7 +3897,7 @@ function compute_ai_doctor_result(user_query) {
         "  2) PROXIED TRAFFIC (`action='connection'` / proxy sections): DNS returns FakeIP `198.18.0.0/15` (or real IP matched by `@tachyon_subnets` / priority proxy sets) -> `nftables` `inet TachyonTable` sets `fwmark 0x04000000` -> `ip rule` table `tachyon` (205) -> `TProxy :1602` -> `tachyon-core` outbound tunnel (Clash API `127.0.0.1:9090`).\n" +
         "- Route Explain CLI syntax: ALWAYS pass both `<client_ip>` AND `<target_domain_or_ip>`: `tachyon route_explain <client_ip> <target_domain_or_ip> [port] [tcp|udp]` (e.g. `tachyon route_explain 192.168.1.199 demonware.net 3074 udp`). Never omit `<target_domain_or_ip>`.\n" +
         "- Modular UCI Schema (`/etc/config/tachyon`): `settings`, `section` (routing rule orchestrator), `condition` (traffic matchers: domains, lists, CIDRs, GeoIP/GeoSite, ports, client IPs/MACs), `outbound_source` (subscriptions, proxy links, JSON, providers), `balancer` (`urltest`, `least_ping`, `round_robin`, `sticky_hash`, `passive_check`), `outbound_group` (primary/backup failover & `fail_policy`), `server` (inbound server nodes), `telegram`, `guest_mode`.\n" +
-        "- Local Providers: `zapret` (`nfqws` NFQueue 200+, `--dpi-desync=...`), `zapret2` (`nfqws2` NFQueue 201+, Lua scripts in `/opt/zapret2/lua/`, `--lua-desync=multisplit:pos=1,midsld:seqovl=1:fooling=badseq`), `byedpi` (`ciadpi` SOCKS5 `:4539`), `wdtt`, `olcrtc`, `fptn`, `tailscale`, `torrserver`.\n" +
+        "- Local Providers: `zapret` (`nfqws` NFQueue 200+, `--dpi-desync=...`), `zapret2` (`nfqws2` NFQueue 201+, Lua scripts in `/opt/zapret2/lua/`, `--lua-desync=multisplit:pos=1,midsld:seqovl=1:fooling=badseq`), `byedpi` (`ciadpi` SOCKS5 `:4539`), `wdtt`, `olcrtc`, `tailscale`, `torrserver`.\n" +
         "- Self-Healing & Tools: `watchdog.uc`, `reconciler.uc` (targeted drift repair without core restart), `known_good.uc` (Last Known Good rollback), `transaction.uc` (atomic LIFO rollback), `route_explain.uc`, `config_plan.uc`, `support_bundle.uc`, `smart_detect.uc`.\n\n" +
         "PRIVACY & SECURITY RULES:\n" +
         "- All diagnostic inputs are pre-redacted (`[REDACTED_*]`).\n" +
@@ -3914,7 +3912,7 @@ function compute_ai_doctor_result(user_query) {
         "  2) ПРОКСИРУЕМЫЙ ТРАФИК (`Proxy` / `action='connection'`): получает FakeIP `198.18.0.0/15` (или попадает в `@tachyon_subnets` / прокси-сеты) -> в `inet TachyonTable` получает `fwmark 0x04000000` -> `ip rule` таблица `tachyon` (205) -> `TProxy :1602` -> обрабатывается ядром `tachyon-core` (Clash API `127.0.0.1:9090`).\n" +
         "- Синтаксис проверки маршрута: ВСЕГДА указывайте и IP клиента, и целевой домен/IP: `tachyon route_explain <ip_клиента> <домен_или_ip> [порт] [tcp|udp]` (например: `tachyon route_explain 192.168.1.199 demonware.net 3074 udp`). Вызов без целевого домена/IP некорректен.\n" +
         "- Модульная схема UCI (`/etc/config/tachyon`): `settings`, `section` (оркестратор правила), `condition` (условия: домены, списки, CIDR, GeoIP/GeoSite, порты, IP/MAC клиентов), `outbound_source` (подписки, ссылки, JSON, провайдеры), `balancer` (`urltest`, `least_ping`, `round_robin`, `sticky_hash`, `passive_check`), `outbound_group` (цепочка отказоустойчивости primary/backup и `fail_policy`), `server` (серверные инбаунды), `telegram`, `guest_mode`.\n" +
-        "- Локальные провайдеры: `zapret` (`nfqws` NFQueue 200+, `--dpi-desync=...`), `zapret2` (`nfqws2` NFQueue 201+, Lua-скрипты `/opt/zapret2/lua/`, `--lua-desync=multisplit:pos=1,midsld:seqovl=1:fooling=badseq`), `byedpi` (`ciadpi` SOCKS5 `:4539`), `wdtt`, `olcrtc`, `fptn`, `tailscale`, `torrserver`.\n" +
+        "- Локальные провайдеры: `zapret` (`nfqws` NFQueue 200+, `--dpi-desync=...`), `zapret2` (`nfqws2` NFQueue 201+, Lua-скрипты `/opt/zapret2/lua/`, `--lua-desync=multisplit:pos=1,midsld:seqovl=1:fooling=badseq`), `byedpi` (`ciadpi` SOCKS5 `:4539`), `wdtt`, `olcrtc`, `tailscale`, `torrserver`.\n" +
         "- Контур надёжности и инструменты: `watchdog.uc`, `reconciler.uc` (точечный ремонт без перезапуска ядра), `known_good.uc` (откат к эталону Last Known Good), `transaction.uc` (атомарные транзакции с LIFO-откатом), `route_explain.uc`, `config_plan.uc`, `support_bundle.uc`, `smart_detect.uc`.\n\n" +
         "ПРАВИЛА КОНФИДЕНЦИАЛЬНОСТИ И БЕЗОПАСНОСТИ:\n" +
         "- Все входные данные обезличены системой защиты Tachyon (`[REDACTED_*]`).\n" +
@@ -3948,7 +3946,7 @@ function compute_ai_doctor_result(user_query) {
             "- reset_firewall (restart router firewall)\n" +
             "- restart_network (restart network service)\n" +
             "- restart_zapret (restart Zapret/ByeDPI engines)\n" +
-            "- restart_providers (restart WDTT/OLCRTC/FPTN provider runtimes)\n" +
+            "- restart_providers (restart WDTT/OLCRTC provider runtimes)\n" +
             "- fix_system_time (system time is out of sync, breaking TLS)\n" +
             "- flush_conntrack (conntrack table is full)\n" +
             "- fix_bootstrap_dns (bootstrap DNS resolver is unreachable)\n" +
@@ -3985,7 +3983,7 @@ function compute_ai_doctor_result(user_query) {
             "- reset_firewall (перезапустить файрвол роутера)\n" +
             "- restart_network (перезапустить сетевой стек)\n" +
             "- restart_zapret (перезапустить службы Zapret/ByeDPI)\n" +
-            "- restart_providers (перезапустить провайдеры WDTT/OLCRTC/FPTN)\n" +
+            "- restart_providers (перезапустить провайдеры WDTT/OLCRTC)\n" +
             "- fix_system_time (системное время сбито, ломает TLS)\n" +
             "- flush_conntrack (таблица conntrack переполнена)\n" +
             "- fix_bootstrap_dns (bootstrap DNS недоступен)\n" +

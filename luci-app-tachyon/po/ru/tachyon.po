@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-11 20:59+0300\n"
-"PO-Revision-Date: 2026-11-11 20:59+0300\n"
+"POT-Creation-Date: 2026-11-12 11:16+0300\n"
+"PO-Revision-Date: 2026-11-12 11:16+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -6236,9 +6236,6 @@ msgstr "Имя, отображаемое на дашборде"
 msgid "Name shown in the priority level list"
 msgstr "Имя в списке уровней приоритета"
 
-msgid "Native (core)"
-msgstr "Встроенный (core)"
-
 msgid "Native Desync"
 msgstr "Встроенный Desync"
 
@@ -11054,9 +11051,6 @@ msgstr "Версии"
 msgid "Via"
 msgstr "Через"
 
-msgid "Via component"
-msgstr "Через компонент"
-
 msgid "Via country.is"
 msgstr "Через country.is"
 
@@ -11438,9 +11432,6 @@ msgstr "проверка..."
 msgid "checks"
 msgstr "проверки"
 
-msgid "component"
-msgstr "компонент"
-
 msgid "compressed"
 msgstr "compressed"
 
@@ -11653,9 +11644,6 @@ msgstr "multi_disorder (TLSRec + фейк + 3-частная нарезка в �
 
 msgid "multi_split (3-way TLS Record + SNI + MidSLD)"
 msgstr "multi_split (3-частная нарезка TLS Record + SNI + MidSLD)"
-
-msgid "native (core)"
-msgstr "встроенный (core)"
 
 msgid "new build"
 msgstr "новая сборка"
@@ -11980,6 +11968,18 @@ msgstr "🇱🇻 Латвия (lv)"
 
 msgid "🇵🇱 Poland (pl)"
 msgstr "🇵🇱 Польша (pl)"
+
+msgid "Native (core)"
+msgstr "Встроенный (core)"
+
+msgid "Via component"
+msgstr "Через компонент"
+
+msgid "component"
+msgstr "компонент"
+
+msgid "native (core)"
+msgstr "встроенный (core)"
 
 msgid "Give the snapshot a name. It is saved with the current date and can be restored from this list later."
 msgstr "Дайте снапшоту имя. Он сохраняется с текущей датой, и его можно будет восстановить из этого списка позже."

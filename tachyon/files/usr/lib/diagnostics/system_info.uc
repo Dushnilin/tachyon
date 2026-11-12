@@ -48,7 +48,6 @@ const ZAPRET2_RUNTIME_UC = LIB_DIR + "/providers/zapret2/runtime.uc";
 const BYEDPI_RUNTIME_UC = LIB_DIR + "/providers/byedpi/runtime.uc";
 const WDTT_RUNTIME_UC = LIB_DIR + "/providers/wdtt/runtime.uc";
 const OLCRTC_RUNTIME_UC = LIB_DIR + "/providers/olcrtc/runtime.uc";
-const FPTN_RUNTIME_UC = LIB_DIR + "/providers/fptn/runtime.uc";
 const TAILSCALE_RUNTIME_UC = LIB_DIR + "/providers/tailscale/runtime.uc";
 const ZAPRET_VALIDATOR_UC = LIB_DIR + "/providers/zapret/validator.uc";
 const ZAPRET2_VALIDATOR_UC = LIB_DIR + "/providers/zapret2/validator.uc";
@@ -551,21 +550,6 @@ function get_system_arch_candidates() {
     return arch_list;
 }
 
-function is_fptn_supported() {
-    let arch_list = get_system_arch_candidates();
-    let supported = [
-        "x86_64", "amd64",
-        "aarch64", "arm64",
-        "arm_cortex-a7_neon-vfpv4",
-        "arm_cortex-a7"
-    ];
-    for (let s in supported) {
-        if (index(arch_list, s) >= 0)
-            return true;
-    }
-    return false;
-}
-
 function detect_primary_arch() {
     let candidates = words(get_system_arch_candidates());
     return length(candidates) > 0 ? as_string(candidates[0]) : "unknown";
@@ -703,10 +687,6 @@ function build_system_info() {
     let olcrtc_version = olcrtc_installed ? provider_version(OLCRTC_RUNTIME_UC) : "not installed";
     let tailscale_installed = provider_installed(TAILSCALE_RUNTIME_UC) ? 1 : 0;
     let tailscale_version = tailscale_installed ? provider_version(TAILSCALE_RUNTIME_UC) : "not installed";
-    let fptn_installed = provider_installed(FPTN_RUNTIME_UC) ? 1 : 0;
-    let fptn_supported = (fptn_installed == 1 || is_fptn_supported()) ? 1 : 0;
-    let fptn_version = fptn_installed ? provider_version(FPTN_RUNTIME_UC) : "not installed";
-    let fptn_mode = require("config.connections").fptn_transport_mode();
     let device_model = detect_device_model();
 
     let direct_bypass_enabled = bool_option(settings(), "direct_bypass_enabled", false) ? 1 : 0;
@@ -723,7 +703,6 @@ function build_system_info() {
     let show_component_byedpi = bool_option(settings(), "show_component_byedpi", true) ? 1 : 0;
     let show_component_wdtt = bool_option(settings(), "show_component_wdtt", true) ? 1 : 0;
     let show_component_olcrtc = bool_option(settings(), "show_component_olcrtc", true) ? 1 : 0;
-    let show_component_fptn = bool_option(settings(), "show_component_fptn", true) ? 1 : 0;
     let show_component_tailscale = bool_option(settings(), "show_component_tailscale", true) ? 1 : 0;
     let show_component_direct_bypass = bool_option(settings(), "show_component_direct_bypass", true) ? 1 : 0;
     let show_component_torrserver_direct = bool_option(settings(), "show_component_torrserver_direct", true) ? 1 : 0;
@@ -748,7 +727,6 @@ function build_system_info() {
     let wdtt_meta = read_backup_meta("wdtt");
     let olcrtc_meta = read_backup_meta("olcrtc");
     let tailscale_meta = read_backup_meta("tailscale");
-    let fptn_meta = read_backup_meta("fptn");
     let cmp_cat = get_cmp_cat();
 
     return {
@@ -793,12 +771,6 @@ function build_system_info() {
         tailscale_installed,
         tailscale_backup_version: tailscale_meta ? as_string(tailscale_meta.version) : "",
         tailscale_backup_time: tailscale_meta ? int(tailscale_meta.timestamp || 0) : 0,
-        fptn_version,
-        fptn_installed,
-        fptn_supported,
-        fptn_mode,
-        fptn_backup_version: fptn_meta ? as_string(fptn_meta.version) : "",
-        fptn_backup_time: fptn_meta ? int(fptn_meta.timestamp || 0) : 0,
         direct_bypass_enabled,
         direct_bypass_address,
         direct_bypass_port,
@@ -813,7 +785,6 @@ function build_system_info() {
         show_component_byedpi,
         show_component_wdtt,
         show_component_olcrtc,
-        show_component_fptn,
         show_component_tailscale,
         show_component_direct_bypass,
         show_component_torrserver_direct,
@@ -1148,7 +1119,6 @@ return {
     provider_version,
     openwrt_release,
     get_system_arch_candidates,
-    is_fptn_supported,
     build_system_info,
     get_system_info,
     get_server_capabilities,

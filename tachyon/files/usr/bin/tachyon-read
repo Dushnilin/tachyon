@@ -54,7 +54,6 @@ let commands = {
     get_byedpi_status: [ "diagnostics/runtime.uc", "get-byedpi-status", 0 ],
     get_wdtt_status: [ "diagnostics/runtime.uc", "get-wdtt-status", 0 ],
     get_olcrtc_status: [ "diagnostics/runtime.uc", "get-olcrtc-status", 0 ],
-    get_fptn_status: [ "diagnostics/runtime.uc", "get-fptn-status", 0 ],
     get_tailscale_status: [ "diagnostics/runtime.uc", "get-tailscale-status", 0 ],
     get_tailscale_peers: [ "diagnostics/runtime.uc", "get-tailscale-peers", 0 ],
     failover_check: [ "service/failover.uc", "check", 0 ],

@@ -42,8 +42,6 @@ const mockSystemInfo: StoreType['diagnosticsSystemInfo'] = {
   wdtt_version: 'not installed',
   olcrtc_installed: 0,
   olcrtc_version: 'not installed',
-  fptn_installed: 0,
-  fptn_version: 'not installed',
   tailscale_version: 'not installed',
   direct_bypass_enabled: 0,
   torrserver_direct_enabled: 0,

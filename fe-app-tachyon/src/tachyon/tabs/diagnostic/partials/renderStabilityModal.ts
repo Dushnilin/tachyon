@@ -116,8 +116,6 @@ export async function renderStabilityModal(): Promise<void> {
         return { title: 'WDTT', subtitle: 'wdtt' };
       case 'olcrtc':
         return { title: 'OLCRTC', subtitle: 'olcrtc' };
-      case 'fptn':
-        return { title: 'FPTN', subtitle: 'fptn' };
       case 'tailscale':
         return { title: 'Tailscale', subtitle: 'tailscaled' };
       case 'dnsmasq':

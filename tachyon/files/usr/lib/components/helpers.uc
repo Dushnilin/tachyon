@@ -537,7 +537,7 @@ function sanitize_apk_world() {
         "tachyon-core",
         "sing-box-extended", "sing-box", "sing-box-tiny", "sing-box-lx",
         "zapret2", "zapret",
-        "byedpi", "wdtt", "olcrtc", "fptn",
+        "byedpi", "wdtt", "olcrtc",
         "forkop", "luci-app-forkop", "podkop", "luci-app-podkop", "netshift", "luci-app-netshift",
         "luci-i18n-tachyon-ru"
     ];
@@ -549,7 +549,7 @@ function sanitize_apk_world() {
         command_success("sed -i -E " + shell_quote("/^ip-tiny([><=~ \t].*)?$/d") + " " + shell_quote(world_file) + " 2>/dev/null");
     // Strip pinned version/hash constraints (e.g. pkg><HASH= or pkg=ver)
     // from /etc/apk/world for all managed packages so local .apk upgrades succeed
-    let pattern = "^(tachyon|tachyon-core|luci-app-tachyon|luci-i18n-tachyon-[a-z_-]+|zapret|zapret2|byedpi|wdtt|olcrtc|fptn|sing-box|sing-box-extended|sing-box-tiny|sing-box-lx)[><=].*$";
+    let pattern = "^(tachyon|tachyon-core|luci-app-tachyon|luci-i18n-tachyon-[a-z_-]+|zapret|zapret2|byedpi|wdtt|olcrtc|sing-box|sing-box-extended|sing-box-tiny|sing-box-lx)[><=].*$";
     command_success("sed -i -E " + shell_quote("s/" + pattern + "/\\1/") + " " + shell_quote(world_file) + " 2>/dev/null");
 
     // Heal any remaining broken world entries (e.g. third-party packages no longer

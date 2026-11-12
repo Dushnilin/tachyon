@@ -116,7 +116,6 @@ export const TACHYON_RPC_METHODS = [
   'generate_wg_keypair',
   'get_byedpi_status',
   'get_engine_status',
-  'get_fptn_status',
   'get_lite_mode',
   'get_olcrtc_status',
   'get_outbound_metadata',
@@ -946,11 +945,6 @@ export type GetbyedpistatusResult = Record<string, unknown>;
 export type GetenginestatusParams = Record<string, never>;
 
 export type GetenginestatusResult = Record<string, unknown>;
-
-/** get-fptn-status (diagnostics/runtime.uc) */
-export type GetfptnstatusParams = Record<string, never>;
-
-export type GetfptnstatusResult = Record<string, unknown>;
 
 /** get-lite-mode (service/ui.uc) */
 export type GetlitemodeParams = Record<string, never>;
@@ -2304,10 +2298,6 @@ export interface TachyonRpcRegistry {
   get_engine_status: {
     params: GetenginestatusParams;
     result: GetenginestatusResult;
-  };
-  get_fptn_status: {
-    params: GetfptnstatusParams;
-    result: GetfptnstatusResult;
   };
   get_lite_mode: {
     params: GetlitemodeParams;
@@ -4284,16 +4274,6 @@ export const RPC_METADATA_MAP: Record<TachyonRpcMethodName, RpcMethodMetadata> =
       category: 'diagnostics',
       acl: 'read',
       description: 'get-engine-status (diagnostics/runtime.uc)',
-      async: false,
-      timeout_ms: 5000,
-      params: [],
-    },
-    get_fptn_status: {
-      name: 'get_fptn_status',
-      cli_command: 'get_fptn_status',
-      category: 'diagnostics',
-      acl: 'read',
-      description: 'get-fptn-status (diagnostics/runtime.uc)',
       async: false,
       timeout_ms: 5000,
       params: [],

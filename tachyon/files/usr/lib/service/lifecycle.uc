@@ -122,7 +122,6 @@ const BYEDPI_UC = LIB_DIR + "/providers/byedpi/runtime.uc";
 const TAILSCALE_UC = LIB_DIR + "/providers/tailscale/runtime.uc";
 const WDTT_UC = LIB_DIR + "/providers/wdtt/runtime.uc";
 const OLCRTC_UC = LIB_DIR + "/providers/olcrtc/runtime.uc";
-const FPTN_UC = LIB_DIR + "/providers/fptn/runtime.uc";
 const PARENTAL_QUOTA_UC = LIB_DIR + "/service/parental_quota.uc";
 const PACKAGES_UC = LIB_DIR + "/core/packages.uc";
 const WATCHDOG_UC = LIB_DIR + "/service/watchdog.uc";
@@ -1250,7 +1249,6 @@ function start_main() {
     module_success(ZAPRET2_UC, [ "start-runtime" ]);
     module_success(WDTT_UC, [ "start-runtime" ]);
     module_success(OLCRTC_UC, [ "start-runtime" ]);
-    module_success(FPTN_UC, [ "start-runtime" ]);
     module_success(PARENTAL_QUOTA_UC, [ "install-cron" ]);
     module_success(PARENTAL_QUOTA_UC, [ "tick" ]);
 
@@ -1377,8 +1375,6 @@ function stop_main() {
         log_message("WDTT stop failed (non-fatal)", "warn");
     if (!module_success(OLCRTC_UC, [ "stop-runtime" ]))
         log_message("OlcRTC stop failed (non-fatal)", "warn");
-    if (!module_success(FPTN_UC, [ "stop-runtime" ]))
-        log_message("FPTN stop failed (non-fatal)", "warn");
     if (!module_success(TAILSCALE_UC, [ "stop-runtime" ]))
         log_message("Tailscale stop failed (non-fatal)", "warn");
     module_success(PARENTAL_QUOTA_UC, [ "remove-cron" ]);
@@ -1586,7 +1582,6 @@ function parse_reload_plan(output) {
         needs_byedpi_restart: 0,
         needs_wdtt_restart: 0,
         needs_olcrtc_restart: 0,
-        needs_fptn_restart: 0,
         needs_dnsmasq_configure: 0,
         needs_dnsmasq_restore: 0,
         needs_cron_refresh: 0,
@@ -1625,7 +1620,6 @@ function reload_actions_summary(plan) {
     actions = append_reload_action(actions, plan.needs_byedpi_restart, "ByeDPI");
     actions = append_reload_action(actions, plan.needs_wdtt_restart, "WDTT");
     actions = append_reload_action(actions, plan.needs_olcrtc_restart, "OlcRTC");
-    actions = append_reload_action(actions, plan.needs_fptn_restart, "FPTN");
     actions = append_reload_action(actions, plan.needs_dnsmasq_configure || plan.needs_dnsmasq_restore, "dnsmasq");
     actions = append_reload_action(actions, plan.needs_cron_refresh, "scheduled jobs");
     actions = append_reload_action(actions, plan.needs_list_update, "remote lists");
@@ -1828,8 +1822,6 @@ function reload(reason) {
         module_success(WDTT_UC, [ "stop-runtime" ]);
     if (plan.needs_olcrtc_restart == 1)
         module_success(OLCRTC_UC, [ "stop-runtime" ]);
-    if (plan.needs_fptn_restart == 1)
-        module_success(FPTN_UC, [ "stop-runtime" ]);
 
     if (plan.needs_hosts_update == 1 && module_success(STATE_UC, [ "has-hosts-list-update-sources" ]))
         module_success(HOSTS_UC, [ "list-update" ]);
@@ -1916,8 +1908,6 @@ function reload(reason) {
         module_success(WDTT_UC, [ "start-runtime" ]);
     if (plan.needs_olcrtc_restart == 1)
         module_success(OLCRTC_UC, [ "start-runtime" ]);
-    if (plan.needs_fptn_restart == 1)
-        module_success(FPTN_UC, [ "start-runtime" ]);
     if (plan.needs_byedpi_restart == 1)
     module_success(BYEDPI_UC, [ "start-runtime" ]);
     // Native Tailscale must be up before sing-box so tailnet routes win over

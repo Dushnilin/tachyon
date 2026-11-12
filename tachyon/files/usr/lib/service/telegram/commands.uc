@@ -1113,8 +1113,6 @@ function resolve_component_installed_version(comp_name, sys_info) {
         return as_string(sys_info.wdtt_version || "");
     if (comp_name == "olcrtc")
         return as_string(sys_info.olcrtc_version || "");
-    if (comp_name == "fptn")
-        return as_string(sys_info.fptn_version || "");
     if (comp_name == "tailscale")
         return as_string(sys_info.tailscale_version || "");
     if (comp_name == "torrserver_direct")
@@ -1217,7 +1215,6 @@ function exec_run_check_updates(token, chat_id, msg_id) {
         if (info.byedpi_installed == "1") push(components, "byedpi");
         if (info.wdtt_installed == "1") push(components, "wdtt");
         if (info.olcrtc_installed == "1") push(components, "olcrtc");
-        if (info.fptn_installed == "1") push(components, "fptn");
     } catch (e) {}
 
     let cache_dir = "/var/run/tachyon/component-update-checks";

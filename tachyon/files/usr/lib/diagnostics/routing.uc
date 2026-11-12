@@ -881,8 +881,7 @@ const TACHYON_OWN_MARKS = [
     constants.ZAPRET_ROUTE_MARK_BASE || "0x01000000",
     constants.ZAPRET2_ROUTE_MARK_BASE || "0x02000000",
     "0x00200000",
-    "0x00300000",
-    "0x00340000",
+    "0x00240000",
     "0x00ff0000"
 ];
 

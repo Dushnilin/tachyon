@@ -790,11 +790,8 @@ function updateActionProvidersAvailabilityFromSystemInfo(systemInfo) {
     byedpiInstalled: Boolean(systemInfo.byedpi_installed),
     wdttInstalled: Boolean(systemInfo.wdtt_installed),
     olcrtcInstalled: Boolean(systemInfo.olcrtc_installed),
-    // FPTN is compiled into tachyon-core itself, so the built-in flag makes
-    // the action available even with no fptn package on disk.
-    fptnInstalled: Boolean(
-      systemInfo.fptn_installed || systemInfo.sing_box_fptn,
-    ),
+    // FPTN is built into tachyon-core.
+    fptnInstalled: Boolean(systemInfo.sing_box_fptn),
     singBoxExtended: Boolean(systemInfo.sing_box_extended),
     singBoxTachyonCore: Boolean(systemInfo.sing_box_tachyon_core),
     torInstalled: Boolean(systemInfo.tor_installed),

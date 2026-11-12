@@ -337,12 +337,8 @@ function detect_optional_component_version(comp_id, pkgs_mod) {
         return env_override;
 
     let pkg_ver = "";
-    if (pkgs_mod != null && type(pkgs_mod.version) == "function") {
-        if (comp_id == "fptn")
-            pkg_ver = clean_version_token(pkgs_mod.version("fptn") || pkgs_mod.version("fptn-client"));
-        else
-            pkg_ver = clean_version_token(pkgs_mod.version(comp_id));
-    }
+    if (pkgs_mod != null && type(pkgs_mod.version) == "function")
+        pkg_ver = clean_version_token(pkgs_mod.version(comp_id));
     if (pkg_ver != "")
         return pkg_ver;
 
@@ -363,7 +359,6 @@ function parse_config_active_flags(config_text) {
         zapret2: false,
         zapret: false,
         byedpi: false,
-        fptn: false,
         tailscale: false
     };
     let cur_type = "";
@@ -371,7 +366,6 @@ function parse_config_active_flags(config_text) {
     let cur_action = "";
     let cur_protocol = "";
     let cur_ts_mode = "";
-    let cur_fptn_url = "";
 
     let flush_section = function() {
         if (cur_type == "" || !cur_enabled)
@@ -380,11 +374,7 @@ function parse_config_active_flags(config_text) {
             if (cur_action == "zapret2") flags.zapret2 = true;
             else if (cur_action == "zapret") flags.zapret = true;
             else if (cur_action == "byedpi") flags.byedpi = true;
-            else if (cur_action == "fptn") flags.fptn = true;
             else if (cur_action == "tailscale") flags.tailscale = true;
-        } else if (cur_type == "outbound_source") {
-            if (cur_action == "fptn" || cur_fptn_url != "")
-                flags.fptn = true;
         } else if (cur_type == "server") {
             if (cur_protocol == "tailscale" && cur_ts_mode == "native")
                 flags.tailscale = true;
@@ -403,7 +393,6 @@ function parse_config_active_flags(config_text) {
             cur_action = "";
             cur_protocol = "";
             cur_ts_mode = "";
-            cur_fptn_url = "";
             continue;
         }
         let opt = match(line, /^option[ \t]+([A-Za-z0-9_]+)[ \t]+['"]?([^'"\r\n]*)['"]?/);
@@ -421,8 +410,6 @@ function parse_config_active_flags(config_text) {
             cur_protocol = lc(v);
         else if (k == "tailscale_mode")
             cur_ts_mode = lc(v);
-        else if (k == "access_token" && substr(lc(v), 0, 5) == "fptn:")
-            cur_fptn_url = v;
     }
     flush_section();
     return flags;
@@ -454,7 +441,6 @@ function collect_active_components(config_path) {
         [ "zapret2", "Zapret2", flags.zapret2 ],
         [ "zapret", "Zapret", flags.zapret ],
         [ "byedpi", "ByeDPI", flags.byedpi ],
-        [ "fptn", "FPTN", flags.fptn ],
         [ "tailscale", "Tailscale", flags.tailscale ]
     ];
     for (let entry in extras) {

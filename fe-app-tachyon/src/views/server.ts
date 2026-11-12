@@ -1875,6 +1875,11 @@ function normalizeSha256(value) {
   return /^[0-9a-f]{64}$/.test(normalized) ? normalized : '';
 }
 
+function normalizeMd5(value) {
+  const normalized = `${value || ''}`.trim().replace(/:/g, '').toLowerCase();
+  return /^[0-9a-f]{32}$/.test(normalized) ? normalized : '';
+}
+
 function shouldUseGeneratedTlsCertificatePin(sectionId) {
   const certificatePath = `${
     uci.get(UCI_PACKAGE, sectionId, 'tls_certificate_path') ||
@@ -1884,9 +1889,9 @@ function shouldUseGeneratedTlsCertificatePin(sectionId) {
   return !/^\/etc\/(acme|letsencrypt|ssl\/certs)\//.test(certificatePath);
 }
 
-function loadGeneratedTlsCertificatePin(sectionId) {
-  if (!shouldUseGeneratedTlsCertificatePin(sectionId)) {
-    return Promise.resolve('');
+function loadTlsCertificateFingerprints(sectionId, includeCustomCert = false) {
+  if (!includeCustomCert && !shouldUseGeneratedTlsCertificatePin(sectionId)) {
+    return Promise.resolve({ sha256: '', md5: '' });
   }
 
   return fs
@@ -1901,15 +1906,24 @@ function loadGeneratedTlsCertificatePin(sectionId) {
         throw new Error(data.message || '');
       }
 
-      return normalizeSha256(data.sha256);
+      return {
+        sha256: normalizeSha256(data.sha256),
+        md5: normalizeMd5(data.md5),
+      };
     })
     .catch((error) => {
       console.warn(
-        error?.message || 'Failed to read generated TLS certificate pin',
+        error?.message || 'Failed to read TLS certificate fingerprints',
         error,
       );
-      return '';
+      return { sha256: '', md5: '' };
     });
+}
+
+function loadGeneratedTlsCertificatePin(sectionId) {
+  return loadTlsCertificateFingerprints(sectionId, false).then(
+    (fps) => fps.sha256,
+  );
 }
 
 function buildHysteria2Link(sectionId, identity, options = {}) {
@@ -2059,7 +2073,7 @@ function buildFptnPayload(sectionId, identity, options = {}) {
         name: serverName,
         host: host,
         port: port,
-        md5_fingerprint: '',
+        md5_fingerprint: normalizeMd5(options.tlsCertificateMd5),
       },
     ],
     censored_zone_servers: [],
@@ -2498,14 +2512,15 @@ function buildClientLink(sectionId, options = {}) {
 function buildClientLinkContext(sectionId) {
   const protocol = getProtocol(sectionId);
   const security = getEffectiveSecurity(sectionId);
+  const fptnCertificatePinExpected = protocol === 'fptn' && security === 'tls';
   const certificatePinExpected =
-    [
+    fptnCertificatePinExpected ||
+    ([
       'hysteria2',
       'tuic',
       'anytls',
       'naive',
       'trojan',
-      'fptn',
       'vless',
       'vmess',
       'trusttunnel',
@@ -2513,24 +2528,30 @@ function buildClientLinkContext(sectionId) {
       'masque',
       'openconnect',
     ].includes(protocol) &&
-    security === 'tls' &&
-    shouldUseGeneratedTlsCertificatePin(sectionId);
+      security === 'tls' &&
+      shouldUseGeneratedTlsCertificatePin(sectionId));
 
   if (!certificatePinExpected) {
     return Promise.resolve({
       link: buildClientLink(sectionId),
       certificatePinExpected,
       tlsCertificateSha256: '',
+      tlsCertificateMd5: '',
     });
   }
 
-  return loadGeneratedTlsCertificatePin(sectionId).then(
-    (tlsCertificateSha256) => ({
-      link: buildClientLink(sectionId, { tlsCertificateSha256 }),
-      certificatePinExpected,
+  return loadTlsCertificateFingerprints(
+    sectionId,
+    fptnCertificatePinExpected,
+  ).then(({ sha256: tlsCertificateSha256, md5: tlsCertificateMd5 }) => ({
+    link: buildClientLink(sectionId, {
       tlsCertificateSha256,
+      tlsCertificateMd5,
     }),
-  );
+    certificatePinExpected,
+    tlsCertificateSha256,
+    tlsCertificateMd5,
+  }));
 }
 
 function svgEl(tag, attrs = {}, children = []) {
@@ -2690,11 +2711,13 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
   let activeAwgVersion =
     uci.get(UCI_PACKAGE, sectionId, 'awg_version') || '2.0';
 
+  const tlsCertificateMd5 = linkContext.tlsCertificateMd5 || '';
   const computeLink = (hostOverride) =>
     protocol === 'awg'
       ? buildAwgClientConfig(sectionId, activeAwgVersion, { hostOverride })
       : buildClientLink(sectionId, {
           tlsCertificateSha256: linkContext.tlsCertificateSha256 || '',
+          tlsCertificateMd5,
           hostOverride,
         });
 
@@ -2724,7 +2747,10 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
   const qrUri =
     protocol === 'fptn'
       ? qrSvgDataUri(
-          buildFptnLink(sectionId, identity, { hostOverride: activeHost }),
+          buildFptnLink(sectionId, identity, {
+            hostOverride: activeHost,
+            tlsCertificateMd5,
+          }),
         )
       : qrSvgDataUri(currentLink || '');
 
@@ -2732,9 +2758,12 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
     security && security !== 'none' ? ` + ${getSecurityLabel(security)}` : '';
   const protocolText = `${getProtocolLabel(protocol)}${securitySuffix}`;
   const certificatePinWarning =
-    protocol === 'hysteria2' &&
-    linkContext.certificatePinExpected &&
-    !linkContext.tlsCertificateSha256
+    (protocol === 'hysteria2' &&
+      linkContext.certificatePinExpected &&
+      !linkContext.tlsCertificateSha256) ||
+    (protocol === 'fptn' &&
+      linkContext.certificatePinExpected &&
+      !tlsCertificateMd5)
       ? E(
           'div',
           { class: 'fkp-server-info-modal__warning alert-message warning' },
@@ -2776,7 +2805,10 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
           btnLink.className = 'btn cbi-button cbi-button-action';
           btnToken.className = 'btn cbi-button cbi-button-neutral';
           qrImg.src = qrSvgDataUri(
-            buildFptnLink(sectionId, identity, { hostOverride: activeHost }),
+            buildFptnLink(sectionId, identity, {
+              hostOverride: activeHost,
+              tlsCertificateMd5,
+            }),
           );
         },
       },
@@ -2795,7 +2827,10 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
           btnToken.className = 'btn cbi-button cbi-button-action';
           btnLink.className = 'btn cbi-button cbi-button-neutral';
           qrImg.src = qrSvgDataUri(
-            buildFptnToken(sectionId, identity, { hostOverride: activeHost }),
+            buildFptnToken(sectionId, identity, {
+              hostOverride: activeHost,
+              tlsCertificateMd5,
+            }),
           );
         },
       },
@@ -2916,9 +2951,11 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
   if (protocol === 'fptn') {
     let fptnToken = buildFptnToken(sectionId, identity, {
       hostOverride: activeHost,
+      tlsCertificateMd5,
     });
     let fptnLink = buildFptnLink(sectionId, identity, {
       hostOverride: activeHost,
+      tlsCertificateMd5,
     });
 
     linkSection.appendChild(
@@ -3003,8 +3040,12 @@ function renderInfoClientLink(sectionId, linkContext = {}) {
     onHostChange = (nextHost) => {
       fptnToken = buildFptnToken(sectionId, identity, {
         hostOverride: nextHost,
+        tlsCertificateMd5,
       });
-      fptnLink = buildFptnLink(sectionId, identity, { hostOverride: nextHost });
+      fptnLink = buildFptnLink(sectionId, identity, {
+        hostOverride: nextHost,
+        tlsCertificateMd5,
+      });
       tokenTextarea.value = fptnToken;
       linkTextarea.value = fptnLink;
       const newQr = qrSvgDataUri(fptnQrMode === 'token' ? fptnToken : fptnLink);

@@ -646,7 +646,7 @@ function restart_tachyon_after_successful_change(skip_reload_if_running) {
     system("rm -f /var/run/tachyon.reload.lock 2>/dev/null; true");
 
     // If sing-box was NOT stopped for this component change (e.g. WDTT, Zapret, ByeDPI,
-    // FPTN, OlcRTC, rulesets, etc.), Tachyon is still running and sing-box routing is intact.
+    // OlcRTC, rulesets, etc.), Tachyon is still running and sing-box routing is intact.
     // Perform a soft reload (`reload force`) via BIN_PATH. This bypasses rc.common flock,
     // reloads provider state and nftables without tearing down sing-box or dropping active connections.
     if (!tachyon_stopped_for_sing_box_change && file_exists(BIN_PATH) && tachyon_status_running_with_timeout()) {
@@ -934,9 +934,6 @@ function resolve_wdtt_release(arch, tag) { return cmp_cat.resolve_wdtt_release(a
 
 // Delegated to components/catalog.uc (branch 4 god-module split).
 function resolve_olcrtc_release(arch, tag) { return cmp_cat.resolve_olcrtc_release(arch, tag); }
-
-// Delegated to components/catalog.uc (branch 4 god-module split).
-function resolve_fptn_release(arch, tag) { return cmp_cat.resolve_fptn_release(arch, tag); }
 
 function download_direct_package(release) {
     let package_file = cmp.tmp_dir_path() + "/" + release.package_name;
@@ -1278,45 +1275,6 @@ function install_olcrtc(action, target_tag) {
     if (current_version == "")
         current_version = pkg.version || "unknown";
     action_success("olcrtc", action, "OlcRTC package has been installed", current_version, pkg.version, 1, "latest", release.release_url || "");
-}
-
-function install_fptn(action, target_tag) {
-    init_tmp_dir() || action_fail("fptn", action, "Failed to create temporary directory");
-    let arch = resolve_arch_candidates();
-    if (arch == null)
-        action_fail("fptn", action, "Failed to detect package architecture");
-    let release = null;
-    retry_resolve("Resolving FPTN package", function() {
-        release = resolve_fptn_release(arch, target_tag);
-        return release != null;
-    });
-    if (release == null)
-        action_fail("fptn", action, "Failed to resolve FPTN package for this router architecture");
-
-    let runtime_module = LIB_DIR + "/providers/fptn/runtime.uc";
-    let installed = provider_installed(runtime_module);
-    let current_version = provider_package_version(runtime_module);
-    if (action == "check_update") {
-        if (!installed)
-            action_success("fptn", action, "FPTN is not installed", current_version, release.version, 0, "", release.release_url || "");
-        check_success("fptn", current_version, release.version, release.release_url || "");
-    }
-
-    let pkg = download_direct_package(release);
-    if (pkg == null)
-        action_fail("fptn", action, "Failed to download FPTN package");
-
-    if (!run_logged_pkg_install_files("Installing FPTN package " + pkg.name, [ pkg.file ], PKG_INSTALL_TIMEOUT))
-        action_fail("fptn", action, "Failed to install FPTN package", current_version, pkg.version);
-
-    disable_standalone_service("fptn");
-    disable_standalone_service("fptn-client");
-    restart_tachyon_after_successful_change();
-    clear_version_caches();
-    current_version = provider_package_version(runtime_module);
-    if (current_version == "")
-        current_version = pkg.version || "unknown";
-    action_success("fptn", action, "FPTN package has been installed", current_version, pkg.version, 1, "latest", release.release_url || "");
 }
 
 function install_tailscale(action) {
@@ -3223,8 +3181,6 @@ function normalize_component_name(component) {
         return "tachyon-core";
     if (component == "sing-box" || component == "singbox")
         return "sing_box";
-    if (component == "fptn-client" || component == "fptn_client")
-        return "fptn";
     if (component == "tachyon")
         return "tachyon";
     if (component == "direct-bypass" || component == "directbypass" || component == "direct_proxy")
@@ -3430,24 +3386,6 @@ function create_component_backup(component) {
         write_file(meta_file, sprintf("%J\n", meta));
         return true;
     }
-    else if (component == "fptn") {
-        let bin = "/usr/bin/fptn-client-cli";
-        if (!file_exists(bin)) bin = "/usr/bin/fptn-client";
-        if (!file_exists(bin)) return true;
-        let st = fs.stat(bin);
-        let size = (st && st.size) ? st.size : 0;
-        if (!check_free_disk_space("/etc", size)) return false;
-        ensure_dir(bdir);
-        command_success_from_args([ "cp", "-p", bin, bdir + "/fptn-client-cli" ]);
-        let version = provider_package_version(LIB_DIR + "/providers/fptn/runtime.uc");
-        let meta = {
-            component: "fptn",
-            version: version,
-            timestamp: now_seconds()
-        };
-        write_file(meta_file, sprintf("%J\n", meta));
-        return true;
-    }
 
     return true;
 }
@@ -3528,16 +3466,6 @@ function rollback_component(component) {
         clear_version_caches();
         restart_tachyon_after_successful_change();
         action_success("olcrtc", "rollback", "OlcRTC rolled back to " + backup_version, backup_version, "", 1);
-    }
-    else if (component == "fptn") {
-        let backup_bin = bdir + "/fptn-client-cli";
-        if (!file_exists(backup_bin)) action_fail("fptn", "rollback", "FPTN backup binary is missing");
-        remove_file("/usr/bin/fptn-client-cli");
-        command_success_from_args([ "cp", "-p", backup_bin, "/usr/bin/fptn-client-cli" ]);
-        command_success_from_args([ "chmod", "0755", "/usr/bin/fptn-client-cli" ]);
-        clear_version_caches();
-        restart_tachyon_after_successful_change();
-        action_success("fptn", "rollback", "FPTN rolled back to " + backup_version, backup_version, "", 1);
     }
     else if (component == "zapret") {
         let backup_bin = bdir + "/nfqws";
@@ -3629,8 +3557,6 @@ function list_component_releases(component, count, page) {
         owner = "Dushnilin"; repo = "qwdtt-openwrt";
     } else if (component == "olcrtc") {
         owner = "Dushnilin"; repo = "openwrt-olcrtc";
-    } else if (component == "fptn") {
-        owner = "Dushnilin"; repo = "fptn";
     } else if (component == "torrserver_direct") {
         owner = "YouROK"; repo = "TorrServer";
     } else {
@@ -3638,10 +3564,9 @@ function list_component_releases(component, count, page) {
     }
 
     let releases_json = fetch_github_releases_json(owner, repo, per_page, page);
-    if ((releases_json == "" || releases_json == "[]") && (component == "wdtt" || component == "olcrtc" || component == "fptn")) {
+    if ((releases_json == "" || releases_json == "[]") && (component == "wdtt" || component == "olcrtc")) {
         if (component == "wdtt") { owner = "SpaceNeuroX"; repo = "qwdtt-openwrt"; }
         else if (component == "olcrtc") { owner = "alekvol"; repo = "openwrt-olcrtc"; }
-        else if (component == "fptn") { owner = "fptn-project"; repo = "fptn"; }
         releases_json = fetch_github_releases_json(owner, repo, per_page, page);
     }
     if (releases_json == "" || releases_json == "[]") { print("[]\n"); return; }
@@ -3913,30 +3838,11 @@ function install_component_version(component, tag) {
         install_wdtt("install", tag);
     } else if (component == "olcrtc") {
         install_olcrtc("install", tag);
-    } else if (component == "fptn") {
-        install_fptn("install", tag);
     } else if (component == "torrserver_direct") {
         install_torrserver("install", tag);
     } else {
         action_fail(component, "install_version", "Component " + component + " does not support version installation");
     }
-}
-
-// FPTN transport choice: with tachyon-core and the fptn-client component both
-// present, only one of them may own the tunnel. The resolver in
-// config.connections reads this setting for both the generator and the
-// provider runtime.
-function set_fptn_mode(action) {
-    let mode = action == "set_native_mode" ? "native" : "component";
-    let cursor = uci_core.cursor();
-    cursor.load("tachyon");
-    cursor.set("tachyon", "settings", "fptn_mode", mode);
-    cursor.commit("tachyon");
-
-    remove_file(SYSTEM_INFO_CACHE_FILE);
-    restart_tachyon_after_successful_change();
-
-    action_success("fptn", action, "FPTN transport set to " + mode, mode, mode, 1);
 }
 
 function set_direct_bypass(action) {
@@ -4144,7 +4050,6 @@ function component_action(component, action, extra) {
     }
 
     if (action != "check_update" && action != "remove" &&
-        action != "set_native_mode" && action != "set_component_mode" &&
         action != "set_language" &&
         component != "direct_bypass" && component != "torrserver_direct" && component != "engine") {
         create_component_backup(component);
@@ -4191,12 +4096,6 @@ function component_action(component, action, extra) {
         install_olcrtc(action);
     else if (component == "olcrtc" && action == "remove")
         remove_optional_component("olcrtc", "olcrtc", "OlcRTC", LIB_DIR + "/providers/olcrtc/runtime.uc");
-    else if (component == "fptn" && (action == "check_update" || action == "install"))
-        install_fptn(action);
-    else if (component == "fptn" && action == "remove")
-        remove_optional_component("fptn", "fptn-client", "FPTN", LIB_DIR + "/providers/fptn/runtime.uc");
-    else if (component == "fptn" && (action == "set_native_mode" || action == "set_component_mode"))
-        set_fptn_mode(action);
     else if (component == "tailscale" && (action == "check_update" || action == "install"))
         install_tailscale(action);
     else if (component == "tailscale" && action == "remove")
