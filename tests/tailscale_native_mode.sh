@@ -141,7 +141,7 @@ grep -Fq '!is_tailscale_source' "$NFT_APPLY_UC" ||
 
 # Tailscale DNS: MagicDNS setup must ensure dnsmasq localservice is disabled
 # so tailnet peers in 100.64.0.0/10 can resolve DNS through the exit node.
-grep -Fq 'configure_dnsmasq_localservice' "$RUNTIME_UC" ||
+grep -Fq 'uci_core.set(base + "localservice", "0")' "$RUNTIME_UC" ||
   fail "providers/tailscale/runtime.uc must configure dnsmasq localservice=0"
 
 printf 'config tailscale native mode checks passed\n'

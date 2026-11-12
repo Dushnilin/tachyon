@@ -65,6 +65,9 @@ tachyon.ts_native.tailscale_mode=native
 tachyon.ts_native.routing_mode=rules
 tachyon.ts_native.tailscale_auth_key=tskey-auth-smoke
 tachyon.ts_native.tailscale_hostname=tachyon-smoke
+dhcp.main=dnsmasq
+dhcp.main.localservice=1
+dhcp.main.cachesize=10000
 EOF
 
 export UCI_STATE="$STATE_FILE"
@@ -75,8 +78,11 @@ export TAILSCALE_BIN="$STUB_BIN/tailscale"
 export TAILSCALE_STATE_BASE="$WORK_DIR/state"
 export TAILSCALE_RUNTIME_DIR="$WORK_DIR/run"
 export TAILSCALE_DNSMASQ_FILE="$WORK_DIR/dnsmasq.d/tachyon-tailscale.conf"
+SERVERS_FILE="$WORK_DIR/etc/dnsmasq-tailscale.servers"
+export TAILSCALE_DNSMASQ_SERVERS_FILE="$SERVERS_FILE"
 
-# A dnsmasq restart drops LAN DNS for seconds, so count them.
+# A dnsmasq restart drops LAN DNS for seconds; a reload with an unchanged
+# config is only a SIGHUP. Count both.
 DNSMASQ_LOG="$WORK_DIR/dnsmasq-init.log"
 cat >"$STUB_BIN/dnsmasq-init" <<EOF
 #!/bin/sh
@@ -84,8 +90,11 @@ printf '%s\n' "\$*" >> '$DNSMASQ_LOG'
 EOF
 chmod +x "$STUB_BIN/dnsmasq-init"
 export DNSMASQ_INIT="$STUB_BIN/dnsmasq-init"
-dnsmasq_restarts() {
-  cat "$DNSMASQ_LOG" 2>/dev/null | grep -c restart || true
+dnsmasq_calls() {
+  cat "$DNSMASQ_LOG" 2>/dev/null | grep -c "^$1" || true
+}
+dhcp_value() {
+  sed -n "s/^dhcp\.main\.$1=//p" "$STATE_FILE" | tr -d "'"
 }
 
 run() {
@@ -133,13 +142,16 @@ nft list table inet tachyon_tailscale >/dev/null 2>&1 ||
   fail "nft table tachyon_tailscale was not created"
 nft list table inet tachyon_tailscale | grep -Fq "masquerade" ||
   fail "masquerade rule missing (default on)"
-[ -f "$WORK_DIR/dnsmasq.d/tachyon-tailscale.conf" ] ||
-  fail "MagicDNS dnsmasq config was not written"
-grep -Fq "server=/ts.net/100.100.100.100" \
-  "$WORK_DIR/dnsmasq.d/tachyon-tailscale.conf" ||
-  fail "MagicDNS forward entry missing"
-[ "$(dnsmasq_restarts)" = "1" ] ||
-  fail "writing the MagicDNS config must restart dnsmasq once, got $(dnsmasq_restarts)"
+grep -Fq "server=/ts.net/100.100.100.100" "$SERVERS_FILE" ||
+  fail "MagicDNS forward entry missing from the dnsmasq servers file"
+[ "$(dhcp_value serversfile)" = "$SERVERS_FILE" ] ||
+  fail "dnsmasq must read the MagicDNS servers file, got '$(dhcp_value serversfile)'"
+[ "$(dhcp_value localservice)" = "0" ] ||
+  fail "MagicDNS must let dnsmasq answer tailnet clients (localservice=0)"
+[ "$(dhcp_value tachyon_localservice)" = "1" ] ||
+  fail "the user's localservice value must be remembered for restore"
+[ "$(dnsmasq_calls restart)" = "0" ] && [ "$(dnsmasq_calls reload)" = "1" ] ||
+  fail "enabling MagicDNS must reload dnsmasq once and never restart it, got $(cat "$DNSMASQ_LOG")"
 
 STATUS="$(run status)"
 printf '%s' "$STATUS" | grep -Fq '"configured": true' ||
@@ -159,8 +171,8 @@ printf '%s' "$PEERS" | grep -Fq '"online": false' ||
 run start-runtime || fail "second start-runtime failed"
 RULE_COUNT=$(ip rule list | grep -cF "lookup 4247")
 [ "$RULE_COUNT" = "1" ] || fail "restart duplicated route rules ($RULE_COUNT)"
-[ "$(dnsmasq_restarts)" = "1" ] ||
-  fail "an unchanged MagicDNS config must not restart dnsmasq again, got $(dnsmasq_restarts)"
+[ "$(dnsmasq_calls reload)" = "1" ] ||
+  fail "an unchanged MagicDNS config must not touch dnsmasq again, got $(cat "$DNSMASQ_LOG")"
 
 # --- stop -------------------------------------------------------------------
 run stop-runtime || fail "stop-runtime exited non-zero"
@@ -171,12 +183,16 @@ nft list table inet tachyon_tailscale >/dev/null 2>&1 &&
   fail "nft table survived stop"
 [ -f "$WORK_DIR/dnsmasq.d/tachyon-tailscale.conf" ] &&
   fail "dnsmasq config survived stop"
-[ "$(dnsmasq_restarts)" = "2" ] ||
-  fail "removing the MagicDNS config must restart dnsmasq once, got $(dnsmasq_restarts)"
-# Every tachyon reload runs stop-runtime when no tailnet is configured.
+# Service stop (procd runs it on every reboot) empties the servers file and
+# keeps the dhcp options, so neither stop nor the next start restarts dnsmasq.
+[ -s "$SERVERS_FILE" ] && fail "service stop must empty the MagicDNS servers file"
+[ "$(dhcp_value serversfile)" = "$SERVERS_FILE" ] ||
+  fail "service stop must keep the dnsmasq servers file option"
+[ "$(dnsmasq_calls restart)" = "0" ] && [ "$(dnsmasq_calls reload)" = "2" ] ||
+  fail "service stop must only reload dnsmasq, got $(cat "$DNSMASQ_LOG")"
 run stop-runtime || fail "repeated stop-runtime exited non-zero"
-[ "$(dnsmasq_restarts)" = "2" ] ||
-  fail "stop-runtime without a MagicDNS config must not restart dnsmasq, got $(dnsmasq_restarts)"
+[ "$(dnsmasq_calls reload)" = "2" ] ||
+  fail "repeated stop-runtime must not touch dnsmasq, got $(cat "$DNSMASQ_LOG")"
 
 # --- exit node mode ---------------------------------------------------------
 printf '%s\n' 'tachyon.ts_native.tailscale_use_exit_node=1' >>"$STATE_FILE"
@@ -190,5 +206,31 @@ nft list set inet tachyon_tailscale exit_exclude_v4 | grep -Fq "198.18.0.0/15" |
   fail "exit_exclude_v4 must exclude FakeIP 198.18.0.0/15 range (#318)"
 run stop-runtime || fail "stop-runtime after exit node failed"
 ip rule list | grep -Fq "lookup 4248" && fail "exit-node rule survived stop"
+
+# --- tailnet removed: dhcp goes back to the user's values --------------------
+sed -i '/^tachyon\.ts_native/d' "$STATE_FILE"
+run start-runtime || fail "start-runtime without a tailnet failed"
+[ -z "$(dhcp_value serversfile)" ] || fail "servers file option survived tailnet removal"
+[ "$(dhcp_value localservice)" = "1" ] || fail "user's localservice=1 was not restored"
+grep -q '^dhcp\.main\.tachyon_' "$STATE_FILE" && fail "tachyon_* markers survived tailnet removal"
+[ "$(dhcp_value cachesize)" = "10000" ] || fail "unrelated dnsmasq options must stay untouched"
+[ -e "$SERVERS_FILE" ] && fail "MagicDNS servers file survived tailnet removal"
+[ "$(dnsmasq_calls restart)" = "0" ] || fail "tailnet removal must not restart dnsmasq directly"
+RELOADS="$(dnsmasq_calls reload)"
+run start-runtime || fail "repeated start-runtime without a tailnet failed"
+[ "$(dnsmasq_calls reload)" = "$RELOADS" ] ||
+  fail "every reload without a tailnet must leave dnsmasq alone, got $(cat "$DNSMASQ_LOG")"
+
+# --- a servers file the user set in LuCI is never taken over ----------------
+printf '%s\n' 'tachyon.ts_native=server' 'tachyon.ts_native.enabled=1' \
+  'tachyon.ts_native.protocol=tailscale' 'tachyon.ts_native.tailscale_mode=native' \
+  'tachyon.ts_native.tailscale_auth_key=tskey-auth-smoke' \
+  'dhcp.main.serversfile=/etc/user-dnsmasq.servers' >>"$STATE_FILE"
+run start-runtime || true
+[ "$(dhcp_value serversfile)" = "/etc/user-dnsmasq.servers" ] ||
+  fail "the user's own dnsmasq servers file must stay untouched"
+[ "$(dhcp_value localservice)" = "1" ] ||
+  fail "dhcp must stay untouched when the servers file belongs to the user"
+run stop-runtime || true
 
 printf 'tailscale native runtime smoke checks passed\n'
