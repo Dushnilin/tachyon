@@ -171,7 +171,7 @@ function sing_box_in_proc() {
     let entry;
     let pid = "";
     while ((entry = proc.read()) != null) {
-        if (match(entry, /^[0-9]+$/)) {
+        if (ltrim(entry, "0123456789") == "") {
             let exe = fs.readlink("/proc/" + entry + "/exe") || "";
             let slash = rindex(exe, "/");
             let base = slash >= 0 ? substr(exe, slash + 1) : exe;
@@ -1012,7 +1012,7 @@ function controller(bus, opts) {
         if (!proc_dir) return;
         let entry;
         while ((entry = proc_dir.read()) != null) {
-            if (!match(entry, /^[0-9]+$/)) continue;
+            if (ltrim(entry, "0123456789") != "") continue;
             let comm = trim(fs.readfile("/proc/" + entry + "/comm") || "");
             if (comm == "rpcd") { rpcd_pid = entry; break; }
         }
@@ -1023,7 +1023,7 @@ function controller(bus, opts) {
         if (!fd_dir) return;
         let fd_count = 0;
         while ((entry = fd_dir.read()) != null) {
-            if (match(entry, /^[0-9]+$/)) fd_count++;
+            if (ltrim(entry, "0123456789") == "") fd_count++;
         }
         fd_dir.close();
 

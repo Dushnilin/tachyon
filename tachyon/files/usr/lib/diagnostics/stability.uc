@@ -122,7 +122,7 @@ function scan_proc_comm_map() {
     if (proc_dir) {
         let ent;
         while ((ent = proc_dir.read()) != null) {
-            if (match(ent, /^[0-9]+$/)) {
+            if (ltrim(ent, "0123456789") == "") {
                 let comm = safe_read_file("/proc/" + ent + "/comm");
                 if (comm != "") {
                     if (!cached_proc_map[comm])
@@ -535,7 +535,7 @@ function get_orphan_processes() {
     if (proc_dir) {
         let ent;
         while ((ent = proc_dir.read()) != null) {
-            if (match(ent, /^[0-9]+$/)) {
+            if (ltrim(ent, "0123456789") == "") {
                 let comm = safe_read_file("/proc/" + ent + "/comm");
                 for (let t in tracked) {
                     if (comm == t) {

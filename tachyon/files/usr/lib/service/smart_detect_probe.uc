@@ -24,7 +24,7 @@ function group_members(job) {
     if (marker < 0 || split(substr(stat, marker + 2), " ")[2] != pid) return [];
     let members = [], directory = fs.opendir("/proc"), entry;
     while ((entry = directory.read()) != null) {
-        if (!match(entry, /^[0-9]+$/)) continue;
+        if (ltrim(entry, "0123456789") != "") continue;
         stat = fs.readfile("/proc/" + entry + "/stat") || "";
         marker = rindex(stat, ") ");
         if (marker >= 0 && split(substr(stat, marker + 2), " ")[2] == pid)
