@@ -1280,7 +1280,7 @@ function get_process_pids(process_name) {
             proc_pids_by_comm = {};
             let entry;
             while ((entry = d.read()) != null) {
-                if (match(entry, /^[0-9]+$/) != null) {
+                if (ltrim(entry, "0123456789") == "") {
                     let comm = fs.readfile("/proc/" + entry + "/comm");
                     if (comm) {
                         let name = trim(comm);

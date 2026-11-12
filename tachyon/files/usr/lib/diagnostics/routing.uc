@@ -1196,6 +1196,32 @@ function connection_tuple_key(proto, src, sport, dst, dport) {
     return lc(as_string(proto)) + "|" + as_string(src) + "|" + as_string(sport) + "|" + as_string(dst) + "|" + as_string(dport);
 }
 
+// Identity of the UCI config as the cursor sees it: the committed file (a commit
+// renames it into place, so the inode changes) plus pending changes from `uci set`.
+// Empty under a UCI fixture so tests never read a stale cache.
+function uci_config_stamp() {
+    if ((getenv("TACHYON_UCI_STATE_FILE") || getenv("UCI_STATE") || "") != "")
+        return "";
+    let parts = [];
+    for (let path in [ "/etc/config/" + CONFIG_NAME, "/tmp/.uci/" + CONFIG_NAME ]) {
+        let st = fs.stat(path);
+        push(parts, st == null ? "-" : sprintf("%d:%d:%d", st.inode || 0, st.size || 0, st.mtime || 0));
+    }
+    return join("|", parts);
+}
+
+function zapret_section_tags(secs) {
+    let tags = [];
+    for (let sec in secs) {
+        if (option(sec, "enabled", "1") == "0")
+            continue;
+        let sec_name = as_string(sec[".name"]);
+        if (sec_name != "")
+            push(tags, sec_name + "-out");
+    }
+    return tags;
+}
+
 function build_conntrack_mark_map() {
     let marks = {};
     let default_zapret = "";
@@ -1205,52 +1231,57 @@ function build_conntrack_mark_map() {
     let z1_base = int(as_string(constants.ZAPRET_ROUTE_MARK_BASE || "0x01000000"), 0) || 0x01000000;
     let z2_base = int(as_string(constants.ZAPRET2_ROUTE_MARK_BASE || "0x02000000"), 0) || 0x02000000;
 
-    let secs = uci_sections("section");
-    let connections = null;
-    try { connections = require("config.connections"); } catch (e) {}
-    let z1_secs = (connections && connections.active_provider_sections)
-        ? connections.active_provider_sections("zapret", secs)
-        : [];
-    let z2_secs = (connections && connections.active_provider_sections)
-        ? connections.active_provider_sections("zapret2", secs)
-        : [];
-    if (length(z1_secs) == 0 && length(z2_secs) == 0) {
-        for (let sec in secs) {
-            if (option(sec, "enabled", "1") == "0")
-                continue;
-            let act = lc(option(sec, "action", ""));
-            if (act == "zapret")
-                push(z1_secs, sec);
-            else if (act == "zapret2")
-                push(z2_secs, sec);
+    let state_dir = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon";
+    // config.connections costs ~0.12s to load on router CPUs and the UI polls this
+    // every few seconds; the zapret tags only change with the UCI config itself.
+    let zapret_cache_file = state_dir + "/conntrack-zapret-tags.json";
+    let uci_stamp = uci_config_stamp();
+    let zapret_cached = common.read_json_file(zapret_cache_file);
+    let z1_tags = null, z2_tags = null;
+    if (uci_stamp != "" && type(zapret_cached) == "object" && zapret_cached.stamp == uci_stamp &&
+        type(zapret_cached.z1) == "array" && type(zapret_cached.z2) == "array") {
+        z1_tags = zapret_cached.z1;
+        z2_tags = zapret_cached.z2;
+    } else {
+        let secs = uci_sections("section");
+        let connections = null;
+        try { connections = require("config.connections"); } catch (e) {}
+        let z1_secs = (connections && connections.active_provider_sections)
+            ? connections.active_provider_sections("zapret", secs)
+            : [];
+        let z2_secs = (connections && connections.active_provider_sections)
+            ? connections.active_provider_sections("zapret2", secs)
+            : [];
+        if (length(z1_secs) == 0 && length(z2_secs) == 0) {
+            for (let sec in secs) {
+                if (option(sec, "enabled", "1") == "0")
+                    continue;
+                let act = lc(option(sec, "action", ""));
+                if (act == "zapret")
+                    push(z1_secs, sec);
+                else if (act == "zapret2")
+                    push(z2_secs, sec);
+            }
         }
+        z1_tags = zapret_section_tags(z1_secs);
+        z2_tags = zapret_section_tags(z2_secs);
+        if (uci_stamp != "" && fs.stat(state_dir) != null)
+            common.write_json_file(zapret_cache_file, { stamp: uci_stamp, z1: z1_tags, z2: z2_tags }, 0);
     }
-    for (let sec in z1_secs) {
-        if (option(sec, "enabled", "1") == "0")
-            continue;
-        let sec_name = as_string(sec[".name"]);
-        if (sec_name == "")
-            continue;
-        let tag = sec_name + "-out";
+    for (let tag in z1_tags) {
         z1_idx++;
         marks[as_string(z1_base + z1_idx)] = tag;
         if (default_zapret == "")
             default_zapret = tag;
     }
-    for (let sec in z2_secs) {
-        if (option(sec, "enabled", "1") == "0")
-            continue;
-        let sec_name = as_string(sec[".name"]);
-        if (sec_name == "")
-            continue;
-        let tag = sec_name + "-out";
+    for (let tag in z2_tags) {
         z2_idx++;
         marks[as_string(z2_base + z2_idx)] = tag;
         if (default_zapret2 == "")
             default_zapret2 = tag;
     }
 
-    let mark_cache_file = (getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon") + "/conntrack-mark-map.json";
+    let mark_cache_file = state_dir + "/conntrack-mark-map.json";
     for (let cfg_path in [ TMP_SING_BOX_FOLDER + "/config.json", "/etc/tachyon-core/config.json" ]) {
         let st = fs.stat(cfg_path);
         if (st == null)
@@ -1334,7 +1365,11 @@ function load_conntrack_ip_host_map(parsed_connections, parsed_reverse_dns) {
             if (ip != "" && dom != "")
                 ip_host_map[ip] = dom;
         }
-        if (getenv("FAKE_CURL_LOG") == null && length(keys(ip_host_map)) > 0) {
+        // Fallback cache only (read when the core omits reverseDns): serializing
+        // ~180KB on every UI poll is wasted work, so refresh it at most every 30s.
+        let rev_st = fs.stat(rev_cache_path);
+        let rev_fresh = rev_st != null && (time() - (rev_st.mtime || 0)) < 30;
+        if (getenv("FAKE_CURL_LOG") == null && !rev_fresh && length(ip_host_map) > 0) {
             common.ensure_dir(ui_state_dir);
             common.write_json_file(rev_cache_path, ip_host_map, 0);
         }
@@ -1389,33 +1424,25 @@ function read_conntrack_connections(mark_info, existing_tuples, ip_host_map) {
             continue;
         if (index(line, "TIME_WAIT") >= 0 || index(line, "CLOSE") >= 0 || index(line, "FIN_WAIT") >= 0 || index(line, "LAST_ACK") >= 0)
             continue;
-        let fields = split(line, /[ \t]+/);
-        if (length(fields) < 6)
-            continue;
-        let proto = lc(fields[2]);
-        if (proto != "tcp" && proto != "udp")
-            continue;
-        if (proto == "tcp") {
-            let tcp_closed = false;
-            for (let fi = 3; fi < length(fields); fi++) {
-                let st = fields[fi];
-                if (substr(st, 0, 4) == "src=")
-                    break;
-                if (st == "TIME_WAIT" || st == "CLOSE" || st == "CLOSE_WAIT" || st == "LAST_ACK" || st == "FIN_WAIT" || st == "FIN_WAIT2") {
-                    tcp_closed = true;
-                    break;
-                }
-            }
-            if (tcp_closed)
-                continue;
-        }
-
+        // Closed TCP states never get here: the substring filter above covers
+        // TIME_WAIT, CLOSE(_WAIT), FIN_WAIT(2) and LAST_ACK.
+        // A string split is ~4x cheaper than a regex split; /proc pads with spaces only.
+        let fields = index(line, "\t") >= 0 ? split(line, /[ \t]+/) : split(line, " ");
+        let proto = "", n_tok = 0;
         let orig_src = "", orig_dst = "", orig_sport = "", orig_dport = "", orig_bytes = 0;
         let reply_dst = "", reply_bytes = 0;
         let src_seen = 0, dst_seen = 0, sport_seen = 0, dport_seen = 0, bytes_seen = 0;
         let mark_val = 0;
 
         for (let tok in fields) {
+            if (tok == "")
+                continue;
+            if (n_tok++ == 2) {
+                proto = lc(tok);
+                if (proto != "tcp" && proto != "udp")
+                    break;
+                continue;
+            }
             let eq = index(tok, "=");
             if (eq < 3)
                 continue;
@@ -1449,6 +1476,8 @@ function read_conntrack_connections(mark_info, existing_tuples, ip_host_map) {
             }
         }
 
+        if (n_tok < 6 || (proto != "tcp" && proto != "udp"))
+            continue;
         if (orig_src == "" || orig_dst == "" || orig_sport == "" || orig_dport == "")
             continue;
         if (substr(orig_src, 0, 4) == "127." || orig_src == "::1")
@@ -1521,6 +1550,37 @@ function read_conntrack_connections(mark_info, existing_tuples, ip_host_map) {
     return result;
 }
 
+// The UI keeps the full snapshot in a state file and reads it when stdout is
+// truncated, so stdout stays under the 56 KB the rpc exec path can carry.
+function print_connections_capped(payload, serialized) {
+    if (serialized == null)
+        serialized = sprintf("%J\n", payload);
+    while (length(serialized) > 56000 && length(payload.connections) > 10) {
+        payload.truncated = true;
+        let target_len = int(length(payload.connections) * 50000 / length(serialized));
+        if (target_len >= length(payload.connections))
+            target_len = length(payload.connections) - 10;
+        if (target_len < 10)
+            target_len = 10;
+        payload.connections = slice(payload.connections, 0, target_len);
+        serialized = sprintf("%J\n", payload);
+    }
+    print(serialized);
+}
+
+// Each dashboard tab polls every 3s and several can be open at once; a
+// snapshot written under 2s ago is reused instead of re-reading the core and
+// conntrack. A single poller (3s period) always gets a fresh one.
+function recent_connections_snapshot(path) {
+    if (getenv("FAKE_CURL_LOG") != null)
+        return null;
+    let st = fs.stat(path);
+    if (st == null || time() - (st.mtime || 0) >= 2)
+        return null;
+    let parsed = parse_json_or_null(fs.readfile(path));
+    return (type(parsed) == "object" && type(parsed.connections) == "array") ? parsed : null;
+}
+
 function clash_api(action, arg1, arg2, arg3) {
     let base_url = clash_api_url();
     let test_url = latency_test_url();
@@ -1560,6 +1620,12 @@ function clash_api(action, arg1, arg2, arg3) {
     if (action == "get_connections") {
         let ui_state_dir = (getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon") + "/ui-state";
         if (as_string(arg1) == "conntrack") {
+            let ct_snapshot = ui_state_dir + "/clash-conntrack.json";
+            let ct_recent = recent_connections_snapshot(ct_snapshot);
+            if (ct_recent != null) {
+                print_connections_capped(ct_recent, null);
+                return 0;
+            }
             let existing_tuples = {};
             let ip_host_map = load_conntrack_ip_host_map(null, null);
             if (getenv("FAKE_CURL_LOG") == null) {
@@ -1592,22 +1658,9 @@ function clash_api(action, arg1, arg2, arg3) {
             let ct_json = sprintf("%J\n", ct_payload);
             if (getenv("FAKE_CURL_LOG") == null) {
                 common.ensure_dir(ui_state_dir);
-                common.write_file(ui_state_dir + "/clash-conntrack.json", ct_json);
+                common.write_file(ct_snapshot, ct_json);
             }
-            while (length(ct_json) > 56000 && length(ct_payload.connections) > 10) {
-                ct_payload.truncated = true;
-                let target_len = int(length(ct_payload.connections) * 50000 / length(ct_json));
-                if (target_len >= length(ct_payload.connections))
-                    target_len = length(ct_payload.connections) - 10;
-                if (target_len < 10)
-                    target_len = 10;
-                let trimmed = [];
-                for (let i = 0; i < target_len; i++)
-                    push(trimmed, ct_payload.connections[i]);
-                ct_payload.connections = trimmed;
-                ct_json = sprintf("%J\n", ct_payload);
-            }
-            print(ct_json);
+            print_connections_capped(ct_payload, ct_json);
             return 0;
         }
         if (getenv("FAKE_CURL_LOG") != null && getenv("TACHYON_CONNTRACK_FILE") == null) {
@@ -1615,6 +1668,12 @@ function clash_api(action, arg1, arg2, arg3) {
             for (let item in auth) push(args, item);
             push(args, base_url + "/connections");
             return clash_json_output(args);
+        }
+        let full_snapshot = ui_state_dir + "/clash-connections.json";
+        let full_recent = recent_connections_snapshot(full_snapshot);
+        if (full_recent != null) {
+            print_connections_capped(full_recent, null);
+            return 0;
         }
         let args = [ "curl", "-s", "-m", "3" ];
         for (let item in auth) push(args, item);
@@ -1658,22 +1717,9 @@ function clash_api(action, arg1, arg2, arg3) {
         let serialized = sprintf("%J\n", parsed);
         if (getenv("FAKE_CURL_LOG") == null) {
             common.ensure_dir(ui_state_dir);
-            common.write_file(ui_state_dir + "/clash-connections.json", serialized);
+            common.write_file(full_snapshot, serialized);
         }
-        while (length(serialized) > 56000 && length(parsed.connections) > 10) {
-            parsed.truncated = true;
-            let target_len = int(length(parsed.connections) * 50000 / length(serialized));
-            if (target_len >= length(parsed.connections))
-                target_len = length(parsed.connections) - 10;
-            if (target_len < 10)
-                target_len = 10;
-            let trimmed = [];
-            for (let i = 0; i < target_len; i++)
-                push(trimmed, parsed.connections[i]);
-            parsed.connections = trimmed;
-            serialized = sprintf("%J\n", parsed);
-        }
-        print(serialized);
+        print_connections_capped(parsed, serialized);
         return 0;
     }
 

@@ -246,7 +246,7 @@ function stop_honeypot_listeners() {
     if (!directory) return 0;
     let entry;
     while ((entry = directory.read()) != null) {
-        if (match(entry, /^[0-9]+$/) == null) continue;
+        if (ltrim(entry, "0123456789") != "") continue;
         let raw = fs.readfile("/proc/" + entry + "/cmdline");
         if (!raw) continue;
         let args = split(raw, "\x00");

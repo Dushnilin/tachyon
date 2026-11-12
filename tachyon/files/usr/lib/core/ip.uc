@@ -6,7 +6,8 @@ let as_string = common.as_string;
 
 function decimal_text(value, strict) {
     value = as_string(value);
-    if (value == "" || match(value, /^[0-9]+$/) == null)
+    // ltrim() with a char set is native; match() costs ~50us per call on router CPUs.
+    if (value == "" || ltrim(value, "0123456789") != "")
         return false;
     return !strict || length(value) == 1 || substr(value, 0, 1) != "0";
 }
@@ -48,7 +49,7 @@ function valid_ipv4_cidr(value, strict_decimal) {
 
 function valid_ipv6_hextet(value) {
     value = as_string(value);
-    return value != "" && length(value) <= 4 && match(value, /^[0-9A-Fa-f]+$/) != null;
+    return value != "" && length(value) <= 4 && ltrim(value, "0123456789abcdefABCDEF") == "";
 }
 
 function ipv6_parts_count(parts) {
@@ -76,7 +77,7 @@ function ipv6_parts_count(parts) {
 
 function valid_ipv6(value) {
     value = as_string(value);
-    if (value == "" || index(value, "/") >= 0 || index(value, "%") >= 0)
+    if (value == "" || index(value, ":") < 0 || index(value, "/") >= 0 || index(value, "%") >= 0)
         return false;
 
     let marker = index(value, "::");
@@ -130,7 +131,7 @@ function can_be_ip_or_cidr(value) {
     let b0 = ord(text, 0);
     if (b0 < 48 || b0 > 57)
         return false;
-    return match(text, /^[0-9.\/]+$/) != null;
+    return ltrim(text, "0123456789./") == "";
 }
 
 // Native parsing avoids repeatedly walking every octet/hextet in large lists.

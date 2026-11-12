@@ -139,7 +139,7 @@ function abort_inflight_init_and_retries() {
     if (type(procs) == "array") {
         for (let entry in procs) {
             entry = as_string(entry);
-            if (match(entry, /^[0-9]+$/) == null || skip[entry])
+            if (ltrim(entry, "0123456789") != "" || skip[entry])
                 continue;
             let cmd = fs.readfile("/proc/" + entry + "/cmdline");
             let text = cmd != null ? replace(as_string(cmd), /\0/g, " ") : "";

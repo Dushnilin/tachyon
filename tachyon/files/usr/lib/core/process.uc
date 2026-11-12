@@ -244,7 +244,7 @@ function core_daemon_pids() {
     let entry;
     let self = own_pid();
     while ((entry = directory.read()) != null) {
-        if (match(entry, /^[0-9]+$/) == null)
+        if (ltrim(entry, "0123456789") != "")
             continue;
         if (entry == self || is_core_initscript(entry))
             continue;
