@@ -163,4 +163,21 @@ if ucode -L "$TACHYON_LIB" "$PARSER_UC" runtime-outbounds-equal "$WORK_DIR/order
   fail "Subscriptions with missing outbounds must not be considered runtime equal"
 fi
 
+# 5. Panels hand out a random Reality short_id from the server's list on every
+# fetch: a short_id-only difference must not count as a runtime change, while a
+# real Reality change (public_key) still must.
+reality_outbound() {
+  printf '{"outbounds":[{"tag":"de-reality","type":"vless","server":"fra.example.com","server_port":443,"uuid":"00000000-0000-0000-0000-000000000004","tls":{"enabled":true,"server_name":"www.example.com","reality":{"enabled":true,"public_key":"%s","short_id":"%s"}}}]}\n' "$1" "$2"
+}
+reality_outbound "pubkeyAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" "6984f78376ea2a90" > "$WORK_DIR/reality_a.json"
+reality_outbound "pubkeyAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" "c6a73da4ff71f854" > "$WORK_DIR/reality_sid.json"
+reality_outbound "pubkeyBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB" "6984f78376ea2a90" > "$WORK_DIR/reality_key.json"
+
+ucode -L "$TACHYON_LIB" "$PARSER_UC" runtime-outbounds-equal "$WORK_DIR/reality_a.json" "$WORK_DIR/reality_sid.json" ||
+  fail "Subscriptions differing only by Reality short_id must be considered runtime equal"
+
+if ucode -L "$TACHYON_LIB" "$PARSER_UC" runtime-outbounds-equal "$WORK_DIR/reality_a.json" "$WORK_DIR/reality_key.json"; then
+  fail "Subscriptions with a changed Reality public_key must not be considered runtime equal"
+fi
+
 echo "subscription_order_independence: ALL ASSERTIONS PASSED"
