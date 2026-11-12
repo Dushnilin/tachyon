@@ -201,7 +201,9 @@ function item_index_from_uci() {
 }
 
 function set_item_sections(index) {
-    item_sections = type(index) == "object" ? index : empty_item_sections();
+    // null drops the cache so get_item_sections() re-reads UCI; an empty index
+    // here would hide every outbound_source/group from reload signatures.
+    item_sections = type(index) == "object" ? index : null;
     last_priority_section_by_group = {};
     last_priority_force_pool_by_group = {};
     synthesized_priority_levels_cache = {};
