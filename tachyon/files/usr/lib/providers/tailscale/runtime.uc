@@ -30,7 +30,13 @@ const PERSISTENT_STATE_BASE = getenv("TAILSCALE_STATE_BASE") || "/etc/tachyon/ta
 const RUNTIME_DIR = getenv("TAILSCALE_RUNTIME_DIR") || "/var/run/tachyon/tailscale";
 const TAILSCALED_PORT = getenv("TAILSCALED_PORT") || "41641";
 const DEFAULT_CONTROL_URL = "https://controlplane.tailscale.com";
+// Legacy conf-dir file: OpenWrt 23.05+ gives each dnsmasq instance its own
+// conf-dir (/tmp/dnsmasq.<section>.d), so dnsmasq never read this path there.
 const MAGICDNS_DNSMASQ_FILE = getenv("TAILSCALE_DNSMASQ_FILE") || "/tmp/dnsmasq.d/tachyon-tailscale.conf";
+// dnsmasq re-reads its --servers-file on SIGHUP, so MagicDNS can be switched
+// on and off without restarting dnsmasq. Persistent: dnsmasq's jail mounts it
+// at startup, before Tachyon runs.
+const MAGICDNS_SERVERS_FILE = getenv("TAILSCALE_DNSMASQ_SERVERS_FILE") || "/etc/tachyon/dnsmasq-tailscale.servers";
 const MAGICDNS_ADDRESS = getenv("TAILSCALE_MAGICDNS_ADDRESS") || "100.100.100.100";
 const DNSMASQ_INIT = getenv("DNSMASQ_INIT") || "/etc/init.d/dnsmasq";
 
@@ -248,13 +254,88 @@ function tailscale_client_args(section) {
     return [ TAILSCALE_BIN, "--socket", runtime_dir + "/tailscaled.sock" ];
 }
 
-function remove_magicdns_dns() {
-    // Every tachyon reload runs stop_runtime when no tailnet is configured; an
-    // unconditional restart left LAN clients without DNS for seconds each time.
-    if (fs.stat(MAGICDNS_DNSMASQ_FILE) == null)
-        return;
-    fs.unlink(MAGICDNS_DNSMASQ_FILE);
+function dnsmasq_section_names() {
+    let names = [];
+    for (let s in array_or_empty(uci_core.sections("dhcp", "dnsmasq"))) {
+        let name = type(s) == "object" ? as_string(s[".name"] || "") : as_string(s);
+        if (name != "")
+            push(names, name);
+    }
+    if (length(names) == 0 && uci_core.get("dhcp", "@dnsmasq[0]", ".type") == "dnsmasq")
+        push(names, "@dnsmasq[0]");
+    return names;
+}
+
+function restart_dnsmasq() {
     command_status(command_from_args([ DNSMASQ_INIT, "restart" ]) + " >/dev/null 2>&1");
+}
+
+// procd regenerates the config and restarts dnsmasq only when it changed;
+// otherwise it just sends SIGHUP, which re-reads the servers file.
+function reload_dnsmasq() {
+    command_status(command_from_args([ DNSMASQ_INIT, "reload" ]) + " >/dev/null 2>&1");
+}
+
+// Undo the dhcp options set for MagicDNS. A value the user changed since then
+// (in LuCI or by hand) is theirs and stays.
+function release_dnsmasq_settings() {
+    let changed = false;
+    for (let name in dnsmasq_section_names()) {
+        let base = "dhcp." + name + ".";
+        if (as_string(uci_core.get(base + "tachyon_serversfile")) != "") {
+            if (as_string(uci_core.get(base + "serversfile")) == MAGICDNS_SERVERS_FILE)
+                uci_core.delete(base + "serversfile");
+            uci_core.delete(base + "tachyon_serversfile");
+            changed = true;
+        }
+        let saved = as_string(uci_core.get(base + "tachyon_localservice"));
+        if (saved != "") {
+            if (as_string(uci_core.get(base + "localservice")) == "0") {
+                if (saved == "unset")
+                    uci_core.delete(base + "localservice");
+                else
+                    uci_core.set(base + "localservice", saved);
+            }
+            uci_core.delete(base + "tachyon_localservice");
+            changed = true;
+        }
+    }
+    if (changed)
+        uci_core.commit("dhcp");
+    return changed;
+}
+
+function servers_file_in_use() {
+    for (let name in dnsmasq_section_names())
+        if (as_string(uci_core.get("dhcp." + name + ".serversfile")) == MAGICDNS_SERVERS_FILE)
+            return true;
+    return false;
+}
+
+// Every tachyon reload runs this when no tailnet is configured, so it must be
+// a no-op then: a dnsmasq restart leaves LAN clients without DNS for seconds.
+// release=false (service stop, which procd also runs on every reboot) only
+// empties the servers file, so dnsmasq gets a SIGHUP and its options stay;
+// release=true (tailnet removed, uninstall) hands the dhcp options back.
+function remove_magicdns_dns(release) {
+    let legacy = fs.stat(MAGICDNS_DNSMASQ_FILE) != null;
+    if (legacy)
+        fs.unlink(MAGICDNS_DNSMASQ_FILE);
+    let changed = false;
+    if (release) {
+        changed = release_dnsmasq_settings();
+        if (fs.stat(MAGICDNS_SERVERS_FILE) != null && !servers_file_in_use()) {
+            fs.unlink(MAGICDNS_SERVERS_FILE);
+            changed = true;
+        }
+    } else if (length(trim(as_string(fs.readfile(MAGICDNS_SERVERS_FILE)))) > 0) {
+        write_file(MAGICDNS_SERVERS_FILE, "");
+        changed = true;
+    }
+    if (legacy)
+        restart_dnsmasq();  // conf-dir files are only read at startup
+    else if (changed)
+        reload_dnsmasq();
 }
 
 function remove_kernel_routing(keep_dns) {
@@ -269,7 +350,7 @@ function remove_kernel_routing(keep_dns) {
     command_status(command_from_args([ "ip", "route", "flush", "table", TS_EXIT_TABLE ]) + " 2>/dev/null");
     command_status(command_from_args([ "nft", "delete", "table", "inet", NFT_TS_TABLE ]) + " 2>/dev/null");
     if (!keep_dns)
-        remove_magicdns_dns();
+        remove_magicdns_dns(false);
 }
 
 function install_exit_node_routing() {
@@ -401,21 +482,30 @@ function configure_firewall(section) {
     return true;
 }
 
-function configure_dnsmasq_localservice() {
+// Point every dnsmasq instance at the MagicDNS servers file and let it answer
+// tailnet clients (localservice=0), remembering what the user had so
+// release_dnsmasq_settings() can put it back. Returns null, changing nothing,
+// when an instance already reads a servers file of its own (set in LuCI).
+function claim_dnsmasq_settings() {
+    let names = dnsmasq_section_names();
+    for (let name in names) {
+        let current = as_string(uci_core.get("dhcp." + name + ".serversfile"));
+        if (current != "" && current != MAGICDNS_SERVERS_FILE)
+            return null;
+    }
     let changed = false;
-    let sections = uci_core.sections("dhcp", "dnsmasq");
-    if (type(sections) == "array" && length(sections) > 0) {
-        for (let s in sections) {
-            let sname = type(s) == "object" ? as_string(s[".name"] || "") : as_string(s);
-            let val = type(s) == "object" ? as_string(s.localservice) : as_string(uci_core.get("dhcp", sname, "localservice"));
-            if (sname != "" && val != "0") {
-                uci_core.set("dhcp." + sname + ".localservice", "0");
-                changed = true;
-            }
+    for (let name in names) {
+        let base = "dhcp." + name + ".";
+        if (as_string(uci_core.get(base + "serversfile")) != MAGICDNS_SERVERS_FILE) {
+            uci_core.set(base + "serversfile", MAGICDNS_SERVERS_FILE);
+            uci_core.set(base + "tachyon_serversfile", "1");
+            changed = true;
         }
-    } else if (uci_core.get("dhcp", "@dnsmasq[0]", ".type") == "dnsmasq") {
-        if (as_string(uci_core.get("dhcp", "@dnsmasq[0]", "localservice")) != "0") {
-            uci_core.set("dhcp.@dnsmasq[0].localservice", "0");
+        let localservice = as_string(uci_core.get(base + "localservice"));
+        if (localservice != "0") {
+            if (as_string(uci_core.get(base + "tachyon_localservice")) == "")
+                uci_core.set(base + "tachyon_localservice", localservice != "" ? localservice : "unset");
+            uci_core.set(base + "localservice", "0");
             changed = true;
         }
     }
@@ -427,21 +517,34 @@ function configure_dnsmasq_localservice() {
 function configure_magicdns_dns() {
     // Hand *.ts.net to the tailnet resolver without letting tailscaled touch
     // resolv.conf; dnsmasq picks the file up from its conf-dir.
-    let localservice_changed = configure_dnsmasq_localservice();
-    if (!command_success_from_args([ "mkdir", "-p", parent_dir(MAGICDNS_DNSMASQ_FILE) ]))
-        return false;
     let lines = [
         "# Managed by Tachyon native Tailscale runtime",
         "server=/ts.net/" + MAGICDNS_ADDRESS
     ];
     let content = join("\n", lines) + "\n";
-    if (!localservice_changed && fs.readfile(MAGICDNS_DNSMASQ_FILE) == content)
-        return true;
-    if (!write_file(MAGICDNS_DNSMASQ_FILE, content)) {
-        log_message("Failed to write MagicDNS dnsmasq config", "warn");
+    // Written before dnsmasq is pointed at it: its jail mounts the file on start.
+    let file_changed = fs.readfile(MAGICDNS_SERVERS_FILE) != content;
+    if (file_changed) {
+        if (!command_success_from_args([ "mkdir", "-p", parent_dir(MAGICDNS_SERVERS_FILE) ]) ||
+            !write_file(MAGICDNS_SERVERS_FILE, content)) {
+            log_message("Failed to write MagicDNS dnsmasq servers file", "warn");
+            return false;
+        }
+    }
+    let settings_changed = claim_dnsmasq_settings();
+    if (settings_changed == null) {
+        log_message("MagicDNS for *.ts.net is not set up: dnsmasq already uses a servers file of its own (DHCP and DNS settings)", "warn");
+        if (!servers_file_in_use())
+            fs.unlink(MAGICDNS_SERVERS_FILE);
         return false;
     }
-    command_status(command_from_args([ DNSMASQ_INIT, "restart" ]) + " >/dev/null 2>&1");
+    let legacy = fs.stat(MAGICDNS_DNSMASQ_FILE) != null;
+    if (legacy)
+        fs.unlink(MAGICDNS_DNSMASQ_FILE);
+    if (legacy)
+        restart_dnsmasq();  // conf-dir files are only read at startup
+    else if (file_changed || settings_changed)
+        reload_dnsmasq();
     return true;
 }
 
@@ -790,6 +893,7 @@ function start_runtime() {
     if (length(sections) == 0) {
         // Nothing configured: make sure nothing is left over from a removed section.
         stop_runtime();
+        remove_magicdns_dns(true);
         return 0;
     }
     if (!binary_available()) {
@@ -826,7 +930,11 @@ else if (mode == "native-section-count")
     print(length(native_tailscale_sections()), "\n");
 else if (mode == "sync-firewall")
     exit(sync_tailscale_firewall_zone(null) ? 0 : 1);
+else if (mode == "release-dns") {
+    remove_magicdns_dns(true);
+    exit(0);
+}
 else {
-    warn("Usage: providers/tailscale/runtime.uc <start-runtime|stop-runtime|status|check|installed|package-installed|package-version|native-section-count|sync-firewall>\n");
+    warn("Usage: providers/tailscale/runtime.uc <start-runtime|stop-runtime|status|check|installed|package-installed|package-version|native-section-count|sync-firewall|release-dns>\n");
     exit(1);
 }

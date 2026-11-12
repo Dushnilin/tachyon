@@ -87,6 +87,10 @@ function clean_crontab() {
 }
 
 function restore_dhcp_dns() {
+    // Hand back the dhcp options Tailscale MagicDNS set (servers file, localservice).
+    if (fs.stat("/usr/lib/tachyon/providers/tailscale/runtime.uc") != null)
+        run_cmd([ "ucode", "-L", "/usr/lib/tachyon", "/usr/lib/tachyon/providers/tailscale/runtime.uc", "release-dns" ]);
+
     let uci_core = null;
     try {
         uci_core = require("core.uci");
