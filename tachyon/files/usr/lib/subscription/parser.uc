@@ -592,7 +592,7 @@ function validate_subscription(path) {
 }
 
 
-function canonical_runtime_value(value) {
+function canonical_runtime_value(value, parent_name) {
     if (type(value) == "array") {
         let result = [];
         for (let item in value)
@@ -610,7 +610,11 @@ function canonical_runtime_value(value) {
         for (let name in names) {
             if (name == "share_link")
                 continue;
-            result[name] = canonical_runtime_value(value[name]);
+            // Panels (Marzban, Remnawave, 3x-ui) hand out a random Reality short_id from
+            // the server's list on every fetch; that alone must not reload tachyon-core.
+            if (parent_name == "reality" && name == "short_id")
+                continue;
+            result[name] = canonical_runtime_value(value[name], name);
         }
 
         return result;
