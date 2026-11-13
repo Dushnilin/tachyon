@@ -1011,8 +1011,13 @@ function singbox_log_section(log_level, sb_version_val) {
     // ERROR/WARN level) flood OpenWrt's 128 KiB logd ring within ~10 minutes and
     // evict netifd/pppd/hostapd/dnsmasq history (issue #365). Route all non-fatal
     // levels to the tmpfs log file (auto-trimmed to 512 KiB by watchdog/failover).
-    if (log_level == "warn" || log_level == "error" || log_level == "info" || log_level == "debug" || log_level == "trace")
+    // logd stamps syslog lines, but nothing stamps the file: without the core's
+    // own timestamp a warning there cannot be matched to the moment a client
+    // failed. Syslog output keeps timestamp off so lines are not stamped twice.
+    if (log_level == "warn" || log_level == "error" || log_level == "info" || log_level == "debug" || log_level == "trace") {
         section.output = VERBOSE_LOG_PATH;
+        section.timestamp = true;
+    }
 
     return section;
 }
