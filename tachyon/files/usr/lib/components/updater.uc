@@ -719,6 +719,12 @@ function arch_candidate_bases(arch) {
         push(result, "arm_cortex-a9");
     else if (arch == "mipsel_24kc_24kf")
         push(result, "mipsel_24kc");
+    else if (arch == "i386_pentium4" || str_startswith(arch, "i386_")) {
+        push(result, "i386_pentium4");
+        push(result, "i386");
+        push(result, "i686");
+        push(result, "386");
+    }
 
     return result;
 }
@@ -762,7 +768,7 @@ function sing_box_extended_arch_suffix(host_arch, distrib_arch) {
         print("armv6\n");
     else if (host_arch == "x86_64")
         print("amd64\n");
-    else if (host_arch == "i386" || host_arch == "i686")
+    else if (host_arch == "i386" || host_arch == "i486" || host_arch == "i586" || host_arch == "i686" || host_arch == "i386_pentium4" || host_arch == "x86" || str_contains(distrib_arch, "i386") || distrib_arch == "x86")
         print("386\n");
     else if (host_arch == "mips")
         print("mips-softfloat\n");
@@ -808,6 +814,8 @@ function tachyon_core_arch_suffix(host_arch, distrib_arch) {
         print("armv6-musl\n");
     else if (host_arch == "x86_64")
         print("x86_64-musl\n");
+    else if (host_arch == "i386" || host_arch == "i486" || host_arch == "i586" || host_arch == "i686" || host_arch == "i386_pentium4" || host_arch == "x86" || str_contains(distrib_arch, "i386") || distrib_arch == "x86")
+        print("i386_pentium4\n");
     else if (host_arch == "mips")
         print("mips-musl\n");
     else if (host_arch == "mipsel" || host_arch == "mipsle")
@@ -1268,6 +1276,10 @@ function tachyon_core_asset_url(arch_suffix, pkg_ext) {
         "tachyon-core-" + base_arch + "-unknown-linux-musl-",
         "tachyon-core-" + base_arch + "-linux-musl-"
     ];
+    if (arch_suffix == "i386_pentium4") {
+        push(exact_prefixes, "tachyon-core-i686-unknown-linux-musl-");
+        push(exact_prefixes, "tachyon-core-i686-linux-musl-");
+    }
     let fallback_prefix = "tachyon-core-" + base_arch + "-";
 
     if (pkg_ext == "apk" || pkg_ext == "ipk") {

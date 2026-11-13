@@ -1335,6 +1335,7 @@ const EntryPoint = {
             "sudoku",
             "masque",
             "tewfai",
+            "csqtt",
             "trusttunnel",
             "openconnect",
             "shadowtls",

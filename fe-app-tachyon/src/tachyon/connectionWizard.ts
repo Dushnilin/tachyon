@@ -78,7 +78,7 @@ const OUTBOUND_METHODS: OutboundMethodOption[] = [
     titleRu: 'Ключи и ссылки (VLESS, HY2, TUIC, SS...)',
     titleEn: 'Share Links (VLESS, HY2, TUIC, SS...)',
     descRu:
-      'Вставьте одну или несколько ссылок: vless://, hysteria2://, tuic://, trojan://, vmess://, ss://, anytls://, naive+https://, mieru://, trusttunnel://, tewfai://, masque://',
+      'Вставьте одну или несколько ссылок: vless://, hysteria2://, tuic://, trojan://, vmess://, ss://, anytls://, naive+https://, mieru://, trusttunnel://, tewfai://, csqtt://, masque://',
     descEn:
       'Paste one or multiple share links: vless://, hysteria2://, tuic://, trojan://, vmess://, ss://, anytls://, etc.',
     badge: 'MULTI-LINK',
@@ -178,6 +178,11 @@ const CUSTOM_PROTO_LIST: Array<{
     defaultPort: '8443',
   },
   {
+    id: 'csqtt',
+    label: 'CSQTT / WDTT v3 (UDP / WebRTC / TURN)',
+    defaultPort: '46000',
+  },
+  {
     id: 'shadowtls',
     label: 'ShadowTLS v3 (TLS Handshake Camouflage)',
     defaultPort: '443',
@@ -264,6 +269,15 @@ const INBOUND_PROTOCOLS: Array<{
     descRu:
       'Постквантовое шифрование, адаптивный шейпинг трафика и бесшовный хэндовер',
     descEn: 'Post-quantum cryptography, adaptive traffic shaper and handover',
+  },
+  {
+    id: 'wdtt',
+    title: 'CSQTT / WDTT v3',
+    badge: 'UDP / AUDIO',
+    defaultPort: '46000',
+    descRu:
+      'Туннель поверх UDP/DTLS с профилями фрейминга audio, rtp, dtls и raw',
+    descEn: 'UDP/DTLS tunnel with audio, rtp, dtls, and raw framing profiles',
   },
   {
     id: 'anytls',
@@ -1137,7 +1151,7 @@ export function detectQuickConnectionInput(
   }
 
   const shareLinkRegex =
-    /^(vless|vmess|trojan|ss|ssr|hysteria2|hy2|hysteria|tuic|anytls|naive\+https|naive\+quic|naive|mieru|snell|sudoku|masque|trusttunnel|tewfai|socks5?| socks):\/\//i;
+    /^(vless|vmess|trojan|ss|ssr|hysteria2|hy2|hysteria|tuic|anytls|naive\+https|naive\+quic|naive|mieru|snell|sudoku|masque|trusttunnel|tewfai|csqtt|wdtt|qwdtt|socks5?| socks):\/\//i;
   const matchedLinks = lines.filter((l) => shareLinkRegex.test(l));
   if (matchedLinks.length > 0) {
     return {
@@ -1453,6 +1467,17 @@ export function openConnectionWizardModal(
   let tewfaiInnerCipher = '';
   let tewfaiMorphProfile = 'auto';
   let tewfaiDesync = false;
+
+  // CSQTT / WDTT v3
+  let csqttMode = 'csqtt';
+  let csqttObfs = 'audio';
+  let csqttHashes = '';
+  let csqttWorkers = '';
+  let csqttVkAuthMode = '';
+  let csqttTurnTransport = '';
+  let csqttTurnServer = '';
+  let csqttMtu = '';
+  let csqttDeviceId = '';
 
   // ShadowTLS
   let shadowtlsVersion = '3';
@@ -4069,6 +4094,250 @@ export function openConnectionWizardModal(
                 'TCP First-Flight Desync (ClientHello Split)',
               ),
             ),
+          ]),
+        );
+      } else if (customProto === 'csqtt') {
+        formFields.push(
+          renderHostPortRow(
+            tr('Адрес сервера CSQTT / WDTT', 'CSQTT / WDTT Server Host'),
+            tr('Порт', 'Port'),
+            '46000',
+          ),
+          E('div', { class: 'tachyon-wizard__row-2col' }, [
+            E('div', { class: 'tachyon-wizard__field' }, [
+              E(
+                'label',
+                { class: 'tachyon-wizard__label' },
+                tr('Пароль / Ключ CSQTT', 'CSQTT Password / Key'),
+              ),
+              E('input', {
+                type: 'text',
+                class: 'cbi-input-text tachyon-wizard__input',
+                value: customPassword,
+                input: (ev: Event) => {
+                  customPassword = (ev.target as HTMLInputElement).value;
+                },
+              } as any),
+            ]),
+            E('div', { class: 'tachyon-wizard__field' }, [
+              E(
+                'label',
+                { class: 'tachyon-wizard__label' },
+                tr('Режим CSQTT', 'CSQTT Mode'),
+              ),
+              E(
+                'select',
+                {
+                  class: 'cbi-input-select tachyon-wizard__input',
+                  change: (ev: Event) => {
+                    csqttMode = (ev.target as HTMLSelectElement).value;
+                  },
+                },
+                [
+                  ['csqtt', 'csqtt (v2/v3)'],
+                  ['csqtt_v1', 'csqtt_v1'],
+                  ['wg', 'wg (WireGuard over UDP)'],
+                  ['raw', 'raw (UDP)'],
+                ].map(([val, lbl]) =>
+                  E(
+                    'option',
+                    {
+                      value: val,
+                      selected: val === csqttMode ? true : undefined,
+                    },
+                    lbl,
+                  ),
+                ),
+              ),
+            ]),
+          ]),
+          E('div', { class: 'tachyon-wizard__row-2col' }, [
+            E('div', { class: 'tachyon-wizard__field' }, [
+              E(
+                'label',
+                { class: 'tachyon-wizard__label' },
+                tr('Профиль фрейминга (obfs)', 'Framing Profile (obfs)'),
+              ),
+              E(
+                'select',
+                {
+                  class: 'cbi-input-select tachyon-wizard__input',
+                  change: (ev: Event) => {
+                    csqttObfs = (ev.target as HTMLSelectElement).value;
+                  },
+                },
+                [
+                  ['audio', 'audio'],
+                  ['video', 'video'],
+                  ['unified', 'unified'],
+                ].map(([val, lbl]) =>
+                  E(
+                    'option',
+                    {
+                      value: val,
+                      selected: val === csqttObfs ? true : undefined,
+                    },
+                    lbl,
+                  ),
+                ),
+              ),
+            ]),
+            E('div', { class: 'tachyon-wizard__field' }, [
+              E(
+                'label',
+                { class: 'tachyon-wizard__label' },
+                tr(
+                  'Хеши / Ключи узлов (через запятую)',
+                  'Peer Hashes (comma-separated)',
+                ),
+              ),
+              E('input', {
+                type: 'text',
+                class: 'cbi-input-text tachyon-wizard__input',
+                placeholder: 'hash1, hash2',
+                value: csqttHashes,
+                input: (ev: Event) => {
+                  csqttHashes = (ev.target as HTMLInputElement).value;
+                },
+              } as any),
+            ]),
+          ]),
+          E('div', { class: 'tachyon-wizard__row-2col' }, [
+            E('div', { class: 'tachyon-wizard__field' }, [
+              E(
+                'label',
+                { class: 'tachyon-wizard__label' },
+                tr('Количество воркеров', 'Workers'),
+              ),
+              E('input', {
+                type: 'text',
+                class: 'cbi-input-text tachyon-wizard__input',
+                placeholder: '1',
+                value: csqttWorkers,
+                input: (ev: Event) => {
+                  csqttWorkers = (ev.target as HTMLInputElement).value;
+                },
+              } as any),
+            ]),
+            E('div', { class: 'tachyon-wizard__field' }, [
+              E(
+                'label',
+                { class: 'tachyon-wizard__label' },
+                tr('MTU (необязательно)', 'MTU (optional)'),
+              ),
+              E('input', {
+                type: 'text',
+                class: 'cbi-input-text tachyon-wizard__input',
+                placeholder: '1350',
+                value: csqttMtu,
+                input: (ev: Event) => {
+                  csqttMtu = (ev.target as HTMLInputElement).value;
+                },
+              } as any),
+            ]),
+          ]),
+          E('div', { class: 'tachyon-wizard__row-2col' }, [
+            E('div', { class: 'tachyon-wizard__field' }, [
+              E(
+                'label',
+                { class: 'tachyon-wizard__label' },
+                tr('Транспорт TURN', 'TURN Transport'),
+              ),
+              E(
+                'select',
+                {
+                  class: 'cbi-input-select tachyon-wizard__input',
+                  change: (ev: Event) => {
+                    csqttTurnTransport = (ev.target as HTMLSelectElement).value;
+                  },
+                },
+                [
+                  ['', tr('Авто / без TURN', 'Auto / None')],
+                  ['auto', 'auto'],
+                  ['tcp', 'tcp'],
+                  ['udp', 'udp'],
+                  ['tcp_tls', 'tcp_tls'],
+                  ['tls', 'tls'],
+                ].map(([val, lbl]) =>
+                  E(
+                    'option',
+                    {
+                      value: val,
+                      selected: val === csqttTurnTransport ? true : undefined,
+                    },
+                    lbl,
+                  ),
+                ),
+              ),
+            ]),
+            E('div', { class: 'tachyon-wizard__field' }, [
+              E(
+                'label',
+                { class: 'tachyon-wizard__label' },
+                tr('Сервер TURN (необязательно)', 'TURN Server (optional)'),
+              ),
+              E('input', {
+                type: 'text',
+                class: 'cbi-input-text tachyon-wizard__input',
+                placeholder: 'turn.example.com:3478',
+                value: csqttTurnServer,
+                input: (ev: Event) => {
+                  csqttTurnServer = (ev.target as HTMLInputElement).value;
+                },
+              } as any),
+            ]),
+          ]),
+          E('div', { class: 'tachyon-wizard__row-2col' }, [
+            E('div', { class: 'tachyon-wizard__field' }, [
+              E(
+                'label',
+                { class: 'tachyon-wizard__label' },
+                tr('Режим авторизации VK', 'VK Auth Mode'),
+              ),
+              E(
+                'select',
+                {
+                  class: 'cbi-input-select tachyon-wizard__input',
+                  change: (ev: Event) => {
+                    csqttVkAuthMode = (ev.target as HTMLSelectElement).value;
+                  },
+                },
+                [
+                  ['', tr('По умолчанию', 'Default')],
+                  ['vkcalls', 'vkcalls'],
+                  ['legacy', 'legacy'],
+                  ['cookie', 'cookie'],
+                  ['oneme', 'oneme'],
+                  ['max', 'max'],
+                  ['yandex', 'yandex'],
+                  ['telemost', 'telemost'],
+                ].map(([val, lbl]) =>
+                  E(
+                    'option',
+                    {
+                      value: val,
+                      selected: val === csqttVkAuthMode ? true : undefined,
+                    },
+                    lbl,
+                  ),
+                ),
+              ),
+            ]),
+            E('div', { class: 'tachyon-wizard__field' }, [
+              E(
+                'label',
+                { class: 'tachyon-wizard__label' },
+                tr('Device ID (необязательно)', 'Device ID (optional)'),
+              ),
+              E('input', {
+                type: 'text',
+                class: 'cbi-input-text tachyon-wizard__input',
+                value: csqttDeviceId,
+                input: (ev: Event) => {
+                  csqttDeviceId = (ev.target as HTMLInputElement).value;
+                },
+              } as any),
+            ]),
           ]),
         );
       } else if (customProto === 'shadowtls') {
@@ -6764,6 +7033,71 @@ export function openConnectionWizardModal(
               '1',
             );
           }
+        } else if (customProto === 'csqtt') {
+          uciObj.set(
+            TACHYON_UCI_PACKAGE,
+            srcId,
+            'csqtt_mode',
+            csqttMode || 'csqtt',
+          );
+          if (csqttObfs) {
+            uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'csqtt_obfs', csqttObfs);
+          }
+          const hashesList = csqttHashes
+            .split(',')
+            .map((h) => h.trim())
+            .filter(Boolean);
+          if (hashesList.length > 0) {
+            uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'csqtt_hashes', hashesList);
+          }
+          if (csqttWorkers.trim()) {
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              'csqtt_workers',
+              csqttWorkers.trim(),
+            );
+          }
+          if (csqttVkAuthMode) {
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              'csqtt_vk_auth_mode',
+              csqttVkAuthMode,
+            );
+          }
+          if (csqttTurnTransport) {
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              'csqtt_turn_transport',
+              csqttTurnTransport,
+            );
+          }
+          if (csqttTurnServer.trim()) {
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              'csqtt_turn_server',
+              csqttTurnServer.trim(),
+            );
+          }
+          if (csqttMtu.trim()) {
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              'csqtt_mtu',
+              csqttMtu.trim(),
+            );
+          }
+          if (csqttDeviceId.trim()) {
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              'csqtt_device_id',
+              csqttDeviceId.trim(),
+            );
+          }
         } else if (customProto === 'shadowtls') {
           uciObj.set(
             TACHYON_UCI_PACKAGE,
@@ -7609,6 +7943,19 @@ export function openConnectionWizardModal(
       uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tls_certificate_path', certPath);
       uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'tls_key_path', keyPath);
       needsTlsCert = true;
+    } else if (inboundProto === 'wdtt') {
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'security', 'none');
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'server_username', 'user1');
+      uciObj.set(
+        TACHYON_UCI_PACKAGE,
+        srvId,
+        'server_password',
+        generateRandomHex(16),
+      );
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'wdtt_mode', 'csqtt');
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'wdtt_obfs', 'audio');
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'wdtt_network', '10.66.0.1/16');
+      uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'wdtt_mtu', '1350');
     } else if (inboundProto === 'anytls') {
       uciObj.set(TACHYON_UCI_PACKAGE, srvId, 'security', 'tls');
       uciObj.set(

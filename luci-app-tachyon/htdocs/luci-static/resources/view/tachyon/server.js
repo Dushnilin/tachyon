@@ -29,6 +29,7 @@ const ROUTING_SECTION_ACTIONS = [
   "shadowtls",
   "trusttunnel",
   "tewfai",
+  "csqtt",
   "mtproto",
   "chain",
   "tailscale",
@@ -457,6 +458,7 @@ const PORT_PROTOCOLS = [
   "tewfai",
   "masque",
   "openconnect",
+  "wdtt",
 ];
 const EXTENDED_PORT_PROTOCOLS = ["mtproto"];
 const PASSWORD_PROTOCOLS = [
@@ -474,6 +476,7 @@ const PASSWORD_PROTOCOLS = [
   "mieru",
   "trusttunnel",
   "masque",
+  "wdtt",
 ];
 
 const BASE_PROTOCOL_LABELS = {
@@ -498,6 +501,7 @@ const CORE_SERVER_PROTOCOL_LABELS = {
   tewfai: "TewFai",
   masque: "MASQUE",
   openconnect: "OpenConnect",
+  wdtt: "CSQTT / WDTT v3",
 };
 const EXTENDED_PROTOCOL_LABELS = {
   mtproto: "MTProto",
@@ -539,6 +543,7 @@ const SECURITY_BY_PROTOCOL = {
   tewfai: ["tls"],
   masque: ["tls"],
   openconnect: ["tls"],
+  wdtt: ["none"],
 };
 
 function getSecurityLabel(security) {
@@ -786,7 +791,8 @@ function getEffectiveSecurity(sectionId) {
     protocol === "shadowtls" ||
     protocol === "http" ||
     protocol === "mixed" ||
-    protocol === "mieru"
+    protocol === "mieru" ||
+    protocol === "wdtt"
   ) {
     return "none";
   }
@@ -1353,6 +1359,8 @@ function ensureProtocolDefaults(sectionId, protocol, forceProtocolDefaults) {
     defaultPort = "1080";
   } else if (protocol === "http" || protocol === "mixed") {
     defaultPort = "8080";
+  } else if (protocol === "wdtt") {
+    defaultPort = "46000";
   }
   setDefault(sectionId, "listen_port", defaultPort);
 
@@ -1559,6 +1567,16 @@ function ensureProtocolDefaults(sectionId, protocol, forceProtocolDefaults) {
     setDefault(sectionId, "openconnect_ip", "0");
     setDefault(sectionId, "tls_server_name", terminatingSni);
   }
+
+  if (protocol === "wdtt") {
+    setDefault(sectionId, "security", "none");
+    setDefault(sectionId, "server_username", "user1");
+    setDefault(sectionId, "server_password", generatePassword());
+    setDefault(sectionId, "wdtt_mode", "csqtt");
+    setDefault(sectionId, "wdtt_obfs", "audio");
+    setDefault(sectionId, "wdtt_network", "10.66.0.1/16");
+    setDefault(sectionId, "wdtt_mtu", "1350");
+  }
 }
 
 function parseLegacyServerUser(sectionId, protocol) {
@@ -1713,6 +1731,7 @@ function getServerPort(sectionId) {
   if (protocol === "shadowsocks") return "8388";
   if (protocol === "socks") return "1080";
   if (protocol === "http" || protocol === "mixed") return "8080";
+  if (protocol === "wdtt") return "46000";
   return "443";
 }
 
@@ -2312,6 +2331,63 @@ function buildOpenconnectLink(sectionId, identity, options = {}) {
   return `openconnect://${auth}${uriHost}:${port}${query ? `?${query}` : ""}#${encodeURIComponent(identity.name || sectionId)}`;
 }
 
+function buildWdttLink(sectionId, identity, options = {}) {
+  const pwd = identity.password || "";
+  if (!pwd) return "";
+  const host = getPublicHost(sectionId, options);
+  const port = parseInt(
+    uci.get(UCI_PACKAGE, sectionId, "listen_port") ||
+      (typeof getServerPort === "function"
+        ? getServerPort(sectionId)
+        : "46000"),
+    10,
+  );
+  const mode = String(uci.get(UCI_PACKAGE, sectionId, "wdtt_mode") || "csqtt")
+    .trim()
+    .toLowerCase();
+  const obfs = String(uci.get(UCI_PACKAGE, sectionId, "wdtt_obfs") || "audio")
+    .trim()
+    .toLowerCase();
+  const label = encodeURIComponent(identity.name || sectionId);
+
+  if (mode === "wg" || mode === "raw") {
+    const payload = {
+      v: 1,
+      ip: host,
+      dtls: port,
+      pass: pwd,
+      vpn: mode,
+    };
+    const rawPort = parseInt(
+      uci.get(UCI_PACKAGE, sectionId, "wdtt_raw_port") || "0",
+      10,
+    );
+    if (rawPort > 0) {
+      payload.raw = rawPort;
+    }
+    if (obfs && obfs !== "audio") {
+      payload.obfs = obfs;
+    }
+    return `wdtt://${base64UrlEncode(JSON.stringify(payload))}#${label}`;
+  }
+
+  const effMode = mode === "csqtt_v1" ? "csqtt_v1" : "csqtt";
+  const params = {
+    v: effMode === "csqtt_v1" ? "1" : "2",
+    host,
+    peer: String(port),
+    password: pwd,
+  };
+  if (effMode === "csqtt_v1") {
+    params.mode = "csqtt_v1";
+  }
+  if (obfs) {
+    params.obfs = obfs;
+  }
+  const query = encodeQuery(params);
+  return `csqtt://connect${query ? `?${query}` : ""}#${label}`;
+}
+
 function buildAwgClientConfig(sectionId, targetVersion, options = {}) {
   const host = getPublicHost(sectionId, options);
   const port =
@@ -2499,6 +2575,8 @@ function buildClientLink(sectionId, options = {}) {
       return buildMasqueLink(sectionId, identity, options);
     case "openconnect":
       return buildOpenconnectLink(sectionId, identity, options);
+    case "wdtt":
+      return buildWdttLink(sectionId, identity, options);
     case "awg":
       return buildAwgClientConfig(sectionId, options.awgVersion, options);
     case "vless":
@@ -3946,6 +4024,14 @@ function syncProtocolWidgetValues(sectionId, _protocol) {
     "tewfai_uuid",
     "tewfai_password",
     "tewfai_inbound_transport",
+    "wdtt_mode",
+    "wdtt_obfs",
+    "wdtt_raw_port",
+    "wdtt_network",
+    "wdtt_ipv4_pool",
+    "wdtt_raw_ipv4_pool",
+    "wdtt_client_dns",
+    "wdtt_mtu",
     "masque_ipv4_pool",
     "masque_ipv6_pool",
     "masque_mtu",
@@ -4333,6 +4419,8 @@ function autoConfigureServer(sectionId) {
       chosenPort = recPorts.masque ? `${recPorts.masque}` : "11443";
     } else if (protocol === "openconnect") {
       chosenPort = recPorts.openconnect ? `${recPorts.openconnect}` : "12443";
+    } else if (protocol === "wdtt") {
+      chosenPort = recPorts.wdtt ? `${recPorts.wdtt}` : "46000";
     }
 
     const serverSections = uci.sections(UCI_PACKAGE, "server") || [];
@@ -4866,6 +4954,19 @@ function autoConfigureServer(sectionId) {
       setWidgetValue(sectionId, "mtproto_tolerate_time_skewness", "3s");
       setWidgetValue(sectionId, "mtproto_idle_timeout", "5m");
       setWidgetValue(sectionId, "mtproto_handshake_timeout", "10s");
+    } else if (protocol === "wdtt") {
+      setWidgetValue(sectionId, "security", "none");
+      syncSecurityChoices(sectionId);
+      setWidgetValue(
+        sectionId,
+        "server_username",
+        getServerName(sectionId) || "user1",
+      );
+      setWidgetValue(sectionId, "server_password", generatePassword());
+      setWidgetValue(sectionId, "wdtt_mode", "csqtt");
+      setWidgetValue(sectionId, "wdtt_obfs", "audio");
+      setWidgetValue(sectionId, "wdtt_network", "10.66.0.1/16");
+      setWidgetValue(sectionId, "wdtt_mtu", "1350");
     } else if (protocol === "tailscale") {
       setWidgetValue(
         sectionId,
@@ -6013,6 +6114,63 @@ function createServerContent(section, options = {}) {
   o.validate = validateOptionalPort;
   o.depends("protocol", "tewfai");
 
+  o = section.option(form.ListValue, "wdtt_mode", _("CSQTT / WDTT Mode"));
+  o.value("csqtt", "csqtt (v2/v3)");
+  o.value("csqtt_v1", "csqtt_v1");
+  o.value("wg", "wg");
+  o.value("raw", "raw");
+  o.value("all", "all");
+  o.default = "csqtt";
+  o.modalonly = true;
+  o.depends("protocol", "wdtt");
+
+  o = section.option(form.ListValue, "wdtt_obfs", _("Framing Profile (obfs)"));
+  o.value("audio", "audio");
+  o.value("video", "video");
+  o.value("unified", "unified");
+  o.default = "audio";
+  o.modalonly = true;
+  o.depends("protocol", "wdtt");
+
+  o = section.option(form.Value, "wdtt_raw_port", _("Raw UDP Port (optional)"));
+  o.modalonly = true;
+  o.rmempty = true;
+  o.validate = validateOptionalPort;
+  o.depends("protocol", "wdtt");
+
+  o = section.option(form.Value, "wdtt_network", _("Tunnel Network (CIDR)"));
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = "10.66.0.1/16";
+  o.depends("protocol", "wdtt");
+
+  o = section.option(form.Value, "wdtt_ipv4_pool", _("IPv4 Pool (optional)"));
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends("protocol", "wdtt");
+
+  o = section.option(
+    form.Value,
+    "wdtt_raw_ipv4_pool",
+    _("Raw IPv4 Pool (optional)"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends("protocol", "wdtt");
+
+  o = section.option(form.Value, "wdtt_client_dns", _("Client DNS (optional)"));
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = "1.1.1.1";
+  o.depends("protocol", "wdtt");
+
+  o = section.option(form.Value, "wdtt_mtu", _("MTU"));
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = "1350";
+  o.validate = validateOptionalPort;
+  o.depends("protocol", "wdtt");
+
   o = section.option(form.Value, "masque_ipv4_pool", _("IPv4 pool (CIDR)"));
   o.modalonly = true;
   o.rmempty = true;
@@ -6882,6 +7040,7 @@ function subscriptionServerSupported(server) {
     "tewfai",
     "masque",
     "openconnect",
+    "wdtt",
   ].includes(subscriptionServerProtocol(server));
 }
 

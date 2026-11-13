@@ -82,4 +82,58 @@ describe('validateProxyUrl', () => {
     expect(validateProxyUrl('fptn:').valid).toBe(false);
     expect(validateProxyUrl('fptn:!bad_b64!').valid).toBe(false);
   });
+
+  it('accepts CSQTT / WDTT v3 URLs across all supported formats', () => {
+    const jsonB64 = Buffer.from(
+      JSON.stringify({
+        v: 1,
+        ip: 'vpn.example.com',
+        dtls: 46000,
+        pass: 'secret',
+        vpn: 'csqtt',
+      }),
+    ).toString('base64url');
+    const encPayload = Buffer.from('v2-encrypted-blob-payload').toString(
+      'base64url',
+    );
+
+    expect(validateProxyUrl(`csqtt://${encPayload}#CSQTT-Enc`).valid).toBe(
+      true,
+    );
+    expect(
+      validateProxyUrl(
+        'csqtt://connect?v=2&host=vpn.example.com&peer=46000&password=secret&obfs=audio#Compact',
+      ).valid,
+    ).toBe(true);
+    expect(
+      validateProxyUrl(
+        'csqtt://connect?v=2&host=1.2.3.4&peer=46000&password=secret&hashes=abcdef1234#VkTurn',
+      ).valid,
+    ).toBe(true);
+    expect(
+      validateProxyUrl(
+        'qwdtt://config?v=1&ip=vpn.example.com&dtls=46000&pass=secret&vpn=wg#Qwdtt',
+      ).valid,
+    ).toBe(true);
+    expect(validateProxyUrl(`wdtt://${jsonB64}#JsonPayload`).valid).toBe(true);
+    expect(
+      validateProxyUrl(
+        'wdtt://1.2.3.4:46000:46001:46002:secret:hash1,hash2#ColonFormat',
+      ).valid,
+    ).toBe(true);
+    expect(
+      validateProxyUrl(
+        'csqtt://secret@vpn.example.com:46000?mode=csqtt&obfs=video#Standard',
+      ).valid,
+    ).toBe(true);
+  });
+
+  it('rejects invalid CSQTT / WDTT v3 URLs', () => {
+    expect(validateProxyUrl('csqtt://').valid).toBe(false);
+    expect(validateProxyUrl('wdtt://invalid_colon').valid).toBe(false);
+    expect(validateProxyUrl('qwdtt://config?v=1').valid).toBe(false);
+    expect(validateProxyUrl('csqtt://secret@vpn.example.com:99999').valid).toBe(
+      false,
+    );
+  });
 });

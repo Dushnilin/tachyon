@@ -2330,8 +2330,10 @@ function validate_tachyon_core_binary(binary, library_dir) {
             let distrib_arch = lc(read_openwrt_release_value("DISTRIB_ARCH"));
             if (index(host_arch, "mips") >= 0 || index(distrib_arch, "mips") >= 0) {
                 updates_log("Downloaded binary crashed with SIGILL (Illegal instruction) - MIPS FPU / soft-float ABI mismatch (router CPU has no hardware FPU)", "error");
-            } else if (host_arch == "x86_64" || index(distrib_arch, "x86") >= 0) {
+            } else if (host_arch == "x86_64" || index(distrib_arch, "x86_64") >= 0) {
                 updates_log("Downloaded binary crashed with SIGILL (Illegal instruction) - your CPU lacks required AVX2/x86-64-v3 instructions (if on Proxmox/KVM VM, set CPU type to 'host')", "error");
+            } else if (host_arch == "i386" || host_arch == "i486" || host_arch == "i586" || host_arch == "i686" || index(distrib_arch, "i386") >= 0 || index(distrib_arch, "x86") >= 0) {
+                updates_log("Downloaded binary crashed with SIGILL (Illegal instruction) - your 32-bit x86 CPU lacks required i686/SSE2 instructions (if on a VM, set CPU type to 'host')", "error");
             } else {
                 updates_log("Downloaded binary crashed with SIGILL (Illegal instruction) - CPU instruction set or ABI mismatch for architecture " + (distrib_arch != "" ? distrib_arch : host_arch), "error");
             }
@@ -4156,6 +4158,8 @@ else if (mode == "cleanup-sing-box-cache-backup")
     exit(cleanup_sing_box_cache_backup() >= 0 ? 0 : 1);
 else if (mode == "should-clear-sing-box-cache")
     exit(should_clear_sing_box_cache_on_change(ARGV[1], ARGV[2]) ? 0 : 1);
+else if (mode == "validate-tachyon-core-binary")
+    print(validate_tachyon_core_binary(ARGV[1], ARGV[2] || ""), "\n");
 else {
     warn("Usage: components/action.uc <component-action|list-component-releases|install-component-version|latest-tachyon-version|tachyon-release-metadata> ...\n");
     exit(1);

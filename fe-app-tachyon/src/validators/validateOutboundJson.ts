@@ -19,6 +19,7 @@ const SERVER_OUTBOUND_TYPES = new Set([
   'trusttunnel',
   'masque',
   'openconnect',
+  'wdtt',
 ]);
 
 function invalid(message: string): ValidationResult {

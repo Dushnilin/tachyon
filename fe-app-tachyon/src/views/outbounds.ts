@@ -58,6 +58,7 @@ const PROTOCOL_CHOICES = [
   'sudoku',
   'warp',
   'tewfai',
+  'csqtt',
   'tailscale',
   'tor',
   'desync',
@@ -2979,7 +2980,7 @@ function createOutboundGroupsAndProberPanel(sectionRef) {
 }
 
 function isProxyShareLinkUri(str) {
-  return /^(?:vless|vmess|trojan|ss|ssr|hysteria2|hy2|hysteria|tuic|anytls|naive\+(?:https|quic|h2|h3)|mieru|mierus|snell|trusttunnel|shadowtls|masque|warp|wg|awg|wireguard|socks5?h?):\/\//i.test(
+  return /^(?:vless|vmess|trojan|ss|ssr|hysteria2|hy2|hysteria|tuic|anytls|naive\+(?:https|quic|h2|h3)|mieru|mierus|snell|trusttunnel|shadowtls|masque|tewfai|csqtt|wdtt|qwdtt|warp|wg|awg|wireguard|socks5?h?):\/\//i.test(
     String(str || '').trim(),
   );
 }
@@ -3373,6 +3374,7 @@ function createOutboundsContent(section) {
   o.value('shadowtls', 'ShadowTLS v3');
   o.value('trusttunnel', 'TrustTunnel');
   o.value('tewfai', 'TewFai');
+  o.value('csqtt', 'CSQTT / WDTT v3');
   o.value('zapret2', _('Zapret2 (nfqws2 DPI Desync)'));
   o.value('zapret', _('Zapret (nfqws DPI Desync)'));
   o.value('byedpi', _('ByeDPI (ciadpi SOCKS5 Desync)'));
@@ -5140,6 +5142,7 @@ function createOutboundsContent(section) {
     'mieru',
     'trusttunnel',
     'tewfai',
+    'csqtt',
     'masque',
     'openconnect',
     'shadowtls',
@@ -5631,6 +5634,126 @@ function createOutboundsContent(section) {
   o.modalonly = true;
   o.default = '0';
   o.depends('source_type', 'tewfai');
+
+  // CSQTT / WDTT v3 extras
+  o = section.taboption(
+    'general',
+    form.ListValue,
+    'csqtt_mode',
+    _('CSQTT Mode'),
+  );
+  o.modalonly = true;
+  o.default = 'csqtt';
+  o.value('csqtt', 'csqtt (v2/v3)');
+  o.value('csqtt_v1', 'csqtt_v1');
+  o.value('wg', 'wg (WireGuard over UDP)');
+  o.value('raw', 'raw (UDP)');
+  o.depends('source_type', 'csqtt');
+
+  o = section.taboption(
+    'general',
+    form.ListValue,
+    'csqtt_obfs',
+    _('Framing Profile (obfs)'),
+  );
+  o.modalonly = true;
+  o.default = 'audio';
+  o.value('audio', 'audio');
+  o.value('video', 'video');
+  o.value('unified', 'unified');
+  o.depends('source_type', 'csqtt');
+
+  o = section.taboption(
+    'general',
+    form.Value,
+    'csqtt_raw_port',
+    _('Raw UDP Port (optional)'),
+  );
+  o.modalonly = true;
+  o.datatype = 'port';
+  o.depends('source_type', 'csqtt');
+
+  o = section.taboption(
+    'general',
+    form.DynamicList,
+    'csqtt_hashes',
+    _('Peer Hashes / Keys'),
+  );
+  o.modalonly = true;
+  o.depends('source_type', 'csqtt');
+
+  o = section.taboption('general', form.Value, 'csqtt_workers', _('Workers'));
+  o.modalonly = true;
+  o.datatype = 'uinteger';
+  o.placeholder = '1';
+  o.depends('source_type', 'csqtt');
+
+  o = section.taboption(
+    'general',
+    form.ListValue,
+    'csqtt_turn_transport',
+    _('TURN Transport'),
+  );
+  o.modalonly = true;
+  o.value('', _('Auto / None'));
+  o.value('auto', 'auto');
+  o.value('tcp', 'tcp');
+  o.value('udp', 'udp');
+  o.value('tcp_tls', 'tcp_tls');
+  o.value('tls', 'tls');
+  o.depends('source_type', 'csqtt');
+
+  o = section.taboption(
+    'general',
+    form.Value,
+    'csqtt_turn_server',
+    _('TURN Server (optional)'),
+  );
+  o.modalonly = true;
+  o.placeholder = 'turn.example.com:3478';
+  o.depends('source_type', 'csqtt');
+
+  o = section.taboption(
+    'general',
+    form.ListValue,
+    'csqtt_vk_auth_mode',
+    _('VK Auth Mode'),
+  );
+  o.modalonly = true;
+  o.value('', _('Default'));
+  o.value('vkcalls', 'vkcalls');
+  o.value('legacy', 'legacy');
+  o.value('cookie', 'cookie');
+  o.value('oneme', 'oneme');
+  o.value('max', 'max');
+  o.value('yandex', 'yandex');
+  o.value('telemost', 'telemost');
+  o.depends('source_type', 'csqtt');
+
+  o = section.taboption('general', form.Value, 'csqtt_mtu', _('MTU'));
+  o.modalonly = true;
+  o.datatype = 'uinteger';
+  o.placeholder = '1350';
+  o.depends('source_type', 'csqtt');
+
+  o = section.taboption(
+    'general',
+    form.Value,
+    'csqtt_device_id',
+    _('Device ID (optional)'),
+  );
+  o.modalonly = true;
+  o.depends('source_type', 'csqtt');
+
+  o = section.taboption(
+    'general',
+    form.Value,
+    'csqtt_uri',
+    _('CSQTT / WDTT URI (optional override)'),
+  );
+  o.modalonly = true;
+  o.placeholder = 'csqtt://... or qwdtt://...';
+  o.depends('source_type', 'csqtt');
 
   // ── 9. Network Interface / Tailscale / Tor / JSON ─────────────────────────
   o = section.taboption(

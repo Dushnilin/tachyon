@@ -67,6 +67,7 @@ const ROUTING_ACTIONS = [
   "shadowtls",
   "trusttunnel",
   "tewfai",
+  "csqtt",
   "hosts",
   "group",
 ];
@@ -154,6 +155,7 @@ function isOutboundDetourTargetSection(section, currentSectionId) {
       "shadowtls",
       "trusttunnel",
       "tewfai",
+      "csqtt",
       "group",
     ].includes(action)
   );
@@ -216,6 +218,7 @@ function isDnsDetourTargetSection(section, currentSectionId) {
       "shadowtls",
       "trusttunnel",
       "tewfai",
+      "csqtt",
       "group",
     ].includes(action)
   ) {
@@ -3685,6 +3688,7 @@ function isDownloadThroughTargetSection(section, currentSectionId) {
       "shadowtls",
       "trusttunnel",
       "tewfai",
+      "csqtt",
       "group",
     ].includes(action)
   ) {
@@ -3975,6 +3979,7 @@ function proxyProtocolChoices() {
     ["mieru", "Mieru"],
     ["trusttunnel", "TrustTunnel"],
     ["masque", "MASQUE"],
+    ["csqtt", "CSQTT"],
     ["openconnect", "OpenConnect"],
     ["shadowtls", "ShadowTLS"],
     ["snell", "Snell"],
@@ -7484,6 +7489,8 @@ function getSourceTypeLabel(stype) {
       return "Snell";
     case "masque":
       return "MASQUE";
+    case "csqtt":
+      return "CSQTT";
     case "openconnect":
       return "OpenConnect";
     case "openvpn":
@@ -7604,6 +7611,8 @@ function getActionOptionLabel(action) {
       return isTachyonCoreForUi() ? _("Sudoku (не реализован)") : "Sudoku";
     case "masque":
       return "MASQUE";
+    case "csqtt":
+      return "CSQTT";
     case "openvpn":
       return "OpenVPN";
     case "openconnect":
@@ -7616,6 +7625,8 @@ function getActionOptionLabel(action) {
       return "TrustTunnel";
     case "tewfai":
       return "TewFai";
+    case "csqtt":
+      return "CSQTT";
     case "hosts":
       return _("Hosts");
     case "outbound":
@@ -7742,6 +7753,7 @@ function populateActionOptionValues(option) {
     option.value("shadowtls", getActionOptionLabel("shadowtls"));
     option.value("trusttunnel", getActionOptionLabel("trusttunnel"));
     option.value("tewfai", getActionOptionLabel("tewfai"));
+    option.value("csqtt", getActionOptionLabel("csqtt"));
   }
   option.value("bypass", getActionOptionLabel("bypass"));
   option.value("block", getActionOptionLabel("block"));
@@ -15965,6 +15977,161 @@ function createSectionContent(section) {
   o.placeholder = "1400";
   o.depends("action", "tewfai");
 
+  // ── CSQTT / WDTT v3 (tachyon-core) ─────────────────────────────────────────
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "csqtt_server",
+    _("Server Address"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends("action", "csqtt");
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "csqtt_server_port",
+    _("Server Port"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.datatype = "port";
+  o.placeholder = "46000";
+  o.depends("action", "csqtt");
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "csqtt_password",
+    _("Password / Key"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.password = true;
+  o.depends("action", "csqtt");
+
+  o = section.taboption("settings", form.ListValue, "csqtt_mode", _("Mode"));
+  o.modalonly = true;
+  o.default = "csqtt";
+  o.value("csqtt", "csqtt (v2/v3)");
+  o.value("csqtt_v1", "csqtt_v1");
+  o.value("wg", "wg (WireGuard over UDP)");
+  o.value("raw", "raw (UDP)");
+  o.depends("action", "csqtt");
+
+  o = section.taboption(
+    "settings",
+    form.ListValue,
+    "csqtt_obfs",
+    _("Framing Profile (obfs)"),
+  );
+  o.modalonly = true;
+  o.default = "audio";
+  o.value("audio", "audio");
+  o.value("video", "video");
+  o.value("unified", "unified");
+  o.depends("action", "csqtt");
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "csqtt_raw_port",
+    _("Raw UDP Port (optional)"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.datatype = "port";
+  o.depends("action", "csqtt");
+
+  o = section.taboption(
+    "settings",
+    form.DynamicList,
+    "csqtt_hashes",
+    _("Peer Hashes / Keys"),
+  );
+  o.modalonly = true;
+  o.depends("action", "csqtt");
+
+  o = section.taboption("settings", form.Value, "csqtt_workers", _("Workers"));
+  o.modalonly = true;
+  o.rmempty = true;
+  o.datatype = "uinteger";
+  o.placeholder = "1";
+  o.depends("action", "csqtt");
+
+  o = section.taboption(
+    "settings",
+    form.ListValue,
+    "csqtt_turn_transport",
+    _("TURN Transport"),
+  );
+  o.modalonly = true;
+  o.value("", _("Auto / None"));
+  o.value("auto", "auto");
+  o.value("tcp", "tcp");
+  o.value("udp", "udp");
+  o.value("tcp_tls", "tcp_tls");
+  o.value("tls", "tls");
+  o.depends("action", "csqtt");
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "csqtt_turn_server",
+    _("TURN Server (optional)"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = "turn.example.com:3478";
+  o.depends("action", "csqtt");
+
+  o = section.taboption(
+    "settings",
+    form.ListValue,
+    "csqtt_vk_auth_mode",
+    _("VK Auth Mode"),
+  );
+  o.modalonly = true;
+  o.value("", _("Default"));
+  o.value("vkcalls", "vkcalls");
+  o.value("legacy", "legacy");
+  o.value("cookie", "cookie");
+  o.value("oneme", "oneme");
+  o.value("max", "max");
+  o.value("yandex", "yandex");
+  o.value("telemost", "telemost");
+  o.depends("action", "csqtt");
+
+  o = section.taboption("settings", form.Value, "csqtt_mtu", _("MTU"));
+  o.modalonly = true;
+  o.rmempty = true;
+  o.datatype = "uinteger";
+  o.placeholder = "1350";
+  o.depends("action", "csqtt");
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "csqtt_device_id",
+    _("Device ID (optional)"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends("action", "csqtt");
+
+  o = section.taboption(
+    "settings",
+    form.Value,
+    "csqtt_uri",
+    _("CSQTT / WDTT URI (optional override)"),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = "csqtt://... or qwdtt://...";
+  o.depends("action", "csqtt");
+
   // ── OpenConnect / AnyConnect (tachyon-core) ───────────────────────────────
 
   o = section.taboption(
@@ -17931,6 +18098,7 @@ function createSectionContent(section) {
   o.depends("action", "awg");
   o.depends("action", "byedpi");
   o.depends("action", "wdtt");
+  o.depends("action", "csqtt");
   o.depends("action", "olcrtc");
   o.depends("action", "zapret");
   o.depends("action", "zapret2");
@@ -18090,6 +18258,7 @@ function createSectionContent(section) {
   o.depends("action", "awg");
   o.depends("action", "byedpi");
   o.depends("action", "wdtt");
+  o.depends("action", "csqtt");
   o.depends("action", "olcrtc");
   o.depends("action", "zapret");
   o.depends("action", "zapret2");
@@ -18392,6 +18561,8 @@ function createSectionContent(section) {
     "desync",
     "shadowtls",
     "trusttunnel",
+    "tewfai",
+    "csqtt",
     "zapret",
     "zapret2",
     "byedpi",
@@ -18468,6 +18639,8 @@ function createSectionContent(section) {
     "desync",
     "shadowtls",
     "trusttunnel",
+    "tewfai",
+    "csqtt",
     "zapret",
     "zapret2",
     "byedpi",
@@ -19279,6 +19452,8 @@ const ACTION_COLORS = {
   naive: "#1f618d",
   sudoku: "#7f8c8d",
   masque: "#8e44ad",
+  tewfai: "#16a085",
+  csqtt: "#27ae60",
   openvpn: "#e74c3c",
   hosts: "#2ecc71",
   group: "#2980b9",

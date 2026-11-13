@@ -316,6 +316,10 @@ function check_arch(opts) {
         } else if ((target == "amd64" && detected == "x86_64") || (target == "x86_64" && detected == "amd64")) {
             supported = true;
             msg = sprintf("Architecture '%s' is compatible with target '%s'", detected, target);
+        } else if ((target == "386" || target == "i386" || target == "i686" || target == "i386_pentium4") &&
+                   (detected == "386" || detected == "i386" || detected == "i486" || detected == "i586" || detected == "i686" || detected == "i386_pentium4")) {
+            supported = true;
+            msg = sprintf("Architecture '%s' is compatible with target '%s'", detected, target);
         } else {
             supported = false;
             msg = sprintf("Architecture mismatch: system is '%s', target requires '%s'", detected, target);

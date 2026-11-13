@@ -85,6 +85,19 @@ describe('validateOutboundJson', () => {
     );
   });
 
+  it('requires server and port for wdtt outbounds', () => {
+    expect(
+      validateOutboundJson(
+        '{"type":"wdtt","tag":"csqtt-out","server":"vpn.example.com","server_port":46000,"password":"secret"}',
+      ).valid,
+    ).toBe(true);
+    expect(
+      validateOutboundJson(
+        '{"type":"wdtt","tag":"csqtt-out","server":"vpn.example.com"}',
+      ).valid,
+    ).toBe(false);
+  });
+
   it('requires group outbounds for selector-like types', () => {
     const result = validateOutboundJson('{"type":"selector","tag":"select"}');
 

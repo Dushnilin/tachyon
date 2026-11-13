@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-12 21:00+0300\n"
-"PO-Revision-Date: 2026-11-12 21:00+0300\n"
+"POT-Creation-Date: 2026-11-13 14:26+0300\n"
+"PO-Revision-Date: 2026-11-13 14:26+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -977,6 +977,9 @@ msgstr "Авто / Адаптивный трансформер (Auto Transformer
 msgid "Auto / Adaptive Transformer (Default)"
 msgstr "Авто / Адаптивный трансформер (по умолчанию)"
 
+msgid "Auto / None"
+msgstr "Авто / без TURN"
+
 msgid "Auto Modes (--auto)"
 msgstr "Авто-режимы (--auto)"
 
@@ -1523,6 +1526,21 @@ msgstr "CS2 / Faceit + Discord (Игры + UDP)"
 msgid "CS2 / Faceit / Cybershoke (Web + API + UDP)"
 msgstr "CS2 / Faceit / Cybershoke (Веб + API + UDP)"
 
+msgid "CSQTT / WDTT Mode"
+msgstr ""
+
+msgid "CSQTT / WDTT Server Host"
+msgstr "Адрес сервера CSQTT / WDTT"
+
+msgid "CSQTT / WDTT URI (optional override)"
+msgstr ""
+
+msgid "CSQTT Mode"
+msgstr "Режим CSQTT"
+
+msgid "CSQTT Password / Key"
+msgstr "Пароль / Ключ CSQTT"
+
 msgid "CUSTOM DNS → DIRECT"
 msgstr "ПОЛЬЗОВАТЕЛЬСКИЙ DNS → НАПРЯМУЮ"
 
@@ -1837,6 +1855,9 @@ msgstr "Классификация клиента"
 
 msgid "Client DNS"
 msgstr "DNS клиента"
+
+msgid "Client DNS (optional)"
+msgstr ""
 
 msgid "Client IP / MAC"
 msgstr "IP / MAC клиента"
@@ -2842,6 +2863,9 @@ msgstr "Устройство"
 
 msgid "Device / Host"
 msgstr "Устройство / Хост"
+
+msgid "Device ID (optional)"
+msgstr "Device ID (необязательно)"
 
 msgid "Device Locale (x-device-locale)"
 msgstr "Локаль устройства (x-device-locale)"
@@ -4235,6 +4259,9 @@ msgstr ""
 msgid "Fragment fake/split packets at IPv4/IPv6 network layer."
 msgstr ""
 
+msgid "Framing Profile (obfs)"
+msgstr "Профиль фрейминга (obfs)"
+
 msgid "France (fr)"
 msgstr "Франция (fr)"
 
@@ -4724,6 +4751,9 @@ msgstr "IP"
 msgid "IPs, CIDR blocks, or hostnames pre-resolved and added directly into the nftables routing set."
 msgstr "IP-адреса, блоки CIDR или имена хостов, предварительно разрешаемые и добавляемые напрямую в набор маршрутизации nftables."
 
+msgid "IPv4 Pool (optional)"
+msgstr ""
+
 msgid "IPv4 only"
 msgstr "Только IPv4"
 
@@ -5108,6 +5138,18 @@ msgstr "Неверная стратегия ByeDPI"
 msgid "Invalid CIDR prefix"
 msgstr "Неверный префикс CIDR"
 
+msgid "Invalid CSQTT / WDTT URL payload"
+msgstr ""
+
+msgid "Invalid CSQTT / WDTT URL: empty body"
+msgstr ""
+
+msgid "Invalid CSQTT / WDTT URL: invalid host, port, or password"
+msgstr ""
+
+msgid "Invalid CSQTT URL: missing host/addr or credentials"
+msgstr ""
+
 msgid "Invalid DNS server format. Examples: 8.8.8.8 or dns.example.com or dns.example.com/nicedns for DoH"
 msgstr "Неверный формат DNS-сервера. Примеры: 8.8.8.8, dns.example.com или dns.example.com/nicedns для DoH"
 
@@ -5215,6 +5257,9 @@ msgstr "Неверный формат MAC-адреса (ожидается AA:BB
 
 msgid "Invalid Mieru URL: invalid host or port"
 msgstr "Некорректный URL Mieru: неверный хост или порт"
+
+msgid "Invalid QWDTT URL: missing ip/host or password"
+msgstr ""
 
 msgid "Invalid SOCKS URL: invalid host and port"
 msgstr "Некорректный SOCKS URL: некорректные хост и порт"
@@ -5872,6 +5917,9 @@ msgstr "MTProto еще не реализован в tachyon-core"
 
 msgid "MTU"
 msgstr "MTU"
+
+msgid "MTU (optional)"
+msgstr "MTU (необязательно)"
 
 msgid "Main DNS"
 msgstr "Основной DNS"
@@ -7040,6 +7088,9 @@ msgstr "Пароль (необязательно)"
 msgid "Password (optional second PSK)"
 msgstr "Пароль (необязательный второй ключ PSK)"
 
+msgid "Password / Key"
+msgstr ""
+
 msgid "Password / Key / PSK"
 msgstr "Пароль / Ключ / PSK"
 
@@ -7120,6 +7171,12 @@ msgstr "Полезный груз (I4)"
 
 msgid "Payload (I5)"
 msgstr "Полезный груз (I5)"
+
+msgid "Peer Hashes (comma-separated)"
+msgstr "Хеши / Ключи узлов (через запятую)"
+
+msgid "Peer Hashes / Keys"
+msgstr ""
 
 msgid "Peer Public Key"
 msgstr "Публичный ключ пира"
@@ -7733,11 +7790,17 @@ msgstr "Место"
 msgid "Rating"
 msgstr "Оценка"
 
+msgid "Raw IPv4 Pool (optional)"
+msgstr ""
+
 msgid "Raw OpenVPN Configuration (.ovpn)"
 msgstr "Исходный текст конфигурации OpenVPN (.ovpn)"
 
 msgid "Raw Outbound JSON Object (sing-box / tachyon-core)"
 msgstr "JSON-объект outbound (sing-box / tachyon-core)"
+
+msgid "Raw UDP Port (optional)"
+msgstr ""
 
 msgid "Raw sing-box outbound JSON objects."
 msgstr "Сырые JSON-объекты outbound для sing-box."
@@ -9860,6 +9923,12 @@ msgstr "TTL должен быть положительным числом"
 msgid "TTL value cannot be empty"
 msgstr "Значение TTL не может быть пустым"
 
+msgid "TURN Server (optional)"
+msgstr "Сервер TURN (необязательно)"
+
+msgid "TURN Transport"
+msgstr "Транспорт TURN"
+
 msgid "Table"
 msgstr "Таблица"
 
@@ -10517,6 +10586,9 @@ msgstr "Вторник"
 msgid "Tunnel MTU"
 msgstr "MTU туннеля"
 
+msgid "Tunnel Network (CIDR)"
+msgstr ""
+
 msgid "Tunnels (WARP / FPTN / AWG)"
 msgstr "Туннели (WARP / FPTN / AWG)"
 
@@ -10994,6 +11066,9 @@ msgstr "Имя пользователя не может быть пустым"
 msgid "Username for auth-user-pass authentication"
 msgstr "Имя пользователя для авторизации auth-user-pass"
 
+msgid "VK Auth Mode"
+msgstr "Режим авторизации VK"
+
 msgid "VLESS flow"
 msgstr "VLESS flow"
 
@@ -11287,6 +11362,9 @@ msgstr "Приватный ключ WireGuard из вашего аккаунта
 
 msgid "WireGuard private key from your Cloudflare account"
 msgstr "Приватный ключ WireGuard из вашего аккаунта Cloudflare"
+
+msgid "Workers"
+msgstr "Количество воркеров"
 
 msgid "Working"
 msgstr "Рабочих"
@@ -11968,6 +12046,9 @@ msgstr "🇱🇻 Латвия (lv)"
 
 msgid "🇵🇱 Poland (pl)"
 msgstr "🇵🇱 Польша (pl)"
+
+msgid "Invalid CSQTT URL: missing host/peer or password"
+msgstr ""
 
 msgid "Native (core)"
 msgstr "Встроенный (core)"

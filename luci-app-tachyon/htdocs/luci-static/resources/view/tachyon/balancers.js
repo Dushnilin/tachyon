@@ -56,6 +56,7 @@ const PROTOCOL_CHOICES = [
   ["sudoku", "Sudoku"],
   ["warp", "WARP"],
   ["tewfai", "TewFai"],
+  ["csqtt", "CSQTT"],
   ["tailscale", "Tailscale"],
   ["tor", "Tor"],
   ["desync", "Native Desync"],

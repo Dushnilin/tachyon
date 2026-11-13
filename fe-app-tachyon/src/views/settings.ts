@@ -237,6 +237,8 @@ function isDownloadSectionAction(action, capabilities) {
     case 'naive':
     case 'sudoku':
     case 'masque':
+    case 'tewfai':
+    case 'csqtt':
     case 'openvpn':
       return true;
     case 'zapret':
@@ -2217,6 +2219,8 @@ function createSmartDetectSectionsWidget(section_id) {
     'mieru',
     'sudoku',
     'masque',
+    'tewfai',
+    'csqtt',
     'openvpn',
     'wdtt',
     'olcrtc',
