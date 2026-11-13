@@ -71,6 +71,9 @@ function is_supported_share_link(line) {
         starts_with(line, "stls://") ||
         starts_with(line, "sudoku://") ||
         starts_with(line, "ssh://") ||
+        starts_with(lc(line), "csqtt://") ||
+        starts_with(lc(line), "wdtt://") ||
+        starts_with(lc(line), "qwdtt://") ||
         happ.is_encrypted(line);
 }
 
@@ -2576,6 +2579,493 @@ function process_hysteria1(raw, url) {
     return outbound;
 }
 
+let parse_wdtt_via_core_cli;
+
+function urldecode_raw_plus(value) {
+    value = as_string(value);
+    if (index(value, "%") < 0)
+        return value;
+    return replace(value, /%([0-9A-Fa-f][0-9A-Fa-f])/g, function(all, hex_value) {
+        return chr(hex(hex_value));
+    });
+}
+
+function split_wdtt_hashes(raw) {
+    let out = [];
+    for (let item in split(as_string(raw), /[,|;+\r\n\t ]+/)) {
+        item = trim(item);
+        if (item == "")
+            continue;
+        let join_idx = rindex(item, "/call/join/");
+        if (join_idx >= 0) {
+            let tail = substr(item, join_idx + 11);
+            let parts = split(tail, /[?#\/]/);
+            item = length(parts) > 0 ? trim(parts[0]) : "";
+        }
+        if (item != "")
+            push(out, item);
+    }
+    return out;
+}
+
+function parse_wdtt_port_val(value) {
+    if (type(value) == "int" || type(value) == "double") {
+        let p = int(value);
+        return (p >= 1 && p <= 65535) ? p : null;
+    }
+    let text = trim(as_string(value));
+    if (text == "" || match(text, /^[0-9]+$/) == null)
+        return null;
+    let p = int(text);
+    return (p >= 1 && p <= 65535) ? p : null;
+}
+
+function parse_wdtt_worker_val(value) {
+    let p = parse_wdtt_port_val(value);
+    return (p != null && p >= 1 && p <= 126) ? p : null;
+}
+
+function strip_brackets(host) {
+    host = trim(as_string(host));
+    if (substr(host, 0, 1) == "[" && substr(host, length(host) - 1) == "]")
+        return substr(host, 1, length(host) - 2);
+    return host;
+}
+
+function parse_csqtt_v2_peer(raw) {
+    let s = trim(as_string(raw));
+    if (s == "")
+        return [ "", null ];
+    if (match(s, /^[0-9]+$/) != null) {
+        let p = parse_wdtt_port_val(s);
+        if (p != null)
+            return [ "", p ];
+    }
+    if (substr(s, 0, 1) == "[") {
+        let end_br = index(s, "]:");
+        if (end_br > 1) {
+            let host = trim(substr(s, 1, end_br - 1));
+            let port = parse_wdtt_port_val(substr(s, end_br + 2));
+            return [ host, port ];
+        }
+        if (substr(s, length(s) - 1) == "]") {
+            let host = trim(substr(s, 1, length(s) - 2));
+            return [ host, null ];
+        }
+    }
+    let last_colon = rindex(s, ":");
+    if (last_colon > 0 && index(substr(s, 0, last_colon), ":") < 0) {
+        let port = parse_wdtt_port_val(substr(s, last_colon + 1));
+        if (port != null)
+            return [ trim(substr(s, 0, last_colon)), port ];
+    }
+    return [ strip_brackets(s), null ];
+}
+
+function parse_csqtt_v2_pairs(query) {
+    query = as_string(query);
+    if (index(query, "&") >= 0) {
+        let pairs = [];
+        for (let part in split(query, "&")) {
+            if (part == "")
+                continue;
+            let eq = index(part, "=");
+            if (eq > 0)
+                push(pairs, [ substr(part, 0, eq), substr(part, eq + 1) ]);
+        }
+        return pairs;
+    }
+
+    const KNOWN_KEYS = [
+        "turn_transport=", "device_id=", "srtp_mode=", "vk_token=",
+        "password=", "streams=", "workers=", "server=", "hashes=",
+        "token=", "hash=", "host=", "peer=", "port=", "pass=",
+        "obfs=", "srtp=", "mode=", "name=", "did=", "ip=", "v="
+    ];
+
+    let spans = [];
+    let qlen = length(query);
+    let i = 0;
+    while (i < qlen) {
+        let matched = null;
+        let rest_lc = lc(substr(query, i, 16));
+        for (let k in KNOWN_KEYS) {
+            if (k == "v=" && i > 0)
+                continue;
+            if (substr(rest_lc, 0, length(k)) == k) {
+                matched = k;
+                break;
+            }
+        }
+        if (matched != null) {
+            push(spans, [ i, i + length(matched) ]);
+            i += length(matched);
+        } else {
+            i += 1;
+        }
+    }
+
+    if (length(spans) == 0) {
+        let eq = index(query, "=");
+        return eq > 0 ? [ [ substr(query, 0, eq), substr(query, eq + 1) ] ] : [];
+    }
+
+    let pairs = [];
+    for (let idx = 0; idx < length(spans); idx++) {
+        let k_start = spans[idx][0];
+        let val_start = spans[idx][1];
+        let val_end = (idx + 1 < length(spans)) ? spans[idx + 1][0] : qlen;
+        let k_name = substr(query, k_start, val_start - k_start - 1);
+        let val = substr(query, val_start, val_end - val_start);
+        push(pairs, [ k_name, val ]);
+    }
+    return pairs;
+}
+
+function parse_csqtt_v2_connect_query(text, frag_tag, raw) {
+    let trimmed = trim(as_string(text));
+    let qpos = index(trimmed, "?");
+    let query = qpos >= 0 ? substr(trimmed, qpos + 1) : trimmed;
+    let params = {};
+    for (let kv in parse_csqtt_v2_pairs(query)) {
+        let k = trim(lc(kv[0]));
+        if (k == "")
+            continue;
+        let v = (k == "hashes" || k == "hash") ? urldecode_raw_plus(kv[1]) : urldecode(kv[1]);
+        params[k] = v;
+    }
+
+    let peer_info = params.peer != null ? parse_csqtt_v2_peer(params.peer) : [ "", null ];
+    let server = strip_brackets(params.host || params.server || params.ip || peer_info[0] || "");
+    if (server == "" || is_dummy_server(server, null))
+        return null;
+
+    let server_port = peer_info[1] || parse_wdtt_port_val(params.port) || 46000;
+    let pass = as_string(params.password || params.pass || "");
+    if (pass == "")
+        return null;
+
+    let mode_lc = trim(lc(as_string(params.mode || "")));
+    let mode = "csqtt";
+    if (mode_lc == "csqtt_v1" || mode_lc == "wg" || mode_lc == "raw")
+        mode = mode_lc;
+    else if (trim(as_string(params.v || "")) == "1")
+        mode = "csqtt_v1";
+
+    let tag = frag_tag != "" ? frag_tag : trim(as_string(params.name || ""));
+    if (tag == "")
+        tag = "csqtt-" + server + ":" + server_port;
+
+    let outbound = {
+        type: "wdtt",
+        tag: tag,
+        share_link: raw,
+        server: server,
+        server_port: server_port,
+        password: pass,
+        mode: mode
+    };
+
+    let did = trim(as_string(params.did || params.device_id || ""));
+    if (did != "")
+        outbound.device_id = did;
+    let obfs = trim(lc(as_string(params.obfs || "")));
+    if (obfs == "audio" || obfs == "video" || obfs == "unified")
+        outbound.obfs = obfs;
+    let srtp = trim(lc(as_string(params.srtp_mode || params.srtp || "")));
+    if (srtp == "auto" || srtp == "dtls" || srtp == "wrap" || srtp == "dtls-srtp" || srtp == "wrap-srtp")
+        outbound.srtp_mode = srtp;
+    let tt = trim(lc(as_string(params.turn_transport || "")));
+    if (tt == "auto" || tt == "tcp" || tt == "udp" || tt == "tcp_tls" || tt == "tls")
+        outbound.turn_transport = tt;
+    let token = trim(as_string(params.token || params.vk_token || ""));
+    if (token != "")
+        outbound.vk_token = token;
+    let h_raw = params.hashes != null ? params.hashes : params.hash;
+    if (h_raw != null) {
+        let hashes = split_wdtt_hashes(h_raw);
+        if (length(hashes) > 0)
+            outbound.hashes = hashes;
+    }
+    let workers = parse_wdtt_worker_val(params.workers || params.streams);
+    if (workers != null)
+        outbound.workers = workers;
+    return outbound;
+}
+
+function process_wdtt(raw) {
+    let trimmed = trim(as_string(raw));
+    let sep = index(trimmed, "://");
+    if (sep <= 0)
+        return null;
+    let scheme = lc(substr(trimmed, 0, sep));
+    let after = substr(trimmed, sep + 3);
+    let hash_pos = index(after, "#");
+    let body = hash_pos >= 0 ? trim(substr(after, 0, hash_pos)) : trim(after);
+    let frag_tag = hash_pos >= 0 ? trim(urldecode_fragment(substr(after, hash_pos + 1))) : "";
+
+    // 0. csqtt:// plaintext connect?v=2 or encrypted csqtt://<b64url>
+    if (scheme == "csqtt") {
+        if (lc(substr(body, 0, 8)) == "connect?")
+            return parse_csqtt_v2_connect_query(body, frag_tag, raw);
+        if (index(body, ":") < 0 && index(body, "?") < 0 && index(body, "@") < 0) {
+            let b64_check = base64_decode(replace(body, /\/+$/, ""));
+            let maybe_json = b64_check != null ? json_decode_text(b64_check) : null;
+            if (type(maybe_json) != "object" && parse_wdtt_via_core_cli != null) {
+                let cli_out = parse_wdtt_via_core_cli(raw);
+                if (type(cli_out) == "object")
+                    return cli_out;
+            }
+        }
+    }
+
+    // 1. qwdtt://config?ip=...&dtls=...&hashes=...&pass=<unencoded_password>
+    if (scheme == "qwdtt") {
+        let qpos = index(body, "?");
+        let query_raw = qpos >= 0 ? substr(body, qpos + 1) : body;
+        let params = {};
+        let head_q = query_raw;
+        let raw_pass = null;
+        let amp_pass = index(query_raw, "&pass=");
+        if (amp_pass >= 0) {
+            head_q = substr(query_raw, 0, amp_pass);
+            raw_pass = substr(query_raw, amp_pass + 6);
+        } else if (substr(query_raw, 0, 5) == "pass=") {
+            head_q = "";
+            raw_pass = substr(query_raw, 5);
+        }
+        for (let pair in split(head_q, "&")) {
+            if (pair == "")
+                continue;
+            let eq = index(pair, "=");
+            let k = eq >= 0 ? trim(lc(substr(pair, 0, eq))) : trim(lc(pair));
+            let v = eq >= 0 ? urldecode(substr(pair, eq + 1)) : "";
+            if (k != "")
+                params[k] = v;
+        }
+        if (raw_pass != null)
+            params.pass = urldecode_raw_plus(raw_pass);
+
+        let server = strip_brackets(params.ip || params.server || params.host || "");
+        let pass = as_string(params.pass || params.password || "");
+        if (server == "" || pass == "" || is_dummy_server(server, null))
+            return null;
+
+        let mode_lc = trim(lc(as_string(params.mode || params.vpn || "")));
+        let mode = (mode_lc == "raw" || mode_lc == "csqtt" || mode_lc == "csqtt_v1") ? mode_lc : "wg";
+        let dtls_port = parse_wdtt_port_val(params.dtls || params.port) ||
+            ((mode == "csqtt" || mode == "csqtt_v1") ? 46000 : 56000);
+        let raw_port = parse_wdtt_port_val(params.raw);
+        let server_port = (mode == "raw" && raw_port != null) ? raw_port : dtls_port;
+        let tag = frag_tag != "" ? frag_tag : trim(as_string(params.name || ""));
+        if (tag == "")
+            tag = "wdtt-" + server + ":" + server_port;
+
+        let outbound = {
+            type: "wdtt",
+            tag: tag,
+            share_link: raw,
+            server: server,
+            server_port: server_port,
+            password: pass
+        };
+        if (raw_port != null)
+            outbound.raw_port = raw_port;
+        if (mode != "wg")
+            outbound.mode = mode;
+        let obfs = trim(lc(as_string(params.obfs || "")));
+        if (obfs == "audio" || obfs == "video" || obfs == "unified")
+            outbound.obfs = obfs;
+        let srtp = trim(lc(as_string(params.srtp_mode || params.srtp || "")));
+        if (srtp == "auto" || srtp == "dtls" || srtp == "wrap" || srtp == "dtls-srtp" || srtp == "wrap-srtp")
+            outbound.srtp_mode = srtp;
+        let h_raw = params.hashes != null ? params.hashes : params.hash;
+        if (h_raw != null) {
+            let hashes = split_wdtt_hashes(h_raw);
+            if (length(hashes) > 0)
+                outbound.hashes = hashes;
+        }
+        let workers = parse_wdtt_worker_val(params.streams || params.workers);
+        if (workers != null)
+            outbound.workers = workers;
+        return outbound;
+    }
+
+    // 2. Base64 / RawBase64 JSON format: wdtt://eyJ... or csqtt://eyJ...
+    let b64_candidate = replace(body, /\/+$/, "");
+    if (index(b64_candidate, ":") < 0 && index(b64_candidate, "?") < 0 && index(b64_candidate, "@") < 0) {
+        let decoded = base64_decode(b64_candidate);
+        let jmap = decoded != null ? json_decode_text(decoded) : null;
+        if (type(jmap) == "object") {
+            let server = strip_brackets(jmap.ip || jmap.add || jmap.server || "");
+            let pass = as_string(jmap.pass || jmap.id || jmap.password || "");
+            if (server == "" || pass == "" || is_dummy_server(server, null))
+                return null;
+            let raw_mode = trim(lc(as_string(jmap.vpn || jmap.mode || "")));
+            let mode = "wg";
+            if (scheme == "csqtt")
+                mode = raw_mode == "csqtt_v1" ? "csqtt_v1" : "csqtt";
+            else if (raw_mode == "raw" || raw_mode == "csqtt" || raw_mode == "csqtt_v1")
+                mode = raw_mode;
+            let dtls_port = parse_wdtt_port_val(jmap.dtls || jmap.port) ||
+                ((mode == "csqtt" || mode == "csqtt_v1") ? 46000 : 56000);
+            let raw_port = parse_wdtt_port_val(jmap.raw);
+            let server_port = (mode == "raw") ? (raw_port || (dtls_port + 3 <= 65535 ? dtls_port + 3 : dtls_port)) : dtls_port;
+            let tag = frag_tag != "" ? frag_tag : trim(as_string(jmap.name || jmap.ps || ""));
+            if (tag == "")
+                tag = "wdtt-" + server + ":" + server_port;
+
+            let outbound = {
+                type: "wdtt",
+                tag: tag,
+                share_link: raw,
+                server: server,
+                server_port: server_port,
+                password: pass
+            };
+            if (raw_port != null)
+                outbound.raw_port = raw_port;
+            if (mode != "wg")
+                outbound.mode = mode;
+            let did = trim(as_string(jmap.did || jmap.device_id || ""));
+            if (did != "")
+                outbound.device_id = did;
+            let obfs = trim(lc(as_string(jmap.obfs || "")));
+            if (obfs == "audio" || obfs == "video" || obfs == "unified")
+                outbound.obfs = obfs;
+            let srtp = trim(lc(as_string(jmap.srtp_mode || jmap.srtp || "")));
+            if (srtp == "auto" || srtp == "dtls" || srtp == "wrap" || srtp == "dtls-srtp" || srtp == "wrap-srtp")
+                outbound.srtp_mode = srtp;
+            let workers = parse_wdtt_worker_val(jmap.workers || jmap.streams);
+            if (workers != null)
+                outbound.workers = workers;
+            let h_val = jmap.hash != null ? jmap.hash : jmap.hashes;
+            if (type(h_val) == "string") {
+                let hashes = split_wdtt_hashes(h_val);
+                if (length(hashes) > 0)
+                    outbound.hashes = hashes;
+            } else if (type(h_val) == "array") {
+                let hashes = [];
+                for (let item in h_val) {
+                    if (type(item) == "string") {
+                        for (let h in split_wdtt_hashes(item))
+                            push(hashes, h);
+                    }
+                }
+                if (length(hashes) > 0)
+                    outbound.hashes = hashes;
+            }
+            return outbound;
+        }
+    }
+
+    // 3. Colon format: wdtt://host:dtls_port:wg_port:local_port:pass:hash1,hash2#remark
+    if (index(body, "?") < 0 && index(body, "@") < 0) {
+        let host_part = "";
+        let tail = "";
+        if (substr(body, 0, 1) == "[") {
+            let end_br = index(body, "]:");
+            if (end_br > 1) {
+                host_part = trim(substr(body, 1, end_br - 1));
+                tail = substr(body, end_br + 2);
+            }
+        } else {
+            let cpos = index(body, ":");
+            if (cpos > 0) {
+                host_part = trim(substr(body, 0, cpos));
+                tail = substr(body, cpos + 1);
+            }
+        }
+        if (host_part != "" && tail != "") {
+            let parts = split(tail, ":", 5);
+            let dtls_port = length(parts) == 5 ? parse_wdtt_port_val(parts[0]) : null;
+            if (dtls_port != null && !is_dummy_server(host_part, dtls_port)) {
+                let wg_port = parse_wdtt_port_val(parts[1]);
+                let local_port = parse_wdtt_port_val(parts[2]);
+                let pass = urldecode_raw_plus(trim(parts[3]));
+                if (pass == "")
+                    return null;
+                let hashes = split_wdtt_hashes(urldecode_raw_plus(trim(parts[4])));
+                let tag = frag_tag != "" ? frag_tag : ("wdtt-" + host_part + ":" + dtls_port);
+                let outbound = {
+                    type: "wdtt",
+                    tag: tag,
+                    share_link: raw,
+                    server: host_part,
+                    server_port: dtls_port,
+                    password: pass
+                };
+                if (wg_port != null)
+                    outbound.wg_port = wg_port;
+                if (local_port != null)
+                    outbound.local_port = local_port;
+                if (scheme == "csqtt")
+                    outbound.mode = "csqtt";
+                if (length(hashes) > 0)
+                    outbound.hashes = hashes;
+                return outbound;
+            }
+        }
+    }
+
+    // 4. Standard query URI: wdtt://[pass@]host[:port]?pass=...&hashes=...&mode=...#remark
+    let url = parse_url(trimmed);
+    if (!url || url.host == "")
+        return null;
+    let default_port = (scheme == "csqtt") ? 46000 : 56000;
+    let port = parse_wdtt_port_val(url.port) || default_port;
+    if (is_dummy_server(url.host, port))
+        return null;
+    let pass = url.userinfo != "" ? url.userinfo : as_string(url.query.pass || url.query.password || url.query.id || "");
+    if (pass == "")
+        return null;
+    let raw_mode = trim(lc(as_string(url.query.mode || url.query.vpn || "")));
+    let mode = "wg";
+    if (scheme == "csqtt")
+        mode = raw_mode == "csqtt_v1" ? "csqtt_v1" : "csqtt";
+    else if (raw_mode == "raw" || raw_mode == "csqtt" || raw_mode == "csqtt_v1")
+        mode = raw_mode;
+    let tag = frag_tag != "" ? frag_tag : trim(as_string(url.query.name || url.query.ps || ""));
+    if (tag == "")
+        tag = "wdtt-" + url.host + ":" + port;
+
+    let outbound = {
+        type: "wdtt",
+        tag: tag,
+        share_link: raw,
+        server: strip_brackets(url.host),
+        server_port: port,
+        password: pass
+    };
+    let raw_port = parse_wdtt_port_val(url.query.raw_port || url.query.raw);
+    if (raw_port != null)
+        outbound.raw_port = raw_port;
+    if (mode != "wg")
+        outbound.mode = mode;
+    let obfs = trim(lc(as_string(url.query.obfs || "")));
+    if (obfs == "audio" || obfs == "video" || obfs == "unified")
+        outbound.obfs = obfs;
+    let srtp = trim(lc(as_string(url.query.srtp_mode || url.query.srtp || "")));
+    if (srtp == "auto" || srtp == "dtls" || srtp == "wrap" || srtp == "dtls-srtp" || srtp == "wrap-srtp")
+        outbound.srtp_mode = srtp;
+    let token = trim(as_string(url.query.token || url.query.vk_token || ""));
+    if (token != "")
+        outbound.vk_token = token;
+    let did = trim(as_string(url.query.did || url.query.device_id || ""));
+    if (did != "")
+        outbound.device_id = did;
+    let h_raw = url.query.hashes != null ? url.query.hashes : url.query.hash;
+    if (h_raw != null) {
+        let hashes = split_wdtt_hashes(h_raw);
+        if (length(hashes) > 0)
+            outbound.hashes = hashes;
+    }
+    let workers = parse_wdtt_worker_val(url.query.workers || url.query.streams);
+    if (workers != null)
+        outbound.workers = workers;
+    return outbound;
+}
+
 let parse_amnezia_vpn_container;
 
 function parse_share_link(line) {
@@ -2601,6 +3091,8 @@ function parse_share_link(line) {
             res.tag = frag;
         return res;
     }
+    if (starts_with(lc(line), "csqtt://") || starts_with(lc(line), "wdtt://") || starts_with(lc(line), "qwdtt://"))
+        return process_wdtt(line);
 
     let url = parse_url(line);
     if (!url)
@@ -5952,6 +6444,42 @@ function try_normalize_with_core_cli(input_file, output_file, headers_file, forc
         outbounds: outbounds
     });
 }
+
+parse_wdtt_via_core_cli = function(raw_line) {
+    if (!core_subscription_cli_supported())
+        return null;
+    let in_tmp = temp_path("tachyon-wdtt-in");
+    let out_tmp = temp_path("tachyon-wdtt-out");
+    if (!fs.writefile(in_tmp, as_string(raw_line) + "\n")) {
+        fs.unlink(in_tmp);
+        return null;
+    }
+    let args = [
+        core_subscription_bin_path(),
+        "subscription",
+        "parse",
+        in_tmp,
+        "--format",
+        "outbounds",
+        "-o",
+        out_tmp
+    ];
+    let parse_cap = common.command_capture(common.command_from_args(args) + " 2>/dev/null");
+    fs.unlink(in_tmp);
+    if (parse_cap == null || int(parse_cap.status) != 0) {
+        fs.unlink(out_tmp);
+        return null;
+    }
+    let parsed = read_json_file(out_tmp);
+    fs.unlink(out_tmp);
+    if (type(parsed) != "array" || length(parsed) == 0 || type(parsed[0]) != "object")
+        return null;
+    let obj = parsed[0];
+    if (lc(as_string(obj.type || "")) != "wdtt")
+        return null;
+    obj.share_link = as_string(raw_line);
+    return obj;
+};
 
 function normalize_content_file(input_file, output_file, headers_file, engine_mode) {
     last_normalize_error_reason = "";

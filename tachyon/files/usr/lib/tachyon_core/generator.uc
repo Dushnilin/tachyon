@@ -1279,7 +1279,7 @@ for (let inbound in dns_config.inbounds)
 function mixed_proxy_enabled_action(action) {
     return action == "connection" || action == "proxy" || action == "outbound" || action == "vpn" ||
         action == "awg" || action == "byedpi" || action == "zapret" || action == "zapret2" ||
-        action == "wdtt" || action == "olcrtc" || action == "group";
+        action == "wdtt" || action == "csqtt" || action == "olcrtc" || action == "group";
 }
 
 function add_mixed_proxy_for_section(config, section, service_address) {

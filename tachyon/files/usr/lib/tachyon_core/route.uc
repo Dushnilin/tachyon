@@ -234,7 +234,7 @@ function target(section, outbound_tag_name) {
         action == "tewfai" || action == "trusttunnel" || action == "mtproto" || action == "shadowtls" ||
         action == "desync" || action == "chain" || action == "tailscale" ||
         action == "byedpi" || action == "zapret" || action == "zapret2" ||
-        action == "wdtt" || action == "olcrtc" || action == "fptn" || action == "group")
+        action == "wdtt" || action == "csqtt" || action == "olcrtc" || action == "fptn" || action == "group")
         return { action: "route", outbound: outbound_tag_name };
     if (action == "bypass")
         return { action: "route", outbound: runtime_constants.BYPASS_OUTBOUND_TAG };

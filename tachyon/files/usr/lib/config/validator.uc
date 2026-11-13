@@ -510,7 +510,7 @@ function outbound_detour_source_action(action) {
     return connections.is_connections_action(action) || action == "awg" || action == "fptn" ||
         action == "warp" || action == "anytls" || action == "snell" || action == "mieru" ||
         action == "naive" || action == "sudoku" || action == "masque" || action == "openvpn" ||
-        action == "openconnect" || action == "tewfai" || action == "trusttunnel" ||
+        action == "openconnect" || action == "tewfai" || action == "csqtt" || action == "trusttunnel" ||
         action == "mtproto" || action == "shadowtls" || action == "desync" || action == "tailscale";
 }
 
@@ -519,7 +519,7 @@ function outbound_detour_target_action(action) {
     return connections.is_connections_action(action) || action == "awg" || action == "fptn" ||
         action == "warp" || action == "anytls" || action == "snell" || action == "mieru" ||
         action == "naive" || action == "sudoku" || action == "masque" || action == "openvpn" ||
-        action == "openconnect" || action == "tewfai" || action == "trusttunnel" ||
+        action == "openconnect" || action == "tewfai" || action == "csqtt" || action == "trusttunnel" ||
         action == "mtproto" || action == "shadowtls" || action == "desync" ||
         action == "chain" || action == "tailscale";
 }
@@ -687,7 +687,7 @@ function download_section_action_available(action, byedpi_installed, zapret_inst
     if (action == "fptn" || action == "awg" || action == "warp" ||
         action == "anytls" || action == "snell" || action == "mieru" || action == "naive" ||
         action == "sudoku" || action == "masque" || action == "openvpn" || action == "openconnect" ||
-        action == "tewfai" || action == "trusttunnel" || action == "mtproto" || action == "shadowtls" ||
+        action == "tewfai" || action == "csqtt" || action == "trusttunnel" || action == "mtproto" || action == "shadowtls" ||
         action == "desync" || action == "chain" || action == "tailscale" || action == "group")
         return true;
     if (action == "byedpi")
@@ -1013,7 +1013,7 @@ function rule_action(section) {
 function rule_action_supported(action) {
     return contains([ "connection", "proxy", "outbound", "vpn", "awg", "warp",
         "anytls", "snell", "mieru", "naive", "sudoku", "masque", "openvpn",
-        "openconnect", "tewfai", "trusttunnel", "mtproto", "shadowtls",
+        "openconnect", "tewfai", "csqtt", "trusttunnel", "mtproto", "shadowtls",
         "desync", "chain", "tailscale",
         "bypass", "block", "dns", "zapret", "zapret2", "byedpi", "hosts",
         "wdtt", "olcrtc", "fptn", "group" ], as_string(action));
@@ -1022,7 +1022,7 @@ function rule_action_supported(action) {
 function server_routing_section_action_supported(action) {
     return contains([ "connection", "proxy", "outbound", "vpn", "awg", "warp",
         "anytls", "snell", "mieru", "naive", "sudoku", "masque", "openvpn",
-        "openconnect", "tewfai", "trusttunnel", "mtproto", "shadowtls",
+        "openconnect", "tewfai", "csqtt", "trusttunnel", "mtproto", "shadowtls",
         "desync", "chain", "tailscale",
         "zapret", "zapret2", "byedpi", "wdtt", "olcrtc", "fptn", "group" ], as_string(action));
 }
@@ -1037,7 +1037,7 @@ function group_member_action_supported(action) {
         action == "awg" || action == "warp" ||
         action == "anytls" || action == "snell" || action == "mieru" || action == "naive" ||
         action == "sudoku" || action == "masque" || action == "openvpn" || action == "openconnect" ||
-        action == "tewfai" || action == "trusttunnel" || action == "mtproto" || action == "shadowtls" ||
+        action == "tewfai" || action == "csqtt" || action == "trusttunnel" || action == "mtproto" || action == "shadowtls" ||
         action == "chain" || action == "tailscale" || action == "fptn";
 }
 
@@ -1356,7 +1356,7 @@ function validate_proxy_parameter_filters(protocols, transports, securities, por
     for (let value in protocols)
         validate_proxy_parameter_value(value,
             [ "awg", "amneziawg", "direct", "http", "hysteria2", "shadowsocks", "socks", "trojan", "tuic", "vless", "vmess",
-              "anytls", "naive", "mieru", "snell", "masque", "sudoku", "openvpn", "openconnect", "tewfai", "trusttunnel", "mtproto", "shadowtls", "fptn" ],
+              "anytls", "naive", "mieru", "snell", "masque", "sudoku", "openvpn", "openconnect", "tewfai", "csqtt", "wdtt", "trusttunnel", "mtproto", "shadowtls", "fptn" ],
             "protocol", section);
     for (let value in transports)
         validate_proxy_parameter_value(value,
@@ -1964,11 +1964,20 @@ function validate_rule(section, sections, context) {
     }
 
     if (action == "wdtt") {
-        if (!context.wdtt_installed) {
+        if (!context.wdtt_installed && !bool_option(section, "wdtt_native", false)) {
             validate_common_rule_references(section, context);
             return;
         }
         validate_wdtt_section(section, context);
+    }
+
+    if (action == "csqtt") {
+        let uri = option(section, "csqtt_uri", option(section, "warp_flow_uri", ""));
+        let srv = option(section, "csqtt_server", option(section, "server", ""));
+        if (uri == "" && srv == "")
+            fail_validation("CSQTT rule '" + name + "' requires a server address or link URI. Aborted.");
+        if (srv != "" && option(section, "csqtt_password", option(section, "password", "")) == "")
+            fail_validation("CSQTT rule '" + name + "' requires a password. Aborted.");
     }
 
     if (action == "olcrtc") {
@@ -1994,6 +2003,7 @@ function validate_rule(section, sections, context) {
         zapret2: "Zapret2",
         byedpi: "ByeDPI",
         wdtt: "WDTT",
+        csqtt: "CSQTT",
         olcrtc: "OlcRTC",
         fptn: "FPTN"
     };
@@ -2005,7 +2015,7 @@ function validate_rule(section, sections, context) {
             fail_validation(provider_labels[action] + " rule '" + name + "' has no routing conditions. Add domains, community lists, IP/subnet/port/protocol matchers, enable Mixed Proxy, or enable Match All explicitly. Aborted.");
     }
 
-    if (connections.is_connections_action(action) || action == "fptn") {
+    if (connections.is_connections_action(action) || action == "fptn" || action == "csqtt") {
         validate_section_route_groups(section);
 
         if (rule_has_subscription_urls(section)) {
@@ -3175,6 +3185,11 @@ function validate_section_action_variant_support(ctx, sing_box_version) {
                     fail_requirement("Section '" + name + "' uses Native Desync, but the installed core cannot provide it." + hint + " Update tachyon-core in the Updates tab or change the action. Aborted.", "fatal");
                 }
             }
+
+            if ((action == "csqtt" || (action == "wdtt" && bool_option(section, "wdtt_native", false))) &&
+                !core_profile().supports_protocol(sing_box_version, sing_box_core_marker(ctx), "wdtt")) {
+                fail_requirement("Section '" + name + "' uses CSQTT / WDTT v3, which requires tachyon-core. Switch the core to tachyon-core or change the action. Aborted.", "fatal");
+            }
         } catch (e) {
             current_validating_section = "";
             if (index(as_string(e), "__TACHYON_QUARANTINE__") < 0)
@@ -3193,6 +3208,8 @@ function validate_section_action_variant_support(ctx, sing_box_version) {
         current_validating_section = name;
         try {
             let srv_proto = as_string(option(server, "protocol", "vless"));
+            if (srv_proto == "wdtt" && !core_profile().supports_protocol(sing_box_version, sing_box_core_marker(ctx), "wdtt"))
+                fail_requirement("Server '" + name + "' uses CSQTT / WDTT v3, which requires tachyon-core. Switch the core to tachyon-core or select another protocol. Aborted.", "fatal");
             if (srv_proto == "mtproto" && sing_box_is_tachyon_core(ctx, sing_box_version) && match(as_string(sing_box_version), /^v?0\.0\./) != null)
                 fail_requirement("Server '" + name + "' uses MTProto, but tachyon-core does not implement MTProto yet. Use sing-box-extended or select another protocol. Aborted.", "fatal");
 
@@ -3236,7 +3253,7 @@ function has_outbound_section(ctx) {
         // without this check a lone AWG/WARP/VPN section triggered the
         // misleading "No proxy outbound sections found" warning.
         if (contains([ "awg", "warp", "vpn", "openvpn", "masque",
-            "anytls", "snell", "mieru", "naive", "sudoku", "openconnect", "tewfai", "trusttunnel",
+            "anytls", "snell", "mieru", "naive", "sudoku", "openconnect", "tewfai", "csqtt", "trusttunnel",
             "mtproto", "shadowtls", "desync", "chain", "tailscale", "fptn" ], as_string(action)))
             return true;
 

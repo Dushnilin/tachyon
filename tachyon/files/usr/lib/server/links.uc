@@ -198,7 +198,7 @@ function supported(s) {
     }
     return index([ "vless", "vmess", "trojan", "shadowsocks", "socks", "mixed", "http", "naive",
         "hysteria2", "tuic", "anytls", "shadowtls", "fptn", "mtproto", "mieru",
-        "trusttunnel", "tewfai", "masque", "openconnect", "awg" ], protocol) >= 0;
+        "trusttunnel", "tewfai", "masque", "openconnect", "awg", "wdtt" ], protocol) >= 0;
 }
 
 function build(s, fallback_host, pin) {
@@ -206,7 +206,7 @@ function build(s, fallback_host, pin) {
     if (!address || !supported(s)) return "";
     let protocol = s.protocol || "vless";
     if (protocol == "json_inbound") return mieru(s, json(s.inbound_json), address);
-    let defaults = { shadowsocks: 8388, socks: 1080, http: 8080, mixed: 8080, tuic: 8443, awg: 51820 };
+    let defaults = { shadowsocks: 8388, socks: 1080, http: 8080, mixed: 8080, tuic: 8443, awg: 51820, wdtt: 46000 };
     let user = identity(s);
     if (protocol == "mieru") {
         if (!user.password) return "";
@@ -354,6 +354,28 @@ function build(s, fallback_host, pin) {
         let payload = { version: 1, service_name: "Tachyon", username: user.username, password: user.password,
             servers: [{ name: user.name, host: address, port, md5_fingerprint: md5_pin }], censored_zone_servers: [] };
         return "fptn://" + replace(b64enc(sprintf("%J", payload)), /=+$/, "") + "#" + encode(user.name);
+    }
+    if (protocol == "wdtt") {
+        if (!user.password) return "";
+        let mode = lc(trim(str(s.wdtt_mode || "csqtt")));
+        let obfs = trim(str(s.wdtt_obfs || "audio"));
+        if (mode == "wg" || mode == "raw") {
+            let payload = { v: 1, ip: address, dtls: port, pass: user.password, vpn: mode };
+            if (s.wdtt_raw_port && int(s.wdtt_raw_port) > 0)
+                payload.raw = int(s.wdtt_raw_port);
+            if (obfs != "" && obfs != "audio")
+                payload.obfs = obfs;
+            return "wdtt://" + replace(replace(replace(b64enc(sprintf("%J", payload)), /\+/g, "-"), /\//g, "_"), /=+$/, "") + "#" + encode(user.name);
+        }
+        let eff_mode = mode == "csqtt_v1" ? "csqtt_v1" : "csqtt";
+        return "csqtt://connect" + query({
+            v: eff_mode == "csqtt_v1" ? "1" : "2",
+            host: address,
+            peer: port,
+            password: user.password,
+            mode: eff_mode == "csqtt_v1" ? "csqtt_v1" : null,
+            obfs: obfs != "" ? obfs : null
+        }) + "#" + encode(user.name);
     }
     let scheme = protocol == "mixed" || protocol == "socks" ? "socks5" : (protocol == "naive" ? "naive+https" : "http");
     let auth = scheme == "socks5" ? common.bool_value(s.socks_auth_enabled ?? "1") : user.password != "";

@@ -99,7 +99,7 @@ function users(section, protocol) {
             password: p
         }];
     }
-    if (protocol == "mieru") {
+    if (protocol == "mieru" || protocol == "wdtt") {
         let u = option(section, "server_username", "");
         let p = option(section, "server_password", "");
         return [{
@@ -157,7 +157,7 @@ function effective_security(section, protocol) {
     if (protocol == "shadowsocks" || protocol == "socks" || protocol == "mtproto" ||
         protocol == "tailscale" || protocol == "json_inbound" || protocol == "awg" ||
         protocol == "shadowtls" || protocol == "http" || protocol == "mixed" ||
-        protocol == "mieru")
+        protocol == "mieru" || protocol == "wdtt")
         return "none";
     if (protocol == "hysteria2" || protocol == "tuic" || protocol == "anytls" ||
         protocol == "naive" || protocol == "fptn" || protocol == "trusttunnel" ||
@@ -353,7 +353,7 @@ function add_standard_inbound(config, section, protocol, tag_name) {
         type: protocol,
         tag: tag_name,
         listen: option(section, "listen", "0.0.0.0"),
-        listen_port: int_option(section, "listen_port", "443")
+        listen_port: int_option(section, "listen_port", protocol == "wdtt" ? "46000" : "443")
     };
 
     if (protocol == "shadowsocks") {
@@ -496,6 +496,34 @@ function add_standard_inbound(config, section, protocol, tag_name) {
         }
         let mtu = int_option(section, "tewfai_mtu", "0");
         if (mtu > 0)
+            inbound.mtu = mtu;
+    }
+    else if (protocol == "wdtt") {
+        let mode = lc(trim(as_string(option(section, "wdtt_mode", "csqtt"))));
+        if (mode == "all" || mode == "wg" || mode == "raw" || mode == "csqtt" || mode == "csqtt_v1")
+            inbound.mode = mode;
+        else
+            inbound.mode = "csqtt";
+        let obfs = lc(trim(as_string(option(section, "wdtt_obfs", "audio"))));
+        if (obfs == "audio" || obfs == "video" || obfs == "unified")
+            inbound.obfs = obfs;
+        let pw = option(section, "server_password", "");
+        if (pw != "")
+            inbound.password = pw;
+        let u = users(section, protocol);
+        if (length(u) > 0 && u[0].password != "")
+            inbound.users = u;
+        let raw_port = int_option(section, "wdtt_raw_port", "0");
+        if (raw_port > 0 && raw_port <= 65535)
+            inbound.raw_port = raw_port;
+        let net = trim(as_string(option(section, "wdtt_network", "10.66.0.1/16")));
+        if (net != "")
+            inbound.network = net;
+        maybe_string(inbound, "ipv4_pool", option(section, "wdtt_ipv4_pool", ""));
+        maybe_string(inbound, "raw_ipv4_pool", option(section, "wdtt_raw_ipv4_pool", ""));
+        maybe_string(inbound, "client_dns", option(section, "wdtt_client_dns", ""));
+        let mtu = int_option(section, "wdtt_mtu", "0");
+        if (mtu >= 576 && mtu <= 1500)
             inbound.mtu = mtu;
     }
     else if (protocol == "masque") {

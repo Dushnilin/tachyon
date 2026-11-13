@@ -66,10 +66,12 @@ function parse_query_string(query) {
 
 function parse_wdtt_uri(value) {
     value = trim(as_string(value));
-    if (substr(value, 0, 7) != "wdtt://")
-        return { valid: false, reason: "URI must start with wdtt://" };
+    let lower = lc(value);
+    if (substr(lower, 0, 7) != "wdtt://" && substr(lower, 0, 8) != "csqtt://" && substr(lower, 0, 8) != "qwdtt://")
+        return { valid: false, reason: "URI must start with wdtt://, csqtt://, or qwdtt://" };
 
-    let rest = substr(value, 7);
+    let sep = index(value, "://");
+    let rest = substr(value, sep + 3);
     let hash_idx = index(rest, "#");
     let label = "";
     if (hash_idx >= 0) {
@@ -77,15 +79,26 @@ function parse_wdtt_uri(value) {
         rest = substr(rest, 0, hash_idx);
     }
 
-    let params = parse_query_string(rest);
-    let peer = params.peer || "";
-    let hashes = params.hashes || "";
-    let pass = params.pass || "";
-    let workers = params.workers || "";
-    let port = params.port || "";
+    if (substr(lower, 0, 8) == "csqtt://" && index(rest, ":") < 0 && index(rest, "?") < 0 && index(rest, "@") < 0 && length(rest) >= 16)
+        return { valid: true, peer: "", hashes: "", pass: "", workers: "", port: "", label: label };
+
+    let qpos = index(rest, "?");
+    let query_part = qpos >= 0 ? substr(rest, qpos + 1) : rest;
+    let params = parse_query_string(query_part);
+    let peer = params.peer || params.host || params.ip || params.server || "";
+    let hashes = params.hashes || params.hash || "";
+    let pass = params.pass || params.password || "";
+    let workers = params.workers || params.streams || "";
+    let port = params.port || params.dtls || "";
+
+    if (peer == "" && substr(lower, 0, 7) == "wdtt://" && index(rest, ":") < 0 && index(rest, "?") < 0)
+        return { valid: true, peer: "", hashes: hashes, pass: pass, workers: workers, port: port, label: label };
+
+    if (peer == "" && index(rest, ":") >= 0 && index(rest, "?") < 0)
+        peer = split(rest, ":")[0] || "";
 
     if (peer == "")
-        return { valid: false, reason: "wdtt:// URI must contain peer parameter" };
+        return { valid: false, reason: "wdtt/csqtt URI must contain peer or host parameter" };
 
     return {
         valid: true,
@@ -187,16 +200,17 @@ function validate_section(section) {
         link = trim(as_string(link));
         if (link == "")
             continue;
-        if (substr(link, 0, 7) == "wdtt://") {
+        let lower_link = lc(link);
+        if (substr(lower_link, 0, 7) == "wdtt://" || substr(lower_link, 0, 8) == "csqtt://" || substr(lower_link, 0, 8) == "qwdtt://") {
             let parsed = parse_wdtt_uri(link);
             if (!parsed.valid)
-                push(errors, "invalid wdtt:// URI: " + parsed.reason);
+                push(errors, "invalid wdtt/csqtt URI: " + parsed.reason);
         }
         else if (substr(link, 0, 1) == "/") {
             /* local file — ok */
         }
         else if (!valid_url(link))
-            push(errors, "subscription link must be HTTP URL, wdtt:// URI, or local file path: " + link);
+            push(errors, "subscription link must be HTTP URL, wdtt:///csqtt:///qwdtt:// URI, or local file path: " + link);
     }
 
     let community_lists = list_values(section.community_lists);

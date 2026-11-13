@@ -420,6 +420,7 @@ function format_outbound_type_label(protocol, transport) {
     else if (p == "openvpn") norm_proto = "OpenVPN";
     else if (p == "openconnect") norm_proto = "OpenConnect";
     else if (p == "tewfai") norm_proto = "Tewfai";
+    else if (p == "wdtt" || p == "csqtt") norm_proto = "CSQTT";
     else if (p == "trusttunnel") norm_proto = "TrustTunnel";
     else if (p == "mtproto" || p == "mtproxy") norm_proto = "MTProto";
     else if (p == "shadowtls") norm_proto = "ShadowTLS";
@@ -5043,6 +5044,8 @@ function add_outbound_for_section(config, section, taken, sections) {
         ctx.outbounds.add_byedpi_outbound(config, section, sections);
     else if (action == "wdtt")
         ctx.outbounds.add_wdtt_outbound(config, section, sections);
+    else if (action == "csqtt")
+        ctx.outbounds.add_csqtt_outbound(config, section);
     else if (action == "olcrtc")
         ctx.outbounds.add_olcrtc_outbound(config, section, sections);
     else if (action == "fptn")
@@ -5076,7 +5079,7 @@ function reserve_section_outbound_tags(sections, taken) {
         let action = option(section, "action", "");
         if (connections.is_connections_action(action) ||
             action == "awg" || action == "warp" || action == "byedpi" || action == "zapret" || action == "zapret2" ||
-            action == "wdtt" || action == "olcrtc" || action == "fptn" ||
+            action == "wdtt" || action == "csqtt" || action == "olcrtc" || action == "fptn" ||
             action == "anytls" || action == "snell" || action == "mieru" || action == "naive" || action == "sudoku" ||
             action == "masque" || action == "openvpn" || action == "openconnect" ||
             action == "tewfai" || action == "trusttunnel" || action == "mtproto" || action == "shadowtls" ||
@@ -5133,7 +5136,7 @@ function failover_candidate(sections) {
         let action = option(section, "action", "");
         if (connections.is_connections_action(action) ||
             action == "awg" || action == "warp" || action == "byedpi" || action == "zapret" || action == "zapret2" ||
-            action == "wdtt" || action == "olcrtc" ||
+            action == "wdtt" || action == "csqtt" || action == "olcrtc" ||
             action == "anytls" || action == "snell" || action == "mieru" || action == "naive" || action == "sudoku" ||
             action == "masque" || action == "openvpn" || action == "openconnect" ||
             action == "tewfai" || action == "trusttunnel" || action == "mtproto" || action == "shadowtls" ||

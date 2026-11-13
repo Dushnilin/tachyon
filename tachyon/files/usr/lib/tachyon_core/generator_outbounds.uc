@@ -212,7 +212,7 @@ function supported_subscription_outbound(outbound) {
         t == "fptn" || t == "anytls" || t == "naive" || t == "mieru" ||
         t == "snell" || t == "masque" || t == "sudoku" || t == "openvpn" ||
         t == "openconnect" || t == "tewfai" || t == "trusttunnel" ||
-        t == "mtproto" || t == "shadowtls" || t == "ssh");
+        t == "mtproto" || t == "shadowtls" || t == "ssh" || t == "wdtt");
     if (!is_proto)
         return false;
     if (t == "masque" && type(outbound.profile) == "object")
@@ -312,6 +312,18 @@ function compatible_subscription_outbounds(outbounds, section_name) {
     }
 }
 
+function sanitize_wdtt_outbound(obj) {
+    if (type(obj) != "object" || lc(as_string(obj.type || "")) != "wdtt")
+        return obj;
+    // tachyon-core v0.5.2 validate::WDTT_OUT_FIELDS omits srtp_mode and vk_token.
+    let ver = trim(as_string(variant_state.read_version_state() || ""));
+    if (ver == "" || !core_profile.reaches_triple(ver, "0.5.3")) {
+        delete obj.srtp_mode;
+        delete obj.vk_token;
+    }
+    return obj;
+}
+
 function copy_subscription_outbound(outbound, new_tag) {
     let copy = {};
     for (let key, value in outbound) {
@@ -376,6 +388,7 @@ function copy_subscription_outbound(outbound, new_tag) {
         }
     }
     copy.tag = new_tag;
+    sanitize_wdtt_outbound(copy);
     return copy;
 }
 
@@ -1331,6 +1344,7 @@ function manual_link_outbound(link, tag_name, display_info) {
         scheme == "tg" || scheme == "mtproto" || scheme == "shadowtls" ||
         scheme == "tewfai" || scheme == "trusttunnel" || scheme == "masque" ||
         scheme == "openconnect" || scheme == "anyconnect" ||
+        scheme == "csqtt" || scheme == "wdtt" || scheme == "qwdtt" ||
         ((scheme == "http" || scheme == "https") && (index(link, "://t.me/proxy?") >= 0 || index(link, "://telegram.me/proxy?") >= 0))) {
         let parsed = subscription_parser.parse_share_link(link);
         if (parsed == null)
@@ -2181,7 +2195,7 @@ function parse_outbound_json(value) {
         return null;
     }
 
-    return type(value) == "object" ? value : null;
+    return type(value) == "object" ? sanitize_wdtt_outbound(value) : null;
 }
 
 function rewrite_json_outbound_references(outbounds, tag_map) {
@@ -4123,7 +4137,133 @@ function add_byedpi_outbound(config, section, sections) {
     });
 }
 
+function add_csqtt_outbound(config, section) {
+    let tag_name = outbound_tag(section[".name"]);
+    let uri = trim(as_string(option(section, "csqtt_uri", option(section, "warp_flow_uri", ""))));
+    let server = trim(as_string(option(section, "csqtt_server", option(section, "server", ""))));
+    if (server == "" && uri != "") {
+        let parsed = subscription_parser.parse_share_link(uri);
+        if (type(parsed) == "object" && lc(as_string(parsed.type || "")) == "wdtt") {
+            let outbound = copy_subscription_outbound(parsed, tag_name);
+            let detour = outbound_detour_tag_for_section(section);
+            if (detour != "")
+                outbound.detour = detour;
+            push(config.outbounds, sanitize_wdtt_outbound(outbound));
+            return;
+        }
+    }
+    if (server == "")
+        ctx.runtime_generate_unsupported("CSQTT section '" + section[".name"] + "' missing csqtt_server");
+
+    let mode = trim(lc(as_string(option(section, "csqtt_mode", "csqtt"))));
+    if (mode != "wg" && mode != "raw" && mode != "csqtt" && mode != "csqtt_v1")
+        mode = "csqtt";
+    let default_port = (mode == "wg" || mode == "raw") ? "56000" : "46000";
+    let port = int_option(section, "csqtt_server_port", default_port);
+    if (port < 1 || port > 65535)
+        port = int(default_port, 10);
+    let password = as_string(option(section, "csqtt_password", option(section, "password", "")));
+    if (password == "")
+        ctx.runtime_generate_unsupported("CSQTT section '" + section[".name"] + "' missing csqtt_password");
+
+    let outbound = {
+        type: "wdtt",
+        tag: tag_name,
+        server: server,
+        server_port: port,
+        password: password,
+        mode: mode
+    };
+    let raw_port = int_option(section, "csqtt_raw_port", "0");
+    if (raw_port > 0 && raw_port <= 65535) outbound.raw_port = raw_port;
+    let wg_port = int_option(section, "csqtt_wg_port", "0");
+    if (wg_port > 0 && wg_port <= 65535) outbound.wg_port = wg_port;
+    let local_port = int_option(section, "csqtt_local_port", "0");
+    if (local_port > 0 && local_port <= 65535) outbound.local_port = local_port;
+
+    let obfs = trim(lc(as_string(option(section, "csqtt_obfs", ""))));
+    if (obfs == "audio" || obfs == "video" || obfs == "unified")
+        outbound.obfs = obfs;
+
+    let hashes_list = list_option(section, "csqtt_hashes");
+    let hashes = [];
+    for (let item in hashes_list) {
+        for (let part in split(as_string(item), /[,;\s+]+/)) {
+            part = trim(part);
+            if (part != "") push(hashes, part);
+        }
+    }
+    if (length(hashes) == 0) {
+        let h_str = trim(as_string(option(section, "csqtt_hashes", "")));
+        if (h_str != "") {
+            for (let part in split(h_str, /[,;\s+]+/)) {
+                part = trim(part);
+                if (part != "") push(hashes, part);
+            }
+        }
+    }
+    if (length(hashes) > 0) outbound.hashes = hashes;
+
+    let vk_auth = trim(lc(as_string(option(section, "csqtt_vk_auth_mode", ""))));
+    if (vk_auth != "") outbound.vk_auth_mode = vk_auth;
+    let vk_cookie = as_string(option(section, "csqtt_vk_cookie", ""));
+    if (vk_cookie != "") outbound.vk_cookie = vk_cookie;
+    let vk_cids = list_option(section, "csqtt_vk_client_ids");
+    if (length(vk_cids) > 0) outbound.vk_client_ids = vk_cids;
+
+    let turn_srv = trim(as_string(option(section, "csqtt_turn_server", "")));
+    if (turn_srv != "") outbound.turn_server = turn_srv;
+    let turn_urls = list_option(section, "csqtt_turn_urls");
+    if (length(turn_urls) > 0) outbound.turn_urls = turn_urls;
+    let turn_user = as_string(option(section, "csqtt_turn_username", ""));
+    if (turn_user != "") outbound.turn_username = turn_user;
+    let turn_pass = as_string(option(section, "csqtt_turn_password", ""));
+    if (turn_pass != "") outbound.turn_password = turn_pass;
+    let turn_tr = trim(lc(as_string(option(section, "csqtt_turn_transport", ""))));
+    if (turn_tr == "auto" || turn_tr == "tcp" || turn_tr == "udp" || turn_tr == "tcp_tls" || turn_tr == "tls")
+        outbound.turn_transport = turn_tr;
+
+    let workers = int_option(section, "csqtt_workers", "0");
+    if (workers >= 1 && workers <= 126) outbound.workers = workers;
+    let did = trim(as_string(option(section, "csqtt_device_id", "")));
+    if (did != "") outbound.device_id = did;
+    let mtu = int_option(section, "csqtt_mtu", "0");
+    if (mtu >= 576 && mtu <= 1500) outbound.mtu = mtu;
+    if (bool_option(section, "csqtt_chunk1", false)) outbound.chunk1 = true;
+
+    let wg_priv = trim(as_string(option(section, "csqtt_wg_private_key", "")));
+    if (wg_priv != "") outbound.wg_private_key = wg_priv;
+    let wg_pub = trim(as_string(option(section, "csqtt_wg_peer_public_key", "")));
+    if (wg_pub != "") outbound.wg_peer_public_key = wg_pub;
+    let wg_addr = trim(as_string(option(section, "csqtt_wg_address", "")));
+    if (wg_addr != "") outbound.wg_address = wg_addr;
+
+    let detour = outbound_detour_tag_for_section(section);
+    if (detour != "")
+        outbound.detour = detour;
+    push(config.outbounds, sanitize_wdtt_outbound(outbound));
+}
+
 function add_wdtt_outbound(config, section, sections) {
+    if (bool_option(section, "wdtt_native", false)) {
+        let uri = trim(as_string(option(section, "warp_flow_uri", "")));
+        if (uri != "") {
+            let parsed = subscription_parser.parse_share_link(uri);
+            if (type(parsed) == "object" && lc(as_string(parsed.type || "")) == "wdtt") {
+                let outbound = copy_subscription_outbound(parsed, outbound_tag(section[".name"]));
+                let workers = int_option(section, "wdtt_workers", "0");
+                if (workers >= 1 && workers <= 126) outbound.workers = workers;
+                let mtu = int_option(section, "wdtt_mtu", "0");
+                if (mtu >= 576 && mtu <= 1500) outbound.mtu = mtu;
+                let did = trim(as_string(option(section, "warp_flow_device_id", "")));
+                if (did != "" && outbound.device_id == null) outbound.device_id = did;
+                let detour = outbound_detour_tag_for_section(section);
+                if (detour != "") outbound.detour = detour;
+                push(config.outbounds, sanitize_wdtt_outbound(outbound));
+                return;
+            }
+        }
+    }
     if (connections && !connections.section_is_active_provider(section, "wdtt"))
         return;
     let index = enabled_action_index(sections, section, "wdtt");
@@ -4316,6 +4456,7 @@ return {
     add_zapret_outbound,
     add_zapret2_outbound,
     add_byedpi_outbound,
+    add_csqtt_outbound,
     add_wdtt_outbound,
     add_olcrtc_outbound,
     add_fptn_outbound,

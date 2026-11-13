@@ -127,7 +127,7 @@ const TACHYON_PROTOCOLS = [ "vless", "vmess", "trojan", "shadowsocks", "hysteria
     "tuic", "hysteria", "anytls", "snell", "naive", "shadowtls", "ssh", "tor",
     "socks", "http", "wireguard", "awg", "openvpn", "masque", "fptn",
     "selector", "urltest", "cloudflared", "tailscale", "openconnect", "bridge",
-    "mieru", "tewfai", "trusttunnel", "desync" ];
+    "mieru", "tewfai", "trusttunnel", "desync", "wdtt" ];
 
 // Read off the cores themselves rather than off their names: KNOWN_INBOUND_TYPES
 // and KNOWN_OUTBOUND_TYPES in tachyon-core's crates/core-config/src/validate.rs,

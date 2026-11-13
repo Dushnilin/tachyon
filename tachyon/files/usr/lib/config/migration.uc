@@ -1950,7 +1950,7 @@ function cleanup_modular_entities_v1(ctx) {
         "awg_random_trailers", "awg_disable_cookies"
     ];
     let single_proto_actions = [
-        "anytls", "naive", "mieru", "snell", "sudoku", "masque", "tewfai",
+        "anytls", "naive", "mieru", "snell", "sudoku", "masque", "tewfai", "csqtt",
         "trusttunnel", "openconnect", "shadowtls", "warp", "openvpn", "tailscale", "tor", "desync",
         "zapret2", "zapret", "byedpi", "wdtt", "olcrtc"
     ];
@@ -2854,7 +2854,7 @@ function migrate_modular_entities_v1(ctx) {
         }
 
         let single_proto_actions = [
-            "anytls", "naive", "mieru", "snell", "sudoku", "masque", "tewfai",
+            "anytls", "naive", "mieru", "snell", "sudoku", "masque", "tewfai", "csqtt",
             "trusttunnel", "openconnect", "shadowtls", "warp", "openvpn", "tailscale", "tor", "desync",
             "zapret2", "zapret", "byedpi", "wdtt", "olcrtc"
         ];

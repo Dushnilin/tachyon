@@ -404,7 +404,7 @@ function is_remote_proxy_action(action) {
         action == "masque" || action == "openvpn" || action == "openconnect" ||
         action == "tewfai" || action == "trusttunnel" || action == "mtproto" || action == "shadowtls" ||
         action == "chain" || action == "tailscale" ||
-        action == "wdtt" || action == "olcrtc" || action == "fptn";
+        action == "wdtt" || action == "csqtt" || action == "olcrtc" || action == "fptn";
 }
 
 function is_wdtt_action(action) {
@@ -1506,6 +1506,79 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
         }
         return finalize(obj);
     }
+    if (stype == "csqtt") {
+        let srv = trim(option(src, "csqtt_server", option(src, "server", "")));
+        let uri = trim(option(src, "csqtt_uri", option(src, "warp_flow_uri", "")));
+        if (srv == "" && uri != "") {
+            let parsed = require("subscription.parser").parse_share_link(uri);
+            if (type(parsed) == "object" && lc(as_string(parsed.type || "")) == "wdtt") {
+                delete parsed.remark;
+                delete parsed.share_link;
+                delete parsed.srtp_mode;
+                delete parsed.vk_token;
+                parsed.tag = tag_name;
+                return finalize(parsed);
+            }
+            return "";
+        }
+        if (srv == "") return "";
+        let mode = trim(lc(option(src, "csqtt_mode", "csqtt")));
+        if (mode != "wg" && mode != "raw" && mode != "csqtt" && mode != "csqtt_v1")
+            mode = "csqtt";
+        let def_port = (mode == "wg" || mode == "raw") ? "56000" : "46000";
+        let obj = {
+            type: "wdtt",
+            tag: tag_name,
+            server: srv,
+            server_port: int(option(src, "csqtt_server_port", option(src, "csqtt_port", option(src, "server_port", def_port))) || int(def_port, 10)),
+            password: option(src, "csqtt_password", option(src, "password", "")),
+            mode: mode
+        };
+        if (obj.password == "") return "";
+        let raw_port = int(option(src, "csqtt_raw_port", "0") || 0);
+        if (raw_port > 0 && raw_port <= 65535) obj.raw_port = raw_port;
+        let obfs = trim(lc(option(src, "csqtt_obfs", "")));
+        if (obfs == "audio" || obfs == "video" || obfs == "unified") obj.obfs = obfs;
+        let hashes = [];
+        for (let entry in list_value(src, "csqtt_hashes")) {
+            for (let part in split(as_string(entry), /[,;\s+]+/)) {
+                part = trim(part);
+                if (part != "") push(hashes, part);
+            }
+        }
+        if (length(hashes) == 0) {
+            let h_str = trim(option(src, "csqtt_hashes", ""));
+            for (let part in split(h_str, /[,;\s+]+/)) {
+                part = trim(part);
+                if (part != "") push(hashes, part);
+            }
+        }
+        if (length(hashes) > 0) obj.hashes = hashes;
+        let vk_auth = trim(lc(option(src, "csqtt_vk_auth_mode", "")));
+        if (vk_auth != "") obj.vk_auth_mode = vk_auth;
+        let vk_cookie = option(src, "csqtt_vk_cookie", "");
+        if (vk_cookie != "") obj.vk_cookie = vk_cookie;
+        let vk_cids = list_value(src, "csqtt_vk_client_ids");
+        if (length(vk_cids) > 0) obj.vk_client_ids = vk_cids;
+        let t_srv = trim(option(src, "csqtt_turn_server", ""));
+        if (t_srv != "") obj.turn_server = t_srv;
+        let t_urls = list_value(src, "csqtt_turn_urls");
+        if (length(t_urls) > 0) obj.turn_urls = t_urls;
+        let t_user = option(src, "csqtt_turn_username", "");
+        if (t_user != "") obj.turn_username = t_user;
+        let t_pass = option(src, "csqtt_turn_password", "");
+        if (t_pass != "") obj.turn_password = t_pass;
+        let t_tr = trim(lc(option(src, "csqtt_turn_transport", "")));
+        if (t_tr == "auto" || t_tr == "tcp" || t_tr == "udp" || t_tr == "tcp_tls" || t_tr == "tls") obj.turn_transport = t_tr;
+        let workers = int(option(src, "csqtt_workers", "0") || 0);
+        if (workers >= 1 && workers <= 126) obj.workers = workers;
+        let did = trim(option(src, "csqtt_device_id", ""));
+        if (did != "") obj.device_id = did;
+        let mtu = int(option(src, "csqtt_mtu", "0") || 0);
+        if (mtu >= 576 && mtu <= 1500) obj.mtu = mtu;
+        if (bool_option(src, "csqtt_chunk1", false)) obj.chunk1 = true;
+        return finalize(obj);
+    }
     if (stype == "masque") {
         let srv = trim(option(src, "masque_server", option(src, "server", "162.159.198.2"))) || "162.159.198.2";
         let priv = trim(option(src, "masque_private_key", ""));
@@ -2456,6 +2529,7 @@ function strip_server_filter_type_suffix(name) {
             index(candidate_proto, "mieru") >= 0 || index(candidate_proto, "snell") >= 0 ||
             index(candidate_proto, "sudoku") >= 0 || index(candidate_proto, "masque") >= 0 ||
             index(candidate_proto, "trusttunnel") >= 0 || index(candidate_proto, "tewfai") >= 0 ||
+            index(candidate_proto, "csqtt") >= 0 || index(candidate_proto, "wdtt") >= 0 ||
             index(candidate_proto, "openconnect") >= 0 || index(candidate_proto, "openvpn") >= 0 ||
             index(candidate_proto, "shadowtls") >= 0 || index(candidate_proto, "socks") >= 0 ||
             index(candidate_proto, "http") >= 0 || index(candidate_proto, "warp") >= 0 ||

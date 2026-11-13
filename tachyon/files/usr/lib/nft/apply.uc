@@ -3552,9 +3552,11 @@ function extract_server_port_specs(s) {
             push(raw_specs, as_string(s["mieru_server_ports"]));
         }
         if (length(raw_specs) == 0) {
-            let defaults = { shadowsocks: 8388, socks: 1080, http: 8080, mixed: 8080, tuic: 8443 };
+            let defaults = { shadowsocks: 8388, socks: 1080, http: 8080, mixed: 8080, tuic: 8443, wdtt: 46000 };
             push(raw_specs, as_string(defaults[proto] || 443));
         }
+        if (proto == "wdtt" && as_string(s["wdtt_raw_port"] || "") != "")
+            push(raw_specs, as_string(s["wdtt_raw_port"]));
     }
 
     let ports = [];
@@ -3589,7 +3591,7 @@ function collect_server_firewall_ports() {
         let proto = extracted.proto;
         for (let port_spec in extracted.ports) {
             let port_val = index(port_spec, "-") >= 0 ? port_spec : int(port_spec);
-            if (proto == "awg" || proto == "wireguard" || proto == "hysteria2" || proto == "tuic" || proto == "masque") {
+            if (proto == "awg" || proto == "wireguard" || proto == "hysteria2" || proto == "tuic" || proto == "masque" || proto == "wdtt") {
                 push(udp_ports, port_val);
             } else {
                 push(tcp_ports, port_val);

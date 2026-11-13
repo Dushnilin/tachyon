@@ -645,7 +645,7 @@ function server_effective_security_value(section, protocol) {
     if (security == "")
         security = default_security_value(protocol);
 
-    if (protocol == "shadowsocks" || protocol == "socks" || protocol == "mtproto" || protocol == "tailscale" || protocol == "json_inbound" || protocol == "awg" || protocol == "shadowtls" || protocol == "http" || protocol == "mixed" || protocol == "mieru")
+    if (protocol == "shadowsocks" || protocol == "socks" || protocol == "mtproto" || protocol == "tailscale" || protocol == "json_inbound" || protocol == "awg" || protocol == "shadowtls" || protocol == "http" || protocol == "mixed" || protocol == "mieru" || protocol == "wdtt")
         security = "none";
     else if (protocol == "hysteria2" || protocol == "tuic" || protocol == "anytls" || protocol == "naive" || protocol == "fptn" || protocol == "trusttunnel" || protocol == "tewfai" || protocol == "masque" || protocol == "openconnect")
         security = "tls";
@@ -1115,7 +1115,8 @@ function get_router_network_env() {
             trusttunnel: standard_tls_port,
             tewfai: standard_tls_port,
             masque: standard_quic_port,
-            openconnect: standard_tls_port
+            openconnect: standard_tls_port,
+            wdtt: 46000
         },
         recommended_sni: {
             reality: "www.microsoft.com",
@@ -1309,7 +1310,7 @@ function prepare_server_defaults(section) {
         protocol == "json_inbound" || protocol == "awg" || protocol == "tuic" || protocol == "anytls" ||
         protocol == "naive" || protocol == "shadowtls" || protocol == "fptn" || protocol == "http" ||
         protocol == "mixed" || protocol == "mieru" || protocol == "trusttunnel" || protocol == "tewfai" ||
-        protocol == "masque" || protocol == "openconnect"))
+        protocol == "masque" || protocol == "openconnect" || protocol == "wdtt"))
         fatal("Server '" + section + "' has unsupported protocol '" + protocol + "'. Aborted.");
 
     server_default_set_option(section, "protocol", protocol);
@@ -1377,14 +1378,14 @@ function prepare_server_defaults(section) {
     if (protocol == "shadowsocks" || protocol == "socks" || protocol == "trojan" || protocol == "hysteria2" ||
         protocol == "tuic" || protocol == "anytls" || protocol == "naive" || protocol == "shadowtls" ||
         protocol == "fptn" || protocol == "http" || protocol == "mixed" || protocol == "mieru" ||
-        protocol == "trusttunnel" || protocol == "masque") {
+        protocol == "trusttunnel" || protocol == "masque" || protocol == "wdtt") {
         if (uci_get(config_path(section, "server_password")) == "") {
             let password = server_generate_password();
             server_default_set_option(section, "server_password", password);
         }
     }
     if (protocol == "socks" || protocol == "naive" || protocol == "fptn" || protocol == "http" ||
-        protocol == "mixed" || protocol == "mieru" || protocol == "trusttunnel" || protocol == "masque") {
+        protocol == "mixed" || protocol == "mieru" || protocol == "trusttunnel" || protocol == "masque" || protocol == "wdtt") {
         if (uci_get(config_path(section, "server_username")) == "")
             server_default_set_option(section, "server_username", config_get(section, "label", section));
     }
@@ -1416,6 +1417,12 @@ function prepare_server_defaults(section) {
         server_default_set_option(section, "openconnect_flavor", "anyconnect");
         server_default_set_option(section, "openconnect_address", "172.16.1.2/24");
         server_default_set_option(section, "openconnect_mtu", "1400");
+    }
+    if (protocol == "wdtt") {
+        server_default_set_option(section, "wdtt_mode", "csqtt");
+        server_default_set_option(section, "wdtt_obfs", "audio");
+        server_default_set_option(section, "wdtt_network", "10.66.0.1/16");
+        server_default_set_option(section, "wdtt_mtu", "1360");
     }
     if (protocol == "tuic") {
         server_default_set_option(section, "tuic_congestion_control", "bbr");

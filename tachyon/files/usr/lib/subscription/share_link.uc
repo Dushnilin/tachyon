@@ -645,6 +645,68 @@ function serialize_openconnect(outbound) {
     return "openconnect://" + auth + host_port(outbound.server, outbound.server_port) + query_string(params) + fragment(outbound);
 }
 
+function serialize_wdtt(outbound) {
+    let server = as_string(outbound.server || "");
+    let pass = as_string(outbound.password || "");
+    if (server == "" || pass == "")
+        return "";
+    let mode = lc(as_string(outbound.mode || "wg"));
+    let port = int(outbound.server_port || ((mode == "csqtt" || mode == "csqtt_v1") ? 46000 : 56000));
+    if (port < 1 || port > 65535)
+        port = (mode == "csqtt" || mode == "csqtt_v1") ? 46000 : 56000;
+
+    if (mode == "csqtt" || mode == "csqtt_v1") {
+        let params = [];
+        add_query(params, "v", mode == "csqtt_v1" ? "1" : "2");
+        add_query(params, "host", server);
+        add_query(params, "peer", port);
+        add_query(params, "password", pass);
+        if (mode == "csqtt_v1")
+            add_query(params, "mode", "csqtt_v1");
+        if (type(outbound.hashes) == "string" && trim(outbound.hashes) != "")
+            add_query(params, "hashes", trim(outbound.hashes));
+        else if (type(outbound.hashes) == "array" && length(outbound.hashes) > 0) {
+            let enc = [];
+            for (let h in outbound.hashes) {
+                h = trim(as_string(h));
+                if (h != "")
+                    push(enc, uri_encode(h));
+            }
+            if (length(enc) > 0)
+                push(params, "hashes=" + join("+", enc));
+        }
+        add_query(params, "token", outbound.vk_token);
+        if (outbound.workers != null && int(outbound.workers) >= 1 && int(outbound.workers) <= 126)
+            add_query(params, "workers", int(outbound.workers));
+        add_query(params, "obfs", outbound.obfs);
+        add_query(params, "did", outbound.device_id);
+        add_query(params, "turn_transport", outbound.turn_transport);
+        return "csqtt://connect?" + join("&", params) + fragment(outbound);
+    }
+
+    let payload = {
+        v: 1,
+        ip: server,
+        dtls: port,
+        pass: pass
+    };
+    if (outbound.raw_port != null && int(outbound.raw_port) > 0)
+        payload.raw = int(outbound.raw_port);
+    if (mode != "" && mode != "wg")
+        payload.vpn = mode;
+    if (as_string(outbound.obfs || "") != "" && lc(as_string(outbound.obfs)) != "audio")
+        payload.obfs = outbound.obfs;
+    if (as_string(outbound.device_id || "") != "")
+        payload.did = outbound.device_id;
+    if (outbound.workers != null && int(outbound.workers) > 0)
+        payload.workers = int(outbound.workers);
+    if (type(outbound.hashes) == "string" && outbound.hashes != "")
+        payload.hash = outbound.hashes;
+    else if (type(outbound.hashes) == "array" && length(outbound.hashes) > 0)
+        payload.hash = join(",", outbound.hashes);
+    return "wdtt://" + base64_encode(sprintf("%J", payload)) + fragment(outbound);
+}
+
 function serialize_outbound_link(outbound) {
     if (type(outbound) != "object")
         return "";
@@ -686,6 +748,8 @@ function serialize_outbound_link(outbound) {
         return serialize_masque(outbound);
     if (outbound_type == "openconnect")
         return serialize_openconnect(outbound);
+    if (outbound_type == "wdtt")
+        return serialize_wdtt(outbound);
     return "";
 }
 
@@ -701,7 +765,8 @@ function is_copyable_link(value) {
         "snell://", "mieru://", "mierus://",
         "tg://", "mtproto://", "shadowtls://",
         "tewfai://", "trusttunnel://", "masque://",
-        "openconnect://", "anyconnect://"
+        "openconnect://", "anyconnect://",
+        "csqtt://", "wdtt://", "qwdtt://"
     ];
     for (let prefix in prefixes) {
         if (starts_with(value, prefix))
