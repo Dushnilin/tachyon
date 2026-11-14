@@ -1861,31 +1861,49 @@ function add_subscription_source_with_state(config, section, source_index, sourc
                 survivor_endpoints[ep_key] = true;
         }
     }
-    let preserved_urltest_groups = {};
-    let preserved_urltest_members = {};
+    let aux_balancer_members = {};
+    let covered_group_hidden_members = {};
+    let fallback_group_remarks = {};
     for (let candidate in array_or_empty(outbounds)) {
         if (!subscription_urltest_group_outbound(candidate))
             continue;
-        let group_tag = as_string(candidate.tag || "");
-        let has_internal_member = false;
+        let group_label = trim(as_string(candidate.remark || candidate.tag || ""));
+        let has_survivor_member = false;
+        let group_hidden_tags = [];
+        let candidate_aux_tags = [];
+        let non_aux_members = [];
         for (let m in array_or_empty(candidate.outbounds)) {
             let m_tag = as_string(m);
             let m_obj = outbounds_by_tag[m_tag];
-            if (type(m_obj) != "object" || !internal_flag(m_obj.__tachyon_hidden))
+            if (type(m_obj) != "object")
                 continue;
             let ep_key = lc(as_string(m_obj.type || "")) + "|" + lc(as_string(m_obj.server || "")) + "|" + as_string(m_obj.server_port || "");
-            if (match(lc(m_tag), /^bal-[0-9]+-/) != null || survivor_endpoints[ep_key] === true) {
-                has_internal_member = true;
-                break;
-            }
+            let m_hidden = internal_flag(m_obj.__tachyon_hidden);
+            let m_remark_lc = lc(trim(as_string(m_obj.remark || m_tag)));
+            let is_dup_ep = as_string(m_obj.server || "") != "" && survivor_endpoints[ep_key] === true;
+            if (m_hidden && is_dup_ep)
+                has_survivor_member = true;
+            let is_aux_tag = m_hidden && (
+                match(lc(m_tag), /^bal-[0-9]+-/) != null ||
+                match(m_remark_lc, /^(reserve|backup|fallback)([-_ ]?[0-9]+)?(-[0-9]+)?$/) != null ||
+                is_dup_ep
+            );
+            if (m_hidden)
+                push(group_hidden_tags, m_tag);
+            if (is_aux_tag)
+                push(candidate_aux_tags, m_tag);
+            else
+                push(non_aux_members, m_tag);
         }
-        if (has_internal_member && group_tag != "") {
-            preserved_urltest_groups[group_tag] = true;
-            for (let m in array_or_empty(candidate.outbounds)) {
-                let m_tag = as_string(m);
-                if (m_tag != "")
-                    preserved_urltest_members[m_tag] = true;
-            }
+        if (has_survivor_member || length(non_aux_members) > 0) {
+            for (let m_tag in candidate_aux_tags)
+                aux_balancer_members[m_tag] = true;
+        }
+        if (has_survivor_member) {
+            for (let m_tag in group_hidden_tags)
+                covered_group_hidden_members[m_tag] = true;
+        } else if (group_label != "" && length(non_aux_members) == 1) {
+            fallback_group_remarks[non_aux_members[0]] = group_label;
         }
     }
     let drop_urltest_members = include_urltest_groups === false && survivors > 0;
@@ -1917,28 +1935,30 @@ function add_subscription_source_with_state(config, section, source_index, sourc
         let outbound = outbounds[i];
         let orig_tag = as_string(outbound.tag || "");
         if (include_urltest_groups === false &&
-            subscription_urltest_group_outbound(outbound) &&
-            !preserved_urltest_groups[orig_tag])
+            subscription_urltest_group_outbound(outbound))
             continue;
-        // A node that only a disabled native sing-box urltest group pointed at, or
-        // an internal Xray balancer member (`bal-*` / duplicate of a standalone server
-        // in the same subscription), is dropped when urltest group import is disabled.
-        // Distinct named leaf servers inside an Xray balancer remain visible.
-        if (drop_urltest_members && (orig_tag in urltest_member_tags) && !preserved_urltest_members[orig_tag]) {
-            let member_tag = orig_tag;
+        // When subscription URLTest groups are disabled, drop internal Xray balancer
+        // helper/reserve/duplicate members while keeping unique leaf servers visible.
+        if (include_urltest_groups === false && (orig_tag in urltest_member_tags)) {
             let member_remark = as_string(outbound.remark || "");
-            let ep_key = lc(as_string(outbound.type || "")) + "|" + lc(as_string(outbound.server || "")) + "|" + as_string(outbound.server_port || "");
-            if (member_remark == "" ||
-                survivor_endpoints[ep_key] === true ||
-                match(lc(member_tag), /^bal-[0-9]+-/) != null)
+            if (aux_balancer_members[orig_tag] === true || covered_group_hidden_members[orig_tag] === true)
+                continue;
+            if (drop_urltest_members && member_remark == "")
                 continue;
         }
+        let raw_remark = trim(as_string(outbound.remark || ""));
         let display_name = as_string(outbound.remark || outbound.tag || ("server-" + (i + 1)));
+        let base = as_string(outbound.tag || outbound.remark || ("server-" + (i + 1)));
+        if (include_urltest_groups === false &&
+            fallback_group_remarks[orig_tag] != null &&
+            (raw_remark == "" || match(lc(raw_remark), /^(proxy|main|out|vless|vmess|trojan|shadowsocks|ss|hysteria2?|tuic|server)([-_ ]?[0-9]+)?$/) != null)) {
+            display_name = fallback_group_remarks[orig_tag];
+            base = display_name;
+        }
         if (keyword_filter != null && subscription_group_outbound(outbound) && !subscription_keyword_name_passes({ include: [], exclude: keyword_filter.exclude }, display_name))
             continue;
         if (keyword_filter != null && !subscription_group_outbound(outbound) && !subscription_keyword_name_passes(keyword_filter, display_name))
             continue;
-        let base = as_string(outbound.tag || outbound.remark || ("server-" + (i + 1)));
         if (node_prefix != "") {
             display_name = node_prefix + " " + display_name;
             base = display_name;
@@ -1990,7 +2010,7 @@ function add_subscription_source_with_state(config, section, source_index, sourc
         }
         push(source_links, source_link);
         push(group_flags, subscription_group_outbound(outbound));
-        let is_internal_member = preserved_urltest_members[orig_tag] === true;
+        let is_internal_member = aux_balancer_members[orig_tag] === true;
         push(internal_member_flags, is_internal_member);
         push(hidden_flags, is_internal_member || subscription_hidden_outbound(outbound, visibility_refs, hide_urltest_group_outbounds, hide_detour_outbounds));
     }

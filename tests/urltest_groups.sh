@@ -909,7 +909,7 @@ arblaze_normalized="$WORK_DIR/arblaze-normalized.json"
 normalize_subscription "$WORK_DIR/arblaze-sub.json" "$arblaze_normalized"
 prepare_subscription_cache MAIN 1 "https://arblaze.example/sub" "$arblaze_normalized"
 
-cat >"$WORK_DIR/arblaze-outbound-source-fixture.json" <<'JSON'
+cat >"$WORK_DIR/arblaze-outbound-source-default-fixture.json" <<'JSON'
 {
   "settings": { ".name": "settings", ".type": "settings" },
   "section": [
@@ -934,11 +934,61 @@ cat >"$WORK_DIR/arblaze-outbound-source-fixture.json" <<'JSON'
 }
 JSON
 
+arblaze_default_config="$WORK_DIR/arblaze-default-config.json"
+generate_config "$WORK_DIR/arblaze-outbound-source-default-fixture.json" "$arblaze_default_config"
+ucode -e '
+let fs = require("fs");
+let config = json(fs.readfile(ARGV[0]));
+let selector = null;
+for (let ob in config.outbounds || []) {
+    if (ob && ob.type == "selector" && ob.tag == "MAIN-out")
+        selector = ob;
+    if (ob && ob.type == "urltest" && ob.tag == "🇪🇺 Автовыбор")
+        die("urltest group 🇪🇺 Автовыбор must not be emitted when include_urltest_groups defaults to 0\n");
+    if (ob && (ob.tag == "bal-1-hysteria" || ob.tag == "bal-1-vless"))
+        die("internal bal-1-* member must not be emitted when include_urltest_groups defaults to 0\n");
+}
+if (!selector)
+    die("missing MAIN-out selector for arblaze (default include_urltest_groups=0)\n");
+let members = {};
+for (let m in selector.outbounds || [])
+    members[m] = true;
+if (members["🇪🇺 Автовыбор"] || !members["🇳🇱 Нидерланды · Hysteria²"] || !members["🇫🇮 Финляндия · XHTTP"] || members["bal-1-hysteria"] || members["bal-1-vless"])
+    die("expected only standalone servers in MAIN-out when include_urltest_groups defaults to 0\n");
+' "$arblaze_default_config" || fail "ARBlazeAG subscription with default include_urltest_groups=0 suppresses urltest group and bal-1-* members"
+
+cat >"$WORK_DIR/arblaze-outbound-source-fixture.json" <<'JSON'
+{
+  "settings": { ".name": "settings", ".type": "settings" },
+  "section": [
+    {
+      ".name": "MAIN",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "outbound_source_refs": [ "src_arblaze" ],
+      "domain_suffix": [ "example.com" ]
+    }
+  ],
+  "outbound_source": [
+    {
+      ".name": "src_arblaze",
+      ".type": "outbound_source",
+      "enabled": "1",
+      "source_type": "subscription",
+      "url": "https://arblaze.example/sub",
+      "include_urltest_groups": "1"
+    }
+  ]
+}
+JSON
+
 arblaze_config="$WORK_DIR/arblaze-config.json"
 generate_config "$WORK_DIR/arblaze-outbound-source-fixture.json" "$arblaze_config"
 ucode -e '
 let fs = require("fs");
 let config = json(fs.readfile(ARGV[0]));
+let cache = json(fs.readfile(ARGV[1]));
 let selector = null;
 let auto_grp = null;
 let hy2 = null;
@@ -959,7 +1009,7 @@ for (let ob in config.outbounds || []) {
 if (!selector)
     die("missing MAIN-out selector for arblaze\n");
 if (!auto_grp || !bal_hy2 || !bal_vless)
-    die("expected 🇪🇺 Автовыбор urltest group and its hidden bal-1-* backing members in config.outbounds\n");
+    die("expected 🇪🇺 Автовыбор urltest group and its hidden bal-1-* backing members when include_urltest_groups=1\n");
 if (!hy2 || type(hy2.obfs) != "object" || hy2.obfs.type != "gecko" || hy2.obfs.password != "gecko-pass" || hy2.obfs.min_packet_size != 512 || hy2.obfs.max_packet_size != 1200)
     die("expected Hysteria2 finalmask packetSize 512-1200 to produce gecko obfs\n");
 let members = {};
@@ -967,6 +1017,262 @@ for (let m in selector.outbounds || [])
     members[m] = true;
 if (!members["🇪🇺 Автовыбор"] || !members["🇳🇱 Нидерланды · Hysteria²"] || !members["🇫🇮 Финляндия · XHTTP"] || members["bal-1-hysteria"] || members["bal-1-vless"])
     die("expected 🇪🇺 Автовыбор and standalone servers in MAIN-out without bal-1-* duplicates\n");
-' "$arblaze_config" || fail "ARBlazeAG balancer + standalone subscription preserves 🇪🇺 Автовыбор, hides bal-1-* members from selector, and preserves Hysteria2 gecko obfs"
+let candidates = {};
+for (let c in cache.urltestCandidateTags || [])
+    candidates[c] = true;
+if (candidates["bal-1-hysteria"] || candidates["bal-1-vless"])
+    die("internal bal-1-* members must not enter urltestCandidateTags\n");
+' "$arblaze_config" "$arblaze_config.section-cache/MAIN.json" || fail "ARBlazeAG balancer + standalone subscription with include_urltest_groups=1"
+
+cat >"$WORK_DIR/xray-country-reserve-sub.json" <<'JSON'
+[
+  {
+    "remarks": "🇩🇪 Германия",
+    "routing": {
+      "balancers": [
+        {
+          "tag": "balancer",
+          "selector": [ "proxy", "reserve-" ]
+        }
+      ]
+    },
+    "outbounds": [
+      {
+        "protocol": "vless",
+        "tag": "proxy",
+        "settings": {
+          "vnext": [
+            {
+              "address": "de-main.example",
+              "port": 443,
+              "users": [ { "id": "00000000-0000-4000-8000-000000000031", "encryption": "none" } ]
+            }
+          ]
+        },
+        "streamSettings": { "security": "tls", "tlsSettings": { "serverName": "de-main.example" } }
+      },
+      {
+        "protocol": "vless",
+        "tag": "reserve-2",
+        "settings": {
+          "vnext": [
+            {
+              "address": "de-res.example",
+              "port": 443,
+              "users": [ { "id": "00000000-0000-4000-8000-000000000032", "encryption": "none" } ]
+            }
+          ]
+        },
+        "streamSettings": { "security": "tls", "tlsSettings": { "serverName": "de-res.example" } }
+      }
+    ]
+  },
+  {
+    "remarks": "🇫🇮 Финляндия",
+    "routing": {
+      "balancers": [
+        {
+          "tag": "balancer",
+          "selector": [ "proxy", "reserve-" ]
+        }
+      ]
+    },
+    "outbounds": [
+      {
+        "protocol": "vless",
+        "tag": "proxy",
+        "settings": {
+          "vnext": [
+            {
+              "address": "fi-only-bal.example",
+              "port": 443,
+              "users": [ { "id": "00000000-0000-4000-8000-000000000033", "encryption": "none" } ]
+            }
+          ]
+        },
+        "streamSettings": { "security": "tls", "tlsSettings": { "serverName": "fi-only-bal.example" } }
+      },
+      {
+        "protocol": "vless",
+        "tag": "reserve-3",
+        "settings": {
+          "vnext": [
+            {
+              "address": "fi-res.example",
+              "port": 443,
+              "users": [ { "id": "00000000-0000-4000-8000-000000000034", "encryption": "none" } ]
+            }
+          ]
+        },
+        "streamSettings": { "security": "tls", "tlsSettings": { "serverName": "fi-res.example" } }
+      }
+    ]
+  },
+  {
+    "remarks": "🇩🇪 Германия (Main)",
+    "outbounds": [
+      {
+        "protocol": "vless",
+        "tag": "proxy",
+        "settings": {
+          "vnext": [
+            {
+              "address": "de-main.example",
+              "port": 443,
+              "users": [ { "id": "00000000-0000-4000-8000-000000000031", "encryption": "none" } ]
+            }
+          ]
+        },
+        "streamSettings": { "security": "tls", "tlsSettings": { "serverName": "de-main.example" } }
+      }
+    ]
+  },
+  {
+    "remarks": "🇺🇸 USA CH",
+    "outbounds": [
+      {
+        "protocol": "vless",
+        "tag": "proxy",
+        "settings": {
+          "vnext": [
+            {
+              "address": "us-ch.example",
+              "port": 443,
+              "users": [ { "id": "00000000-0000-4000-8000-000000000035", "encryption": "none" } ]
+            }
+          ]
+        },
+        "streamSettings": { "security": "tls", "tlsSettings": { "serverName": "us-ch.example" } }
+      }
+    ]
+  }
+]
+JSON
+
+country_res_normalized="$WORK_DIR/xray-country-reserve-normalized.json"
+normalize_subscription "$WORK_DIR/xray-country-reserve-sub.json" "$country_res_normalized"
+prepare_subscription_cache MAIN 1 "https://country-res.example/sub" "$country_res_normalized"
+
+cat >"$WORK_DIR/country-res-off-fixture.json" <<'JSON'
+{
+  "settings": { ".name": "settings", ".type": "settings" },
+  "section": [
+    {
+      ".name": "MAIN",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "outbound_source_refs": [ "src_country" ],
+      "domain_suffix": [ "example.com" ]
+    }
+  ],
+  "outbound_source": [
+    {
+      ".name": "src_country",
+      ".type": "outbound_source",
+      "enabled": "1",
+      "source_type": "subscription",
+      "url": "https://country-res.example/sub",
+      "include_urltest_groups": "0"
+    }
+  ]
+}
+JSON
+
+country_off_config="$WORK_DIR/country-res-off-config.json"
+generate_config "$WORK_DIR/country-res-off-fixture.json" "$country_off_config"
+ucode -e '
+let fs = require("fs");
+let config = json(fs.readfile(ARGV[0]));
+let cache = json(fs.readfile(ARGV[1]));
+let selector = null;
+let servers = {};
+for (let ob in config.outbounds || []) {
+    if (!ob) continue;
+    if (ob.type == "selector" && ob.tag == "MAIN-out")
+        selector = ob;
+    if (ob.type == "urltest")
+        die("unexpected subscription urltest group in config when include_urltest_groups=0: " + ob.tag + "\n");
+    if (index(lc(ob.tag || ""), "reserve") >= 0)
+        die("reserve node leaked into config when include_urltest_groups=0: " + ob.tag + "\n");
+    if (ob.server)
+        servers[ob.server] = ob.tag;
+}
+if (!selector)
+    die("missing MAIN-out selector for country-reserve disabled test\n");
+let members = {};
+for (let m in selector.outbounds || [])
+    members[m] = true;
+if (!members["🇺🇸 USA CH"] || !members["🇩🇪 Германия (Main)"])
+    die("missing primary servers in MAIN-out\n");
+if (!servers["fi-only-bal.example"] || !members[servers["fi-only-bal.example"]])
+    die("primary server from balancer-only country must survive in MAIN-out\n");
+if (servers["fi-only-bal.example"] != "🇫🇮 Финляндия")
+    die("expected primary server from balancer-only country to inherit group label 🇫🇮 Финляндия, got: " + servers["fi-only-bal.example"] + "\n");
+let candidates = {};
+for (let c in cache.urltestCandidateTags || [])
+    candidates[c] = true;
+if (!candidates["🇺🇸 USA CH"] || !candidates["🇩🇪 Германия (Main)"] || !candidates[servers["fi-only-bal.example"]])
+    die("expected real servers in Fastest urltestCandidateTags\n");
+' "$country_off_config" "$country_off_config.section-cache/MAIN.json" || fail "Xray country balancers with reserve-* nodes drop urltest groups and reserve-* when include_urltest_groups=0"
+
+cat >"$WORK_DIR/country-res-on-fixture.json" <<'JSON'
+{
+  "settings": { ".name": "settings", ".type": "settings" },
+  "section": [
+    {
+      ".name": "MAIN",
+      ".type": "section",
+      "enabled": "1",
+      "action": "connection",
+      "outbound_source_refs": [ "src_country" ],
+      "domain_suffix": [ "example.com" ]
+    }
+  ],
+  "outbound_source": [
+    {
+      ".name": "src_country",
+      ".type": "outbound_source",
+      "enabled": "1",
+      "source_type": "subscription",
+      "url": "https://country-res.example/sub",
+      "include_urltest_groups": "1"
+    }
+  ]
+}
+JSON
+
+country_on_config="$WORK_DIR/country-res-on-config.json"
+generate_config "$WORK_DIR/country-res-on-fixture.json" "$country_on_config"
+ucode -e '
+let fs = require("fs");
+let config = json(fs.readfile(ARGV[0]));
+let cache = json(fs.readfile(ARGV[1]));
+let selector = null;
+let has_de_grp = false;
+let has_fi_grp = false;
+for (let ob in config.outbounds || []) {
+    if (!ob) continue;
+    if (ob.type == "selector" && ob.tag == "MAIN-out")
+        selector = ob;
+    if (ob.type == "urltest" && ob.tag == "🇩🇪 Германия")
+        has_de_grp = true;
+    if (ob.type == "urltest" && ob.tag == "🇫🇮 Финляндия")
+        has_fi_grp = true;
+}
+if (!selector || !has_de_grp || !has_fi_grp)
+    die("expected country urltest groups when include_urltest_groups=1\n");
+let members = {};
+for (let m in selector.outbounds || [])
+    members[m] = true;
+if (!members["🇩🇪 Германия"] || !members["🇫🇮 Финляндия"] || !members["🇺🇸 USA CH"])
+    die("expected country urltest groups and standalone node in MAIN-out when include_urltest_groups=1\n");
+for (let m in selector.outbounds || [])
+    if (index(lc(m), "reserve") >= 0)
+        die("reserve node must stay hidden inside urltest group, got in selector: " + m + "\n");
+for (let c in cache.urltestCandidateTags || [])
+    if (index(lc(c), "reserve") >= 0)
+        die("reserve node must not enter urltestCandidateTags: " + c + "\n");
+' "$country_on_config" "$country_on_config.section-cache/MAIN.json" || fail "Xray country balancers with include_urltest_groups=1 keep reserve-* hidden inside groups"
 
 printf 'URLTest group checks passed\n'
