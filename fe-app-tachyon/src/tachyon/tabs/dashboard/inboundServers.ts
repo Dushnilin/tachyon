@@ -494,6 +494,16 @@ function resolveClientDisplayName(
   return undefined;
 }
 
+export function hasEnabledNativeTailscaleServer(
+  configuredServersOverride?: IServerInboundConfig[],
+): boolean {
+  const servers = configuredServersOverride ?? getConfiguredServerInbounds();
+  return servers.some(
+    (s) =>
+      s.enabled && s.protocol === 'tailscale' && s.tailscaleMode === 'native',
+  );
+}
+
 export function computeInboundsRuntimeSummary(
   servers: IServerInboundConfig[],
   rawConnections: any[],
@@ -817,7 +827,11 @@ export function computeInboundsRuntimeSummary(
             meshOnlinePeers,
             meshTotalPeers,
           }
-        : {}),
+        : isSingboxTailscale
+          ? {
+              meshRunning,
+            }
+          : {}),
     });
   }
 
@@ -1483,19 +1497,27 @@ export function renderCollapsibleInboundsBlock(params: {
                         `${meshOnlinePeers} ${tr('в сети', 'online')}`,
                       ),
                     ]
-                  : meshRunning && meshOnlinePeers !== undefined
+                  : (s.protocol === 'tailscale' &&
+                        s.tailscaleMode !== 'native') ||
+                      (meshRunning && meshOnlinePeers !== undefined)
                     ? [
                         E(
                           'span',
                           {
                             class: 'tachyon-stat-pill tachyon-stat-pill--idle',
                             title:
-                              meshTotalPeers && meshTotalPeers > 0
-                                ? `0 / ${meshTotalPeers} ${tr('устр. в сети', 'peers online')}`
-                                : tr(
-                                    'Демон tailscaled работает',
-                                    'tailscaled daemon is running',
-                                  ),
+                              s.protocol === 'tailscale' &&
+                              s.tailscaleMode !== 'native'
+                                ? tr(
+                                    'Встроенный Tailscale работает',
+                                    'Embedded Tailscale is running',
+                                  )
+                                : meshTotalPeers && meshTotalPeers > 0
+                                  ? `0 / ${meshTotalPeers} ${tr('устр. в сети', 'peers online')}`
+                                  : tr(
+                                      'Демон tailscaled работает',
+                                      'tailscaled daemon is running',
+                                    ),
                           },
                           tr('Работает', 'Running'),
                         ),
@@ -1871,10 +1893,8 @@ async function pollInboundsForServersTab() {
 
   try {
     const configuredServers = getConfiguredServerInbounds();
-    const hasNativeTailscale = configuredServers.some(
-      (s) =>
-        s.enabled && s.protocol === 'tailscale' && s.tailscaleMode === 'native',
-    );
+    const hasNativeTailscale =
+      hasEnabledNativeTailscaleServer(configuredServers);
     const [res, hostnames, , tailscaleRes] = await Promise.all([
       TachyonShellMethods.getClashApiConnections(),
       fetchHostnames(),

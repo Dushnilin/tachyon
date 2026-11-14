@@ -117,6 +117,33 @@ describe('computeSystemInfoMutation', () => {
     expect(nextSystemInfo.sing_box_tachyon_core).toBe(1);
     expect(nextSystemInfo.sing_box_fptn).toBe(1);
     expect(nextSystemInfo.sing_box_extended).toBe(0);
+    expect(nextSystemInfo.sing_box_tailscale).toBe(1);
+    expect(nextSystemInfo.sing_box_cert_pin).toBe(1);
+  });
+
+  it('sets tailscale and cert_pin flags when switching from upstream sing-box to tachyon-core via install_version', () => {
+    const upstreamInstalled = {
+      ...initialSystemInfo,
+      sing_box_version: '1.14.0',
+      sing_box_tachyon_core: 0,
+      sing_box_fptn: 0,
+      sing_box_tailscale: 0,
+      sing_box_cert_pin: 0,
+    };
+
+    const { nextSystemInfo } = computeSystemInfoMutation(upstreamInstalled, {
+      component: 'sing_box',
+      action: 'install_version',
+      current_version: '0.1.5',
+      latest_version: '0.1.5',
+      release_url:
+        'https://github.com/Dushnilin/tachyon-core/releases/tag/v0.1.5',
+    });
+
+    expect(nextSystemInfo.sing_box_tachyon_core).toBe(1);
+    expect(nextSystemInfo.sing_box_fptn).toBe(1);
+    expect(nextSystemInfo.sing_box_tailscale).toBe(1);
+    expect(nextSystemInfo.sing_box_cert_pin).toBe(1);
   });
 
   it('updates provider installation and flags notification', () => {

@@ -90,6 +90,7 @@ import {
 } from './dashboardLayout';
 import {
   getConfiguredServerInbounds,
+  hasEnabledNativeTailscaleServer,
   renderInboundServersDashboardWidget,
 } from './inboundServers';
 
@@ -638,7 +639,9 @@ async function completeSubscriptionUpdateJob(
   }
   void fetchDashboardSections({ force: true });
   void fetchServicesInfo();
-  void fetchTailscalePeers();
+  if (hasEnabledNativeTailscaleServer()) {
+    void fetchTailscalePeers();
+  }
 }
 
 async function followSubscriptionUpdateState(
@@ -6830,7 +6833,9 @@ async function onPageMount() {
     hostnames: cachedHostnames,
   });
   syncDashboardServiceAvailability();
-  void fetchTailscalePeers();
+  if (hasEnabledNativeTailscaleServer()) {
+    void fetchTailscalePeers();
+  }
 
   void refreshRuntimeUiState({ force: true }).then((uiState) => {
     if (!dashboardMounted || mountId !== dashboardMountId) {
@@ -6838,7 +6843,9 @@ async function onPageMount() {
     }
     if (!uiState && !hasRuntimeSnapshot) {
       void fetchServicesInfo();
-      void fetchTailscalePeers();
+      if (hasEnabledNativeTailscaleServer()) {
+        void fetchTailscalePeers();
+      }
     }
   });
 }

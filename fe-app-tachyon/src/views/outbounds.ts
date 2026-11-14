@@ -1220,6 +1220,34 @@ function shortenMiddle(str, maxLen) {
   return `${s.slice(0, head)}…${s.slice(-tail)}`;
 }
 
+function isNativeTailscaleOutboundSection(sectionId) {
+  const rawMode = String(
+    uci.get(UCI_PACKAGE, sectionId, 'tailscale_mode') || '',
+  )
+    .trim()
+    .toLowerCase();
+  if (rawMode === 'native') {
+    return true;
+  }
+  if (rawMode === 'embedded') {
+    return false;
+  }
+  const iface = String(
+    uci.get(UCI_PACKAGE, sectionId, 'interface_name') || '',
+  ).trim();
+  const hasEmbeddedFields = Boolean(
+    uci.get(UCI_PACKAGE, sectionId, 'tailscale_auth_key') ||
+      uci.get(UCI_PACKAGE, sectionId, 'tailscale_control_url') ||
+      uci.get(UCI_PACKAGE, sectionId, 'tailscale_hostname') ||
+      uci.get(UCI_PACKAGE, sectionId, 'tailscale_exit_node') ||
+      uci.get(UCI_PACKAGE, sectionId, 'tailscale_accept_routes') ||
+      uci.get(UCI_PACKAGE, sectionId, 'tailscale_accept_dns') ||
+      uci.get(UCI_PACKAGE, sectionId, 'tailscale_exit_node_allow_lan_access') ||
+      uci.get(UCI_PACKAGE, sectionId, 'tailscale_ephemeral'),
+  );
+  return Boolean(iface) && !hasEmbeddedFields;
+}
+
 function summarizeOutboundSource(sectionId) {
   const stype = (
     uci.get(UCI_PACKAGE, sectionId, 'source_type') || 'subscription'
@@ -1266,9 +1294,29 @@ function summarizeOutboundSource(sectionId) {
     return `Tor SOCKS5 (127.0.0.1:${port})${prefixTag}`;
   }
   if (stype === 'tailscale') {
-    const iface =
-      uci.get(UCI_PACKAGE, sectionId, 'interface_name') || 'tailscale0';
-    return `Tailscale Mesh (${iface})${prefixTag}`;
+    if (isNativeTailscaleOutboundSection(sectionId)) {
+      const iface =
+        String(
+          uci.get(UCI_PACKAGE, sectionId, 'interface_name') || '',
+        ).trim() || 'tailscale0';
+      return `Tailscale Mesh (${iface})${prefixTag}`;
+    }
+    const hostname = String(
+      uci.get(UCI_PACKAGE, sectionId, 'tailscale_hostname') || '',
+    ).trim();
+    const controlUrl = String(
+      uci.get(UCI_PACKAGE, sectionId, 'tailscale_control_url') || '',
+    ).trim();
+    const hostPart = controlUrl
+      ? controlUrl.replace(/^https?:\/\//i, '').replace(/\/+$/, '')
+      : '';
+    const detail =
+      hostname &&
+      hostPart &&
+      controlUrl !== 'https://controlplane.tailscale.com'
+        ? `${hostname} @ ${hostPart}`
+        : hostname || hostPart || _('Embedded');
+    return `Tailscale Mesh (${detail})${prefixTag}`;
   }
   if (stype === 'interface') {
     const iface =
@@ -3573,6 +3621,21 @@ function createOutboundsContent(section) {
     }
     if (st !== 'fptn') {
       uci.unset(UCI_PACKAGE, sectionId, 'access_token');
+    }
+    if (st !== 'tailscale') {
+      uci.unset(UCI_PACKAGE, sectionId, 'tailscale_mode');
+      uci.unset(UCI_PACKAGE, sectionId, 'tailscale_auth_key');
+      uci.unset(UCI_PACKAGE, sectionId, 'tailscale_control_url');
+      uci.unset(UCI_PACKAGE, sectionId, 'tailscale_hostname');
+      uci.unset(UCI_PACKAGE, sectionId, 'tailscale_accept_routes');
+      uci.unset(UCI_PACKAGE, sectionId, 'tailscale_accept_dns');
+      uci.unset(UCI_PACKAGE, sectionId, 'tailscale_exit_node');
+      uci.unset(UCI_PACKAGE, sectionId, 'tailscale_exit_node_allow_lan_access');
+      uci.unset(UCI_PACKAGE, sectionId, 'tailscale_ephemeral');
+    }
+    if (st !== 'interface' && st !== 'tailscale') {
+      uci.unset(UCI_PACKAGE, sectionId, 'interface_name');
+      uci.unset(UCI_PACKAGE, sectionId, 'interface');
     }
   };
 
@@ -5995,6 +6058,147 @@ function createOutboundsContent(section) {
 
   o = section.taboption(
     'general',
+    form.ListValue,
+    'tailscale_mode',
+    _('Tailscale mode'),
+    _(
+      'Embedded runs Tailscale directly inside the routing core without a separate tailscaled daemon or tailscale0 interface.',
+    ),
+  );
+  o.value('embedded', _('Embedded (tachyon-core / sing-box, default)'));
+  o.value('native', _('Native (system tailscaled / tailscale0)'));
+  o.default = 'embedded';
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends('source_type', 'tailscale');
+  o.cfgvalue = function (sectionId) {
+    return isNativeTailscaleOutboundSection(sectionId) ? 'native' : 'embedded';
+  };
+  o.write = function (sectionId, value) {
+    const mode = value === 'native' ? 'native' : 'embedded';
+    uci.set(UCI_PACKAGE, sectionId, 'tailscale_mode', mode);
+    if (mode !== 'native') {
+      uci.unset(UCI_PACKAGE, sectionId, 'interface_name');
+      uci.unset(UCI_PACKAGE, sectionId, 'interface');
+    }
+  };
+
+  o = section.taboption(
+    'general',
+    form.Value,
+    'tailscale_auth_key',
+    _('Tailscale auth key (optional)'),
+    _(
+      'Optional reusable or ephemeral pre-authentication key to join your Tailnet (e.g. tskey-auth-...). If omitted, an interactive login URL is printed in the service logs.',
+    ) +
+      ' <a href="https://login.tailscale.com/admin/settings/keys" target="_blank" rel="noopener noreferrer">' +
+      _('Generate in Tailscale Admin Console') +
+      '</a>',
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = 'tskey-auth-...';
+  o.depends({ source_type: 'tailscale', tailscale_mode: 'embedded' });
+
+  o = section.taboption(
+    'general',
+    form.Value,
+    'tailscale_control_url',
+    _('Tailscale control URL'),
+  );
+  o.default = 'https://controlplane.tailscale.com';
+  o.placeholder = 'https://controlplane.tailscale.com';
+  o.modalonly = true;
+  o.rmempty = true;
+  o.validate = function (_sectionId, value) {
+    const raw = String(value || '').trim();
+    if (!raw) return true;
+    return /^https?:\/\/.+/i.test(raw)
+      ? true
+      : _('Control URL must start with http:// or https://');
+  };
+  o.depends({ source_type: 'tailscale', tailscale_mode: 'embedded' });
+
+  o = section.taboption(
+    'general',
+    form.Value,
+    'tailscale_hostname',
+    _('Tailscale hostname'),
+    _('Device hostname visible inside your tailnet (optional).'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = 'tachyon-router';
+  o.depends({ source_type: 'tailscale', tailscale_mode: 'embedded' });
+
+  o = section.taboption(
+    'general',
+    form.Flag,
+    'tailscale_accept_routes',
+    _('Accept routes'),
+    _('Accept subnet routes advertised by other tailnet nodes.'),
+  );
+  o.default = '1';
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends({ source_type: 'tailscale', tailscale_mode: 'embedded' });
+
+  o = section.taboption(
+    'general',
+    form.Flag,
+    'tailscale_accept_dns',
+    _('Accept Tailscale DNS (MagicDNS)'),
+    _('Use DNS configuration advertised by the tailnet (MagicDNS).'),
+  );
+  o.default = '1';
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends({ source_type: 'tailscale', tailscale_mode: 'embedded' });
+
+  o = section.taboption(
+    'general',
+    form.Value,
+    'tailscale_exit_node',
+    _('Exit node'),
+    _(
+      'Optional tailnet peer hostname or Tailscale IP to route outbound traffic through.',
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = '100.64.0.10';
+  o.depends({ source_type: 'tailscale', tailscale_mode: 'embedded' });
+
+  o = section.taboption(
+    'general',
+    form.Flag,
+    'tailscale_exit_node_allow_lan_access',
+    _('Allow LAN access when using exit node'),
+    _(
+      'Allow direct access to local LAN subnets while forwarding outbound traffic through an exit node.',
+    ),
+  );
+  o.default = '0';
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends({ source_type: 'tailscale', tailscale_mode: 'embedded' });
+
+  o = section.taboption(
+    'general',
+    form.Flag,
+    'tailscale_ephemeral',
+    _('Ephemeral node'),
+    _(
+      'Register as an ephemeral node that is automatically removed from the tailnet when the service stops.',
+    ),
+  );
+  o.default = '0';
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends({ source_type: 'tailscale', tailscale_mode: 'embedded' });
+
+  o = section.taboption(
+    'general',
     form.Value,
     'interface_name',
     _('Network Interface Name'),
@@ -6003,9 +6207,32 @@ function createOutboundsContent(section) {
     ),
   );
   o.modalonly = true;
+  o.rmempty = false;
   o.placeholder = 'wg0';
   o.depends('source_type', 'interface');
-  o.depends('source_type', 'tailscale');
+  o.depends({ source_type: 'tailscale', tailscale_mode: 'native' });
+  o.validate = function (sectionId, value) {
+    const st = String(
+      this.section.formvalue(sectionId, 'source_type') ||
+        uci.get(UCI_PACKAGE, sectionId, 'source_type') ||
+        '',
+    )
+      .trim()
+      .toLowerCase();
+    const mode = String(
+      this.section.formvalue(sectionId, 'tailscale_mode') ||
+        uci.get(UCI_PACKAGE, sectionId, 'tailscale_mode') ||
+        'embedded',
+    )
+      .trim()
+      .toLowerCase();
+    const needsInterface =
+      st === 'interface' || (st === 'tailscale' && mode === 'native');
+    if (needsInterface && !String(value || '').trim()) {
+      return _('Network Interface Name is required');
+    }
+    return true;
+  };
   INTERFACE_PRESETS.forEach(([val, lbl]) => o.value(val, lbl));
   o.load = function (sectionId) {
     const self = this;

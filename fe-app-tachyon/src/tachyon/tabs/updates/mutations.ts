@@ -59,6 +59,10 @@ export function computeSystemInfoMutation(
           !version.includes('extended'));
       nextSystemInfo.sing_box_tachyon_core = isCore ? 1 : 0;
       nextSystemInfo.sing_box_fptn = isCore ? 1 : 0;
+      if (isCore) {
+        nextSystemInfo.sing_box_tailscale = 1;
+        nextSystemInfo.sing_box_cert_pin = 1;
+      }
     }
 
     if (result.action === 'install_tachyon_core') {

@@ -272,11 +272,26 @@ msgstr "AWG 3.1 (Случайные трейлеры и контроль Cookie)
 msgid "AWG Fake Packets / MTU"
 msgstr "Обфускация AWG Fake Packets / MTU"
 
+msgid "Accept Tailscale DNS (MagicDNS)"
+msgstr "Использовать MagicDNS (Accept DNS)"
+
+msgid "Accept default DNS resolvers"
+msgstr "Принимать DNS-резолверы по умолчанию"
+
 msgid "Accept external proxy connections and route them with sing-box."
 msgstr "Принимать внешние прокси-подключения и маршрутизировать их через sing-box."
 
+msgid "Accept fallback DNS resolvers distributed by the tailnet when Tailscale DNS is enabled."
+msgstr "Принимать резервные DNS-резолверы, передаваемые сетью Tailnet при включённом Tailscale DNS."
+
 msgid "Accept routes"
 msgstr "Принимать маршруты"
+
+msgid "Accept subnet routes"
+msgstr "Принимать подсети (Accept routes)"
+
+msgid "Accept subnet routes advertised by other tailnet nodes."
+msgstr "Принимать маршруты подсетей, анонсируемые другими узлами Tailnet."
 
 msgid "Accept-Language Header"
 msgstr "Заголовок Accept-Language"
@@ -671,8 +686,14 @@ msgstr "Разрешать / Включать ТОЛЬКО в указанные
 msgid "Allow Insecure TLS"
 msgstr "Разрешить небезопасный TLS"
 
+msgid "Allow LAN access when using exit node"
+msgstr "Разрешить доступ к LAN при использовании выходного узла"
+
 msgid "Allow always"
 msgstr "Разрешено всегда"
+
+msgid "Allow direct access to local LAN subnets while forwarding outbound traffic through an exit node."
+msgstr "Разрешить прямой доступ к локальным подсетям LAN при маршрутизации исходящего трафика через выходной узел."
 
 msgid "Allow in interval"
 msgstr "Разрешено в интервале"
@@ -2204,6 +2225,9 @@ msgstr "Дополнительный паддинг содержимого (Cont
 msgid "Continuously probe servers and route traffic through the lowest-latency alive node"
 msgstr "Регулярное измерение пинга и автоматическое переключение на самый быстрый сервер"
 
+msgid "Control URL must start with http:// or https://"
+msgstr "Control URL должен начинаться с http:// или https://"
+
 msgid "Control how BitTorrent and P2P traffic is handled: allow normal routing, force direct via WAN to prevent VPN bans, or block completely."
 msgstr "Управление обработкой трафика BitTorrent и P2P: разрешить обычную маршрутизацию, принудительно направлять напрямую через WAN для предотвращения блокировок VPN или полностью заблокировать."
 
@@ -2873,6 +2897,9 @@ msgstr "Устройство не передаёт своё имя по DHCP п�
 msgid "Device filter"
 msgstr "Фильтр устройств"
 
+msgid "Device hostname visible inside your tailnet (optional)."
+msgstr "Имя хоста устройства, видимое внутри вашей сети Tailnet (необязательно)."
+
 msgid "Device name"
 msgstr "Имя устройства"
 
@@ -3266,6 +3293,18 @@ msgstr "Редактировать группу серверов"
 msgid "Eligible components for auto-update"
 msgstr "Разрешенные компоненты для автообновления"
 
+msgid "Embedded"
+msgstr "Встроенный"
+
+msgid "Embedded (tachyon-core / sing-box, default)"
+msgstr "Встроенный (tachyon-core / sing-box, по умолчанию)"
+
+msgid "Embedded Tailscale is running"
+msgstr "Встроенный Tailscale работает"
+
+msgid "Embedded runs Tailscale directly inside the routing core without a separate tailscaled daemon or tailscale0 interface."
+msgstr "Встроенный режим запускает Tailscale напрямую внутри ядра маршрутизации без отдельного демона tailscaled и интерфейса tailscale0."
+
 msgid "Empty composite rule"
 msgstr "Пустое составное правило"
 
@@ -3515,6 +3554,12 @@ msgstr "Введите URL подписки"
 msgid "Enter valid domain names, one per line."
 msgstr "Введите корректные домены, по одному на строку."
 
+msgid "Ephemeral node"
+msgstr "Эфемерный узел"
+
+msgid "Ephemeral node (remove on disconnect)"
+msgstr "Эфемерный узел (удалять после отключения)"
+
 msgid "Err"
 msgstr "Ошибок"
 
@@ -3643,6 +3688,12 @@ msgstr "Исключенные из Smart Detect домены"
 
 msgid "Excluded servers"
 msgstr "Исключённые серверы"
+
+msgid "Exit Node (optional)"
+msgstr "Выходной узел (Exit node, необязательно)"
+
+msgid "Exit node"
+msgstr "Выходной узел"
 
 msgid "Expand all"
 msgstr "Развернуть все"
@@ -4795,6 +4846,9 @@ msgstr "Если все загрузочные (Bootstrap) DNS не ответя
 
 msgid "If all Main DNS fail 3 times, queries will be sent to your ISP's DNS in plaintext. Only use as a last resort to prevent complete internet loss."
 msgstr "Если все основные (Main) DNS не ответят 3 раза подряд, запросы будут отправлены к DNS провайдера в открытом виде. Используйте только как крайнюю меру против полной потери интернета."
+
+msgid "If omitted, an interactive login URL is printed in the service logs."
+msgstr "Если не указан, ссылка для интерактивного входа появится в журнале сервиса."
 
 msgid "If one health check fails with an error, continue running other checks instead of stopping."
 msgstr "Если одна проверка завершается ошибкой, продолжать другие проверки, а не останавливаться."
@@ -6275,6 +6329,9 @@ msgstr "Имя, отображаемое на дашборде"
 msgid "Name shown in the priority level list"
 msgstr "Имя в списке уровней приоритета"
 
+msgid "Native (system tailscaled / tailscale0)"
+msgstr "Нативный (системный tailscaled / tailscale0)"
+
 msgid "Native Desync"
 msgstr "Встроенный Desync"
 
@@ -6328,6 +6385,9 @@ msgstr "Имя сетевого интерфейса"
 
 msgid "Network Interface Name (wg0, awg0, tun0)"
 msgstr "Имя сетевого интерфейса (или несколько через запятую)"
+
+msgid "Network Interface Name is required"
+msgstr "Необходимо указать имя сетевого интерфейса"
 
 msgid "Network interface settings"
 msgstr "Настройки сетевого интерфейса"
@@ -6878,6 +6938,9 @@ msgstr "Опция \"%s\" содержит недопустимое значен
 msgid "Optional HTTP/HTTPS URLs probed through this section's outbound/strategy (e.g. https://i.ytimg.com/generate_204). Leave empty to use the global latency test URL. Note: HTTP/HTTPS probes do not validate UDP game traffic or Discord voice."
 msgstr "Необязательные URL HTTP/HTTPS для проверки через прокси/стратегию этой секции (например, https://i.ytimg.com/generate_204). Оставьте пустым для использования глобального URL проверки задержки. Примечание: HTTP/HTTPS-проверки не проверяют игровой трафик UDP и голосовые каналы Discord."
 
+msgid "Optional UDP port to expose this endpoint as a Tailscale peer relay server."
+msgstr "Необязательный UDP-порт для работы этого узла в роли ретранслятора Tailscale peer relay."
+
 msgid "Optional additional URLs to probe simultaneously with Health Check URL. If no server passes 100% of URLs, Fallback mode selects the server with the highest number of reachable URLs (> 0)."
 msgstr "Дополнительные URL для одновременной проверки вместе с основным URL. Если ни один сервер не проходит 100% URL, резервный режим (Fallback) выберет сервер с наибольшим числом доступных URL (> 0)."
 
@@ -6905,11 +6968,23 @@ msgstr "Необязательное имя, отображаемое в вер�
 msgid "Optional raw WireGuard / AmneziaWG [Interface] + [Peer] configuration text."
 msgstr "Необязательный текст конфигурации WireGuard / AmneziaWG с секциями [Interface] и [Peer]."
 
+msgid "Optional reusable or ephemeral pre-authentication key to join your Tailnet (e.g. tskey-auth-...). If omitted, an interactive login URL is printed in the service logs."
+msgstr "Необязательный многоразовый или эфемерный ключ предварительной авторизации для подключения к сети Tailnet (например, tskey-auth-...). Если не указан, ссылка для интерактивного входа будет выведена в журнале сервиса."
+
 msgid "Optional schedule when this condition is active (tachyon-core), e.g. 09:00-18:00 or Mon-Fri 22:00-07:00."
 msgstr ""
 
 msgid "Optional server name or IP from the token to prefer."
 msgstr "Необязательное имя или IP-адрес предпочитаемого сервера из токена."
+
+msgid "Optional static host:port or IP:port endpoints advertised for the peer relay server."
+msgstr "Необязательные статические адреса host:port или IP:port, анонсируемые для сервера peer relay."
+
+msgid "Optional tailnet peer hostname or Tailscale IP to route outbound endpoint traffic through."
+msgstr "Необязательное имя узла или Tailscale IP в сети Tailnet для маршрутизации исходящего трафика конечной точки."
+
+msgid "Optional tailnet peer hostname or Tailscale IP to route outbound traffic through."
+msgstr "Необязательное имя узла или Tailscale IP в сети Tailnet для маршрутизации исходящего трафика."
 
 msgid "Optional tls-auth or tls-crypt key"
 msgstr "Опциональный ключ tls-auth или tls-crypt"
@@ -7916,6 +7991,9 @@ msgstr "Обновление индекса пакетов"
 msgid "Regex"
 msgstr "Регулярное выражение"
 
+msgid "Register as an ephemeral node that is automatically removed from the tailnet when the service stops."
+msgstr "Регистрировать как эфемерный узел, который автоматически удаляется из сети Tailnet при остановке сервиса."
+
 msgid "Registering Cloudflare WARP account..."
 msgstr "Регистрация аккаунта Cloudflare WARP..."
 
@@ -7954,6 +8032,12 @@ msgstr "Время смены ключей RekeyAfterTime (с)"
 
 msgid "RekeyTimeout (s)"
 msgstr "Таймаут смены ключей RekeyTimeout (с)"
+
+msgid "Relay server UDP port"
+msgstr "UDP-порт ретранслятора (Relay server)"
+
+msgid "Relay server static endpoints"
+msgstr "Статические адреса ретранслятора (Relay server)"
 
 msgid "Reload now"
 msgstr "Перезагрузить сейчас"
@@ -8164,9 +8248,6 @@ msgstr "Переиспользуемые балансировщики URLTest и
 
 msgid "Reusable atomic traffic conditions and composite boolean rules (AND / OR / NOT) with 2-mode Rule Tracer."
 msgstr "Переиспользуемые атомарные условия и составные булевы правила (И / ИЛИ / НЕ) с двухрежимным трассировщиком."
-
-msgid "Reusable or ephemeral pre-authentication key to join your Tailnet (e.g. tskey-auth-...)."
-msgstr "Многоразовый или эфемерный pre-auth ключ для подключения к вашему Tailnet (например, tskey-auth-...)."
 
 msgid "Reusable service lists, domain/IP sets, and boolean rules (AND / OR / NOT) attached to routing sections."
 msgstr "Списки сервисов, домены, подсети и составные логические условия (AND / OR / NOT) для секций."
@@ -10079,14 +10160,26 @@ msgstr "NFQWS2 Tachyon готов"
 msgid "Tailscale"
 msgstr "Tailscale"
 
+msgid "Tailscale Auth Key (optional)"
+msgstr "Ключ авторизации Tailscale (необязательно)"
+
+msgid "Tailscale Control URL"
+msgstr "URL контроллера (Control URL)"
+
+msgid "Tailscale Hostname"
+msgstr "Имя хоста (Hostname)"
+
 msgid "Tailscale Interface Name on Router"
 msgstr "Сетевой интерфейс Tailscale на роутере"
 
 msgid "Tailscale Mesh VPN"
 msgstr "Tailscale Mesh VPN"
 
-msgid "Tailscale auth key"
-msgstr "Ключ авторизации Tailscale"
+msgid "Tailscale Mode"
+msgstr "Режим Tailscale"
+
+msgid "Tailscale auth key (optional)"
+msgstr "Ключ авторизации Tailscale (необязательно)"
 
 msgid "Tailscale control URL"
 msgstr "Control URL Tailscale"
@@ -10949,6 +11042,9 @@ msgstr "Используйте CIDR-префиксы, например 192.168.1
 msgid "Use CIDR prefixes or IP addresses like 192.168.1.0/24, 192.168.1.10, or 2001:db8::1"
 msgstr "Используйте префиксы CIDR или IP-адреса, например 192.168.1.0/24, 192.168.1.10 или 2001:db8::1"
 
+msgid "Use DNS configuration advertised by the tailnet (MagicDNS)."
+msgstr "Использовать настройки DNS, передаваемые сетью Tailnet (MagicDNS)."
+
 msgid "Use DTLS (anyconnect only)"
 msgstr "Использовать DTLS (только AnyConnect)"
 
@@ -11789,9 +11885,6 @@ msgstr "серверов"
 msgid "sing-box"
 msgstr "sing-box"
 
-msgid "sing-box endpoint (userspace, default)"
-msgstr "Endpoint в sing-box (userspace, по умолчанию)"
-
 msgid "sites"
 msgstr "сайтов"
 
@@ -12061,6 +12154,15 @@ msgstr "Как часто проверять здоровье DNS в секун�
 
 msgid "How often to check proxy health in seconds (fast tier, default 30)."
 msgstr "Как часто проверять здоровье прокси в секундах (быстрый уровень, по умолчанию 30)."
+
+msgid "Reusable or ephemeral pre-authentication key to join your Tailnet (e.g. tskey-auth-...)."
+msgstr "Многоразовый или эфемерный pre-auth ключ для подключения к вашему Tailnet (например, tskey-auth-...)."
+
+msgid "Tailscale auth key"
+msgstr "Ключ авторизации Tailscale"
+
+msgid "sing-box endpoint (userspace, default)"
+msgstr "Endpoint в sing-box (userspace, по умолчанию)"
 
 msgid "Invalid CSQTT URL: missing host/peer or password"
 msgstr ""

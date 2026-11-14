@@ -1468,6 +1468,7 @@ function ensureProtocolDefaults(sectionId, protocol, forceProtocolDefaults) {
   }
 
   if (protocol === "tailscale") {
+    setDefault(sectionId, "tailscale_mode", "singbox");
     setDefault(
       sectionId,
       "tailscale_control_url",
@@ -1479,6 +1480,8 @@ function ensureProtocolDefaults(sectionId, protocol, forceProtocolDefaults) {
       defaultTailscaleHostname(sectionId),
     );
     setDefault(sectionId, "tailscale_advertise_exit_node", "1");
+    setDefault(sectionId, "tailscale_accept_dns", "1");
+    setDefault(sectionId, "tailscale_accept_default_resolvers", "1");
   }
 
   if (protocol === "hysteria2") {
@@ -4062,9 +4065,19 @@ function syncProtocolWidgetValues(sectionId, _protocol) {
     "awg_h2",
     "awg_h3",
     "awg_h4",
+    "tailscale_mode",
     "tailscale_control_url",
     "tailscale_hostname",
     "tailscale_advertise_exit_node",
+    "tailscale_advertise_routes",
+    "tailscale_accept_routes",
+    "tailscale_ephemeral",
+    "tailscale_accept_dns",
+    "tailscale_accept_default_resolvers",
+    "tailscale_exit_node",
+    "tailscale_exit_node_allow_lan_access",
+    "tailscale_relay_server_port",
+    "tailscale_relay_server_static_endpoints",
     "mtproto_secret",
     "mtproto_faketls",
     "mtproto_padding",
@@ -4968,6 +4981,7 @@ function autoConfigureServer(sectionId) {
       setWidgetValue(sectionId, "wdtt_network", "10.66.0.1/16");
       setWidgetValue(sectionId, "wdtt_mtu", "1350");
     } else if (protocol === "tailscale") {
+      setWidgetValue(sectionId, "tailscale_mode", "singbox");
       setWidgetValue(
         sectionId,
         "tailscale_control_url",
@@ -4979,8 +4993,11 @@ function autoConfigureServer(sectionId) {
         defaultTailscaleHostname(sectionId),
       );
       setWidgetValue(sectionId, "tailscale_advertise_exit_node", "1");
+      setWidgetValue(sectionId, "tailscale_accept_dns", "1");
+      setWidgetValue(sectionId, "tailscale_accept_default_resolvers", "1");
+      setWidgetValue(sectionId, "tailscale_ephemeral", "0");
+      setWidgetValue(sectionId, "tailscale_exit_node_allow_lan_access", "0");
       setWidgetValue(sectionId, "tailscale_auto_firewall", "1");
-      setWidgetValue(sectionId, "tailscale_mode", "singbox");
     } else if (protocol === "json_inbound") {
       const sampleInbound = {
         type: "vless",
@@ -6526,17 +6543,17 @@ function createServerContent(section, options = {}) {
   o = section.option(
     form.Value,
     "tailscale_auth_key",
-    _("Tailscale auth key"),
+    _("Tailscale auth key (optional)"),
     _(
-      "Reusable or ephemeral pre-authentication key to join your Tailnet (e.g. tskey-auth-...).",
+      "Optional reusable or ephemeral pre-authentication key to join your Tailnet (e.g. tskey-auth-...). If omitted, an interactive login URL is printed in the service logs.",
     ) +
       ' <a href="https://login.tailscale.com/admin/settings/keys" target="_blank" rel="noopener noreferrer">' +
       _("Generate in Tailscale Admin Console") +
       "</a>",
   );
   o.modalonly = true;
-  o.rmempty = false;
-  o.validate = validateRequired;
+  o.rmempty = true;
+  o.placeholder = "tskey-auth-...";
   addTailscaleDepends(o);
 
   o = section.option(
@@ -6592,7 +6609,7 @@ function createServerContent(section, options = {}) {
   addTailscaleDepends(o);
 
   o = section.option(form.ListValue, "tailscale_mode", _("Tailscale mode"));
-  o.value("singbox", _("sing-box endpoint (userspace, default)"));
+  o.value("singbox", _("Embedded (tachyon-core / sing-box, default)"));
   o.value(
     "native",
     _("Native tailscaled (tailnet reachable from LAN without client)"),
@@ -6601,6 +6618,101 @@ function createServerContent(section, options = {}) {
   o.modalonly = true;
   o.rmempty = false;
   addTailscaleDepends(o);
+
+  o = section.option(
+    form.Flag,
+    "tailscale_ephemeral",
+    _("Ephemeral node"),
+    _(
+      "Register as an ephemeral node that is automatically removed from the tailnet when the service stops.",
+    ),
+  );
+  o.default = "0";
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends({ protocol: "tailscale", tailscale_mode: "singbox" });
+
+  o = section.option(
+    form.Flag,
+    "tailscale_accept_dns",
+    _("Accept Tailscale DNS (MagicDNS)"),
+    _("Use DNS configuration advertised by the tailnet (MagicDNS)."),
+  );
+  o.default = "1";
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends({ protocol: "tailscale", tailscale_mode: "singbox" });
+
+  o = section.option(
+    form.Flag,
+    "tailscale_accept_default_resolvers",
+    _("Accept default DNS resolvers"),
+    _(
+      "Accept fallback DNS resolvers distributed by the tailnet when Tailscale DNS is enabled.",
+    ),
+  );
+  o.default = "1";
+  o.modalonly = true;
+  o.rmempty = false;
+  o.depends({
+    protocol: "tailscale",
+    tailscale_mode: "singbox",
+    tailscale_accept_dns: "1",
+  });
+
+  o = section.option(
+    form.Value,
+    "tailscale_exit_node",
+    _("Exit node"),
+    _(
+      "Optional tailnet peer hostname or Tailscale IP to route outbound endpoint traffic through.",
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = "100.64.0.10";
+  o.validate = validateOptionalHost;
+  o.depends({ protocol: "tailscale", tailscale_mode: "singbox" });
+
+  o = section.option(
+    form.Flag,
+    "tailscale_exit_node_allow_lan_access",
+    _("Allow LAN access when using exit node"),
+    _(
+      "Allow direct access to local LAN subnets while forwarding outbound traffic through an exit node.",
+    ),
+  );
+  o.default = "0";
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends({ protocol: "tailscale", tailscale_mode: "singbox" });
+
+  o = section.option(
+    form.Value,
+    "tailscale_relay_server_port",
+    _("Relay server UDP port"),
+    _(
+      "Optional UDP port to expose this endpoint as a Tailscale peer relay server.",
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = "40000";
+  o.validate = validateOptionalPort;
+  o.depends({ protocol: "tailscale", tailscale_mode: "singbox" });
+
+  o = section.option(
+    form.DynamicList,
+    "tailscale_relay_server_static_endpoints",
+    _("Relay server static endpoints"),
+    _(
+      "Optional static host:port or IP:port endpoints advertised for the peer relay server.",
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = "203.0.113.10:40000";
+  o.depends({ protocol: "tailscale", tailscale_mode: "singbox" });
 
   o = section.option(
     form.Flag,

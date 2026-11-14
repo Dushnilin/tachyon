@@ -125,6 +125,7 @@ let resetInboundTrafficStateForTests: any;
 let renderCollapsibleInboundsBlock: any;
 let formatActiveServersCount: any;
 let showInboundClientsModal: any;
+let hasEnabledNativeTailscaleServer: any;
 
 describe('inboundServers', () => {
   beforeAll(async () => {
@@ -136,6 +137,7 @@ describe('inboundServers', () => {
     renderCollapsibleInboundsBlock = mod.renderCollapsibleInboundsBlock;
     formatActiveServersCount = mod.formatActiveServersCount;
     showInboundClientsModal = mod.showInboundClientsModal;
+    hasEnabledNativeTailscaleServer = mod.hasEnabledNativeTailscaleServer;
   });
 
   beforeEach(() => {
@@ -795,6 +797,76 @@ describe('inboundServers', () => {
       expect(modalEl.textContent).toContain('papa4');
       expect(modalEl.textContent).toContain('OnePlus 12');
       expect(modalEl.textContent).toContain('Не в сети');
+    });
+
+    it('shows Running badge for embedded Tailscale from core state without meshOnlinePeers and checks native helper', () => {
+      const inbounds = getConfiguredServerInbounds([
+        {
+          '.name': 'tailscale_emb',
+          enabled: '1',
+          label: 'ts-embedded',
+          server_country: 'DE',
+          protocol: 'tailscale',
+          tailscale_mode: 'singbox',
+          routing_mode: 'rules',
+        },
+      ]);
+
+      expect(inbounds).toHaveLength(1);
+      expect(inbounds[0].tailscaleMode).toBe('singbox');
+      expect(hasEnabledNativeTailscaleServer(inbounds)).toBe(false);
+      expect(
+        hasEnabledNativeTailscaleServer([
+          { ...inbounds[0], tailscaleMode: 'native', enabled: false },
+        ]),
+      ).toBe(false);
+      expect(
+        hasEnabledNativeTailscaleServer([
+          { ...inbounds[0], tailscaleMode: 'native', enabled: true },
+        ]),
+      ).toBe(true);
+
+      const summary = computeInboundsRuntimeSummary(
+        inbounds,
+        [],
+        new Map(),
+        Date.now(),
+        null,
+      );
+      expect(
+        summary.bySection.get('tailscale_emb')?.meshOnlinePeers,
+      ).toBeUndefined();
+
+      const runningContainer = new MockElement('div') as any;
+      renderCollapsibleInboundsBlock({
+        container: runningContainer,
+        servers: inbounds,
+        summary,
+        isTachyonRunning: true,
+        storageKey: 'tachyon_test_ts_emb_run',
+        showGoToServersLink: false,
+        onRerender: vi.fn(),
+        viewMode: 'expanded_cards',
+      });
+
+      expect(runningContainer.textContent).toContain('Работает');
+      expect(runningContainer.textContent).not.toContain('Ожидание');
+      expect(runningContainer.textContent).not.toContain('Остановлен');
+
+      const stoppedContainer = new MockElement('div') as any;
+      renderCollapsibleInboundsBlock({
+        container: stoppedContainer,
+        servers: inbounds,
+        summary,
+        isTachyonRunning: false,
+        storageKey: 'tachyon_test_ts_emb_stop',
+        showGoToServersLink: false,
+        onRerender: vi.fn(),
+        viewMode: 'expanded_cards',
+      });
+
+      expect(stoppedContainer.textContent).toContain('Остановлен');
+      expect(stoppedContainer.textContent).not.toContain('Работает');
     });
   });
 });

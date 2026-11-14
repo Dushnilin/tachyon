@@ -195,7 +195,7 @@ const CUSTOM_PROTO_LIST: Array<{
     defaultPort: '443',
   },
   { id: 'openvpn', label: 'OpenVPN (.ovpn Profile)', defaultPort: '1194' },
-  { id: 'tailscale', label: 'Tailscale Mesh VPN (tailscale0)' },
+  { id: 'tailscale', label: 'Tailscale Mesh VPN' },
   {
     id: 'tor',
     label: 'Tor Network (Local SOCKS5 Daemon)',
@@ -1541,6 +1541,16 @@ export function openConnectionWizardModal(
   let openvpnConfig = '';
   let openvpnProto: 'udp' | 'tcp' = 'udp';
   let openvpnCipher = 'AES-256-GCM';
+
+  // Tailscale
+  let tailscaleMode: 'embedded' | 'native' = 'embedded';
+  let tailscaleAuthKey = '';
+  let tailscaleHostname = '';
+  let tailscaleControlUrl = 'https://controlplane.tailscale.com';
+  let tailscaleExitNode = '';
+  let tailscaleAcceptRoutes = true;
+  let tailscaleAcceptDns = true;
+  let tailscaleEphemeral = false;
 
   // Tor & JSON
   let torSocksPort = '9050';
@@ -3195,11 +3205,6 @@ export function openConnectionWizardModal(
                   customPort = found.defaultPort;
                 }
                 if (
-                  customProto === 'tailscale' &&
-                  (!customInterface || customInterface === 'wg0')
-                ) {
-                  customInterface = 'tailscale0';
-                } else if (
                   customProto === 'interface' &&
                   customInterface === 'tailscale0'
                 ) {
@@ -4834,43 +4839,226 @@ export function openConnectionWizardModal(
             E(
               'label',
               { class: 'tachyon-wizard__label' },
-              tr(
-                'Сетевой интерфейс Tailscale на роутере',
-                'Tailscale Interface Name on Router',
-              ),
+              tr('Режим Tailscale', 'Tailscale Mode'),
             ),
-            E('input', {
-              type: 'text',
-              class: 'cbi-input-text tachyon-wizard__input',
-              placeholder: 'tailscale0',
-              value: customInterface || 'tailscale0',
-              input: (ev: Event) => {
-                customInterface = (ev.target as HTMLInputElement).value;
-              },
-            } as any),
             E(
-              'div',
+              'select',
               {
-                class: 'tachyon-wizard__chips',
-                style: 'margin-top: 6px;',
-              },
-              tsIfaces.map((ifName) =>
+                class: 'cbi-input-select tachyon-wizard__select',
+                change: (ev: Event) => {
+                  const val = (ev.target as HTMLSelectElement).value;
+                  tailscaleMode = val === 'native' ? 'native' : 'embedded';
+                  if (tailscaleMode === 'native' && !customInterface) {
+                    customInterface = 'tailscale0';
+                  }
+                  rerender();
+                },
+              } as any,
+              [
                 E(
-                  'button',
+                  'option',
                   {
-                    type: 'button',
-                    class: `tachyon-wizard__chip ${(customInterface || 'tailscale0') === ifName ? 'is-active' : ''}`,
-                    click: () => {
-                      customInterface = ifName;
-                      rerender();
-                    },
-                  } as any,
-                  ifName,
+                    value: 'embedded',
+                    selected: tailscaleMode === 'embedded' ? true : undefined,
+                  },
+                  tr(
+                    'Встроенный (tachyon-core / sing-box, по умолчанию)',
+                    'Embedded (tachyon-core / sing-box, default)',
+                  ),
                 ),
-              ),
+                E(
+                  'option',
+                  {
+                    value: 'native',
+                    selected: tailscaleMode === 'native' ? true : undefined,
+                  },
+                  tr(
+                    'Нативный (системный tailscaled / tailscale0)',
+                    'Native (system tailscaled / tailscale0)',
+                  ),
+                ),
+              ],
             ),
           ]),
         );
+        if (tailscaleMode === 'native') {
+          formFields.push(
+            E('div', { class: 'tachyon-wizard__field' }, [
+              E(
+                'label',
+                { class: 'tachyon-wizard__label' },
+                tr(
+                  'Сетевой интерфейс Tailscale на роутере',
+                  'Tailscale Interface Name on Router',
+                ),
+              ),
+              E('input', {
+                type: 'text',
+                class: 'cbi-input-text tachyon-wizard__input',
+                placeholder: 'tailscale0',
+                value: customInterface || 'tailscale0',
+                input: (ev: Event) => {
+                  customInterface = (ev.target as HTMLInputElement).value;
+                },
+              } as any),
+              E(
+                'div',
+                {
+                  class: 'tachyon-wizard__chips',
+                  style: 'margin-top: 6px;',
+                },
+                tsIfaces.map((ifName) =>
+                  E(
+                    'button',
+                    {
+                      type: 'button',
+                      class: `tachyon-wizard__chip ${(customInterface || 'tailscale0') === ifName ? 'is-active' : ''}`,
+                      click: () => {
+                        customInterface = ifName;
+                        rerender();
+                      },
+                    } as any,
+                    ifName,
+                  ),
+                ),
+              ),
+            ]),
+          );
+        } else {
+          formFields.push(
+            E('div', { class: 'tachyon-wizard__field' }, [
+              E(
+                'label',
+                { class: 'tachyon-wizard__label' },
+                tr(
+                  'Ключ авторизации Tailscale (необязательно)',
+                  'Tailscale Auth Key (optional)',
+                ),
+              ),
+              E('input', {
+                type: 'text',
+                class: 'cbi-input-text tachyon-wizard__input',
+                placeholder: 'tskey-auth-...',
+                value: tailscaleAuthKey,
+                input: (ev: Event) => {
+                  tailscaleAuthKey = (ev.target as HTMLInputElement).value;
+                },
+              } as any),
+              E(
+                'div',
+                {
+                  style: 'margin-top: 4px; font-size: 12px; opacity: 0.78;',
+                },
+                tr(
+                  'Если не указан, ссылка для интерактивного входа появится в журнале сервиса.',
+                  'If omitted, an interactive login URL is printed in the service logs.',
+                ),
+              ),
+            ]),
+            E('div', { class: 'tachyon-wizard__row-2col' }, [
+              E('div', { class: 'tachyon-wizard__field' }, [
+                E(
+                  'label',
+                  { class: 'tachyon-wizard__label' },
+                  tr('Имя хоста (Hostname)', 'Tailscale Hostname'),
+                ),
+                E('input', {
+                  type: 'text',
+                  class: 'cbi-input-text tachyon-wizard__input',
+                  placeholder: 'tachyon-router',
+                  value: tailscaleHostname,
+                  input: (ev: Event) => {
+                    tailscaleHostname = (ev.target as HTMLInputElement).value;
+                  },
+                } as any),
+              ]),
+              E('div', { class: 'tachyon-wizard__field' }, [
+                E(
+                  'label',
+                  { class: 'tachyon-wizard__label' },
+                  tr('URL контроллера (Control URL)', 'Tailscale Control URL'),
+                ),
+                E('input', {
+                  type: 'text',
+                  class: 'cbi-input-text tachyon-wizard__input',
+                  placeholder: 'https://controlplane.tailscale.com',
+                  value: tailscaleControlUrl,
+                  input: (ev: Event) => {
+                    tailscaleControlUrl = (ev.target as HTMLInputElement).value;
+                  },
+                } as any),
+              ]),
+            ]),
+            E('div', { class: 'tachyon-wizard__field' }, [
+              E(
+                'label',
+                { class: 'tachyon-wizard__label' },
+                tr(
+                  'Выходной узел (Exit node, необязательно)',
+                  'Exit Node (optional)',
+                ),
+              ),
+              E('input', {
+                type: 'text',
+                class: 'cbi-input-text tachyon-wizard__input',
+                placeholder: '100.64.0.10',
+                value: tailscaleExitNode,
+                input: (ev: Event) => {
+                  tailscaleExitNode = (ev.target as HTMLInputElement).value;
+                },
+              } as any),
+            ]),
+            E('label', { class: 'tachyon-wizard__toggle-row' }, [
+              E('input', {
+                type: 'checkbox',
+                checked: tailscaleAcceptRoutes ? true : undefined,
+                change: (ev: Event) => {
+                  tailscaleAcceptRoutes = (ev.target as HTMLInputElement)
+                    .checked;
+                },
+              } as any),
+              E(
+                'span',
+                {},
+                tr('Принимать подсети (Accept routes)', 'Accept subnet routes'),
+              ),
+            ]),
+            E('label', { class: 'tachyon-wizard__toggle-row' }, [
+              E('input', {
+                type: 'checkbox',
+                checked: tailscaleAcceptDns ? true : undefined,
+                change: (ev: Event) => {
+                  tailscaleAcceptDns = (ev.target as HTMLInputElement).checked;
+                },
+              } as any),
+              E(
+                'span',
+                {},
+                tr(
+                  'Использовать MagicDNS (Accept DNS)',
+                  'Accept Tailscale DNS (MagicDNS)',
+                ),
+              ),
+            ]),
+            E('label', { class: 'tachyon-wizard__toggle-row' }, [
+              E('input', {
+                type: 'checkbox',
+                checked: tailscaleEphemeral ? true : undefined,
+                change: (ev: Event) => {
+                  tailscaleEphemeral = (ev.target as HTMLInputElement).checked;
+                },
+              } as any),
+              E(
+                'span',
+                {},
+                tr(
+                  'Эфемерный узел (удалять после отключения)',
+                  'Ephemeral node (remove on disconnect)',
+                ),
+              ),
+            ]),
+          );
+        }
       } else if (customProto === 'tor') {
         formFields.push(
           E('div', { class: 'tachyon-wizard__field' }, [
@@ -6541,6 +6729,17 @@ export function openConnectionWizardModal(
     if (actualSourceType !== 'fptn') {
       unsetUciOpt('access_token');
     }
+    if (actualSourceType !== 'tailscale') {
+      unsetUciOpt('tailscale_mode');
+      unsetUciOpt('tailscale_auth_key');
+      unsetUciOpt('tailscale_control_url');
+      unsetUciOpt('tailscale_hostname');
+      unsetUciOpt('tailscale_accept_routes');
+      unsetUciOpt('tailscale_accept_dns');
+      unsetUciOpt('tailscale_exit_node');
+      unsetUciOpt('tailscale_exit_node_allow_lan_access');
+      unsetUciOpt('tailscale_ephemeral');
+    }
 
     if (outboundMethod === 'subscription') {
       uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'url', subUrl.trim());
@@ -6767,12 +6966,81 @@ export function openConnectionWizardModal(
         );
       }
     } else if (outboundMethod === 'custom_proto') {
-      if (customProto === 'interface' || customProto === 'tailscale') {
-        const iface =
-          customInterface.trim() ||
-          (customProto === 'tailscale' ? 'tailscale0' : 'wg0');
+      if (customProto === 'interface') {
+        const iface = customInterface.trim() || 'wg0';
         uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'interface_name', iface);
         uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'interface', iface);
+      } else if (customProto === 'tailscale') {
+        uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'tailscale_mode', tailscaleMode);
+        if (tailscaleMode === 'native') {
+          const iface = customInterface.trim() || 'tailscale0';
+          uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'interface_name', iface);
+          uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'interface', iface);
+          unsetUciOpt('tailscale_auth_key');
+          unsetUciOpt('tailscale_hostname');
+          unsetUciOpt('tailscale_control_url');
+          unsetUciOpt('tailscale_exit_node');
+          unsetUciOpt('tailscale_accept_routes');
+          unsetUciOpt('tailscale_accept_dns');
+          unsetUciOpt('tailscale_ephemeral');
+        } else {
+          unsetUciOpt('interface_name');
+          unsetUciOpt('interface');
+          if (tailscaleAuthKey.trim()) {
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              'tailscale_auth_key',
+              tailscaleAuthKey.trim(),
+            );
+          } else {
+            unsetUciOpt('tailscale_auth_key');
+          }
+          if (tailscaleHostname.trim()) {
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              'tailscale_hostname',
+              tailscaleHostname.trim(),
+            );
+          } else {
+            unsetUciOpt('tailscale_hostname');
+          }
+          uciObj.set(
+            TACHYON_UCI_PACKAGE,
+            srcId,
+            'tailscale_control_url',
+            tailscaleControlUrl.trim() || 'https://controlplane.tailscale.com',
+          );
+          if (tailscaleExitNode.trim()) {
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              'tailscale_exit_node',
+              tailscaleExitNode.trim(),
+            );
+          } else {
+            unsetUciOpt('tailscale_exit_node');
+          }
+          uciObj.set(
+            TACHYON_UCI_PACKAGE,
+            srcId,
+            'tailscale_accept_routes',
+            tailscaleAcceptRoutes ? '1' : '0',
+          );
+          uciObj.set(
+            TACHYON_UCI_PACKAGE,
+            srcId,
+            'tailscale_accept_dns',
+            tailscaleAcceptDns ? '1' : '0',
+          );
+          uciObj.set(
+            TACHYON_UCI_PACKAGE,
+            srcId,
+            'tailscale_ephemeral',
+            tailscaleEphemeral ? '1' : '0',
+          );
+        }
       } else if (customProto === 'tor') {
         uciObj.set(
           TACHYON_UCI_PACKAGE,
