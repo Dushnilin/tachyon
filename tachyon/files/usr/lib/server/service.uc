@@ -1317,6 +1317,17 @@ function prepare_server_defaults(section) {
     server_default_set_option(section, "label", section);
     server_default_set_option(section, "enabled", "1");
     server_default_set_option(section, "routing_mode", "rules");
+
+    if (protocol == "tailscale") {
+        let safe_name = safe_filename_string(section);
+        server_set_option(section, "security", "none");
+        server_default_set_option(section, "tailscale_control_url", "https://controlplane.tailscale.com");
+        server_default_set_option(section, "tailscale_hostname", "tachyon-" + safe_name);
+        server_default_set_option(section, "tailscale_advertise_exit_node", "1");
+        server_default_set_option(section, "tailscale_auto_firewall", "1");
+        return;
+    }
+
     server_default_set_option(section, "open_firewall_port", "1");
 
     if (protocol == "json_inbound") {
@@ -1509,13 +1520,6 @@ function prepare_server_defaults(section) {
                 server_set_option(section, "awg_peer_public_key", cli_pair.public_key);
             }
         }
-    }
-    if (protocol == "tailscale") {
-        let safe_name = safe_filename_string(section);
-        server_default_set_option(section, "tailscale_control_url", "https://controlplane.tailscale.com");
-        server_default_set_option(section, "tailscale_hostname", "tachyon-" + safe_name);
-        server_default_set_option(section, "tailscale_advertise_exit_node", "1");
-        server_default_set_option(section, "tailscale_auto_firewall", "1");
     }
 
     if (security == "reality") {

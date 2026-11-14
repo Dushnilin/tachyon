@@ -1196,7 +1196,7 @@ function validate_dns_settings(settings, sections, context) {
             fail_validation("Invalid Bootstrap DNS server '" + value + "'. Aborted.");
 
     if (length(main_servers) > 1 || length(bootstrap_servers) > 1) {
-        validate_required_duration_option(option(settings, "dns_check_interval", "10s"), "settings.dns_check_interval");
+        validate_required_duration_option(option(settings, "dns_check_interval", "30s"), "settings.dns_check_interval");
         validate_required_duration_option(option(settings, "dns_recovery_check_interval", "60s"), "settings.dns_recovery_check_interval");
         validate_required_duration_option(option(settings, "dns_check_timeout", "2s"), "settings.dns_check_timeout");
         for (let name in [ "dns_failure_threshold", "dns_recovery_threshold", "dns_failover_failure_threshold" ]) {
@@ -1253,6 +1253,23 @@ function normalize_port_number_value(value) {
 
     let number = int(value);
     return number >= 1 && number <= 65535 ? number : null;
+}
+
+function validate_tailscale_network_options(entity, label) {
+    let relay_port_raw = trim(as_string(option(entity, "tailscale_relay_server_port", "")));
+    if (relay_port_raw != "") {
+        if (normalize_port_number_value(relay_port_raw) == null)
+            fail_validation(label + " has invalid tailscale_relay_server_port '" + relay_port_raw + "' (expected integer 1..65535). Aborted.");
+    }
+
+    let mtu_raw = trim(as_string(option(entity, "tailscale_system_interface_mtu", "")));
+    if (mtu_raw != "") {
+        if (match(mtu_raw, /^[0-9]+$/) == null)
+            fail_validation(label + " has invalid tailscale_system_interface_mtu '" + mtu_raw + "' (expected integer 576..65535). Aborted.");
+        let mtu = int(mtu_raw);
+        if (mtu < 576 || mtu > 65535)
+            fail_validation(label + " has out-of-range tailscale_system_interface_mtu '" + mtu_raw + "' (expected 576..65535). Aborted.");
+    }
 }
 
 function normalize_port_condition_value(value) {
@@ -2040,6 +2057,14 @@ function validate_rule(section, sections, context) {
     if (action == "outbound")
         validate_outbound_json_rule(section);
 
+    if (action == "tailscale")
+        validate_tailscale_network_options(section, "Section '" + name + "'");
+
+    for (let src in connections.section_effective_outbound_sources(section)) {
+        if (lc(option(src, "source_type", "")) == "tailscale")
+            validate_tailscale_network_options(src, "Section '" + name + "' Tailscale source");
+    }
+
     validate_combined_domain_text_value(option(section, "domain", ""), name);
     for (let value in list_option(section, "domain_suffix"))
         validate_combined_domain_value(value, name);
@@ -2190,6 +2215,8 @@ function validate_server_routing_sections(sections) {
                 let port_num = normalize_port_number_value(port_str);
                 if (port_num == 1602 || port_num == 1053 || port_num == 5354)
                     fail_validation("Server '" + name + "' uses reserved internal Tachyon port " + port_num + " (1602 is tproxy-in, 1053 is dns-block-in, 5354 is dns-source-in). Choose a different listen_port (e.g. 8443 or 443). Aborted.");
+            } else if (protocol == "tailscale") {
+                validate_tailscale_network_options(server, "Server '" + name + "'");
             }
             let mode = option(server, "routing_mode", "rules");
             if (!contains([ "rules", "direct", "section" ], mode))
@@ -3190,6 +3217,11 @@ function validate_section_action_variant_support(ctx, sing_box_version) {
                 !core_profile().supports_protocol(sing_box_version, sing_box_core_marker(ctx), "wdtt")) {
                 fail_requirement("Section '" + name + "' uses CSQTT / WDTT v3, which requires tachyon-core. Switch the core to tachyon-core or change the action. Aborted.", "fatal");
             }
+
+            if ((action == "tailscale" || length(connections.embedded_tailscale_sources(section)) > 0) &&
+                !sing_box_supports_tailscale(ctx, sing_box_version, "")) {
+                fail_requirement("Section '" + name + "' uses Tailscale, which requires a sing-box build with with_tailscale or tachyon-core. Switch the core/variant or change the action. Aborted.", "fatal");
+            }
         } catch (e) {
             current_validating_section = "";
             if (index(as_string(e), "__TACHYON_QUARANTINE__") < 0)
@@ -3260,7 +3292,8 @@ function has_outbound_section(ctx) {
         if (length(connections.connection_urls(section)) > 0 ||
             length(connections.subscription_urls(section)) > 0 ||
             length(connections.outbound_jsons(section)) > 0 ||
-            length(connections.interfaces(section)) > 0)
+            length(connections.interfaces(section)) > 0 ||
+            length(connections.embedded_tailscale_sources(section)) > 0)
             return true;
     }
 

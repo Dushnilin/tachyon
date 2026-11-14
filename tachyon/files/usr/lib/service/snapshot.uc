@@ -365,7 +365,7 @@ function parse_config_active_flags(config_text) {
     let cur_enabled = true;
     let cur_action = "";
     let cur_protocol = "";
-    let cur_ts_mode = "";
+    let cur_source_type = "";
 
     let flush_section = function() {
         if (cur_type == "" || !cur_enabled)
@@ -375,8 +375,11 @@ function parse_config_active_flags(config_text) {
             else if (cur_action == "zapret") flags.zapret = true;
             else if (cur_action == "byedpi") flags.byedpi = true;
             else if (cur_action == "tailscale") flags.tailscale = true;
+        } else if (cur_type == "outbound_source") {
+            if (cur_source_type == "tailscale")
+                flags.tailscale = true;
         } else if (cur_type == "server") {
-            if (cur_protocol == "tailscale" && cur_ts_mode == "native")
+            if (cur_protocol == "tailscale")
                 flags.tailscale = true;
         }
     };
@@ -392,7 +395,7 @@ function parse_config_active_flags(config_text) {
             cur_enabled = true;
             cur_action = "";
             cur_protocol = "";
-            cur_ts_mode = "";
+            cur_source_type = "";
             continue;
         }
         let opt = match(line, /^option[ \t]+([A-Za-z0-9_]+)[ \t]+['"]?([^'"\r\n]*)['"]?/);
@@ -408,8 +411,8 @@ function parse_config_active_flags(config_text) {
             cur_action = lc(v);
         else if (k == "protocol")
             cur_protocol = lc(v);
-        else if (k == "tailscale_mode")
-            cur_ts_mode = lc(v);
+        else if (k == "source_type")
+            cur_source_type = lc(v);
     }
     flush_section();
     return flags;

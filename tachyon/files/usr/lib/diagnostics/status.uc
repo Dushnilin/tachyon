@@ -485,11 +485,6 @@ function tachyon_config_masked(path) {
             continue;
         }
 
-        if (delete_token_space(line, "option tailscale_ephemeral") ||
-            delete_token_space(line, "option tailscale_exit_node") ||
-            delete_token_space(line, "option tailscale_exit_node_allow_lan_access"))
-            continue;
-
         let masked = tachyon_config_masked_line(line);
         print(masked, "\n");
         if (index(line, "option outbound_json") >= 0 ||

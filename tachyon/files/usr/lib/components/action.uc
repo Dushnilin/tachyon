@@ -3377,9 +3377,14 @@ function create_component_backup(component) {
         return true;
     }
     else if (component == "tailscale") {
-        if (!file_exists("/usr/sbin/tailscale")) return true;
+        let has_bin = file_exists("/usr/sbin/tailscale");
+        let has_daemon = fs.lstat("/usr/sbin/tailscaled") != null;
+        if (!has_bin && !has_daemon) return true;
         ensure_dir(bdir);
-        command_success_from_args([ "cp", "-p", "/usr/sbin/tailscale", bdir + "/tailscale" ]);
+        if (has_bin)
+            command_success_from_args([ "cp", "-p", "/usr/sbin/tailscale", bdir + "/tailscale" ]);
+        if (has_daemon)
+            command_status_from_args([ "cp", "-Pf", "/usr/sbin/tailscaled", bdir + "/tailscaled" ]);
         let meta = {
             component: "tailscale",
             version: provider_package_version(LIB_DIR + "/providers/tailscale/runtime.uc"),
@@ -3497,9 +3502,19 @@ function rollback_component(component) {
     }
     else if (component == "tailscale") {
         let backup_bin = bdir + "/tailscale";
-        if (!file_exists(backup_bin)) action_fail("tailscale", "rollback", "Tailscale backup binary is missing");
-        command_success_from_args([ "cp", "-p", backup_bin, "/usr/sbin/tailscale" ]);
-        command_success_from_args([ "chmod", "0755", "/usr/sbin/tailscale" ]);
+        let backup_daemon = bdir + "/tailscaled";
+        let has_bin = file_exists(backup_bin);
+        let has_daemon = fs.lstat(backup_daemon) != null;
+        if (!has_bin && !has_daemon) action_fail("tailscale", "rollback", "Tailscale backup binary is missing");
+        if (has_bin) {
+            command_success_from_args([ "cp", "-p", backup_bin, "/usr/sbin/tailscale" ]);
+            command_success_from_args([ "chmod", "0755", "/usr/sbin/tailscale" ]);
+        }
+        if (has_daemon) {
+            command_status_from_args([ "cp", "-Pf", backup_daemon, "/usr/sbin/tailscaled" ]);
+            if (!is_symlink_path(backup_daemon))
+                command_status_from_args([ "chmod", "0755", "/usr/sbin/tailscaled" ]);
+        }
         clear_version_caches();
         restart_tachyon_after_successful_change();
         action_success("tailscale", "rollback", "Tailscale rolled back to " + backup_version, backup_version, "", 1);

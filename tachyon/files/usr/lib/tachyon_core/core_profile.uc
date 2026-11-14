@@ -180,7 +180,7 @@ const CORE_INBOUNDS = {
         "vless", "vmess", "trojan", "shadowsocks", "hysteria2", "tuic", "shadowtls" ],
     "tachyon-core": [ "mixed", "direct", "redirect", "tproxy", "socks", "http", "tun",
         "vless", "vmess", "trojan", "shadowsocks", "hysteria2", "hysteria", "tuic", "anytls",
-        "snell", "naive", "shadowtls", "fptn", "mieru", "trusttunnel", "tewfai", "masque", "openconnect", "mtproto", "wdtt" ]
+        "snell", "naive", "shadowtls", "fptn", "mieru", "trusttunnel", "tewfai", "masque", "openconnect", "mtproto", "wdtt", "tailscale" ]
 };
 
 // Local, like every other module: core.common has no contains(), and the

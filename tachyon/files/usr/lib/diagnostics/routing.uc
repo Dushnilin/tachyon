@@ -599,7 +599,6 @@ function check_inbounds() {
     let items = [];
     let enabled_count = 0;
     let requires_public_wan = 0;
-    let native_tailscale = native_tailscale_enabled();
     let sb_config = sing_box_config_path != "" ? common.read_json_file(sing_box_config_path) : null;
     let netstat_lnp_cache = null;
     let netstat_ln_cache = null;
@@ -625,12 +624,13 @@ function check_inbounds() {
         let inbound_tag = server_inbound_tag(section_name);
         let expected_type = server_runtime_type_for_protocol(protocol);
         let required_proto = server_required_inbound_proto(protocol, section);
+        let is_section_native_ts = (protocol == "tailscale" && option(section, "tailscale_mode", "singbox") == "native");
         let runtime_json = protocol == "tailscale"
             ? runtime_summary_json_from_config(sb_config, "endpoints", inbound_tag)
             : runtime_summary_json_from_config(sb_config, "inbounds", inbound_tag);
         // Native mode: tailscaled runs outside sing-box, no endpoint is
         // generated (servers.uc add_server) and no route rule is expected.
-        if (protocol == "tailscale" && native_tailscale) {
+        if (is_section_native_ts) {
             runtime_json = "";
             routing_mode = "native";
         }
@@ -659,12 +659,12 @@ function check_inbounds() {
             }
         }
 
-        let routes_configured = protocol == "tailscale" && native_tailscale
+        let routes_configured = is_section_native_ts
             ? 1
             : (has_route_rule_for_inbound_in_config(sb_config, inbound_tag) ? 1 : 0);
 
         let public_host_ips = "";
-        if (protocol != "json_inbound") {
+        if (protocol != "json_inbound" && !(protocol == "tailscale" && public_host == "")) {
             if (!(public_host in resolved_hosts_cache))
                 resolved_hosts_cache[public_host] = resolve_public_host_ips(public_host);
             public_host_ips = resolved_hosts_cache[public_host];
@@ -691,7 +691,7 @@ function check_inbounds() {
             port_conflict_owners,
             routes_configured,
             flags,
-            protocol == "tailscale" && native_tailscale
+            is_section_native_ts
         );
         push(items, item);
     }

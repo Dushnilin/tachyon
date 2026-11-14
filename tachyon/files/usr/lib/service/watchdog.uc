@@ -3172,6 +3172,17 @@ function ai_full_health_audit() {
     ai_export_status();
 }
 
+function has_enabled_native_tailscale_server() {
+    for (let s in uci_core.section_objects(CONFIG_NAME, "server")) {
+        if (!common.bool_option(s, "enabled", true))
+            continue;
+        if (lc(trim(as_string(common.option(s, "protocol", "")))) == "tailscale" &&
+            lc(trim(as_string(common.option(s, "tailscale_mode", "singbox")))) == "native")
+            return true;
+    }
+    return false;
+}
+
 function worker() {
     // Set by the supervisor after repeated early deaths: every listener and
     // the event-driven branch below gate on this variable, so nulling it here
@@ -3536,6 +3547,8 @@ function check_telegram_worker() {
 // watches that daemon. Two consecutive unhealthy statuses trigger an
 // idempotent provider restart (start-runtime), alerts throttled to 1/hour.
 function check_tailscale_worker() {
+    if (!has_enabled_native_tailscale_server())
+        return;
     let raw = trim(command_output_from_args([ "/usr/bin/tachyon", "get_tailscale_status" ]) || "");
     if (raw == "")
         return;
