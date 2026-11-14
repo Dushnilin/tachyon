@@ -21,6 +21,8 @@ log_message = function(msg, level) {};
 send_telegram_notification = function() { return true; };
 heal_uncached_rulesets_detour = function() { return false; };
 get_known_good = function() { return null; };
+let gate_opened = 0;
+kill_switch.release = function() { gate_opened++; return true; };
 let cfg = { proxy_mode: "tproxy" };
 settings = function() { return cfg; };
 let sections = [];
@@ -70,6 +72,7 @@ check(index(last_ai_incident.resolution, "emergency_direct_bypass=0") >= 0,
 reset([ blocked ]);
 trigger_emergency_failsafe("manual_operator_request", "Manually invoked via CLI", true);
 check(is_emergency_failsafe_active(), "Operator emergency trigger was refused");
+check(gate_opened > 0, "Operator direct bypass left the kill-switch gate closed");
 
 // DNS stall with a dead core listener: DNS stays on the proxy when fail-closed.
 let stall = { payload: { streak: 3 } };

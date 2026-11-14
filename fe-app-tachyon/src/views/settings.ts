@@ -4241,6 +4241,18 @@ function createSettingsContent(section, capabilities) {
   o = section.taboption(
     'services',
     form.Flag,
+    'dns_intercept_all',
+    _('Intercept All LAN DNS'),
+    _(
+      'Redirect every LAN DNS query (port 53) to the router resolver, refuse DNS-over-TLS (853) and block well-known DNS-over-HTTPS resolvers, so clients with their own DNS cannot bypass domain sections. Excluded clients are not affected.',
+    ),
+  );
+  o.default = '0';
+  o.rmempty = false;
+
+  o = section.taboption(
+    'services',
+    form.Flag,
     'wifi_calling_direct',
     _('Wi-Fi Calling Direct (VoWiFi)'),
     _(

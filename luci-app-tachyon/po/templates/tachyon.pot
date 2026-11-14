@@ -4824,8 +4824,8 @@ msgstr ""
 msgid "Embedded runs Tailscale directly inside the routing core without a separate tailscaled daemon or tailscale0 interface."
 msgstr ""
 
-#: src/views/settings.ts:5551
-msgid "Emergency Direct Bypass"
+#: src/views/settings.ts:5563
+
 msgstr ""
 
 #: src/views/conditions.ts:158
@@ -7453,6 +7453,10 @@ msgstr ""
 
 #: src/tachyon/tabs/updates/partials/renderUpdateProgressModal.ts:340
 msgid "Installing packages"
+msgstr ""
+
+#: src/views/settings.ts:4245
+msgid "Intercept All LAN DNS"
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:1885
@@ -11566,6 +11570,10 @@ msgstr ""
 
 #: src/views/outbounds.ts:3298
 msgid "Red"
+msgstr ""
+
+#: src/views/settings.ts:4247
+msgid "Redirect every LAN DNS query (port 53) to the router resolver, refuse DNS-over-TLS (853) and block well-known DNS-over-HTTPS resolvers, so clients with their own DNS cannot bypass domain sections. Excluded clients are not affected."
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:658
@@ -16747,8 +16755,8 @@ msgstr ""
 msgid "When enabled, detecting a blocked subdomain (e.g. sub.example.com) adds the entire base domain (example.com), unless this would include an excluded subdomain. When disabled, only the specific subdomain is routed through the proxy."
 msgstr ""
 
-#: src/views/settings.ts:5553
-msgid "When every recovery attempt fails, route all traffic directly and resolve DNS via WAN to keep the Internet working. Disable to block instead (kill-switch for all sections). Always off while any section uses Fail-Closed."
+#: src/views/settings.ts:5565
+, route all traffic directly and resolve DNS via WAN to keep the Internet working. Disable to block instead (kill-switch for all sections). Always off while any section uses Fail-Closed."
 msgstr ""
 
 #: src/views/section.ts:5954

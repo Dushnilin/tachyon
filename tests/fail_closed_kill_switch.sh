@@ -24,9 +24,12 @@ check(join(",", ifaces) == "br-lan,br-guest", "Unsafe or duplicate interface nam
 
 let rs = ks.ruleset([ "br-lan", "br-guest" ]);
 check(index(rs, "table inet " + ks.GUARD_TABLE + " {") >= 0, "Guard does not own a separate table");
+check(index(rs, "set " + ks.GATE_SET + " {") >= 0 && index(rs, "type ifname") >= 0, "Guard has no interface gate set");
 check(index(rs, "hook forward") >= 0, "Guard is not on the forward hook");
-check(index(rs, "iifname { \"br-lan\", \"br-guest\" } oifname != { \"br-lan\", \"br-guest\" } counter drop") >= 0,
-    "Guard does not drop LAN traffic leaving the LAN");
+check(index(rs, "iifname { \"br-lan\", \"br-guest\" } oifname != { \"br-lan\", \"br-guest\" } iifname != @" + ks.GATE_SET + " counter drop") >= 0,
+    "Guard does not drop LAN traffic leaving the LAN while the gate is closed");
+// An fw4 reload replays this text: deleting the table would wipe an open gate.
+check(index(rs, "delete table") < 0, "Replaying the guard would reset the gate");
 print(rs);
 UC
 ucode -S -L "$TACHYON_LIB" "$WORK_DIR/probe.uc" >"$WORK_DIR/ruleset.nft"
@@ -68,6 +71,12 @@ awk '
   f && /kill_switch\.release\(\)/ && built { ok = 1; exit }
   END { exit ok ? 0 : 1 }
 ' "$NFT_UC" || fail "nft rebuild must hold the guard before deleting the table and release it only once built"
+awk '
+  /^function restore_emergency_runtime\(\)/ { f = 1 }
+  f && /kill_switch\.release\(\)/ { ok = 1; exit }
+  f && /^}/ { exit }
+  END { exit ok ? 0 : 1 }
+' "$TACHYON_LIB/service/watchdog.uc" || fail "a chosen direct bypass must open the kill-switch gate"
 grep -Fq 'require("service.kill_switch").boot()' "$HOTPLUG" ||
   fail "WAN ifup must engage the guard before Tachyon starts"
 printf 'fail-closed kill-switch tests passed\n'

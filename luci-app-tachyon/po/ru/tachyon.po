@@ -5132,6 +5132,9 @@ msgstr "Установка русификатора и переключение 
 msgid "Installing packages"
 msgstr "Установка пакетов"
 
+msgid "Intercept All LAN DNS"
+msgstr "Перехватывать весь DNS из LAN"
+
 msgid "Interface"
 msgstr "Интерфейс"
 
@@ -7975,6 +7978,9 @@ msgstr "Порог возврата на основной WAN (успешных 
 
 msgid "Red"
 msgstr "Красный"
+
+msgid "Redirect every LAN DNS query (port 53) to the router resolver, refuse DNS-over-TLS (853) and block well-known DNS-over-HTTPS resolvers, so clients with their own DNS cannot bypass domain sections. Excluded clients are not affected."
+msgstr "Перенаправлять любые DNS-запросы из LAN (порт 53) на резолвер роутера, отклонять DNS-over-TLS (853) и блокировать известные DNS-over-HTTPS резолверы, чтобы клиенты со своим DNS не обходили доменные секции. На исключённых клиентов не действует."
 
 msgid "Refill"
 msgstr "Сброс"

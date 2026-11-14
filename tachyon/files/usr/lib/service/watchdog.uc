@@ -1068,9 +1068,10 @@ function restore_emergency_runtime() {
     }
 
     // 2. Bypass broken proxy interception: flush and delete TachyonTable so traffic is not redirected to a dead proxy.
-    //    Direct WAN was chosen, so a kill-switch guard left by a failed start must go too.
-    system("nft delete table inet TachyonTable >/dev/null 2>&1; nft delete table inet TachyonKillSwitch >/dev/null 2>&1; ip -4 rule del fwmark 0x04000000/0x04000000 table tachyon >/dev/null 2>&1; ip -6 rule del fwmark 0x04000000/0x04000000 table tachyon >/dev/null 2>&1; ip route flush table tachyon >/dev/null 2>&1; ip route flush cache >/dev/null 2>&1");
+    system("nft delete table inet TachyonTable >/dev/null 2>&1; ip -4 rule del fwmark 0x04000000/0x04000000 table tachyon >/dev/null 2>&1; ip -6 rule del fwmark 0x04000000/0x04000000 table tachyon >/dev/null 2>&1; ip route flush table tachyon >/dev/null 2>&1; ip route flush cache >/dev/null 2>&1");
 
+    // 3. Direct WAN was chosen: open the kill-switch gate a failed start may have closed.
+    kill_switch.release();
 }
 
 function restore_interception_bypass() {

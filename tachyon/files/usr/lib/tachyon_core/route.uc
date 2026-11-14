@@ -210,7 +210,8 @@ function config(settings, runtime) {
         for (let rule in p2p_direct_rules(settings, "block"))
             push(result.rules, rule);
     }
-    if (bool_option(settings, "block_doh", false)) {
+    // dns_intercept_all includes the DoH block.
+    if (bool_option(settings, "block_doh", false) || bool_option(settings, "dns_intercept_all", false)) {
         let doh_cidrs = [];
         for (let cidr in runtime_constants.DOH_BLOCK_IPV4_CIDRS)
             push(doh_cidrs, cidr);

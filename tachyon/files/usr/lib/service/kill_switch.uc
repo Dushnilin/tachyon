@@ -2,21 +2,32 @@
 //
 // A section with fail_policy=block promises its traffic never leaves directly.
 // Interception lives in TachyonTable, and there are windows where that table
-// does not exist: a restart between stop and start, a start that failed, the
-// boot before Tachyon runs, the delete-then-build step of every nft rebuild.
-// While the guard is engaged it drops everything forwarded from the LAN source
-// interfaces to anywhere else. It lives in its own table, so rebuilds can
-// delete and recreate TachyonTable underneath it.
+// does not exist: the boot before Tachyon runs, a restart between stop and
+// start, a start that failed, the delete-then-build step of every nft rebuild.
+//
+// The guard is a gate in its own table: it drops everything forwarded from
+// the LAN source interfaces to anywhere else unless the interface is in the
+// `open` set. Tachyon opens the gate once interception is in place and closes
+// it before interception goes away.
+//
+// The same ruleset is installed as an fw4 ruleset-post include, so the closed
+// gate exists from firewall start (S19), before any interface comes up. An
+// fw4 reload re-declares the table, which keeps the set elements, so a reload
+// while Tachyon runs leaves the gate open.
 let fs = require("fs");
 let uci_core = require("core.uci");
 let common = require("core.common");
 
 const CONFIG_NAME = "tachyon";
 const GUARD_TABLE = "TachyonKillSwitch";
+const GATE_SET = "open";
 const RUNTIME_TABLE = "TachyonTable";
 // Root-owned run dir, not world-writable /tmp: root loads whatever is here.
 const RUNTIME_DIR = "/var/run/tachyon";
 const RULESET_FILE = RUNTIME_DIR + "/kill-switch.nft";
+const FW4_INCLUDE_ROOT = getenv("TACHYON_FW4_INCLUDE_ROOT") || "/usr/share/nftables.d";
+const FW4_INCLUDE_DIR = FW4_INCLUDE_ROOT + "/ruleset-post";
+const FW4_INCLUDE_FILE = FW4_INCLUDE_DIR + "/90-tachyon-kill-switch.nft";
 const ENABLED_LINK = "/etc/rc.d/S99tachyon";
 
 // Why Tachyon may NOT fall back to direct WAN / direct DNS on its own, or ""
@@ -58,58 +69,105 @@ function source_interfaces(settings) {
     return names;
 }
 
+function nft_set(interfaces) {
+    return sprintf("{ %s }", join(", ", map(interfaces, (n) => sprintf("\"%s\"", n))));
+}
+
+// Idempotent: re-declaring the table, set and chain keeps the set elements;
+// only the single rule is replaced.
 function ruleset(interfaces) {
-    let set = sprintf("{ %s }", join(", ", map(interfaces, (n) => sprintf("\"%s\"", n))));
-    return sprintf("table inet %s\n" +
-        "delete table inet %s\n" +
-        "table inet %s {\n" +
+    let set = nft_set(interfaces);
+    return sprintf("table inet %s {\n" +
+        "\tset %s {\n" +
+        "\t\ttype ifname\n" +
+        "\t}\n" +
         "\tchain forward {\n" +
         "\t\ttype filter hook forward priority -200; policy accept;\n" +
-        "\t\tiifname %s oifname != %s counter drop comment \"tachyon fail-closed kill-switch\"\n" +
         "\t}\n" +
-        "}\n", GUARD_TABLE, GUARD_TABLE, GUARD_TABLE, set, set);
+        "}\n" +
+        "flush chain inet %s forward\n" +
+        "add rule inet %s forward iifname %s oifname != %s iifname != @%s counter drop comment \"tachyon fail-closed kill-switch\"\n",
+        GUARD_TABLE, GATE_SET, GUARD_TABLE, GUARD_TABLE, set, set, GATE_SET);
 }
 
+function nft(args) {
+    let cmd = [ "nft" ];
+    for (let arg in args)
+        push(cmd, arg);
+    return common.command_success_from_args(cmd);
+}
+
+function present() {
+    return nft([ "list", "table", "inet", GUARD_TABLE ]);
+}
+
+// Closed = the table exists and its gate set holds no interface.
 function engaged() {
-    return common.command_success_from_args([ "nft", "list", "table", "inet", GUARD_TABLE ]);
+    if (!present())
+        return false;
+    let out = common.command_output_from_args([ "nft", "list", "set", "inet", GUARD_TABLE, GATE_SET ]) || "";
+    return index(out, "elements") < 0;
 }
 
-function engage(settings) {
+// Validate before anything is installed: a broken fw4 include would stop the
+// whole firewall from loading at boot.
+function install(text) {
     fs.mkdir(RUNTIME_DIR);
-    if (fs.writefile(RULESET_FILE, ruleset(source_interfaces(settings))) == null)
+    if (fs.writefile(RULESET_FILE, text) == null)
         return false;
-    let ok = common.command_success_from_args([ "nft", "-f", RULESET_FILE ]);
+    let ok = nft([ "-c", "-f", RULESET_FILE ]) && nft([ "-f", RULESET_FILE ]);
+    if (ok && fs.stat(FW4_INCLUDE_ROOT) != null && !common.content_unchanged(FW4_INCLUDE_FILE, text)) {
+        fs.mkdir(FW4_INCLUDE_DIR);
+        ok = fs.writefile(FW4_INCLUDE_FILE, text) != null;
+    }
     fs.unlink(RULESET_FILE);
     return ok;
 }
 
-function release() {
-    if (!engaged())
-        return true;
-    return common.command_success_from_args([ "nft", "delete", "table", "inet", GUARD_TABLE ]);
+function engage(settings) {
+    return install(ruleset(source_interfaces(settings))) &&
+        nft([ "flush", "set", "inet", GUARD_TABLE, GATE_SET ]);
 }
 
-// Engage the guard when the setup is fail-closed, drop a stale one otherwise.
+// Open the gate: interception is in place, or the user chose direct Internet.
+function release() {
+    if (!present())
+        return true;
+    return nft([ "add", "element", "inet", GUARD_TABLE, GATE_SET, nft_set(source_interfaces(uci_settings())) ]);
+}
+
+// Not fail-closed (any more): no gate at all, now or at the next boot.
+function remove() {
+    fs.unlink(FW4_INCLUDE_FILE);
+    return !present() || nft([ "delete", "table", "inet", GUARD_TABLE ]);
+}
+
+// Close the gate when the setup is fail-closed, drop the guard otherwise.
 // Returns the veto reason ("" = not fail-closed).
 function hold() {
     let reason = uci_veto();
     if (reason == "")
-        release();
+        remove();
     else
         engage(uci_settings());
     return reason;
 }
 
-// Hotplug, before Tachyon starts: only an enabled service with no
-// interception table yet needs the guard.
+// WAN hotplug. fw4 already created the closed gate at boot; settle it for
+// the current state: no service, no gate; interception up, gate open.
 function boot() {
-    if (fs.lstat(ENABLED_LINK) != null &&
-        !common.command_success_from_args([ "nft", "list", "table", "inet", RUNTIME_TABLE ]))
+    if (fs.lstat(ENABLED_LINK) == null)
+        remove();
+    else if (nft([ "list", "table", "inet", RUNTIME_TABLE ]))
+        release();
+    else
         hold();
 }
 
 return {
     GUARD_TABLE,
+    GATE_SET,
+    FW4_INCLUDE_FILE,
     veto,
     uci_veto,
     source_interfaces,
@@ -117,6 +175,7 @@ return {
     engaged,
     engage,
     release,
+    remove,
     hold,
     boot
 };
