@@ -14,6 +14,7 @@ let event_controller = require("service.event_controller");
 let smart_detect = require("service.smart_detect");
 let smart_plus = require("service.smart_detect_plus");
 let firewall_health = require("service.firewall_health");
+let kill_switch = require("service.kill_switch");
 let smart_probe = null;
 function get_smart_probe() {
     if (smart_probe == null) smart_probe = require("service.smart_detect_probe");
@@ -1066,8 +1067,9 @@ function restore_emergency_runtime() {
         system("/sbin/uci -q set dhcp.@dnsmasq[0].noresolv='0' >/dev/null 2>&1; /sbin/uci commit dhcp >/dev/null 2>&1; /etc/init.d/dnsmasq restart >/dev/null 2>&1");
     }
 
-    // 2. Bypass broken proxy interception: flush and delete TachyonTable so traffic is not redirected to a dead proxy
-    system("nft delete table inet TachyonTable >/dev/null 2>&1; ip -4 rule del fwmark 0x04000000/0x04000000 table tachyon >/dev/null 2>&1; ip -6 rule del fwmark 0x04000000/0x04000000 table tachyon >/dev/null 2>&1; ip route flush table tachyon >/dev/null 2>&1; ip route flush cache >/dev/null 2>&1");
+    // 2. Bypass broken proxy interception: flush and delete TachyonTable so traffic is not redirected to a dead proxy.
+    //    Direct WAN was chosen, so a kill-switch guard left by a failed start must go too.
+    system("nft delete table inet TachyonTable >/dev/null 2>&1; nft delete table inet TachyonKillSwitch >/dev/null 2>&1; ip -4 rule del fwmark 0x04000000/0x04000000 table tachyon >/dev/null 2>&1; ip -6 rule del fwmark 0x04000000/0x04000000 table tachyon >/dev/null 2>&1; ip route flush table tachyon >/dev/null 2>&1; ip route flush cache >/dev/null 2>&1");
 
 }
 
@@ -1076,21 +1078,9 @@ function restore_interception_bypass() {
 }
 
 // Why watchdog may NOT fall back to direct WAN / direct DNS on its own, or ""
-// when it may. A section with fail_policy=block promises its traffic never
-// leaves directly, and the fallback is router-wide, so one such section vetoes
-// it; settings.emergency_direct_bypass='0' vetoes it for every section.
+// when it may (service/kill_switch.uc owns the rule).
 function direct_fallback_veto() {
-    if (settings().emergency_direct_bypass == "0")
-        return "emergency_direct_bypass=0";
-    let names = [];
-    for (let s in uci_core.section_objects(CONFIG_NAME, "section") || []) {
-        if (common.bool_option(s, "enabled", true) &&
-            lc(trim(as_string(s.fail_policy || ""))) == "block")
-            push(names, as_string(s[".name"]));
-    }
-    if (length(names) == 0)
-        return "";
-    return sprintf("fail_policy=block: %s", join(", ", names));
+    return kill_switch.veto(settings(), uci_core.section_objects(CONFIG_NAME, "section"));
 }
 
 // `operator` = an explicit CLI request: the user chose direct WAN themselves.

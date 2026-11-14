@@ -6,6 +6,9 @@ case "$INTERFACE" in
         mkdir -p /var/run/tachyon 2>/dev/null
         case "$ACTION" in
             ifup)
+                # Fail-closed setups: block LAN->WAN until Tachyon's interception
+                # table exists (boot runs this long before Tachyon itself starts).
+                ucode -L /usr/lib/tachyon -e 'require("service.kill_switch").boot()' >/dev/null 2>&1
                 echo "up" > "/var/run/tachyon/wan_transport_${INTERFACE}" 2>/dev/null
                 date +%s > /var/run/tachyon/wan-event.timestamp 2>/dev/null
                 /etc/init.d/tachyon retry_start_on_wan_up >/dev/null 2>&1 &

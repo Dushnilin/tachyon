@@ -160,6 +160,7 @@ function restore_dhcp_dns() {
 
 function clean_firewall_and_routing() {
     run_cmd(["nft", "delete", "table", "inet", "TachyonTable"]);
+    run_cmd(["nft", "delete", "table", "inet", "TachyonKillSwitch"]);
     run_cmd(["nft", "delete", "table", "inet", "tachyon"]);
     run_cmd(["nft", "delete", "table", "inet", "steer"]);
     run_cmd(["nft", "delete", "table", "ip", "tachyon"]);

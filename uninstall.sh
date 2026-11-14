@@ -250,6 +250,7 @@ tui_step "$CURRENT_STEP" "$TOTAL_STEPS" "Очистка сетевых табл�
 # Remove nftables tables & drop-in file
 if command -v nft >/dev/null 2>&1; then
     nft delete table inet TachyonTable >/dev/null 2>&1 || true
+    nft delete table inet TachyonKillSwitch >/dev/null 2>&1 || true
     nft delete table inet tachyon >/dev/null 2>&1 || true
     nft delete table inet steer >/dev/null 2>&1 || true
     nft delete table ip tachyon >/dev/null 2>&1 || true

@@ -5,6 +5,7 @@ let common = require("core.common");
 let helpers = require("core.helpers");
 let core_ip = require("core.ip");
 let uci_core = require("core.uci");
+let kill_switch = require("service.kill_switch");
 let rule_config = require("config.rule");
 let domain_config = require("config.domain");
 let connections = require("config.connections");
@@ -4526,6 +4527,9 @@ function nft_create_full_runtime_from_uci(rt_table, table, localv4_set, common_s
 
 function nft_rebuild_runtime_from_uci(rt_table, table, localv4_set, common_set, port_set, ip_port_set, interface_set, fakeip_mark, outbound_mark, fakeip_range, tproxy_port, zapret_bin, zapret_route_mark_base, zapret_queue_base, zapret_desync_mark, zapret_desync_mark_postnat, zapret2_bin, zapret2_route_mark_base, zapret2_queue_base, zapret2_desync_mark, zapret2_desync_mark_postnat, localv6_set, common6_set, ip_port6_set, fakeip6_range, tproxy6_address) {
     log_debug("Applying nftables runtime rules");
+    // The table is deleted and rebuilt below; a fail-closed setup stays
+    // blocked until the new one is in place.
+    kill_switch.hold();
 
     if (can_use_internal_nft_batch()) {
         let tables_out = "\n" + command_output_quiet_from_args([ "nft", "list", "tables" ]) + "\n";
@@ -4544,7 +4548,10 @@ function nft_rebuild_runtime_from_uci(rt_table, table, localv4_set, common_set, 
             return false;
     }
 
-    return nft_create_full_runtime_from_uci(rt_table, table, localv4_set, common_set, port_set, ip_port_set, interface_set, fakeip_mark, outbound_mark, fakeip_range, tproxy_port, zapret_bin, zapret_route_mark_base, zapret_queue_base, zapret_desync_mark, zapret_desync_mark_postnat, zapret2_bin, zapret2_route_mark_base, zapret2_queue_base, zapret2_desync_mark, zapret2_desync_mark_postnat, localv6_set, common6_set, ip_port6_set, fakeip6_range, tproxy6_address);
+    let built = nft_create_full_runtime_from_uci(rt_table, table, localv4_set, common_set, port_set, ip_port_set, interface_set, fakeip_mark, outbound_mark, fakeip_range, tproxy_port, zapret_bin, zapret_route_mark_base, zapret_queue_base, zapret_desync_mark, zapret_desync_mark_postnat, zapret2_bin, zapret2_route_mark_base, zapret2_queue_base, zapret2_desync_mark, zapret2_desync_mark_postnat, localv6_set, common6_set, ip_port6_set, fakeip6_range, tproxy6_address);
+    if (built)
+        kill_switch.release();
+    return built;
 }
 
 function nft_runtime_signature_from_uci() {
