@@ -1075,8 +1075,40 @@ function restore_interception_bypass() {
     restore_emergency_runtime();
 }
 
-function trigger_emergency_failsafe(reason, details) {
+// Why watchdog may NOT fall back to direct WAN / direct DNS on its own, or ""
+// when it may. A section with fail_policy=block promises its traffic never
+// leaves directly, and the fallback is router-wide, so one such section vetoes
+// it; settings.emergency_direct_bypass='0' vetoes it for every section.
+function direct_fallback_veto() {
+    if (settings().emergency_direct_bypass == "0")
+        return "emergency_direct_bypass=0";
+    let names = [];
+    for (let s in uci_core.section_objects(CONFIG_NAME, "section") || []) {
+        if (common.bool_option(s, "enabled", true) &&
+            lc(trim(as_string(s.fail_policy || ""))) == "block")
+            push(names, as_string(s[".name"]));
+    }
+    if (length(names) == 0)
+        return "";
+    return sprintf("fail_policy=block: %s", join(", ", names));
+}
+
+// `operator` = an explicit CLI request: the user chose direct WAN themselves.
+function trigger_emergency_failsafe(reason, details, operator) {
     if (emergency_failsafe_active) return;
+    if (!operator) {
+        let veto = direct_fallback_veto();
+        if (veto != "") {
+            // Stay on L4 so the next incident restarts the proxy again (still
+            // bounded by the 3-per-10-min limit) instead of idling at L5 forever.
+            set_ladder_level(reason, LADDER_L4_RESTART);
+            ai_heal_report("emergency_failsafe",
+                sprintf("Все уровни восстановления исчерпаны (%s)", reason),
+                sprintf("Fail-Closed: аварийный прямой обход НЕ включён, трафик остаётся заблокированным (%s)", veto),
+                "failed");
+            return;
+        }
+    }
     emergency_failsafe_active = true;
     let now = time();
     let emergency_data = {
@@ -1567,8 +1599,15 @@ function heal_dns_stall(ev) {
     let udp = fs.readfile("/proc/net/udp") || "";
     let core_dns_listening = index(udp, "2A00007F:0035") >= 0;
     if (!core_dns_listening) {
-        log_message("Watchdog: DNS stalled and " + active_engine + " is not listening on port 53; restoring failsafe DNS in dnsmasq", "warn");
-        command_status_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/dns/apply.uc", "failsafe-restore" ]);
+        // Direct DNS would hand clients real IPs that bypass fakeip interception.
+        let veto = direct_fallback_veto();
+        if (veto == "") {
+            log_message(sprintf("Watchdog: DNS stalled and %s is not listening on port 53; restoring failsafe DNS in dnsmasq", active_engine), "warn");
+            command_status_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/dns/apply.uc", "failsafe-restore" ]);
+        }
+        else {
+            log_message(sprintf("Watchdog: DNS stalled and %s is not listening on port 53; keeping DNS on the proxy (%s)", active_engine, veto), "warn");
+        }
     }
 
     let incident = {
@@ -3961,7 +4000,7 @@ else if (mode == "emergency-reset") {
 }
 else if (mode == "emergency-trigger") {
     let reason = ARGV[1] || "manual_operator_request";
-    trigger_emergency_failsafe(reason, "Manually invoked via CLI");
+    trigger_emergency_failsafe(reason, "Manually invoked via CLI", true);
     print("Emergency failsafe triggered\n");
     exit(0);
 }

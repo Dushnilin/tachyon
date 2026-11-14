@@ -41,7 +41,7 @@ grep -Fq 'const EMERGENCY_STATE_TMP = "/tmp/tachyon_emergency_state.json";' "$WA
   fail "watchdog.uc must define EMERGENCY_STATE_TMP"
 grep -Fq 'function is_emergency_failsafe_active()' "$WATCHDOG_UC" ||
   fail "watchdog.uc must define is_emergency_failsafe_active"
-grep -Fq 'function trigger_emergency_failsafe(reason, details)' "$WATCHDOG_UC" ||
+grep -Fq 'function trigger_emergency_failsafe(reason, details, operator)' "$WATCHDOG_UC" ||
   fail "watchdog.uc must define trigger_emergency_failsafe"
 grep -Fq 'function clear_emergency_failsafe()' "$WATCHDOG_UC" ||
   fail "watchdog.uc must define clear_emergency_failsafe"

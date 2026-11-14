@@ -440,7 +440,7 @@ msgid "Action is configured, but runtime is not ready"
 msgstr ""
 
 #: src/views/section.ts:18372
-msgid "Action when this section's outbound is quarantined or fails health probes: Keep (normal routing), Fail-Closed (block matching traffic to prevent IP leaks), or Fail-Open (bypass directly)."
+msgid "Action when this section's outbound is quarantined or fails health probes: Keep (normal routing), Fail-Closed (block matching traffic to prevent IP leaks), or Fail-Open (bypass directly). Fail-Closed also disables the router-wide emergency direct bypass: if Tachyon fails completely, DNS and proxied traffic stay blocked until it recovers, and normal Internet access is not restored automatically."
 msgstr ""
 
 #: src/tachyon/tabs/dashboard/partials/renderSections.ts:2683
@@ -4822,6 +4822,10 @@ msgstr ""
 
 #: src/views/outbounds.ts:6064
 msgid "Embedded runs Tailscale directly inside the routing core without a separate tailscaled daemon or tailscale0 interface."
+msgstr ""
+
+#: src/views/settings.ts:5551
+msgid "Emergency Direct Bypass"
 msgstr ""
 
 #: src/views/conditions.ts:158
@@ -16741,6 +16745,10 @@ msgstr ""
 
 #: src/views/settings.ts:5815
 msgid "When enabled, detecting a blocked subdomain (e.g. sub.example.com) adds the entire base domain (example.com), unless this would include an excluded subdomain. When disabled, only the specific subdomain is routed through the proxy."
+msgstr ""
+
+#: src/views/settings.ts:5553
+msgid "When every recovery attempt fails, route all traffic directly and resolve DNS via WAN to keep the Internet working. Disable to block instead (kill-switch for all sections). Always off while any section uses Fail-Closed."
 msgstr ""
 
 #: src/views/section.ts:5954

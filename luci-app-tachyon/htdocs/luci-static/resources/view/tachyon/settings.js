@@ -5542,6 +5542,19 @@ function createSettingsContent(section, capabilities) {
   o.default = "https://cp.cloudflare.com/generate_204";
   o.depends("ai_proxy_health_enabled", "1");
 
+  o = section.taboption(
+    "ai",
+    form.Flag,
+    "emergency_direct_bypass",
+    _("Emergency Direct Bypass"),
+    _(
+      "When every recovery attempt fails, route all traffic directly and resolve DNS via WAN to keep the Internet working. Disable to block instead (kill-switch for all sections). Always off while any section uses Fail-Closed.",
+    ),
+  );
+  o.default = "1";
+  o.rmempty = false;
+  o.depends("enable_watchdog", "1");
+
   // DNS Continuous Check
   o = section.taboption(
     "ai",

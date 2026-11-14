@@ -96,6 +96,10 @@ config settings 'settings'
         # ─── AI Watchdog settings ─────────────────────────────────────────────
         option ai_proxy_health_enabled '1'
         option ai_proxy_health_interval '60'
+        # Last resort when recovery fails: route everything direct (DNS via WAN).
+        # '0' = never (kill-switch for all sections); always off while any
+        # section uses fail_policy 'block'.
+        option emergency_direct_bypass '1'
 
         # ─── Navigation & Menu settings ───────────────────────────────────────
         option default_tab 'dashboard'

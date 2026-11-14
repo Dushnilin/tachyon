@@ -795,6 +795,7 @@ export namespace Tachyon {
     ai_proxy_health_interval?: string;
     ai_proxy_health_fail_threshold?: string;
     ai_proxy_health_url?: string;
+    emergency_direct_bypass?: '0' | '1';
     ai_dns_continuous_enabled?: '0' | '1';
     ai_dns_interval?: string;
     ai_reload_dedup_enabled?: '0' | '1';

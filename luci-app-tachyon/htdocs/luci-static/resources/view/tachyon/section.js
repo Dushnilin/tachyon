@@ -18365,7 +18365,7 @@ function createSectionContent(section) {
     "fail_policy",
     _("Section Fail Policy"),
     _(
-      "Action when this section's outbound is quarantined or fails health probes: Keep (normal routing), Fail-Closed (block matching traffic to prevent IP leaks), or Fail-Open (bypass directly).",
+      "Action when this section's outbound is quarantined or fails health probes: Keep (normal routing), Fail-Closed (block matching traffic to prevent IP leaks), or Fail-Open (bypass directly). Fail-Closed also disables the router-wide emergency direct bypass: if Tachyon fails completely, DNS and proxied traffic stay blocked until it recovers, and normal Internet access is not restored automatically.",
     ),
   );
   o.value("keep", _("Keep (default behavior)"));

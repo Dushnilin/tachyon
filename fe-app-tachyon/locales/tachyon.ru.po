@@ -17,6 +17,9 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
 
+msgid "When every recovery attempt fails, route all traffic directly and resolve DNS via WAN to keep the Internet working. Disable to block instead (kill-switch for all sections). Always off while any section uses Fail-Closed."
+msgstr "Если все попытки восстановления не помогли, направлять весь трафик напрямую и резолвить DNS через WAN, чтобы интернет продолжал работать. Отключите, чтобы вместо этого блокировать (kill-switch для всех секций). Всегда выключен, пока хотя бы одна секция использует Fail-Closed."
+
 msgid "\"%s\" is not part of this section - add it to its conditions first"
 msgstr "\"%s\" в этой секции не используется - сначала добавьте его в условия"
 
@@ -314,8 +317,8 @@ msgstr "Действие настроено, но бинарный файл не
 msgid "Action is configured, but runtime is not ready"
 msgstr "Действие настроено, но служба не готова"
 
-msgid "Action when this section's outbound is quarantined or fails health probes: Keep (normal routing), Fail-Closed (block matching traffic to prevent IP leaks), or Fail-Open (bypass directly)."
-msgstr "Действие при карантине или отказе проверки работоспособности выхода этой секции: Оставить (обычная маршрутизация), Fail-Closed (блокировать трафик секции для защиты от утечки IP) или Fail-Open (направлять напрямую в обход прокси)."
+msgid "Action when this section's outbound is quarantined or fails health probes: Keep (normal routing), Fail-Closed (block matching traffic to prevent IP leaks), or Fail-Open (bypass directly). Fail-Closed also disables the router-wide emergency direct bypass: if Tachyon fails completely, DNS and proxied traffic stay blocked until it recovers, and normal Internet access is not restored automatically."
+msgstr "Действие при карантине или отказе проверки работоспособности выхода этой секции: Оставить (обычная маршрутизация), Fail-Closed (блокировать трафик секции для защиты от утечки IP) или Fail-Open (направлять напрямую в обход прокси). Fail-Closed также отключает аварийный прямой обход для всего роутера: если Tachyon полностью откажет, DNS и трафик через прокси останутся заблокированы до его восстановления, обычный интернет автоматически не вернётся."
 
 msgid "Actions"
 msgstr "Действия"
@@ -3304,6 +3307,9 @@ msgstr "Встроенный Tailscale работает"
 
 msgid "Embedded runs Tailscale directly inside the routing core without a separate tailscaled daemon or tailscale0 interface."
 msgstr "Встроенный режим запускает Tailscale напрямую внутри ядра маршрутизации без отдельного демона tailscaled и интерфейса tailscale0."
+
+msgid "Emergency Direct Bypass"
+msgstr "Аварийный прямой обход"
 
 msgid "Empty composite rule"
 msgstr "Пустое составное правило"
