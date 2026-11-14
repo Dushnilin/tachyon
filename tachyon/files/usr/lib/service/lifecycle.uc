@@ -1819,6 +1819,10 @@ function reload(reason) {
     if (plan.needs_hosts_update == 1 && module_success(STATE_UC, [ "has-hosts-list-update-sources" ]))
         module_success(HOSTS_UC, [ "list-update" ]);
 
+    // Native Tailscale (or standalone service neutralization) must settle
+    // before nft rebuild probes tailscale0 and before sing-box installs routing.
+    module_success(TAILSCALE_UC, [ "start-runtime" ]);
+
     if (plan.needs_nft_rebuild == 1) {
         log_message("Rebuilding nftables rules", "info");
         status = nft_rebuild_runtime();
@@ -1903,9 +1907,6 @@ function reload(reason) {
         module_success(OLCRTC_UC, [ "start-runtime" ]);
     if (plan.needs_byedpi_restart == 1)
     module_success(BYEDPI_UC, [ "start-runtime" ]);
-    // Native Tailscale must be up before sing-box so tailnet routes win over
-    // policy routing from the very first packet.
-    module_success(TAILSCALE_UC, [ "start-runtime" ]);
     // Minute-tick cron for parental daily time quotas (idempotent install).
     module_success(PARENTAL_QUOTA_UC, [ "install-cron" ]);
     module_success(PARENTAL_QUOTA_UC, [ "tick" ]);

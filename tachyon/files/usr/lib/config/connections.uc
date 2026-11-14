@@ -775,6 +775,10 @@ function section_effective_outbound_sources(section) {
             inferred_stype = "olcrtc";
         else if (trim(option(section, "openvpn_server", "")) != "")
             inferred_stype = "openvpn";
+        else if (trim(option(section, "tailscale_auth_key", "")) != "" ||
+                 trim(option(section, "tailscale_exit_node", "")) != "" ||
+                 trim(option(section, "tailscale_control_url", "")) != "")
+            inferred_stype = "tailscale";
         if (inferred_stype != "") {
             let sname = section_name(section);
             let safe_sname = replace(as_string(sname || "inline"), /[^a-zA-Z0-9_]/g, "_");
@@ -791,7 +795,35 @@ function section_effective_outbound_sources(section) {
     return result;
 }
 
-// The token an FPTN section dials with: checks linked outbound_source items
+function is_embedded_tailscale_source(src) {
+    if (type(src) != "object" || lc(option(src, "source_type", "")) != "tailscale")
+        return false;
+    let ts_mode = lc(trim(option(src, "tailscale_mode", "")));
+    if (ts_mode == "native")
+        return false;
+    if (ts_mode == "singbox" || ts_mode == "embedded" || ts_mode == "tachyon-core")
+        return true;
+    for (let key in [
+        "tailscale_auth_key", "tailscale_control_url", "tailscale_hostname",
+        "tailscale_exit_node", "tailscale_ephemeral", "tailscale_exit_node_allow_lan_access",
+        "tailscale_accept_routes", "tailscale_advertise_routes", "tailscale_advertise_exit_node",
+        "tailscale_accept_dns", "tailscale_accept_default_resolvers",
+        "tailscale_relay_server_port", "tailscale_system_interface", "tailscale_udp_timeout"
+    ]) {
+        if (trim(option(src, key, "")) != "" || length(list_value(src, key)) > 0)
+            return true;
+    }
+    return trim(option(src, "interface_name", "")) == "";
+}
+
+function embedded_tailscale_sources(section) {
+    let out = [];
+    for (let src in section_effective_outbound_sources(section)) {
+        if (is_embedded_tailscale_source(src) && bool_option(src, "enabled", true))
+            push(out, src);
+    }
+    return out;
+}
 // first, then the explicit access_token when there is one, otherwise the first
 // fptn:// link pasted into the section URL list.
 function fptn_section_token(section) {
@@ -1246,7 +1278,7 @@ function interfaces(section) {
             if (iname != "")
                 push_unique_str(result, seen, iname);
         }
-        else if (stype == "tailscale") {
+        else if (stype == "tailscale" && !is_embedded_tailscale_source(src)) {
             let ts_iface = trim(option(src, "interface_name", "tailscale0")) || "tailscale0";
             push_unique_str(result, seen, ts_iface);
         }
@@ -2074,7 +2106,7 @@ function source_id_for_manual_item(section, value) {
                     return src_id;
             }
         }
-        if (stype == "tailscale") {
+        if (stype == "tailscale" && !is_embedded_tailscale_source(src)) {
             let ts_iface = trim(option(src, "interface_name", "tailscale0")) || "tailscale0";
             if (ts_iface == value)
                 return src_id;
@@ -4898,7 +4930,7 @@ function priority_group_multi_url_strategy(section, value) {
 
 function priority_group_active_check_interval(section, value) {
     let child = priority_group_child(section, value);
-    return child != null ? child_option(child, "active_check_interval", "5s") : "5s";
+    return child != null ? child_option(child, "active_check_interval", "15s") : "15s";
 }
 
 function priority_group_check_timeout(section, value) {
@@ -6963,5 +6995,7 @@ return {
     outbound_source_subscription_url,
     extract_entity_priority_level_refs,
     section_combined_pool_tier_refs,
-    packet_encoding
+    packet_encoding,
+    is_embedded_tailscale_source,
+    embedded_tailscale_sources
 };

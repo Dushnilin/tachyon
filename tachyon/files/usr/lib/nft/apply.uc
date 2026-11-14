@@ -124,6 +124,97 @@ function native_tailscale_enabled() {
     return false;
 }
 
+function embedded_tailscale_enabled(sections, servers) {
+    if (sections == null)
+        sections = uci_sections("section");
+    if (servers == null)
+        servers = uci_sections("server");
+    for (let srv in array_or_empty(servers)) {
+        srv = object_or_empty(srv);
+        if (!bool_option(srv, "enabled", true))
+            continue;
+        if (lc(trim(option(srv, "protocol", ""))) != "tailscale")
+            continue;
+        let ts_mode = lc(trim(option(srv, "tailscale_mode", "singbox")));
+        if (ts_mode != "native")
+            return true;
+    }
+    for (let sec in array_or_empty(sections)) {
+        sec = object_or_empty(sec);
+        if (!bool_option(sec, "enabled", true))
+            continue;
+        if (lc(trim(option(sec, "action", ""))) == "tailscale")
+            return true;
+        if (length(connections.embedded_tailscale_sources(sec)) > 0)
+            return true;
+        for (let uri in list_option(sec, "connection_uris")) {
+            let u = lc(trim(as_string(uri)));
+            if (index(u, "tailscale://") == 0)
+                return true;
+        }
+        for (let j_str in connections.outbound_jsons(sec)) {
+            try {
+                let parsed = json(as_string(j_str));
+                let items = type(parsed) == "array" ? parsed : [ parsed ];
+                for (let item in items) {
+                    if (type(item) == "object" && lc(trim(as_string(item.type || ""))) == "tailscale")
+                        return true;
+                }
+            } catch (e) {}
+        }
+    }
+    return false;
+}
+
+function tailscale_nft_signature_value(sections, servers) {
+    let parts = [];
+    for (let srv in array_or_empty(servers)) {
+        srv = object_or_empty(srv);
+        if (!bool_option(srv, "enabled", true))
+            continue;
+        if (lc(trim(option(srv, "protocol", ""))) != "tailscale")
+            continue;
+        let name = as_string(srv[".name"] || "");
+        let mode = lc(trim(option(srv, "tailscale_mode", "singbox")));
+        if (mode == "")
+            mode = "singbox";
+        push(parts, "srv:" + name + ":" + mode);
+    }
+    for (let sec in array_or_empty(sections)) {
+        sec = object_or_empty(sec);
+        if (!bool_option(sec, "enabled", true))
+            continue;
+        let name = as_string(sec[".name"] || "");
+        let act = lc(trim(option(sec, "action", "")));
+        if (act == "tailscale")
+            push(parts, "sec:" + name + ":embedded");
+        for (let src in connections.embedded_tailscale_sources(sec)) {
+            src = object_or_empty(src);
+            let src_name = as_string(src[".name"] || option(src, "id", ""));
+            push(parts, "src:" + name + ":" + src_name);
+        }
+        for (let uri in list_option(sec, "connection_uris")) {
+            let u = lc(trim(as_string(uri)));
+            if (index(u, "tailscale://") == 0)
+                push(parts, "uri:" + name + ":" + u);
+        }
+        for (let j_str in connections.outbound_jsons(sec)) {
+            try {
+                let parsed = json(as_string(j_str));
+                let items = type(parsed) == "array" ? parsed : [ parsed ];
+                for (let item in items) {
+                    if (type(item) == "object" && lc(trim(as_string(item.type || ""))) == "tailscale")
+                        push(parts, "json:" + name + ":" + as_string(item.tag || ""));
+                }
+            } catch (e) {}
+        }
+    }
+    if (length(parts) == 0)
+        return "";
+    sort(parts);
+    return join("|", parts);
+}
+
 // Marks used for tunnel forwarding inside 0x00ff0000:
 //  - 0x00200000: Tailscale native exit-node mark (providers/tailscale/runtime.uc)
 //  - 0x00040000: Standalone tailscaled subnet-router forward mark
@@ -2501,6 +2592,17 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
         }
     }
 
+    if (embedded_tailscale_enabled() && !native_tailscale_enabled()) {
+        if (!nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip", "daddr", "100.64.0.0/10", "meta", "l4proto", "tcp", "meta", "mark", "set", fakeip_mark, "counter" ]) ||
+            !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip", "daddr", "100.64.0.0/10", "meta", "l4proto", "udp", "meta", "mark", "set", fakeip_mark, "counter" ]))
+            return false;
+        if (tproxy6_address != "") {
+            if (!nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip6", "daddr", "fd7a:115c:a1e0::/48", "meta", "l4proto", "tcp", "meta", "mark", "set", fakeip_mark, "counter" ]) ||
+                !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip6", "daddr", "fd7a:115c:a1e0::/48", "meta", "l4proto", "udp", "meta", "mark", "set", fakeip_mark, "counter" ]))
+                return false;
+        }
+    }
+
     if (!nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip", "daddr", "@" + as_string(localv4_set), "return" ]) ||
         !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip6", "daddr", "@" + as_string(localv6_set), "return" ]) ||
         !nft_add_rule(table, "mangle", [ "jump", "guest_forward" ]) ||
@@ -2601,10 +2703,15 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
         !nft_add_rule(table, "mangle_output", [ "meta", "mark", "&", "0x40000000", "==", "0x40000000", "counter", "return" ]) ||
         !nft_add_rule(table, "mangle_output", [ "meta", "mark", "&", "0x20000000", "==", "0x20000000", "counter", "return" ]) ||
         !nft_add_rule(table, "mangle_output", [ "meta", "skuid", "{ 2147483647, 65534 }", "counter", "return" ]) ||
-        !nft_add_rule(table, "mangle_output", [ "ip", "daddr", "@" + as_string(localv4_set), "return" ]) ||
-        !nft_add_rule(table, "mangle_output", [ "ip6", "daddr", "@" + as_string(localv6_set), "return" ]) ||
         !nft_add_rule(table, "mangle_output", [ "meta", "mark", outbound_mark, "counter", "return" ]) ||
         !nft_add_rule(table, "mangle_output", [ "meta", "mark", "0x00002022", "counter", "return" ]) ||
+        (embedded_tailscale_enabled() && !native_tailscale_enabled() && (
+            !nft_add_rule(table, "mangle_output", [ "meta", "l4proto", "{ tcp, udp }", "ip", "daddr", "100.64.0.0/10", "meta", "mark", "set", fakeip_mark, "accept" ]) ||
+            (tproxy6_address != "" &&
+                !nft_add_rule(table, "mangle_output", [ "meta", "l4proto", "{ tcp, udp }", "ip6", "daddr", "fd7a:115c:a1e0::/48", "meta", "mark", "set", fakeip_mark, "accept" ]))
+        )) ||
+        !nft_add_rule(table, "mangle_output", [ "ip", "daddr", "@" + as_string(localv4_set), "return" ]) ||
+        !nft_add_rule(table, "mangle_output", [ "ip6", "daddr", "@" + as_string(localv6_set), "return" ]) ||
         (fptn_state.active && (
             (length(fptn_state.v4) > 0 && !nft_add_rule(table, "mangle_output", [ "ip", "daddr", "@tachyon_fptn_servers", "counter", "return" ])) ||
             (length(fptn_state.v6) > 0 && !nft_add_rule(table, "mangle_output", [ "ip6", "daddr", "@tachyon_fptn_servers6", "counter", "return" ]))
@@ -4211,7 +4318,7 @@ function nft_sync_router_output_intercept(table, localv4_set, outbound_mark) {
     );
 }
 
-function nft_runtime_signature_from_settings_and_sections(settings, sections, schedules, profiles, guest_modes) {
+function nft_runtime_signature_from_settings_and_sections(settings, sections, schedules, profiles, guest_modes, servers) {
     let body = "";
 
     body = signature_add_value(body, "settings.source_network_interfaces", option(settings, "source_network_interfaces", "br-lan"));
@@ -4275,12 +4382,15 @@ function nft_runtime_signature_from_settings_and_sections(settings, sections, sc
         for (let gm in guest_modes)
             body = nft_guest_mode_signature_body(body, object_or_empty(gm));
     }
+    let ts_sig = tailscale_nft_signature_value(sections, servers);
+    if (ts_sig != "")
+        body = signature_add_value(body, "tailscale.nft", ts_sig);
 
     return signature_hash(body);
 }
 
-function print_nft_runtime_signature_from_settings_and_sections(settings, sections, schedules, profiles, guest_modes) {
-    let hash = nft_runtime_signature_from_settings_and_sections(settings, sections, schedules, profiles, guest_modes);
+function print_nft_runtime_signature_from_settings_and_sections(settings, sections, schedules, profiles, guest_modes, servers) {
+    let hash = nft_runtime_signature_from_settings_and_sections(settings, sections, schedules, profiles, guest_modes, servers);
     if (hash == "")
         return false;
 
@@ -4443,7 +4553,8 @@ function nft_runtime_signature_from_uci() {
         uci_sections("section"),
         uci_sections("schedule"),
         uci_sections("profile"),
-        uci_sections("guest_mode")
+        uci_sections("guest_mode"),
+        uci_sections("server")
     );
 }
 
@@ -4465,7 +4576,8 @@ function nft_runtime_signature_from_fixture(path) {
         fixture_section_list(data, "section"),
         fixture_section_list(data, "schedule"),
         fixture_section_list(data, "profile"),
-        fixture_section_list(data, "guest_mode")
+        fixture_section_list(data, "guest_mode"),
+        fixture_section_list(data, "server")
     );
 }
 

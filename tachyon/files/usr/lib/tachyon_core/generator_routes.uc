@@ -2479,12 +2479,12 @@ function add_proxy_selector(config, section, selector_tags, urltest_candidate_ta
                 section: section_name,
                 displayName: option(section, "label", section_name) || section_name,
                 health_url: h_url,
-                active_check_interval: "5s",
+                active_check_interval: "15s",
                 check_timeout: "2s",
-                recovery_check_interval: "15s",
+                recovery_check_interval: "30s",
                 pick_fastest: true,
-                switch_to_faster_same_priority: true,
-                fastest_check_interval: "3m",
+                switch_to_faster_same_priority: false,
+                fastest_check_interval: "10m",
                 interrupt_exist_connections: connections.section_interrupt_exist_connections(section),
                 pin_dashboard: false,
                 outbounds: selector_outbounds,
@@ -5238,6 +5238,60 @@ function add_service_route_rules(config, sections) {
         }
     }
 
+    let client_ts_endpoints = [];
+    let has_ts_server_rule = false;
+    for (let ep in array_or_empty(config.endpoints)) {
+        if (type(ep) != "object" || ep.type != "tailscale")
+            continue;
+        let ep_tag = as_string(ep.tag || "");
+        if (ep_tag == "")
+            continue;
+        if (match(ep_tag, /^server-.+-in$/) != null) {
+            has_ts_server_rule = true;
+            continue;
+        }
+        push(client_ts_endpoints, ep);
+    }
+    if (length(client_ts_endpoints) > 0) {
+        if (type(config.route) != "object")
+            config.route = {};
+        if (type(config.route.rules) != "array")
+            config.route.rules = [];
+        if (!has_ts_server_rule) {
+            for (let rule in config.route.rules) {
+                if (type(rule) != "object")
+                    continue;
+                let cidr = rule.ip_cidr;
+                if (cidr == "100.64.0.0/10" || cidr == "fd7a:115c:a1e0::/48" ||
+                    (type(cidr) == "array" && (index(cidr, "100.64.0.0/10") >= 0 || index(cidr, "fd7a:115c:a1e0::/48") >= 0))) {
+                    has_ts_server_rule = true;
+                    break;
+                }
+            }
+        }
+        if (!has_ts_server_rule) {
+            push(config.route.rules, {
+                action: "route",
+                ip_cidr: [ "100.64.0.0/10", "fd7a:115c:a1e0::/48" ],
+                outbound: as_string(client_ts_endpoints[0].tag)
+            });
+        }
+        if (ctx.is_tachyon_core != null && ctx.is_tachyon_core(null)) {
+            for (let ep in client_ts_endpoints) {
+                let ep_tag = as_string(ep.tag || "");
+                if (ep_tag == "")
+                    continue;
+                if (ep.accept_routes !== false && as_string(ep.exit_node || "") == "") {
+                    push(config.route.rules, {
+                        action: "route",
+                        preferred_by: ep_tag,
+                        outbound: ep_tag
+                    });
+                }
+            }
+        }
+    }
+
     let candidates = failover_candidate(sections);
     let proxy_candidates = [];
     for (let section in candidates) {
@@ -5557,6 +5611,14 @@ function add_server_routes(config, servers, sections) {
                 ip_cidr: [ "100.64.0.0/10", "fd7a:115c:a1e0::/48" ],
                 outbound: inbound
             });
+            if (variant_state.is_tachyon_core() &&
+                (bool_option(server, "tailscale_accept_routes", false) || trim(option(server, "tailscale_exit_node", "")) != "")) {
+                push(config.route.rules, {
+                    action: "route",
+                    preferred_by: inbound,
+                    outbound: inbound
+                });
+            }
         }
     }
     ctx.current_section = null;

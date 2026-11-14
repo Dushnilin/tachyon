@@ -235,7 +235,9 @@ function ensure_dirs(section) {
     if (!command_success_from_args([ "mkdir", "-p", state_dir, runtime_dir ]))
         return false;
     // The daemon stores node identity here; it must survive reboots and resets.
-    fs.chmod(state_dir, 448);
+    let st = fs.stat(state_dir);
+    if (st == null || st.mode == null || (int(st.mode) & 511) != 448)
+        fs.chmod(state_dir, 448);
     return true;
 }
 
@@ -567,7 +569,10 @@ function install_kernel_routing(section) {
     if (bool_option(section, "tailscale_use_exit_node", false))
         install_exit_node_routing();
     configure_firewall(section);
-    configure_magicdns_dns();
+    if (bool_option(section, "tailscale_accept_dns", true))
+        configure_magicdns_dns();
+    else
+        remove_magicdns_dns(true);
     return true;
 }
 
@@ -749,10 +754,14 @@ function stop_section(section) {
     fs.unlink(pid_file);
 }
 
-function backend_state() {
+function backend_state(section) {
     if (!binary_available())
         return "";
-    let out = trim(command_output_from_args([ TAILSCALE_BIN, "status", "--json", "--peers=false" ]));
+    let args = section != null ? tailscale_client_args(section) : [ TAILSCALE_BIN ];
+    push(args, "status");
+    push(args, "--json");
+    push(args, "--peers=false");
+    let out = trim(command_output_from_args(args));
     if (out == "")
         return "";
     let parsed = json(out);
@@ -771,7 +780,7 @@ function status_json() {
     for (let section in sections) {
         if (running_pid(section)) {
             running++;
-            let state = backend_state();
+            let state = backend_state(section);
             if (state != "")
                 states[section_name(section)] = state;
         }
@@ -888,12 +897,49 @@ function stop_runtime() {
     return 0;
 }
 
+function embedded_tailscale_configured() {
+    for (let srv in uci_sections("server")) {
+        if (!bool_option(srv, "enabled", true))
+            continue;
+        if (lc(trim(as_string(srv["protocol"] || ""))) != "tailscale")
+            continue;
+        if (!is_native_mode(srv))
+            return true;
+    }
+    let secs = uci_sections("section");
+    let sources = uci_sections("outbound_source");
+    let connections = require("config.connections");
+    connections.set_item_sections_from_data({
+        section: secs,
+        outbound_source: sources,
+        outbound_group: uci_sections("outbound_group"),
+        balancer: uci_sections("balancer")
+    });
+    for (let sec in secs) {
+        if (!bool_option(sec, "enabled", true))
+            continue;
+        if (lc(trim(as_string(sec["action"] || ""))) == "tailscale")
+            return true;
+        if (length(connections.embedded_tailscale_sources(sec)) > 0)
+            return true;
+    }
+    for (let src in sources) {
+        if (!bool_option(src, "enabled", true))
+            continue;
+        if (connections.is_embedded_tailscale_source(src))
+            return true;
+    }
+    return false;
+}
+
 function start_runtime() {
     let sections = native_tailscale_sections();
     if (length(sections) == 0) {
         // Nothing configured: make sure nothing is left over from a removed section.
         stop_runtime();
         remove_magicdns_dns(true);
+        if (embedded_tailscale_configured())
+            neutralize_standalone_service();
         return 0;
     }
     if (!binary_available()) {

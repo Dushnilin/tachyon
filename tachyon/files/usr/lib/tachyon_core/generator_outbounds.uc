@@ -1188,6 +1188,104 @@ function add_imported_wireguard_endpoint(config, endpoint) {
     push(config.endpoints, endpoint);
 }
 
+function safe_tailscale_id(value) {
+    return replace(as_string(value), /[^A-Za-z0-9_.-]/g, "_");
+}
+
+function ensure_tailscale_client_dns(config, src_or_section, ep_tag) {
+    ep_tag = as_string(ep_tag || "");
+    if (ep_tag == "")
+        return;
+    if (src_or_section != null && !bool_option(src_or_section, "tailscale_accept_dns", true))
+        return;
+    if (type(config.dns) != "object")
+        return;
+    if (type(config.dns.servers) != "array")
+        config.dns.servers = [];
+    if (type(config.dns.rules) != "array")
+        config.dns.rules = [];
+
+    let safe_ep = safe_tailscale_id(ep_tag);
+    let dns_tag = "dns-" + safe_ep;
+    let has_dns_srv = false;
+    for (let srv in config.dns.servers) {
+        if (type(srv) == "object" && srv.tag == dns_tag) {
+            has_dns_srv = true;
+            break;
+        }
+    }
+    if (!has_dns_srv) {
+        push(config.dns.servers, {
+            type: "tailscale",
+            tag: dns_tag,
+            endpoint: ep_tag,
+            accept_default_resolvers: src_or_section != null ? bool_option(src_or_section, "tailscale_accept_default_resolvers", true) : true
+        });
+    }
+
+    let has_ts_net_rule = false;
+    let ts_dns_tags = {};
+    for (let srv in config.dns.servers) {
+        if (type(srv) == "object" && srv.type == "tailscale" && as_string(srv.tag || "") != "")
+            ts_dns_tags[as_string(srv.tag)] = true;
+    }
+    for (let r in config.dns.rules) {
+        if (type(r) != "object" || !ts_dns_tags[as_string(r.server || "")])
+            continue;
+        if (r.domain_suffix == "ts.net" || (type(r.domain_suffix) == "array" && index(r.domain_suffix, "ts.net") >= 0)) {
+            has_ts_net_rule = true;
+            break;
+        }
+    }
+    if (!has_ts_net_rule) {
+        push(config.dns.rules, {
+            action: "route",
+            server: dns_tag,
+            domain_suffix: [ "ts.net" ],
+            __service_tag: "tailscale-client-dns-" + safe_ep
+        });
+    }
+    if (ctx.is_tachyon_core != null && ctx.is_tachyon_core(null)) {
+        let pref_rule_tag = "tailscale-client-pref-dns-" + safe_ep;
+        let has_pref_rule = false;
+        for (let r in config.dns.rules) {
+            if (type(r) == "object" && r.__service_tag == pref_rule_tag) {
+                has_pref_rule = true;
+                break;
+            }
+        }
+        if (!has_pref_rule) {
+            push(config.dns.rules, {
+                action: "route",
+                server: dns_tag,
+                preferred_by: ep_tag,
+                __service_tag: pref_rule_tag
+            });
+        }
+    }
+}
+
+function add_imported_tailscale_endpoint(config, endpoint) {
+    if (!config.endpoints)
+        config.endpoints = [];
+    if (type(endpoint) == "object") {
+        let ep_tag = as_string(endpoint.tag || "tailscale");
+        let accept_dns = endpoint.accept_dns !== false;
+        delete endpoint.accept_dns;
+        if (as_string(endpoint.auth_key || "") == "")
+            delete endpoint.auth_key;
+        if (as_string(endpoint.state_directory || "") == "") {
+            let base_dir = endpoint.ephemeral === true ? "/var/run/tachyon/tailscale/" : "/etc/tachyon/tailscale/";
+            endpoint.state_directory = base_dir + safe_tailscale_id(ep_tag);
+        }
+        push(config.endpoints, endpoint);
+        if (accept_dns)
+            ensure_tailscale_client_dns(config, null, ep_tag);
+        return;
+    }
+    push(config.endpoints, endpoint);
+}
+
 // Validate a decoded payload exactly the way core fptn::parse_token does —
 // same field errors, same ranges — so the backend and the core's own token
 // expansion can never disagree about which token is usable. Returns the
@@ -1586,6 +1684,8 @@ function add_manual_proxy_link(config, state, section_name, manual_index, link, 
     }
     if (outbound.type == "wireguard")
         add_imported_wireguard_endpoint(config, outbound);
+    else if (outbound.type == "tailscale")
+        add_imported_tailscale_endpoint(config, outbound);
     else if (outbound.type == "shadowtls") {
         let stls_tag = unique_tag(tag_name + "-stls", taken);
         taken[stls_tag] = true;
@@ -2056,6 +2156,8 @@ function add_subscription_source_with_state(config, section, source_index, sourc
         }
         if (outbound.type == "wireguard") {
             add_imported_wireguard_endpoint(config, outbound);
+        } else if (outbound.type == "tailscale") {
+            add_imported_tailscale_endpoint(config, outbound);
         } else if (outbound.type == "shadowtls" && !(as_string(outbound.tag || "") in active_hidden_refs)) {
             let stls_tag = unique_tag(outbound.tag + "-stls", taken);
             taken[stls_tag] = true;
@@ -2342,6 +2444,8 @@ function add_connection_json_outbounds(config, state, section, taken, selector_t
         if (!item.reused) {
             if (outbound.type == "wireguard")
                 add_imported_wireguard_endpoint(config, outbound);
+            else if (outbound.type == "tailscale")
+                add_imported_tailscale_endpoint(config, outbound);
             else
                 push(config.outbounds, outbound);
         }
@@ -2615,6 +2719,102 @@ function enabled_action_index(sections, target_section, action_name) {
     return 0;
 }
 
+function build_and_push_tailscale_client_endpoint(config, src, tag_name, parent_section) {
+    let safe_id = safe_tailscale_id(tag_name);
+    let ephemeral = bool_option(src, "tailscale_ephemeral", false);
+    let state_dir = (ephemeral ? "/var/run/tachyon/tailscale/" : "/etc/tachyon/tailscale/") + safe_id;
+    let control_url = trim(option(src, "tailscale_control_url", ""));
+    if (control_url == "")
+        control_url = "https://controlplane.tailscale.com";
+    let hostname = trim(option(src, "tailscale_hostname", ""));
+    if (hostname == "")
+        hostname = "tachyon-" + safe_id;
+
+    let endpoint = {
+        type: "tailscale",
+        tag: tag_name,
+        state_directory: state_dir,
+        control_url,
+        hostname,
+        ephemeral,
+        accept_routes: bool_option(src, "tailscale_accept_routes", true)
+    };
+
+    let auth_key = trim(option(src, "tailscale_auth_key", ""));
+    if (auth_key != "")
+        endpoint.auth_key = auth_key;
+
+    let exit_node = trim(option(src, "tailscale_exit_node", ""));
+    if (exit_node != "")
+        endpoint.exit_node = exit_node;
+    if (bool_option(src, "tailscale_exit_node_allow_lan_access", false))
+        endpoint.exit_node_allow_lan_access = true;
+
+    let advertise_routes = [];
+    for (let item in list_option(src, "tailscale_advertise_routes")) {
+        for (let part in split(as_string(item), ",")) {
+            part = trim(part);
+            if (part != "")
+                push(advertise_routes, part);
+        }
+    }
+    if (length(advertise_routes) > 0)
+        endpoint.advertise_routes = advertise_routes;
+    if (bool_option(src, "tailscale_advertise_exit_node", false))
+        endpoint.advertise_exit_node = true;
+
+    let relay_port = int_option(src, "tailscale_relay_server_port", 0);
+    if (relay_port > 0)
+        endpoint.relay_server_port = relay_port;
+
+    let relay_endpoints = [];
+    for (let item in list_option(src, "tailscale_relay_server_static_endpoints")) {
+        for (let part in split(as_string(item), ",")) {
+            part = trim(part);
+            if (part != "")
+                push(relay_endpoints, part);
+        }
+    }
+    if (length(relay_endpoints) > 0)
+        endpoint.relay_server_static_endpoints = relay_endpoints;
+
+    if (bool_option(src, "tailscale_system_interface", false)) {
+        endpoint.system_interface = true;
+        let sys_iface_name = trim(option(src, "tailscale_system_interface_name", ""));
+        if (sys_iface_name != "")
+            endpoint.system_interface_name = sys_iface_name;
+        let sys_iface_mtu = int_option(src, "tailscale_system_interface_mtu", 0);
+        if (sys_iface_mtu > 0)
+            endpoint.system_interface_mtu = sys_iface_mtu;
+    }
+
+    let udp_timeout = trim(option(src, "tailscale_udp_timeout", ""));
+    if (udp_timeout != "")
+        endpoint.udp_timeout = udp_timeout;
+
+    let detour_owner = parent_section || src;
+    let detour = outbound_detour_tag_for_section(detour_owner);
+    if (detour == "" && parent_section != null && src != parent_section)
+        detour = outbound_detour_tag_for_section(src);
+    if (detour != "") {
+        endpoint.detour = detour;
+    } else {
+        let bind_iface = trim(option(src, "bind_interface", ""));
+        if (bind_iface == "")
+            bind_iface = trim(option(src, "interface", ""));
+        if (bind_iface == "" && parent_section != null && parent_section != src)
+            bind_iface = trim(option(parent_section, "bind_interface", ""));
+        if (bind_iface != "")
+            endpoint.bind_interface = bind_iface;
+    }
+
+    if (!config.endpoints)
+        config.endpoints = [];
+    push(config.endpoints, endpoint);
+    ensure_tailscale_client_dns(config, src, tag_name);
+    return endpoint;
+}
+
 function add_openvpn_endpoint(config, section) {
     let tag = option(section, ".tag", "") || outbound_tag(section[".name"]);
     let server = option(section, "openvpn_server", "");
@@ -2854,6 +3054,15 @@ function add_connection_dpi_sources(config, state, section, taken, selector_tags
                 server_port: int_option(src, "openvpn_server_port", "1194")
             });
             state.outboundMetadata.sources[tag_name] = src_id;
+        } else if (stype == "tailscale" && connections.is_embedded_tailscale_source && connections.is_embedded_tailscale_source(src)) {
+            let tag_name = unique_tag(outbound_tag(section_name + "-tailscale-" + src_id), taken);
+            taken[tag_name] = true;
+            let ep = build_and_push_tailscale_client_endpoint(config, src, tag_name, section);
+            push(selector_tags, tag_name);
+            push(urltest_candidate_tags, tag_name);
+            runtime_subscription.remember_outbound_metadata(state, tag_name, display_name, ep);
+            state.outboundMetadata.sources[tag_name] = src_id;
+            state.outboundMetadata.source_ids[tag_name] = src_id;
         }
     }
 }
@@ -4095,25 +4304,7 @@ function add_chain_outbound(config, section) {
 }
 
 function add_tailscale_client_endpoint(config, section) {
-    let tag = outbound_tag(section[".name"]);
-    let endpoint = {
-        type: "tailscale",
-        tag,
-        state_directory: "/etc/tachyon/tailscale/" + section[".name"],
-        control_url: option(section, "tailscale_control_url", "https://controlplane.tailscale.com"),
-        hostname: option(section, "tailscale_hostname", "tachyon-" + section[".name"]),
-        ephemeral: bool_option(section, "tailscale_ephemeral", false),
-        accept_routes: bool_option(section, "tailscale_accept_routes", true)
-    };
-    let auth_key = option(section, "tailscale_auth_key", "");
-    if (auth_key != "") endpoint.auth_key = auth_key;
-    let exit_node = option(section, "tailscale_exit_node", "");
-    if (exit_node != "") endpoint.exit_node = exit_node;
-    if (bool_option(section, "tailscale_exit_node_allow_lan_access", false))
-        endpoint.exit_node_allow_lan_access = true;
-    let detour = outbound_detour_tag_for_section(section);
-    if (detour != "") endpoint.detour = detour;
-    push(config.endpoints, endpoint);
+    return build_and_push_tailscale_client_endpoint(config, section, outbound_tag(section[".name"]), section);
 }
 
 function add_zapret_outbound(config, section, sections) {

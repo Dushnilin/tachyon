@@ -851,21 +851,53 @@ function add_json_inbound(config, section, tag_name) {
 
 function add_tailscale_endpoint(config, section, tag_name) {
     let section_name = section[".name"];
+    let ephemeral = bool_option(section, "tailscale_ephemeral", false);
+    let safe_name = safe_filename(section_name);
+    let state_dir = (ephemeral ? "/var/run/tachyon/tailscale/" : "/etc/tachyon/tailscale/") + safe_name;
     let endpoint = {
         type: "tailscale",
         tag: tag_name,
-        state_directory: "/etc/tachyon/tailscale/" + safe_filename(section_name),
-        auth_key: option(section, "tailscale_auth_key", ""),
+        state_directory: state_dir,
         control_url: option(section, "tailscale_control_url", "https://controlplane.tailscale.com"),
-        hostname: option(section, "tailscale_hostname", "tachyon-" + safe_filename(section_name))
+        hostname: option(section, "tailscale_hostname", "tachyon-" + safe_name)
     };
+    let auth_key = trim(option(section, "tailscale_auth_key", ""));
+    if (auth_key != "")
+        endpoint.auth_key = auth_key;
+    if (ephemeral)
+        endpoint.ephemeral = true;
     if (bool_option(section, "tailscale_accept_routes", false))
         endpoint.accept_routes = true;
+    let exit_node = trim(option(section, "tailscale_exit_node", ""));
+    if (exit_node != "")
+        endpoint.exit_node = exit_node;
+    if (bool_option(section, "tailscale_exit_node_allow_lan_access", false))
+        endpoint.exit_node_allow_lan_access = true;
     let advertise_routes = list_option(section, "tailscale_advertise_routes");
     if (length(advertise_routes) > 0)
         endpoint.advertise_routes = advertise_routes;
     if (bool_option(section, "tailscale_advertise_exit_node", false))
         endpoint.advertise_exit_node = true;
+    let relay_port = int_option(section, "tailscale_relay_server_port", 0);
+    if (relay_port > 0)
+        endpoint.relay_server_port = relay_port;
+    let relay_endpoints = list_option(section, "tailscale_relay_server_static_endpoints");
+    if (length(relay_endpoints) > 0)
+        endpoint.relay_server_static_endpoints = relay_endpoints;
+    if (bool_option(section, "tailscale_system_interface", false)) {
+        endpoint.system_interface = true;
+        let sys_iface_name = trim(option(section, "tailscale_system_interface_name", ""));
+        if (sys_iface_name != "")
+            endpoint.system_interface_name = sys_iface_name;
+        let sys_iface_mtu = int_option(section, "tailscale_system_interface_mtu", 0);
+        if (sys_iface_mtu > 0)
+            endpoint.system_interface_mtu = sys_iface_mtu;
+    }
+    let udp_timeout = trim(option(section, "tailscale_udp_timeout", ""));
+    if (udp_timeout != "")
+        endpoint.udp_timeout = udp_timeout;
+    if (!config.endpoints)
+        config.endpoints = [];
     push(config.endpoints, endpoint);
 }
 
@@ -882,6 +914,9 @@ function add_dns_bypass(config, section) {
     if (is_native_tailscale(section))
         return;
 
+    if (!bool_option(section, "tailscale_accept_dns", true))
+        return;
+
     let section_name = section[".name"];
     let inbound = runtime_constants.server_inbound_tag(section_name);
     let dns_tag = runtime_constants.tailscale_dns_server_tag(section_name);
@@ -890,7 +925,7 @@ function add_dns_bypass(config, section) {
         type: "tailscale",
         tag: dns_tag,
         endpoint: inbound,
-        accept_default_resolvers: true
+        accept_default_resolvers: bool_option(section, "tailscale_accept_default_resolvers", true)
     });
     if (!bool_option(section, "tailscale_advertise_exit_node", false)) {
         push(config.dns.rules, {
@@ -906,6 +941,14 @@ function add_dns_bypass(config, section) {
         domain_suffix: [ "ts.net" ],
         __service_tag: rule_tag + "-magicdns"
     });
+    if (variant_state.is_tachyon_core()) {
+        push(config.dns.rules, {
+            action: "route",
+            server: dns_tag,
+            preferred_by: inbound,
+            __service_tag: rule_tag + "-preferred"
+        });
+    }
 }
 
 function add_server(config, section) {

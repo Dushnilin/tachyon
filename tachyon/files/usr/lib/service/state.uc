@@ -1681,7 +1681,57 @@ function section_runtime_failed(name) {
     return entry.failed == true || as_string(entry.failed || "") == "1";
 }
 
-function nft_runtime_signature_body(settings, sections, schedules, profiles, guest_modes) {
+function tailscale_nft_signature_value(sections, servers) {
+    ensure_signature_deps();
+    let parts = [];
+    for (let srv in (type(servers) == "array" ? servers : [])) {
+        srv = object_or_empty(srv);
+        if (!bool_option(srv, "enabled", true))
+            continue;
+        if (lc(trim(option(srv, "protocol", ""))) != "tailscale")
+            continue;
+        let name = as_string(srv[".name"] || "");
+        let mode = lc(trim(option(srv, "tailscale_mode", "singbox")));
+        if (mode == "")
+            mode = "singbox";
+        push(parts, "srv:" + name + ":" + mode);
+    }
+    for (let sec in (type(sections) == "array" ? sections : [])) {
+        sec = object_or_empty(sec);
+        if (!bool_option(sec, "enabled", true))
+            continue;
+        let name = as_string(sec[".name"] || "");
+        let act = lc(trim(option(sec, "action", "")));
+        if (act == "tailscale")
+            push(parts, "sec:" + name + ":embedded");
+        for (let src in connections.embedded_tailscale_sources(sec)) {
+            src = object_or_empty(src);
+            let src_name = as_string(src[".name"] || option(src, "id", ""));
+            push(parts, "src:" + name + ":" + src_name);
+        }
+        for (let uri in list_option(sec, "connection_uris")) {
+            let u = lc(trim(as_string(uri)));
+            if (index(u, "tailscale://") == 0)
+                push(parts, "uri:" + name + ":" + u);
+        }
+        for (let j_str in connections.outbound_jsons(sec)) {
+            try {
+                let parsed = json(as_string(j_str));
+                let items = type(parsed) == "array" ? parsed : [ parsed ];
+                for (let item in items) {
+                    if (type(item) == "object" && lc(trim(as_string(item.type || ""))) == "tailscale")
+                        push(parts, "json:" + name + ":" + as_string(item.tag || ""));
+                }
+            } catch (e) {}
+        }
+    }
+    if (length(parts) == 0)
+        return "";
+    sort(parts);
+    return join("|", parts);
+}
+
+function nft_runtime_signature_body(settings, sections, schedules, profiles, guest_modes, servers) {
     let body = "";
 
     body = signature_add_value(body, "settings.source_network_interfaces", option(settings, "source_network_interfaces", "br-lan"));
@@ -1774,6 +1824,9 @@ function nft_runtime_signature_body(settings, sections, schedules, profiles, gue
         for (let gm in guest_modes)
             push(chunks, nft_guest_mode_signature_body("", object_or_empty(gm)));
     }
+    let ts_sig = tailscale_nft_signature_value(sections, servers);
+    if (ts_sig != "")
+        push(chunks, signature_add_value("", "tailscale.nft", ts_sig));
 
     return join("", chunks);
 }
@@ -2222,10 +2275,31 @@ function append_sing_box_rule_signature_body(body, section, sections) {
         body = signature_add_outbound_detour_body(body, section, prefix);
         body = signature_add_mixed_proxy_body(body, section, prefix);
     }
+    else if (action == "tailscale") {
+        body = signature_add_value(body, prefix + ".tailscale_auth_key", option(section, "tailscale_auth_key", ""));
+        body = signature_add_value(body, prefix + ".tailscale_control_url", option(section, "tailscale_control_url", "https://controlplane.tailscale.com"));
+        body = signature_add_value(body, prefix + ".tailscale_hostname", option(section, "tailscale_hostname", ""));
+        body = signature_add_value(body, prefix + ".tailscale_ephemeral", bool_option_value(section, "tailscale_ephemeral", false));
+        body = signature_add_value(body, prefix + ".tailscale_accept_routes", bool_option_value(section, "tailscale_accept_routes", true));
+        body = signature_add_value(body, prefix + ".tailscale_accept_dns", bool_option_value(section, "tailscale_accept_dns", true));
+        body = signature_add_value(body, prefix + ".tailscale_accept_default_resolvers", bool_option_value(section, "tailscale_accept_default_resolvers", true));
+        body = signature_add_value(body, prefix + ".tailscale_exit_node", option(section, "tailscale_exit_node", ""));
+        body = signature_add_value(body, prefix + ".tailscale_exit_node_allow_lan_access", bool_option_value(section, "tailscale_exit_node_allow_lan_access", false));
+        body = signature_add_value(body, prefix + ".tailscale_advertise_routes", join(",", list_option(section, "tailscale_advertise_routes")));
+        body = signature_add_value(body, prefix + ".tailscale_advertise_exit_node", bool_option_value(section, "tailscale_advertise_exit_node", false));
+        body = signature_add_value(body, prefix + ".tailscale_relay_server_port", option(section, "tailscale_relay_server_port", ""));
+        body = signature_add_value(body, prefix + ".tailscale_relay_server_static_endpoints", join(",", list_option(section, "tailscale_relay_server_static_endpoints")));
+        body = signature_add_value(body, prefix + ".tailscale_system_interface", bool_option_value(section, "tailscale_system_interface", false));
+        body = signature_add_value(body, prefix + ".tailscale_system_interface_name", option(section, "tailscale_system_interface_name", ""));
+        body = signature_add_value(body, prefix + ".tailscale_system_interface_mtu", option(section, "tailscale_system_interface_mtu", ""));
+        body = signature_add_value(body, prefix + ".tailscale_udp_timeout", option(section, "tailscale_udp_timeout", ""));
+        body = signature_add_outbound_detour_body(body, section, prefix);
+        body = signature_add_mixed_proxy_body(body, section, prefix);
+    }
     else if (index([
         "warp", "masque", "openvpn", "anytls", "snell", "mieru", "naive",
         "sudoku", "openconnect", "tewfai", "trusttunnel", "mtproto",
-        "shadowtls", "desync", "tailscale", "fptn", "tor"
+        "shadowtls", "desync", "fptn", "tor"
     ], action) >= 0) {
         let pkeys = keys(section);
         sort(pkeys);
@@ -2351,6 +2425,19 @@ function append_sing_box_server_signature_body(body, server) {
 
     if (option(server, "protocol", "vless") == "socks")
         body = signature_add_value(body, prefix + ".socks_auth_enabled", bool_option_value(server, "socks_auth_enabled", true));
+    if (option(server, "protocol", "vless") == "tailscale") {
+        body = signature_add_value(body, prefix + ".tailscale_ephemeral", bool_option_value(server, "tailscale_ephemeral", false));
+        body = signature_add_value(body, prefix + ".tailscale_accept_dns", bool_option_value(server, "tailscale_accept_dns", true));
+        body = signature_add_value(body, prefix + ".tailscale_accept_default_resolvers", bool_option_value(server, "tailscale_accept_default_resolvers", true));
+        body = signature_add_value(body, prefix + ".tailscale_exit_node", option(server, "tailscale_exit_node", ""));
+        body = signature_add_value(body, prefix + ".tailscale_exit_node_allow_lan_access", bool_option_value(server, "tailscale_exit_node_allow_lan_access", false));
+        body = signature_add_value(body, prefix + ".tailscale_relay_server_port", option(server, "tailscale_relay_server_port", ""));
+        body = signature_add_value(body, prefix + ".tailscale_relay_server_static_endpoints", join(",", list_option(server, "tailscale_relay_server_static_endpoints")));
+        body = signature_add_value(body, prefix + ".tailscale_system_interface", bool_option_value(server, "tailscale_system_interface", false));
+        body = signature_add_value(body, prefix + ".tailscale_system_interface_name", option(server, "tailscale_system_interface_name", ""));
+        body = signature_add_value(body, prefix + ".tailscale_system_interface_mtu", option(server, "tailscale_system_interface_mtu", ""));
+        body = signature_add_value(body, prefix + ".tailscale_udp_timeout", option(server, "tailscale_udp_timeout", ""));
+    }
 
     let fields = [
         [ "label", name ],
@@ -2802,7 +2889,7 @@ function reload_state_values_from_sources(format, settings, sections, servers, d
         service_trigger_signature: service_trigger_signature_body(settings),
         dnsmasq_signature: dnsmasq_signature_body(settings, dnsmasq, legacy_dnsmasq_present),
         sing_box_signature: sing_box_signature_body(settings, sections, servers, mwan3_active_value, schedules, profiles, telegram),
-        nft_signature: nft_runtime_signature_body(settings, sections, schedules, profiles, guest_modes),
+        nft_signature: nft_runtime_signature_body(settings, sections, schedules, profiles, guest_modes, servers),
         zapret_queue_signature: action_queue_signature_body(sections, "zapret", "zapret_queue.section"),
         zapret_runtime_signature: zapret_runtime_signature_body(sections),
         zapret2_queue_signature: action_queue_signature_body(sections, "zapret2", "zapret2_queue.section"),
@@ -3278,10 +3365,10 @@ else if (mode == "sing-box-signature-body-fixture") {
     print(sing_box_signature_body(fixture_settings(data), fixture_section_list(data), fixture_servers(data), fixture_mwan3_active(data), fixture_section_list(data, "schedule"), fixture_section_list(data, "profile"), object_or_empty(data.telegram)));
 }
 else if (mode == "nft-signature")
-    exit(print_signature_hash(nft_runtime_signature_body(uci_settings(), uci_sections("section"), uci_sections("schedule"), uci_sections("profile"), uci_sections("guest_mode"))) ? 0 : 1);
+    exit(print_signature_hash(nft_runtime_signature_body(uci_settings(), uci_sections("section"), uci_sections("schedule"), uci_sections("profile"), uci_sections("guest_mode"), uci_servers())) ? 0 : 1);
 else if (mode == "nft-signature-fixture") {
     let data = fixture_data(ARGV[1]);
-    exit(print_signature_hash(nft_runtime_signature_body(fixture_settings(data), fixture_section_list(data), fixture_section_list(data, "schedule"), fixture_section_list(data, "profile"), fixture_section_list(data, "guest_mode"))) ? 0 : 1);
+    exit(print_signature_hash(nft_runtime_signature_body(fixture_settings(data), fixture_section_list(data), fixture_section_list(data, "schedule"), fixture_section_list(data, "profile"), fixture_section_list(data, "guest_mode"), fixture_servers(data))) ? 0 : 1);
 }
 else if (mode == "zapret-queue-signature")
     exit(print_signature_hash(action_queue_signature_body(uci_sections("section"), "zapret", "zapret_queue.section")) ? 0 : 1);
