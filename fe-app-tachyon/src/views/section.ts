@@ -4756,7 +4756,7 @@ function defaultPriorityGroupSettings() {
   return {
     name: '',
     health_url: 'https://www.gstatic.com/generate_204',
-    active_check_interval: '5s',
+    active_check_interval: '15s',
     check_timeout: '2s',
     recovery_check_interval: '15s',
     pick_fastest: '1',
@@ -4770,7 +4770,7 @@ function defaultPriorityGroupSettings() {
 function priorityGroupChildDefaults() {
   return {
     health_url: 'https://www.gstatic.com/generate_204',
-    active_check_interval: '5s',
+    active_check_interval: '15s',
     check_timeout: '2s',
     recovery_check_interval: '15s',
     pick_fastest: '1',
@@ -5915,7 +5915,7 @@ function addPriorityGroupItemOptions(itemSection, options = {}) {
     _('Check interval'),
     _('How often the currently selected server is checked'),
   );
-  o.default = '5s';
+  o.default = '15s';
   o.rmempty = false;
   o.validate = function (_itemId, value) {
     return validateRequiredSingBoxDuration(value);

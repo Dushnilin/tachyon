@@ -3464,7 +3464,7 @@ function createSettingsContent(section, capabilities) {
     _("DNS Check Interval"),
     _("How often to check the active DNS servers."),
   );
-  configureDnsDuration(o, "10s", dnsOption, bootstrapOption, fallbackDnsOption);
+  configureDnsDuration(o, "30s", dnsOption, bootstrapOption, fallbackDnsOption);
   configureTimingVisibility(o);
 
   o = section.taboption(
@@ -5515,9 +5515,9 @@ function createSettingsContent(section, capabilities) {
     form.Value,
     "ai_proxy_health_interval",
     _("Proxy Health Check Interval (s)"),
-    _("How often to check proxy health in seconds (fast tier, default 30)."),
+    _("How often to check proxy health in seconds (fast tier, default 60)."),
   );
-  o.default = "30";
+  o.default = "60";
   o.datatype = "min(15)";
   o.depends("ai_proxy_health_enabled", "1");
 
@@ -5561,9 +5561,9 @@ function createSettingsContent(section, capabilities) {
     form.Value,
     "ai_dns_interval",
     _("DNS Check Interval (s)"),
-    _("How often to check DNS health in seconds (default 60)."),
+    _("How often to check DNS health in seconds (default 180)."),
   );
-  o.default = "60";
+  o.default = "180";
   o.datatype = "min(30)";
   o.depends("ai_dns_continuous_enabled", "1");
 

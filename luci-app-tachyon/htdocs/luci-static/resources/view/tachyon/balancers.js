@@ -447,7 +447,7 @@ function summarizeBalancer(sectionId) {
     }
     const levels = levelList.map(resolveEntityName);
     const interval =
-      uci.get(UCI_PACKAGE, sectionId, "active_check_interval") || "5s";
+      uci.get(UCI_PACKAGE, sectionId, "active_check_interval") || "15s";
     const extraUrls = asArray(uci.get(UCI_PACKAGE, sectionId, "health_urls"));
     const multiPart = extraUrls.length
       ? `, +${extraUrls.length} URL (${uci.get(UCI_PACKAGE, sectionId, "multi_url_strategy") || "worst_case"})`
@@ -855,8 +855,8 @@ function createBalancersContent(section) {
     _("Active Check Interval"),
   );
   o.modalonly = true;
-  o.default = "5s";
-  o.placeholder = "5s";
+  o.default = "15s";
+  o.placeholder = "15s";
   o.depends("balancer_type", "priority");
 
   o = section.option(form.Value, "check_timeout", _("Check Timeout"));

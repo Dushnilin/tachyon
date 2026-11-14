@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-14 19:21+0300\n"
-"PO-Revision-Date: 2026-11-14 19:21+0300\n"
+"POT-Creation-Date: 2026-11-14 19:22+0300\n"
+"PO-Revision-Date: 2026-11-14 19:22+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -6794,7 +6794,7 @@ msgid "How often the currently selected server is checked"
 msgstr ""
 
 #: src/views/settings.ts:5566
-msgid "How often to check DNS health in seconds (default 60)."
+msgid "How often to check DNS health in seconds (default 180)."
 msgstr ""
 
 #: src/views/settings.ts:6171
@@ -6802,7 +6802,7 @@ msgid "How often to check Telegram for new messages (default: 5)."
 msgstr ""
 
 #: src/views/settings.ts:5520
-msgid "How often to check proxy health in seconds (fast tier, default 30)."
+msgid "How often to check proxy health in seconds (fast tier, default 60)."
 msgstr ""
 
 #: src/views/settings.ts:3467

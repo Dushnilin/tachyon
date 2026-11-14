@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-14 22:21+0300\n"
-"PO-Revision-Date: 2026-11-14 22:21+0300\n"
+"POT-Creation-Date: 2026-11-14 22:22+0300\n"
+"PO-Revision-Date: 2026-11-14 22:22+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -4667,14 +4667,14 @@ msgstr "Как часто проверяются уровни с более вы
 msgid "How often the currently selected server is checked"
 msgstr "Как часто проверяется текущий сервер"
 
-msgid "How often to check DNS health in seconds (default 60)."
-msgstr "Как часто проверять здоровье DNS в секундах (по умолчанию 60)."
+msgid "How often to check DNS health in seconds (default 180)."
+msgstr "Как часто проверять состояние DNS в секундах (по умолчанию 180)."
 
 msgid "How often to check Telegram for new messages (default: 5)."
 msgstr "Как часто проверять Telegram на новые сообщения (по умолчанию: 5)."
 
-msgid "How often to check proxy health in seconds (fast tier, default 30)."
-msgstr "Как часто проверять здоровье прокси в секундах (быстрый уровень, по умолчанию 30)."
+msgid "How often to check proxy health in seconds (fast tier, default 60)."
+msgstr "Как часто проверять состояние прокси в секундах (быстрый уровень, по умолчанию 60)."
 
 msgid "How often to check the active DNS servers."
 msgstr "Как часто проверять активные DNS-серверы."
@@ -12055,6 +12055,12 @@ msgstr "🇱🇻 Латвия (lv)"
 
 msgid "🇵🇱 Poland (pl)"
 msgstr "🇵🇱 Польша (pl)"
+
+msgid "How often to check DNS health in seconds (default 60)."
+msgstr "Как часто проверять здоровье DNS в секундах (по умолчанию 60)."
+
+msgid "How often to check proxy health in seconds (fast tier, default 30)."
+msgstr "Как часто проверять здоровье прокси в секундах (быстрый уровень, по умолчанию 30)."
 
 msgid "Invalid CSQTT URL: missing host/peer or password"
 msgstr ""
