@@ -186,10 +186,26 @@ function sing_box_in_proc() {
 }
 
 function is_dns_working() {
-    return command_success_from_args([ "sh", "-c",
-        "nslookup -timeout=2 yandex.ru 127.0.0.1 >/dev/null 2>&1 || " +
-        "nslookup -timeout=2 connectivitycheck.gstatic.com 127.0.0.1 >/dev/null 2>&1 || " +
-        "nslookup -timeout=2 google.com 127.0.0.1 >/dev/null 2>&1" ]);
+    let has_dig = fs.access("/usr/bin/dig", "x") == true || fs.access("/bin/dig", "x") == true;
+    for (let domain in [ "yandex.ru", "connectivitycheck.gstatic.com", "google.com" ]) {
+        if (has_dig) {
+            let res = command_capture(command_from_args([
+                "dig", "@127.0.0.1", "-p", "53", domain, "A", "+short", "+time=2", "+timeout=2", "+tries=1"
+            ]) + " 2>/dev/null");
+            if (res.status == 0 && match(as_string(res.output), /[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/) != null)
+                return true;
+            continue;
+        }
+        let res = command_capture(command_from_args([
+            "nslookup", "-type=a", "-timeout=2", domain, "127.0.0.1"
+        ]) + " 2>&1");
+        if (res.status == 0)
+            return true;
+        if (match(as_string(res.output), /Usage:|invalid|unrecognized/i) != null &&
+            command_capture(command_from_args([ "nslookup", "-timeout=2", domain, "127.0.0.1" ]) + " 2>&1").status == 0)
+            return true;
+    }
+    return false;
 }
 
 function check_tachyon_cli_running() {
@@ -529,7 +545,10 @@ function controller(bus, opts) {
         healthy_streak: 0,
         subscription_fail_streak: 0,
         wan_fail_streak: 0,
-        smart_detect_connections: {}
+        smart_detect_connections: {},
+        last_subnet_sets_probe: 0,
+        subnet_sets_last_pid: "",
+        subnet_sets_had_empty: false
     };
 
     let self = { EV: EV, state: state };
@@ -783,7 +802,7 @@ function controller(bus, opts) {
         // On failure, switch to fast retry for the first 3 attempts so transient
         // blips or failover confirm quickly, then back off to avoid hammering CPU
         // with curl processes when the connection stays down.
-        let proxy_interval = int(ctx.settings.ai_proxy_health_interval || "30");
+        let proxy_interval = int(ctx.settings.ai_proxy_health_interval || "60");
         if (proxy_interval < 15) proxy_interval = 15;
 
         let effective_proxy_interval = proxy_interval;
@@ -891,7 +910,7 @@ function controller(bus, opts) {
         // when healthy (consecutive fails == 0).
         // On failure, switch to fast retry for the first 3 attempts, then pace at
         // dns_interval so nslookup probes do not churn CPU while upstream is down.
-        let dns_interval = int(ctx.settings.ai_dns_interval || "60");
+        let dns_interval = int(ctx.settings.ai_dns_interval || "180");
         if (dns_interval < 15) dns_interval = 15;
 
         let effective_dns_interval = (state.dns_consecutive_fails > 0 && state.dns_consecutive_fails < 3)
@@ -1219,6 +1238,22 @@ function controller(bus, opts) {
         });
     }
 
+    function nft_set_state(table, set_name) {
+        let pipe = fs.popen(
+            command_from_args([ "nft", "list", "set", "inet", table, set_name ]) + " 2>/dev/null",
+            "r");
+        if (!pipe)
+            return "missing";
+        let head = as_string(pipe.read(4096) || "");
+        let has_elements = index(head, "elements") >= 0;
+        let status = pipe.close();
+        if (has_elements)
+            return "populated";
+        if (status != 0 || head == "")
+            return "missing";
+        return "empty";
+    }
+
     // ── Probe: community subnet nft sets ──────────────────────────────────────
     function probe_subnet_sets() {
         let ctx = current_tick_ctx || create_tick_context();
@@ -1228,6 +1263,15 @@ function controller(bus, opts) {
 
         let pid = ctx.singbox_pid;
         if (pid == "" || !ctx.singbox_running) return;
+
+        let now = time();
+        if (!state.subnet_sets_had_empty &&
+            state.subnet_sets_last_pid == pid &&
+            state.last_subnet_sets_probe > 0 &&
+            (now - state.last_subnet_sets_probe) < 1800)
+            return;
+        state.last_subnet_sets_probe = now;
+        state.subnet_sets_last_pid = pid;
 
         let nft_table = getenv("NFT_TABLE_NAME") || "TachyonTable";
         let all_sections = uci_core.get_all(CONFIG_NAME);
@@ -1267,13 +1311,11 @@ function controller(bus, opts) {
             // A non-zero exit means the set does not exist for this section
             // (no subnet community configured) — not an emptiness problem.
             let set_name = "tachyon_rule_" + sec_name + "_subnets";
-            let result = command_capture(
-                command_from_args(["nft", "list", "set", "inet", nft_table, set_name]) + " 2>/dev/null");
-            if (result.status != 0 || result.output == "") continue;
-            if (index(result.output, "elements") < 0)
+            if (nft_set_state(nft_table, set_name) == "empty")
                 push(empty, set_name);
         }
 
+        state.subnet_sets_had_empty = length(empty) > 0;
         if (length(empty) > 0)
             bus.emit(EV.SUBNETS_EMPTY, { sets: empty });
     }
@@ -1469,6 +1511,7 @@ function controller(bus, opts) {
     self.handle_ubus_firewall_reload = function() {
         bus.emit(EV.FIREWALL_RELOADED, {});
         current_tick_ctx = create_tick_context();
+        state.last_subnet_sets_probe = 0;
         run_probe(probe_nftables, "nftables");
         run_probe(probe_subnet_sets, "subnet_sets");
         return true;

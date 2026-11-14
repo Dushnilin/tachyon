@@ -2525,7 +2525,7 @@ function sing_box_signature_body(settings, sections, servers, mwan3_active, sche
         body = signature_add_value(body, "settings.dns_fallback_server", value);
     for (let value in list_option(settings, "bootstrap_dns_server", "77.88.8.8"))
         body = signature_add_value(body, "settings.bootstrap_dns_server", value);
-    body = signature_add_value(body, "settings.dns_check_interval", option(settings, "dns_check_interval", "10s"));
+    body = signature_add_value(body, "settings.dns_check_interval", option(settings, "dns_check_interval", "30s"));
     body = signature_add_value(body, "settings.dns_recovery_check_interval", option(settings, "dns_recovery_check_interval", "60s"));
     body = signature_add_value(body, "settings.dns_check_timeout", option(settings, "dns_check_timeout", "2s"));
     body = signature_add_value(body, "settings.dns_failure_threshold", option(settings, "dns_failure_threshold", "3"));

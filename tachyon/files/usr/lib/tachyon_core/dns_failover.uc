@@ -22,6 +22,7 @@ let command_status = common.command_status;
 let command_success_from_args = common.command_success_from_args;
 let command_output_from_args = common.command_output_from_args;
 let remove_file = common.remove_file;
+let file_first_line = common.file_first_line;
 
 function settings() {
     return common.object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
@@ -170,10 +171,20 @@ function now_seconds() {
     return int(clock()[0]);
 }
 
+function own_pid() {
+    return trim(as_string(fs.readlink("/proc/self") || ""));
+}
+
+function process_running(pid) {
+    return match(as_string(pid), /^[0-9]+$/) != null && command_success_from_args([ "kill", "-0", pid ]);
+}
+
 // probe_fn is optional and exists so the test fixture can drive the real
 // decision instead of reimplementing it. Defaults to the live dig probe.
 function choose_index(kind, state, current_index, timeout_seconds, recovery, strikes, failure_threshold, recovery_threshold, probe_fn) {
     let values = kind == "main" ? state.main_servers : state.bootstrap_servers;
+    if (recovery && (length(values) <= 1 || current_index <= 0))
+        return { index: current_index > 0 ? current_index : 0, reason: "unchanged", alive: true };
     if (length(values) <= 1) {
         // Nothing to fail over to, but "nothing to switch to" is not the same as
         // "working": with a single server the caller decides whether to warn the
@@ -446,6 +457,18 @@ function trim_runtime_logs() {
         trim_tmpfs_log(path);
 }
 
+function record_all_down_status(kind, alive, all_down) {
+    if (!alive && !all_down[kind]) {
+        if (kind == "bootstrap")
+            log_message("all configured bootstrap DNS servers are unavailable (PROBE_DETAIL: " +
+                PROBE_DETAIL.bootstrap + ")", "warn");
+        else
+            log_message("all configured main DNS servers are unavailable (PROBE_DETAIL: " +
+                PROBE_DETAIL.main + ")", "warn");
+    }
+    all_down[kind] = !alive;
+}
+
 function worker() {
     let cfg = settings();
     let state = runtime_dns.normalize_state(cfg, common.read_json_file(STATE_FILE));
@@ -457,13 +480,17 @@ function worker() {
     let mode = common.option(cfg, "dns_upstream_mode", "sequential");
     let is_parallel = (mode == "parallel");
 
-    let active_interval = duration_seconds(common.option(cfg, "dns_check_interval", is_parallel ? "15s" : "10s"), is_parallel ? 15 : 10);
+    let active_interval = duration_seconds(common.option(cfg, "dns_check_interval", "30s"), 30);
     let recovery_interval = duration_seconds(common.option(cfg, "dns_recovery_check_interval", is_parallel ? "30s" : "60s"), is_parallel ? 30 : 60);
     let timeout_seconds = probe_timeout(common.option(cfg, "dns_check_timeout", is_parallel ? "3s" : "2s"));
     let next_active = now_seconds() + active_interval;
     let next_recovery = now_seconds() + recovery_interval;
     let all_down = { main: false, bootstrap: false };
     let strikes = { main: {}, bootstrap: {}, recovery_successes: { main: {}, bootstrap: {} } };
+    let one_main = length(state.main_servers) <= 1;
+    let one_bootstrap = length(state.bootstrap_servers) <= 1;
+    let my_pid = own_pid();
+    let pid_saw_self = false;
 
     let sleep_interval = active_interval < recovery_interval ? active_interval : recovery_interval;
     if (sleep_interval < 2) sleep_interval = 2;
@@ -471,6 +498,13 @@ function worker() {
     let last_log_trim = 0;
 
     while (true) {
+        if (my_pid != "") {
+            let file_pid = trim(as_string(file_first_line(PID_FILE) || ""));
+            if (file_pid == my_pid)
+                pid_saw_self = true;
+            else if (pid_saw_self || (file_pid != "" && process_running(file_pid)))
+                return 0;
+        }
         let now = now_seconds();
         if (now - last_log_trim >= 60) {
             trim_runtime_logs();
@@ -492,7 +526,7 @@ function worker() {
                 strikes = { main: {}, bootstrap: {}, recovery_successes: { main: {}, bootstrap: {} } };
                 next_active = now_seconds() + active_interval;
                 next_recovery = now_seconds() + recovery_interval;
-                command_success_from_args([ "sleep", as_string(sleep_interval) ]);
+                sleep(sleep_interval * 1000);
                 continue;
             }
             all_down.wan = false;
@@ -501,37 +535,38 @@ function worker() {
                 strikes = { main: {}, bootstrap: {}, recovery_successes: { main: {}, bootstrap: {} } };
                 next_active = now_seconds() + active_interval;
                 next_recovery = now_seconds() + recovery_interval;
-                command_success_from_args([ "sleep", as_string(sleep_interval) ]);
+                sleep(sleep_interval * 1000);
                 continue;
             }
-            let bootstrap = choose_index("bootstrap", state, int(state.bootstrap_index), timeout_seconds, false, strikes, failure_threshold, recovery_threshold);
-            if (!bootstrap.alive && !all_down.bootstrap)
-                log_message("all configured bootstrap DNS servers are unavailable (PROBE_DETAIL: " +
-                    PROBE_DETAIL.bootstrap + ")", "warn");
-            all_down.bootstrap = !bootstrap.alive;
-
-            if (!bootstrap.alive && length(state.bootstrap_servers) > 0) {
-                // Direct bootstrap resolvers are all unreachable -> WAN/transport outage;
-                // do not switch main DNS to lower-priority or ISP fallback servers.
-                strikes.main = {};
-                next_active = now_seconds() + active_interval;
-            }
-            else if (bootstrap.index != int(state.bootstrap_index)) {
+            if (one_bootstrap) {
                 let main = choose_index("main", state, int(state.main_index), timeout_seconds, false, strikes, failure_threshold, recovery_threshold);
-                let selections = { bootstrap };
-                if (main.alive)
-                    selections.main = main;
-                let applied = apply_selections(state, selections);
+                record_all_down_status("main", main.alive, all_down);
+                apply_selections(state, { main });
                 next_active = now_seconds() + active_interval;
             }
             else {
-                let main = choose_index("main", state, int(state.main_index), timeout_seconds, false, strikes, failure_threshold, recovery_threshold);
-                if (!main.alive && !all_down.main)
-                    log_message("all configured main DNS servers are unavailable (PROBE_DETAIL: " +
-                        PROBE_DETAIL.main + ")", "warn");
-                all_down.main = !main.alive;
-                apply_selections(state, { main });
-                next_active = now_seconds() + active_interval;
+                let bootstrap = choose_index("bootstrap", state, int(state.bootstrap_index), timeout_seconds, false, strikes, failure_threshold, recovery_threshold);
+                record_all_down_status("bootstrap", bootstrap.alive, all_down);
+
+                if (!bootstrap.alive && length(state.bootstrap_servers) > 0) {
+                    // Direct bootstrap resolvers are all unreachable -> WAN/transport outage;
+                    // do not switch main DNS to lower-priority or ISP fallback servers.
+                    strikes.main = {};
+                    next_active = now_seconds() + active_interval;
+                }
+                else if (one_main) {
+                    apply_selections(state, { bootstrap });
+                    next_active = now_seconds() + active_interval;
+                }
+                else {
+                    let main = choose_index("main", state, int(state.main_index), timeout_seconds, false, strikes, failure_threshold, recovery_threshold);
+                    record_all_down_status("main", main.alive, all_down);
+                    let selections = (bootstrap.index != int(state.bootstrap_index))
+                        ? (main.alive ? { bootstrap, main } : { bootstrap })
+                        : { main };
+                    apply_selections(state, selections);
+                    next_active = now_seconds() + active_interval;
+                }
             }
         }
 
@@ -540,7 +575,7 @@ function worker() {
             if (age == null || age < CORE_GRACE_SECONDS) {
                 strikes = { main: {}, bootstrap: {}, recovery_successes: { main: {}, bootstrap: {} } };
                 next_recovery = now_seconds() + recovery_interval;
-                command_success_from_args([ "sleep", as_string(sleep_interval) ]);
+                sleep(sleep_interval * 1000);
                 continue;
             }
             let bootstrap = choose_index("bootstrap", state, int(state.bootstrap_index), timeout_seconds, true, strikes, failure_threshold, recovery_threshold);
@@ -553,14 +588,8 @@ function worker() {
             next_recovery = completed + recovery_interval;
         }
 
-        command_success_from_args([ "sleep", as_string(sleep_interval) ]);
+        sleep(sleep_interval * 1000);
     }
-}
-
-let file_first_line = common.file_first_line;
-
-function process_running(pid) {
-    return match(as_string(pid), /^[0-9]+$/) != null && command_success_from_args([ "kill", "-0", pid ]);
 }
 
 function stop_runtime() {
@@ -568,6 +597,7 @@ function stop_runtime() {
     if (process_running(pid))
         command_success_from_args([ "kill", "-9", pid ]);
     remove_file(PID_FILE);
+    command_status(common.kill_matching_command("-F " + shell_quote(DNS_FAILOVER_UC + " worker")));
     system(common.kill_matching_command("dig.*" + runtime_dns.DNS_HEALTH_ADDRESS));
     return 0;
 }

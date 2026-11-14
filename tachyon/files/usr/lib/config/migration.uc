@@ -3036,6 +3036,49 @@ function migrate_priority_levels_to_outbound_groups(ctx) {
     migrate_balancer_levels_to_sections(ctx);
 }
 
+function migrate_relax_probe_intervals_v1(ctx) {
+    if (ctx.model && ctx.model.settings) {
+        let dns_iv = trim(option(ctx.model.settings, "dns_check_interval", ""));
+        if (dns_iv == "10s" || dns_iv == "10" || dns_iv == "15s" || dns_iv == "15")
+            set_option(ctx, ctx.model.settings, "dns_check_interval", "30s");
+
+        let proxy_iv = trim(option(ctx.model.settings, "ai_proxy_health_interval", ""));
+        if (proxy_iv == "30")
+            set_option(ctx, ctx.model.settings, "ai_proxy_health_interval", "60");
+
+        let ai_dns_iv = trim(option(ctx.model.settings, "ai_dns_interval", ""));
+        if (ai_dns_iv == "60")
+            set_option(ctx, ctx.model.settings, "ai_dns_interval", "180");
+    }
+
+    for (let bal in (ctx.model.balancer || [])) {
+        let active_iv = trim(option(bal, "active_check_interval", ""));
+        if (active_iv == "5s" || active_iv == "5")
+            set_option(ctx, bal, "active_check_interval", "15s");
+        let rec_iv = trim(option(bal, "recovery_check_interval", ""));
+        if (rec_iv == "15s" || rec_iv == "15")
+            set_option(ctx, bal, "recovery_check_interval", "30s");
+        let ut_iv = trim(option(bal, "interval", ""));
+        if (ut_iv == "5s" || ut_iv == "5" || ut_iv == "10s" || ut_iv == "10")
+            set_option(ctx, bal, "interval", "30s");
+    }
+
+    for (let ut in (ctx.model.urltest || [])) {
+        let ut_iv = trim(option(ut, "interval", ""));
+        if (ut_iv == "5s" || ut_iv == "5" || ut_iv == "10s" || ut_iv == "10")
+            set_option(ctx, ut, "interval", "30s");
+    }
+
+    for (let pg in (ctx.model.priority_group || [])) {
+        let active_iv = trim(option(pg, "active_check_interval", ""));
+        if (active_iv == "5s" || active_iv == "5")
+            set_option(ctx, pg, "active_check_interval", "15s");
+        let rec_iv = trim(option(pg, "recovery_check_interval", ""));
+        if (rec_iv == "15s" || rec_iv == "15")
+            set_option(ctx, pg, "recovery_check_interval", "30s");
+    }
+}
+
 const MIGRATIONS = [
     { id: "interface_sections", run: migrate_interface_sections },
     { id: "enable_component_checks", run: migrate_enable_component_checks },
@@ -3046,7 +3089,8 @@ const MIGRATIONS = [
     { id: "ensure_dns_server_defaults", run: migrate_ensure_dns_server_defaults },
     { id: "engine_identity_tachyon_core", run: migrate_engine_identity },
     { id: "modular_entities_v1", run: migrate_modular_entities_v1 },
-    { id: "priority_levels_to_outbound_groups", run: migrate_priority_levels_to_outbound_groups }
+    { id: "priority_levels_to_outbound_groups", run: migrate_priority_levels_to_outbound_groups },
+    { id: "relax_probe_intervals_v1", run: migrate_relax_probe_intervals_v1 }
 ];
 
 

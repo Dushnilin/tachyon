@@ -380,10 +380,34 @@ function inspect_actual_engine(desired_engine) {
 }
 
 function probe_dns_resolution() {
-    let cmd = "nslookup -timeout=2 yandex.ru 127.0.0.1 >/dev/null 2>&1 || " +
-              "nslookup -timeout=2 connectivitycheck.gstatic.com 127.0.0.1 >/dev/null 2>&1 || " +
-              "nslookup -timeout=2 google.com 127.0.0.1 >/dev/null 2>&1";
-    return command_status(cmd) == 0;
+    let has_dig = fs.access("/usr/bin/dig", "x") == true || fs.access("/bin/dig", "x") == true;
+    for (let domain in [ "yandex.ru", "connectivitycheck.gstatic.com", "google.com" ]) {
+        if (has_dig) {
+            let pipe = fs.popen(command_from_args([
+                "dig", "@127.0.0.1", "-p", "53", domain, "A", "+short", "+time=2", "+timeout=2", "+tries=1"
+            ]) + " 2>/dev/null", "r");
+            if (pipe) {
+                let out = pipe.read("all");
+                let rc = pipe.close();
+                if (rc == 0 && match(as_string(out), /[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/) != null)
+                    return true;
+            }
+            continue;
+        }
+        let pipe = fs.popen(command_from_args([
+            "nslookup", "-type=a", "-timeout=2", domain, "127.0.0.1"
+        ]) + " 2>&1", "r");
+        if (pipe) {
+            let out = pipe.read("all");
+            let rc = pipe.close();
+            if (rc == 0)
+                return true;
+            if (match(as_string(out), /Usage:|invalid|unrecognized/i) != null &&
+                command_status(command_from_args([ "nslookup", "-timeout=2", domain, "127.0.0.1" ]) + " >/dev/null 2>&1") == 0)
+                return true;
+        }
+    }
+    return false;
 }
 
 function inspect_actual_dns(desired_dns) {

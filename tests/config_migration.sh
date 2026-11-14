@@ -165,7 +165,7 @@ assert(JSON.stringify(config.settings.dns_server) === JSON.stringify(['9.9.9.9']
 assert(JSON.stringify(config.settings.bootstrap_dns_server) === JSON.stringify(['1.1.1.1']), 'legacy Bootstrap DNS scalar migrated to ordered list');
 assert(config.settings.config_version === '1.0.5', 'legacy config should be marked at the current schema version');
 assert(config.settings.component_update_check_enabled === '1', 'component update checks should be enabled during migration');
-assert(JSON.stringify(config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks', 'http_connection_urls', 'dns_hosts_to_option', 'global_hosts_to_section', 'orphan_section_interface_cleanup', 'ensure_dns_server_defaults', 'engine_identity_tachyon_core', 'modular_entities_v1', 'priority_levels_to_outbound_groups']), 'legacy config should record named migrations');
+assert(JSON.stringify(config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks', 'http_connection_urls', 'dns_hosts_to_option', 'global_hosts_to_section', 'orphan_section_interface_cleanup', 'ensure_dns_server_defaults', 'engine_identity_tachyon_core', 'modular_entities_v1', 'priority_levels_to_outbound_groups', 'relax_probe_intervals_v1']), 'legacy config should record named migrations');
 
 function assert(condition, message) {
   if (!condition) {
@@ -384,7 +384,7 @@ function assert(condition, message) {
 assert(out.changed === true, '1.0.1 config should require migration');
 assert(out.config.settings.config_version === '1.0.5', 'config schema version should advance to 1.0.5');
 assert(out.config.settings.component_update_check_enabled === '1', 'updates from 1.0.1 and below should enable component update checks');
-assert(JSON.stringify(out.config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks', 'http_connection_urls', 'dns_hosts_to_option', 'global_hosts_to_section', 'orphan_section_interface_cleanup', 'ensure_dns_server_defaults', 'engine_identity_tachyon_core', 'modular_entities_v1', 'priority_levels_to_outbound_groups']), 'named migrations should be recorded');
+assert(JSON.stringify(out.config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks', 'http_connection_urls', 'dns_hosts_to_option', 'global_hosts_to_section', 'orphan_section_interface_cleanup', 'ensure_dns_server_defaults', 'engine_identity_tachyon_core', 'modular_entities_v1', 'priority_levels_to_outbound_groups', 'relax_probe_intervals_v1']), 'named migrations should be recorded');
 assert(!Object.prototype.hasOwnProperty.call(section, 'interfaces'), 'parent interface list should be removed');
 assert(JSON.stringify(interfaces.map(item => item.name)) === JSON.stringify(['awg0', 'tun0']), 'interfaces should keep their order');
 for (const item of interfaces) {
@@ -422,7 +422,7 @@ function assert(condition, message) {
 
 assert(out.config.settings.component_update_check_enabled === '0', '1.0.2 config must preserve an explicitly disabled component check');
 assert(out.config.settings.config_version === '1.0.5', '1.0.2 config should advance through the HTTP URL migration schema');
-assert(JSON.stringify(out.config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks', 'http_connection_urls', 'dns_hosts_to_option', 'global_hosts_to_section', 'orphan_section_interface_cleanup', 'ensure_dns_server_defaults', 'engine_identity_tachyon_core', 'modular_entities_v1', 'priority_levels_to_outbound_groups']), 'newer configs should mark skipped migrations');
+assert(JSON.stringify(out.config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks', 'http_connection_urls', 'dns_hosts_to_option', 'global_hosts_to_section', 'orphan_section_interface_cleanup', 'ensure_dns_server_defaults', 'engine_identity_tachyon_core', 'modular_entities_v1', 'priority_levels_to_outbound_groups', 'relax_probe_intervals_v1']), 'newer configs should mark skipped migrations');
 NODE
 
 cat >"$WORK_DIR/forkop-1.0.4-http.json" <<'JSON'
@@ -488,7 +488,7 @@ assert(JSON.stringify(jsonOutbounds[1]) === JSON.stringify({
   server_port: 8080,
 }), 'unnamed HTTP URL should receive a unique http tag');
 assert(jsonOutbounds[2].type === 'direct' && jsonOutbounds[2].tag === 'http', 'existing JSON outbounds should remain unchanged');
-assert(JSON.stringify(out.config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks', 'http_connection_urls', 'dns_hosts_to_option', 'global_hosts_to_section', 'orphan_section_interface_cleanup', 'ensure_dns_server_defaults', 'engine_identity_tachyon_core', 'modular_entities_v1', 'priority_levels_to_outbound_groups']), 'HTTP URL migration should be recorded');
+assert(JSON.stringify(out.config.settings.applied_migrations) === JSON.stringify(['interface_sections', 'enable_component_checks', 'http_connection_urls', 'dns_hosts_to_option', 'global_hosts_to_section', 'orphan_section_interface_cleanup', 'ensure_dns_server_defaults', 'engine_identity_tachyon_core', 'modular_entities_v1', 'priority_levels_to_outbound_groups', 'relax_probe_intervals_v1']), 'HTTP URL migration should be recorded');
 NODE
 
 cat >"$WORK_DIR/forkop-1.0.5-http.json" <<'JSON'
@@ -787,5 +787,76 @@ if grep -Fq 'tachyon.src_awg_proton=outbound_source' "$WORK_DIR/awg_and_sub.stat
 fi
 grep -Fq 'tachyon.src_sub_gemini_1.include_urltest_groups=0' "$WORK_DIR/awg_and_sub.state" ||
   fail "migrate must not overwrite existing src_sub_gemini_1.include_urltest_groups=0 from legacy subscription_url"
+
+# Regression: relax_probe_intervals_v1 upgrades untouched aggressive defaults while
+# keeping intentionally customized probe intervals untouched.
+cat >"$WORK_DIR/relax_intervals.state" <<'EOF_UCI'
+tachyon.settings=settings
+tachyon.settings.dns_server=77.88.8.8
+tachyon.settings.bootstrap_dns_server=77.88.8.8
+tachyon.settings.dns_check_interval=10s
+tachyon.settings.ai_proxy_health_interval=30
+tachyon.settings.ai_dns_interval=60
+tachyon.main=section
+tachyon.main.enabled=1
+tachyon.main.action=connection
+tachyon.backup=section
+tachyon.backup.enabled=1
+tachyon.backup.action=connection
+tachyon.prio_default=balancer
+tachyon.prio_default.enabled=1
+tachyon.prio_default.section=main
+tachyon.prio_default.balancer_type=priority
+tachyon.prio_default.active_check_interval=5s
+tachyon.prio_default.recovery_check_interval=15s
+tachyon.prio_custom=balancer
+tachyon.prio_custom.enabled=1
+tachyon.prio_custom.section=backup
+tachyon.prio_custom.balancer_type=priority
+tachyon.prio_custom.active_check_interval=20s
+tachyon.pg_legacy=priority_group
+tachyon.pg_legacy.enabled=1
+tachyon.pg_legacy.section=main
+tachyon.pg_legacy.active_check_interval=5s
+tachyon.ut_default=urltest
+tachyon.ut_default.enabled=1
+tachyon.ut_default.section=main
+tachyon.ut_default.interval=5s
+tachyon.bal_ut=balancer
+tachyon.bal_ut.enabled=1
+tachyon.bal_ut.section=backup
+tachyon.bal_ut.balancer_type=urltest
+tachyon.bal_ut.interval=10s
+EOF_UCI
+: >"$WORK_DIR/relax_intervals.log"
+TACHYON_UCI_STATE_FILE="$WORK_DIR/relax_intervals.state" \
+TACHYON_UCI_LOG_FILE="$WORK_DIR/relax_intervals.log" \
+TACHYON_CONFIG_NAME="tachyon" \
+TMP_SUBSCRIPTION_FOLDER="$WORK_DIR/tmp-subscriptions" \
+TACHYON_RUNTIME_STATE_DIR="$WORK_DIR/runtime" \
+TACHYON_PERSISTENT_SUBSCRIPTION_CACHE_DIR="$WORK_DIR/persistent-cache" \
+TACHYON_INTERNAL_CONFIG_TRIGGER_GUARD="$WORK_DIR/internal-config-change" \
+ucode -L "$TACHYON_LIB" "$MIGRATION" migrate
+
+grep -Fq 'tachyon.settings.dns_check_interval=30s' "$WORK_DIR/relax_intervals.state" ||
+  fail "relax_probe_intervals_v1 must relax default dns_check_interval from 10s to 30s"
+grep -Fq 'tachyon.settings.ai_proxy_health_interval=60' "$WORK_DIR/relax_intervals.state" ||
+  fail "relax_probe_intervals_v1 must relax default ai_proxy_health_interval from 30 to 60"
+grep -Fq 'tachyon.settings.ai_dns_interval=180' "$WORK_DIR/relax_intervals.state" ||
+  fail "relax_probe_intervals_v1 must relax default ai_dns_interval from 60 to 180"
+grep -Fq 'tachyon.prio_default.active_check_interval=15s' "$WORK_DIR/relax_intervals.state" ||
+  fail "relax_probe_intervals_v1 must relax default priority active_check_interval from 5s to 15s"
+grep -Fq 'tachyon.prio_default.recovery_check_interval=30s' "$WORK_DIR/relax_intervals.state" ||
+  fail "relax_probe_intervals_v1 must relax default priority recovery_check_interval from 15s to 30s"
+grep -Fq 'tachyon.prio_custom.active_check_interval=20s' "$WORK_DIR/relax_intervals.state" ||
+  fail "relax_probe_intervals_v1 must preserve custom priority active_check_interval"
+grep -Fq 'tachyon.pg_legacy.active_check_interval=15s' "$WORK_DIR/relax_intervals.state" ||
+  fail "relax_probe_intervals_v1 must relax legacy priority_group active_check_interval"
+grep -Fq 'tachyon.ut_default.interval=30s' "$WORK_DIR/relax_intervals.state" ||
+  fail "relax_probe_intervals_v1 must relax aggressive urltest interval 5s to 30s"
+grep -Fq 'tachyon.bal_ut.interval=30s' "$WORK_DIR/relax_intervals.state" ||
+  fail "relax_probe_intervals_v1 must relax aggressive balancer urltest interval 10s to 30s"
+grep -Fq 'relax_probe_intervals_v1' "$WORK_DIR/relax_intervals.state" ||
+  fail "relax_probe_intervals_v1 must record migration name"
 
 printf 'installer config migration checks passed\n'

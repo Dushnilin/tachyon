@@ -586,7 +586,7 @@ sequential
 [settings.bootstrap_dns_server]
 1.0.0.1
 [settings.dns_check_interval]
-10s
+30s
 [settings.dns_recovery_check_interval]
 60s
 [settings.dns_check_timeout]

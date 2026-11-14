@@ -1672,9 +1672,13 @@ function community_subnet_sets_still_empty(set_names) {
     let table = getenv("NFT_TABLE_NAME") || "TachyonTable";
     let still_empty = [];
     for (let set_name in common.array_or_empty(set_names)) {
-        let res = command_capture(
-            command_from_args([ "nft", "list", "set", "inet", table, set_name ]) + " 2>/dev/null");
-        if (res.status != 0 || res.output == "" || index(res.output, "elements") < 0)
+        let pipe = fs.popen(
+            command_from_args([ "nft", "list", "set", "inet", table, set_name ]) + " 2>/dev/null",
+            "r");
+        let head = pipe ? as_string(pipe.read(4096) || "") : "";
+        let has_elements = index(head, "elements") >= 0;
+        if (pipe) pipe.close();
+        if (!has_elements)
             push(still_empty, as_string(set_name));
     }
     return still_empty;
@@ -3067,6 +3071,10 @@ function register_subscribers() {
 // PID liveness and tmpfs log trimming keep running.
 let lite_cpu_prev_total = 0;
 let lite_cpu_prev_idle = 0;
+let lite_busy_cache_ts = 0;
+let lite_busy_cache_val = false;
+let lite_hibernating_normal = false;
+let lite_hibernating_slow = false;
 
 function is_lite_data_plane_busy(cfg, stat_path, loadavg_path) {
     let c = cfg || settings();
@@ -3074,12 +3082,23 @@ function is_lite_data_plane_busy(cfg, stat_path, loadavg_path) {
     if (lm != "1" && lm != "true")
         return false;
 
+    let custom_sample = (stat_path != null || loadavg_path != null);
+    let now_ts = time();
+    if (!custom_sample && lite_busy_cache_ts > 0 && (now_ts - lite_busy_cache_ts) < 5)
+        return lite_busy_cache_val;
+
     let sp = stat_path || getenv("TACHYON_LITE_STAT_FILE") || "/proc/stat";
     let lp = loadavg_path || getenv("TACHYON_LITE_LOADAVG_FILE") || "/proc/loadavg";
 
+    let busy = false;
+    let ncpu = 0;
     let stat_raw = fs.readfile(sp);
     if (stat_raw != null && stat_raw != "") {
         let lines = split(as_string(stat_raw), "\n");
+        for (let i = 1; i < length(lines); i++) {
+            if (match(lines[i], /^cpu[0-9]+[ \t]/) != null)
+                ncpu++;
+        }
         if (length(lines) > 0 && index(lines[0], "cpu ") == 0) {
             let parts = split(trim(lines[0]), /[ \t]+/);
             if (length(parts) >= 5) {
@@ -3105,30 +3124,39 @@ function is_lite_data_plane_busy(cfg, stat_path, loadavg_path) {
                 }
                 let prev_total = lite_cpu_prev_total;
                 let prev_idle = lite_cpu_prev_idle;
-                lite_cpu_prev_total = total;
-                lite_cpu_prev_idle = idle_all;
-                try { fs.writefile("/tmp/tachyon_lite_cpu.stat", total + " " + idle_all + "\n"); } catch (e) {}
-                if (prev_total > 0 && total > prev_total) {
-                    let d_total = total - prev_total;
+                let d_total = (prev_total > 0 && total > prev_total) ? (total - prev_total) : 0;
+                if (prev_total == 0 || custom_sample || d_total >= 25) {
+                    lite_cpu_prev_total = total;
+                    lite_cpu_prev_idle = idle_all;
+                    try { fs.writefile("/tmp/tachyon_lite_cpu.stat", total + " " + idle_all + "\n"); } catch (e) {}
+                }
+                if (prev_total > 0 && total > prev_total && (custom_sample || d_total >= 25)) {
                     let d_idle = idle_all - prev_idle;
                     let busy_pct = int(((d_total - d_idle) * 100) / d_total);
                     if (busy_pct >= 75)
-                        return true;
+                        busy = true;
                 }
             }
         }
     }
+    if (ncpu < 1) ncpu = 1;
 
-    let load_raw = fs.readfile(lp);
-    if (load_raw != null && load_raw != "") {
-        let lparts = split(trim(as_string(load_raw)), /[ \t]+/);
-        if (length(lparts) >= 1) {
-            let load1 = double(lparts[0]);
-            if (load1 >= 0.85)
-                return true;
+    if (!busy) {
+        let load_raw = fs.readfile(lp);
+        if (load_raw != null && load_raw != "") {
+            let lparts = split(trim(as_string(load_raw)), /[ \t]+/);
+            if (length(lparts) >= 1) {
+                let load1 = double(lparts[0]);
+                if (load1 >= 0.85 * ncpu)
+                    busy = true;
+            }
         }
     }
-    return false;
+    if (!custom_sample) {
+        lite_busy_cache_ts = now_ts;
+        lite_busy_cache_val = busy;
+    }
+    return busy;
 }
 
 // One synchronous sweep of every tier, used by the `ai-heal` CLI mode where no
@@ -3241,8 +3269,8 @@ function worker() {
 
     function perform_smart_plus_checks() {
         let cfg = settings();
-        if (is_lite_data_plane_busy(cfg)) return;
         if (smart_plus.mode(cfg) != "plus" && smart_mode_last != "plus") return;
+        if (is_lite_data_plane_busy(cfg)) return;
         current_ctx = current_ctx || controller.create_tick_context();
         controller.set_tick_context(current_ctx);
         cfg = current_ctx.settings;
@@ -3262,9 +3290,13 @@ function worker() {
     function perform_normal_checks() {
         let cfg = (current_ctx && current_ctx.settings) ? current_ctx.settings : settings();
         if (is_lite_data_plane_busy(cfg)) {
-            log_message("Tachyon Lite: Data Plane busy, hibernating normal Control Plane probes", "debug");
+            if (!lite_hibernating_normal) {
+                lite_hibernating_normal = true;
+                log_message("Tachyon Lite: Data Plane busy, hibernating normal Control Plane probes", "debug");
+            }
             return;
         }
+        lite_hibernating_normal = false;
         controller.probe_normal(current_ctx);
         safe_call(smart_detect_process_pending, "smart_detect_process_pending");
         safe_call(export_metrics, "export_metrics");
@@ -3622,11 +3654,15 @@ function check_watchdog_outdated() {
 function perform_slow_checks() {
     let cfg = (current_ctx && current_ctx.settings) ? current_ctx.settings : settings();
     if (is_lite_data_plane_busy(cfg)) {
-        log_message("Tachyon Lite: Data Plane busy, hibernating heavy slow-tier probes", "debug");
+        if (!lite_hibernating_slow) {
+            lite_hibernating_slow = true;
+            log_message("Tachyon Lite: Data Plane busy, hibernating heavy slow-tier probes", "debug");
+        }
         safe_call(reap_dead_jobs, "reap_dead_jobs");
         safe_call(trim_runtime_logs, "trim_runtime_logs");
         return;
     }
+    lite_hibernating_slow = false;
     controller.probe_slow(current_ctx);
     safe_call(ai_heal_dns_loop, "ai_heal_dns_loop");
     safe_call(check_mixed_proxy_port, "check_mixed_proxy_port");

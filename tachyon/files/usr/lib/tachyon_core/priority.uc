@@ -139,7 +139,7 @@ function normalize_group(group, tag_name, section_name) {
         health_url: primary_url,
         health_urls: normalize_urls(primary_url, extra_urls),
         multi_url_strategy: normalize_strategy(group.multi_url_strategy),
-        active_check_interval: as_string(group.active_check_interval || "5s"),
+        active_check_interval: as_string(group.active_check_interval || "15s"),
         check_timeout: as_string(group.check_timeout || "2s"),
         recovery_check_interval: as_string(group.recovery_check_interval || "15s"),
         pick_fastest: bool_value(group.pick_fastest, false),
@@ -939,16 +939,32 @@ function warm_inactive_group_members(group, active_level_index, active_tag, prob
     return probed;
 }
 
+function own_pid() {
+    return trim(as_string(fs.readlink("/proc/self") || ""));
+}
+
 function tick_group(state, group) {
     let now = now_seconds();
+    let due_active = now >= int(state.nextActiveCheck || 0);
+    let due_recovery = now >= int(state.nextRecoveryCheck || 0);
+    let due_fastest = (group.pick_fastest || group.switch_to_faster_same_priority) && now >= int(state.nextFastestCheck || 0);
+    if (!due_active && !due_recovery && !due_fastest)
+        return;
 
     if (fixture_delays_path == "") {
         let sec_name = as_string(group.section || "");
         let parent_tag = sec_name != "" ? (sec_name + "-out") : "";
         if (parent_tag != "" && group.tag != parent_tag) {
             let parent_now = current_group_selected(parent_tag);
-            if (parent_now != "" && parent_now != group.tag)
+            if (parent_now != "" && parent_now != group.tag) {
+                if (due_active)
+                    state.nextActiveCheck = now + duration_to_seconds(group.active_check_interval, 15);
+                if (due_recovery)
+                    state.nextRecoveryCheck = now + duration_to_seconds(group.recovery_check_interval, 30);
+                if (due_fastest)
+                    state.nextFastestCheck = now + duration_to_seconds(group.fastest_check_interval, 180);
                 return;
+            }
         }
         let current_now = current_group_selected(group.tag);
         if (current_now != "" && current_now != state.active) {
@@ -1008,7 +1024,7 @@ function tick_group(state, group) {
         }
         if (state.active != "" && warm_inactive_group_members(group, state.levelIndex, state.active, clash_probe, false, false) > 0)
             write_group_status(group, state, selected);
-        state.nextActiveCheck = now + duration_to_seconds(group.active_check_interval, 5);
+        state.nextActiveCheck = now + duration_to_seconds(group.active_check_interval, 15);
         return;
     }
 
@@ -1071,7 +1087,7 @@ function tick_group(state, group) {
                 state.levelIndex = -1;
             }
         }
-        state.nextActiveCheck = now + duration_to_seconds(group.active_check_interval, 5);
+        state.nextActiveCheck = now + duration_to_seconds(group.active_check_interval, 15);
     }
 
     if (state.active != "" && state.levelIndex > 0 && now >= state.nextRecoveryCheck) {
@@ -1137,19 +1153,36 @@ function worker() {
         return 0;
 
     let states = {};
-    let min_interval = 5;
+    let min_interval = 15;
+    let first = true;
     for (let group in groups) {
         states[group.tag] = init_group_state(group);
-        let interval = duration_to_seconds(group.active_check_interval, 5);
-        if (interval < min_interval)
-            min_interval = interval;
+        let interval = duration_to_seconds(group.active_check_interval, 15);
+        let rec_interval = duration_to_seconds(group.recovery_check_interval, 30);
+        let eff = rec_interval > 0 && rec_interval < interval ? rec_interval : interval;
+        if (first || eff < min_interval) {
+            min_interval = eff;
+            first = false;
+        }
     }
     if (min_interval < 1) min_interval = 1;
+    if (min_interval > 60) min_interval = 60;
+
+    let my_pid = own_pid();
+    let pid_saw_self = false;
 
     while (true) {
+        if (my_pid != "") {
+            let file_pid = trim(as_string(common.file_first_line(PRIORITY_PID_FILE) || ""));
+            let file_pid_alive = match(file_pid, /^[0-9]+$/) != null && command_success_from_args([ "kill", "-0", file_pid ]);
+            if (file_pid == my_pid)
+                pid_saw_self = true;
+            else if (pid_saw_self || (file_pid != "" && file_pid_alive))
+                return 0;
+        }
         for (let group in groups)
             tick_group(states[group.tag], group);
-        command_success_from_args([ "sleep", as_string(min_interval) ]);
+        sleep(min_interval * 1000);
     }
 }
 
@@ -1171,6 +1204,7 @@ function stop_runtime() {
             command_success_from_args([ "kill", "-9", pid ]);
     }
     remove_file(PRIORITY_PID_FILE);
+    common.command_status(common.kill_matching_command("-F " + common.shell_quote(PRIORITY_UC + " worker")));
     return 0;
 }
 

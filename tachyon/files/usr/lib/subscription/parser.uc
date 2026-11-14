@@ -5351,6 +5351,42 @@ function xray_urltest_option_string(value) {
     return value != "" ? value : "";
 }
 
+function xray_duration_seconds(raw) {
+    let text = trim(as_string(raw));
+    if (text == "")
+        return null;
+    if (match(text, /^[0-9]+(\.[0-9]+)?$/))
+        return double(text);
+    let total = 0.0;
+    let found = false;
+    let rest = text;
+    while (rest != "") {
+        let m = match(rest, /^([0-9]+(\.[0-9]+)?)(ns|us|µs|ms|s|m|h|d)(.*)$/);
+        if (m == null)
+            return null;
+        let num = double(m[1]);
+        let unit = m[3];
+        if (unit == "d") total += num * 86400.0;
+        else if (unit == "h") total += num * 3600.0;
+        else if (unit == "m") total += num * 60.0;
+        else if (unit == "s") total += num;
+        else if (unit == "ms") total += num / 1000.0;
+        else if (unit == "us" || unit == "µs") total += num / 1000000.0;
+        else if (unit == "ns") total += num / 1000000000.0;
+        found = true;
+        rest = m[4];
+    }
+    return found ? total : null;
+}
+
+function xray_clamp_probe_interval(raw) {
+    let val = as_string(raw);
+    let secs = xray_duration_seconds(val);
+    if (secs != null && secs < 30.0)
+        return "30s";
+    return val;
+}
+
 function xray_config_urltest_options(config) {
     let observatory = object_or_empty(config.observatory);
     let burst_observatory = object_or_empty(config.burstObservatory || config.burst_observatory);
@@ -5373,7 +5409,7 @@ function xray_config_urltest_options(config) {
         observatory.probe_interval
     ]);
     if (interval != "")
-        result.interval = interval;
+        result.interval = xray_clamp_probe_interval(interval);
 
     return result;
 }
