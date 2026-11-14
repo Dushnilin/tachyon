@@ -100,7 +100,7 @@ describe('TachyonShellMethods Fuzzer Actions', () => {
             ttfb_ms: 120,
             speed_kbps: 4500,
             score: 180,
-            badge: '🏆 Best Match',
+            badge: 'Best Match',
           },
         ],
         best_strategy: {
@@ -117,7 +117,7 @@ describe('TachyonShellMethods Fuzzer Actions', () => {
     if (res.success) {
       expect(res.data.running).toBe(false);
       expect(res.data.results).toHaveLength(1);
-      expect(res.data.results[0].badge).toBe('🏆 Best Match');
+      expect(res.data.results[0].badge).toBe('Best Match');
     }
   });
 
@@ -155,7 +155,7 @@ describe('TachyonShellMethods Fuzzer Actions', () => {
         success: true,
         engine: 'zapret2',
         target: 'youtube',
-        analysis: 'TSPU blocks SNI on first chunk',
+        analysis: 'Transit packet filter blocks SNI on first chunk',
         strategies: [
           {
             id: 'ai_1',
@@ -178,7 +178,9 @@ describe('TachyonShellMethods Fuzzer Actions', () => {
     );
     expect(res.success).toBe(true);
     if (res.success) {
-      expect(res.data.analysis).toBe('TSPU blocks SNI on first chunk');
+      expect(res.data.analysis).toBe(
+        'Transit packet filter blocks SNI on first chunk',
+      );
       expect(res.data.strategies).toHaveLength(1);
     }
   });

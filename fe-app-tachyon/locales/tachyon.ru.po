@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-14 14:59+0300\n"
-"PO-Revision-Date: 2026-11-14 14:59+0300\n"
+"POT-Creation-Date: 2026-11-14 15:00+0300\n"
+"PO-Revision-Date: 2026-11-14 15:00+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -571,9 +571,6 @@ msgstr "Все условия"
 
 msgid "All Devices are Guests EXCEPT Trusted (Zero-Trust)"
 msgstr "Все устройства — гости, кроме доверенных (Zero-Trust)"
-
-msgid "All Engines (Full Matrix)"
-msgstr "Все движки (Полная матрица)"
 
 msgid "All IPv4 interfaces"
 msgstr "Все интерфейсы IPv4"
@@ -1139,8 +1136,8 @@ msgstr "Автоматически разрешать домены этой се
 msgid "Automatically rotate strategies on RST/cutoff/throttling (<20 KiB/s) and persist working profile per SNI in cache.db."
 msgstr "Автоматически переключает стратегии при RST, обрыве потока (16 КиБ) или шейпинге ТСПУ (<20 КиБ/с) и сохраняет рабочий профиль по SNI в cache.db."
 
-msgid "Automatically runs a diagnostic probe against the target service, queries the built-in DPI Knowledge Base, and synthesizes 3-5 custom bypass strategies tailored to your ISP."
-msgstr "Автоматически выполняет диагностический зонд целевого сервиса, опрашивает встроенную базу знаний DPI и синтезирует 3-5 стратегий обхода, адаптированных под вашего провайдера."
+msgid "Automatically runs a diagnostic probe against the target service, queries the built-in DPI Knowledge Base, and synthesizes 3-5 custom packet desynchronization strategies tailored to your ISP."
+msgstr "Автоматически выполняет диагностический зонд целевого сервиса, обращается к встроенной базе знаний и синтезирует 3-5 параметров десинхронизации пакетов с учётом особенностей сети вашего оператора."
 
 msgid "Automatically select the fastest node in the current level"
 msgstr "Автовыбор самого быстрого узла уровня"
@@ -1256,8 +1253,8 @@ msgstr "Бенчмарк успешно завершён"
 msgid "Benchmark completed! Optimal strategy identified."
 msgstr "Тестирование завершено! Найдена оптимальная стратегия."
 
-msgid "Benchmark completed. No working bypass found for this target."
-msgstr "Тестирование завершено. Рабочая стратегия обхода для этой цели не найдена."
+msgid "Benchmark completed. No working strategy found for this target."
+msgstr "Тестирование завершено. Подходящая стратегия для этой цели не найдена."
 
 msgid "Benchmark measures actual latency and resolution reliability of major DNS servers (UDP 53 and encrypted DoH) directly from your router to find the fastest, unblocked upstream for your ISP."
 msgstr "Бенчмарк замеряет реальную задержку и надёжность резолва основных DNS серверов (UDP 53 и шифрованный DoH) напрямую с роутера, чтобы найти самый быстрый и незаблокированный апстрим у вашего провайдера."
@@ -1594,9 +1591,6 @@ msgstr "Карточки"
 
 msgid "Cascade connection"
 msgstr "Каскадное подключение"
-
-msgid "Censorship Bypass Method"
-msgstr "Метод обхода цензуры"
 
 msgid "Censorship-resistant AmneziaWG 1.5/2.0 or WireGuard tunnel (.conf / vpn://)"
 msgstr "Защищённый от DPI туннель AmneziaWG 1.5/2.0 или WireGuard (.conf / vpn://)"
@@ -2647,9 +2641,6 @@ msgstr "ОБХОД DPI (ZAPRET)"
 
 msgid "DPI Bypass (Desync / Zapret2)"
 msgstr "Обход DPI (Desync / Zapret2)"
-
-msgid "DPI Bypass Engine"
-msgstr "Движок обхода DPI"
 
 msgid "DPI Desync"
 msgstr "Обход DPI (Desync)"
@@ -3743,14 +3734,14 @@ msgstr "Токен доступа FPTN (fptn:// или fptnb://)"
 msgid "FPTN Bypass Method"
 msgstr "Метод обхода FPTN"
 
-msgid "FPTN DPI Bypass Method"
-msgstr "Метод обхода DPI в FPTN"
-
 msgid "FPTN Preferred Server"
 msgstr "Предпочитаемый сервер FPTN"
 
 msgid "FPTN SNI"
 msgstr "SNI для FPTN"
+
+msgid "FPTN Traffic Masking Method"
+msgstr "Метод маскировки трафика FPTN"
 
 msgid "FPTN VPN (fptn:// Access Token)"
 msgstr "FPTN VPN (токен доступа fptn://)"
@@ -4742,8 +4733,8 @@ msgstr "Время ожидания проверки утечек IP и DNS ис
 msgid "IP tunnel mode"
 msgstr "Режим IP-туннеля"
 
-msgid "IP-level blocking detected! The resource is blocked at the network level (no TCP SYN response). DPI bypass methods (Zapret / ByeDPI) cannot bypass this address — configure proxy/VPN routing for this domain!"
-msgstr "Обнаружена блокировка по IP! Ресурс блокируется на сетевом уровне (нет ответа на TCP SYN). Методы обхода DPI (Zapret / ByeDPI) бессильны для этого адреса — настройте маршрутизацию через прокси/VPN для данного домена!"
+msgid "IP-level filtering detected! The resource is unreachable at the network layer (no TCP SYN response). Packet desynchronization engines (Zapret / ByeDPI) cannot traverse an IP-level block — configure proxy/VPN routing for this domain."
+msgstr "Обнаружена фильтрация по IP! Ресурс недоступен на сетевом уровне (нет ответа на TCP SYN). Механизмы десинхронизации пакетов (Zapret / ByeDPI) здесь неприменимы — настройте маршрутизацию через прокси или VPN для этого домена."
 
 msgid "IPs"
 msgstr "IP"
@@ -5068,9 +5059,6 @@ msgstr "Установить и переключить"
 
 msgid "Install another build:"
 msgstr "Установить другую сборку:"
-
-msgid "Installed"
-msgstr "Установлен"
 
 msgid "Installed build → Available build"
 msgstr "Установленная сборка → Доступная сборка"
@@ -5431,6 +5419,9 @@ msgstr "Неверное регулярное выражение"
 
 msgid "Invalid regular expression: %s"
 msgstr "Некорректное регулярное выражение: %s"
+
+msgid "Invalid target domain or URL"
+msgstr "Некорректный целевой домен или URL"
 
 msgid "Invalid time format. Expected HH:MM (e.g. 22:00)"
 msgstr "Неверный формат времени. Ожидается ЧЧ:ММ (например, 22:00)"
@@ -6428,6 +6419,9 @@ msgstr "Цели для проверки не найдены в конфигур
 msgid "No closed connections"
 msgstr "Нет закрытых подключений"
 
+msgid "No compatible engines installed"
+msgstr "Нет установленных совместимых движков"
+
 msgid "No configured WAN DNS address was observed in the proxy probe. Resolver ownership does not verify DNS encryption."
 msgstr "В пробе через прокси не обнаружен настроенный DNS на WAN. Принадлежность резолвера не подтверждает шифрование DNS."
 
@@ -7043,6 +7037,9 @@ msgstr "Пакет установлен, но бинарный файл отсу
 msgid "Package is not installed"
 msgstr "Пакет не установлен"
 
+msgid "Packet Desynchronization Engine"
+msgstr "Движок десинхронизации пакетов"
+
 msgid "Packet capture is unavailable or incomplete; unencrypted DNS could not be checked."
 msgstr "Захват пакетов недоступен или не завершён; проверить незашифрованный DNS не удалось."
 
@@ -7265,6 +7262,9 @@ msgstr "Пожалуйста, введите целевой домен, URL ил
 msgid "Please enter a valid Group ID."
 msgstr "Укажите корректный ID группы."
 
+msgid "Please enter at least one domain or URL"
+msgstr "Укажите хотя бы один домен или URL"
+
 msgid "Please paste FPTN access token"
 msgstr "Вставьте токен доступа FPTN (fptn://)"
 
@@ -7367,11 +7367,11 @@ msgstr "Постквантовый обмен ключами (PQC)"
 msgid "Pre-built index of Tachyon documentation chunks. When enabled, AI Doctor searches relevant docs before generating a diagnosis."
 msgstr "Предварительно собранный индекс фрагментов документации Tachyon. При включении AI Doctor ищет релевантные документы перед постановкой диагноза."
 
-msgid "Pre-configured DPI bypass profile for tachyon-core native desync"
-msgstr "Преднастроенный профиль обхода DPI для встроенного desync в tachyon-core"
+msgid "Pre-configured packet desynchronization profile for tachyon-core native desync"
+msgstr "Преднастроенный профиль десинхронизации пакетов для встроенного движка tachyon-core"
 
-msgid "Pre-configured DPI bypass profile for tachyon-core native desync."
-msgstr "Преднастроенный профиль обхода DPI для встроенного desync в tachyon-core."
+msgid "Pre-configured packet desynchronization profile for tachyon-core native desync."
+msgstr "Преднастроенный профиль десинхронизации пакетов для встроенного движка tachyon-core."
 
 msgid "Pre-download all preset lists"
 msgstr "Предзагрузить все предустановленные списки"
@@ -7730,8 +7730,8 @@ msgstr "Быстрые пресеты:"
 msgid "Quick setup for hosting your own VPN / Proxy server"
 msgstr "Быстрое создание своего VPN / Прокси сервера на роутере"
 
-msgid "Quick setup for outbound routing & anti-censorship"
-msgstr "Быстрая настройка исходящего маршрута и обхода блокировок"
+msgid "Quick setup for outbound routing & traffic optimization"
+msgstr "Быстрая настройка исходящего маршрута и оптимизации доставки трафика"
 
 msgid "Quota"
 msgstr "Лимит"
@@ -8551,6 +8551,9 @@ msgstr "Сохранить снапшот рабочей конфигураци�
 
 msgid "Save component backup before update"
 msgstr "Сохранять резервную копию перед обновлением"
+
+msgid "Scan Strategies"
+msgstr "Подобрать стратегию сканером"
 
 msgid "Schedule"
 msgstr "Расписание"
@@ -9830,8 +9833,8 @@ msgstr ""
 msgid "TCP Window Sizes (wsize)"
 msgstr "Размеры окна TCP (wsize)"
 
-msgid "TCP connect timed out before TLS handshake — host is blocked at the IP layer. DPI bypass cannot unblock this; route via VPN/Proxy outbound instead."
-msgstr "Таймаут TCP-подключения до рукопожатия TLS — узел заблокирован на уровне IP. Методы обхода DPI не помогут; настройте маршрутизацию через прокси/VPN."
+msgid "TCP connect timed out before TLS handshake — host is unreachable at the IP layer. Packet desynchronization cannot traverse an IP-level block; route via VPN/Proxy outbound instead."
+msgstr "Истекло время ожидания TCP-подключения до рукопожатия TLS — узел недоступен на уровне IP. Десинхронизация пакетов не поможет; используйте маршрутизацию через VPN или прокси."
 
 msgid "THROUGHPUT • PEAK BANDWIDTH"
 msgstr "THROUGHPUT • ПО СКОРОСТИ"
@@ -10232,8 +10235,8 @@ msgstr "URL для проверки"
 msgid "Testing all sections..."
 msgstr "Проверка всех секций..."
 
-msgid "Testing bypass strategies in isolated sandbox..."
-msgstr "Тестирование стратегий обхода в изолированной песочнице..."
+msgid "Testing desync strategies in isolated sandbox..."
+msgstr "Проверка стратегий десинхронизации в изолированной среде..."
 
 msgid "Testing selected DNS…"
 msgstr "Проверка выбранных DNS…"
@@ -10486,6 +10489,9 @@ msgstr "Настройки условий трафика"
 
 msgid "Traffic Graph"
 msgstr "График трафика"
+
+msgid "Traffic Masking Method"
+msgstr "Метод маскировки трафика"
 
 msgid "Traffic Morphing Profile"
 msgstr "Профиль морфинга трафика (Traffic Shaper)"
@@ -10990,6 +10996,9 @@ msgstr "Используйте IP-адрес прослушивания"
 
 msgid "Use another section as an intermediate hop to connect to servers in this section. Does not apply to network interfaces or JSON outbounds."
 msgstr "Использовать другую секцию в качестве промежуточного узла для подключения к серверам в этой секции. Не применяется к сетевым интерфейсам и JSON-выходам."
+
+msgid "Use domains from section"
+msgstr "Подставить домены из секции"
 
 msgid "Use letters, digits, dots, underscores, or hyphens"
 msgstr "Используйте буквы, цифры, точки, подчёркивания или дефисы"

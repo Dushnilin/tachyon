@@ -83,7 +83,7 @@ const STRATEGIES_ZAPRET2 = [
         name: "PAWS Spoofing (Max.ru, tcp_ts) + Multisplit",
         engine: "zapret2",
         args: "--lua-desync=fake:blob=tls_max:repeats=8:tcp_ts=-600000:tcp_ts_up --lua-desync=multisplit:pos=1:seqovl=664:seqovl_pattern=tls_max",
-        description: "PAWS TCP timestamp evasion with authentic Max.ru ClientHello pattern overlap. Top-tier TSPU bypass."
+        description: "PAWS TCP timestamp evasion with authentic Max.ru ClientHello pattern overlap. Transit middlebox evasion."
     },
     {
         id: "z2_paws_google_multisplit",
@@ -159,7 +159,7 @@ const STRATEGIES_ZAPRET2 = [
         name: "YouTube 4K Multisplit + MidSLD",
         engine: "zapret2",
         args: "--lua-desync=multisplit:pos=1,midsld:seqovl=1:fooling=tcp_seq=1000000",
-        description: "Optimized for GoogleVideo 4K chunk streams and TSPU TLS desync."
+        description: "Optimized for GoogleVideo 4K chunk streams and transit filter TLS desync."
     },
     {
         id: "z2_yt_multisplit_sniext",
@@ -277,7 +277,7 @@ const STRATEGIES_ZAPRET2 = [
         name: "Fake (TTL=3, MD5Sig) + Multisplit",
         engine: "zapret2",
         args: "--lua-desync=fake:blob=tls_max:ip_ttl=3:fooling=tcp_md5 --lua-desync=multisplit:pos=1,midsld",
-        description: "Aggressive low-TTL MD5Sig injection for close TSPU hops."
+        description: "Aggressive low-TTL MD5Sig injection for close transit middlebox hops."
     },
     {
         id: "z2_fake_ttl4_badseq",
@@ -492,14 +492,14 @@ const STRATEGIES_ZAPRET = [
         name: "Fake SNI + Split2 (TTL=6)",
         engine: "zapret",
         args: "--dpi-desync=fake,split2 --dpi-desync-split-pos=1 --dpi-desync-ttl=6 --dpi-desync-fooling=badseq",
-        description: "Sends TTL=6 fake packet for closer TSPU hops."
+        description: "Sends TTL=6 fake packet for closer transit middlebox hops."
     },
     {
         id: "z1_fake_split2_ttl4",
         name: "Fake SNI + Split2 (TTL=4)",
         engine: "zapret",
         args: "--dpi-desync=fake,split2 --dpi-desync-split-pos=1 --dpi-desync-ttl=4 --dpi-desync-fooling=badseq",
-        description: "Low TTL=4 fake packet for nearest TSPU filters."
+        description: "Low TTL=4 fake packet for nearest transit middlebox filters."
     },
     {
         id: "z1_fake_disorder2_ttl8",
@@ -819,7 +819,7 @@ const STRATEGIES_FLOWSEAL = [
 ];
 
 const STRATEGIES_BYEDPI = [
-    // ── 1. COMBAT MULTI-SPLIT & LADDER CHAINS (Real TSPU Bypass) ───────────────
+    // ── 1. COMBAT MULTI-SPLIT & LADDER CHAINS (Transit Filter Evasion) ──────────
     {
         id: "bd_ladder_interleaved_10x",
         name: "Ultimate Multi-Split Ladder (10x SNI + Reverse + Drop-SACK)",
@@ -1148,7 +1148,7 @@ const STRATEGIES_DESYNC = [
         name: "Fake + Split (pos=2, TTL=8, max.ru, repeats=8)",
         engine: "desync",
         args: "mode=fake_split split_pos=2 fake_ttl=8 fake_sni=max.ru repeats=8",
-        description: "Higher TTL=8 fake burst for distant ISP TSPU hops + 2-byte split."
+        description: "Higher TTL=8 fake burst for distant ISP transit middlebox hops + 2-byte split."
     },
     {
         id: "ds_tlsrec_midsld",
@@ -1459,7 +1459,7 @@ function generate_combinatorial_zapret2() {
         }
     }
     
-    // 3. PAWS Timestamp Spoofing with Authentic Blobs (Top-tier TSPU evasion)
+    // 3. PAWS Timestamp Spoofing with Authentic Blobs (Transit middlebox evasion)
     for (let blob in blobs) {
         for (let rep in repeats_list) {
             for (let pos in [ "1", "1,midsld", "midsld" ]) {
@@ -1722,7 +1722,7 @@ function generate_combinatorial_byedpi() {
                     let comb_args = trim(sprintf("%s%s%s%s", lb.args, rt, so, at));
                     add(sprintf("%s%s%s%s", lb.name, rt != "" ? " + Rev" : "", so != "" ? " + SACK" : "", at != "" ? " + Auto" : ""),
                         comb_args,
-                        "Multi-stage ladder split & disorder chain for resilient DPI bypass");
+                        "Multi-stage ladder split & disorder chain for resilient packet desynchronization");
                 }
             }
         }
@@ -1878,6 +1878,10 @@ function target_port_profiles_list(target) {
  * hand, which is the only way to verify it today.
  */
 function target_port_strategies(engine, target) {
+    engine = lc(as_string(engine));
+    if (engine != "zapret2" && engine != "zapret" && engine != "byedpi" && engine != "desync")
+        return [];
+
     let profiles = target_port_profiles_list(target);
     if (length(profiles) == 0)
         return [];
@@ -1889,13 +1893,12 @@ function target_port_strategies(engine, target) {
         let add = function(name, args, desc) {
             args = trim(as_string(args));
             if (args == "" || seen[args]) return;
-            let real_engine = engine == "all" ? "zapret2" : engine;
-            if (!fuzzer_runner.validate_strategy_args(real_engine, args)) return;
+            if (!fuzzer_runner.validate_strategy_args(engine, args)) return;
             seen[args] = true;
             push(list, {
-                id: sprintf("port_%s_%s_%d", real_engine, profile.key, length(list) + 1),
+                id: sprintf("port_%s_%s_%d", engine, profile.key, length(list) + 1),
                 name: name,
-                engine: real_engine,
+                engine: engine,
                 args: args,
                 description: desc,
                 rationale: "Ports this target really uses, in this engine's own syntax",
@@ -1903,7 +1906,7 @@ function target_port_strategies(engine, target) {
             });
         };
 
-        if (engine == "zapret2" || engine == "all") {
+        if (engine == "zapret2") {
             add(sprintf("%s Voice/Game UDP (ports %s)", lbl, profile.udp_ports),
                 sprintf("--filter-udp=%s --filter-l7=discord,stun --payload=discord_ip_discovery,stun --lua-desync=fake:blob=%s:repeats=6",
                     profile.udp_ports, profile.udp_blob),
@@ -1956,18 +1959,22 @@ function target_port_strategies(engine, target) {
 }
 
 function generate_adaptive_strategies(engine, target) {
+    engine = lc(as_string(engine));
+    if (engine != "zapret2" && engine != "zapret" && engine != "byedpi" && engine != "desync")
+        return [];
+
     let list = [];
     let seen = {};
 
     let add = function(name, args, desc, rationale) {
         args = trim(as_string(args));
         if (args == "" || seen[args]) return;
-        if (!fuzzer_runner.validate_strategy_args(engine == "all" ? "zapret2" : engine, args)) return;
+        if (!fuzzer_runner.validate_strategy_args(engine, args)) return;
         seen[args] = true;
         push(list, {
             id: sprintf("adapt_%s_%d", engine, length(list) + 1),
             name: name,
-            engine: engine == "all" ? "zapret2" : engine,
+            engine: engine,
             args: args,
             description: desc || "Adaptive evolved strategy",
             rationale: rationale || "Synthesized from parameter attribution and target profile"
@@ -1978,17 +1985,17 @@ function generate_adaptive_strategies(engine, target) {
     let history_res = history.get_history(20);
     if (history_res && length(history_res) > 0) {
         for (let h in history_res) {
-            if (h && h.target == target && h.best_strategy && (engine == "all" || h.engine == engine)) {
+            if (h && h.target == target && h.best_strategy && h.engine == engine) {
                 let bs = h.best_strategy;
                 if (bs.args && !seen[bs.args]) {
-                    add("⭐ Prior Winner: " + (bs.name || "Historical Best"), bs.args, "Previously verified effective on this target", "Historical success seed");
+                    add("Prior Winner: " + (bs.name || "Historical Best"), bs.args, "Previously verified effective on this target", "Historical success seed");
                 }
             }
         }
     }
 
     // 2. High-probability domain seeds based on engine
-    if (engine == "zapret2" || engine == "all") {
+    if (engine == "zapret2") {
         for (let blob in [ "tls_max", "tls_google", "tls_gosuslugi", "tls_sber" ]) {
             let seq = (blob == "tls_max") ? 664 : (blob == "tls_google" ? 681 : 517);
             add(sprintf("PAWS (%s) + Multisplit pos=1", blob),
@@ -2018,7 +2025,7 @@ function generate_adaptive_strategies(engine, target) {
         }
     }
 
-    if (engine == "zapret" || engine == "all") {
+    if (engine == "zapret") {
         for (let split_mode in [ "split2", "fake,split2", "disorder2", "fake,disorder2" ]) {
             for (let ttl in [ 2, 3, 4, 6, 8 ]) {
                 for (let pos in [ "1", "2", "midsld", "sniext+4" ]) {
@@ -2031,7 +2038,7 @@ function generate_adaptive_strategies(engine, target) {
         }
     }
 
-    if (engine == "byedpi" || engine == "all") {
+    if (engine == "byedpi") {
         for (let a in [ "t,r,a,s", "r,s", "t,a" ]) {
             for (let o in [ "1", "2" ]) {
                 for (let d in [ "1", "2" ]) {
@@ -2055,7 +2062,7 @@ function generate_adaptive_strategies(engine, target) {
         }
     }
 
-    if (engine == "desync" || engine == "all") {
+    if (engine == "desync") {
         let add_ds = function(name, args, desc) {
             args = trim(as_string(args));
             if (args == "" || seen[args]) return;
@@ -2090,15 +2097,53 @@ function generate_adaptive_strategies(engine, target) {
     return list;
 }
 
+function target_includes_udp(target) {
+    let t = lc(trim(as_string(target || "")));
+    if (t == "")
+        return true;
+    return index(t, "quic_http3") >= 0 ||
+        index(t, "gaming_udp") >= 0 ||
+        index(t, "discord") >= 0 ||
+        index(t, "cs2") >= 0 ||
+        index(t, "faceit") >= 0 ||
+        index(t, "udp://") >= 0;
+}
+
+function is_pure_udp_strategy(s) {
+    if (!s) return false;
+    let a = lc(as_string(s.args || ""));
+    if (index(a, "--filter-udp") >= 0 && index(a, "--filter-tcp") < 0)
+        return true;
+    if (lc(as_string(s.engine || "")) == "desync" &&
+        index(a, "udp_fake=true") >= 0 &&
+        index(a, "mode=") < 0 &&
+        index(a, "preset=") < 0)
+        return true;
+    return false;
+}
+
+function filter_strategies_for_target(list, target) {
+    if (!target || trim(as_string(target)) == "" || target_includes_udp(target))
+        return list;
+    let filtered = [];
+    for (let s in list) {
+        if (!is_pure_udp_strategy(s))
+            push(filtered, s);
+    }
+    return filtered;
+}
+
 function get_strategies_for_engine(engine, mode, target) {
     engine = lc(as_string(engine));
+    if (engine != "zapret2" && engine != "zapret" && engine != "byedpi" && engine != "desync")
+        return [];
     mode = lc(trim(as_string(mode || "presets")));
     let cfg = get_patterns_config();
     
     if (mode == "custom" || mode == "user") {
         let custom_list = [];
         for (let cs in cfg.custom_strategies) {
-            if (cs && (engine == "all" || cs.engine == engine) && cs.args) {
+            if (cs && cs.engine == engine && cs.args) {
                 push(custom_list, {
                     id: cs.id || sprintf("custom_%d", length(custom_list) + 1),
                     name: cs.name || "Custom Strategy",
@@ -2108,11 +2153,11 @@ function get_strategies_for_engine(engine, mode, target) {
                 });
             }
         }
-        return custom_list;
+        return filter_strategies_for_target(custom_list, target);
     }
 
     if (mode == "adaptive" || mode == "smart") {
-        return generate_adaptive_strategies(engine, target || "youtube_suite");
+        return filter_strategies_for_target(generate_adaptive_strategies(engine, target || "youtube_suite"), target);
     }
     
     if (mode == "combinatorial" || mode == "deep_fuzz" || mode == "deep") {
@@ -2121,13 +2166,8 @@ function get_strategies_for_engine(engine, mode, target) {
         else if (engine == "zapret") combo = generate_combinatorial_zapret();
         else if (engine == "byedpi") combo = generate_combinatorial_byedpi();
         else if (engine == "desync") combo = generate_combinatorial_desync();
-        else if (engine == "all") {
-            for (let s in generate_combinatorial_zapret2()) push(combo, s);
-            for (let s in generate_combinatorial_zapret()) push(combo, s);
-            for (let s in generate_combinatorial_byedpi()) push(combo, s);
-            for (let s in generate_combinatorial_desync()) push(combo, s);
-        }
 
+        combo = filter_strategies_for_target(combo, target);
         let avail_kb = fuzzer_runner.get_system_memory_kb();
         if (avail_kb < 32768 && length(combo) > 30) {
             let capped = [];
@@ -2136,23 +2176,12 @@ function get_strategies_for_engine(engine, mode, target) {
         }
         return combo;
     }
-    
-    let has_z2 = binaries.get_zapret2_bin() != null;
-    let has_z1 = binaries.get_zapret_bin() != null;
-    let has_bd = binaries.get_byedpi_bin() != null;
-    let has_ds = binaries.get_desync_bin() != null;
 
     let base = [];
     if (engine == "zapret2") base = STRATEGIES_ZAPRET2;
     else if (engine == "zapret") { base = []; for (let s in STRATEGIES_ZAPRET) push(base, s); for (let s in STRATEGIES_FLOWSEAL) push(base, s); }
     else if (engine == "byedpi") base = STRATEGIES_BYEDPI;
     else if (engine == "desync") base = STRATEGIES_DESYNC;
-    else if (engine == "all") {
-        if (has_z2) for (let s in STRATEGIES_ZAPRET2) push(base, s);
-        if (has_z1) { for (let s in STRATEGIES_ZAPRET) push(base, s); for (let s in STRATEGIES_FLOWSEAL) push(base, s); }
-        if (has_bd) for (let s in STRATEGIES_BYEDPI) push(base, s);
-        if (has_ds) for (let s in STRATEGIES_DESYNC) push(base, s);
-    }
     
     let result = [];
     let seen_args = {};
@@ -2161,13 +2190,13 @@ function get_strategies_for_engine(engine, mode, target) {
     let history_res = history.get_history(10);
     if (history_res && length(history_res) > 0) {
         for (let h in history_res) {
-            if (h && target && h.target == target && h.best_strategy && (engine == "all" || h.engine == engine)) {
+            if (h && target && h.target == target && h.best_strategy && h.engine == engine) {
                 let bs = h.best_strategy;
                 if (bs.args && !seen_args[bs.args]) {
                     seen_args[bs.args] = true;
                     push(result, {
                         id: sprintf("hist_%s_1", bs.engine || engine),
-                        name: "⭐ " + (bs.name || "Historical Best"),
+                        name: bs.name || "Historical Best",
                         engine: bs.engine || engine,
                         args: bs.args,
                         description: "Previously verified winner on this target"
@@ -2186,18 +2215,8 @@ function get_strategies_for_engine(engine, mode, target) {
 
     // Curated presets from external sources (zapret4rocket, homeproxy-hiddify)
     let presets = load_builtin_presets();
-    let preset_engines = [];
-    if (engine == "all") {
-        if (has_z2) push(preset_engines, "zapret2");
-        if (has_z1) push(preset_engines, "zapret");
-        if (has_bd) push(preset_engines, "byedpi");
-    } else {
-        push(preset_engines, engine);
-    }
-    for (let eng in preset_engines) {
-        let list = presets[eng];
-        if (type(list) != "array")
-            continue;
+    let list = presets[engine];
+    if (type(list) == "array") {
         for (let p in list) {
             if (p.args == "" || seen_args[p.args])
                 continue;
@@ -2219,7 +2238,7 @@ function get_strategies_for_engine(engine, mode, target) {
     }
 
     for (let cs in cfg.custom_strategies) {
-        if (cs && (engine == "all" || cs.engine == engine) && cs.args && !seen_args[cs.args]) {
+        if (cs && cs.engine == engine && cs.args && !seen_args[cs.args]) {
             seen_args[cs.args] = true;
             push(result, {
                 id: cs.id || sprintf("custom_%d", length(result) + 1),
@@ -2239,7 +2258,7 @@ function get_strategies_for_engine(engine, mode, target) {
         push(result, ps);
     }
 
-    return result;
+    return filter_strategies_for_target(result, target);
 }
 
 function get_presets_info() {

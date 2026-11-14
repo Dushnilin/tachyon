@@ -21,25 +21,187 @@ export interface FuzzerRuleSection {
   id: string;
   label: string;
   action?: string;
+  isGlobal?: boolean;
+  domains?: string[];
+}
+
+export interface FuzzerModalOptions {
+  initialEngine?: Tachyon.FuzzerEngine;
+  initialRuleSection?: string;
+  initialCustomDomains?: string[];
+  availableEngines?: Partial<Record<Tachyon.FuzzerEngine, boolean>>;
+  nestedModal?: boolean;
+  onApplyStrategy?: (
+    engine: Tachyon.FuzzerEngine,
+    args: string,
+    strategy: Tachyon.FuzzerStrategyResult,
+  ) => void | Promise<void>;
+}
+
+const ENGINE_CATALOG: Array<{
+  value: Tachyon.FuzzerEngine;
+  label: () => string;
+  shortLabel: () => string;
+}> = [
+  {
+    value: 'zapret2',
+    label: () => _('Zapret v2 (nfqws2)'),
+    shortLabel: () => _('Zapret v2'),
+  },
+  {
+    value: 'zapret',
+    label: () => _('Zapret v1 (nfqws)'),
+    shortLabel: () => _('Zapret v1'),
+  },
+  {
+    value: 'byedpi',
+    label: () => _('ByeDPI (ciadpi)'),
+    shortLabel: () => _('ByeDPI'),
+  },
+  {
+    value: 'desync',
+    label: () => _('Native Desync (tachyon-core)'),
+    shortLabel: () => _('Native Desync'),
+  },
+];
+
+function normalizeCustomTargetsInput(
+  raw: string,
+):
+  | { ok: true; normalized: string; count: number }
+  | { ok: false; error: string } {
+  const parts = String(raw || '')
+    .split(/[\r\n,;\t ]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (parts.length === 0) {
+    return { ok: false, error: _('Please enter at least one domain or URL') };
+  }
+
+  const normalizedList: string[] = [];
+  const seen = new Set<string>();
+  const forbiddenCharsRe = /[\s'"\\`$;&|<>()[\]{}]/;
+  const hostRe =
+    /^([A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$|^([0-9]{1,3}\.){3}[0-9]{1,3}$/;
+
+  for (const rawTok of parts) {
+    const cleaned = rawTok.replace(/^\*\./, '').replace(/^\.+/, '');
+    if (!cleaned || forbiddenCharsRe.test(cleaned)) {
+      return {
+        ok: false,
+        error: `${_('Invalid target domain or URL')}: ${rawTok}`,
+      };
+    }
+
+    let candidate = '';
+    const protoMatch = cleaned.match(/^(https?|udp):\/\/(.+)$/i);
+    if (protoMatch) {
+      const scheme = protoMatch[1].toLowerCase();
+      const rest = protoMatch[2];
+      const hp = rest.match(/^([^/:]+)(?::([0-9]{1,5}))?(\/.*)?$/);
+      if (!hp || !hostRe.test(hp[1])) {
+        return {
+          ok: false,
+          error: `${_('Invalid target domain or URL')}: ${rawTok}`,
+        };
+      }
+      if (hp[2]) {
+        const port = Number(hp[2]);
+        if (!Number.isInteger(port) || port < 1 || port > 65535) {
+          return {
+            ok: false,
+            error: `${_('Invalid target domain or URL')}: ${rawTok}`,
+          };
+        }
+      }
+      candidate = `${scheme}://${rest}`;
+    } else {
+      if (cleaned.includes('://')) {
+        return {
+          ok: false,
+          error: `${_('Invalid target domain or URL')}: ${rawTok}`,
+        };
+      }
+      const bare = cleaned.match(/^([^/:]+)(?::([0-9]{1,5}))?(\/.*)?$/);
+      if (!bare || !hostRe.test(bare[1])) {
+        return {
+          ok: false,
+          error: `${_('Invalid target domain or URL')}: ${rawTok}`,
+        };
+      }
+      const portStr = bare[2] || '';
+      if (portStr) {
+        const port = Number(portStr);
+        if (!Number.isInteger(port) || port < 1 || port > 65535) {
+          return {
+            ok: false,
+            error: `${_('Invalid target domain or URL')}: ${rawTok}`,
+          };
+        }
+      }
+      const pathPart = bare[3] || '';
+      candidate = `https://${bare[1]}${portStr ? `:${portStr}` : ''}${pathPart}`;
+    }
+
+    if (!seen.has(candidate)) {
+      seen.add(candidate);
+      normalizedList.push(candidate);
+    }
+  }
+
+  return {
+    ok: true,
+    normalized: normalizedList.join('\n'),
+    count: normalizedList.length,
+  };
 }
 
 export function renderStrategyFuzzerModal(
   ruleNames: Array<string | FuzzerRuleSection> = [],
+  options: FuzzerModalOptions = {},
 ) {
   const normalizedRules: FuzzerRuleSection[] = ruleNames.map((r) =>
     typeof r === 'string' ? { id: r, label: r } : r,
   );
   let pollingInterval: ReturnType<typeof setInterval> | null = null;
   let isPolling = false;
+  let availableEngines: Record<Tachyon.FuzzerEngine, boolean> = {
+    zapret2:
+      typeof options.availableEngines?.zapret2 === 'boolean'
+        ? options.availableEngines.zapret2
+        : true,
+    zapret:
+      typeof options.availableEngines?.zapret === 'boolean'
+        ? options.availableEngines.zapret
+        : true,
+    byedpi:
+      typeof options.availableEngines?.byedpi === 'boolean'
+        ? options.availableEngines.byedpi
+        : true,
+    desync:
+      typeof options.availableEngines?.desync === 'boolean'
+        ? options.availableEngines.desync
+        : true,
+  };
+  const getFirstInstalledEngine = (): Tachyon.FuzzerEngine | null =>
+    ENGINE_CATALOG.find((e) => availableEngines[e.value])?.value || null;
 
   // Modal State
   let activeTab: 'benchmark' | 'patterns' | 'custom' | 'ai' | 'history' =
     'benchmark';
-  let selectedEngine: Tachyon.FuzzerEngine = 'zapret2';
-  let selectedTarget: Tachyon.FuzzerTarget = 'youtube_suite';
-  let customUrl = '';
-  let selectedRuleSection = '';
-  let userChangedRuleSection = false;
+  let selectedEngine: Tachyon.FuzzerEngine =
+    options.initialEngine && availableEngines[options.initialEngine]
+      ? options.initialEngine
+      : getFirstInstalledEngine() || 'zapret2';
+  const initialCustomList = (options.initialCustomDomains || [])
+    .map((d) => String(d || '').trim())
+    .filter(Boolean);
+  let selectedTarget: Tachyon.FuzzerTarget =
+    initialCustomList.length > 0 ? 'custom' : 'youtube_suite';
+  let customUrl = initialCustomList.join('\n');
+  let selectedRuleSection = options.initialRuleSection || '';
+  let userChangedRuleSection = Boolean(options.initialRuleSection);
   let selectedMode: Tachyon.FuzzerMode = 'presets';
   let selectedTimeout = 2700;
   let isRunning = false;
@@ -50,6 +212,8 @@ export function renderStrategyFuzzerModal(
   let stoppedManually = false;
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   let currentDpiDetection: Tachyon.FuzzerDpiDetection | null = null;
+  let startBtnRef: HTMLElement | null = null;
+  let updateUseSectionDomainsBtnFn: (() => void) | null = null;
 
   // Patterns Config State
   let patternsConfig: Tachyon.FuzzerPatternsConfig = {
@@ -198,32 +362,26 @@ export function renderStrategyFuzzerModal(
   const dpiActions = ['zapret2', 'zapret', 'byedpi', 'desync'];
 
   const getApplicableRules = (engine: Tachyon.FuzzerEngine) => {
-    const exact = normalizedRules.filter((r) => {
-      if (!r.action) return false;
-      if (engine === 'all') {
+    const eligible = normalizedRules.filter((r) => {
+      if (!r.id || r.id === 'global' || r.id === 'default' || r.isGlobal) {
+        return false;
+      }
+      if (r.action !== undefined) {
         return dpiActions.includes(r.action);
       }
-      return r.action === engine;
+      return true;
     });
-    const connectionRules = normalizedRules.filter(
-      (r) =>
-        (!r.action || r.action === 'connection') &&
-        !exact.some((e) => e.id === r.id),
+    const exact = eligible.filter((r) => r.action === engine);
+    const otherDpi = eligible.filter(
+      (r) => r.action !== undefined && r.action !== engine,
     );
-    const otherDpi = normalizedRules.filter(
-      (r) =>
-        r.action &&
-        dpiActions.includes(r.action) &&
-        !exact.some((e) => e.id === r.id) &&
-        !connectionRules.some((c) => c.id === r.id),
-    );
-    if (exact.length > 0 || connectionRules.length > 0 || otherDpi.length > 0) {
-      return [...exact, ...connectionRules, ...otherDpi];
-    }
-    return normalizedRules;
+    const untyped = eligible.filter((r) => r.action === undefined);
+    return [...exact, ...otherDpi, ...untyped];
   };
 
-  const selectedTargetSet = new Set<string>(['youtube_suite']);
+  const selectedTargetSet = new Set<string>(
+    initialCustomList.length > 0 ? ['custom'] : ['youtube_suite'],
+  );
   const targetCheckboxes = new Map<string, HTMLInputElement>();
 
   const populateRuleSelect = (autoMatchTarget = false) => {
@@ -238,6 +396,7 @@ export function renderStrategyFuzzerModal(
       );
       ruleSelect.appendChild(emptyOpt);
       selectedRuleSection = '';
+      (ruleSelect as HTMLSelectElement).value = '';
     } else {
       if (autoMatchTarget && !userChangedRuleSection) {
         const targetKeywords = Array.from(selectedTargetSet)
@@ -277,6 +436,9 @@ export function renderStrategyFuzzerModal(
       }
       (ruleSelect as HTMLSelectElement).value = selectedRuleSection;
     }
+    if (updateUseSectionDomainsBtnFn) {
+      updateUseSectionDomainsBtnFn();
+    }
   };
 
   populateRuleSelect(true);
@@ -284,24 +446,67 @@ export function renderStrategyFuzzerModal(
   ruleSelect.addEventListener('change', () => {
     userChangedRuleSection = true;
     selectedRuleSection = (ruleSelect as HTMLSelectElement).value;
+    if (updateUseSectionDomainsBtnFn) {
+      updateUseSectionDomainsBtnFn();
+    }
   });
 
-  // 1. Engine Select
-  const engineSelect = E(
-    'select',
-    { class: 'cbi-input-select', style: selectStyle },
-    [
-      E('option', { value: 'zapret2' }, _('Zapret v2 (nfqws2)')),
-      E('option', { value: 'zapret' }, _('Zapret v1 (nfqws)')),
-      E('option', { value: 'byedpi' }, _('ByeDPI (ciadpi)')),
-      E('option', { value: 'desync' }, _('Native Desync (tachyon-core)')),
-      E('option', { value: 'all' }, _('All Engines (Full Matrix)')),
-    ],
-  );
-  engineSelect.addEventListener('change', () => {
-    selectedEngine = (engineSelect as HTMLSelectElement)
-      .value as Tachyon.FuzzerEngine;
+  // 1. Engine Select (installed engines only)
+  const engineSelect = E('select', {
+    class: 'cbi-input-select',
+    style: selectStyle,
+  });
+
+  const syncEngineOptions = () => {
+    const installed = ENGINE_CATALOG.filter((e) => availableEngines[e.value]);
+    (engineSelect as HTMLSelectElement).replaceChildren();
+
+    if (installed.length === 0) {
+      const emptyOpt = E(
+        'option',
+        { value: '', disabled: true, selected: true },
+        _('No compatible engines installed'),
+      );
+      engineSelect.appendChild(emptyOpt);
+      (engineSelect as HTMLSelectElement).value = '';
+      if (startBtnRef && !isRunning) {
+        (startBtnRef as HTMLButtonElement).disabled = true;
+      }
+      populateRuleSelect();
+      return;
+    }
+
+    if (!availableEngines[selectedEngine]) {
+      selectedEngine = installed[0].value;
+    }
+
+    installed.forEach((eng) => {
+      const isSelected = eng.value === selectedEngine;
+      engineSelect.appendChild(
+        E(
+          'option',
+          isSelected
+            ? { value: eng.value, selected: true }
+            : { value: eng.value },
+          eng.label(),
+        ),
+      );
+    });
+    (engineSelect as HTMLSelectElement).value = selectedEngine;
+    if (startBtnRef && !isRunning) {
+      (startBtnRef as HTMLButtonElement).disabled = false;
+    }
     populateRuleSelect();
+  };
+
+  syncEngineOptions();
+
+  engineSelect.addEventListener('change', () => {
+    const nextVal = (engineSelect as HTMLSelectElement).value;
+    if (nextVal && availableEngines[nextVal as Tachyon.FuzzerEngine]) {
+      selectedEngine = nextVal as Tachyon.FuzzerEngine;
+      populateRuleSelect();
+    }
   });
 
   const engineGroup = E('div', { style: groupStyle }, [
@@ -361,14 +566,22 @@ export function renderStrategyFuzzerModal(
     },
   ];
 
-  const customUrlInput = E('textarea', {
-    class: 'cbi-input-text',
-    placeholder:
-      'https://www.faceit.com\nhttps://cybershoke.net\nudp://stun.l.google.com:19302',
-    rows: 3,
-    style:
-      'width: 100%; display: none; margin-top: 4px; resize: vertical; min-height: 64px; padding: 8px 10px; font-size: 12px; font-family: monospace; line-height: 1.5; border-radius: 4px; box-sizing: border-box; background: var(--tachyon-bg-card-elevated, var(--background-color-low, rgba(128,128,128,0.08))); border: 1px solid var(--tachyon-border-subtle, var(--border-color-medium, rgba(128,128,128,0.2))); color: var(--tachyon-text-main, var(--text-color-high, inherit));',
-  });
+  const customUrlInput = E(
+    'textarea',
+    {
+      class: 'cbi-input-text',
+      placeholder:
+        'youtube.com\ndiscord.com, example.org:8443/path\nhttps://www.faceit.com\nudp://stun.l.google.com:19302',
+      rows: 3,
+      style: `width: 100%; display: ${
+        selectedTargetSet.has('custom') ? 'block' : 'none'
+      }; margin-top: 4px; resize: vertical; min-height: 64px; padding: 8px 10px; font-size: 12px; font-family: monospace; line-height: 1.5; border-radius: 4px; box-sizing: border-box; background: var(--tachyon-bg-card-elevated, var(--background-color-low, rgba(128,128,128,0.08))); border: 1px solid var(--tachyon-border-subtle, var(--border-color-medium, rgba(128,128,128,0.2))); color: var(--tachyon-text-main, var(--text-color-high, inherit));`,
+    },
+    customUrl,
+  );
+  if (customUrl) {
+    (customUrlInput as HTMLTextAreaElement).value = customUrl;
+  }
 
   const syncSelectedTargets = () => {
     if (selectedTargetSet.size === 0) {
@@ -474,6 +687,14 @@ export function renderStrategyFuzzerModal(
       targetCheckboxes.set(opt.value, cb);
       cb.addEventListener('change', () => {
         if (cb.checked) {
+          if (
+            opt.value === 'custom' &&
+            selectedTargetSet.has('youtube_suite')
+          ) {
+            selectedTargetSet.delete('youtube_suite');
+            const ytCb = targetCheckboxes.get('youtube_suite');
+            if (ytCb) ytCb.checked = false;
+          }
           selectedTargetSet.add(opt.value);
         } else {
           selectedTargetSet.delete(opt.value);
@@ -493,6 +714,47 @@ export function renderStrategyFuzzerModal(
 
   customUrlInput.addEventListener('input', () => {
     customUrl = (customUrlInput as HTMLTextAreaElement).value.trim();
+  });
+
+  const useSectionDomainsBtn = E(
+    'button',
+    {
+      type: 'button',
+      class: 'cbi-button cbi-button-neutral',
+      style:
+        'display: none; align-self: flex-start; margin-top: 4px; padding: 3px 10px; font-size: 11px; border-radius: 4px;',
+    },
+    _('Use domains from section'),
+  );
+
+  updateUseSectionDomainsBtnFn = () => {
+    const activeRule = normalizedRules.find(
+      (r) => r.id === selectedRuleSection,
+    );
+    const hasDomains = Boolean(
+      activeRule?.domains && activeRule.domains.length > 0,
+    );
+    (useSectionDomainsBtn as HTMLElement).style.display = hasDomains
+      ? 'inline-flex'
+      : 'none';
+  };
+  updateUseSectionDomainsBtnFn();
+
+  useSectionDomainsBtn.addEventListener('click', () => {
+    const activeRule = normalizedRules.find(
+      (r) => r.id === selectedRuleSection,
+    );
+    if (!activeRule?.domains || activeRule.domains.length === 0) return;
+    const joined = activeRule.domains.join('\n');
+    (customUrlInput as HTMLTextAreaElement).value = joined;
+    customUrl = joined;
+    selectedTargetSet.delete('youtube_suite');
+    const ytCb = targetCheckboxes.get('youtube_suite');
+    if (ytCb) ytCb.checked = false;
+    selectedTargetSet.add('custom');
+    const customCb = targetCheckboxes.get('custom');
+    if (customCb) customCb.checked = true;
+    syncSelectedTargets();
   });
 
   const targetGroup = E(
@@ -517,6 +779,7 @@ export function renderStrategyFuzzerModal(
         ],
       ),
       targetCheckboxGrid,
+      useSectionDomainsBtn,
       customUrlInput,
     ],
   );
@@ -579,10 +842,16 @@ export function renderStrategyFuzzerModal(
   ]);
 
   // 5. Rule Apply Target Group
-  const ruleGroup = E('div', { style: groupStyle }, [
-    E('label', { style: labelStyle }, _('Apply Strategy To')),
-    ruleSelect,
-  ]);
+  const hideSectionPicker =
+    Boolean(options.onApplyStrategy) && normalizedRules.length === 0;
+
+  const ruleGroup = E(
+    'div',
+    {
+      style: hideSectionPicker ? `${groupStyle} display: none;` : groupStyle,
+    },
+    [E('label', { style: labelStyle }, _('Apply Strategy To')), ruleSelect],
+  );
 
   controlsGrid.append(
     engineGroup,
@@ -605,8 +874,9 @@ export function renderStrategyFuzzerModal(
   const autoApplyGroup = E(
     'div',
     {
-      style:
-        'display: flex; align-items: center; padding: 6px 0 2px 0; grid-column: 1 / -1; gap: 8px;',
+      style: hideSectionPicker
+        ? 'display: none;'
+        : 'display: flex; align-items: center; padding: 6px 0 2px 0; grid-column: 1 / -1; gap: 8px;',
     },
     [
       E(
@@ -867,13 +1137,35 @@ export function renderStrategyFuzzerModal(
 
   resultsContainer.appendChild(tableEl);
 
+  let nestedOverlayEl: HTMLElement | null = null;
+  let onEscKey: ((e: KeyboardEvent) => void) | null = null;
+
+  const closeModal = () => {
+    isDisposed = true;
+    stopPolling();
+    if (onEscKey && typeof document !== 'undefined') {
+      document.removeEventListener('keydown', onEscKey);
+      onEscKey = null;
+    }
+    if (options.nestedModal) {
+      if (nestedOverlayEl) {
+        nestedOverlayEl.remove();
+        nestedOverlayEl = null;
+      }
+    } else if (typeof ui?.hideModal === 'function') {
+      ui.hideModal();
+    }
+  };
+
   // Footer Actions for Benchmark
   const startBtn = renderButton({
     icon: () => renderZapIcon(14),
     text: _('Start Benchmark'),
     classNames: ['cbi-button-action'],
+    disabled: !getFirstInstalledEngine(),
     onClick: () => handleToggleRun(),
   });
+  startBtnRef = startBtn;
 
   const footerActions = E(
     'div',
@@ -886,11 +1178,7 @@ export function renderStrategyFuzzerModal(
       renderButton({
         text: _('Close'),
         classNames: ['cbi-button-neutral'],
-        onClick: () => {
-          isDisposed = true;
-          stopPolling();
-          ui.hideModal();
-        },
+        onClick: () => closeModal(),
       }),
     ],
   );
@@ -985,225 +1273,242 @@ export function renderStrategyFuzzerModal(
   const renderPatternsTab = () => {
     tabContentPatterns.replaceChildren();
 
-    const z2 = patternsConfig.zapret2;
-    const z1 = patternsConfig.zapret;
-    const bd = patternsConfig.byedpi;
-    if (!patternsConfig.desync) {
-      patternsConfig.desync = {
-        modes: ['fake_split', 'tlsrec', 'disorder', 'split', 'fake', 'oob'],
-        split_poses: ['midsld', 'sni', 1, 2],
-        fake_ttls: [3, 4, 5, 6, 8],
-        fake_snis: ['www.google.com', 'dl.google.com', 'ya.ru'],
-        repeats: [1, 2, 3, 4],
-        split_delays: [1, 2, 3],
-        udp_fakes: [true, false],
-      };
-    }
-    const ds = patternsConfig.desync;
+    const cardsToShow: HTMLElement[] = [];
 
-    const z2Card = E(
-      'div',
-      {
-        style:
-          'padding: 12px; background: var(--tachyon-bg-card-elevated, var(--background-color-low, rgba(128,128,128,0.06))); border-radius: 6px; border: 1px solid var(--tachyon-border-subtle, var(--border-color-medium, rgba(128,128,128,0.18))); display: flex; flex-direction: column; gap: 10px;',
-      },
-      [
+    if (availableEngines.zapret2 && patternsConfig.zapret2) {
+      const z2 = patternsConfig.zapret2;
+      cardsToShow.push(
         E(
           'div',
           {
             style:
-              'font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;',
-          },
-          [renderZapIcon(14), 'Zapret v2 (nfqws2) Matrix Patterns'],
-        ),
-        renderChipGroup(
-          _('Split Positions (pos)'),
-          z2.splits,
-          (v) => z2.splits.push(v),
-          (i) => z2.splits.splice(i, 1),
-        ),
-        renderChipGroup(
-          _('Fooling Methods (fooling)'),
-          z2.foolings,
-          (v) => z2.foolings.push(v),
-          (i) => z2.foolings.splice(i, 1),
-        ),
-        renderChipGroup(
-          _('TTL Values (ttl)'),
-          z2.ttls,
-          (v) => z2.ttls.push(Number(v) || 4),
-          (i) => z2.ttls.splice(i, 1),
-        ),
-        renderChipGroup(
-          _('Sequence Overlaps (seqovl)'),
-          z2.seqovls,
-          (v) => z2.seqovls.push(v),
-          (i) => z2.seqovls.splice(i, 1),
-        ),
-        renderChipGroup(
-          _('TCP Window Sizes (wsize)'),
-          z2.wsizes,
-          (v) => z2.wsizes.push(v),
-          (i) => z2.wsizes.splice(i, 1),
-        ),
-      ],
-    );
-
-    const z1Card = E(
-      'div',
-      {
-        style:
-          'padding: 12px; background: var(--tachyon-bg-card-elevated, var(--background-color-low, rgba(128,128,128,0.06))); border-radius: 6px; border: 1px solid var(--tachyon-border-subtle, var(--border-color-medium, rgba(128,128,128,0.18))); display: flex; flex-direction: column; gap: 10px;',
-      },
-      [
-        E(
-          'div',
-          {
-            style:
-              'font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;',
-          },
-          [renderZapIcon(14), 'Zapret v1 (nfqws) Matrix Patterns'],
-        ),
-        renderChipGroup(
-          _('Split Modes (dpi-desync)'),
-          z1.split_modes,
-          (v) => z1.split_modes.push(v),
-          (i) => z1.split_modes.splice(i, 1),
-        ),
-        renderChipGroup(
-          _('Split Positions (dpi-desync-split-pos)'),
-          z1.splits,
-          (v) => z1.splits.push(v),
-          (i) => z1.splits.splice(i, 1),
-        ),
-        renderChipGroup(
-          _('Fooling Methods (dpi-desync-fooling)'),
-          z1.foolings,
-          (v) => z1.foolings.push(v),
-          (i) => z1.foolings.splice(i, 1),
-        ),
-        renderChipGroup(
-          _('TTL Values (dpi-desync-ttl)'),
-          z1.ttls,
-          (v) => z1.ttls.push(Number(v) || 4),
-          (i) => z1.ttls.splice(i, 1),
-        ),
-      ],
-    );
-
-    const bdCard = E(
-      'div',
-      {
-        style:
-          'padding: 12px; background: var(--tachyon-bg-card-elevated, var(--background-color-low, rgba(128,128,128,0.06))); border-radius: 6px; border: 1px solid var(--tachyon-border-subtle, var(--border-color-medium, rgba(128,128,128,0.18))); display: flex; flex-direction: column; gap: 10px;',
-      },
-      [
-        E(
-          'div',
-          {
-            style:
-              'font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;',
-          },
-          [renderZapIcon(14), 'ByeDPI (ciadpi) Matrix Patterns'],
-        ),
-        renderChipGroup(
-          _('Split Values (-s)'),
-          bd.splits,
-          (v) => bd.splits.push(v),
-          (i) => bd.splits.splice(i, 1),
-        ),
-        renderChipGroup(
-          _('Disorder Values (-d)'),
-          bd.disorders,
-          (v) => bd.disorders.push(v),
-          (i) => bd.disorders.splice(i, 1),
-        ),
-        renderChipGroup(
-          _('OOB Values (-o)'),
-          bd.oobs,
-          (v) => bd.oobs.push(v),
-          (i) => bd.oobs.splice(i, 1),
-        ),
-        renderChipGroup(
-          _('Auto Modes (--auto)'),
-          bd.autos,
-          (v) => bd.autos.push(v),
-          (i) => bd.autos.splice(i, 1),
-        ),
-        renderChipGroup(
-          _('TLS-Rec Bounds (--tlsrec)'),
-          bd.tlsrecs,
-          (v) => bd.tlsrecs.push(v),
-          (i) => bd.tlsrecs.splice(i, 1),
-        ),
-        renderChipGroup(
-          _('IP Frag Bounds (--ip-frag)'),
-          bd.ipfrags,
-          (v) => bd.ipfrags.push(v),
-          (i) => bd.ipfrags.splice(i, 1),
-        ),
-      ],
-    );
-
-    const dsCard = E(
-      'div',
-      {
-        style:
-          'padding: 12px; background: var(--tachyon-bg-card-elevated, var(--background-color-low, rgba(128,128,128,0.06))); border-radius: 6px; border: 1px solid var(--tachyon-border-subtle, var(--border-color-medium, rgba(128,128,128,0.18))); display: flex; flex-direction: column; gap: 10px;',
-      },
-      [
-        E(
-          'div',
-          {
-            style:
-              'font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;',
+              'padding: 12px; background: var(--tachyon-bg-card-elevated, var(--background-color-low, rgba(128,128,128,0.06))); border-radius: 6px; border: 1px solid var(--tachyon-border-subtle, var(--border-color-medium, rgba(128,128,128,0.18))); display: flex; flex-direction: column; gap: 10px;',
           },
           [
-            renderZapIcon(14),
-            _('Native Desync (tachyon-core) Matrix Patterns'),
+            E(
+              'div',
+              {
+                style:
+                  'font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;',
+              },
+              [renderZapIcon(14), 'Zapret v2 (nfqws2) Matrix Patterns'],
+            ),
+            renderChipGroup(
+              _('Split Positions (pos)'),
+              z2.splits,
+              (v) => z2.splits.push(v),
+              (i) => z2.splits.splice(i, 1),
+            ),
+            renderChipGroup(
+              _('Fooling Methods (fooling)'),
+              z2.foolings,
+              (v) => z2.foolings.push(v),
+              (i) => z2.foolings.splice(i, 1),
+            ),
+            renderChipGroup(
+              _('TTL Values (ttl)'),
+              z2.ttls,
+              (v) => z2.ttls.push(Number(v) || 4),
+              (i) => z2.ttls.splice(i, 1),
+            ),
+            renderChipGroup(
+              _('Sequence Overlaps (seqovl)'),
+              z2.seqovls,
+              (v) => z2.seqovls.push(v),
+              (i) => z2.seqovls.splice(i, 1),
+            ),
+            renderChipGroup(
+              _('TCP Window Sizes (wsize)'),
+              z2.wsizes,
+              (v) => z2.wsizes.push(v),
+              (i) => z2.wsizes.splice(i, 1),
+            ),
           ],
         ),
-        renderChipGroup(
-          _('Desync Modes (--mode)'),
-          ds.modes,
-          (v) => ds.modes.push(v),
-          (i) => ds.modes.splice(i, 1),
-        ),
-        renderChipGroup(
-          _('Split Positions (--split-pos)'),
-          ds.split_poses,
-          (v) =>
-            ds.split_poses.push(
-              v === 'midsld' || v === 'sni' ? v : Number(v) || 1,
+      );
+    }
+
+    if (availableEngines.zapret && patternsConfig.zapret) {
+      const z1 = patternsConfig.zapret;
+      cardsToShow.push(
+        E(
+          'div',
+          {
+            style:
+              'padding: 12px; background: var(--tachyon-bg-card-elevated, var(--background-color-low, rgba(128,128,128,0.06))); border-radius: 6px; border: 1px solid var(--tachyon-border-subtle, var(--border-color-medium, rgba(128,128,128,0.18))); display: flex; flex-direction: column; gap: 10px;',
+          },
+          [
+            E(
+              'div',
+              {
+                style:
+                  'font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;',
+              },
+              [renderZapIcon(14), 'Zapret v1 (nfqws) Matrix Patterns'],
             ),
-          (i) => ds.split_poses.splice(i, 1),
+            renderChipGroup(
+              _('Split Modes (dpi-desync)'),
+              z1.split_modes,
+              (v) => z1.split_modes.push(v),
+              (i) => z1.split_modes.splice(i, 1),
+            ),
+            renderChipGroup(
+              _('Split Positions (dpi-desync-split-pos)'),
+              z1.splits,
+              (v) => z1.splits.push(v),
+              (i) => z1.splits.splice(i, 1),
+            ),
+            renderChipGroup(
+              _('Fooling Methods (dpi-desync-fooling)'),
+              z1.foolings,
+              (v) => z1.foolings.push(v),
+              (i) => z1.foolings.splice(i, 1),
+            ),
+            renderChipGroup(
+              _('TTL Values (dpi-desync-ttl)'),
+              z1.ttls,
+              (v) => z1.ttls.push(Number(v) || 4),
+              (i) => z1.ttls.splice(i, 1),
+            ),
+          ],
         ),
-        renderChipGroup(
-          _('Fake TTLs (--fake-ttl)'),
-          ds.fake_ttls,
-          (v) => ds.fake_ttls.push(Number(v) || 3),
-          (i) => ds.fake_ttls.splice(i, 1),
+      );
+    }
+
+    if (availableEngines.byedpi && patternsConfig.byedpi) {
+      const bd = patternsConfig.byedpi;
+      cardsToShow.push(
+        E(
+          'div',
+          {
+            style:
+              'padding: 12px; background: var(--tachyon-bg-card-elevated, var(--background-color-low, rgba(128,128,128,0.06))); border-radius: 6px; border: 1px solid var(--tachyon-border-subtle, var(--border-color-medium, rgba(128,128,128,0.18))); display: flex; flex-direction: column; gap: 10px;',
+          },
+          [
+            E(
+              'div',
+              {
+                style:
+                  'font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;',
+              },
+              [renderZapIcon(14), 'ByeDPI (ciadpi) Matrix Patterns'],
+            ),
+            renderChipGroup(
+              _('Split Values (-s)'),
+              bd.splits,
+              (v) => bd.splits.push(v),
+              (i) => bd.splits.splice(i, 1),
+            ),
+            renderChipGroup(
+              _('Disorder Values (-d)'),
+              bd.disorders,
+              (v) => bd.disorders.push(v),
+              (i) => bd.disorders.splice(i, 1),
+            ),
+            renderChipGroup(
+              _('OOB Values (-o)'),
+              bd.oobs,
+              (v) => bd.oobs.push(v),
+              (i) => bd.oobs.splice(i, 1),
+            ),
+            renderChipGroup(
+              _('Auto Modes (--auto)'),
+              bd.autos,
+              (v) => bd.autos.push(v),
+              (i) => bd.autos.splice(i, 1),
+            ),
+            renderChipGroup(
+              _('TLS-Rec Bounds (--tlsrec)'),
+              bd.tlsrecs,
+              (v) => bd.tlsrecs.push(v),
+              (i) => bd.tlsrecs.splice(i, 1),
+            ),
+            renderChipGroup(
+              _('IP Frag Bounds (--ip-frag)'),
+              bd.ipfrags,
+              (v) => bd.ipfrags.push(v),
+              (i) => bd.ipfrags.splice(i, 1),
+            ),
+          ],
         ),
-        renderChipGroup(
-          _('Fake SNI Hosts (--fake-sni)'),
-          ds.fake_snis,
-          (v) => ds.fake_snis.push(v),
-          (i) => ds.fake_snis.splice(i, 1),
+      );
+    }
+
+    if (availableEngines.desync) {
+      if (!patternsConfig.desync) {
+        patternsConfig.desync = {
+          modes: ['fake_split', 'tlsrec', 'disorder', 'split', 'fake', 'oob'],
+          split_poses: ['midsld', 'sni', 1, 2],
+          fake_ttls: [3, 4, 5, 6, 8],
+          fake_snis: ['www.google.com', 'dl.google.com', 'ya.ru'],
+          repeats: [1, 2, 3, 4],
+          split_delays: [1, 2, 3],
+          udp_fakes: [true, false],
+        };
+      }
+      const ds = patternsConfig.desync;
+      cardsToShow.push(
+        E(
+          'div',
+          {
+            style:
+              'padding: 12px; background: var(--tachyon-bg-card-elevated, var(--background-color-low, rgba(128,128,128,0.06))); border-radius: 6px; border: 1px solid var(--tachyon-border-subtle, var(--border-color-medium, rgba(128,128,128,0.18))); display: flex; flex-direction: column; gap: 10px;',
+          },
+          [
+            E(
+              'div',
+              {
+                style:
+                  'font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;',
+              },
+              [
+                renderZapIcon(14),
+                _('Native Desync (tachyon-core) Matrix Patterns'),
+              ],
+            ),
+            renderChipGroup(
+              _('Desync Modes (--mode)'),
+              ds.modes,
+              (v) => ds.modes.push(v),
+              (i) => ds.modes.splice(i, 1),
+            ),
+            renderChipGroup(
+              _('Split Positions (--split-pos)'),
+              ds.split_poses,
+              (v) =>
+                ds.split_poses.push(
+                  v === 'midsld' || v === 'sni' ? v : Number(v) || 1,
+                ),
+              (i) => ds.split_poses.splice(i, 1),
+            ),
+            renderChipGroup(
+              _('Fake TTLs (--fake-ttl)'),
+              ds.fake_ttls,
+              (v) => ds.fake_ttls.push(Number(v) || 3),
+              (i) => ds.fake_ttls.splice(i, 1),
+            ),
+            renderChipGroup(
+              _('Fake SNI Hosts (--fake-sni)'),
+              ds.fake_snis,
+              (v) => ds.fake_snis.push(v),
+              (i) => ds.fake_snis.splice(i, 1),
+            ),
+            renderChipGroup(
+              _('Fake Repeats (--repeats)'),
+              ds.repeats,
+              (v) => ds.repeats.push(Number(v) || 2),
+              (i) => ds.repeats.splice(i, 1),
+            ),
+            renderChipGroup(
+              _('Split Delays ms (--split-delay)'),
+              ds.split_delays,
+              (v) => ds.split_delays.push(Number(v) || 1),
+              (i) => ds.split_delays.splice(i, 1),
+            ),
+          ],
         ),
-        renderChipGroup(
-          _('Fake Repeats (--repeats)'),
-          ds.repeats,
-          (v) => ds.repeats.push(Number(v) || 2),
-          (i) => ds.repeats.splice(i, 1),
-        ),
-        renderChipGroup(
-          _('Split Delays ms (--split-delay)'),
-          ds.split_delays,
-          (v) => ds.split_delays.push(Number(v) || 1),
-          (i) => ds.split_delays.splice(i, 1),
-        ),
-      ],
-    );
+      );
+    }
 
     const patternsFooter = E(
       'div',
@@ -1231,7 +1536,10 @@ export function renderStrategyFuzzerModal(
           onClick: async () => {
             const res = await TachyonShellMethods.resetFuzzerPatterns();
             if (res.success && res.data?.patterns) {
-              patternsConfig = res.data.patterns;
+              patternsConfig = {
+                ...patternsConfig,
+                ...res.data.patterns,
+              };
               renderPatternsTab();
               showToast(_('Patterns reset to defaults!'), 'success');
             }
@@ -1240,7 +1548,21 @@ export function renderStrategyFuzzerModal(
       ],
     );
 
-    tabContentPatterns.append(z2Card, z1Card, bdCard, dsCard, patternsFooter);
+    if (cardsToShow.length === 0) {
+      tabContentPatterns.append(
+        E(
+          'div',
+          {
+            style:
+              'padding: 20px; text-align: center; opacity: 0.7; font-size: 12px;',
+          },
+          _('No compatible engines installed'),
+        ),
+      );
+      return;
+    }
+
+    tabContentPatterns.append(...cardsToShow, patternsFooter);
   };
 
   // ═════════════════════════════════════════════════════════════════════════════
@@ -1249,6 +1571,10 @@ export function renderStrategyFuzzerModal(
 
   const renderCustomTab = () => {
     tabContentCustom.replaceChildren();
+
+    const installedEngines = ENGINE_CATALOG.filter(
+      (eng) => availableEngines[eng.value],
+    );
 
     const nameInput = E('input', {
       type: 'text',
@@ -1261,13 +1587,19 @@ export function renderStrategyFuzzerModal(
       {
         class: 'cbi-input-select',
         style: 'flex: 0 1 140px; min-width: 120px;',
+        disabled: installedEngines.length === 0 || undefined,
       },
-      [
-        E('option', { value: 'zapret2' }, _('Zapret v2')),
-        E('option', { value: 'zapret' }, _('Zapret v1')),
-        E('option', { value: 'byedpi' }, _('ByeDPI')),
-        E('option', { value: 'desync' }, _('Native Desync')),
-      ],
+      installedEngines.length > 0
+        ? installedEngines.map((eng) =>
+            E('option', { value: eng.value }, eng.shortLabel()),
+          )
+        : [
+            E(
+              'option',
+              { value: '', disabled: true, selected: true },
+              _('No compatible engines installed'),
+            ),
+          ],
     );
     const argsInput = E('input', {
       type: 'text',
@@ -1279,11 +1611,16 @@ export function renderStrategyFuzzerModal(
     const addBtn = renderButton({
       text: _('+ Add Strategy'),
       classNames: ['cbi-button-action'],
+      disabled: installedEngines.length === 0,
       onClick: async () => {
         const name = (nameInput as HTMLInputElement).value.trim();
         const eng = (engineSel as HTMLSelectElement)
           .value as Tachyon.FuzzerEngine;
         const args = (argsInput as HTMLInputElement).value.trim();
+        if (!eng || !availableEngines[eng]) {
+          showToast(_('No compatible engines installed'), 'error');
+          return;
+        }
         if (!name || !args) {
           showToast(_('Please specify strategy name and arguments'), 'error');
           return;
@@ -1294,7 +1631,7 @@ export function renderStrategyFuzzerModal(
         patternsConfig.custom_strategies.push({
           id: `custom_${Date.now()}`,
           name,
-          engine: eng as 'zapret2' | 'zapret' | 'byedpi' | 'desync',
+          engine: eng,
           args,
           description: _('User custom strategy'),
         });
@@ -1517,7 +1854,7 @@ export function renderStrategyFuzzerModal(
         'div',
         { style: 'font-size: 12px; opacity: 0.8;' },
         _(
-          'Automatically runs a diagnostic probe against the target service, queries the built-in DPI Knowledge Base, and synthesizes 3-5 custom bypass strategies tailored to your ISP.',
+          'Automatically runs a diagnostic probe against the target service, queries the built-in DPI Knowledge Base, and synthesizes 3-5 custom packet desynchronization strategies tailored to your ISP.',
         ),
       ),
       E('div', { style: 'display: flex; gap: 8px; align-items: center;' }, [
@@ -1893,14 +2230,55 @@ export function renderStrategyFuzzerModal(
         );
       }
 
-      if (item.sub_probes && item.sub_probes.length > 1) {
-        const passedSub = item.sub_probes.filter((p) => p.success).length;
-        const totalSub = item.sub_probes.length;
+      const passedEp =
+        item.passed_endpoints !== undefined
+          ? item.passed_endpoints
+          : item.sub_probes
+            ? item.sub_probes.filter((p) => p.success).length
+            : undefined;
+      const totalEp =
+        item.total_endpoints !== undefined
+          ? item.total_endpoints
+          : item.sub_probes?.length;
+
+      if (totalEp !== undefined && totalEp > 1) {
         statusChildren.push(
           E(
             'div',
-            { style: 'font-size: 10px; opacity: 0.75; margin-top: 2px;' },
-            `${passedSub}/${totalSub} ` + _('endpoints OK'),
+            { style: 'font-size: 10px; opacity: 0.78; margin-top: 2px;' },
+            `${passedEp ?? 0}/${totalEp} ` + _('endpoints OK'),
+          ),
+        );
+      }
+      if (item.sub_probes && item.sub_probes.length > 1) {
+        statusChildren.push(
+          E(
+            'div',
+            {
+              style:
+                'display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; max-width: 240px;',
+            },
+            item.sub_probes.map((sp, spIdx) => {
+              const namePart = sp.target_name || `#${spIdx + 1}`;
+              const ttfbPart =
+                sp.success && sp.ttfb_ms ? ` ${sp.ttfb_ms}ms` : '';
+              return E(
+                'span',
+                {
+                  style: `font-size: 9px; padding: 1px 4px; border-radius: 3px; font-family: monospace; background: ${
+                    sp.success
+                      ? 'rgba(40, 167, 69, 0.14)'
+                      : 'rgba(220, 53, 69, 0.14)'
+                  }; color: ${
+                    sp.success
+                      ? 'var(--success-color-medium, #218838)'
+                      : 'var(--error-color-medium, #c82333)'
+                  };`,
+                  title: sp.error || '',
+                },
+                `${namePart}: ${sp.success ? `OK${ttfbPart}` : 'DROP'}`,
+              );
+            }),
           ),
         );
       }
@@ -2114,7 +2492,7 @@ export function renderStrategyFuzzerModal(
                 ? ` ${_('Benchmark stopped')}: ${state.error}`
                 : ' ' +
                     _(
-                      'Benchmark completed. No working bypass found for this target.',
+                      'Benchmark completed. No working strategy found for this target.',
                     ),
             ),
           );
@@ -2228,6 +2606,7 @@ export function renderStrategyFuzzerModal(
         if (!isRunning && !stoppedManually) {
           // Auto-apply best strategy only if benchmark completed 100%, without abort, and not already applied for this job
           if (
+            !options.onApplyStrategy &&
             autoApplyEnabled &&
             Boolean(selectedRuleSection) &&
             currentState?.progress_pct === 100 &&
@@ -2336,7 +2715,7 @@ export function renderStrategyFuzzerModal(
       switch (det.type) {
         case 'ip_block':
           return _(
-            'TCP connect timed out before TLS handshake — host is blocked at the IP layer. DPI bypass cannot unblock this; route via VPN/Proxy outbound instead.',
+            'TCP connect timed out before TLS handshake — host is unreachable at the IP layer. Packet desynchronization cannot traverse an IP-level block; route via VPN/Proxy outbound instead.',
           );
         case 'rst':
           return _(
@@ -2421,7 +2800,7 @@ export function renderStrategyFuzzerModal(
             'span',
             {},
             _(
-              'IP-level blocking detected! The resource is blocked at the network level (no TCP SYN response). DPI bypass methods (Zapret / ByeDPI) cannot bypass this address — configure proxy/VPN routing for this domain!',
+              'IP-level filtering detected! The resource is unreachable at the network layer (no TCP SYN response). Packet desynchronization engines (Zapret / ByeDPI) cannot traverse an IP-level block — configure proxy/VPN routing for this domain.',
             ),
           ),
         ],
@@ -2449,6 +2828,23 @@ export function renderStrategyFuzzerModal(
       activeJobId = null;
       await pollStatus();
       return;
+    }
+
+    if (!selectedEngine || !availableEngines[selectedEngine]) {
+      showToast(_('No compatible engines installed'), 'error');
+      return;
+    }
+
+    if (selectedTargetSet.has('custom')) {
+      const parsedTargets = normalizeCustomTargetsInput(
+        (customUrlInput as HTMLTextAreaElement).value,
+      );
+      if (!parsedTargets.ok) {
+        showToast(parsedTargets.error, 'error');
+        return;
+      }
+      customUrl = parsedTargets.normalized;
+      (customUrlInput as HTMLTextAreaElement).value = parsedTargets.normalized;
     }
 
     stoppedManually = false;
@@ -2501,7 +2897,7 @@ export function renderStrategyFuzzerModal(
               E(
                 'span',
                 { style: 'margin-left: 8px;' },
-                _('Testing bypass strategies in isolated sandbox...'),
+                _('Testing desync strategies in isolated sandbox...'),
               ),
             ],
           ),
@@ -2561,6 +2957,21 @@ export function renderStrategyFuzzerModal(
   };
 
   const handleAiSynthesize = async () => {
+    if (!selectedEngine || !availableEngines[selectedEngine]) {
+      showToast(_('No compatible engines installed'), 'error');
+      return;
+    }
+    if (selectedTargetSet.has('custom')) {
+      const parsedTargets = normalizeCustomTargetsInput(
+        (customUrlInput as HTMLTextAreaElement).value,
+      );
+      if (!parsedTargets.ok) {
+        showToast(parsedTargets.error, 'error');
+        return;
+      }
+      customUrl = parsedTargets.normalized;
+      (customUrlInput as HTMLTextAreaElement).value = parsedTargets.normalized;
+    }
     const userPrompt = (aiPromptInput as HTMLInputElement).value.trim();
     (aiSynthesizeBtn as HTMLButtonElement).disabled = true;
     aiSynthesizeBtn.replaceChildren(
@@ -2642,6 +3053,12 @@ export function renderStrategyFuzzerModal(
   };
 
   const handleApplySingle = async (item: Tachyon.FuzzerStrategyResult) => {
+    if (options.onApplyStrategy) {
+      await options.onApplyStrategy(item.engine, item.args, item);
+      closeModal();
+      return;
+    }
+
     if (!selectedRuleSection && (ruleSelect as HTMLSelectElement).value) {
       selectedRuleSection = (ruleSelect as HTMLSelectElement).value;
     }
@@ -2660,7 +3077,6 @@ export function renderStrategyFuzzerModal(
       targetRule &&
       targetRule.action &&
       targetRule.action !== item.engine &&
-      targetRule.action !== 'connection' &&
       !dpiActions.includes(targetRule.action)
     ) {
       showToast(
@@ -2693,7 +3109,7 @@ export function renderStrategyFuzzerModal(
           'success',
         );
       }
-      if (typeof ui?.hideModal === 'function') ui.hideModal();
+      closeModal();
       if (
         typeof window !== 'undefined' &&
         typeof window.location?.reload === 'function'
@@ -2707,16 +3123,6 @@ export function renderStrategyFuzzerModal(
   };
 
   const handleApplyBest = async () => {
-    if (!selectedRuleSection && (ruleSelect as HTMLSelectElement).value) {
-      selectedRuleSection = (ruleSelect as HTMLSelectElement).value;
-    }
-    if (!selectedRuleSection) {
-      showToast(
-        _('Please select an applicable rule section to apply this strategy'),
-        'error',
-      );
-      return;
-    }
     const best =
       currentState?.best_strategy ||
       currentState?.results?.find((r) => r.success);
@@ -2732,31 +3138,15 @@ export function renderStrategyFuzzerModal(
     .then((res) => {
       if (res.success && res.data?.available_engines) {
         const av = res.data.available_engines;
-        const opts = (engineSelect as HTMLSelectElement).options;
-        for (let i = 0; i < opts.length; i++) {
-          const opt = opts[i];
-          if (opt.value === 'zapret2') {
-            opt.text = av.zapret2
-              ? _('Zapret v2 (nfqws2)') + ' — ' + _('Installed')
-              : _('Zapret v2 (nfqws2)') + ' — ' + _('Not installed');
-            if (!av.zapret2) opt.disabled = true;
-          } else if (opt.value === 'zapret') {
-            opt.text = av.zapret
-              ? _('Zapret v1 (nfqws)') + ' — ' + _('Installed')
-              : _('Zapret v1 (nfqws)') + ' — ' + _('Not installed');
-            if (!av.zapret) opt.disabled = true;
-          } else if (opt.value === 'byedpi') {
-            opt.text = av.byedpi
-              ? _('ByeDPI (ciadpi)') + ' — ' + _('Installed')
-              : _('ByeDPI (ciadpi)') + ' — ' + _('Not installed');
-            if (!av.byedpi) opt.disabled = true;
-          } else if (opt.value === 'desync') {
-            opt.text = av.desync
-              ? _('Native Desync (tachyon-core)') + ' — ' + _('Installed')
-              : _('Native Desync (tachyon-core)') + ' — ' + _('Not installed');
-            if (av.desync === false) opt.disabled = true;
-          }
-        }
+        availableEngines = {
+          zapret2: Boolean(av.zapret2),
+          zapret: Boolean(av.zapret),
+          byedpi: Boolean(av.byedpi),
+          desync: Boolean(av.desync),
+        };
+        syncEngineOptions();
+        if (activeTab === 'patterns') renderPatternsTab();
+        if (activeTab === 'custom') renderCustomTab();
       }
     })
     .catch(() => {});
@@ -2764,7 +3154,10 @@ export function renderStrategyFuzzerModal(
   TachyonShellMethods.getFuzzerPatterns()
     .then((res) => {
       if (res.success && res.data?.patterns) {
-        patternsConfig = res.data.patterns;
+        patternsConfig = {
+          ...patternsConfig,
+          ...res.data.patterns,
+        };
       }
     })
     .catch(() => {});
@@ -2779,8 +3172,71 @@ export function renderStrategyFuzzerModal(
     tabContentHistory,
   );
 
-  // Check initial state
-  pollStatus();
+  if (options.nestedModal && typeof document !== 'undefined' && document.body) {
+    const closeIconBtn = E(
+      'button',
+      {
+        type: 'button',
+        class: 'cbi-button cbi-button-neutral',
+        style:
+          'padding: 2px 10px; font-size: 16px; line-height: 1.2; cursor: pointer;',
+      },
+      '×',
+    );
+    closeIconBtn.addEventListener('click', () => closeModal());
 
-  ui.showModal(_('Strategy Fuzzer & Auto-Tuner'), modalContainer);
+    const dialogCard = E(
+      'div',
+      {
+        style:
+          'max-width: 980px; width: 100%; background: var(--tachyon-bg-card, var(--background-color-high, #fff)); color: var(--tachyon-text-main, var(--text-color-high, inherit)); border-radius: 10px; padding: 18px 20px; border: 1px solid var(--tachyon-border-subtle, var(--border-color-medium, rgba(128,128,128,0.22))); box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35); box-sizing: border-box; display: flex; flex-direction: column; gap: 12px;',
+      },
+      [
+        E(
+          'div',
+          {
+            style:
+              'display: flex; justify-content: space-between; align-items: center; padding-bottom: 10px; border-bottom: 1px solid var(--tachyon-border-subtle, var(--border-color-medium, rgba(128,128,128,0.2)));',
+          },
+          [
+            E(
+              'h4',
+              { style: 'margin: 0; font-size: 16px; font-weight: 600;' },
+              _('Strategy Fuzzer & Auto-Tuner'),
+            ),
+            closeIconBtn,
+          ],
+        ),
+        modalContainer,
+      ],
+    );
+
+    nestedOverlayEl = E(
+      'div',
+      {
+        class: 'tachyon-nested-fuzzer-overlay',
+        style:
+          'position: fixed; inset: 0; z-index: 10050; background: rgba(0, 0, 0, 0.62); display: flex; align-items: flex-start; justify-content: center; padding: 24px 16px; overflow-y: auto; box-sizing: border-box;',
+      },
+      [dialogCard],
+    );
+
+    nestedOverlayEl.addEventListener('click', (ev: Event) => {
+      if (ev.target === nestedOverlayEl) {
+        closeModal();
+      }
+    });
+
+    onEscKey = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') {
+        closeModal();
+      }
+    };
+    document.addEventListener('keydown', onEscKey);
+    document.body.appendChild(nestedOverlayEl);
+    pollStatus();
+  } else {
+    pollStatus();
+    ui.showModal(_('Strategy Fuzzer & Auto-Tuner'), modalContainer);
+  }
 }

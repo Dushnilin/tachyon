@@ -3320,6 +3320,169 @@ function setModalFieldValue(sectionRef, sectionId, optName, value) {
   } catch (_e) {}
 }
 
+let outboundScannerEnginesPromise = null;
+function resolveOutboundScannerEngines() {
+  const sysInfo =
+    main.store && typeof main.store.get === "function"
+      ? main.store.get().diagnosticsSystemInfo
+      : null;
+  if (sysInfo && (sysInfo.providerInfoLoaded || sysInfo.loaded)) {
+    return Promise.resolve({
+      zapret2: Boolean(sysInfo.zapret2_installed),
+      zapret: Boolean(sysInfo.zapret_installed),
+      byedpi: Boolean(sysInfo.byedpi_installed),
+      desync: Boolean(sysInfo.sing_box_tachyon_core),
+    });
+  }
+  if (
+    !outboundScannerEnginesPromise &&
+    main.TachyonShellMethods &&
+    typeof main.TachyonShellMethods.getFuzzerStrategies === "function"
+  ) {
+    outboundScannerEnginesPromise =
+      main.TachyonShellMethods.getFuzzerStrategies()
+        .then((res) => {
+          const av = res && res.success ? res.data?.available_engines : null;
+          return {
+            zapret2: Boolean(av?.zapret2),
+            zapret: Boolean(av?.zapret),
+            byedpi: Boolean(av?.byedpi),
+            desync: Boolean(av?.desync),
+          };
+        })
+        .catch(() => ({
+          zapret2: false,
+          zapret: false,
+          byedpi: false,
+          desync: false,
+        }));
+  }
+  return (
+    outboundScannerEnginesPromise ||
+    Promise.resolve({
+      zapret2: false,
+      zapret: false,
+      byedpi: false,
+      desync: false,
+    })
+  );
+}
+
+function getModalSourceType(sectionId) {
+  if (typeof document !== "undefined") {
+    const modalRoot = document.querySelector(".cbi-modal") || document;
+    const fieldId = `cbid.${UCI_PACKAGE}.${sectionId}.source_type`;
+    const el =
+      modalRoot.querySelector(`[id="widget.${fieldId}"]`) ||
+      modalRoot.querySelector(`select[id="${fieldId}"]`) ||
+      modalRoot.querySelector(`[data-field="${fieldId}"] select`);
+    if (el && "value" in el && el.value) {
+      return String(el.value).trim().toLowerCase();
+    }
+  }
+  return String(uci.get(UCI_PACKAGE, sectionId, "source_type") || "")
+    .trim()
+    .toLowerCase();
+}
+
+function attachOutboundStrategyScannerButton(
+  sectionRef,
+  option,
+  engineKey,
+  optName,
+) {
+  const origRender = option.renderWidget;
+  option.renderWidget = function (sectionId, optionIndex, cfgvalue) {
+    const node = origRender.call(this, sectionId, optionIndex, cfgvalue);
+    if (!node || typeof main.renderStrategyFuzzerModal !== "function") {
+      return node;
+    }
+
+    const scanBtn = E(
+      "button",
+      {
+        type: "button",
+        class: "btn cbi-button cbi-button-action",
+        style: "margin-top: 6px; display: none; align-items: center; gap: 6px;",
+      },
+      _("Scan Strategies"),
+    );
+
+    const updateBtnVisibility = (av) => {
+      if (!av || !av[engineKey]) {
+        scanBtn.style.display = "none";
+        return;
+      }
+      if (optName === "nfqws2_opt") {
+        scanBtn.style.display =
+          getModalSourceType(sectionId) === "zapret2" ? "inline-flex" : "none";
+        return;
+      }
+      scanBtn.style.display = "inline-flex";
+    };
+
+    let cachedEngines = null;
+    resolveOutboundScannerEngines()
+      .then((av) => {
+        cachedEngines = av;
+        updateBtnVisibility(av);
+        if (optName === "nfqws2_opt" && typeof document !== "undefined") {
+          setTimeout(() => {
+            const modalRoot = document.querySelector(".cbi-modal") || document;
+            const fieldId = `cbid.${UCI_PACKAGE}.${sectionId}.source_type`;
+            const sourceSel =
+              modalRoot.querySelector(`[id="widget.${fieldId}"]`) ||
+              modalRoot.querySelector(`select[id="${fieldId}"]`) ||
+              modalRoot.querySelector(`[data-field="${fieldId}"] select`);
+            if (sourceSel) {
+              sourceSel.addEventListener("change", () => {
+                updateBtnVisibility(cachedEngines);
+              });
+            }
+          }, 0);
+        }
+      })
+      .catch(() => {});
+
+    scanBtn.addEventListener("click", () => {
+      resolveOutboundScannerEngines().then((availableEngines) => {
+        if (!availableEngines[engineKey]) return;
+        main.renderStrategyFuzzerModal([], {
+          initialEngine: engineKey,
+          initialRuleSection: sectionId,
+          availableEngines,
+          nestedModal: true,
+          onApplyStrategy: (_eng, args) => {
+            if (engineKey === "desync") {
+              setModalFieldValue(
+                sectionRef,
+                sectionId,
+                "desync_preset",
+                "custom",
+              );
+              setModalFieldValue(sectionRef, sectionId, "desync_opts", args);
+            } else {
+              setModalFieldValue(sectionRef, sectionId, optName, args);
+            }
+          },
+        });
+      });
+    });
+
+    const btnWrap = E("div", { style: "margin-top: 4px;" }, [scanBtn]);
+    if (
+      node.nodeName === "INPUT" ||
+      node.nodeName === "TEXTAREA" ||
+      node.nodeName === "SELECT" ||
+      typeof node.appendChild !== "function"
+    ) {
+      return E("div", {}, [node, btnWrap]);
+    }
+    node.appendChild(btnWrap);
+    return node;
+  };
+}
+
 function createOutboundsContent(section) {
   section.tab("general", _("Source Settings"));
   section.tab("advanced", _("Advanced & Subscription Options"));
@@ -4867,7 +5030,7 @@ function createOutboundsContent(section) {
     "general",
     form.ListValue,
     "bypass_method",
-    _("FPTN DPI Bypass Method"),
+    _("FPTN Traffic Masking Method"),
   );
   o.modalonly = true;
   o.default = "obfuscation";
@@ -6010,6 +6173,7 @@ function createOutboundsContent(section) {
     uci.set(UCI_PACKAGE, sectionId, "nfqws2_opt", nextVal);
     syncStrategyToReferencingSections(sectionId, "nfqws2_opt", nextVal);
   };
+  attachOutboundStrategyScannerButton(section, o, "zapret2", "nfqws2_opt");
 
   o = section.taboption(
     "general",
@@ -6036,6 +6200,7 @@ function createOutboundsContent(section) {
     uci.set(UCI_PACKAGE, sectionId, "nfqws_opt", nextVal);
     syncStrategyToReferencingSections(sectionId, "nfqws_opt", nextVal);
   };
+  attachOutboundStrategyScannerButton(section, o, "zapret", "nfqws_opt");
 
   o = section.taboption(
     "general",
@@ -6079,13 +6244,16 @@ function createOutboundsContent(section) {
     uci.set(UCI_PACKAGE, sectionId, "byedpi_cmd_opts", nextVal);
     syncStrategyToReferencingSections(sectionId, "byedpi_cmd_opts", nextVal);
   };
+  attachOutboundStrategyScannerButton(section, o, "byedpi", "byedpi_cmd_opts");
 
   o = section.taboption(
     "general",
     form.ListValue,
     "desync_preset",
     _("Desync Preset"),
-    _("Pre-configured DPI bypass profile for tachyon-core native desync."),
+    _(
+      "Pre-configured packet desynchronization profile for tachyon-core native desync.",
+    ),
   );
   o.modalonly = true;
   o.default = "auto";
@@ -6112,6 +6280,7 @@ function createOutboundsContent(section) {
   o.value("oob", _("TCP Urgent OOB Desync (midsld)"));
   o.value("custom", _("Custom Parameters"));
   o.depends("source_type", "desync");
+  attachOutboundStrategyScannerButton(section, o, "desync", "desync_preset");
 
   o = section.taboption(
     "general",

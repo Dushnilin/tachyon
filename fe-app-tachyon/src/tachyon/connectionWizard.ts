@@ -23,7 +23,9 @@ import {
 } from '../constants';
 import { executeShellCommand } from '../helpers/executeShellCommand';
 import { TachyonShellMethods } from './methods/shell';
+import { store } from './services/store.service';
 import { applyUiStateToStore } from './services/uiState.service';
+import { renderStrategyFuzzerModal } from './tabs/diagnostic/partials/renderStrategyFuzzerModal';
 import type { Tachyon } from './types';
 
 function getUi(): any {
@@ -94,13 +96,13 @@ const OUTBOUND_METHODS: OutboundMethodOption[] = [
   },
   {
     id: 'desync',
-    titleRu: 'Обход DPI (Core Desync / Zapret2 / ByeDPI)',
-    titleEn: 'DPI Bypass (Core Desync / Zapret2 / ByeDPI)',
+    titleRu: 'Десинхронизация пакетов (Core Desync / Zapret2 / ByeDPI)',
+    titleEn: 'Packet Desync (Core Desync / Zapret2 / ByeDPI)',
     descRu:
       'Модификация и фрагментация пакетов (Tachyon Core Desync, Zapret2 nfqws2, Zapret nfqws, ByeDPI ciadpi) без прокси-сервера',
     descEn:
-      'Packet fragmentation and DPI desync (Tachyon Core Desync, Zapret2, Zapret, ByeDPI) without external proxy',
-    badge: 'DPI BYPASS',
+      'Packet fragmentation and desynchronization (Tachyon Core Desync, Zapret2, Zapret, ByeDPI) without external proxy',
+    badge: 'DESYNC',
   },
   {
     id: 'warp',
@@ -952,8 +954,8 @@ export const WIZARD_QUICK_PRESETS: WizardQuickPreset[] = [
   },
   {
     id: 'ru_essential',
-    titleRu: 'РФ: Только обход блокировок + ИИ (Лёгкий)',
-    titleEn: 'Russia: Essential Bypass + AI (Lightweight)',
+    titleRu: 'РФ: Базовая маршрутизация + ИИ (Лёгкий)',
+    titleEn: 'Russia: Essential Routing + AI (Lightweight)',
     badgeRu: 'БАЗОВЫЙ',
     badgeEn: 'ESSENTIAL',
     descRu:
@@ -1397,7 +1399,25 @@ export function openConnectionWizardModal(
   let fptnSni = '';
   let fptnPreferredServer = '';
 
-  // Desync / DPI state
+  // Desync / Packet Optimization state
+  const initialDiagInfo = store.get().diagnosticsSystemInfo;
+  let wizardEnginesLoaded = Boolean(
+    initialDiagInfo?.providerInfoLoaded || initialDiagInfo?.loaded,
+  );
+  let wizardAvailableEngines = {
+    desync: wizardEnginesLoaded
+      ? Boolean(initialDiagInfo?.sing_box_tachyon_core)
+      : true,
+    zapret2: wizardEnginesLoaded
+      ? Boolean(initialDiagInfo?.zapret2_installed)
+      : true,
+    zapret: wizardEnginesLoaded
+      ? Boolean(initialDiagInfo?.zapret_installed)
+      : true,
+    byedpi: wizardEnginesLoaded
+      ? Boolean(initialDiagInfo?.byedpi_installed)
+      : true,
+  };
   let dpiEngineType: 'desync' | 'zapret2' | 'zapret' | 'byedpi' = 'desync';
   let desyncPresetKey = 'auto';
   let desyncMode = 'fake_disorder';
@@ -1410,6 +1430,35 @@ export function openConnectionWizardModal(
   let nfqwsOpt = ZAPRET_DEFAULT_NFQWS_OPT;
   let directNfqws = true;
   let byedpiCmdOpts = BYEDPI_DEFAULT_CMD_OPTS;
+
+  function syncDpiEngineSelection() {
+    if (
+      wizardEnginesLoaded &&
+      !wizardAvailableEngines.desync &&
+      selectedQuickPresetId === 'dpi_desync_no_vpn'
+    ) {
+      selectedQuickPresetId = 'ru_all_in_one';
+    }
+    const engineOrder: Array<'desync' | 'zapret2' | 'zapret' | 'byedpi'> = [
+      'desync',
+      'zapret2',
+      'zapret',
+      'byedpi',
+    ];
+    const hasAnyEngine = engineOrder.some((id) => wizardAvailableEngines[id]);
+    if (wizardEnginesLoaded && !hasAnyEngine && outboundMethod === 'desync') {
+      outboundMethod = 'subscription';
+      return;
+    }
+    if (!wizardAvailableEngines[dpiEngineType]) {
+      const firstAvailable = engineOrder.find(
+        (id) => wizardAvailableEngines[id],
+      );
+      if (firstAvailable) {
+        dpiEngineType = firstAvailable;
+      }
+    }
+  }
 
   // Custom protocol shared & specific state
   let customHost = '';
@@ -1599,6 +1648,7 @@ export function openConnectionWizardModal(
 
   let selectedQuickPresetId = WIZARD_QUICK_PRESETS[0].id;
   let quickInputText = '';
+  syncDpiEngineSelection();
 
   function applyQuickPresetToState(presetId: string) {
     const preset =
@@ -1750,9 +1800,15 @@ export function openConnectionWizardModal(
   }
 
   function renderStep1() {
+    const visiblePresets = WIZARD_QUICK_PRESETS.filter(
+      (p) =>
+        p.id !== 'dpi_desync_no_vpn' ||
+        !wizardEnginesLoaded ||
+        wizardAvailableEngines.desync,
+    );
     const activePreset =
-      WIZARD_QUICK_PRESETS.find((p) => p.id === selectedQuickPresetId) ||
-      WIZARD_QUICK_PRESETS[0];
+      visiblePresets.find((p) => p.id === selectedQuickPresetId) ||
+      visiblePresets[0];
     const detection = detectQuickConnectionInput(quickInputText);
     const hasQuickText = Boolean(quickInputText.trim());
 
@@ -1851,7 +1907,7 @@ export function openConnectionWizardModal(
       tr('Вставить из буфера', 'Paste from clipboard'),
     );
 
-    const presetCards = WIZARD_QUICK_PRESETS.map((preset) => {
+    const presetCards = visiblePresets.map((preset) => {
       const isSelected = preset.id === activePreset.id;
       const tags = tr('ru', 'en') === 'ru' ? preset.tagsRu : preset.tagsEn;
       return E(
@@ -2090,7 +2146,15 @@ export function openConnectionWizardModal(
   }
 
   function renderStep2Outbound() {
-    const methodCards = OUTBOUND_METHODS.map((m) =>
+    const hasAnyDesyncEngine =
+      !wizardEnginesLoaded ||
+      wizardAvailableEngines.desync ||
+      wizardAvailableEngines.zapret2 ||
+      wizardAvailableEngines.zapret ||
+      wizardAvailableEngines.byedpi;
+    const methodCards = OUTBOUND_METHODS.filter(
+      (m) => m.id !== 'desync' || hasAnyDesyncEngine,
+    ).map((m) =>
       E(
         'button',
         {
@@ -2453,7 +2517,7 @@ export function openConnectionWizardModal(
         ]),
       );
     } else if (outboundMethod === 'desync') {
-      const dpiEngines: Array<{
+      const allDpiEngines: Array<{
         id: 'desync' | 'zapret2' | 'zapret' | 'byedpi';
         label: string;
       }> = [
@@ -2486,13 +2550,19 @@ export function openConnectionWizardModal(
           ),
         },
       ];
+      const dpiEngines = allDpiEngines.filter(
+        (eng) => wizardAvailableEngines[eng.id],
+      );
 
       formFields.push(
         E('div', { class: 'tachyon-wizard__field' }, [
           E(
             'label',
             { class: 'tachyon-wizard__label' },
-            tr('Движок обхода DPI', 'DPI Bypass Engine'),
+            tr(
+              'Движок десинхронизации пакетов',
+              'Packet Desynchronization Engine',
+            ),
           ),
           E(
             'select',
@@ -2503,21 +2573,34 @@ export function openConnectionWizardModal(
                 rerender();
               },
             } as any,
-            dpiEngines.map((eng) =>
-              E(
-                'option',
-                {
-                  value: eng.id,
-                  selected: eng.id === dpiEngineType ? true : undefined,
-                },
-                eng.label,
-              ),
-            ),
+            dpiEngines.length > 0
+              ? dpiEngines.map((eng) =>
+                  E(
+                    'option',
+                    {
+                      value: eng.id,
+                      selected: eng.id === dpiEngineType ? true : undefined,
+                    },
+                    eng.label,
+                  ),
+                )
+              : [
+                  E(
+                    'option',
+                    { value: '', disabled: true, selected: true },
+                    tr(
+                      'Нет установленных совместимых движков',
+                      'No compatible engines installed',
+                    ),
+                  ),
+                ],
           ),
         ]),
       );
 
-      if (dpiEngineType === 'desync') {
+      if (dpiEngines.length === 0) {
+        // No compatible engines installed; skip engine-specific fields
+      } else if (dpiEngineType === 'desync') {
         const presetOptions = [
           {
             id: 'auto',
@@ -2956,6 +3039,44 @@ export function openConnectionWizardModal(
           ]),
         );
       }
+      if (dpiEngines.length > 0) {
+        formFields.push(
+          E('div', { class: 'tachyon-wizard__field' }, [
+            E(
+              'button',
+              {
+                type: 'button',
+                class: 'btn cbi-button cbi-button-action',
+                click: () => {
+                  renderStrategyFuzzerModal([], {
+                    initialEngine: dpiEngineType,
+                    availableEngines: wizardAvailableEngines,
+                    nestedModal: true,
+                    onApplyStrategy: (appliedEngine, args) => {
+                      if (appliedEngine === 'zapret2') {
+                        dpiEngineType = 'zapret2';
+                        nfqws2Opt = args;
+                      } else if (appliedEngine === 'zapret') {
+                        dpiEngineType = 'zapret';
+                        nfqwsOpt = args;
+                      } else if (appliedEngine === 'byedpi') {
+                        dpiEngineType = 'byedpi';
+                        byedpiCmdOpts = args;
+                      } else if (appliedEngine === 'desync') {
+                        dpiEngineType = 'desync';
+                        desyncPresetKey = 'custom';
+                        desyncPreset = args;
+                      }
+                      rerender();
+                    },
+                  });
+                },
+              },
+              tr('Подобрать стратегию сканером', 'Scan Strategies'),
+            ),
+          ]),
+        );
+      }
     } else if (outboundMethod === 'fptn') {
       formFields.push(
         E('div', { class: 'tachyon-wizard__field' }, [
@@ -2982,7 +3103,7 @@ export function openConnectionWizardModal(
             E(
               'label',
               { class: 'tachyon-wizard__label' },
-              tr('Метод обхода цензуры', 'Censorship Bypass Method'),
+              tr('Метод маскировки трафика', 'Traffic Masking Method'),
             ),
             E(
               'select',
@@ -6123,7 +6244,7 @@ export function openConnectionWizardModal(
                     selected: inboundRoutingMode === 'rules' ? true : undefined,
                   },
                   tr(
-                    'По правилам секций Tachyon (обход блокировок)',
+                    'По правилам секций Tachyon (маршрутизация)',
                     'Through Tachyon Routing Rules',
                   ),
                 ),
@@ -8063,8 +8184,8 @@ export function openConnectionWizardModal(
             { class: 'tachyon-wizard__caption' },
             direction === 'outbound'
               ? tr(
-                  'Быстрая настройка исходящего маршрута и обхода блокировок',
-                  'Quick setup for outbound routing & anti-censorship',
+                  'Быстрая настройка исходящего маршрута и оптимизации доставки трафика',
+                  'Quick setup for outbound routing & traffic optimization',
                 )
               : tr(
                   'Быстрое создание своего VPN / Прокси сервера на роутере',
@@ -8241,6 +8362,31 @@ export function openConnectionWizardModal(
 
   rerender();
   const dlg = uiObj.showModal('', [root], 'cbi-modal');
+  if (!wizardEnginesLoaded) {
+    TachyonShellMethods.getFuzzerStrategies()
+      .then((res) => {
+        const av =
+          res && res.success && 'data' in res
+            ? res.data?.available_engines
+            : undefined;
+        if (av && typeof av === 'object') {
+          wizardAvailableEngines = {
+            desync: Boolean(av.desync),
+            zapret2: Boolean(av.zapret2),
+            zapret: Boolean(av.zapret),
+            byedpi: Boolean(av.byedpi),
+          };
+          wizardEnginesLoaded = true;
+          syncDpiEngineSelection();
+          if (root.isConnected) {
+            rerender();
+          }
+        }
+      })
+      .catch(() => {
+        // Keep initial visibility when RPC is unavailable
+      });
+  }
   const modalEl =
     (dlg && typeof (dlg as any).classList?.add === 'function'
       ? (dlg as HTMLElement)

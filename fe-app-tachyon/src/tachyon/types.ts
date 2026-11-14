@@ -1471,7 +1471,7 @@ export namespace Tachyon {
 
   export type GetClashApiGroupLatency = Record<string, number>;
 
-  export type FuzzerEngine = 'zapret2' | 'zapret' | 'byedpi' | 'desync' | 'all';
+  export type FuzzerEngine = 'zapret2' | 'zapret' | 'byedpi' | 'desync';
   export type FuzzerTarget =
     | 'youtube_suite'
     | 'youtube'
@@ -1549,19 +1549,21 @@ export namespace Tachyon {
     verified?: boolean;
     error?: string;
     badge?: string;
+    passed_endpoints?: number;
+    total_endpoints?: number;
     sub_probes?: Array<{
       target_name: string;
-      url: string;
+      url?: string;
       http_code: number;
-      handshake_ms: number;
+      handshake_ms?: number;
       ttfb_ms: number;
-      speed_kbps: number;
+      speed_kbps?: number;
       data_verified?: boolean;
       data_bytes?: number;
       dpi_verdict?: string;
       required?: boolean;
       weight?: number;
-      score: number;
+      score?: number;
       success: boolean;
       error?: string;
     }>;

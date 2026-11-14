@@ -72,8 +72,7 @@ function get_byedpi_bin() {
 function get_desync_bin() {
     return resolve_binary([
         getenv("TACHYON_CORE_BIN"),
-        "/usr/bin/tachyon-core",
-        "/usr/bin/sing-box"
+        "/usr/bin/tachyon-core"
     ]);
 }
 
@@ -197,14 +196,24 @@ function get_fuzzer_curl_dns_flags() {
     return _fuzzer_curl_dns_flags;
 }
 
+function format_resolve_flags(host, ip, port) {
+    if (!ip || ip == "") return "";
+    let flags = sprintf("--resolve %s:443:%s --resolve %s:80:%s ", host, ip, host, ip);
+    if (port && port != "" && port != "443" && port != "80") {
+        flags += sprintf("--resolve %s:%s:%s ", host, port, ip);
+    }
+    return flags;
+}
+
 function get_resolved_host_flags(url) {
-    let m = match(url, /^https?:\/\/([^\/:]+)/);
+    let m = match(as_string(url || ""), /^https?:\/\/([^\/:]+)(:([0-9]+))?/i);
     if (!m || !m[1]) return "";
     let host = m[1];
+    let port = m[3] || "";
     if (match(host, /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) || index(host, ":") >= 0) return "";
     if (!fuzzer_runner.is_valid_hostname(host)) return "";
     if (exists(_fuzzer_host_cache, host))
-        return _fuzzer_host_cache[host];
+        return format_resolve_flags(host, _fuzzer_host_cache[host], port);
     _fuzzer_host_cache[host] = "";
 
     // Do not use redirector.googlevideo.com/report_mapping here: the address on
@@ -327,12 +336,26 @@ function get_resolved_host_flags(url) {
     }
 
     if (ip) {
-        let flags = sprintf("--resolve %s:443:%s --resolve %s:80:%s ", host, ip, host, ip);
-        _fuzzer_host_cache[host] = flags;
-        return flags;
+        _fuzzer_host_cache[host] = ip;
+        return format_resolve_flags(host, ip, port);
     }
     _fuzzer_host_cache[host] = "";
     return "";
+}
+
+function prewarm_targets_dns(urls_list) {
+    if (type(urls_list) != "array")
+        return;
+    let seen = {};
+    for (let item in urls_list) {
+        let u = as_string(item ? (item.url || "") : "");
+        let m = match(u, /^https?:\/\/([^\/:]+)(:([0-9]+))?/i);
+        if (!m || !m[1]) continue;
+        let k = m[1] + ":" + (m[3] || "");
+        if (seen[k]) continue;
+        seen[k] = true;
+        get_resolved_host_flags(u);
+    }
 }
 
 let _fuzzer_ip_cache = {};
@@ -464,21 +487,23 @@ let _probe_port_seeded = false;
 // probe pins curl to a random source-port window and reads the conntrack state
 // of those ports afterwards: SYN_SENT means no SYN-ACK, anything else means TCP
 // was up. The verbose log is kept as a secondary signal for full curl builds.
-function probe_curl_cmd(extra_flags, target_flags, url, err_file) {
+function probe_curl_cmd(extra_flags, target_flags, url, err_file, connect_timeout, max_time) {
     let math = require("math");
     if (!_probe_port_seeded) {
         math.srand(clock()[1] ^ int(fs.readlink("/proc/self") || 0));
         _probe_port_seeded = true;
     }
+    let cto = int(connect_timeout) > 0 ? int(connect_timeout) : 4;
+    let mto = int(max_time) > 0 ? int(max_time) : 6;
     let port_lo = 20000 + (math.rand() % 4000) * 10;
     let port_hi = port_lo + 7;
     let ef = shell_quote(err_file);
     return sprintf(
-        "curl -v --local-port %d-%d %s%s-so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}\\t%%{size_download}\\t%%{time_connect}' --connect-timeout 4 --max-time 6 %s 2>%s; _rc=$?; " +
+        "curl -v --local-port %d-%d %s%s-so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}\\t%%{size_download}\\t%%{time_connect}' --connect-timeout %d --max-time %d %s 2>%s; _rc=$?; " +
         "if grep -qE 'ALPN|Client hello|TLS handshake|SSL connection|Connected to|Established connection' %s 2>/dev/null; then _tcp=1; " +
         "elif [ -r /proc/net/nf_conntrack ]; then _tcp=$(awk -v a=%d -v b=%d '$3==\"tcp\"{sp=-1; for(i=7;i<=NF;i++) if($i ~ /^sport=/){sp=substr($i,7)+0; break} if(sp>=a && sp<=b){seen=1; if($6!=\"SYN_SENT\") up=1}} END{print up ? 1 : (seen ? 0 : 2)}' /proc/net/nf_conntrack 2>/dev/null); [ -n \"$_tcp\" ] || _tcp=2; " +
         "else _tcp=2; fi; rm -f %s; printf '\\t%%d\\t%%d\\n' $_tcp $_rc",
-        port_lo, port_hi, extra_flags || "", target_flags || "", shell_quote(url), ef, ef, port_lo, port_hi, ef
+        port_lo, port_hi, extra_flags || "", target_flags || "", cto, mto, shell_quote(url), ef, ef, port_lo, port_hi, ef
     );
 }
 
@@ -836,15 +861,16 @@ const TARGET_URLS = {
 
 function resolve_target_url(target_key, custom_url) {
     target_key = trim(as_string(target_key || ""));
+    let custom_parts = split(as_string(custom_url || ""), /[\r\n,;\t ]+/);
     if (index(target_key, ",") >= 0) {
         for (let part in split(target_key, ",")) {
             let k = trim(as_string(part));
             if (k == "") continue;
             if (k == "custom" && custom_url && custom_url != "") {
-                for (let u in split(custom_url, /[,\n]+/)) {
-                    let trimmed = trim(as_string(u));
-                    if (trimmed != "")
-                        return trimmed;
+                for (let u in custom_parts) {
+                    let norm = fuzzer_runner.normalize_target_url(u);
+                    if (norm != "")
+                        return norm;
                 }
             }
             if (TARGET_URLS[k])
@@ -852,35 +878,38 @@ function resolve_target_url(target_key, custom_url) {
         }
     }
     if (custom_url && custom_url != "") {
-        let urls = split(custom_url, /[,\n]+/);
-        for (let u in urls) {
-            let trimmed = trim(as_string(u));
-            if (trimmed != "")
-                return trimmed;
+        for (let u in custom_parts) {
+            let norm = fuzzer_runner.normalize_target_url(u);
+            if (norm != "")
+                return norm;
         }
     }
     return TARGET_URLS[target_key] || TARGET_URLS.youtube;
 }
 
 function build_custom_targets_list(custom_url) {
-    let urls = split(as_string(custom_url || ""), /[,\n]+/);
+    let urls = split(as_string(custom_url || ""), /[\r\n,;\t ]+/);
     let result = [];
+    let seen = {};
     let idx = 0;
     for (let u in urls) {
-        let trimmed = trim(as_string(u));
-        if (trimmed == "") continue;
+        let norm = fuzzer_runner.normalize_target_url(u);
+        if (norm == "" || seen[norm]) continue;
+        seen[norm] = true;
         idx++;
-        let is_udp_url = index(trimmed, "udp://") == 0;
+        let is_udp_url = index(norm, "udp://") == 0;
+        let hm = match(norm, /^(https?|udp):\/\/([^\/]+)/i);
+        let disp = (hm && hm[2]) ? hm[2] : sprintf("Custom Target %d", idx);
         push(result, {
-            name: sprintf("Custom Target %d", idx),
-            url: trimmed,
+            name: disp,
+            url: norm,
             weight: 100,
             required: true,
             probe_kind: is_udp_url ? "udp_stun" : "tls_http"
         });
     }
     if (length(result) > 0) return result;
-    return [ { name: "Custom Target", url: custom_url, weight: 100, required: true, probe_kind: "tls_http" } ];
+    return [ { name: "Custom Target", url: fuzzer_runner.normalize_target_url(custom_url) || as_string(custom_url || ""), weight: 100, required: true, probe_kind: "tls_http" } ];
 }
 
 function resolve_single_target_urls(key, custom_url) {
@@ -943,6 +972,7 @@ function module_exports() {
         is_valid_public_ip,
         get_fuzzer_curl_dns_flags,
         get_resolved_host_flags,
+        prewarm_targets_dns,
         resolve_host_ipv4,
         parse_udp_target_url,
         probe_udp_stun_cmd,

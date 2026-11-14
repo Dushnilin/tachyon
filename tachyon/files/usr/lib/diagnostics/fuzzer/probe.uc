@@ -187,7 +187,7 @@ function parse_curl_output(output, result) {
         return result;
     }
 
-    // Check for 16KB DPI Throttling (TSPU stream drop / connection reset after 10-28KB)
+    // Check for 16KB DPI Throttling (transit middlebox stream drop / connection reset after 10-28KB)
     if (exit_code != 0 && size_download >= 10240 && size_download <= 28672) {
         result.success = false;
         result.score = 0;
@@ -315,6 +315,8 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
         nfqueue_packets: -1,
         nfqueue_tcp_packets: 0,
         nfqueue_udp_packets: 0,
+        passed_endpoints: 0,
+        total_endpoints: total_urls,
         sub_probes: []
     };
     
@@ -327,7 +329,8 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
             break;
         }
     }
-    let is_udp = index(args_str, "--filter-udp") >= 0 || index(args_str, "--dpi-desync-any-protocol") >= 0 || target_key == "quic_http3" || target_key == "gaming_udp_suite";
+    let target_tokens = split(as_string(target_key || ""), ",");
+    let is_udp = index(args_str, "--filter-udp") >= 0 || index(args_str, "--dpi-desync-any-protocol") >= 0 || ("quic_http3" in target_tokens) || ("gaming_udp_suite" in target_tokens) || has_udp_target;
     
     let tok_res = fuzzer_runner.tokenize_strategy_args(args_str);
     if (!tok_res.valid) {
@@ -443,11 +446,9 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
             return result;
         }
         
-        // Ensure direct outbound connections bypass Sing-Box TProxy
-        system("nft add table inet tachyon_fuzzer 2>/dev/null");
-        system("nft 'add chain inet tachyon_fuzzer bypass_singbox { type route hook output priority -155 ; policy accept; }' 2>/dev/null");
-        exec.command_status_from_args([ "nft", "add rule inet tachyon_fuzzer bypass_singbox meta mark 0 meta l4proto tcp tcp dport { 80, 443, 2053, 2083, 2087, 2096, 8443 } meta mark set " + binaries.FUZZER_OUTBOUND_MARK + " counter" ]);
-        exec.command_status_from_args([ "nft", "add rule inet tachyon_fuzzer bypass_singbox meta mark 0 meta l4proto udp udp dport { 80, 443, 3478-3481, 5000-5020, 19294-19344, 27015-27050, 50000-65535 } meta mark set " + binaries.FUZZER_OUTBOUND_MARK + " counter" ]);
+        // Ensure direct outbound connections bypass proxy TProxy (scoped to probe target IPs)
+        exec.command_status_from_args([ "nft", "add table inet tachyon_fuzzer" ]);
+        binaries.add_bypass_singbox_chain(binaries.target_scope_match(binaries.probe_target_ips(urls_list)), has_udp_target);
         
         let passed_count = 0;
         let max_speed = 0;
@@ -484,9 +485,13 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
                         error: "UDP game/voice probing is not supported by ByeDPI (TCP-only engine)"
                     };
                     push(result.sub_probes, single_res);
-                    required_failed = true;
-                    result.error = single_res.error;
-                    break;
+                    if (!required_failed) {
+                        required_failed = true;
+                        result.error = single_res.error;
+                    }
+                    if (passed_count == 0 || total_urls > 6)
+                        break;
+                    continue;
                 }
                 let udp_cmd = binaries.wrap_probe_cmd(
                     binaries.probe_udp_stun_cmd("127.0.0.1", target_item._local_udp_port || (listen_port + 1), STATE_DIR + "/fuzzer_udp_res.bin"),
@@ -513,10 +518,13 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
                 } else {
                     let labeled_error = single_res.error ? sprintf("[%s] %s", target_item.name, single_res.error) : "";
                     if (is_req) {
-                        if (labeled_error != "") result.error = labeled_error;
-                        last_dpi_verdict = single_res.dpi_verdict || "failed";
-                        required_failed = true;
-                        break;
+                        if (!required_failed) {
+                            if (labeled_error != "") result.error = labeled_error;
+                            last_dpi_verdict = single_res.dpi_verdict || "failed";
+                            required_failed = true;
+                        }
+                        if (passed_count == 0 || total_urls > 6)
+                            break;
                     }
                     if (labeled_error != "" && result.error == "") result.error = labeled_error;
                 }
@@ -542,8 +550,13 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
                         error: "HTTP/3 (QUIC) not supported by router curl binary"
                     };
                     push(result.sub_probes, single_res);
-                    if (is_req) { required_failed = true; result.error = single_res.error; }
-                    break;
+                    if (is_req && !required_failed) {
+                        required_failed = true;
+                        result.error = single_res.error;
+                    }
+                    if (passed_count == 0 || total_urls > 6)
+                        break;
+                    continue;
                 }
                 extra_flags = "--http3-only ";
             } else if (p_kind == "streaming") {
@@ -552,17 +565,22 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
 
             let target_flags = binaries.get_resolved_host_flags(target_item.url);
             let proxy_scheme = target_flags != "" ? "socks5" : "socks5h";
+            let cto = total_urls >= 3 ? 3 : 4;
+            let mto = total_urls >= 3 ? 4 : 6;
+            let watchdog_sec = total_urls >= 3 ? 6 : 8;
 
             let curl_cmd = binaries.wrap_probe_cmd(
                 sprintf(
-                    "curl %s%s-x %s://127.0.0.1:%d -so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}\\t%%{size_download}' --connect-timeout 4 --max-time 6 %s 2>/dev/null; printf '\\t%%d\\n' $?",
+                    "curl %s%s-x %s://127.0.0.1:%d -so /dev/null -w '%%{http_code}\\t%%{time_appconnect}\\t%%{time_starttransfer}\\t%%{speed_download}\\t%%{size_download}' --connect-timeout %d --max-time %d %s 2>/dev/null; printf '\\t%%d\\n' $?",
                     extra_flags,
                     target_flags,
                     proxy_scheme,
                     listen_port,
+                    cto,
+                    mto,
                     shell_quote(target_item.url)
                 ),
-                8,
+                watchdog_sec,
                 probe_pid_path
             );
             let pipe = fs.popen(curl_cmd, "r");
@@ -589,15 +607,19 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
                 if (last_http == 0) last_http = single_res.http_code;
                 let labeled_error = single_res.error ? sprintf("[%s] %s", target_item.name, single_res.error) : "";
                 if (is_req) {
-                    if (labeled_error != "") result.error = labeled_error;
-                    last_dpi_verdict = single_res.dpi_verdict || "failed";
-                    required_failed = true;
-                    break;
+                    if (!required_failed) {
+                        if (labeled_error != "") result.error = labeled_error;
+                        last_dpi_verdict = single_res.dpi_verdict || "failed";
+                        required_failed = true;
+                    }
+                    if (passed_count == 0 || total_urls > 6)
+                        break;
                 }
                 if (labeled_error != "" && result.error == "") result.error = labeled_error;
             }
         }
         
+        result.passed_endpoints = passed_count;
         let daemon_alive_at_end = is_pid_alive(daemon_pid);
         cleanup_temp_daemons(job_id);
 
@@ -794,10 +816,13 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
                 } else {
                     let labeled_error = single_res.error ? sprintf("[%s] %s", target_item.name, single_res.error) : "";
                     if (is_req) {
-                        if (labeled_error != "") result.error = labeled_error;
-                        last_dpi_verdict = single_res.dpi_verdict || "failed";
-                        required_failed = true;
-                        break;
+                        if (!required_failed) {
+                            if (labeled_error != "") result.error = labeled_error;
+                            last_dpi_verdict = single_res.dpi_verdict || "failed";
+                            required_failed = true;
+                        }
+                        if (passed_count == 0 || total_urls > 6)
+                            break;
                     }
                     if (labeled_error != "" && result.error == "") result.error = labeled_error;
                 }
@@ -823,8 +848,13 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
                         error: "HTTP/3 (QUIC) not supported by router curl binary"
                     };
                     push(result.sub_probes, single_res);
-                    if (is_req) { required_failed = true; result.error = single_res.error; }
-                    break;
+                    if (is_req && !required_failed) {
+                        required_failed = true;
+                        result.error = single_res.error;
+                    }
+                    if (passed_count == 0 || total_urls > 6)
+                        break;
+                    continue;
                 }
                 extra_flags = "--http3-only ";
             } else if (p_kind == "streaming") {
@@ -835,10 +865,13 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
 
             let target_flags = binaries.get_resolved_host_flags(target_item.url);
             if (target_flags == "") target_flags = dns_flags;
+            let cto = total_urls >= 3 ? 3 : 4;
+            let mto = total_urls >= 3 ? 4 : 6;
+            let watchdog_sec = total_urls >= 3 ? 6 : 8;
 
             let curl_cmd = binaries.wrap_probe_cmd(
-                binaries.probe_curl_cmd(extra_flags, target_flags, target_item.url, STATE_DIR + "/fuzzer_curl_err.log"),
-                8,
+                binaries.probe_curl_cmd(extra_flags, target_flags, target_item.url, STATE_DIR + "/fuzzer_curl_err.log", cto, mto),
+                watchdog_sec,
                 probe_pid_path
             );
             let pipe = fs.popen(curl_cmd, "r");
@@ -868,15 +901,19 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
                 if (is_req) {
                     // The required failure is what vetoes the strategy, so report it
                     // even when an optional target failed earlier.
-                    if (labeled_error != "") result.error = labeled_error;
-                    last_dpi_verdict = single_res.dpi_verdict || "failed";
-                    required_failed = true;
-                    break;
+                    if (!required_failed) {
+                        if (labeled_error != "") result.error = labeled_error;
+                        last_dpi_verdict = single_res.dpi_verdict || "failed";
+                        required_failed = true;
+                    }
+                    if (passed_count == 0 || total_urls > 6)
+                        break;
                 }
                 if (labeled_error != "" && result.error == "") result.error = labeled_error;
             }
         }
 
+        result.passed_endpoints = passed_count;
         let nfq_stats = binaries.read_nfqueue_stats(qnum);
         result.nfqueue_packets = nfq_stats ? nfq_stats.packets : -1;
 

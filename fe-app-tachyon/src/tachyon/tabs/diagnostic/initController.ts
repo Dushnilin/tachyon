@@ -1002,17 +1002,111 @@ function handleOpenLeakCheck() {
   renderLeakCheckModal();
 }
 
+const FUZZER_DPI_ENGINES: Tachyon.FuzzerEngine[] = [
+  'zapret2',
+  'zapret',
+  'byedpi',
+  'desync',
+];
+
+function getInstalledFuzzerEngines(): {
+  loaded: boolean;
+  engines: Record<Tachyon.FuzzerEngine, boolean>;
+} {
+  const sysInfo = store.get().diagnosticsSystemInfo;
+  const loaded = Boolean(sysInfo.providerInfoLoaded || sysInfo.loaded);
+  return {
+    loaded,
+    engines: {
+      zapret2: Boolean(sysInfo.zapret2_installed),
+      zapret: Boolean(sysInfo.zapret_installed),
+      byedpi: Boolean(sysInfo.byedpi_installed),
+      desync: Boolean(sysInfo.sing_box_tachyon_core),
+    },
+  };
+}
+
+function collectDomainsFromField(val: unknown, out: Set<string>): void {
+  const items = Array.isArray(val)
+    ? val
+    : typeof val === 'string'
+      ? val.split(/[\r\n,;\t ]+/)
+      : [];
+  for (const raw of items) {
+    const cleaned = String(raw || '')
+      .trim()
+      .replace(/^\*\./, '')
+      .replace(/^\.+/, '');
+    if (cleaned && cleaned.includes('.') && !cleaned.startsWith('!')) {
+      out.add(cleaned);
+    }
+  }
+}
+
+function extractSectionDomainsForFuzzer(
+  sec: Tachyon.ConfigSection,
+  sectionByName: Map<string, Tachyon.ConfigSection>,
+): string[] {
+  const out = new Set<string>();
+  const raw = sec as unknown as Record<string, unknown>;
+  for (const key of [
+    'domains',
+    'domain_suffix',
+    'domain_suffix_text',
+    'user_domains',
+    'user_domains_text',
+  ]) {
+    collectDomainsFromField(raw[key], out);
+  }
+  const condRefs = Array.isArray(sec.condition_refs)
+    ? sec.condition_refs
+    : sec.condition_refs
+      ? [sec.condition_refs]
+      : [];
+  for (const ref of condRefs) {
+    const cond = sectionByName.get(String(ref || '').trim());
+    if (!cond) continue;
+    const condRaw = cond as unknown as Record<string, unknown>;
+    for (const key of [
+      'domains',
+      'domain_suffix',
+      'domain_suffix_text',
+      'user_domains',
+      'user_domains_text',
+    ]) {
+      collectDomainsFromField(condRaw[key], out);
+    }
+  }
+  return Array.from(out);
+}
+
 function handleOpenStrategyFuzzer() {
+  const installedInfo = getInstalledFuzzerEngines();
+  const modalOptsBase = installedInfo.loaded
+    ? { availableEngines: installedInfo.engines }
+    : {};
+
   getConfigSections()
     .then((sections) => {
-      const dpiTypes = ['zapret2', 'zapret', 'byedpi', 'desync'];
+      const sectionByName = new Map<string, Tachyon.ConfigSection>();
+      sections.forEach((s) => {
+        if (s['.name']) sectionByName.set(s['.name'], s);
+      });
+
+      const dpiSourceEngineMap = new Map<string, Tachyon.FuzzerEngine>();
       const dpiSources = sections
         .filter((s) => {
           const st = String(s.source_type || '').toLowerCase();
-          return s['.type'] === 'outbound_source' && dpiTypes.includes(st);
+          return (
+            s['.type'] === 'outbound_source' &&
+            FUZZER_DPI_ENGINES.includes(st as Tachyon.FuzzerEngine)
+          );
         })
         .map((s) => {
-          const st = String(s.source_type || '').toLowerCase();
+          const st = String(
+            s.source_type || '',
+          ).toLowerCase() as Tachyon.FuzzerEngine;
+          if (s['.name']) dpiSourceEngineMap.set(s['.name'], st);
           const label =
             (typeof s.label === 'string' && s.label.trim()) ||
             (typeof s.name === 'string' && s.name.trim()) ||
@@ -1023,23 +1117,67 @@ function handleOpenStrategyFuzzer() {
             action: st,
           };
         })
-        .filter((r) => Boolean(r.id));
+        .filter(
+          (r) =>
+            Boolean(r.id) &&
+            (!installedInfo.loaded || installedInfo.engines[r.action]),
+        );
 
       const ruleSections = sections
         .filter((s) => s['.type'] === 'section' || s['.type'] === 'rule')
-        .map((s) => ({
-          id: s['.name'],
-          label:
-            (typeof s.label === 'string' && s.label.trim()) ||
-            (typeof s.name === 'string' && s.name.trim()) ||
-            s['.name'],
-          action: s.action || '',
-        }))
-        .filter((r) => Boolean(r.id));
-      renderStrategyFuzzerModal([...dpiSources, ...ruleSections]);
+        .map((s) => {
+          const sid = s['.name'];
+          const raw = s as unknown as Record<string, unknown>;
+          const isGlobal =
+            sid === 'global' ||
+            sid === 'default' ||
+            String(raw.match_all || '') === '1' ||
+            raw.match_all === true ||
+            String(raw.is_global || '') === '1';
+          if (!sid || isGlobal) return null;
+
+          const rawAction = String(s.action || '').toLowerCase();
+          let resolvedEngine: Tachyon.FuzzerEngine | null = null;
+          if (FUZZER_DPI_ENGINES.includes(rawAction as Tachyon.FuzzerEngine)) {
+            resolvedEngine = rawAction as Tachyon.FuzzerEngine;
+          } else if (rawAction === 'connection') {
+            const refs = Array.isArray(s.outbound_source_refs)
+              ? s.outbound_source_refs
+              : s.outbound_source_refs
+                ? [s.outbound_source_refs]
+                : [];
+            for (const ref of refs) {
+              const linkedEng = dpiSourceEngineMap.get(
+                String(ref || '').trim(),
+              );
+              if (linkedEng) {
+                resolvedEngine = linkedEng;
+                break;
+              }
+            }
+          }
+          if (!resolvedEngine) return null;
+
+          const domains = extractSectionDomainsForFuzzer(s, sectionByName);
+          return {
+            id: sid,
+            label:
+              (typeof s.label === 'string' && s.label.trim()) ||
+              (typeof s.name === 'string' && s.name.trim()) ||
+              sid,
+            action: resolvedEngine,
+            ...(domains.length > 0 ? { domains } : {}),
+          };
+        })
+        .filter((r): r is NonNullable<typeof r> => r !== null);
+
+      renderStrategyFuzzerModal(
+        [...dpiSources, ...ruleSections],
+        modalOptsBase,
+      );
     })
     .catch(() => {
-      renderStrategyFuzzerModal([]);
+      renderStrategyFuzzerModal([], modalOptsBase);
     });
 }
 
@@ -1368,7 +1506,13 @@ function renderDiagnosticAvailableActionsWidget() {
     },
     strategyFuzzer: {
       loading: false,
-      visible: true,
+      visible: (() => {
+        const fuzzerEngines = getInstalledFuzzerEngines();
+        return (
+          !fuzzerEngines.loaded ||
+          Object.values(fuzzerEngines.engines).some(Boolean)
+        );
+      })(),
       onClick: handleOpenStrategyFuzzer,
       disabled: false,
     },
@@ -1709,7 +1853,8 @@ async function onStoreUpdate(
   if (
     diff.diagnosticsActions ||
     diff.servicesInfoWidget ||
-    diff.updatesActions
+    diff.updatesActions ||
+    diff.diagnosticsSystemInfo
   ) {
     renderDiagnosticAvailableActionsWidget();
   }

@@ -12690,6 +12690,280 @@ function createSectionContent(section) {
     return value ? true : _("Select a section");
   };
 
+  let sectionScannerEnginesPromise = null;
+  function resolveSectionScannerEngines() {
+    return ensureActionProvidersAvailabilityLoaded().then((av) => {
+      const sysInfo =
+        main.store && typeof main.store.get === "function"
+          ? main.store.get().diagnosticsSystemInfo
+          : null;
+      const base = {
+        zapret2: Boolean(av?.zapret2Installed || sysInfo?.zapret2_installed),
+        zapret: Boolean(av?.zapretInstalled || sysInfo?.zapret_installed),
+        byedpi: Boolean(av?.byedpiInstalled || sysInfo?.byedpi_installed),
+        desync: Boolean(
+          av?.singBoxTachyonCore || sysInfo?.sing_box_tachyon_core,
+        ),
+      };
+      if (sysInfo?.providerInfoLoaded || sysInfo?.loaded || base.desync) {
+        return base;
+      }
+      if (
+        !sectionScannerEnginesPromise &&
+        main.TachyonShellMethods &&
+        typeof main.TachyonShellMethods.getFuzzerStrategies === "function"
+      ) {
+        sectionScannerEnginesPromise =
+          main.TachyonShellMethods.getFuzzerStrategies()
+            .then((res) =>
+              res && res.success ? res.data?.available_engines : null,
+            )
+            .catch(() => null);
+      }
+      if (!sectionScannerEnginesPromise) {
+        return base;
+      }
+      return sectionScannerEnginesPromise.then((srv) => {
+        if (!srv) return base;
+        return {
+          zapret2: base.zapret2 || Boolean(srv.zapret2),
+          zapret: base.zapret || Boolean(srv.zapret),
+          byedpi: base.byedpi || Boolean(srv.byedpi),
+          desync: base.desync || Boolean(srv.desync),
+        };
+      });
+    });
+  }
+
+  function pushCleanDomainsFromRaw(rawVal, outSet) {
+    const tokens = Array.isArray(rawVal)
+      ? rawVal
+      : typeof rawVal === "string"
+        ? rawVal.split(/[\r\n,;\t ]+/)
+        : [];
+    for (const tok of tokens) {
+      const line = String(tok || "").trim();
+      if (!line || line.startsWith("#") || line.startsWith("!")) continue;
+      const clean = line.replace(/^\*\./, "").replace(/^\.+/, "");
+      if (clean && clean.includes(".")) {
+        outSet.add(clean);
+      }
+    }
+  }
+
+  function collectModalSectionDomains(section_id) {
+    const outSet = new Set();
+    const domainKeys = [
+      "domain_suffix_text",
+      "user_domains_text",
+      "domain_suffix",
+      "user_domains",
+      "domains",
+    ];
+    const modalRoot =
+      typeof document !== "undefined"
+        ? document.querySelector(".cbi-modal") || document
+        : null;
+
+    if (modalRoot) {
+      for (const key of domainKeys) {
+        const fieldId = `cbid.${UCI_PACKAGE}.${section_id}.${key}`;
+        const el =
+          modalRoot.querySelector(`[id="widget.${fieldId}"]`) ||
+          modalRoot.querySelector(
+            `textarea[id="${fieldId}"], input[id="${fieldId}"]`,
+          );
+        if (el && typeof el.value === "string") {
+          pushCleanDomainsFromRaw(el.value, outSet);
+        }
+        const multiInputs = modalRoot.querySelectorAll(
+          `[data-field="${fieldId}"] input[type="text"], [data-field="${fieldId}"] textarea`,
+        );
+        multiInputs.forEach((inp) => {
+          if (inp && typeof inp.value === "string") {
+            pushCleanDomainsFromRaw(inp.value, outSet);
+          }
+        });
+      }
+    }
+
+    for (const key of domainKeys) {
+      pushCleanDomainsFromRaw(uci.get(UCI_PACKAGE, section_id, key), outSet);
+    }
+
+    const condRefs = uci.get(UCI_PACKAGE, section_id, "condition_refs");
+    const condList = Array.isArray(condRefs)
+      ? condRefs
+      : condRefs
+        ? [String(condRefs)]
+        : [];
+    for (const condId of condList) {
+      for (const key of domainKeys) {
+        pushCleanDomainsFromRaw(
+          uci.get(UCI_PACKAGE, String(condId).trim(), key),
+          outSet,
+        );
+      }
+    }
+    return Array.from(outSet);
+  }
+
+  function applyStrategyToSectionModalField(
+    option,
+    node,
+    section_id,
+    engineKey,
+    optName,
+    args,
+  ) {
+    const fieldId = `cbid.${UCI_PACKAGE}.${section_id}.${optName}`;
+    const modalRoot =
+      typeof document !== "undefined"
+        ? document.querySelector(".cbi-modal") || document.body
+        : null;
+    const fieldEl =
+      (node && (node.nodeName === "INPUT" || node.nodeName === "TEXTAREA")
+        ? node
+        : node && typeof node.querySelector === "function"
+          ? node.querySelector("textarea, input")
+          : null) ||
+      (modalRoot
+        ? modalRoot.querySelector(`[id="widget.${fieldId}"]`) ||
+          modalRoot.querySelector(
+            `textarea[id="${fieldId}"], input[id="${fieldId}"]`,
+          )
+        : null);
+
+    let uiEl = null;
+    if (
+      typeof dom !== "undefined" &&
+      typeof dom.findClassInstance === "function"
+    ) {
+      uiEl =
+        (node && dom.findClassInstance(node)) ||
+        (fieldEl && dom.findClassInstance(fieldEl)) ||
+        null;
+    }
+    if (!uiEl && typeof option.getUIElement === "function") {
+      try {
+        uiEl = option.getUIElement(section_id);
+      } catch (_e) {}
+    }
+
+    if (uiEl && typeof uiEl.setValue === "function") {
+      uiEl.setValue(args);
+    }
+    if (fieldEl && "value" in fieldEl) {
+      fieldEl.value = args;
+      fieldEl.dispatchEvent(new Event("input", { bubbles: true }));
+      fieldEl.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    uci.set(UCI_PACKAGE, section_id, optName, args);
+
+    if (engineKey === "desync") {
+      uci.set(UCI_PACKAGE, section_id, "desync_preset", "custom");
+      if (modalRoot) {
+        const presetId = `cbid.${UCI_PACKAGE}.${section_id}.desync_preset`;
+        const presetSelect =
+          modalRoot.querySelector(`[id="widget.${presetId}"]`) ||
+          modalRoot.querySelector(`select[id="${presetId}"]`) ||
+          modalRoot.querySelector(`[data-field="${presetId}"] select`);
+        if (presetSelect) {
+          let presetUi = null;
+          if (
+            typeof dom !== "undefined" &&
+            typeof dom.findClassInstance === "function"
+          ) {
+            presetUi = dom.findClassInstance(presetSelect);
+          }
+          if (presetUi && typeof presetUi.setValue === "function") {
+            presetUi.setValue("custom");
+          }
+          if ("value" in presetSelect) {
+            presetSelect.value = "custom";
+            presetSelect.dispatchEvent(new Event("change", { bubbles: true }));
+          }
+        }
+      }
+    }
+  }
+
+  function attachSectionStrategyScannerButton(option, engineKey, optName) {
+    const origRender = option.renderWidget;
+    option.renderWidget = function (section_id, option_index, cfgvalue) {
+      const node = origRender.call(this, section_id, option_index, cfgvalue);
+      const isGlobalSec =
+        section_id === "global" ||
+        section_id === "default" ||
+        uci.get(UCI_PACKAGE, section_id, "match_all") === "1" ||
+        uci.get(UCI_PACKAGE, section_id, "is_global") === "1";
+
+      if (
+        !node ||
+        isGlobalSec ||
+        typeof main.renderStrategyFuzzerModal !== "function"
+      ) {
+        return node;
+      }
+
+      const scanBtn = E(
+        "button",
+        {
+          type: "button",
+          class: "btn cbi-button cbi-button-action",
+          style:
+            "margin-top: 6px; display: none; align-items: center; gap: 6px;",
+        },
+        _("Scan Strategies"),
+      );
+
+      scanBtn.addEventListener("click", () => {
+        resolveSectionScannerEngines().then((availableEngines) => {
+          if (!availableEngines[engineKey]) return;
+          const initialCustomDomains = collectModalSectionDomains(section_id);
+          main.renderStrategyFuzzerModal([], {
+            initialEngine: engineKey,
+            initialRuleSection: section_id,
+            ...(initialCustomDomains.length > 0
+              ? { initialCustomDomains }
+              : {}),
+            availableEngines,
+            nestedModal: true,
+            onApplyStrategy: (_eng, args) => {
+              applyStrategyToSectionModalField(
+                this,
+                node,
+                section_id,
+                engineKey,
+                optName,
+                args,
+              );
+            },
+          });
+        });
+      });
+
+      resolveSectionScannerEngines()
+        .then((availableEngines) => {
+          if (availableEngines[engineKey]) {
+            scanBtn.style.display = "inline-flex";
+          }
+        })
+        .catch(() => {});
+
+      const btnWrap = E("div", { style: "margin-top: 4px;" }, [scanBtn]);
+      if (
+        node.nodeName === "INPUT" ||
+        node.nodeName === "TEXTAREA" ||
+        typeof node.appendChild !== "function"
+      ) {
+        return E("div", {}, [node, btnWrap]);
+      }
+      node.appendChild(btnWrap);
+      return node;
+    };
+  }
+
   function findLinkedProviderSourceId(section_id, targetSourceType) {
     const refs = uci.get(UCI_PACKAGE, section_id, "outbound_source_refs");
     const refList = Array.isArray(refs) ? refs : refs ? [String(refs)] : [];
@@ -12755,6 +13029,7 @@ function createSectionContent(section) {
     const analysis = analyzeNfqwsStrategy(value);
     return analysis.valid ? true : analysis.message;
   };
+  attachSectionStrategyScannerButton(o, "zapret", "nfqws_opt");
 
   o = section.taboption(
     "settings",
@@ -12796,6 +13071,7 @@ function createSectionContent(section) {
     const analysis = analyzeNfqws2Strategy(value);
     return analysis.valid ? true : analysis.message;
   };
+  attachSectionStrategyScannerButton(o, "zapret2", "nfqws2_opt");
 
   o = section.taboption(
     "settings",
@@ -12849,6 +13125,7 @@ function createSectionContent(section) {
     return analysis.valid ? true : analysis.message;
   };
   configureTextareaOption(o, analyzeByedpiStrategy);
+  attachSectionStrategyScannerButton(o, "byedpi", "byedpi_cmd_opts");
 
   // ─── WDTT Fields ──────────────────────────────────────────────────────
 
@@ -15264,7 +15541,9 @@ function createSectionContent(section) {
     form.ListValue,
     "desync_preset",
     _("Desync Preset"),
-    _("Pre-configured DPI bypass profile for tachyon-core native desync"),
+    _(
+      "Pre-configured packet desynchronization profile for tachyon-core native desync",
+    ),
   );
   o.modalonly = true;
   o.rmempty = false;
@@ -15655,6 +15934,7 @@ function createSectionContent(section) {
   o.modalonly = true;
   o.rmempty = true;
   o.depends("action", "desync");
+  attachSectionStrategyScannerButton(o, "desync", "desync_opts");
 
   // ── ShadowTLS (tachyon-core) ──────────────────────────────────────────────
 

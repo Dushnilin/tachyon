@@ -15,6 +15,22 @@ let probe = require("diagnostics.fuzzer.probe");
 let as_string = common.as_string;
 let shell_quote = common.shell_quote;
 
+function filter_installed_engines(recs) {
+    let installed = [];
+    if (binaries.get_zapret2_bin() != null) push(installed, "zapret2");
+    if (binaries.get_zapret_bin() != null) push(installed, "zapret");
+    if (binaries.get_byedpi_bin() != null) push(installed, "byedpi");
+    if (binaries.get_desync_bin() != null) push(installed, "desync");
+    if (length(installed) == 0)
+        return recs;
+    let out = [];
+    for (let e in (recs || [])) {
+        if (index(installed, e) >= 0)
+            push(out, e);
+    }
+    return length(out) > 0 ? out : installed;
+}
+
 function probe_single_target_dpi(target_item, dns_flags) {
     let target_url = target_item.url;
     let p_kind = target_item.probe_kind || "tls_http";
@@ -68,15 +84,17 @@ function probe_single_target_dpi(target_item, dns_flags) {
     let dm = match(domain, /^[a-z]+:\/\/([^/:]+)/);
     if (dm && dm[1]) domain = dm[1];
 
-    let dns_cmd = binaries.wrap_probe_cmd(sprintf("nslookup %s 77.88.8.8 2>&1 || nslookup %s 2>&1", shell_quote(domain), shell_quote(domain)), 4);
-    let dns_pipe = fs.popen(dns_cmd, "r");
-    let dns_out = dns_pipe ? dns_pipe.read("all") : "";
-    if (dns_pipe) dns_pipe.close();
-
     let dns_blocked = false;
-    if (index(dns_out, "NXDOMAIN") >= 0 || index(dns_out, "can't resolve") >= 0 || index(dns_out, "** server can't find") >= 0 ||
-        match(dns_out, /Address:[ \t]+(127\.|0\.0\.0\.0|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)/)) {
-        dns_blocked = true;
+    if (!is_udp_stun && target_flags == "" && http_code == 0) {
+        let dns_cmd = binaries.wrap_probe_cmd(sprintf("nslookup %s 77.88.8.8 2>&1 || nslookup %s 2>&1", shell_quote(domain), shell_quote(domain)), 4);
+        let dns_pipe = fs.popen(dns_cmd, "r");
+        let dns_out = dns_pipe ? dns_pipe.read("all") : "";
+        if (dns_pipe) dns_pipe.close();
+
+        if (index(dns_out, "NXDOMAIN") >= 0 || index(dns_out, "can't resolve") >= 0 || index(dns_out, "** server can't find") >= 0 ||
+            match(dns_out, /Address:[ \t]+(127\.|0\.0\.0\.0|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)/)) {
+            dns_blocked = true;
+        }
     }
 
     let http_code = metrics.http_code || 0;
@@ -152,9 +170,9 @@ function probe_single_target_dpi(target_item, dns_flags) {
         result.type = "drop";
         result.confidence = 95;
         if (handshake > 0) {
-            result.details = sprintf("TLS ClientHello dropped for %s (handshake %dms, timed out waiting for server response) — TSPU SNI filtering drop detected", domain, handshake);
+            result.details = sprintf("TLS ClientHello dropped for %s (handshake %dms, timed out waiting for server response) — transit SNI filtering drop detected", domain, handshake);
         } else {
-            result.details = sprintf("TCP connect timed out for %s — TSPU / DPI packet drop (blackhole) detected. Can be bypassed using syndata, multisplit, or PAWS spoofing.", domain);
+            result.details = sprintf("TCP connect timed out for %s — transit middlebox packet drop detected. Can be mitigated using syndata, multisplit, or PAWS.", domain);
         }
         result.recommended_engines = ["zapret2", "zapret", "byedpi", "desync"];
     } else if (http_code == 0 || index(error_str, "Connection refused") >= 0 || index(error_str, "ECONNREFUSED") >= 0) {
@@ -200,8 +218,8 @@ function detect_dpi_type(target_key, custom_url) {
         if (res.l4_unreachable)
             push(l4_unreachable_urls, item.url);
         if (res.type != "none") {
-            // Prefer a DPI-type finding over an IP block for strategy reranking.
-            if (!blocked_result || (blocked_result.type == "ip_block" && res.type != "ip_block"))
+            // Prefer an actionable DPI-type finding over IP block / unknown for strategy reranking.
+            if (!blocked_result || ((blocked_result.type == "ip_block" || blocked_result.type == "unknown") && res.type != "ip_block" && res.type != "unknown"))
                 blocked_result = res;
         } else if (!first_accessible_result) {
             first_accessible_result = res;
@@ -211,12 +229,13 @@ function detect_dpi_type(target_key, custom_url) {
     binaries.run_bounded("nft delete table inet tachyon_fuzzer >/dev/null 2>&1", 10);
 
     if (blocked_result) {
+        blocked_result.recommended_engines = filter_installed_engines(blocked_result.recommended_engines);
         blocked_result.l4_unreachable_urls = l4_unreachable_urls;
         return blocked_result;
     }
 
     if (first_accessible_result) {
-        first_accessible_result.details = sprintf("Target directly accessible — no DPI blocking detected (HTTP %d, TTFB %dms)",
+        first_accessible_result.details = sprintf("Target directly accessible — no DPI filtering detected (HTTP %d, TTFB %dms)",
             first_accessible_result.probe_metrics.http_code,
             first_accessible_result.probe_metrics.ttfb_ms);
         return first_accessible_result;
@@ -226,7 +245,7 @@ function detect_dpi_type(target_key, custom_url) {
         type: "unknown",
         confidence: 0,
         details: "Unable to probe target URLs",
-        recommended_engines: ["zapret2", "zapret", "byedpi"],
+        recommended_engines: filter_installed_engines(["zapret2", "zapret", "byedpi", "desync"]),
         probe_metrics: { http_code: 0, handshake_ms: 0, ttfb_ms: 0, speed_kbps: 0, error: "" }
     };
 }

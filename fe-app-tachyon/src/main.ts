@@ -65,7 +65,10 @@ export {
 export { DiagnosticTab } from './tachyon/tabs/diagnostic';
 export { MonitoringTab } from './tachyon/tabs/monitoring';
 export { UpdatesTab } from './tachyon/tabs/updates';
-export { renderDnsBenchmarkModal } from './tachyon/tabs/diagnostic/partials';
+export {
+  renderDnsBenchmarkModal,
+  renderStrategyFuzzerModal,
+} from './tachyon/tabs/diagnostic/partials';
 export {
   mountLanguageSelector,
   TACHYON_LANGUAGES,

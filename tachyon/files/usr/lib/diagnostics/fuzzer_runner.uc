@@ -574,11 +574,91 @@ function calculate_jitter(values, median_val) {
     return int(sum_dev / (1.0 * length(values)));
 }
 
+function normalize_target_url(raw) {
+    let s = trim(raw ? "" + raw : "");
+    s = replace(s, /^[,;]+|[,;]+$/g, "");
+    if (s == "")
+        return "";
+    if (match(s, /[ \t\r\n;|&$`<>\\'"{}()\[\]]/) != null)
+        return "";
+
+    let m_proto = match(s, /^(https?|udp):\/\/(.+)$/i);
+    if (m_proto) {
+        let scheme = lc(m_proto[1]);
+        let rest = m_proto[2];
+        let hp = match(rest, /^([^\/:]+)(:([0-9]+))?(\/.*)?$/);
+        if (!hp)
+            return "";
+        if (hp[3] != null && hp[3] != "") {
+            let port_num = int(hp[3]);
+            if (port_num < 1 || port_num > 65535)
+                return "";
+        }
+        let candidate = scheme + "://" + rest;
+        return is_valid_url(candidate) ? candidate : "";
+    }
+
+    if (index(s, "://") >= 0)
+        return "";
+
+    let bare = match(s, /^([A-Za-z0-9.-]+)(:([0-9]{1,5}))?(\/.*)?$/);
+    if (!bare)
+        return "";
+
+    let host = bare[1];
+    let port = bare[3] || "";
+    let path_part = bare[4] || "";
+    if (index(host, ".") < 0 || !is_valid_hostname(host))
+        return "";
+    if (port != "") {
+        let port_num = int(port);
+        if (port_num < 1 || port_num > 65535)
+            return "";
+    }
+
+    let candidate = "https://" + host + (port != "" ? ":" + port : "") + path_part;
+    return is_valid_url(candidate) ? candidate : "";
+}
+
+function validate_custom_targets_input(raw) {
+    let text = trim(raw ? "" + raw : "");
+    if (text == "")
+        return { valid: false, urls: [], error: "No target domains or URLs specified" };
+
+    let parts = split(text, /[\r\n,;\t ]+/);
+    let seen = {};
+    let urls = [];
+    for (let p in parts) {
+        let tok = trim(p || "");
+        if (tok == "")
+            continue;
+        let norm = normalize_target_url(tok);
+        if (norm == "") {
+            return {
+                valid: false,
+                urls: [],
+                error: sprintf("Invalid target domain or URL: '%s'", tok)
+            };
+        }
+        if (!seen[norm]) {
+            seen[norm] = true;
+            push(urls, norm);
+        }
+    }
+
+    if (length(urls) == 0)
+        return { valid: false, urls: [], error: "No target domains or URLs specified" };
+
+    return { valid: true, urls: urls, error: "" };
+}
+
 return {
     DESYNC_PRESETS,
     DESYNC_MODES,
     is_valid_hostname,
     is_valid_url,
+    normalize_target_url,
+    validate_custom_targets_input,
     tokenize_strategy_args,
     parse_desync_outbound,
     validate_strategy_args,

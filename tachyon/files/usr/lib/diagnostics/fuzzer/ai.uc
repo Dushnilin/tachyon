@@ -272,7 +272,7 @@ function query_llm(provider, api_key, custom_url, prompt_text, model_override) {
         let body = {
             model: target_model,
             messages: [
-                { role: "system", content: "You are a network censorship and DPI bypass expert. Always return responses formatted strictly as requested." },
+                { role: "system", content: "You are a network protocol and packet desynchronization expert. Always return responses formatted strictly as requested." },
                 { role: "user", content: prompt_text }
             ]
         };
@@ -446,7 +446,7 @@ function run_baseline_probe(target_url) {
         let rc = res ? res.status : -1;
         if (rc == 28) err_str = "Connection or TLS handshake timeout (curl exit 28)";
         else if (rc == 35) err_str = "TLS/SSL handshake reset or blocked by DPI (curl exit 35)";
-        else if (rc == 56) err_str = "TCP connection reset by peer / TSPU RST injection (curl exit 56)";
+        else if (rc == 56) err_str = "TCP connection reset by peer / transit filter RST injection (curl exit 56)";
         else if (rc == 7) err_str = "Failed to connect to host (curl exit 7)";
         else if (rc == 6) err_str = "Could not resolve host / DNS blocked (curl exit 6)";
         else err_str = sprintf("Direct probe failed (curl exit %d)", rc);
