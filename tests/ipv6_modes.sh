@@ -222,6 +222,12 @@ TACHYON_FORCE_IPV6_SUPPORTED=1 ucode -S -L "$TACHYON_LIB" -e '
   assert(common.cache_ipv6_runtime_state(e_auto_yes), "cache_ipv6_runtime_state succeeds");
   let cached = common.read_cached_ipv6_state();
   assert(type(cached) == "object" && cached.effective == "full", "cached state readable");
+
+  let net_mod = require("diagnostics.network");
+  let netstat_v4 = "tcp 0 0 127.0.0.42:53 0.0.0.0:* LISTEN\ntcp 0 0 0.0.0.0:1602 0.0.0.0:* LISTEN\n";
+  let netstat_v6 = "tcp 0 0 127.0.0.42:53 0.0.0.0:* LISTEN\ntcp 0 0 0.0.0.0:1602 0.0.0.0:* LISTEN\ntcp 0 0 :::1602 :::* LISTEN\n";
+  assert(net_mod.sing_box_standard_ports_listening(netstat_v4) == true, "sing_box_standard_ports_listening succeeds with v4-only ports when ipv6 is inactive");
+  assert(net_mod.sing_box_standard_ports_listening(netstat_v6) == true, "sing_box_standard_ports_listening succeeds with dual-stack ports");
 '
 
 # 2. Validator + Migration + UI prefs
