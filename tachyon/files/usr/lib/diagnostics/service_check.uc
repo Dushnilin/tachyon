@@ -2251,7 +2251,7 @@ function tachyon_get_targets(all_mode) {
 
         for (let item in comm_items) {
             if (!item) continue;
-            for (let part in split(as_string(item), /[\s,]+/)) {
+            for (let part in split(as_string(item), /[ \t\r\n,]+/)) {
                 let id = trim(part);
                 let p = resolve_profile(id);
                 if (p) push(profiles_to_check, p);

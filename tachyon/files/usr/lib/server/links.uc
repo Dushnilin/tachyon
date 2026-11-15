@@ -218,7 +218,7 @@ function build(s, fallback_host, pin) {
     if (protocol == "mieru") {
         if (!user.password) return "";
         let raw_lp = trim(replace(str(s.listen_port || "443"), ":", "-"));
-        let first_token = split(replace(raw_lp, /[,\s]+/g, " "), " ")[0] || "443";
+        let first_token = split(replace(raw_lp, /[, \t\r\n]+/g, " "), " ")[0] || "443";
         let valid_lp = false;
         let m = match(first_token, /^([0-9]+)-([0-9]+)$/);
         if (m != null) {

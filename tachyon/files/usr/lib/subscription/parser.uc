@@ -2116,7 +2116,7 @@ function process_mieru(raw, url) {
             if (k == "port" || k == "ports" || k == "port-range" || k == "server_ports") {
                 if (k != "port")
                     has_explicit_range = true;
-                for (let token in split(replace(v, /[,\s]+/g, " "), " ")) {
+                for (let token in split(replace(v, /[, \t\r\n]+/g, " "), " ")) {
                     token = trim(replace(token, ":", "-"));
                     if (token == "")
                         continue;

@@ -846,7 +846,7 @@ function fptn_section_token(section) {
     if (text != "") {
         for (let line in split(text, /[\r\n]+/)) {
             line = trim(line);
-            if (line != "" && match(line, /^[^#\s]/))
+            if (line != "" && match(line, /^[^# \t\r\n]/))
                 push(links, line);
         }
     }
@@ -983,7 +983,7 @@ function synthesize_awg_conf_from_source(src) {
     let raw_addrs = list_value(src, "awg_local_address");
     let addr_list = [];
     for (let entry in raw_addrs) {
-        for (let part in split(as_string(entry), /[,\s]+/)) {
+        for (let part in split(as_string(entry), /[, \t\r\n]+/)) {
             part = trim(part);
             if (part != "")
                 push(addr_list, part);
@@ -1219,7 +1219,7 @@ function connection_urls(section) {
         if (text != "") {
             for (let line in split(text, /[\r\n]+/)) {
                 line = trim(line);
-                if (line != "" && match(line, /^[^#\s]/))
+                if (line != "" && match(line, /^[^# \t\r\n]/))
                     push_unique_str(links, seen, line);
             }
         }
@@ -1253,7 +1253,7 @@ function connection_urls(section) {
             if (stext != "") {
                 for (let line in split(stext, /[\r\n]+/)) {
                     line = trim(line);
-                    if (line != "" && match(line, /^[^#\s]/))
+                    if (line != "" && match(line, /^[^# \t\r\n]/))
                         push_unique_str(links, seen, line);
                 }
             }
@@ -1285,7 +1285,7 @@ function urltest_text_links(section) {
     let links = [];
     for (let line in split(text, /[\r\n]+/)) {
         line = trim(line);
-        if (line != "" && match(line, /^[^#\s]/))
+        if (line != "" && match(line, /^[^# \t\r\n]/))
             push(links, line);
     }
     return links;
@@ -1467,7 +1467,7 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
             if (match(raw_port, /^[0-9]+$/) != null && int(raw_port) >= 1 && int(raw_port) <= 65535) {
                 single_p = int(raw_port);
             } else {
-                for (let token in split(replace(raw_port, /[,\s]+/g, " "), " ")) {
+                for (let token in split(replace(raw_port, /[, \t\r\n]+/g, " "), " ")) {
                     token = trim(replace(token, ":", "-"));
                     if (token != "")
                         push(ports, token);
@@ -1613,14 +1613,14 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
         if (obfs == "audio" || obfs == "video" || obfs == "unified") obj.obfs = obfs;
         let hashes = [];
         for (let entry in list_value(src, "csqtt_hashes")) {
-            for (let part in split(as_string(entry), /[,;\s+]+/)) {
+            for (let part in split(as_string(entry), /[,;+ \t\r\n]+/)) {
                 part = trim(part);
                 if (part != "") push(hashes, part);
             }
         }
         if (length(hashes) == 0) {
             let h_str = trim(option(src, "csqtt_hashes", ""));
-            for (let part in split(h_str, /[,;\s+]+/)) {
+            for (let part in split(h_str, /[,;+ \t\r\n]+/)) {
                 part = trim(part);
                 if (part != "") push(hashes, part);
             }
@@ -1814,7 +1814,7 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
             raw_w_addrs = list_value(src, "awg_local_address");
         let w_addrs = [];
         for (let entry in raw_w_addrs) {
-            for (let part in split(as_string(entry), /[,\s]+/)) {
+            for (let part in split(as_string(entry), /[, \t\r\n]+/)) {
                 part = trim(part);
                 if (part != "" && !(part in w_addrs))
                     push(w_addrs, part);
@@ -1837,7 +1837,7 @@ function synthesize_protocol_outbound_json_from_source(src, stype) {
         let raw_res = trim(option(src, "warp_reserved", ""));
         if (raw_res != "") {
             let res_arr = [];
-            for (let part in split(raw_res, /[,\s\[\]]+/)) {
+            for (let part in split(raw_res, /[][, \t\r\n]+/)) {
                 if (part != "" && match(part, /^[0-9]+$/))
                     push(res_arr, int(part));
             }
@@ -4715,7 +4715,7 @@ function urltest_sticky_hash(section, value) {
     let result = [];
     let seen = {};
     for (let item in common.array_or_empty(raw_list)) {
-        for (let token in split(lc(trim(as_string(item))), /[,\s]+/)) {
+        for (let token in split(lc(trim(as_string(item))), /[, \t\r\n]+/)) {
             if ((token == "source_ip" || token == "domain" || token == "dest_ip" ||
                  token == "dest_port" || token == "process" || token == "none") && !seen[token]) {
                 seen[token] = true;
@@ -5400,7 +5400,7 @@ function port_matches_spec(port_query, port_spec) {
     let q_num = int(port_query, 10);
     if (q_num <= 0)
         return false;
-    for (let token in split(port_spec, /[,\s]+/)) {
+    for (let token in split(port_spec, /[, \t\r\n]+/)) {
         token = trim(token);
         if (token == "")
             continue;

@@ -3666,7 +3666,7 @@ function add_mieru_outbound(config, section) {
         if (match(raw_port, /^[0-9]+$/) != null && int(raw_port) >= 1 && int(raw_port) <= 65535) {
             single_port = int(raw_port);
         } else {
-            for (let token in split(replace(raw_port, /[,\s]+/g, " "), " ")) {
+            for (let token in split(replace(raw_port, /[, \t\r\n]+/g, " "), " ")) {
                 token = trim(replace(token, ":", "-"));
                 if (token != "")
                     push(server_ports, token);
@@ -4475,7 +4475,7 @@ function add_csqtt_outbound(config, section) {
     let hashes_list = list_option(section, "csqtt_hashes");
     let hashes = [];
     for (let item in hashes_list) {
-        for (let part in split(as_string(item), /[,;\s+]+/)) {
+        for (let part in split(as_string(item), /[,;+ \t\r\n]+/)) {
             part = trim(part);
             if (part != "") push(hashes, part);
         }
@@ -4483,7 +4483,7 @@ function add_csqtt_outbound(config, section) {
     if (length(hashes) == 0) {
         let h_str = trim(as_string(option(section, "csqtt_hashes", "")));
         if (h_str != "") {
-            for (let part in split(h_str, /[,;\s+]+/)) {
+            for (let part in split(h_str, /[,;+ \t\r\n]+/)) {
                 part = trim(part);
                 if (part != "") push(hashes, part);
             }

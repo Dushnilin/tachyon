@@ -432,7 +432,7 @@ function add_standard_inbound(config, section, protocol, tag_name) {
         let raw_lp = trim(as_string(option(section, "listen_port", "443")));
         let lp_ranges = [];
         let first_port = 0;
-        for (let token in split(replace(raw_lp, /[,\s]+/g, " "), " ")) {
+        for (let token in split(replace(raw_lp, /[, \t\r\n]+/g, " "), " ")) {
             token = trim(replace(token, ":", "-"));
             if (token == "")
                 continue;
@@ -629,7 +629,7 @@ function add_standard_inbound(config, section, protocol, tag_name) {
         if (length(allowed_ips) == 0) {
             let allowed_str = option(section, "awg_peer_allowed_ips", option(section, "awg_allowed_ips", ""));
             if (allowed_str != "") {
-                allowed_ips = split(allowed_str, /[,\s]+/);
+                allowed_ips = split(allowed_str, /[, \t\r\n]+/);
             } else {
                 let cli_addr = option(section, "awg_client_address", "");
                 if (cli_addr != "")

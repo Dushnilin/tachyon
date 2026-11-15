@@ -6,7 +6,7 @@ let as_string = common.as_string;
 let shell_quote = common.shell_quote;
 
 function trim(str) {
-    return replace(as_string(str), /^[\s\r\n]+|[\s\r\n]+$/g, "");
+    return replace(as_string(str), /^[ \t\r\n]+|[ \t\r\n]+$/g, "");
 }
 
 function is_crypt4(value) {

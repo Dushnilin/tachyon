@@ -103,7 +103,7 @@ function parse_trace(line) {
     return (m && m[1]) ? m[1] : null;
 }
 
-const OUTBOUND_PATTERN = /outbound\/[a-zA-Z0-9-]+\[([^\]\s]+)\]/;
+const OUTBOUND_PATTERN = /outbound\/[a-zA-Z0-9-]+\[([^] \t\r\n]+)\]/;
 
 function outbound_tag_of(line) {
     if (line == null) return null;

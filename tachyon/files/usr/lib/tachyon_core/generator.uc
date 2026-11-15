@@ -884,7 +884,7 @@ function proxy_mode(settings) {
 function primary_lan_interface(settings) {
     let raw = trim(option(settings, "source_network_interfaces", ""));
     if (raw != "") {
-        for (let p in split(raw, /[\s,]+/)) {
+        for (let p in split(raw, /[ \t\r\n,]+/)) {
             if (p != "" && (fixture_uci_data != null || fs.stat("/sys/class/net/" + p) != null))
                 return p;
         }
