@@ -2374,7 +2374,7 @@ function collect_firewall_dnat_forwards() {
             let has_tcp = index(proto_val, "tcp") >= 0 || proto_val == "all";
             let has_udp = index(proto_val, "udp") >= 0 || proto_val == "all";
 
-            for (let p in split(replace(port_str, /[,\s]+/g, " "), " ")) {
+            for (let p in split(replace(port_str, /[, \t\r\n]+/g, " "), " ")) {
                 if (p != "")
                     add_dnat_entry(family, has_tcp, has_udp, dest_ip, p);
             }
@@ -2562,7 +2562,7 @@ function extract_server_port_specs(s) {
 
     let ports = [];
     for (let spec in raw_specs) {
-        for (let token in split(replace(as_string(spec), /[,\s]+/g, " "), " ")) {
+        for (let token in split(replace(as_string(spec), /[, \t\r\n]+/g, " "), " ")) {
             token = trim(replace(token, ":", "-"));
             if (token == "")
                 continue;
@@ -2755,9 +2755,9 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
     common.write_file(DNAT_FORWARDS_SIG_FILE, dnat_forwards_signature(dnat_forwards) + "\n");
 
     let base_settings = uci_settings();
-    let eff_fakeip_enabled = (fakeip_enabled != null) ? arg_bool(fakeip_enabled) : common.is_fakeip_enabled(base_settings);
-    let eff_leak_guard = (leak_guard_active != null) ? arg_bool(leak_guard_active) : false;
-    let eff_webrtc = (webrtc_leak_protect != null) ? arg_bool(webrtc_leak_protect) : bool_option(base_settings, "webrtc_leak_protect", false);
+    let eff_fakeip_enabled = (fakeip_enabled != null && fakeip_enabled != "") ? arg_bool(fakeip_enabled) : common.is_fakeip_enabled(base_settings);
+    let eff_leak_guard = (leak_guard_active != null && leak_guard_active != "") ? arg_bool(leak_guard_active) : false;
+    let eff_webrtc = (webrtc_leak_protect != null && webrtc_leak_protect != "") ? arg_bool(webrtc_leak_protect) : bool_option(base_settings, "webrtc_leak_protect", false);
     let eff_v6_active = (tproxy6_address != "");
     let eff_ipv6_mode = common.normalize_ipv6_mode(option(base_settings, "ipv6_mode", ""));
     let eff_off_strict = (!eff_v6_active && eff_ipv6_mode == "off");

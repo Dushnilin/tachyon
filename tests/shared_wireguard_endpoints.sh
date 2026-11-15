@@ -56,7 +56,7 @@ ucode -L "$TACHYON_LIB" "$TACHYON_LIB/tachyon_core/generator.uc" generate-config
     "$WORK_DIR/fixture.json" "$WORK_DIR/lx-config.json" "127.0.0.1" "0"
 
 node - "$WORK_DIR" <<'JS'
-const assert = require("node:assert/strict");
+const assert = require("assert").strict;
 const fs = require("fs");
 const dir = process.argv[2];
 const read = name => JSON.parse(fs.readFileSync(dir + "/" + name + "-config.json"));

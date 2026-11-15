@@ -32,7 +32,7 @@ DOT_RULE=$'nft\tadd\trule\tinet\tTachyonTable\tmangle\tiifname\t@tachyon_interfa
 
 base_args=(nft-create-runtime-base TachyonTable localv4 tachyon_subnets
   tachyon_ports tachyon_ip_ports tachyon_interfaces "br-lan" 0x00100000
-  0x00200000 198.18.0.0/15 1602 0 "" "" "" "" "" 0 0)
+  0x00200000 198.18.0.0/15 1602 0 "" "" "" "" "0" 0 0)
 
 # Runs nft_create_runtime_base with the stub nft; $1 is dns_intercept_all.
 run_base() {
