@@ -205,10 +205,33 @@ function format_resolve_flags(host, ip, port) {
     return flags;
 }
 
+function append_dns_candidate(dns_candidates, seen_dns, srv) {
+    if (srv && !seen_dns[srv]) {
+        push(dns_candidates, srv);
+        seen_dns[srv] = true;
+    }
+}
+
+function collect_isp_nameservers() {
+    let list = [];
+    try {
+        let resolv_auto = fs.readfile("/tmp/resolv.conf.d/resolv.conf.auto");
+        if (resolv_auto) {
+            for (let line in split(resolv_auto, "\n")) {
+                let m_ns = match(trim(line), /^nameserver[ \t]+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
+                if (m_ns && m_ns[1] && is_valid_public_ip(m_ns[1]))
+                    push(list, m_ns[1]);
+            }
+        }
+    } catch (e) {}
+    return list;
+}
+
 function get_resolved_host_flags(url) {
     let m = match(as_string(url || ""), /^https?:\/\/([^\/:]+)(:([0-9]+))?/i);
     if (!m || !m[1]) return "";
     let host = m[1];
+    let host_lc = lc(host);
     let port = m[3] || "";
     if (match(host, /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) || index(host, ":") >= 0) return "";
     if (!fuzzer_runner.is_valid_hostname(host)) return "";
@@ -221,14 +244,20 @@ function get_resolved_host_flags(url) {
     // a GGC cache node. Pinning googlevideo hosts to it made every YouTube probe
     // connect back to the router itself and time out (curl exit 28).
 
+    let is_googlevideo = (host_lc == "googlevideo.com" || index(host_lc, ".googlevideo.com") >= 0);
     let safe_host = shell_quote(host);
-    let ip = null;
-    if (match(host, /^rr[0-9]+\.googlevideo\.com$/) != null) {
-        let gv_flags = get_resolved_host_flags("https://googlevideo.com/");
+    let resolve_gv_fallback = function() {
+        let gv_flags = (host_lc != "redirector.googlevideo.com")
+            ? get_resolved_host_flags("https://redirector.googlevideo.com/")
+            : "";
+        if (gv_flags == "") gv_flags = get_resolved_host_flags("https://googlevideo.com/");
         if (gv_flags == "") gv_flags = get_resolved_host_flags("https://www.youtube.com/");
         let m_ip = match(gv_flags, /:443:([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
-        if (m_ip && m_ip[1])
-            ip = m_ip[1];
+        return (m_ip && m_ip[1]) ? m_ip[1] : null;
+    };
+    let ip = null;
+    if (match(host_lc, /^rr[0-9]+\.googlevideo\.com$/) != null) {
+        ip = resolve_gv_fallback();
     }
 
     // 1. Primary: query router bootstrap DNS & ISP upstream DNS via UDP 53
@@ -245,32 +274,22 @@ function get_resolved_host_flags(url) {
         if (b_val != "" && is_valid_public_ip(b_val))
             uci_bootstrap = b_val;
     } catch (e) {}
-    if (uci_bootstrap) {
-        push(dns_candidates, uci_bootstrap);
-        seen_dns[uci_bootstrap] = true;
-    }
 
-    // Check ISP nameservers from resolv.conf.auto
-    try {
-        let resolv_auto = fs.readfile("/tmp/resolv.conf.d/resolv.conf.auto");
-        if (resolv_auto) {
-            for (let line in split(resolv_auto, "\n")) {
-                let m_ns = match(trim(line), /^nameserver[ \t]+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
-                if (m_ns && m_ns[1] && is_valid_public_ip(m_ns[1]) && !seen_dns[m_ns[1]]) {
-                    push(dns_candidates, m_ns[1]);
-                    seen_dns[m_ns[1]] = true;
-                }
-            }
-        }
-    } catch (e) {}
+    let isp_dns = collect_isp_nameservers();
+    if (is_googlevideo) {
+        // Resolve media cache hosts via ISP DNS first to hit operator-local nodes.
+        for (let srv in isp_dns)
+            append_dns_candidate(dns_candidates, seen_dns, srv);
+        append_dns_candidate(dns_candidates, seen_dns, uci_bootstrap);
+    } else {
+        append_dns_candidate(dns_candidates, seen_dns, uci_bootstrap);
+        for (let srv in isp_dns)
+            append_dns_candidate(dns_candidates, seen_dns, srv);
+    }
 
     // Add dependable fallback public nameservers
-    for (let srv in [ "77.88.8.8", "8.8.8.8", "1.1.1.1" ]) {
-        if (!seen_dns[srv]) {
-            push(dns_candidates, srv);
-            seen_dns[srv] = true;
-        }
-    }
+    for (let srv in [ "77.88.8.8", "8.8.8.8", "1.1.1.1" ])
+        append_dns_candidate(dns_candidates, seen_dns, srv);
 
     if (!ip) {
         for (let srv in dns_candidates) {
@@ -324,15 +343,10 @@ function get_resolved_host_flags(url) {
     }
 
     // 4. Fallback for regional googlevideo.com CDN nodes that are not in public DNS:
-    // resolve googlevideo.com or www.youtube.com IP so curl connects to Google's frontend
-    // while preserving the regional SNI in ClientHello.
-    if (!ip && index(host, ".googlevideo.com") >= 0 && host != "googlevideo.com") {
-        let gv_flags = get_resolved_host_flags("https://googlevideo.com/");
-        if (gv_flags == "") gv_flags = get_resolved_host_flags("https://www.youtube.com/");
-        let m_ip = match(gv_flags, /:443:([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/);
-        if (m_ip && m_ip[1]) {
-            ip = m_ip[1];
-        }
+    // resolve redirector.googlevideo.com, googlevideo.com or www.youtube.com IP so curl
+    // connects to Google's frontend while preserving the regional SNI in ClientHello.
+    if (!ip && index(host_lc, ".googlevideo.com") >= 0 && host != "googlevideo.com") {
+        ip = resolve_gv_fallback();
     }
 
     if (ip) {

@@ -104,8 +104,9 @@ function cleanup_temp_daemons(job_id) {
     try { fs.unlink(STATE_DIR + "/fuzzer_desync_config.json"); } catch (e) {}
 }
 
-function parse_curl_output(output, result) {
+function parse_curl_output(output, result, opts) {
     result = result || {};
+    let is_streaming = (type(opts) == "object" && (opts.streaming || opts.probe_kind == "streaming")) ? true : false;
     output = trim(as_string(output));
     if (output == "") {
         result.success = false;
@@ -187,8 +188,34 @@ function parse_curl_output(output, result) {
         return result;
     }
 
-    // Check for 16KB DPI Throttling (transit middlebox stream drop / connection reset after 10-28KB)
-    if (exit_code != 0 && size_download >= 10240 && size_download <= 28672) {
+    // Check for mid-stream caps/stalls (16 KiB normal window or 32/64/128 KiB streaming stalls)
+    if (is_streaming) {
+        if (exit_code != 0 && size_download >= 10240 && size_download < 32768) {
+            result.success = false;
+            result.score = 0;
+            result.data_verified = false;
+            result.dpi_verdict = "throttled_16k";
+            result.error = sprintf("16KB Data Throttle (stream killed after %d B, curl exit %d)", size_download, exit_code);
+            return result;
+        }
+        if ((exit_code != 0 && size_download >= 32768 && size_download < 131072) ||
+            ((http_code == 200 || http_code == 206) && (exit_code == 28 || exit_code == 56 || (exit_code == 18 && size_download < 131072)))) {
+            result.success = false;
+            result.score = 0;
+            result.data_verified = false;
+            result.dpi_verdict = "throttled_stream";
+            result.error = sprintf("Streaming transfer stalled after %d B (curl exit %d)", size_download, exit_code);
+            return result;
+        }
+        if (result.speed_kbps > 0 && result.speed_kbps < 40 && size_download < 200000 && result.ttfb_ms > 2500) {
+            result.success = false;
+            result.score = 0;
+            result.data_verified = false;
+            result.dpi_verdict = "throttled_stream";
+            result.error = sprintf("Streaming bandwidth throttled (%d KB/s, %d B, TTFB %d ms)", result.speed_kbps, size_download, result.ttfb_ms);
+            return result;
+        }
+    } else if (exit_code != 0 && size_download >= 10240 && size_download <= 28672) {
         result.success = false;
         result.score = 0;
         result.data_verified = false;
@@ -229,7 +256,7 @@ function parse_curl_output(output, result) {
         return result;
     }
 
-    if (exit_code != 0 && http_code >= 200 && http_code < 400) {
+    if (exit_code != 0 && !(is_streaming && exit_code == 18 && size_download >= 131072) && http_code >= 200 && http_code < 400) {
         result.success = false;
         result.score = 0;
         result.data_verified = false;
@@ -238,21 +265,23 @@ function parse_curl_output(output, result) {
         return result;
     }
     
-    // Any valid HTTP response from origin (including 401/403/404/405/421 when hitting endpoints without auth headers / session tokens)
-    if ((http_code >= 200 && http_code < 400) || http_code == 401 || http_code == 403 || http_code == 404 || http_code == 405 || http_code == 421) {
+    // Any valid HTTP response from origin (including 401/403/404/405/421/429 when hitting endpoints without auth headers / session tokens)
+    if ((http_code >= 200 && http_code < 400) || http_code == 401 || http_code == 403 || http_code == 404 || http_code == 405 || http_code == 421 || http_code == 429) {
         result.success = true;
-        let is_unauth_endpoint = (http_code == 401 || http_code == 403 || http_code == 404 || http_code == 405 || http_code == 421);
+        let is_unauth_endpoint = (http_code == 401 || http_code == 403 || http_code == 404 || http_code == 405 || http_code == 421 || http_code == 429);
         if (is_unauth_endpoint && result.handshake_ms > 0 && (http_code == 421 || result.ttfb_ms > result.handshake_ms * 2)) {
             result.ttfb_ms = result.handshake_ms;
         }
         let base_score = 100;
         let latency_score = max(0, 1000 - result.ttfb_ms);
         let speed_score = int(result.speed_kbps / 10.0);
-        let data_bonus = (size_download >= 32768 || (is_unauth_endpoint && result.handshake_ms > 0)) ? 50 : (size_download >= 1024 ? 20 : 0);
+        let data_bonus = (size_download >= 196608) ? 250
+            : ((size_download >= 32768) ? 100
+            : ((size_download >= 1024 || (http_code == 421 && result.handshake_ms > 0)) ? 20 : 0));
         result.score = base_score + latency_score + speed_score + data_bonus;
         result.error = "";
-        result.data_verified = size_download >= 32768 || (is_unauth_endpoint && result.handshake_ms > 0);
-        result.dpi_verdict = size_download >= 32768 ? "verified_32k" : "available";
+        result.data_verified = (size_download >= 32768);
+        result.dpi_verdict = (size_download >= 196608) ? "verified_256k" : ((size_download >= 32768) ? "verified_32k" : "available");
     } else {
         result.success = false;
         result.score = 0;
@@ -454,6 +483,7 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
         let max_speed = 0;
         let sum_data_bytes = 0;
         let any_data_verified = false;
+        let any_verified_256k = false;
         let last_http = 0;
         let last_dpi_verdict = "available";
         let required_failed = false;
@@ -560,14 +590,14 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
                 }
                 extra_flags = "--http3-only ";
             } else if (p_kind == "streaming") {
-                extra_flags = "-r 0-65535 ";
+                extra_flags = "-r 0-262143 ";
             }
 
             let target_flags = binaries.get_resolved_host_flags(target_item.url);
             let proxy_scheme = target_flags != "" ? "socks5" : "socks5h";
             let cto = total_urls >= 3 ? 3 : 4;
-            let mto = total_urls >= 3 ? 4 : 6;
-            let watchdog_sec = total_urls >= 3 ? 6 : 8;
+            let mto = (p_kind == "streaming") ? 6 : (total_urls >= 3 ? 4 : 6);
+            let watchdog_sec = (p_kind == "streaming") ? 8 : (total_urls >= 3 ? 6 : 8);
 
             let curl_cmd = binaries.wrap_probe_cmd(
                 sprintf(
@@ -588,7 +618,7 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
             if (pipe) pipe.close();
             try { fs.unlink(probe_pid_path); } catch (e) {}
             
-            let single_res = parse_curl_output(output, {});
+            let single_res = parse_curl_output(output, {}, { streaming: (p_kind == "streaming") });
             single_res.target_name = target_item.name;
             single_res.url = target_item.url;
             single_res.required = is_req;
@@ -600,6 +630,7 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
                 passed_count++;
                 sum_data_bytes += single_res.data_bytes || 0;
                 if (single_res.data_verified) any_data_verified = true;
+                if (single_res.dpi_verdict == "verified_256k") any_verified_256k = true;
                 if (single_res.speed_kbps > max_speed) max_speed = single_res.speed_kbps;
                 last_http = single_res.http_code;
                 last_dpi_verdict = single_res.dpi_verdict || "available";
@@ -644,12 +675,15 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
             }
         } else {
             let is_data_verified = (total_urls == 1) ? (result.sub_probes[0] && result.sub_probes[0].data_verified) : any_data_verified;
+            let is_verified_256k = (total_urls == 1)
+                ? (result.sub_probes[0] && result.sub_probes[0].dpi_verdict == "verified_256k")
+                : any_verified_256k;
             result.success = true;
             result.http_code = last_http > 0 ? last_http : 200;
             result.speed_kbps = max_speed;
             result.data_bytes = sum_data_bytes;
             result.data_verified = is_data_verified;
-            result.dpi_verdict = is_data_verified ? "verified_32k" : last_dpi_verdict;
+            result.dpi_verdict = is_verified_256k ? "verified_256k" : (is_data_verified ? "verified_32k" : last_dpi_verdict);
             result.error = "";
 
             let total_w = 0;
@@ -776,6 +810,7 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
         let max_speed = 0;
         let sum_data_bytes = 0;
         let any_data_verified = false;
+        let any_verified_256k = false;
         let last_http = 0;
         let last_dpi_verdict = "available";
         let probes_attempted = 0;
@@ -858,7 +893,7 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
                 }
                 extra_flags = "--http3-only ";
             } else if (p_kind == "streaming") {
-                extra_flags = "-r 0-65535 ";
+                extra_flags = "-r 0-262143 ";
             }
 
             probes_attempted++;
@@ -866,8 +901,8 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
             let target_flags = binaries.get_resolved_host_flags(target_item.url);
             if (target_flags == "") target_flags = dns_flags;
             let cto = total_urls >= 3 ? 3 : 4;
-            let mto = total_urls >= 3 ? 4 : 6;
-            let watchdog_sec = total_urls >= 3 ? 6 : 8;
+            let mto = (p_kind == "streaming") ? 6 : (total_urls >= 3 ? 4 : 6);
+            let watchdog_sec = (p_kind == "streaming") ? 8 : (total_urls >= 3 ? 6 : 8);
 
             let curl_cmd = binaries.wrap_probe_cmd(
                 binaries.probe_curl_cmd(extra_flags, target_flags, target_item.url, STATE_DIR + "/fuzzer_curl_err.log", cto, mto),
@@ -879,7 +914,7 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
             if (pipe) pipe.close();
             try { fs.unlink(probe_pid_path); } catch (e) {}
 
-            let single_res = parse_curl_output(output, {});
+            let single_res = parse_curl_output(output, {}, { streaming: (p_kind == "streaming") });
             single_res.target_name = target_item.name;
             single_res.url = target_item.url;
             single_res.required = is_req;
@@ -892,6 +927,7 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
                 passed_count++;
                 sum_data_bytes += single_res.data_bytes || 0;
                 if (single_res.data_verified) any_data_verified = true;
+                if (single_res.dpi_verdict == "verified_256k") any_verified_256k = true;
                 if (single_res.speed_kbps > max_speed) max_speed = single_res.speed_kbps;
                 last_http = single_res.http_code;
                 last_dpi_verdict = single_res.dpi_verdict || "available";
@@ -972,12 +1008,15 @@ function run_probe(engine, args_str, target_key, custom_url, job_id, opts) {
             }
         } else {
             let is_data_verified = (total_urls == 1) ? (result.sub_probes[0] && result.sub_probes[0].data_verified) : any_data_verified;
+            let is_verified_256k = (total_urls == 1)
+                ? (result.sub_probes[0] && result.sub_probes[0].dpi_verdict == "verified_256k")
+                : any_verified_256k;
             result.success = true;
             result.http_code = last_http > 0 ? last_http : 200;
             result.speed_kbps = max_speed;
             result.data_bytes = sum_data_bytes;
             result.data_verified = is_data_verified;
-            result.dpi_verdict = is_data_verified ? "verified_32k" : last_dpi_verdict;
+            result.dpi_verdict = is_verified_256k ? "verified_256k" : (is_data_verified ? "verified_32k" : last_dpi_verdict);
             result.error = "";
 
             let total_w = 0;

@@ -37,7 +37,7 @@ function probe_single_target_dpi(target_item, dns_flags) {
     let is_udp_stun = (p_kind == "udp_stun" || index(as_string(target_url || ""), "udp://") == 0);
     let extra_flags = "";
     if (p_kind == "streaming") {
-        extra_flags = "-r 0-65535 ";
+        extra_flags = "-r 0-262143 ";
     }
 
     let target_flags = is_udp_stun ? "" : binaries.get_resolved_host_flags(target_url);
@@ -55,10 +55,11 @@ function probe_single_target_dpi(target_item, dns_flags) {
             4
         );
     } else {
-        probe_cmd_str = binaries.wrap_probe_cmd(
-            binaries.probe_curl_cmd(extra_flags, target_flags, target_url, (getenv("TACHYON_FUZZER_STATE_DIR") || "/var/run/tachyon") + "/fuzzer_curl_err.log"),
-            8
-        );
+        let err_path = (getenv("TACHYON_FUZZER_STATE_DIR") || "/var/run/tachyon") + "/fuzzer_curl_err.log";
+        let curl_cmd = (p_kind == "streaming")
+            ? binaries.probe_curl_cmd(extra_flags, target_flags, target_url, err_path, 4, 6)
+            : binaries.probe_curl_cmd(extra_flags, target_flags, target_url, err_path);
+        probe_cmd_str = binaries.wrap_probe_cmd(curl_cmd, 8);
     }
     let pipe = fs.popen(probe_cmd_str, "r");
     let output = pipe ? pipe.read("all") : "";
@@ -68,7 +69,7 @@ function probe_single_target_dpi(target_item, dns_flags) {
     probe.cleanup_temp_daemons();
 
     let metrics = {};
-    probe.parse_curl_output(output, metrics);
+    probe.parse_curl_output(output, metrics, { streaming: (p_kind == "streaming") });
     let probe_metrics = {
         http_code: metrics.http_code || 0,
         handshake_ms: metrics.handshake_ms || 0,
@@ -110,7 +111,12 @@ function probe_single_target_dpi(target_item, dns_flags) {
         probe_metrics: probe_metrics
     };
 
-    if (metrics.dpi_verdict == "throttled_16k" || (http_code == 200 && metrics.data_bytes >= 10240 && metrics.data_bytes <= 28672 && error_str != "")) {
+    if (metrics.dpi_verdict == "throttled_stream") {
+        result.type = "throttle";
+        result.confidence = 95;
+        result.details = sprintf("Mid-stream bandwidth or byte cap detected on %s — stream stalled at %d bytes", domain, metrics.data_bytes || 0);
+        result.recommended_engines = ["zapret2", "byedpi", "desync"];
+    } else if (metrics.dpi_verdict == "throttled_16k" || (http_code == 200 && metrics.data_bytes >= 10240 && metrics.data_bytes <= 28672 && error_str != "")) {
         result.type = "throttle";
         result.confidence = 95;
         result.details = sprintf("16KB DPI throttling detected on %s — handshake succeeded but stream dropped at ~16KB data transfer", domain);
@@ -125,7 +131,7 @@ function probe_single_target_dpi(target_item, dns_flags) {
         result.confidence = 75;
         result.details = sprintf("High TTFB (%dms) despite successful connection on %s — likely bandwidth throttling by DPI", ttfb, domain);
         result.recommended_engines = ["zapret2", "byedpi", "desync"];
-    } else if ((http_code >= 200 && http_code < 400) || ((http_code == 401 || http_code == 403 || http_code == 404 || http_code == 405 || http_code == 421) && handshake > 0)) {
+    } else if ((http_code >= 200 && http_code < 400) || ((http_code == 401 || http_code == 403 || http_code == 404 || http_code == 405 || http_code == 421 || http_code == 429) && handshake > 0)) {
         if (p_kind == "streaming" && http_code >= 200 && http_code < 300 && metrics.data_bytes < 1024) {
             result.type = "throttle";
             result.confidence = 80;
