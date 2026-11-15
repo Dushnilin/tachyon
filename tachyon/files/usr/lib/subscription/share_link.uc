@@ -34,11 +34,15 @@ function base64_encode(value) {
     return replace(b64enc(as_string(value)), /=+$/, "");
 }
 
-function host_port(server, port) {
+function uri_host(server) {
     server = as_string(server);
     if (index(server, ":") >= 0 && !starts_with(server, "["))
-        server = "[" + server + "]";
-    return server + ":" + as_string(port);
+        return "[" + server + "]";
+    return server;
+}
+
+function host_port(server, port) {
+    return uri_host(server) + ":" + as_string(port);
 }
 
 function hysteria2_server_port_entry(value) {
@@ -477,29 +481,35 @@ function serialize_snell(outbound) {
 }
 
 function serialize_mieru(outbound) {
-    let port_spec = "";
-    if (type(outbound.server_ports) == "array" && length(outbound.server_ports) > 0)
-        port_spec = replace(as_string(outbound.server_ports[0]), ":", "-");
-    else if (outbound.server_port != null)
-        port_spec = as_string(outbound.server_port);
-    if (as_string(outbound.username) == "" || as_string(outbound.password) == "" ||
-        as_string(outbound.server) == "" || port_spec == "")
-        return "";
-    let primary_port = outbound.server_port;
-    if (primary_port == null) {
-        let m = match(port_spec, /^([0-9]+)/);
-        if (m)
-            primary_port = int(m[1]);
+    let port_specs = [];
+    if (type(outbound.server_ports) == "array" && length(outbound.server_ports) > 0) {
+        for (let p in outbound.server_ports) {
+            let spec = replace(trim(as_string(p)), ":", "-");
+            if (spec != "")
+                push(port_specs, spec);
+        }
     }
-    if (primary_port == null)
+    if (length(port_specs) == 0 && outbound.server_port != null) {
+        let sp = int(outbound.server_port);
+        if (sp >= 1 && sp <= 65535)
+            push(port_specs, as_string(sp));
+    }
+    if (as_string(outbound.username) == "" || as_string(outbound.password) == "" ||
+        as_string(outbound.server) == "" || length(port_specs) == 0)
         return "";
     let params = [];
-    add_query(params, "port", port_spec);
-    add_query(params, "protocol", outbound.transport || "TCP");
+    let tag_val = as_string(outbound.tag || "");
+    if (tag_val != "")
+        add_query(params, "profile", tag_val);
+    for (let spec in port_specs)
+        add_query(params, "port", spec);
+    add_query(params, "protocol", uc(as_string(outbound.transport || "TCP")));
     if (as_string(outbound.multiplexing || "") != "")
         add_query(params, "multiplexing", outbound.multiplexing);
+    if (as_string(outbound.traffic_pattern || "") != "")
+        add_query(params, "traffic-pattern", outbound.traffic_pattern);
     let userinfo = uri_encode(outbound.username) + ":" + uri_encode(outbound.password);
-    return "mierus://" + userinfo + "@" + host_port(outbound.server, primary_port) + query_string(params) + fragment(outbound);
+    return "mierus://" + userinfo + "@" + uri_host(outbound.server) + query_string(params) + fragment(outbound);
 }
 
 function serialize_mtproto(outbound) {

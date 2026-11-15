@@ -1153,7 +1153,7 @@ export function detectQuickConnectionInput(
   }
 
   const shareLinkRegex =
-    /^(vless|vmess|trojan|ss|ssr|hysteria2|hy2|hysteria|tuic|anytls|naive\+https|naive\+quic|naive|mieru|snell|sudoku|masque|trusttunnel|tewfai|csqtt|wdtt|qwdtt|socks5?| socks):\/\//i;
+    /^(vless|vmess|trojan|ss|ssr|hysteria2|hy2|hysteria|tuic|anytls|naive\+https|naive\+quic|naive|mierus?|snell|sudoku|masque|trusttunnel|tewfai|csqtt|wdtt|qwdtt|socks5?| socks):\/\//i;
   const matchedLinks = lines.filter((l) => shareLinkRegex.test(l));
   if (matchedLinks.length > 0) {
     return {

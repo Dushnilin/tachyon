@@ -2085,50 +2085,128 @@ function process_snell(raw, url) {
 }
 
 function process_mieru(raw, url) {
-    let port_val = url.port;
-    let port_ranges = [];
-    let raw_query_port = trim(as_string(url.query.port || ""));
-    if (!valid_port(port_val) && raw_query_port != "") {
-        let single_q = parse_port_value(raw_query_port);
-        if (valid_port(single_q)) {
-            port_val = single_q;
-        } else {
-            for (let token in split(replace(raw_query_port, /[,\s]+/g, " "), " ")) {
-                token = trim(replace(token, ":", "-"));
-                let m = match(token, /^([0-9]+)-([0-9]+)$/);
-                if (m != null) {
-                    let lo = int(m[1]), hi = int(m[2]);
-                    if (lo >= 1 && hi <= 65535 && lo <= hi)
-                        push(port_ranges, sprintf("%d-%d", lo, hi));
-                } else if (valid_port(token)) {
-                    push(port_ranges, as_string(int(token)));
+    let raw_str = as_string(raw);
+    let scheme_pos = index(raw_str, "://");
+    let raw_rest = scheme_pos >= 0 ? substr(raw_str, scheme_pos + 3) : raw_str;
+    let raw_hash = index(raw_rest, "#");
+    if (raw_hash >= 0)
+        raw_rest = substr(raw_rest, 0, raw_hash);
+    let raw_query = "";
+    let raw_qpos = index(raw_rest, "?");
+    if (raw_qpos >= 0) {
+        raw_query = substr(raw_rest, raw_qpos + 1);
+        raw_rest = substr(raw_rest, 0, raw_qpos);
+    }
+    let raw_spos = index(raw_rest, "/");
+    if (raw_spos >= 0)
+        raw_rest = substr(raw_rest, 0, raw_spos);
+
+    let query_specs = [];
+    let seen_specs = {};
+    let has_explicit_range = false;
+    if (raw_query != "") {
+        for (let pair in split(raw_query, "&")) {
+            if (pair == "")
+                continue;
+            let eq = index(pair, "=");
+            let k = lc(trim(urldecode(eq >= 0 ? substr(pair, 0, eq) : pair)));
+            let v = trim(urldecode(eq >= 0 ? substr(pair, eq + 1) : ""));
+            if (v == "")
+                continue;
+            if (k == "port" || k == "ports" || k == "port-range" || k == "server_ports") {
+                if (k != "port")
+                    has_explicit_range = true;
+                for (let token in split(replace(v, /[,\s]+/g, " "), " ")) {
+                    token = trim(replace(token, ":", "-"));
+                    if (token == "")
+                        continue;
+                    let m = match(token, /^([0-9]+)-([0-9]+)$/);
+                    let spec = "";
+                    if (m != null) {
+                        let lo = int(m[1], 10);
+                        let hi = int(m[2], 10);
+                        if (lo >= 1 && hi <= 65535 && lo <= hi) {
+                            if (lo == hi) {
+                                spec = as_string(lo);
+                            } else {
+                                has_explicit_range = true;
+                                spec = sprintf("%d-%d", lo, hi);
+                            }
+                        }
+                    } else {
+                        let p = parse_port_value(token);
+                        if (valid_port(p))
+                            spec = as_string(int(p));
+                    }
+                    if (spec != "" && !seen_specs[spec]) {
+                        seen_specs[spec] = true;
+                        push(query_specs, spec);
+                    }
                 }
             }
         }
     }
-    if (url.host == "" || url.userinfo == "")
-        return null;
-    if (length(port_ranges) == 0 && (is_dummy_server(url.host, port_val) || !valid_port(port_val)))
-        return null;
-    if (length(port_ranges) > 0 && is_dummy_server(url.host, 443))
-        return null;
 
-    let username = "", password = "";
-    let colon = index(url.userinfo, ":");
-    if (colon >= 0) {
-        username = substr(url.userinfo, 0, colon);
-        password = substr(url.userinfo, colon + 1);
-    } else {
-        username = url.userinfo;
+    let raw_at = rindex(raw_rest, "@");
+    let raw_userinfo = raw_at >= 0 ? substr(raw_rest, 0, raw_at) : "";
+    let username = "";
+    let password = "";
+    if (raw_userinfo != "") {
+        let raw_colon = index(raw_userinfo, ":");
+        if (raw_colon >= 0) {
+            username = urldecode(substr(raw_userinfo, 0, raw_colon));
+            password = urldecode(substr(raw_userinfo, raw_colon + 1));
+        } else {
+            username = urldecode(raw_userinfo);
+        }
     }
-    if (username == "" || password == "")
+    if (username == "" && url.userinfo != "") {
+        let colon = index(url.userinfo, ":");
+        if (colon >= 0) {
+            username = substr(url.userinfo, 0, colon);
+            password = substr(url.userinfo, colon + 1);
+        } else {
+            username = url.userinfo;
+        }
+    }
+    if (password == "")
+        password = as_string(url.query.password || url.query.pass || "");
+    if (url.host == "" || username == "" || password == "")
         return null;
 
-    let transport = uc(trim(as_string(url.query.protocol || url.query.transport || "TCP")));
+    let single_port = null;
+    let port_ranges = [];
+    if (length(query_specs) > 0) {
+        let dm = match(query_specs[0], /^([0-9]+)/);
+        let dummy_check_port = dm != null ? int(dm[1], 10) : 443;
+        if (is_dummy_server(url.host, dummy_check_port))
+            return null;
+        let single_query_port = (length(query_specs) == 1 && !has_explicit_range && match(query_specs[0], /^[0-9]+$/) != null)
+            ? int(query_specs[0], 10)
+            : 0;
+        if (single_query_port > 0) {
+            if (!valid_port(url.port) || int(url.port) == single_query_port || url.scheme == "mierus")
+                single_port = single_query_port;
+            else {
+                single_port = int(url.port);
+                port_ranges = query_specs;
+            }
+        } else {
+            port_ranges = query_specs;
+            if (valid_port(url.port))
+                single_port = int(url.port);
+        }
+    } else {
+        if (is_dummy_server(url.host, url.port) || !valid_port(url.port))
+            return null;
+        single_port = int(url.port);
+    }
+
+    let transport = uc(trim(as_string(url.query.protocol || url.query.transport || url.query.network || "TCP")));
     if (transport != "UDP")
         transport = "TCP";
 
-    let display_port = length(port_ranges) > 0 ? port_ranges[0] : as_string(port_val);
+    let display_port = length(port_ranges) > 0 ? port_ranges[0] : as_string(single_port);
     let tag_val = url.fragment != "" ? url.fragment : (url.query.profile || (url.host + ":" + display_port));
     let outbound = {
         type: "mieru",
@@ -2141,10 +2219,14 @@ function process_mieru(raw, url) {
     };
     if (length(port_ranges) > 0)
         outbound.server_ports = port_ranges;
-    else
-        outbound.server_port = int(port_val);
-    if ((url.query.multiplexing || "") != "")
-        outbound.multiplexing = url.query.multiplexing;
+    if (single_port != null)
+        outbound.server_port = int(single_port);
+    let mux = as_string(url.query.multiplexing || url.query.mux || "");
+    if (mux != "")
+        outbound.multiplexing = mux;
+    let traffic_pattern = as_string(url.query["traffic-pattern"] || url.query.traffic_pattern || "");
+    if (traffic_pattern != "")
+        outbound.traffic_pattern = traffic_pattern;
     return outbound;
 }
 
@@ -6437,6 +6519,52 @@ function content_requires_ucode_normalizer(input_file, headers_file) {
     return false;
 }
 
+function extract_mieru_uri_outbounds_from_file(input_file) {
+    let result = { has_mieru: false, outbounds: [] };
+    let data = read_file(input_file);
+    if (data == null || data == "")
+        return result;
+
+    let text = data;
+    if (index(text, "://") < 0) {
+        let compact = replace(text, /[\r\n\t ]/g, "");
+        let decoded = base64_decode(compact);
+        if (decoded == null || index(decoded, "://") < 0)
+            return result;
+        text = decoded;
+    }
+
+    for (let raw_line in split(replace(text, /\r/g, ""), "\n")) {
+        let line = trim(raw_line);
+        if (line == "" || starts_with(line, "#") || starts_with(line, "//"))
+            continue;
+        if (happ.is_encrypted(line)) {
+            let dec = happ.decrypt(line);
+            if (dec != null && dec != "") {
+                for (let dec_raw in split(replace(dec, /\r/g, ""), "\n")) {
+                    let dec_line = trim(dec_raw);
+                    let dec_lc = lc(dec_line);
+                    if (starts_with(dec_lc, "mieru://") || starts_with(dec_lc, "mierus://")) {
+                        result.has_mieru = true;
+                        let parsed = parse_share_link(dec_line);
+                        if (type(parsed) == "object" && !outbound_is_unsupported_stub(parsed))
+                            push(result.outbounds, parsed);
+                    }
+                }
+            }
+            continue;
+        }
+        let line_lc = lc(line);
+        if (starts_with(line_lc, "mieru://") || starts_with(line_lc, "mierus://")) {
+            result.has_mieru = true;
+            let parsed = parse_share_link(line);
+            if (type(parsed) == "object" && !outbound_is_unsupported_stub(parsed))
+                push(result.outbounds, parsed);
+        }
+    }
+    return result;
+}
+
 function try_normalize_with_core_cli(input_file, output_file, headers_file, force_allow) {
     if (!core_subscription_cli_supported())
         return false;
@@ -6468,6 +6596,24 @@ function try_normalize_with_core_cli(input_file, output_file, headers_file, forc
     fs.unlink(core_tmp);
     if (type(parsed) != "array" || length(parsed) == 0)
         return false;
+
+    let mieru_override = extract_mieru_uri_outbounds_from_file(input_file);
+    if (mieru_override.has_mieru) {
+        let core_mieru_count = 0;
+        for (let item in parsed) {
+            if (type(item) == "object" && lc(as_string(item.type || "")) == "mieru")
+                core_mieru_count++;
+        }
+        if (core_mieru_count == 0 || core_mieru_count != length(mieru_override.outbounds))
+            return false;
+        let mieru_idx = 0;
+        for (let i = 0; i < length(parsed); i++) {
+            if (type(parsed[i]) == "object" && lc(as_string(parsed[i].type || "")) == "mieru") {
+                parsed[i] = mieru_override.outbounds[mieru_idx];
+                mieru_idx++;
+            }
+        }
+    }
 
     let fallback_peer = extract_peer_params_from_headers_file(headers_file);
     let outbounds = normalize_sing_box_json_outbounds(parsed, fallback_peer);

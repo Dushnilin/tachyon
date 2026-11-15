@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-14 19:22+0300\n"
-"PO-Revision-Date: 2026-11-14 19:22+0300\n"
+"POT-Creation-Date: 2026-11-15 07:41+0300\n"
+"PO-Revision-Date: 2026-11-15 07:41+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -7699,7 +7699,15 @@ msgstr ""
 msgid "Invalid MAC address format (expected AA:BB:CC:DD:EE:FF)"
 msgstr ""
 
-#: src/validators/validateProxyUrl.ts:195
+#: src/validators/validateProxyUrl.ts:191
+#: src/validators/validateProxyUrl.ts:202
+#: src/validators/validateProxyUrl.ts:212
+#: src/validators/validateProxyUrl.ts:226
+#: src/validators/validateProxyUrl.ts:238
+#: src/validators/validateProxyUrl.ts:260
+#: src/validators/validateProxyUrl.ts:271
+#: src/validators/validateProxyUrl.ts:280
+#: src/validators/validateProxyUrl.ts:289
 msgid "Invalid Mieru URL: invalid host or port"
 msgstr ""
 
@@ -7926,7 +7934,7 @@ msgstr ""
 msgid "Invalid proxy URL"
 msgstr ""
 
-#: src/validators/validateProxyUrl.ts:218
+#: src/validators/validateProxyUrl.ts:311
 msgid "Invalid proxy URL: invalid host or port"
 msgstr ""
 
@@ -15651,7 +15659,7 @@ msgstr ""
 msgid "UPLINK (TX)"
 msgstr ""
 
-#: src/validators/validateProxyUrl.ts:303
+#: src/validators/validateProxyUrl.ts:396
 msgid "URL must start with vless://, vmess://, ss://, trojan://, socks4://, socks4a://, socks5://, http://, https://, hysteria2://, hy2://, tuic://, fptn://, or fptn:"
 msgstr ""
 
@@ -16366,8 +16374,8 @@ msgstr ""
 #: src/validators/validateProxyUrl.ts:116
 #: src/validators/validateProxyUrl.ts:133
 #: src/validators/validateProxyUrl.ts:161
-#: src/validators/validateProxyUrl.ts:198
-#: src/validators/validateProxyUrl.ts:221
+#: src/validators/validateProxyUrl.ts:292
+#: src/validators/validateProxyUrl.ts:314
 #: src/validators/validateProxyUrl.ts:43
 #: src/validators/validateProxyUrl.ts:64
 #: src/validators/validateProxyUrl.ts:93
@@ -17509,7 +17517,7 @@ msgstr ""
 msgid "vless://, vmess://, trojan://, ss://, hysteria2://, tuic://, anytls://, naive+https://, mieru://, snell://, trusttunnel://, etc."
 msgstr ""
 
-#: src/validators/validateProxyUrl.ts:287
+#: src/validators/validateProxyUrl.ts:380
 msgid "vpn:// is available only with Tachyon Core or sing-box LX"
 msgstr ""
 

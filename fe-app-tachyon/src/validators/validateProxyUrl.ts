@@ -185,18 +185,111 @@ function validateExtendedShareLink(url: string): ValidationResult {
   }
 
   if (scheme === 'mieru' || scheme === 'mierus') {
-    const params = new URLSearchParams(queryPart);
-    const qPort = params.get('port');
-    if (qPort && !hostPortPart.includes(':')) {
-      const portNum = Number(qPort);
-      if (!hostPortPart || !isValidPort(portNum)) {
+    if (!hostPortPart) {
+      return {
+        valid: false,
+        message: _('Invalid Mieru URL: invalid host or port'),
+      };
+    }
+
+    let hostOnly = hostPortPart;
+    let authorityPortStr = '';
+    if (hostPortPart.startsWith('[')) {
+      const closeIdx = hostPortPart.indexOf(']');
+      if (closeIdx <= 1) {
         return {
           valid: false,
           message: _('Invalid Mieru URL: invalid host or port'),
         };
       }
-      return { valid: true, message: _('Valid') };
+      hostOnly = hostPortPart.slice(1, closeIdx);
+      const rest = hostPortPart.slice(closeIdx + 1);
+      if (rest.startsWith(':')) {
+        authorityPortStr = rest.slice(1);
+      } else if (rest !== '') {
+        return {
+          valid: false,
+          message: _('Invalid Mieru URL: invalid host or port'),
+        };
+      }
+    } else {
+      const colonIdx = hostPortPart.lastIndexOf(':');
+      if (colonIdx >= 0) {
+        hostOnly = hostPortPart.slice(0, colonIdx);
+        authorityPortStr = hostPortPart.slice(colonIdx + 1);
+      }
     }
+
+    if (!hostOnly || /\s/.test(hostOnly)) {
+      return {
+        valid: false,
+        message: _('Invalid Mieru URL: invalid host or port'),
+      };
+    }
+
+    let hasAuthorityPort = false;
+    if (authorityPortStr !== '') {
+      if (
+        !/^\d+$/.test(authorityPortStr) ||
+        !isValidPort(Number(authorityPortStr))
+      ) {
+        return {
+          valid: false,
+          message: _('Invalid Mieru URL: invalid host or port'),
+        };
+      }
+      hasAuthorityPort = true;
+    }
+
+    const params = new URLSearchParams(queryPart);
+    const portValues = [
+      ...params.getAll('port'),
+      ...params.getAll('ports'),
+      ...params.getAll('port-range'),
+      ...params.getAll('server_ports'),
+    ];
+    let validQueryPortCount = 0;
+    for (const rawVal of portValues) {
+      const tokens = rawVal
+        .split(/[,\s]+/)
+        .map((t) => t.trim().replace(/:/g, '-'))
+        .filter(Boolean);
+      if (tokens.length === 0) {
+        return {
+          valid: false,
+          message: _('Invalid Mieru URL: invalid host or port'),
+        };
+      }
+      for (const token of tokens) {
+        const rangeMatch = /^(\d+)-(\d+)$/.exec(token);
+        if (rangeMatch) {
+          const lo = Number(rangeMatch[1]);
+          const hi = Number(rangeMatch[2]);
+          if (!isValidPort(lo) || !isValidPort(hi) || lo > hi) {
+            return {
+              valid: false,
+              message: _('Invalid Mieru URL: invalid host or port'),
+            };
+          }
+          validQueryPortCount++;
+        } else if (/^\d+$/.test(token) && isValidPort(Number(token))) {
+          validQueryPortCount++;
+        } else {
+          return {
+            valid: false,
+            message: _('Invalid Mieru URL: invalid host or port'),
+          };
+        }
+      }
+    }
+
+    if (!hasAuthorityPort && validQueryPortCount === 0) {
+      return {
+        valid: false,
+        message: _('Invalid Mieru URL: invalid host or port'),
+      };
+    }
+    return { valid: true, message: _('Valid') };
   }
 
   const defaultPortSchemes = [

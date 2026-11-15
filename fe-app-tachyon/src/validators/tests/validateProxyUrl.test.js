@@ -136,4 +136,47 @@ describe('validateProxyUrl', () => {
       false,
     );
   });
+
+  it('accepts Mieru Simple Share Links with query ports, ranges, and IPv6', () => {
+    expect(
+      validateProxyUrl(
+        'mierus://testuser:testpass@203.0.113.10?profile=%F0%9F%87%AB%F0%9F%87%AE+Finland%7CLainDEV&mtu=1400&port=20100&protocol=TCP#%F0%9F%87%AB%F0%9F%87%AE%20Finland%7CLainDEV',
+      ).valid,
+    ).toBe(true);
+    expect(
+      validateProxyUrl(
+        'mierus://user:pass@203.0.113.10?port=20100-20109&protocol=UDP',
+      ).valid,
+    ).toBe(true);
+    expect(
+      validateProxyUrl(
+        'mierus://user:pass@203.0.113.10?port=20100&port=20101&protocol=TCP',
+      ).valid,
+    ).toBe(true);
+    expect(
+      validateProxyUrl(
+        'mierus://user:pass@[2001:db8::1]?port=21017&protocol=TCP#IPv6',
+      ).valid,
+    ).toBe(true);
+    expect(
+      validateProxyUrl('mieru://user:pass@mieru.example.com:2012?transport=TCP')
+        .valid,
+    ).toBe(true);
+  });
+
+  it('rejects invalid Mieru URLs', () => {
+    expect(validateProxyUrl('mierus://user:pass@203.0.113.10').valid).toBe(
+      false,
+    );
+    expect(
+      validateProxyUrl('mierus://user:pass@203.0.113.10?port=70000').valid,
+    ).toBe(false);
+    expect(
+      validateProxyUrl('mierus://user:pass@203.0.113.10?port=20200-20100')
+        .valid,
+    ).toBe(false);
+    expect(validateProxyUrl('mierus://203.0.113.10?port=20100').valid).toBe(
+      false,
+    );
+  });
 });
