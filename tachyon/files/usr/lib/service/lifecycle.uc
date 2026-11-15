@@ -4,6 +4,7 @@ let fs = require("fs");
 let constants = require("core.constants");
 let uci_core = require("core.uci");
 let common = require("core.common");
+let kill_switch = require("service.kill_switch");
 
 let as_string = common.as_string;
 
@@ -1284,9 +1285,16 @@ function start_impl() {
     // all tachyon temp files are created and deleted within seconds under normal operation.
     command_status("find /tmp -maxdepth 1 -name 'tachyon-*' -mmin +30 -delete 2>/dev/null; true");
 
+    // Interception is absent until nft is rebuilt below; keep a fail-closed
+    // setup blocked meanwhile.
+    let fail_closed = kill_switch.hold();
     if (!is_planned_restart && config_get(CONFIG_NAME + ".settings.shutdown_correctly") == "0") {
-        log_message("Previous shutdown was unclean; restoring dnsmasq to failsafe before start", "warn");
-        dnsmasq_restore_fail_safe();
+        if (fail_closed == "") {
+            log_message("Previous shutdown was unclean; restoring dnsmasq to failsafe before start", "warn");
+            dnsmasq_restore_fail_safe();
+        }
+        else
+            log_message("Previous shutdown was unclean; keeping DNS on the proxy (" + fail_closed + ")", "warn");
     }
 
     // Watchdog must start early so auto-healing is active even through a failed boot.
@@ -1423,9 +1431,16 @@ function cleanup_failed_runtime() {
     if (stop_status != 0)
         status = stop_status;
 
-    let dns_status = dnsmasq_restore_fail_safe();
-    if (dns_status != 0 && status == 0)
-        status = dns_status;
+    // A fail-closed setup stays blocked (guard on, DNS on the dead proxy) until
+    // a later start succeeds; anything else falls back to direct DNS as before.
+    let fail_closed = kill_switch.hold();
+    if (fail_closed == "") {
+        let dns_status = dnsmasq_restore_fail_safe();
+        if (dns_status != 0 && status == 0)
+            status = dns_status;
+    }
+    else
+        log_message("Start failed; Internet stays blocked until Tachyon recovers (" + fail_closed + ")", "warn");
 
     let mark_status = mark_runtime_stopped_clean();
     if (mark_status != 0 && status == 0)
@@ -1499,6 +1514,8 @@ function stop_impl() {
     let runtime_status = stop_main();
     if (runtime_status != 0)
         status = runtime_status;
+    // A manual stop is the user choosing direct Internet.
+    kill_switch.release();
 
     if (!config_set(CONFIG_NAME + ".settings.shutdown_correctly", "1"))
         status = 1;
@@ -1527,6 +1544,7 @@ function restart_runtime_for_reload() {
     log_message("Reload requires a full Tachyon runtime restart", "info");
     invalidate_reload_hash();
 
+    kill_switch.hold(); // stop_main drops interception until start rebuilds it
     status = stop_main();
     if (status != 0)
         return status;
@@ -1975,6 +1993,7 @@ function restart() {
     let selector_state = capture_selector_state();
     invalidate_reload_hash();
 
+    kill_switch.hold(); // stop_main drops interception until start rebuilds it
     let status = stop_main();
     if (status != 0)
         return status;

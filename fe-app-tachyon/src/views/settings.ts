@@ -4837,6 +4837,18 @@ function createSettingsContent(section, capabilities) {
   o = section.taboption(
     'services',
     form.Flag,
+    'dns_intercept_all',
+    _('Intercept All LAN DNS'),
+    _(
+      'Redirect every LAN DNS query (port 53) to the router resolver, refuse DNS-over-TLS (853) and block well-known DNS-over-HTTPS resolvers, so clients with their own DNS cannot bypass domain sections. Excluded clients are not affected.',
+    ),
+  );
+  o.default = '0';
+  o.rmempty = false;
+
+  o = section.taboption(
+    'services',
+    form.Flag,
     'wifi_calling_direct',
     _('Wi-Fi Calling Direct (VoWiFi)'),
     _(
@@ -6139,6 +6151,19 @@ function createSettingsContent(section, capabilities) {
   );
   o.default = 'https://cp.cloudflare.com/generate_204';
   o.depends('ai_proxy_health_enabled', '1');
+
+  o = section.taboption(
+    'ai',
+    form.Flag,
+    'emergency_direct_bypass',
+    _('Emergency Direct Bypass'),
+    _(
+      'When every recovery attempt fails, route all traffic directly and resolve DNS via WAN to keep the Internet working. Disable to block instead (kill-switch for all sections). Always off while any section uses Fail-Closed.',
+    ),
+  );
+  o.default = '1';
+  o.rmempty = false;
+  o.depends('enable_watchdog', '1');
 
   // DNS Continuous Check
   o = section.taboption(

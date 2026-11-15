@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-15 22:54+0300\n"
-"PO-Revision-Date: 2026-11-15 22:54+0300\n"
+"POT-Creation-Date: 2026-11-15 22:57+0300\n"
+"PO-Revision-Date: 2026-11-15 22:57+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -314,8 +314,8 @@ msgstr "Действие настроено, но бинарный файл не
 msgid "Action is configured, but runtime is not ready"
 msgstr "Действие настроено, но служба не готова"
 
-msgid "Action when this section's outbound is quarantined or fails health probes: Keep (normal routing), Fail-Closed (block matching traffic to prevent IP leaks), or Fail-Open (bypass directly)."
-msgstr "Действие при карантине или отказе проверки работоспособности выхода этой секции: Оставить (обычная маршрутизация), Fail-Closed (блокировать трафик секции для защиты от утечки IP) или Fail-Open (направлять напрямую в обход прокси)."
+msgid "Action when this section's outbound is quarantined or fails health probes: Keep (normal routing), Fail-Closed (block matching traffic to prevent IP leaks), or Fail-Open (bypass directly). Fail-Closed also disables the router-wide emergency direct bypass: if Tachyon fails completely, DNS and proxied traffic stay blocked until it recovers, and normal Internet access is not restored automatically."
+msgstr "Действие при карантине или отказе проверки работоспособности выхода этой секции: Оставить (обычная маршрутизация), Fail-Closed (блокировать трафик секции для защиты от утечки IP) или Fail-Open (направлять напрямую в обход прокси). Fail-Closed также отключает аварийный прямой обход для всего роутера: если Tachyon полностью откажет, DNS и трафик через прокси останутся заблокированы до его восстановления, обычный интернет автоматически не вернётся."
 
 msgid "Actions"
 msgstr "Действия"
@@ -3323,6 +3323,9 @@ msgstr "Встроенный Tailscale работает"
 msgid "Embedded runs Tailscale directly inside the routing core without a separate tailscaled daemon or tailscale0 interface."
 msgstr "Встроенный режим запускает Tailscale напрямую внутри ядра маршрутизации без отдельного демона tailscaled и интерфейса tailscale0."
 
+msgid "Emergency Direct Bypass"
+msgstr "Аварийный прямой обход"
+
 msgid "Empty composite rule"
 msgstr "Пустое составное правило"
 
@@ -5206,6 +5209,9 @@ msgstr "Установка русификатора и переключение 
 
 msgid "Installing packages"
 msgstr "Установка пакетов"
+
+msgid "Intercept All LAN DNS"
+msgstr "Перехватывать весь DNS из LAN"
 
 msgid "Interface"
 msgstr "Интерфейс"
@@ -8089,6 +8095,9 @@ msgstr "Порог возврата на основной WAN (успешных 
 
 msgid "Red"
 msgstr "Красный"
+
+msgid "Redirect every LAN DNS query (port 53) to the router resolver, refuse DNS-over-TLS (853) and block well-known DNS-over-HTTPS resolvers, so clients with their own DNS cannot bypass domain sections. Excluded clients are not affected."
+msgstr "Перенаправлять любые DNS-запросы из LAN (порт 53) на резолвер роутера, отклонять DNS-over-TLS (853) и блокировать известные DNS-over-HTTPS резолверы, чтобы клиенты со своим DNS не обходили доменные секции. На исключённых клиентов не действует."
 
 msgid "Refill"
 msgstr "Сброс"
@@ -11578,6 +11587,9 @@ msgstr "Что нового?"
 
 msgid "When enabled, detecting a blocked subdomain (e.g. sub.example.com) adds the entire base domain (example.com), unless this would include an excluded subdomain. When disabled, only the specific subdomain is routed through the proxy."
 msgstr "Если включено, блокировка поддомена (напр., sub.example.com) приводит к добавлению всего базового домена (example.com), если только это не затронет исключённый поддомен. Если выключено, через прокси направляется только конкретный поддомен."
+
+msgid "When every recovery attempt fails, route all traffic directly and resolve DNS via WAN to keep the Internet working. Disable to block instead (kill-switch for all sections). Always off while any section uses Fail-Closed."
+msgstr "Если все попытки восстановления не помогли, направлять весь трафик напрямую и резолвить DNS через WAN, чтобы интернет продолжал работать. Отключите, чтобы вместо этого блокировать (kill-switch для всех секций). Всегда выключен, пока хотя бы одна секция использует Fail-Closed."
 
 msgid "When switching to another level, test every server and select the fastest instead of the first working one."
 msgstr "При переключении на другой уровень тестировать каждый сервер и выбирать самый быстрый вместо первого рабочего."

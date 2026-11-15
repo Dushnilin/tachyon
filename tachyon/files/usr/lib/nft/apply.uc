@@ -5,6 +5,7 @@ let common = require("core.common");
 let helpers = require("core.helpers");
 let core_ip = require("core.ip");
 let uci_core = require("core.uci");
+let kill_switch = require("service.kill_switch");
 let rule_config = require("config.rule");
 let domain_config = require("config.domain");
 let connections = require("config.connections");
@@ -2301,6 +2302,16 @@ function nft_add_quic_block_rule(table, interface_set, fakeip_mark, mode) {
     return nft_add_rule(table, "mangle", rule);
 }
 
+// dns_intercept_all: DNS-over-TLS (853) cannot be redirected to the router
+// resolver, so it is refused and clients fall back to plain DNS, which is.
+function nft_add_dot_block_rule(table, interface_set, fakeip_mark) {
+    let mark_num = int(fakeip_mark, 0);
+    let clear_mask = mark_num > 0 ? sprintf("0x%08x", (~mark_num) & 0xffffffff) : "0xfbffffff";
+    return nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "meta", "l4proto", "{ tcp, udp }", "th", "dport", "853",
+        "meta", "mark", "set", "meta", "mark", "&", clear_mask, "counter", "reject", "with", "icmpx", "type", "port-unreachable",
+        "comment", "\"tachyon-dns-intercept\"" ]);
+}
+
 const DNAT_FORWARDS_SIG_FILE = "/var/run/tachyon/dnat-forwards.sig";
 
 function collect_firewall_dnat_forwards() {
@@ -2695,7 +2706,7 @@ function nft_add_webrtc_guard_rules(table, localv4_set, localv6_set, outbound_ma
         nft_add_rule(table, "webrtc_guard", [ "meta", "l4proto", "udp", "udp", "dport", "{ 3478, 5349, 19302 }", "counter", "drop", "comment", "\"tachyon-webrtc-leak-guard\"" ]);
 }
 
-function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_port_set, interface_set, source_interfaces, fakeip_mark, outbound_mark, fakeip_range, tproxy_port, exclude_ntp, localv6_set, common6_set, ip_port6_set, fakeip6_range, tproxy6_address, block_doh, disable_quic, leak_guard_active, webrtc_leak_protect, fakeip_enabled) {
+function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_port_set, interface_set, source_interfaces, fakeip_mark, outbound_mark, fakeip_range, tproxy_port, exclude_ntp, localv6_set, common6_set, ip_port6_set, fakeip6_range, tproxy6_address, block_doh, disable_quic, dns_intercept_all, leak_guard_active, webrtc_leak_protect, fakeip_enabled) {
     localv6_set = default_arg(localv6_set, "localv6");
     common6_set = default_arg(common6_set, "tachyon_subnets6");
     ip_port6_set = default_arg(ip_port6_set, "tachyon_ip6_ports");
@@ -2869,6 +2880,14 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
             return false;
     }
 
+    // dns_intercept_all: a client with its own resolver (8.8.8.8:53) would get
+    // real IPs instead of fakeip and walk past domain sections, so every other
+    // LAN DNS query is answered by the router resolver (dnsmasq -> core).
+    if (arg_bool(dns_intercept_all) &&
+        (!nft_add_rule(table, "dns_redirect", [ "iifname", "@" + as_string(interface_set), "tcp", "dport", "53", "counter", "redirect", "to", ":53", "comment", "\"tachyon-dns-intercept\"" ]) ||
+         !nft_add_rule(table, "dns_redirect", [ "iifname", "@" + as_string(interface_set), "udp", "dport", "53", "counter", "redirect", "to", ":53", "comment", "\"tachyon-dns-intercept\"" ])))
+        return false;
+
     if (!nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "icmpv6", "type", ESSENTIAL_ICMPV6_TYPES, "return" ]) ||
         !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "meta", "mark", "&", EXPLICIT_BYPASS_MARK, "==", EXPLICIT_BYPASS_MARK, "counter", "return" ]))
         return false;
@@ -3032,6 +3051,7 @@ function nft_create_runtime_base(table, localv4_set, common_set, port_set, ip_po
                 !nft_add_rule(table, "mangle", [ "iifname", "@" + as_string(interface_set), "ip6", "daddr", "!=", "@" + as_string(localv6_set), "meta", "mark", "0", "meta", "l4proto", "{ tcp, udp }", "meta", "mark", "set", fakeip_mark, "counter", "comment", "\"tachyon-full-tunnel\"" ]))
         )) ||
         (quic_mode != "off" && !nft_add_quic_block_rule(table, interface_set, fakeip_mark, quic_mode)) ||
+        (arg_bool(dns_intercept_all) && !nft_add_dot_block_rule(table, interface_set, fakeip_mark)) ||
         (arg_bool(block_doh) && !nft_add_doh_block_marking_rules(table, interface_set, fakeip_mark, eff_v6_active)) ||
         !nft_add_tproxy_rules(table, fakeip_mark, tproxy_port, tproxy6_address, dnat_forwards) ||
         !nft_add_rule(table, "mangle_output", [ "meta", "mark", "&", "0x40000000", "==", "0x40000000", "counter", "return" ]) ||
@@ -3235,8 +3255,10 @@ function nft_create_runtime_base_from_uci(table, localv4_set, common_set, port_s
         ip_port6_set,
         eff_fakeip6,
         eff_tproxy6,
-        option(settings, "block_doh", "0"),
+        // dns_intercept_all includes the DoH block.
+        bool_option(settings, "block_doh", false) || bool_option(settings, "dns_intercept_all", false) ? "1" : "0",
         option(settings, "disable_quic", "0"),
+        option(settings, "dns_intercept_all", "0"),
         eff_v6.leak_guard_active ? "1" : "0",
         bool_option(settings, "webrtc_leak_protect", false) ? "1" : "0",
         eff_v6.fakeip_enabled ? "1" : "0"
@@ -4715,6 +4737,11 @@ function nft_runtime_signature_from_settings_and_sections(settings, sections, sc
     body = signature_add_value(body, "settings.source_network_interfaces", option(settings, "source_network_interfaces", "br-lan"));
     body = signature_add_value(body, "settings.exclude_ntp", bool_option(settings, "exclude_ntp", false) ? "1" : "0");
     body = signature_add_value(body, "settings.block_doh", bool_option(settings, "block_doh", false) ? "1" : "0");
+    // The kill-switch gate follows this setting (service/kill_switch.uc).
+    if (option(settings, "emergency_direct_bypass", "1") == "0")
+        body = signature_add_value(body, "settings.emergency_direct_bypass", "0");
+    if (bool_option(settings, "dns_intercept_all", false))
+        body = signature_add_value(body, "settings.dns_intercept_all", "1");
     let quic_mode = disable_quic_mode(option(settings, "disable_quic", "0"));
     if (quic_mode != "off")
         body = signature_add_value(body, "settings.disable_quic", quic_mode);
@@ -4919,6 +4946,9 @@ function nft_create_full_runtime_from_uci(rt_table, table, localv4_set, common_s
 
 function nft_rebuild_runtime_from_uci(rt_table, table, localv4_set, common_set, port_set, ip_port_set, interface_set, fakeip_mark, outbound_mark, fakeip_range, tproxy_port, zapret_bin, zapret_route_mark_base, zapret_queue_base, zapret_desync_mark, zapret_desync_mark_postnat, zapret2_bin, zapret2_route_mark_base, zapret2_queue_base, zapret2_desync_mark, zapret2_desync_mark_postnat, localv6_set, common6_set, ip_port6_set, fakeip6_range, tproxy6_address) {
     log_debug("Applying nftables runtime rules");
+    // The table is deleted and rebuilt below; a fail-closed setup stays
+    // blocked until the new one is in place.
+    kill_switch.hold();
 
     if (can_use_internal_nft_batch()) {
         let tables_out = "\n" + command_output_quiet_from_args([ "nft", "list", "tables" ]) + "\n";
@@ -4937,7 +4967,10 @@ function nft_rebuild_runtime_from_uci(rt_table, table, localv4_set, common_set, 
             return false;
     }
 
-    return nft_create_full_runtime_from_uci(rt_table, table, localv4_set, common_set, port_set, ip_port_set, interface_set, fakeip_mark, outbound_mark, fakeip_range, tproxy_port, zapret_bin, zapret_route_mark_base, zapret_queue_base, zapret_desync_mark, zapret_desync_mark_postnat, zapret2_bin, zapret2_route_mark_base, zapret2_queue_base, zapret2_desync_mark, zapret2_desync_mark_postnat, localv6_set, common6_set, ip_port6_set, fakeip6_range, tproxy6_address);
+    let built = nft_create_full_runtime_from_uci(rt_table, table, localv4_set, common_set, port_set, ip_port_set, interface_set, fakeip_mark, outbound_mark, fakeip_range, tproxy_port, zapret_bin, zapret_route_mark_base, zapret_queue_base, zapret_desync_mark, zapret_desync_mark_postnat, zapret2_bin, zapret2_route_mark_base, zapret2_queue_base, zapret2_desync_mark, zapret2_desync_mark_postnat, localv6_set, common6_set, ip_port6_set, fakeip6_range, tproxy6_address);
+    if (built)
+        kill_switch.release();
+    return built;
 }
 
 function nft_runtime_signature_from_uci() {
@@ -5803,7 +5836,7 @@ else if (mode == "rule-ports-csv")
 else if (mode == "csv-to-lines-file")
     csv_to_lines_file(ARGV[1], ARGV[2]);
 else if (mode == "nft-create-runtime-base")
-    exit(nft_create_runtime_base(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7], ARGV[8], ARGV[9], ARGV[10], ARGV[11], ARGV[12], ARGV[13], ARGV[14], ARGV[15], ARGV[16], ARGV[17], ARGV[18], ARGV[19] || "") ? 0 : 1);
+    exit(nft_create_runtime_base(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7], ARGV[8], ARGV[9], ARGV[10], ARGV[11], ARGV[12], ARGV[13], ARGV[14], ARGV[15], ARGV[16], ARGV[17], ARGV[18], ARGV[19] || "", ARGV[20] || "", ARGV[21] || "", ARGV[22] || "", ARGV[23] || "") ? 0 : 1);
 else if (mode == "nft-create-runtime-base-from-uci")
     exit(nft_create_runtime_base_from_uci(ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6], ARGV[7], ARGV[8], ARGV[9], ARGV[10], ARGV[11], ARGV[12], ARGV[13], ARGV[14], ARGV[15]) ? 0 : 1);
 else if (mode == "nft-create-runtime-output-rules")

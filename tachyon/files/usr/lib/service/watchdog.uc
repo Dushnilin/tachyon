@@ -14,6 +14,7 @@ let event_controller = require("service.event_controller");
 let smart_detect = require("service.smart_detect");
 let smart_plus = require("service.smart_detect_plus");
 let firewall_health = require("service.firewall_health");
+let kill_switch = require("service.kill_switch");
 let smart_probe = null;
 function get_smart_probe() {
     if (smart_probe == null) smart_probe = require("service.smart_detect_probe");
@@ -1070,17 +1071,39 @@ function restore_emergency_runtime() {
         system("/sbin/uci -q set dhcp.@dnsmasq[0].noresolv='0' >/dev/null 2>&1; /sbin/uci commit dhcp >/dev/null 2>&1; /etc/init.d/dnsmasq restart >/dev/null 2>&1");
     }
 
-    // 2. Bypass broken proxy interception: flush and delete TachyonTable so traffic is not redirected to a dead proxy
+    // 2. Bypass broken proxy interception: flush and delete TachyonTable so traffic is not redirected to a dead proxy.
     system("nft delete table inet TachyonTable >/dev/null 2>&1; ip -4 rule del fwmark 0x04000000/0x04000000 table tachyon >/dev/null 2>&1; ip -6 rule del fwmark 0x04000000/0x04000000 table tachyon >/dev/null 2>&1; ip route flush table tachyon >/dev/null 2>&1; ip -6 route flush table tachyon >/dev/null 2>&1; ip route flush cache >/dev/null 2>&1");
 
+    // 3. Direct WAN was chosen: open the kill-switch gate a failed start may have closed.
+    kill_switch.release();
 }
 
 function restore_interception_bypass() {
     restore_emergency_runtime();
 }
 
-function trigger_emergency_failsafe(reason, details) {
+// Why watchdog may NOT fall back to direct WAN / direct DNS on its own, or ""
+// when it may (service/kill_switch.uc owns the rule).
+function direct_fallback_veto() {
+    return kill_switch.veto(settings(), uci_core.section_objects(CONFIG_NAME, "section"));
+}
+
+// `operator` = an explicit CLI request: the user chose direct WAN themselves.
+function trigger_emergency_failsafe(reason, details, operator) {
     if (emergency_failsafe_active) return;
+    if (!operator) {
+        let veto = direct_fallback_veto();
+        if (veto != "") {
+            // Stay on L4 so the next incident restarts the proxy again (still
+            // bounded by the 3-per-10-min limit) instead of idling at L5 forever.
+            set_ladder_level(reason, LADDER_L4_RESTART);
+            ai_heal_report("emergency_failsafe",
+                sprintf("Все уровни восстановления исчерпаны (%s)", reason),
+                sprintf("Fail-Closed: аварийный прямой обход НЕ включён, трафик остаётся заблокированным (%s)", veto),
+                "failed");
+            return;
+        }
+    }
     emergency_failsafe_active = true;
     let now = time();
     let emergency_data = {
@@ -1571,8 +1594,15 @@ function heal_dns_stall(ev) {
     let udp = fs.readfile("/proc/net/udp") || "";
     let core_dns_listening = index(udp, "2A00007F:0035") >= 0;
     if (!core_dns_listening) {
-        log_message("Watchdog: DNS stalled and " + active_engine + " is not listening on port 53; restoring failsafe DNS in dnsmasq", "warn");
-        command_status_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/dns/apply.uc", "failsafe-restore" ]);
+        // Direct DNS would hand clients real IPs that bypass fakeip interception.
+        let veto = direct_fallback_veto();
+        if (veto == "") {
+            log_message(sprintf("Watchdog: DNS stalled and %s is not listening on port 53; restoring failsafe DNS in dnsmasq", active_engine), "warn");
+            command_status_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/dns/apply.uc", "failsafe-restore" ]);
+        }
+        else {
+            log_message(sprintf("Watchdog: DNS stalled and %s is not listening on port 53; keeping DNS on the proxy (%s)", active_engine, veto), "warn");
+        }
     }
 
     let incident = {
@@ -3984,7 +4014,7 @@ else if (mode == "emergency-reset") {
 }
 else if (mode == "emergency-trigger") {
     let reason = ARGV[1] || "manual_operator_request";
-    trigger_emergency_failsafe(reason, "Manually invoked via CLI");
+    trigger_emergency_failsafe(reason, "Manually invoked via CLI", true);
     print("Emergency failsafe triggered\n");
     exit(0);
 }

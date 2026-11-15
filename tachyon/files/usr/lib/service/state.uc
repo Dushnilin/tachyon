@@ -1745,6 +1745,11 @@ function nft_runtime_signature_body(settings, sections, schedules, profiles, gue
     body = signature_add_value(body, "settings.source_network_interfaces", option(settings, "source_network_interfaces", "br-lan"));
     body = signature_add_value(body, "settings.exclude_ntp", bool_option(settings, "exclude_ntp", false) ? "1" : "0");
     body = signature_add_value(body, "settings.block_doh", bool_option(settings, "block_doh", false) ? "1" : "0");
+    // The kill-switch gate follows this setting (service/kill_switch.uc).
+    if (option(settings, "emergency_direct_bypass", "1") == "0")
+        body = signature_add_value(body, "settings.emergency_direct_bypass", "0");
+    if (bool_option(settings, "dns_intercept_all", false))
+        body = signature_add_value(body, "settings.dns_intercept_all", "1");
     let quic_mode = common.disable_quic_mode(option(settings, "disable_quic", "0"));
     if (quic_mode != "off")
         body = signature_add_value(body, "settings.disable_quic", quic_mode);
@@ -2638,6 +2643,8 @@ function sing_box_signature_body(settings, sections, servers, mwan3_active, sche
     body = signature_add_value(body, "settings.output_network_interface", option(settings, "output_network_interface", ""));
     body = signature_add_value(body, "settings.disable_quic", common.disable_quic_mode(option(settings, "disable_quic", "0")));
     body = signature_add_value(body, "settings.block_doh", bool_option_value(settings, "block_doh", false));
+    if (bool_option(settings, "dns_intercept_all", false))
+        body = signature_add_value(body, "settings.dns_intercept_all", "1");
     if (sing_box_signature_has_remote_ruleset_sources(sections))
         body = signature_add_value(body, "settings.update_interval", settings_update_interval(settings));
     body = signature_add_value(body, "settings.cache_path", option(settings, "cache_path", "/usr/share/tachyon-core/cache.db"));
