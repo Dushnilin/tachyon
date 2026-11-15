@@ -1494,7 +1494,8 @@ async fn start_fuzzer_reply(
         "",
         mode,
         timeout_secs,
-    );
+    )
+    .await;
     let ok = res.get("success").and_then(Value::as_bool).unwrap_or(false);
     if !ok {
         let err = res
@@ -1545,7 +1546,7 @@ async fn stop_fuzzer_reply(state: &Arc<AppState>) -> BotReply {
         let d = state.data.read().await;
         is_ru(&d)
     };
-    let _ = fuzzer::stop();
+    let _ = fuzzer::stop().await;
     let kb = inline_kb(vec![vec![
         cb_btn(tr(ru, "Результаты", "Results"), "fuz_view"),
         cb_btn(tr(ru, "Главное меню", "Main Menu"), "menu"),

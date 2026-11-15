@@ -1637,16 +1637,16 @@ async fn stage_release_binary(
     );
     let lower_asset = asset_name.to_ascii_lowercase();
     let extracted_bin = if lower_asset.ends_with(".tar.gz") || lower_asset.ends_with(".tgz") {
-        let out = Command::new("tar")
-            .arg("-xzf")
+        let mut cmd = Command::new("tar");
+        cmd.arg("-xzf")
             .arg(&archive_path)
             .arg("-C")
             .arg(&stage_dir)
-            .output()
-            .await;
+            .kill_on_drop(true);
+        let out = tokio::time::timeout(Duration::from_secs(60), cmd.output()).await;
         match out {
-            Ok(o) if o.status.success() => {}
-            Ok(o) => {
+            Ok(Ok(o)) if o.status.success() => {}
+            Ok(Ok(o)) => {
                 let err = String::from_utf8_lossy(&o.stderr).trim().to_string();
                 let _ = std::fs::remove_dir_all(&stage_dir);
                 return Err(component_error_payload(
@@ -1657,7 +1657,7 @@ async fn stage_release_binary(
                     format!("Ошибка tar -xzf: {err}"),
                 ));
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 let _ = std::fs::remove_dir_all(&stage_dir);
                 return Err(component_error_payload(
                     canon,
@@ -1665,6 +1665,16 @@ async fn stage_release_binary(
                     job_id,
                     &current,
                     format!("Не удалось запустить tar: {e}"),
+                ));
+            }
+            Err(_) => {
+                let _ = std::fs::remove_dir_all(&stage_dir);
+                return Err(component_error_payload(
+                    canon,
+                    action,
+                    job_id,
+                    &current,
+                    "Таймаут распаковки архива tar -xzf (60s)".to_string(),
                 ));
             }
         }

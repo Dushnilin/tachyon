@@ -1420,16 +1420,19 @@ async fn try_fast_pure_rust_method(
             Some((0, format!("{}\n", live.core_version), String::new()))
         }
         "get_ui_state" => {
+            state.touch_telemetry_access();
             let val = build_pure_rust_ui_state(state).await;
             let s = serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string());
             Some((0, format!("{s}\n"), String::new()))
         }
         "get_system_info" => {
+            state.touch_telemetry_access();
             let val = build_pure_rust_system_info(state).await;
             let s = serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string());
             Some((0, format!("{s}\n"), String::new()))
         }
         "get_status" => {
+            state.touch_telemetry_access();
             let sys = sys_info::collect_host_info();
             let live = state.live.read().await.clone();
             let d = state.data.read().await;
@@ -1455,6 +1458,7 @@ async fn try_fast_pure_rust_method(
             Some((0, format!("{s}\n"), String::new()))
         }
         "get_sing_box_status" | "get_engine_status" => {
+            state.touch_telemetry_access();
             let live = state.live.read().await.clone();
             let d = state.data.read().await;
             let uptime_secs = live.core_uptime_secs.max(1);
@@ -1566,6 +1570,7 @@ async fn try_fast_pure_rust_method(
         }
         "clash_api" => handle_pure_rust_clash_api(rest, state, core).await,
         "core_telemetry_snapshot" => {
+            state.touch_telemetry_access();
             let val = build_pure_rust_core_telemetry(state, core).await;
             let s = serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string());
             Some((0, format!("{s}\n"), String::new()))
@@ -1636,6 +1641,7 @@ async fn try_fast_pure_rust_method(
             Some((0, format!("{s}\n"), String::new()))
         }
         "lan_clients" => {
+            state.touch_telemetry_access();
             let d = state.data.read().await;
             let clients: Vec<Value> = sys_info::discover_lan_devices()
                 .into_iter()
@@ -2417,6 +2423,7 @@ async fn handle_pure_rust_clash_api(
             Some((0, "{\"proxies\":{}}\n".to_string(), String::new()))
         }
         "get_connections" => {
+            state.touch_telemetry_access();
             let conntrack_only = rest.get(1).map(String::as_str) == Some("conntrack");
             if !conntrack_only {
                 let cache_path = Path::new("/var/run/tachyon/ui-state/clash-connections.json");
@@ -5004,9 +5011,10 @@ async fn execute_pure_rust_tachyon_cli(
                 mode,
                 timeout_secs,
             )
+            .await
         }
         "fuzzer_status" => crate::fuzzer::get_status(),
-        "fuzzer_stop" => crate::fuzzer::stop(),
+        "fuzzer_stop" => crate::fuzzer::stop().await,
         "fuzzer_apply" | "fuzzer_auto_apply" => {
             let bin_path = core.resolve_bin_path().await;
             if method == "fuzzer_apply" {

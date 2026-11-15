@@ -8232,11 +8232,6 @@ pub fn compile_core_config_with_wan6(
             "server": "dns-safesearch"
         }));
     }
-    if !store.settings.fakeip_exclude.is_empty() && store.settings.fakeip_enabled {
-        dns_rules_vec.extend(build_fakeip_exclude_dns_rules(
-            &store.settings.fakeip_exclude,
-        ));
-    }
     if !ipv6_active {
         dns_rules_vec.push(json!({
             "query_type": ["AAAA"],
@@ -8245,6 +8240,12 @@ pub fn compile_core_config_with_wan6(
         }));
     } else if !per_sec_aaaa_dns_rules.is_empty() {
         dns_rules_vec.extend(per_sec_aaaa_dns_rules);
+    }
+    if !store.settings.fakeip_exclude.is_empty() && store.settings.fakeip_enabled {
+        dns_rules_vec.extend(build_fakeip_exclude_dns_rules_with_ttl(
+            &store.settings.fakeip_exclude,
+            Some(store.settings.dns_rewrite_ttl),
+        ));
     }
     if !ts_dns_metas.is_empty() {
         let mut has_ts_net_rule = false;
@@ -8460,7 +8461,10 @@ fn lookup_known_dns_server_name(host: &str) -> Option<&'static str> {
     }
 }
 
-fn build_fakeip_exclude_dns_rules(entries: &[String]) -> Vec<Value> {
+fn build_fakeip_exclude_dns_rules_with_ttl(
+    entries: &[String],
+    rewrite_ttl: Option<u32>,
+) -> Vec<Value> {
     let mut exact_domains: Vec<String> = Vec::new();
     let mut suffix_domains: Vec<String> = Vec::new();
     let mut keyword_domains: Vec<String> = Vec::new();
@@ -8484,44 +8488,46 @@ fn build_fakeip_exclude_dns_rules(entries: &[String]) -> Vec<Value> {
     };
 
     for raw_entry in entries {
-        let entry_s = raw_entry.trim();
-        if entry_s.is_empty() || entry_s.starts_with('#') {
-            continue;
-        }
-        for tok_raw in entry_s.split(|c: char| c == ',' || c.is_whitespace()) {
-            let tok = tok_raw.trim();
-            if tok.is_empty() {
+        for raw_line in raw_entry.lines() {
+            let line_s = raw_line.trim();
+            if line_s.is_empty() || line_s.starts_with('#') {
                 continue;
             }
-            if tok.starts_with('#') {
-                break;
-            }
-            if crate::store::valid_ip_with_zone(tok)
-                || (tok.contains('/') && crate::store::mask_cidr(tok).is_some())
-            {
-                continue;
-            }
-            let lower = tok.to_ascii_lowercase();
-            if lower.starts_with("full:") {
-                push_unique("domain", &mut exact_domains, &tok[5..], true);
-            } else if lower.starts_with("domain:") {
-                push_unique("domain", &mut exact_domains, &tok[7..], true);
-            } else if lower.starts_with("domain_suffix:") {
-                push_unique("domain_suffix", &mut suffix_domains, &tok[14..], true);
-            } else if lower.starts_with("domain_keyword:") {
-                push_unique("domain_keyword", &mut keyword_domains, &tok[15..], true);
-            } else if lower.starts_with("keyword:") {
-                push_unique("domain_keyword", &mut keyword_domains, &tok[8..], true);
-            } else if lower.starts_with("domain_regex:") {
-                push_unique("domain_regex", &mut regex_domains, &tok[13..], false);
-            } else if lower.starts_with("regex:") {
-                push_unique("domain_regex", &mut regex_domains, &tok[6..], false);
-            } else if let Some(rest) = tok.strip_prefix("*.") {
-                push_unique("domain_suffix", &mut suffix_domains, rest, true);
-            } else if let Some(rest) = tok.strip_prefix('.') {
-                push_unique("domain_suffix", &mut suffix_domains, rest, true);
-            } else {
-                push_unique("domain_suffix", &mut suffix_domains, tok, true);
+            for tok_raw in line_s.split(|c: char| c == ',' || c.is_whitespace()) {
+                let tok = tok_raw.trim();
+                if tok.is_empty() {
+                    continue;
+                }
+                if tok.starts_with('#') {
+                    break;
+                }
+                if crate::store::valid_ip_with_zone(tok)
+                    || (tok.contains('/') && crate::store::mask_cidr(tok).is_some())
+                {
+                    continue;
+                }
+                let lower = tok.to_ascii_lowercase();
+                if lower.starts_with("full:") {
+                    push_unique("domain", &mut exact_domains, &tok[5..], true);
+                } else if lower.starts_with("domain:") {
+                    push_unique("domain", &mut exact_domains, &tok[7..], true);
+                } else if lower.starts_with("domain_suffix:") {
+                    push_unique("domain_suffix", &mut suffix_domains, &tok[14..], true);
+                } else if lower.starts_with("domain_keyword:") {
+                    push_unique("domain_keyword", &mut keyword_domains, &tok[15..], true);
+                } else if lower.starts_with("keyword:") {
+                    push_unique("domain_keyword", &mut keyword_domains, &tok[8..], true);
+                } else if lower.starts_with("domain_regex:") {
+                    push_unique("domain_regex", &mut regex_domains, &tok[13..], false);
+                } else if lower.starts_with("regex:") {
+                    push_unique("domain_regex", &mut regex_domains, &tok[6..], false);
+                } else if let Some(rest) = tok.strip_prefix("*.") {
+                    push_unique("domain_suffix", &mut suffix_domains, rest, true);
+                } else if let Some(rest) = tok.strip_prefix('.') {
+                    push_unique("domain_suffix", &mut suffix_domains, rest, true);
+                } else {
+                    push_unique("domain_suffix", &mut suffix_domains, tok, true);
+                }
             }
         }
     }
@@ -8536,12 +8542,21 @@ fn build_fakeip_exclude_dns_rules(entries: &[String]) -> Vec<Value> {
         if vals.is_empty() {
             continue;
         }
-        rules.push(json!({
-            key: vals,
-            "server": "dns-remote"
-        }));
+        let mut obj = Map::new();
+        obj.insert("action".into(), json!("route"));
+        obj.insert(key.into(), json!(vals));
+        obj.insert("server".into(), json!("dns-remote"));
+        if let Some(ttl) = rewrite_ttl {
+            obj.insert("rewrite_ttl".into(), json!(ttl));
+        }
+        rules.push(Value::Object(obj));
     }
     rules
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+fn build_fakeip_exclude_dns_rules(entries: &[String]) -> Vec<Value> {
+    build_fakeip_exclude_dns_rules_with_ttl(entries, None)
 }
 
 /// Return true if a routing section supports IPv6 traffic (`ipv6_support` flag
@@ -13581,6 +13596,72 @@ config timeserver 'ntp'
         assert_eq!(rem_dom["domain_resolver"], "dns-bootstrap");
         assert_eq!(rem_dom["tls"]["server_name"], "dns.quad9.net");
         assert_eq!(rem_dom["path"], "/dns-query");
+    }
+
+    #[test]
+    fn test_fakeip_exclude_multiline_and_rule_order() {
+        let multiline_rules = build_fakeip_exclude_dns_rules(&[
+            "# header comment\nfull:first.example, *.second.example # trailing comment\n198.51.100.1\ndomain:third.example"
+                .to_string(),
+        ]);
+        assert!(multiline_rules.iter().any(|r| {
+            r["domain"] == json!(["first.example", "third.example"])
+                && r["action"] == "route"
+                && r["server"] == "dns-remote"
+        }));
+        assert!(multiline_rules.iter().any(|r| {
+            r["domain_suffix"] == json!(["second.example"])
+                && r["action"] == "route"
+                && r["server"] == "dns-remote"
+        }));
+
+        let mut store = RouterStoreData::default();
+        store.settings.ipv6_mode = "off".to_string();
+        store.settings.fakeip_enabled = true;
+        store.settings.dns_rewrite_ttl = 27;
+        store.settings.fakeip_exclude = vec![
+            "# comment line\nfull:exact.test, *.sfx.test # inline\nkeyword:kwtest".to_string(),
+        ];
+
+        let cfg_v4 = compile_core_config_with_wan6(&store, false).expect("compile v4 exclude");
+        let rules = cfg_v4["dns"]["rules"].as_array().expect("dns rules array");
+        let idx_aaaa = rules
+            .iter()
+            .position(|r| r["query_type"] == json!(["AAAA"]) && r["rcode"] == "NOERROR")
+            .expect("missing AAAA NOERROR guard");
+        let idx_ex_domain = rules
+            .iter()
+            .position(|r| r["domain"] == json!(["exact.test"]))
+            .expect("missing fakeip_exclude domain rule");
+        let idx_ex_suffix = rules
+            .iter()
+            .position(|r| r["domain_suffix"] == json!(["sfx.test"]))
+            .expect("missing fakeip_exclude domain_suffix rule");
+        let idx_fakeip = rules
+            .iter()
+            .position(|r| r["server"] == "dns-fakeip")
+            .expect("missing dns-fakeip rule");
+
+        assert!(
+            idx_aaaa < idx_ex_domain && idx_ex_domain < idx_fakeip,
+            "expected AAAA guard ({idx_aaaa}) < fakeip_exclude ({idx_ex_domain}) < dns-fakeip ({idx_fakeip})"
+        );
+        assert!(idx_ex_suffix < idx_fakeip);
+        assert_eq!(rules[idx_ex_domain]["action"], "route");
+        assert_eq!(rules[idx_ex_domain]["server"], "dns-remote");
+        assert_eq!(rules[idx_ex_domain]["rewrite_ttl"], json!(27));
+
+        store.settings.fakeip_enabled = false;
+        let cfg_no_fakeip =
+            compile_core_config_with_wan6(&store, false).expect("compile without fakeip");
+        let rules_no_fakeip = cfg_no_fakeip["dns"]["rules"]
+            .as_array()
+            .expect("dns rules no fakeip");
+        assert!(
+            !rules_no_fakeip
+                .iter()
+                .any(|r| r["domain"] == json!(["exact.test"]))
+        );
     }
 
     #[test]

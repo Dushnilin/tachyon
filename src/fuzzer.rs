@@ -9,7 +9,7 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener, TcpStrea
 use std::path::Path;
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use rand::RngCore;
@@ -34,6 +34,110 @@ static FUZZER_STATE: OnceLock<Mutex<Value>> = OnceLock::new();
 static FUZZER_ABORT: AtomicBool = AtomicBool::new(false);
 static FUZZER_ACTIVE_PID: AtomicU32 = AtomicU32::new(0);
 static FUZZER_JOB_SEQ: AtomicU64 = AtomicU64::new(1);
+static FUZZER_ACTIVE_GEN: AtomicU64 = AtomicU64::new(0);
+static FUZZER_START_GATE: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+static FUZZER_TASK_SLOT: OnceLock<tokio::sync::Mutex<FuzzerTaskSlot>> = OnceLock::new();
+
+#[derive(Default)]
+struct FuzzerTaskSlot {
+    active_gen: u64,
+    abort_flag: Option<Arc<AtomicBool>>,
+    task_handle: Option<tokio::task::JoinHandle<()>>,
+}
+
+fn start_gate() -> &'static tokio::sync::Mutex<()> {
+    FUZZER_START_GATE.get_or_init(|| tokio::sync::Mutex::new(()))
+}
+
+fn task_slot() -> &'static tokio::sync::Mutex<FuzzerTaskSlot> {
+    FUZZER_TASK_SLOT.get_or_init(|| tokio::sync::Mutex::new(FuzzerTaskSlot::default()))
+}
+
+fn is_run_aborted(run_gen: u64, run_abort: &AtomicBool) -> bool {
+    run_abort.load(Ordering::Acquire)
+        || FUZZER_ABORT.load(Ordering::Acquire)
+        || FUZZER_ACTIVE_GEN.load(Ordering::Acquire) != run_gen
+}
+
+fn save_state_if_gen(run_gen: u64, val: &Value) -> bool {
+    if FUZZER_ACTIVE_GEN.load(Ordering::Acquire) != run_gen {
+        return false;
+    }
+    save_state(val);
+    true
+}
+
+async fn kill_active_fuzzer_pid() {
+    let pid = FUZZER_ACTIVE_PID.swap(0, Ordering::SeqCst);
+    if pid > 1 && cfg!(target_os = "linux") {
+        let mut cmd = Command::new("kill");
+        cmd.args(["-9", &pid.to_string()])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .kill_on_drop(true);
+        let _ = tokio::time::timeout(Duration::from_secs(2), cmd.status()).await;
+    }
+}
+
+async fn stop_active_benchmark_locked() {
+    FUZZER_ABORT.store(true, Ordering::SeqCst);
+    FUZZER_ACTIVE_GEN.fetch_add(1, Ordering::AcqRel);
+
+    let (prev_abort, prev_handle) = {
+        let mut slot = task_slot().lock().await;
+        slot.active_gen = FUZZER_ACTIVE_GEN.load(Ordering::Acquire);
+        (slot.abort_flag.take(), slot.task_handle.take())
+    };
+    if let Some(flag) = prev_abort {
+        flag.store(true, Ordering::SeqCst);
+    }
+
+    kill_active_fuzzer_pid().await;
+
+    if let Some(mut handle) = prev_handle
+        && tokio::time::timeout(Duration::from_millis(250), &mut handle)
+            .await
+            .is_err()
+    {
+        handle.abort();
+        let _ = handle.await;
+    }
+}
+
+async fn launch_serialized_fuzzer_task<F, Fut>(initial_state: Option<&Value>, make_worker: F) -> u64
+where
+    F: FnOnce(u64, Arc<AtomicBool>) -> Fut,
+    Fut: std::future::Future<Output = ()> + Send + 'static,
+{
+    stop_active_benchmark_locked().await;
+
+    let run_gen = FUZZER_ACTIVE_GEN.fetch_add(1, Ordering::AcqRel) + 1;
+    let run_abort = Arc::new(AtomicBool::new(false));
+    FUZZER_ABORT.store(false, Ordering::SeqCst);
+
+    if let Some(state_val) = initial_state {
+        save_state(state_val);
+    }
+
+    let worker_abort = Arc::clone(&run_abort);
+    let fut = make_worker(run_gen, worker_abort);
+    let handle = tokio::spawn(async move {
+        fut.await;
+        if FUZZER_ACTIVE_GEN.load(Ordering::Acquire) == run_gen
+            && let Ok(mut slot) = task_slot().try_lock()
+            && slot.active_gen == run_gen
+        {
+            slot.abort_flag = None;
+            slot.task_handle = None;
+        }
+    });
+
+    let mut slot = task_slot().lock().await;
+    slot.active_gen = run_gen;
+    slot.abort_flag = Some(run_abort);
+    slot.task_handle = Some(handle);
+    run_gen
+}
 
 #[derive(Clone, Debug)]
 pub struct StrategySpec {
@@ -1282,6 +1386,11 @@ fn push_unique_endpoint(
     }
 }
 
+fn is_streaming_url(url: &str) -> bool {
+    let low = url.to_ascii_lowercase();
+    low.contains("googlevideo.com") || low.contains("/videoplayback")
+}
+
 fn resolve_suite_endpoints(target: &str, custom_url: &str) -> Vec<ProbeEndpoint> {
     let mut endpoints: Vec<ProbeEndpoint> = Vec::new();
     let custom_trimmed = custom_url.trim();
@@ -1297,6 +1406,8 @@ fn resolve_suite_endpoints(target: &str, custom_url: &str) -> Vec<ProbeEndpoint>
         for u in custom_list {
             let kind = if u.starts_with("udp://") {
                 "udp_stun"
+            } else if is_streaming_url(&u) {
+                "streaming"
             } else {
                 "tls_http"
             };
@@ -1324,6 +1435,13 @@ fn resolve_suite_endpoints(target: &str, custom_url: &str) -> Vec<ProbeEndpoint>
                     Some("i.ytimg.com"),
                     Some("tls_http"),
                     false,
+                );
+                push_unique_endpoint(
+                    &mut endpoints,
+                    "https://googlevideo.com/videoplayback",
+                    Some("googlevideo.com"),
+                    Some("streaming"),
+                    true,
                 );
             }
             "discord" | "discord_suite" => {
@@ -1447,6 +1565,8 @@ fn resolve_suite_endpoints(target: &str, custom_url: &str) -> Vec<ProbeEndpoint>
                     for u in custom_list {
                         let kind = if u.starts_with("udp://") {
                             "udp_stun"
+                        } else if is_streaming_url(&u) {
+                            "streaming"
                         } else {
                             "tls_http"
                         };
@@ -1456,7 +1576,12 @@ fn resolve_suite_endpoints(target: &str, custom_url: &str) -> Vec<ProbeEndpoint>
             }
             other => {
                 if let Some(norm) = normalize_target_url(other) {
-                    push_unique_endpoint(&mut endpoints, &norm, None, None, true);
+                    let kind = if is_streaming_url(&norm) {
+                        Some("streaming")
+                    } else {
+                        None
+                    };
+                    push_unique_endpoint(&mut endpoints, &norm, None, kind, true);
                 }
             }
         }
@@ -1520,9 +1645,229 @@ fn extract_host_port(url: &str) -> Option<(String, u16)> {
     Some((host, port))
 }
 
+fn is_usable_wan_ip(ip: IpAddr) -> bool {
+    match ip.to_canonical() {
+        IpAddr::V4(v4) => {
+            let o = v4.octets();
+            let is_cgnat = o[0] == 100 && (64..=127).contains(&o[1]);
+            let is_fakeipv4 = o[0] == 198 && (o[1] == 18 || o[1] == 19);
+            !(v4.is_loopback()
+                || v4.is_unspecified()
+                || v4.is_multicast()
+                || v4.is_private()
+                || v4.is_link_local()
+                || v4.is_broadcast()
+                || o[0] == 0
+                || o[0] >= 240
+                || is_cgnat
+                || is_fakeipv4)
+        }
+        IpAddr::V6(v6) => {
+            let seg0 = v6.segments()[0];
+            let is_link_local = (seg0 & 0xffc0) == 0xfe80;
+            // ULA fc00::/7 includes FakeIPv6 fc00::/18
+            let is_ula = (seg0 & 0xfe00) == 0xfc00;
+            !(v6.is_loopback()
+                || v6.is_unspecified()
+                || v6.is_multicast()
+                || is_link_local
+                || is_ula)
+        }
+    }
+}
+
+fn parse_isp_nameservers(raw: &str) -> Vec<IpAddr> {
+    let mut out = Vec::new();
+    for line in raw.lines() {
+        let trimmed = line.split('#').next().unwrap_or("").trim();
+        let mut parts = trimmed.split_whitespace();
+        if parts.next() == Some("nameserver")
+            && let Some(addr_str) = parts.next()
+            && let Ok(ip) = addr_str.parse::<IpAddr>()
+        {
+            let canon = ip.to_canonical();
+            if is_usable_wan_ip(canon) && !out.contains(&canon) {
+                out.push(canon);
+            }
+        }
+    }
+    out
+}
+
+fn is_googlevideo_host(host: &str) -> bool {
+    let h = host.trim_end_matches('.').to_ascii_lowercase();
+    h == "googlevideo.com" || h.ends_with(".googlevideo.com")
+}
+
+fn is_rr_googlevideo_host(host: &str) -> bool {
+    let h = host.trim_end_matches('.').to_ascii_lowercase();
+    h.starts_with("rr") && h.ends_with(".googlevideo.com")
+}
+
+fn build_dns_a_query(domain: &str, txid: u16) -> Option<Vec<u8>> {
+    let clean = domain.trim().trim_end_matches('.');
+    if clean.is_empty() || clean.len() > 253 {
+        return None;
+    }
+    let mut pkt = Vec::with_capacity(18 + clean.len());
+    pkt.extend_from_slice(&txid.to_be_bytes());
+    pkt.extend_from_slice(&[0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+    for label in clean.split('.') {
+        let b = label.as_bytes();
+        if b.is_empty() || b.len() > 63 {
+            return None;
+        }
+        pkt.push(b.len() as u8);
+        pkt.extend_from_slice(b);
+    }
+    pkt.push(0);
+    pkt.extend_from_slice(&[0x00, 0x01, 0x00, 0x01]);
+    Some(pkt)
+}
+
+fn skip_dns_wire_name(buf: &[u8], mut pos: usize) -> Option<usize> {
+    for _ in 0..128 {
+        let len = *buf.get(pos)?;
+        if len == 0 {
+            return Some(pos + 1);
+        }
+        if (len & 0xc0) == 0xc0 {
+            return (pos + 2 <= buf.len()).then_some(pos + 2);
+        }
+        if (len & 0xc0) != 0 {
+            return None;
+        }
+        pos = pos.checked_add(1 + usize::from(len))?;
+        if pos > buf.len() {
+            return None;
+        }
+    }
+    None
+}
+
+fn parse_dns_a_response(buf: &[u8], expected_txid: Option<u16>) -> Option<IpAddr> {
+    if buf.len() < 12 || (buf[2] & 0x80) == 0 {
+        return None;
+    }
+    if let Some(txid) = expected_txid
+        && u16::from_be_bytes([buf[0], buf[1]]) != txid
+    {
+        return None;
+    }
+    if (buf[3] & 0x0f) != 0 {
+        return None;
+    }
+    let qdcount = u16::from_be_bytes([buf[4], buf[5]]) as usize;
+    let ancount = u16::from_be_bytes([buf[6], buf[7]]) as usize;
+    if ancount == 0 {
+        return None;
+    }
+
+    let mut pos = 12usize;
+    for _ in 0..qdcount.min(32) {
+        let after_name = skip_dns_wire_name(buf, pos)?;
+        pos = after_name.checked_add(4)?;
+        if pos > buf.len() {
+            return None;
+        }
+    }
+
+    for _ in 0..ancount.min(32) {
+        let after_name = skip_dns_wire_name(buf, pos)?;
+        let hdr_end = after_name.checked_add(10)?;
+        let hdr = buf.get(after_name..hdr_end)?;
+        let rtype = u16::from_be_bytes([hdr[0], hdr[1]]);
+        let rclass = u16::from_be_bytes([hdr[2], hdr[3]]);
+        let rdlength = u16::from_be_bytes([hdr[8], hdr[9]]) as usize;
+        let rdata_end = hdr_end.checked_add(rdlength)?;
+        let rdata = buf.get(hdr_end..rdata_end)?;
+        if rtype == 1 && rclass == 1 && rdata.len() == 4 {
+            let ip = IpAddr::V4(Ipv4Addr::new(rdata[0], rdata[1], rdata[2], rdata[3]));
+            if is_usable_wan_ip(ip) {
+                return Some(ip);
+            }
+        }
+        pos = rdata_end;
+    }
+    None
+}
+
+async fn query_dns_a_udp(server: IpAddr, domain: &str) -> Option<IpAddr> {
+    let txid = (rand::thread_rng().next_u32() as u16) | 1;
+    let query = build_dns_a_query(domain, txid)?;
+    let bind_addr = if server.is_ipv4() {
+        "0.0.0.0:0"
+    } else {
+        "[::]:0"
+    };
+    let sock = TokioUdpSocket::bind(bind_addr).await.ok()?;
+    let target = SocketAddr::new(server, 53);
+    tokio::time::timeout(Duration::from_millis(800), async {
+        sock.send_to(&query, target).await?;
+        let mut buf = [0u8; 512];
+        loop {
+            let (n, _) = sock.recv_from(&mut buf).await?;
+            if let Some(ip) = parse_dns_a_response(&buf[..n], Some(txid)) {
+                return Ok::<Option<IpAddr>, std::io::Error>(Some(ip));
+            }
+            if n >= 12 && u16::from_be_bytes([buf[0], buf[1]]) == txid && (buf[2] & 0x80) != 0 {
+                return Ok(None);
+            }
+        }
+    })
+    .await
+    .ok()?
+    .ok()
+    .flatten()
+}
+
+async fn lookup_usable_host_ip(host: &str, port: u16) -> Option<IpAddr> {
+    let lookup = tokio::time::timeout(
+        Duration::from_secs(2),
+        tokio::net::lookup_host((host, port)),
+    )
+    .await;
+    let Ok(Ok(addrs)) = lookup else {
+        return None;
+    };
+    let mut picked_v6: Option<IpAddr> = None;
+    for sa in addrs {
+        let ip = sa.ip().to_canonical();
+        if !is_usable_wan_ip(ip) {
+            continue;
+        }
+        if ip.is_ipv4() {
+            return Some(ip);
+        }
+        if picked_v6.is_none() {
+            picked_v6 = Some(ip);
+        }
+    }
+    picked_v6
+}
+
+async fn resolve_host_for_fuzzer(
+    host: &str,
+    port: u16,
+    isp_nameservers: &[IpAddr],
+) -> Option<IpAddr> {
+    if is_googlevideo_host(host) {
+        for &ns in isp_nameservers.iter().take(3) {
+            if let Some(ip) = query_dns_a_udp(ns, host).await {
+                return Some(ip);
+            }
+        }
+    }
+    lookup_usable_host_ip(host, port).await
+}
+
 async fn prewarm_dns_cache(endpoints: &[ProbeEndpoint]) -> HashMap<(String, u16), IpAddr> {
     let mut cache = HashMap::new();
     let mut seen = HashSet::new();
+    let isp_nameservers = std::fs::read_to_string("/tmp/resolv.conf.d/resolv.conf.auto")
+        .map(|raw| parse_isp_nameservers(&raw))
+        .unwrap_or_default();
+
     for ep in endpoints {
         let Some((host, port)) = extract_host_port(&ep.url) else {
             continue;
@@ -1530,29 +1875,20 @@ async fn prewarm_dns_cache(endpoints: &[ProbeEndpoint]) -> HashMap<(String, u16)
         if host.parse::<IpAddr>().is_ok() || !seen.insert((host.clone(), port)) {
             continue;
         }
-        let chosen: Option<IpAddr> = {
-            let lookup = tokio::time::timeout(
-                Duration::from_secs(2),
-                tokio::net::lookup_host((host.as_str(), port)),
-            )
-            .await;
-            if let Ok(Ok(addrs)) = lookup {
-                let mut picked: Option<IpAddr> = None;
-                for sa in addrs {
-                    let ip = sa.ip();
-                    if ip.is_ipv4() {
-                        picked = Some(ip);
-                        break;
-                    }
-                    if picked.is_none() {
-                        picked = Some(ip);
-                    }
+        let mut chosen = resolve_host_for_fuzzer(&host, port, &isp_nameservers).await;
+        if chosen.is_none() && is_rr_googlevideo_host(&host) {
+            for fallback in ["redirector.googlevideo.com", "googlevideo.com"] {
+                if let Some(&cached) = cache.get(&(fallback.to_string(), port)) {
+                    chosen = Some(cached);
+                    break;
                 }
-                picked
-            } else {
-                None
+                if let Some(ip) = resolve_host_for_fuzzer(fallback, port, &isp_nameservers).await {
+                    cache.insert((fallback.to_string(), port), ip);
+                    chosen = Some(ip);
+                    break;
+                }
             }
-        };
+        }
         if let Some(ip) = chosen {
             cache.insert((host, port), ip);
         }
@@ -1726,65 +2062,59 @@ async fn run_udp_stun_via_socks(
     }
 }
 
-async fn run_curl_cmd(
+fn curl_timeouts_for_endpoint(ep: &ProbeEndpoint, total_endpoints: usize) -> (u64, u64) {
+    if ep.probe_kind == "streaming" {
+        (3, 6)
+    } else if total_endpoints >= 3 {
+        (3, 4)
+    } else {
+        (3, 5)
+    }
+}
+
+fn build_curl_args(
     ep: &ProbeEndpoint,
     proxy_url: &str,
     resolve_entry: Option<&str>,
     connect_timeout_secs: u64,
     max_time_secs: u64,
-) -> SingleProbeMetrics {
-    let cto_str = connect_timeout_secs.to_string();
-    let mto_str = max_time_secs.to_string();
-    let mut args: Vec<&str> = vec!["-s", "-L", "-k", "--http1.1", "-x", proxy_url];
-    if let Some(res) = resolve_entry {
-        args.push("--resolve");
-        args.push(res);
-    }
-    args.extend_from_slice(&[
-        "--connect-timeout",
-        &cto_str,
-        "--max-time",
-        &mto_str,
-        "-r",
-        "0-65535",
-        "-A",
-        USER_AGENT,
-        "-o",
-        "/dev/null",
-        "-w",
-        "%{http_code}|%{time_connect}|%{time_appconnect}|%{time_starttransfer}|%{time_total}|%{speed_download}|%{size_download}",
-        &ep.url,
-    ]);
-
-    let out = tokio::time::timeout(
-        Duration::from_secs(max_time_secs + 2),
-        Command::new("curl")
-            .args(&args)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output(),
-    )
-    .await;
-
-    let Ok(Ok(res)) = out else {
-        return SingleProbeMetrics {
-            target_name: ep.target_name.clone(),
-            url: ep.url.clone(),
-            success: false,
-            http_code: 0,
-            handshake_ms: 0,
-            ttfb_ms: 0,
-            speed_kbps: 0,
-            data_bytes: 0,
-            data_verified: false,
-            dpi_verdict: "timeout",
-            exit_code: 28,
-            error: format!("Таймаут соединения ({max_time_secs}с)"),
-        };
+) -> Vec<String> {
+    let range_arg = if ep.probe_kind == "streaming" {
+        "0-262143"
+    } else {
+        "0-65535"
     };
+    let mut args = vec![
+        "-s".to_string(),
+        "-L".to_string(),
+        "-k".to_string(),
+        "--http1.1".to_string(),
+        "-x".to_string(),
+        proxy_url.to_string(),
+    ];
+    if let Some(res) = resolve_entry {
+        args.push("--resolve".to_string());
+        args.push(res.to_string());
+    }
+    args.extend([
+        "--connect-timeout".to_string(),
+        connect_timeout_secs.to_string(),
+        "--max-time".to_string(),
+        max_time_secs.to_string(),
+        "-r".to_string(),
+        range_arg.to_string(),
+        "-A".to_string(),
+        USER_AGENT.to_string(),
+        "-o".to_string(),
+        "/dev/null".to_string(),
+        "-w".to_string(),
+        "%{http_code}|%{time_connect}|%{time_appconnect}|%{time_starttransfer}|%{time_total}|%{speed_download}|%{size_download}".to_string(),
+        ep.url.clone(),
+    ]);
+    args
+}
 
-    let exit_code = res.status.code().unwrap_or(1);
-    let stdout = String::from_utf8_lossy(&res.stdout);
+fn classify_curl_output(ep: &ProbeEndpoint, exit_code: i32, stdout: &str) -> SingleProbeMetrics {
     let parts: Vec<&str> = stdout.trim().split('|').collect();
     let parse_f64 = |idx: usize| -> f64 {
         parts
@@ -1836,23 +2166,58 @@ async fn run_curl_cmd(
         };
     }
 
+    let is_streaming = ep.probe_kind == "streaming";
+    let is_unauth_http = matches!(http_code, 401 | 403 | 404 | 405 | 421 | 429);
     let code_ok = (200..400).contains(&http_code)
-        || (ep.allow_api_status && matches!(http_code, 401 | 403 | 404 | 405 | 429));
+        || (ep.allow_api_status && is_unauth_http && handshake_ms > 0)
+        || (http_code == 421 && handshake_ms > 0);
 
-    // Exit code 18 = partial file (normal when range / stream closes early after >32KB)
-    let transfer_ok = exit_code == 0 || (exit_code == 18 && size_bytes >= 16_384);
-    let throttled_16k =
-        code_ok && !ep.allow_api_status && exit_code == 28 && (8_192..24_576).contains(&size_bytes);
+    let transfer_ok = if is_streaming {
+        exit_code == 0 || (exit_code == 18 && size_bytes >= 131_072)
+    } else {
+        exit_code == 0 || (exit_code == 18 && size_bytes >= 16_384)
+    };
 
-    let success = code_ok && transfer_ok && !throttled_16k;
+    let throttled_16k = if is_streaming {
+        exit_code != 0 && (10_240..32_768).contains(&size_bytes)
+    } else {
+        code_ok && !ep.allow_api_status && exit_code == 28 && (8_192..24_576).contains(&size_bytes)
+    };
+
+    let stream_aborted_http = is_streaming
+        && matches!(http_code, 200 | 206)
+        && (exit_code == 28 || exit_code == 56 || (exit_code == 18 && size_bytes < 131_072));
+    let stream_mid_stall =
+        is_streaming && exit_code != 0 && (32_768..131_072).contains(&size_bytes);
+    let stream_bw_shaped =
+        is_streaming && speed_kbps > 0 && speed_kbps < 40 && size_bytes < 200_000 && ttfb_ms > 2500;
+    let throttled_stream =
+        !throttled_16k && (stream_aborted_http || stream_mid_stall || stream_bw_shaped);
+
+    let success = code_ok && transfer_ok && !throttled_16k && !throttled_stream;
     let data_verified = success && size_bytes >= 32_768;
 
     let (dpi_verdict, error) = if success {
-        ("ok", String::new())
+        let verdict = if size_bytes >= 196_608 {
+            "verified_256k"
+        } else if size_bytes >= 32_768 {
+            "verified_32k"
+        } else {
+            "ok"
+        };
+        (verdict, String::new())
     } else if throttled_16k {
         (
             "throttled_16k",
             "Обрыв потока после ~16 КБ (ограничение окна передачи)".to_string(),
+        )
+    } else if throttled_stream {
+        (
+            "throttled_stream",
+            format!(
+                "Остановка или ограничение полосы потока после {} Б (curl {})",
+                size_bytes, exit_code
+            ),
         )
     } else {
         match exit_code {
@@ -1900,6 +2265,50 @@ async fn run_curl_cmd(
     }
 }
 
+async fn run_curl_cmd(
+    ep: &ProbeEndpoint,
+    proxy_url: &str,
+    resolve_entry: Option<&str>,
+    connect_timeout_secs: u64,
+    max_time_secs: u64,
+) -> SingleProbeMetrics {
+    let args = build_curl_args(
+        ep,
+        proxy_url,
+        resolve_entry,
+        connect_timeout_secs,
+        max_time_secs,
+    );
+
+    let mut cmd = Command::new("curl");
+    cmd.args(&args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    let out = tokio::time::timeout(Duration::from_secs(max_time_secs + 2), cmd.output()).await;
+
+    let Ok(Ok(res)) = out else {
+        return SingleProbeMetrics {
+            target_name: ep.target_name.clone(),
+            url: ep.url.clone(),
+            success: false,
+            http_code: 0,
+            handshake_ms: 0,
+            ttfb_ms: 0,
+            speed_kbps: 0,
+            data_bytes: 0,
+            data_verified: false,
+            dpi_verdict: "timeout",
+            exit_code: 28,
+            error: format!("Таймаут соединения ({max_time_secs}с)"),
+        };
+    };
+
+    let exit_code = res.status.code().unwrap_or(1);
+    let stdout = String::from_utf8_lossy(&res.stdout);
+    classify_curl_output(ep, exit_code, &stdout)
+}
+
 async fn run_curl_via_socks(
     port: u16,
     ep: &ProbeEndpoint,
@@ -1910,7 +2319,7 @@ async fn run_curl_via_socks(
         return run_udp_stun_via_socks(port, ep, dns_cache).await;
     }
 
-    let (cto, mto) = if total_endpoints >= 3 { (3, 4) } else { (3, 5) };
+    let (cto, mto) = curl_timeouts_for_endpoint(ep, total_endpoints);
     let socks_local = format!("socks5://127.0.0.1:{port}");
     let socks_remote = format!("socks5h://127.0.0.1:{port}");
 
@@ -2079,43 +2488,36 @@ pub async fn detect_wan_filtering(bin_path: &str, target: &str, custom_url: &str
     detect_wan_filtering_with_cache(bin_path, target, &endpoints, &dns_cache).await
 }
 
-async fn detect_wan_filtering_with_cache(
-    bin_path: &str,
-    target: &str,
-    endpoints: &[ProbeEndpoint],
-    dns_cache: &HashMap<(String, u16), IpAddr>,
-) -> Value {
-    let primary = endpoints.first().cloned().unwrap_or(ProbeEndpoint {
-        url: "https://www.youtube.com".to_string(),
-        target_name: "www.youtube.com".to_string(),
-        probe_kind: "tls_http".to_string(),
-        allow_api_status: false,
-    });
-    let direct_outbound = json!({
-        "type": "direct",
-        "tag": "fuzzer-out",
-        "routing_mark": SANDBOX_ROUTING_MARK
-    });
-    let probes = probe_outbound_in_sandbox(
-        bin_path,
-        direct_outbound,
-        std::slice::from_ref(&primary),
-        dns_cache,
-        false,
-    )
-    .await;
-    let p = probes.first();
-
-    let (dtype, conf, details) = match p {
-        Some(m) if m.success => (
+fn classify_wan_probe_list(
+    probe_list: &[ProbeEndpoint],
+    probes: &[SingleProbeMetrics],
+) -> (String, &'static str, u8, &'static str) {
+    let default_url = probe_list
+        .first()
+        .map(|e| e.url.clone())
+        .unwrap_or_else(|| "https://www.youtube.com".to_string());
+    let all_ok = !probes.is_empty() && probes.iter().all(|m| m.success);
+    if all_ok {
+        return (
+            default_url,
             "none",
             92,
             "Прямое WAN-соединение проходит штатно без десинхронизации.",
-        ),
+        );
+    }
+
+    let failing = probes.iter().find(|m| !m.success);
+    let fail_url = failing.map(|m| m.url.clone()).unwrap_or(default_url);
+    let (dtype, conf, details) = match failing {
         Some(m) if m.dpi_verdict == "rst" => (
             "rst",
             90,
             "Обнаружен активный сброс TCP RST при отправке TLS ClientHello на прямом канале.",
+        ),
+        Some(m) if m.dpi_verdict == "throttled_stream" => (
+            "throttle",
+            92,
+            "Обнаружено ограничение полосы или обрыв потоковой передачи данных.",
         ),
         Some(m) if m.dpi_verdict == "throttled_16k" => (
             "throttle",
@@ -2134,11 +2536,38 @@ async fn detect_wan_filtering_with_cache(
             "Таймаут TLS-рукопожатия на прямом WAN-маршруте; требуется сегментация пакетов.",
         ),
     };
+    (fail_url, dtype, conf, details)
+}
+
+async fn detect_wan_filtering_with_cache(
+    bin_path: &str,
+    target: &str,
+    endpoints: &[ProbeEndpoint],
+    dns_cache: &HashMap<(String, u16), IpAddr>,
+) -> Value {
+    let probe_list = if endpoints.is_empty() {
+        vec![ProbeEndpoint {
+            url: "https://www.youtube.com".to_string(),
+            target_name: "www.youtube.com".to_string(),
+            probe_kind: "tls_http".to_string(),
+            allow_api_status: false,
+        }]
+    } else {
+        endpoints.to_vec()
+    };
+    let direct_outbound = json!({
+        "type": "direct",
+        "tag": "fuzzer-out",
+        "routing_mark": SANDBOX_ROUTING_MARK
+    });
+    let probes =
+        probe_outbound_in_sandbox(bin_path, direct_outbound, &probe_list, dns_cache, true).await;
+    let (url, dtype, conf, details) = classify_wan_probe_list(&probe_list, &probes);
 
     json!({
         "success": true,
         "target": target,
-        "url": primary.url,
+        "url": url,
         "type": dtype,
         "dpi_type": dtype,
         "confidence": conf,
@@ -2201,14 +2630,33 @@ fn score_strategy_metrics(
     let avg_ttfb = (sub.iter().map(|m| m.ttfb_ms as u64).sum::<u64>() / passed as u64) as u32;
     let avg_spd = (sub.iter().map(|m| m.speed_kbps as u64).sum::<u64>() / passed as u64) as u32;
     let total_bytes = sub.iter().map(|m| m.data_bytes).sum::<u64>();
+    let verified_256k = sub
+        .iter()
+        .any(|m| m.data_verified && m.data_bytes >= 196_608);
     let verified_32k = sub.iter().any(|m| m.data_verified);
+    let has_body_data = sub.iter().any(|m| m.data_bytes >= 1024);
 
-    // Engineering composite score: rewards fast TTFB, verified >=32KB payload transfer, and throughput
+    // Engineering composite score: rewards fast TTFB, verified payload depth, and throughput
     let latency_pts = 500i64 - (avg_ttfb as i64 / 3).min(380);
     let speed_pts = (avg_spd as i64 / 20).min(350);
-    let stream_bonus = if verified_32k { 150 } else { 40 };
+    let stream_bonus = if verified_256k {
+        260
+    } else if verified_32k {
+        150
+    } else if has_body_data {
+        40
+    } else {
+        0
+    };
     let suite_bonus = (passed as i64 - 1) * 60;
     let total_score = (latency_pts + speed_pts + stream_bonus + suite_bonus).max(50) as i32;
+    let verdict = if verified_256k {
+        "verified_256k"
+    } else if verified_32k {
+        "verified_32k"
+    } else {
+        "ok"
+    };
 
     (
         true,
@@ -2218,7 +2666,7 @@ fn score_strategy_metrics(
         avg_spd,
         total_bytes,
         verified_32k,
-        "ok",
+        verdict,
         total_score,
         String::new(),
     )
@@ -2307,14 +2755,9 @@ pub fn clear_history() -> Value {
     json!({ "success": true })
 }
 
-pub fn stop() -> Value {
-    FUZZER_ABORT.store(true, Ordering::SeqCst);
-    let pid = FUZZER_ACTIVE_PID.swap(0, Ordering::SeqCst);
-    if pid > 1 && cfg!(target_os = "linux") {
-        let _ = std::process::Command::new("kill")
-            .args(["-9", &pid.to_string()])
-            .status();
-    }
+pub async fn stop() -> Value {
+    let _gate = start_gate().lock().await;
+    stop_active_benchmark_locked().await;
     let mut cur = get_status();
     if let Some(obj) = cur.as_object_mut() {
         obj.insert("running".into(), json!(false));
@@ -2394,7 +2837,7 @@ pub fn synthesize_ai_strategies(target: &str, user_prompt: &str) -> Value {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn start_benchmark(
+pub async fn start_benchmark(
     bin_path: String,
     requested_engine: &str,
     target: &str,
@@ -2445,15 +2888,6 @@ pub fn start_benchmark(
     } else {
         String::new()
     };
-
-    // Stop any previous run first
-    FUZZER_ABORT.store(true, Ordering::SeqCst);
-    let prev_pid = FUZZER_ACTIVE_PID.swap(0, Ordering::SeqCst);
-    if prev_pid > 1 && cfg!(target_os = "linux") {
-        let _ = std::process::Command::new("kill")
-            .args(["-9", &prev_pid.to_string()])
-            .status();
-    }
 
     let patterns = get_patterns()
         .get("patterns")
@@ -2562,6 +2996,7 @@ pub fn start_benchmark(
         })
         .collect();
 
+    let _gate = start_gate().lock().await;
     let now = unix_now_secs();
     let seq = FUZZER_JOB_SEQ.fetch_add(1, Ordering::Relaxed);
     let job_id = format!("fuzzer-{now}-{seq}");
@@ -2569,8 +3004,6 @@ pub fn start_benchmark(
     let rule_owned = rule_trimmed.to_string();
     let mode_owned = mode_norm.to_string();
     let max_duration = Duration::from_secs(timeout_secs.clamp(30, 7200));
-
-    FUZZER_ABORT.store(false, Ordering::SeqCst);
 
     let initial_state = json!({
         "success": true,
@@ -2596,15 +3029,17 @@ pub fn start_benchmark(
         "dpi_detection": null,
         "results": []
     });
-    save_state(&initial_state);
 
     let job_id_ret = job_id.clone();
     let target_ret = target_owned.clone();
     let total_endpoints_ret = endpoints.len();
     let endpoint_names_ret: Vec<String> = endpoints.iter().map(|e| e.target_name.clone()).collect();
-    tokio::spawn(async move {
+    launch_serialized_fuzzer_task(Some(&initial_state), move |run_gen, run_abort| async move {
         let started_instant = Instant::now();
         let dns_cache = prewarm_dns_cache(&endpoints).await;
+        if is_run_aborted(run_gen, &run_abort) {
+            return;
+        }
         let dpi_det =
             detect_wan_filtering_with_cache(&bin_path, &target_owned, &endpoints, &dns_cache).await;
 
@@ -2612,7 +3047,7 @@ pub fn start_benchmark(
         let mut best: Option<Value> = None;
 
         for (idx, strat) in candidates.iter().enumerate() {
-            if FUZZER_ABORT.load(Ordering::Relaxed) || started_instant.elapsed() >= max_duration {
+            if is_run_aborted(run_gen, &run_abort) || started_instant.elapsed() >= max_duration {
                 break;
             }
 
@@ -2647,13 +3082,13 @@ pub fn start_benchmark(
                 "dpi_detection": dpi_det,
                 "results": results
             });
-            save_state(&in_progress);
+            save_state_if_gen(run_gen, &in_progress);
 
             let outbound = parse_desync_args_to_outbound(&strat.args, "fuzzer-out", true);
             let sub =
                 probe_outbound_in_sandbox(&bin_path, outbound, &endpoints, &dns_cache, is_custom)
                     .await;
-            if FUZZER_ABORT.load(Ordering::Relaxed) {
+            if is_run_aborted(run_gen, &run_abort) {
                 break;
             }
 
@@ -2729,9 +3164,10 @@ pub fn start_benchmark(
             })
             .collect();
 
-        if !top_ids.is_empty() && !FUZZER_ABORT.load(Ordering::Relaxed) {
+        if !top_ids.is_empty() && !is_run_aborted(run_gen, &run_abort) {
             for (v_idx, (sid, sargs)) in top_ids.iter().enumerate() {
-                if FUZZER_ABORT.load(Ordering::Relaxed) || started_instant.elapsed() >= max_duration
+                if is_run_aborted(run_gen, &run_abort)
+                    || started_instant.elapsed() >= max_duration
                 {
                     break;
                 }
@@ -2760,7 +3196,7 @@ pub fn start_benchmark(
                     "dpi_detection": dpi_det,
                     "results": results
                 });
-                save_state(&verifying_state);
+                save_state_if_gen(run_gen, &verifying_state);
 
                 let primary_slice = &endpoints[..1];
                 let mut ok_runs = 1u32; // Stage 1 already succeeded
@@ -2774,7 +3210,7 @@ pub fn start_benchmark(
                 }
 
                 for _ in 0..2 {
-                    if FUZZER_ABORT.load(Ordering::Relaxed) {
+                    if is_run_aborted(run_gen, &run_abort) {
                         break;
                     }
                     let outb = parse_desync_args_to_outbound(sargs, "fuzzer-out", true);
@@ -2833,7 +3269,7 @@ pub fn start_benchmark(
             }
         }
 
-        let aborted = FUZZER_ABORT.load(Ordering::Relaxed);
+        let aborted = is_run_aborted(run_gen, &run_abort);
         let finished_at = unix_now_secs();
         let working_count = results
             .iter()
@@ -2865,7 +3301,9 @@ pub fn start_benchmark(
             "error": if aborted { Value::String("Остановлено пользователем".into()) } else { Value::Null },
             "results": results
         });
-        save_state(&final_state);
+        if !save_state_if_gen(run_gen, &final_state) {
+            return;
+        }
 
         append_history_entry(json!({
             "timestamp": finished_at,
@@ -2877,7 +3315,8 @@ pub fn start_benchmark(
             "working_count": working_count,
             "best_strategy": best
         }));
-    });
+    })
+    .await;
 
     json!({
         "success": true,
@@ -2991,8 +3430,8 @@ mod tests {
         assert_eq!(resolved[0].target_name, "host1.example.com");
     }
 
-    #[test]
-    fn rejects_all_and_uninstalled_engines_and_caps_state() {
+    #[tokio::test]
+    async fn rejects_all_and_uninstalled_engines_and_caps_state() {
         let bin = create_temp_bin("fuzzer_bin");
         let bin_str = bin.to_string_lossy().to_string();
 
@@ -3020,7 +3459,8 @@ mod tests {
             "",
             "presets",
             60,
-        );
+        )
+        .await;
         assert_eq!(start_all["success"], false);
 
         let start_global_target = start_benchmark(
@@ -3032,7 +3472,8 @@ mod tests {
             "",
             "presets",
             60,
-        );
+        )
+        .await;
         assert_eq!(start_global_target["success"], false);
 
         let start_default_sec = start_benchmark(
@@ -3044,7 +3485,8 @@ mod tests {
             "",
             "presets",
             60,
-        );
+        )
+        .await;
         assert_eq!(start_default_sec["success"], false);
 
         let huge_results: Vec<Value> = (0..120)
@@ -3101,5 +3543,384 @@ mod tests {
             "udp://stun.l.google.com:19302",
         );
         assert_eq!(udp_out.len(), 2);
+    }
+
+    #[test]
+    fn test_streaming_curl_args_and_timeouts() {
+        let ep_stream = ProbeEndpoint {
+            url: "https://rr1.googlevideo.com/videoplayback".to_string(),
+            target_name: "GoogleVideo Stream CDN".to_string(),
+            probe_kind: "streaming".to_string(),
+            allow_api_status: true,
+        };
+        let ep_web = ProbeEndpoint {
+            url: "https://www.youtube.com".to_string(),
+            target_name: "www.youtube.com".to_string(),
+            probe_kind: "tls_http".to_string(),
+            allow_api_status: false,
+        };
+
+        assert_eq!(curl_timeouts_for_endpoint(&ep_stream, 4), (3, 6));
+        assert_eq!(curl_timeouts_for_endpoint(&ep_web, 4), (3, 4));
+        assert_eq!(curl_timeouts_for_endpoint(&ep_web, 2), (3, 5));
+
+        let args_stream = build_curl_args(&ep_stream, "socks5://127.0.0.1:11090", None, 3, 6);
+        let r_idx_s = args_stream.iter().position(|a| a == "-r").expect("-r flag");
+        assert_eq!(args_stream[r_idx_s + 1], "0-262143");
+        let mto_idx_s = args_stream
+            .iter()
+            .position(|a| a == "--max-time")
+            .expect("--max-time flag");
+        assert_eq!(args_stream[mto_idx_s + 1], "6");
+
+        let args_web = build_curl_args(&ep_web, "socks5://127.0.0.1:11090", None, 3, 4);
+        let r_idx_w = args_web.iter().position(|a| a == "-r").expect("-r flag");
+        assert_eq!(args_web[r_idx_w + 1], "0-65535");
+
+        let custom_resolved =
+            resolve_suite_endpoints("custom", "https://rr1.googlevideo.com/videoplayback");
+        assert_eq!(custom_resolved.len(), 1);
+        assert_eq!(custom_resolved[0].probe_kind, "streaming");
+    }
+
+    #[test]
+    fn test_streaming_midstream_stalls_and_bw_shaping() {
+        let ep_stream = ProbeEndpoint {
+            url: "https://rr1.googlevideo.com/videoplayback".to_string(),
+            target_name: "GoogleVideo Stream CDN".to_string(),
+            probe_kind: "streaming".to_string(),
+            allow_api_status: true,
+        };
+        let ep_web = ProbeEndpoint {
+            url: "https://www.youtube.com".to_string(),
+            target_name: "www.youtube.com".to_string(),
+            probe_kind: "tls_http".to_string(),
+            allow_api_status: false,
+        };
+
+        // 16 KiB stall keeps throttled_16k
+        let stall_16k = classify_curl_output(&ep_stream, 28, "206|0.02|0.08|0.10|2.50|6500|16384");
+        assert!(!stall_16k.success);
+        assert!(!stall_16k.data_verified);
+        assert_eq!(stall_16k.dpi_verdict, "throttled_16k");
+
+        // 64 KiB / 96 KiB mid-stream timeout or RST fails as throttled_stream
+        let stall_64k = classify_curl_output(&ep_stream, 28, "206|0.02|0.09|0.12|6.00|10900|65536");
+        assert!(!stall_64k.success);
+        assert!(!stall_64k.data_verified);
+        assert_eq!(stall_64k.dpi_verdict, "throttled_stream");
+
+        let stall_96k_rst =
+            classify_curl_output(&ep_stream, 56, "200|0.02|0.08|0.11|2.10|46800|98304");
+        assert!(!stall_96k_rst.success);
+        assert!(!stall_96k_rst.data_verified);
+        assert_eq!(stall_96k_rst.dpi_verdict, "throttled_stream");
+
+        // Exit 18 below 128 KiB on streaming fails as throttled_stream
+        let abort_110k =
+            classify_curl_output(&ep_stream, 18, "206|0.02|0.08|0.11|1.20|91000|110000");
+        assert!(!abort_110k.success);
+        assert!(!abort_110k.data_verified);
+        assert_eq!(abort_110k.dpi_verdict, "throttled_stream");
+
+        // Bandwidth shaping: <40 KB/s, <200 KB downloaded, TTFB > 2500ms
+        let bw_shaped =
+            classify_curl_output(&ep_stream, 0, "206|0.02|0.09|2.850|5.200|15360|80000");
+        assert!(!bw_shaped.success);
+        assert!(!bw_shaped.data_verified);
+        assert_eq!(bw_shaped.dpi_verdict, "throttled_stream");
+
+        // Sustained 256 KiB download passes as verified_256k
+        let full_256k =
+            classify_curl_output(&ep_stream, 0, "206|0.02|0.09|0.16|0.48|546000|262144");
+        assert!(full_256k.success);
+        assert!(full_256k.data_verified);
+        assert_eq!(full_256k.dpi_verdict, "verified_256k");
+
+        // Non-streaming partial transfer above 16 KiB preserves compatibility
+        let web_partial = classify_curl_output(&ep_web, 18, "200|0.02|0.08|0.12|0.30|109000|32768");
+        assert!(web_partial.success);
+        assert!(web_partial.data_verified);
+        assert_eq!(web_partial.dpi_verdict, "verified_32k");
+    }
+
+    #[test]
+    fn test_unauth_404_vs_206_streaming_scoring() {
+        let ep_stream = ProbeEndpoint {
+            url: "https://rr1.googlevideo.com/videoplayback".to_string(),
+            target_name: "GoogleVideo Stream CDN".to_string(),
+            probe_kind: "streaming".to_string(),
+            allow_api_status: true,
+        };
+
+        let m_404 = classify_curl_output(&ep_stream, 0, "404|0.02|0.06|0.07|0.07|0|0");
+        assert!(m_404.success);
+        assert!(!m_404.data_verified);
+        assert_eq!(m_404.dpi_verdict, "ok");
+
+        let m_32k = classify_curl_output(&ep_stream, 0, "206|0.02|0.08|0.10|0.35|187000|65536");
+        assert!(m_32k.success);
+        assert!(m_32k.data_verified);
+        assert_eq!(m_32k.dpi_verdict, "verified_32k");
+
+        let m_256k = classify_curl_output(&ep_stream, 0, "206|0.02|0.09|0.18|0.45|614400|262144");
+        assert!(m_256k.success);
+        assert!(m_256k.data_verified);
+        assert_eq!(m_256k.dpi_verdict, "verified_256k");
+
+        let (ok_404, _, _, _, _, _, dv_404, v_404, score_404, _) =
+            score_strategy_metrics(std::slice::from_ref(&m_404), 1);
+        let (ok_32k, _, _, _, _, _, dv_32k, v_32k, score_32k, _) =
+            score_strategy_metrics(std::slice::from_ref(&m_32k), 1);
+        let (ok_256k, _, _, _, _, _, dv_256k, v_256k, score_256k, _) =
+            score_strategy_metrics(std::slice::from_ref(&m_256k), 1);
+
+        assert!(ok_404 && !dv_404 && v_404 == "ok");
+        assert!(ok_32k && dv_32k && v_32k == "verified_32k");
+        assert!(ok_256k && dv_256k && v_256k == "verified_256k");
+        assert!(
+            score_256k > score_32k && score_32k > score_404,
+            "expected verified_256k ({score_256k}) > verified_32k ({score_32k}) > 0-byte 404 ({score_404})"
+        );
+
+        let stalled = classify_curl_output(&ep_stream, 28, "206|0.02|0.08|0.12|6.00|12000|65536");
+        let (ok_stall, _, _, _, _, _, dv_stall, v_stall, _, _) =
+            score_strategy_metrics(&[stalled], 1);
+        assert!(!ok_stall && !dv_stall && v_stall == "throttled_stream");
+    }
+
+    #[test]
+    fn test_is_usable_wan_ip_and_isp_nameservers() {
+        let usable = [
+            "79.133.77.44",
+            "142.251.142.238",
+            "85.21.192.3",
+            "100.63.255.254",
+            "198.20.0.1",
+            "2a00:1450:4010::200e",
+            "::ffff:142.251.142.238",
+        ];
+        for s in usable {
+            let ip: IpAddr = s.parse().unwrap();
+            assert!(is_usable_wan_ip(ip), "expected usable WAN IP: {s}");
+        }
+
+        let rejected = [
+            "127.0.0.1",
+            "0.0.0.0",
+            "224.0.0.1",
+            "10.0.0.1",
+            "172.16.0.1",
+            "192.168.1.1",
+            "169.254.1.1",
+            "100.64.0.1",
+            "100.127.255.254",
+            "198.18.0.1",
+            "198.19.255.254",
+            "::1",
+            "::",
+            "ff02::1",
+            "fe80::1",
+            "fc00::1",
+            "fc00:abcd::42",
+            "fd12:3456::1",
+            "::ffff:127.0.0.1",
+            "::ffff:198.18.0.1",
+            "::ffff:10.0.0.1",
+        ];
+        for s in rejected {
+            let ip: IpAddr = s.parse().unwrap();
+            assert!(!is_usable_wan_ip(ip), "expected rejected non-WAN IP: {s}");
+        }
+
+        let resolv = "\
+# comment
+nameserver 127.0.0.1
+nameserver 192.168.1.1
+nameserver 100.64.0.2
+nameserver 198.18.0.5
+nameserver 85.21.192.3 # primary ISP
+nameserver 85.21.192.3
+nameserver fc00::1
+nameserver 213.180.193.3
+";
+        assert_eq!(
+            parse_isp_nameservers(resolv),
+            vec![
+                "85.21.192.3".parse::<IpAddr>().unwrap(),
+                "213.180.193.3".parse::<IpAddr>().unwrap(),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_youtube_suite_includes_streaming_googlevideo_endpoint() {
+        for suite in ["youtube_suite", "youtube"] {
+            let eps = resolve_suite_endpoints(suite, "");
+            assert_eq!(eps.len(), 3, "suite {suite} should have 3 endpoints");
+            let gv = eps
+                .iter()
+                .find(|ep| ep.target_name == "googlevideo.com")
+                .expect("googlevideo.com endpoint present");
+            assert_eq!(gv.url, "https://googlevideo.com/videoplayback");
+            assert_eq!(gv.probe_kind, "streaming");
+            assert!(gv.allow_api_status);
+        }
+    }
+
+    #[test]
+    fn test_dns_a_parser_and_wan_probe_list() {
+        let query = build_dns_a_query("googlevideo.com", 0x1a2b).expect("valid query");
+        assert!(query.len() > 16);
+        assert_eq!(&query[0..2], &[0x1a, 0x2b]);
+        assert!(build_dns_a_query("", 1).is_none());
+
+        // Header: txid=0x1a2b, QR=1 NOERROR, qd=1, an=2 (FakeIP first, usable WAN second)
+        let mut pkt = vec![
+            0x1a, 0x2b, 0x81, 0x80, 0x00, 0x01, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00,
+        ];
+        // Question: 1 "a" 0, QTYPE=A, QCLASS=IN
+        pkt.extend_from_slice(&[1, b'a', 0, 0x00, 0x01, 0x00, 0x01]);
+        // Answer 1: ptr 0x0c, A IN ttl=60 len=4, 198.18.0.9 (FakeIP -> skipped)
+        pkt.extend_from_slice(&[
+            0xc0, 0x0c, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x3c, 0x00, 0x04, 198, 18, 0, 9,
+        ]);
+        // Answer 2: ptr 0x0c, A IN ttl=60 len=4, 79.133.77.44 (local GGC -> picked)
+        pkt.extend_from_slice(&[
+            0xc0, 0x0c, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x3c, 0x00, 0x04, 79, 133, 77, 44,
+        ]);
+
+        assert_eq!(
+            parse_dns_a_response(&pkt, Some(0x1a2b)),
+            Some("79.133.77.44".parse().unwrap())
+        );
+        assert_eq!(parse_dns_a_response(&pkt, Some(0x9999)), None);
+        assert_eq!(parse_dns_a_response(&pkt[..10], Some(0x1a2b)), None);
+
+        let mut nxdomain = pkt.clone();
+        nxdomain[3] = 0x83;
+        assert_eq!(parse_dns_a_response(&nxdomain, Some(0x1a2b)), None);
+
+        let eps = resolve_suite_endpoints("youtube_suite", "");
+        let ok_web = classify_curl_output(&eps[0], 0, "200|0.01|0.03|0.04|0.05|50000|4096");
+        let ok_img = classify_curl_output(&eps[1], 0, "204|0.01|0.03|0.04|0.05|0|0");
+        let ok_stream = classify_curl_output(&eps[2], 0, "404|0.01|0.04|0.05|0.05|0|0");
+        let stall_stream = classify_curl_output(&eps[2], 28, "206|0.01|0.04|0.08|6.00|10900|65536");
+
+        let (url_none, dtype_none, _, _) =
+            classify_wan_probe_list(&eps, &[ok_web.clone(), ok_img.clone(), ok_stream]);
+        assert_eq!(dtype_none, "none");
+        assert_eq!(url_none, "https://www.youtube.com");
+
+        let (url_fail, dtype_fail, _, _) =
+            classify_wan_probe_list(&eps, &[ok_web, ok_img, stall_stream]);
+        assert_eq!(dtype_fail, "throttle");
+        assert_eq!(url_fail, "https://googlevideo.com/videoplayback");
+    }
+
+    #[tokio::test]
+    async fn test_start_benchmark_serialization_prevents_fuzzer_abort_race() {
+        static TEST_GUARD: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+        let _test_guard = TEST_GUARD
+            .get_or_init(|| tokio::sync::Mutex::new(()))
+            .lock()
+            .await;
+
+        let started_notify = Arc::new(tokio::sync::Notify::new());
+        let task1_exited = Arc::new(AtomicBool::new(false));
+        let task1_observed_clear_race = Arc::new(AtomicBool::new(false));
+        let task1_stale_write_blocked = Arc::new(AtomicBool::new(false));
+
+        let gen1 = {
+            let _gate = start_gate().lock().await;
+            let started_notify_w = Arc::clone(&started_notify);
+            let task1_exited_w = Arc::clone(&task1_exited);
+            let task1_race_w = Arc::clone(&task1_observed_clear_race);
+            let task1_blocked_w = Arc::clone(&task1_stale_write_blocked);
+            launch_serialized_fuzzer_task(None, move |run_gen, run_abort| async move {
+                started_notify_w.notify_one();
+                while !is_run_aborted(run_gen, &run_abort) {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+                if !FUZZER_ABORT.load(Ordering::Acquire) {
+                    task1_race_w.store(true, Ordering::Release);
+                }
+                if !save_state_if_gen(run_gen, &json!({ "job_id": "stale-task-1" })) {
+                    task1_blocked_w.store(true, Ordering::Release);
+                }
+                task1_exited_w.store(true, Ordering::Release);
+            })
+            .await
+        };
+
+        started_notify.notified().await;
+
+        let task2_saw_task1_exit = Arc::new(AtomicBool::new(false));
+        let gen2 = {
+            let _gate = start_gate().lock().await;
+            let task1_exited_c = Arc::clone(&task1_exited);
+            let task2_saw_exit_w = Arc::clone(&task2_saw_task1_exit);
+            launch_serialized_fuzzer_task(None, move |run_gen, _run_abort| async move {
+                task2_saw_exit_w.store(task1_exited_c.load(Ordering::Acquire), Ordering::Release);
+                save_state_if_gen(run_gen, &json!({ "job_id": "active-task-2" }));
+            })
+            .await
+        };
+        assert_ne!(gen1, gen2);
+
+        // Give Task 2 a moment to complete cleanly, then stop() to serialize teardown.
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        let _ = stop().await;
+
+        assert!(
+            task1_exited.load(Ordering::Acquire),
+            "Task 1 must finish before Task 2 begins"
+        );
+        assert!(
+            !task1_observed_clear_race.load(Ordering::Acquire),
+            "Task 1 must never observe FUZZER_ABORT cleared to false by Task 2"
+        );
+        assert!(
+            task1_stale_write_blocked.load(Ordering::Acquire),
+            "Task 1 stale state writes must be blocked once generation advances"
+        );
+        assert!(
+            task2_saw_task1_exit.load(Ordering::Acquire),
+            "Task 2 must only start after Task 1 has completely exited"
+        );
+
+        // Real start_benchmark back-to-back with dead loopback URL + stop() cleanly resets state.
+        let bin = create_temp_bin("fuzzer_serial_bin");
+        let bin_str = bin.to_string_lossy().to_string();
+        let r1 = start_benchmark(
+            bin_str.clone(),
+            "desync",
+            "custom",
+            "https://127.0.0.1:1",
+            "",
+            "",
+            "presets",
+            30,
+        )
+        .await;
+        let r2 = start_benchmark(
+            bin_str,
+            "desync",
+            "custom",
+            "https://127.0.0.1:1",
+            "",
+            "",
+            "presets",
+            30,
+        )
+        .await;
+        assert_eq!(r1["success"], true);
+        assert_eq!(r2["success"], true);
+        assert_ne!(r1["job_id"], r2["job_id"]);
+        let stopped = stop().await;
+        assert_eq!(stopped["success"], true);
+        assert_eq!(get_status()["running"], false);
+
+        let _ = std::fs::remove_file(bin);
     }
 }

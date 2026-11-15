@@ -597,6 +597,7 @@ fn count_conntrack_entries() -> usize {
 // =========================================================================
 
 async fn render_main_menu(state: &Arc<AppState>) -> BotReply {
+    state.touch_telemetry_access();
     let d = state.data.read().await.clone();
     let live = state.live.read().await.clone();
     let ru = is_ru(&d);
@@ -740,6 +741,7 @@ async fn handle_sys_toggle(
 }
 
 async fn render_system_status(state: &Arc<AppState>, notice: Option<String>) -> BotReply {
+    state.touch_telemetry_access();
     let d = state.data.read().await.clone();
     let live = state.live.read().await.clone();
     let ru = is_ru(&d);
@@ -3663,6 +3665,7 @@ async fn render_devices_list(
     page: usize,
     notice: Option<String>,
 ) -> BotReply {
+    state.touch_telemetry_access();
     let d = state.data.read().await.clone();
     let live = state.live.read().await.clone();
     let ru = is_ru(&d);
@@ -3726,6 +3729,7 @@ async fn render_devices_list(
 }
 
 async fn render_device_view(state: &Arc<AppState>, idx: usize, notice: Option<String>) -> BotReply {
+    state.touch_telemetry_access();
     let d = state.data.read().await.clone();
     let live = state.live.read().await.clone();
     let ru = is_ru(&d);

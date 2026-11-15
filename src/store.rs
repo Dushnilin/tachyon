@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
@@ -6738,6 +6738,13 @@ impl LiveTelemetry {
     }
 }
 
+pub fn unix_now_u64() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
 pub struct AppState {
     pub path: PathBuf,
     pub lkg_path: PathBuf,
@@ -6746,6 +6753,19 @@ pub struct AppState {
     /// Session token -> expiry unix timestamp (bounded to `MAX_SESSIONS`).
     pub sessions: RwLock<HashMap<String, i64>>,
     pub dirty: AtomicBool,
+    pub last_telemetry_access_ts: AtomicU64,
+}
+
+impl AppState {
+    pub fn touch_telemetry_access(&self) {
+        self.last_telemetry_access_ts
+            .store(unix_now_u64(), Ordering::Release);
+    }
+
+    pub fn is_telemetry_active(&self, now_secs: u64, window_secs: u64) -> bool {
+        let last = self.last_telemetry_access_ts.load(Ordering::Acquire);
+        last != 0 && now_secs.saturating_sub(last) <= window_secs
+    }
 }
 
 impl AppState {
@@ -6857,6 +6877,7 @@ impl AppState {
             live: RwLock::new(live),
             sessions: RwLock::new(HashMap::new()),
             dirty: AtomicBool::new(false),
+            last_telemetry_access_ts: AtomicU64::new(0),
         }))
     }
 

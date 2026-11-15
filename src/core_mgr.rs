@@ -14,6 +14,7 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
+use tokio::time::Instant as TokioInstant;
 
 use crate::config_gen;
 use crate::crypto_gen;
@@ -25,11 +26,44 @@ use crate::store::{
 use crate::sys_info;
 use crate::transaction;
 
+const TELEMETRY_ACTIVE_WINDOW_SECS: u64 = 15;
+
+#[derive(Debug, Clone, Copy)]
+struct TrafficSampleBaseline {
+    pid: Option<u32>,
+    total_up: u64,
+    total_down: u64,
+    sampled_at: TokioInstant,
+}
+
+fn compute_rate_bps(prev_bytes: u64, curr_bytes: u64, elapsed: Duration) -> u64 {
+    if curr_bytes < prev_bytes {
+        return 0;
+    }
+    let nanos = elapsed.as_nanos();
+    if nanos < Duration::from_millis(50).as_nanos() {
+        return 0;
+    }
+    let delta_bytes = u128::from(curr_bytes - prev_bytes);
+    let bps = delta_bytes.saturating_mul(1_000_000_000) / nanos;
+    u64::try_from(bps).unwrap_or(u64::MAX)
+}
+
+fn telemetry_poll_interval() -> tokio::time::Interval {
+    telemetry_poll_interval_with(Duration::from_secs(3))
+}
+
+fn telemetry_poll_interval_with(period: Duration) -> tokio::time::Interval {
+    let mut interval = tokio::time::interval(period);
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    interval
+}
+
 pub struct CoreManager {
     pub state: Arc<AppState>,
     proc: Mutex<Option<(Child, Instant)>>,
     reload_lock: Mutex<()>,
-    prev_totals: Mutex<(u64, u64)>,
+    prev_totals: Mutex<Option<TrafficSampleBaseline>>,
 }
 
 impl CoreManager {
@@ -38,8 +72,31 @@ impl CoreManager {
             state,
             proc: Mutex::new(None),
             reload_lock: Mutex::new(()),
-            prev_totals: Mutex::new((0, 0)),
+            prev_totals: Mutex::new(None),
         })
+    }
+
+    async fn run_command_output_with_timeout(
+        cmd: &mut Command,
+        timeout: Duration,
+    ) -> std::io::Result<std::process::Output> {
+        cmd.kill_on_drop(true);
+        match tokio::time::timeout(timeout, cmd.output()).await {
+            Ok(res) => res,
+            Err(_) => Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                format!("command timed out after {}ms", timeout.as_millis()),
+            )),
+        }
+    }
+
+    async fn run_curl_args(
+        args: &[String],
+        timeout: Duration,
+    ) -> std::io::Result<std::process::Output> {
+        let mut cmd = Command::new("curl");
+        cmd.args(args);
+        Self::run_command_output_with_timeout(&mut cmd, timeout).await
     }
 
     pub async fn resolve_bin_path(&self) -> String {
@@ -86,21 +143,24 @@ impl CoreManager {
         crypto_gen::write_json_if_changed(&tmp_check_path, cfg_val)?;
 
         let bin_path = self.resolve_bin_path().await;
-        if cfg!(target_os = "linux")
-            && Path::new(&bin_path).exists()
-            && let Ok(out) = Command::new(&bin_path)
-                .args(["check", "-c", &tmp_check_path.to_string_lossy()])
-                .output()
-                .await
-            && !out.status.success()
-        {
-            let stderr = String::from_utf8_lossy(&out.stderr);
-            let stdout = String::from_utf8_lossy(&out.stdout);
-            anyhow::bail!(
-                "tachyon-core check failed: {}{}",
-                stderr.trim(),
-                stdout.trim()
-            );
+        if cfg!(target_os = "linux") && Path::new(&bin_path).exists() {
+            let mut cmd = Command::new(&bin_path);
+            cmd.args(["check", "-c", &tmp_check_path.to_string_lossy()]);
+            match Self::run_command_output_with_timeout(&mut cmd, Duration::from_secs(15)).await {
+                Ok(out) if !out.status.success() => {
+                    let stderr = String::from_utf8_lossy(&out.stderr);
+                    let stdout = String::from_utf8_lossy(&out.stdout);
+                    anyhow::bail!(
+                        "tachyon-core check failed: {}{}",
+                        stderr.trim(),
+                        stdout.trim()
+                    );
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
+                    anyhow::bail!("tachyon-core check timed out after 15s");
+                }
+                _ => {}
+            }
         }
 
         if is_tmp_staging {
@@ -255,12 +315,16 @@ impl CoreManager {
                     break;
                 };
                 killed_pids.insert(ext_pid);
-                let _ = Command::new("kill")
-                    .args(["-TERM", &ext_pid.to_string()])
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .status()
-                    .await;
+                let _ = tokio::time::timeout(
+                    Duration::from_secs(2),
+                    Command::new("kill")
+                        .args(["-TERM", &ext_pid.to_string()])
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null())
+                        .kill_on_drop(true)
+                        .status(),
+                )
+                .await;
                 let mut exited = false;
                 for _ in 0..15 {
                     if !Path::new(&format!("/proc/{ext_pid}")).exists() {
@@ -270,24 +334,43 @@ impl CoreManager {
                     tokio::time::sleep(Duration::from_millis(100)).await;
                 }
                 if !exited {
-                    let _ = Command::new("kill")
-                        .args(["-KILL", &ext_pid.to_string()])
-                        .stdout(Stdio::null())
-                        .stderr(Stdio::null())
-                        .status()
-                        .await;
+                    let _ = tokio::time::timeout(
+                        Duration::from_secs(2),
+                        Command::new("kill")
+                            .args(["-KILL", &ext_pid.to_string()])
+                            .stdout(Stdio::null())
+                            .stderr(Stdio::null())
+                            .kill_on_drop(true)
+                            .status(),
+                    )
+                    .await;
                     tokio::time::sleep(Duration::from_millis(100)).await;
                 }
             }
         }
+        *self.prev_totals.lock().await = None;
         let mut live = self.state.live.write().await;
         live.core_running = false;
         live.core_pid = None;
         live.core_identity = None;
+        live.core_uptime_secs = 0;
+        live.core_rss_bytes = 0;
+        live.total_up_bps = 0;
+        live.total_down_bps = 0;
+        live.total_up_bytes = 0;
+        live.total_down_bytes = 0;
+        live.active_connections = 0;
+        live.dns_healthy = false;
+        for dev in &mut live.lan_devices {
+            dev.upload_bps = 0;
+            dev.download_bps = 0;
+            dev.active_sessions = 0;
+        }
     }
 
     /// Hot-reload `tachyon-core` via `PUT /configs` on Clash API, or restart if not running.
     pub async fn apply_or_reload(&self) -> anyhow::Result<()> {
+        let reload_guard = self.reload_lock.lock().await;
         let (is_running, core_pid) = {
             let live = self.state.live.read().await;
             (live.core_running, live.core_pid)
@@ -298,6 +381,8 @@ impl CoreManager {
                 .is_some_and(|dest| dest.to_string_lossy().ends_with(" (deleted)"))
         });
         if !is_running || exe_deleted {
+            // Release reload_lock before calling start(), which acquires reload_lock itself.
+            drop(reload_guard);
             return self.start().await;
         }
         let store_snapshot = { self.state.data.read().await.clone() };
@@ -324,15 +409,25 @@ impl CoreManager {
             .await
             .is_err()
         {
+            // Release reload_lock before falling back to start() to avoid self-deadlock.
+            drop(reload_guard);
             return self.start().await;
         }
         self.restore_saved_selectors(&store_snapshot).await;
+        drop(reload_guard);
         Ok(())
     }
 
     pub async fn refresh_core_version(&self) -> String {
+        self.refresh_core_version_with_timeout(Duration::from_secs(5))
+            .await
+    }
+
+    async fn refresh_core_version_with_timeout(&self, timeout: Duration) -> String {
         let bin = self.resolve_bin_path().await;
-        if let Ok(out) = Command::new(&bin).arg("version").output().await
+        let mut cmd = Command::new(&bin);
+        cmd.arg("version");
+        if let Ok(out) = Self::run_command_output_with_timeout(&mut cmd, timeout).await
             && out.status.success()
         {
             let text = String::from_utf8_lossy(&out.stdout);
@@ -450,12 +545,13 @@ impl CoreManager {
             a
         };
 
+        let cmd_timeout = Duration::from_secs(timeout_secs.max(4).saturating_add(3));
         if let Some(px) = proxy_url.filter(|s| !s.trim().is_empty()) {
             let mut args = build_base_args(include_headers);
             args.push("-x".to_string());
             args.push(px.trim().to_string());
             args.push(url.to_string());
-            if let Ok(out) = Command::new("curl").args(&args).output().await
+            if let Ok(out) = Self::run_curl_args(&args, cmd_timeout).await
                 && out.status.success()
                 && !out.stdout.is_empty()
             {
@@ -465,7 +561,7 @@ impl CoreManager {
 
         let mut direct_args = build_base_args(include_headers);
         direct_args.push(url.to_string());
-        if let Ok(out) = Command::new("curl").args(&direct_args).output().await
+        if let Ok(out) = Self::run_curl_args(&direct_args, cmd_timeout).await
             && out.status.success()
             && !out.stdout.is_empty()
         {
@@ -481,7 +577,7 @@ impl CoreManager {
             doh_args.push("--doh-url".to_string());
             doh_args.push(doh.to_string());
             doh_args.push(url.to_string());
-            if let Ok(out) = Command::new("curl").args(&doh_args).output().await {
+            if let Ok(out) = Self::run_curl_args(&doh_args, cmd_timeout).await {
                 if out.status.success() && !out.stdout.is_empty() {
                     return Ok(out.stdout);
                 }
@@ -506,7 +602,7 @@ impl CoreManager {
         path: &str,
         body: Option<&str>,
     ) -> anyhow::Result<Value> {
-        static CACHED_CLASH_CRED: std::sync::Mutex<Option<(u64, String, String)>> =
+        static CACHED_CLASH_CRED: std::sync::Mutex<Option<(String, u128, String, String)>> =
             std::sync::Mutex::new(None);
 
         let (mut addr, mut secret, cfg_path) = {
@@ -523,10 +619,11 @@ impl CoreManager {
                     .modified()
                     .ok()
                     .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                    .map(|d| d.as_secs())
+                    .map(|d| d.as_nanos())
                     .unwrap_or(0);
                 if let Ok(guard) = CACHED_CLASH_CRED.lock()
-                    && let Some((cached_mtime, ref c_addr, ref c_sec)) = *guard
+                    && let Some((ref cached_path, cached_mtime, ref c_addr, ref c_sec)) = *guard
+                    && cached_path == candidate_cfg
                     && cached_mtime == mtime
                     && !c_addr.is_empty()
                 {
@@ -562,7 +659,7 @@ impl CoreManager {
                     addr = found_addr.clone();
                     secret = found_sec.clone();
                     if let Ok(mut guard) = CACHED_CLASH_CRED.lock() {
-                        *guard = Some((mtime, found_addr, found_sec));
+                        *guard = Some((candidate_cfg.to_string(), mtime, found_addr, found_sec));
                     }
                     break;
                 }
@@ -1827,7 +1924,7 @@ impl CoreManager {
         let mgr = Arc::clone(self);
         tokio::spawn(async move {
             let mut tick_count = 0u64;
-            let mut interval = tokio::time::interval(Duration::from_secs(3));
+            let mut interval = telemetry_poll_interval();
             loop {
                 interval.tick().await;
                 tick_count = tick_count.wrapping_add(1);
@@ -1843,6 +1940,22 @@ impl CoreManager {
     }
 
     pub async fn poll_telemetry_and_reconcile(&self, tick_count: u64) {
+        enum ConnectionsSample {
+            Stopped,
+            PollOk {
+                total_up: u64,
+                total_down: u64,
+                active_conns: usize,
+                up_bps: u64,
+                down_bps: u64,
+            },
+            PollErr,
+            IdleSkipped,
+            BusySkipped {
+                preserve_recent_bps: bool,
+            },
+        }
+
         let now = unix_now_secs();
         let mut core_alive = false;
         let mut pid_opt = None;
@@ -1865,6 +1978,8 @@ impl CoreManager {
             && !sys_info::verify_process_identity(id)
         {
             core_alive = false;
+            pid_opt = None;
+            uptime_secs = 0;
         }
         if !core_alive
             && let Some((ext_pid, ext_uptime)) =
@@ -1879,37 +1994,94 @@ impl CoreManager {
             }
         }
 
-        // Poll Clash API `/connections` for live traffic throughput and active session count
-        let mut up_bps = 0u64;
-        let mut down_bps = 0u64;
-        let mut total_up = 0u64;
-        let mut total_down = 0u64;
-        let mut active_conns = 0usize;
+        let (watchdog_on, proxy_mode, lite_mode) = {
+            let d = self.state.data.read().await;
+            (
+                d.settings.enable_watchdog,
+                d.settings.proxy_mode.clone(),
+                d.settings.lite_mode,
+            )
+        };
+        let prev_core_pid = self.state.live.read().await.core_pid;
+        let pid_changed = prev_core_pid.is_some() && prev_core_pid != pid_opt;
+        let data_plane_busy = sys_info::is_lite_data_plane_busy(lite_mode);
+        let telemetry_active = self
+            .state
+            .is_telemetry_active(crate::store::unix_now_u64(), TELEMETRY_ACTIVE_WINDOW_SECS);
 
-        if core_alive && let Ok(conns_val) = self.clash_request("GET", "/connections", None).await {
-            total_up = conns_val
-                .get("uploadTotal")
-                .and_then(Value::as_u64)
-                .unwrap_or(0);
-            total_down = conns_val
-                .get("downloadTotal")
-                .and_then(Value::as_u64)
-                .unwrap_or(0);
-            active_conns = conns_val
-                .get("connections")
-                .and_then(Value::as_array)
-                .map(Vec::len)
-                .unwrap_or(0);
-
+        // Adaptive polling of Clash API `/connections`: skip `:9090` requests when no UI/TG
+        // subscriber queried telemetry recently or while a lite-mode data plane is busy.
+        let sample = if !core_alive {
+            *self.prev_totals.lock().await = None;
+            ConnectionsSample::Stopped
+        } else if !telemetry_active {
+            *self.prev_totals.lock().await = None;
+            ConnectionsSample::IdleSkipped
+        } else if data_plane_busy {
+            let now_mono = TokioInstant::now();
             let mut prev = self.prev_totals.lock().await;
-            if prev.0 > 0 && total_up >= prev.0 {
-                up_bps = (total_up - prev.0) / 3;
+            let preserve_recent_bps = !pid_changed
+                && prev.as_ref().is_some_and(|base| {
+                    base.pid == pid_opt
+                        && now_mono.saturating_duration_since(base.sampled_at)
+                            <= Duration::from_secs(TELEMETRY_ACTIVE_WINDOW_SECS)
+                });
+            if !preserve_recent_bps {
+                *prev = None;
             }
-            if prev.1 > 0 && total_down >= prev.1 {
-                down_bps = (total_down - prev.1) / 3;
+            ConnectionsSample::BusySkipped {
+                preserve_recent_bps,
             }
-            *prev = (total_up, total_down);
-        }
+        } else {
+            if pid_changed {
+                *self.prev_totals.lock().await = None;
+            }
+            match self.clash_request("GET", "/connections", None).await {
+                Ok(conns_val) => {
+                    let sampled_at = TokioInstant::now();
+                    let total_up = conns_val
+                        .get("uploadTotal")
+                        .and_then(Value::as_u64)
+                        .unwrap_or(0);
+                    let total_down = conns_val
+                        .get("downloadTotal")
+                        .and_then(Value::as_u64)
+                        .unwrap_or(0);
+                    let active_conns = conns_val
+                        .get("connections")
+                        .and_then(Value::as_array)
+                        .map(Vec::len)
+                        .unwrap_or(0);
+
+                    let mut prev = self.prev_totals.lock().await;
+                    let (up_bps, down_bps) = if let Some(base) = prev.as_ref()
+                        && base.pid == pid_opt
+                    {
+                        let elapsed = sampled_at.saturating_duration_since(base.sampled_at);
+                        (
+                            compute_rate_bps(base.total_up, total_up, elapsed),
+                            compute_rate_bps(base.total_down, total_down, elapsed),
+                        )
+                    } else {
+                        (0, 0)
+                    };
+                    *prev = Some(TrafficSampleBaseline {
+                        pid: pid_opt,
+                        total_up,
+                        total_down,
+                        sampled_at,
+                    });
+                    ConnectionsSample::PollOk {
+                        total_up,
+                        total_down,
+                        active_conns,
+                        up_bps,
+                        down_bps,
+                    }
+                }
+                Err(_) => ConnectionsSample::PollErr,
+            }
+        };
 
         let rss_bytes = pid_opt.map(sys_info::process_rss_bytes).unwrap_or(0);
 
@@ -1921,26 +2093,107 @@ impl CoreManager {
             live.core_pid = pid_opt;
             live.core_uptime_secs = uptime_secs;
             live.core_rss_bytes = rss_bytes;
-            live.total_up_bps = up_bps;
-            live.total_down_bps = down_bps;
-            live.total_up_bytes = total_up;
-            live.total_down_bytes = total_down;
-            live.active_connections = active_conns;
             live.dns_healthy = core_alive;
             live.wan_healthy = true;
+
+            let (pt_up_bps, pt_down_bps) = match sample {
+                ConnectionsSample::Stopped => {
+                    live.core_identity = None;
+                    live.total_up_bps = 0;
+                    live.total_down_bps = 0;
+                    live.total_up_bytes = 0;
+                    live.total_down_bytes = 0;
+                    live.active_connections = 0;
+                    for dev in &mut live.lan_devices {
+                        dev.upload_bps = 0;
+                        dev.download_bps = 0;
+                        dev.active_sessions = 0;
+                    }
+                    (0, 0)
+                }
+                ConnectionsSample::PollOk {
+                    total_up,
+                    total_down,
+                    active_conns,
+                    up_bps,
+                    down_bps,
+                } => {
+                    live.total_up_bps = up_bps;
+                    live.total_down_bps = down_bps;
+                    live.total_up_bytes = total_up;
+                    live.total_down_bytes = total_down;
+                    live.active_connections = active_conns;
+                    (up_bps, down_bps)
+                }
+                ConnectionsSample::PollErr => {
+                    if pid_changed {
+                        live.total_up_bytes = 0;
+                        live.total_down_bytes = 0;
+                    }
+                    live.total_up_bps = 0;
+                    live.total_down_bps = 0;
+                    live.active_connections = 0;
+                    for dev in &mut live.lan_devices {
+                        dev.upload_bps = 0;
+                        dev.download_bps = 0;
+                        if pid_changed {
+                            dev.active_sessions = 0;
+                        }
+                    }
+                    (0, 0)
+                }
+                ConnectionsSample::IdleSkipped => {
+                    if pid_changed {
+                        live.total_up_bytes = 0;
+                        live.total_down_bytes = 0;
+                        live.active_connections = 0;
+                    }
+                    live.total_up_bps = 0;
+                    live.total_down_bps = 0;
+                    for dev in &mut live.lan_devices {
+                        dev.upload_bps = 0;
+                        dev.download_bps = 0;
+                        if pid_changed {
+                            dev.active_sessions = 0;
+                        }
+                    }
+                    (0, 0)
+                }
+                ConnectionsSample::BusySkipped {
+                    preserve_recent_bps,
+                } => {
+                    if pid_changed {
+                        live.total_up_bytes = 0;
+                        live.total_down_bytes = 0;
+                        live.active_connections = 0;
+                    }
+                    if !preserve_recent_bps {
+                        live.total_up_bps = 0;
+                        live.total_down_bps = 0;
+                        for dev in &mut live.lan_devices {
+                            dev.upload_bps = 0;
+                            dev.download_bps = 0;
+                            if pid_changed {
+                                dev.active_sessions = 0;
+                            }
+                        }
+                    }
+                    (live.total_up_bps, live.total_down_bps)
+                }
+            };
 
             if live.throughput_history.len() >= MAX_THROUGHPUT_POINTS {
                 live.throughput_history.remove(0);
             }
-            live.throughput_history.push((now, up_bps, down_bps));
+            live.throughput_history.push((now, pt_up_bps, pt_down_bps));
 
             if live.throughput.len() >= MAX_THROUGHPUT_POINTS {
                 live.throughput.remove(0);
             }
             live.throughput.push(ThroughputSample {
                 ts: now,
-                rx_bps: down_bps,
-                tx_bps: up_bps,
+                rx_bps: pt_down_bps,
+                tx_bps: pt_up_bps,
             });
 
             if live.lkg_observing {
@@ -1962,20 +2215,11 @@ impl CoreManager {
             );
         }
 
-        // Every 5 ticks (15s), run Reconciler checks (`nftables` drift & LAN devices refresh via `/tachyon/devices`)
+        // Every 5 ticks (15s), run Reconciler checks (`nftables` drift & adaptive LAN devices refresh via `/tachyon/devices`)
         if tick_count.is_multiple_of(5) {
-            let (watchdog_on, proxy_mode, lite_mode) = {
-                let d = self.state.data.read().await;
-                (
-                    d.settings.enable_watchdog,
-                    d.settings.proxy_mode.clone(),
-                    d.settings.lite_mode,
-                )
-            };
             let nft_ok = net_stack::check_nft_table_active().await;
-            let data_plane_busy = sys_info::is_lite_data_plane_busy(lite_mode);
 
-            let devices_opt = if !data_plane_busy {
+            let devices_opt = if telemetry_active && !data_plane_busy {
                 let mut devices = sys_info::discover_lan_devices();
                 if core_alive
                     && let Ok(core_devs) = self.clash_request("GET", "/tachyon/devices", None).await
@@ -2280,5 +2524,442 @@ mod core_mgr_tests {
         let b64_nodes = CoreManager::parse_subscription_payload(&b64_payload);
         assert_eq!(b64_nodes.len(), 1);
         assert_eq!(b64_nodes[0].tag, "🇳🇱 Amsterdam");
+    }
+
+    #[derive(Default)]
+    struct MockClashState {
+        up_total: std::sync::atomic::AtomicU64,
+        down_total: std::sync::atomic::AtomicU64,
+        conns_count: std::sync::atomic::AtomicUsize,
+        conn_hits: std::sync::atomic::AtomicUsize,
+        dev_hits: std::sync::atomic::AtomicUsize,
+        put_hits: std::sync::atomic::AtomicUsize,
+        put_in_flight: std::sync::atomic::AtomicUsize,
+        put_max_in_flight: std::sync::atomic::AtomicUsize,
+        put_delay: Duration,
+    }
+
+    async fn spawn_test_mock_clash_server(
+        mock: Arc<MockClashState>,
+    ) -> (u16, tokio::task::JoinHandle<()>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind mock clash port");
+        let port = listener.local_addr().unwrap().port();
+        let handle = tokio::spawn(async move {
+            while let Ok((mut sock, _)) = listener.accept().await {
+                let mock = Arc::clone(&mock);
+                tokio::spawn(async move {
+                    let mut buf = vec![0u8; 4096];
+                    let n = match sock.read(&mut buf).await {
+                        Ok(n) if n > 0 => n,
+                        _ => return,
+                    };
+                    let req = String::from_utf8_lossy(&buf[..n]);
+                    let first_line = req.lines().next().unwrap_or("");
+                    let mut parts = first_line.split_whitespace();
+                    let method = parts.next().unwrap_or("");
+                    let path = parts.next().unwrap_or("");
+
+                    if method == "PUT" && path.starts_with("/configs") {
+                        let cur = mock
+                            .put_in_flight
+                            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                            + 1;
+                        mock.put_max_in_flight
+                            .fetch_max(cur, std::sync::atomic::Ordering::SeqCst);
+                        mock.put_hits
+                            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        if !mock.put_delay.is_zero() {
+                            tokio::time::sleep(mock.put_delay).await;
+                        }
+                        mock.put_in_flight
+                            .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                        let _ = sock
+                            .write_all(b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                            .await;
+                        return;
+                    }
+
+                    let body = if method == "GET" && path == "/connections" {
+                        mock.conn_hits
+                            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        let cnt = mock.conns_count.load(std::sync::atomic::Ordering::SeqCst);
+                        let connections = vec![json!({"id": "c"}); cnt];
+                        json!({
+                            "uploadTotal": mock.up_total.load(std::sync::atomic::Ordering::SeqCst),
+                            "downloadTotal": mock.down_total.load(std::sync::atomic::Ordering::SeqCst),
+                            "connections": connections
+                        })
+                        .to_string()
+                    } else if method == "GET" && path == "/tachyon/devices" {
+                        mock.dev_hits
+                            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        json!({
+                            "devices": [{
+                                "ip": "192.168.1.50",
+                                "mac": "AA:BB:CC:DD:EE:01",
+                                "hostname": "workstation",
+                                "upload": 5000,
+                                "download": 9000,
+                                "upload_bps": 800,
+                                "download_bps": 1600,
+                                "connections": 2
+                            }]
+                        })
+                        .to_string()
+                    } else {
+                        "{}".to_string()
+                    };
+
+                    let resp = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        body.len(),
+                        body
+                    );
+                    let _ = sock.write_all(resp.as_bytes()).await;
+                });
+            }
+        });
+        (port, handle)
+    }
+
+    fn spawn_dummy_long_process() -> Child {
+        #[cfg(windows)]
+        let mut cmd = {
+            let mut c = Command::new("ping");
+            c.args(["-n", "30", "127.0.0.1"]);
+            c
+        };
+        #[cfg(not(windows))]
+        let mut cmd = {
+            let mut c = Command::new("sleep");
+            c.arg("30");
+            c
+        };
+        cmd.stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .kill_on_drop(true)
+            .spawn()
+            .expect("spawn dummy long-lived child")
+    }
+
+    #[tokio::test]
+    async fn test_telemetry_interval_uses_missed_tick_behavior_skip_and_rate_math() {
+        let prod_iv = telemetry_poll_interval();
+        assert_eq!(
+            prod_iv.missed_tick_behavior(),
+            tokio::time::MissedTickBehavior::Skip
+        );
+
+        let mut iv = telemetry_poll_interval_with(Duration::from_millis(80));
+        iv.tick().await;
+        // Miss >3 periods while busy: Skip must drop missed ticks instead of bursting.
+        tokio::time::sleep(Duration::from_millis(260)).await;
+        iv.tick().await;
+        let burst = tokio::time::timeout(Duration::from_millis(25), iv.tick()).await;
+        assert!(burst.is_err(), "expected Skip behavior to suppress burst");
+        let next = tokio::time::timeout(Duration::from_millis(160), iv.tick()).await;
+        assert!(next.is_ok(), "expected next tick after one period");
+
+        assert_eq!(compute_rate_bps(1000, 7000, Duration::from_secs(6)), 1000);
+        assert_eq!(compute_rate_bps(1000, 500, Duration::from_secs(3)), 0);
+        assert_eq!(compute_rate_bps(0, 3000, Duration::from_millis(10)), 0);
+    }
+
+    #[tokio::test]
+    async fn test_adaptive_telemetry_throttling_real_delta_and_state_cleanup() {
+        let mock = Arc::new(MockClashState {
+            up_total: std::sync::atomic::AtomicU64::new(10_000),
+            down_total: std::sync::atomic::AtomicU64::new(20_000),
+            conns_count: std::sync::atomic::AtomicUsize::new(3),
+            ..Default::default()
+        });
+        let (port, srv_handle) = spawn_test_mock_clash_server(Arc::clone(&mock)).await;
+
+        let dir = std::env::temp_dir().join(format!("tachyon_tele_test_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let cfg_file = dir.join("tele-core-cfg.json");
+        let _ = std::fs::write(
+            &cfg_file,
+            json!({
+                "experimental": {
+                    "clash_api": {
+                        "external_controller": format!("127.0.0.1:{port}"),
+                        "secret": ""
+                    }
+                }
+            })
+            .to_string(),
+        );
+        let state = AppState::load_or_create(dir.join("store.json")).expect("load state");
+        {
+            let mut d = state.data.write().await;
+            d.settings.clash_api_addr = format!("127.0.0.1:{port}");
+            d.settings.clash_api_secret.clear();
+            d.settings.core_config_path = cfg_file.to_string_lossy().to_string();
+            d.settings.proxy_mode = "socks".to_string();
+            d.settings.enable_watchdog = false;
+            d.settings.lite_mode = false;
+        }
+
+        let mgr = CoreManager::new(Arc::clone(&state));
+        let child = spawn_dummy_long_process();
+        let pid1 = child.id().expect("child pid");
+        *mgr.proc.lock().await = Some((child, Instant::now()));
+
+        // 1. UI idle (last_telemetry_access_ts == 0): must NOT poll `:9090`.
+        mgr.poll_telemetry_and_reconcile(5).await;
+        assert_eq!(mock.conn_hits.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert_eq!(mock.dev_hits.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert!(state.live.read().await.core_running);
+
+        // 2. UI active: tick 5 establishes baseline without division by hardcoded 3.
+        state.touch_telemetry_access();
+        mgr.poll_telemetry_and_reconcile(5).await;
+        assert_eq!(mock.conn_hits.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(mock.dev_hits.load(std::sync::atomic::Ordering::SeqCst), 1);
+        {
+            let live = state.live.read().await;
+            assert_eq!(live.total_up_bytes, 10_000);
+            assert_eq!(live.total_down_bytes, 20_000);
+            assert_eq!(live.total_up_bps, 0);
+            assert_eq!(live.total_down_bps, 0);
+            let dev = live
+                .lan_devices
+                .iter()
+                .find(|d| d.ip == "192.168.1.50")
+                .expect("mock lan device present");
+            assert_eq!(dev.upload_bps, 800);
+        }
+
+        // Wait ~200ms real Instant delta -> bps (~10_000 / ~30_000 B/s) must reflect real elapsed time, NOT /3s (666 / 2000).
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        mock.up_total
+            .store(12_000, std::sync::atomic::Ordering::SeqCst);
+        mock.down_total
+            .store(26_000, std::sync::atomic::Ordering::SeqCst);
+        mgr.poll_telemetry_and_reconcile(6).await;
+        assert_eq!(mock.conn_hits.load(std::sync::atomic::Ordering::SeqCst), 2);
+        {
+            let live = state.live.read().await;
+            assert_eq!(live.total_up_bytes, 12_000);
+            assert_eq!(live.total_down_bytes, 26_000);
+            assert!(
+                live.total_up_bps >= 1_500 && live.total_up_bps <= 15_000,
+                "expected real-delta up_bps (>=1500, !=666), got {}",
+                live.total_up_bps
+            );
+            assert!(
+                live.total_down_bps >= 4_500 && live.total_down_bps <= 45_000,
+                "expected real-delta down_bps (>=4500, !=2000), got {}",
+                live.total_down_bps
+            );
+        }
+
+        // 3. UI transitions back to idle (>15s ago): zero fake instantaneous bps, preserve cumulative totals.
+        state.last_telemetry_access_ts.store(
+            crate::store::unix_now_u64().saturating_sub(30),
+            std::sync::atomic::Ordering::Release,
+        );
+        mgr.poll_telemetry_and_reconcile(10).await;
+        assert_eq!(mock.conn_hits.load(std::sync::atomic::Ordering::SeqCst), 2);
+        assert_eq!(mock.dev_hits.load(std::sync::atomic::Ordering::SeqCst), 1);
+        {
+            let live = state.live.read().await;
+            assert!(live.core_running);
+            assert_eq!(live.total_up_bytes, 12_000);
+            assert_eq!(live.total_down_bytes, 26_000);
+            assert_eq!(live.total_up_bps, 0);
+            assert_eq!(live.total_down_bps, 0);
+            let dev = live
+                .lan_devices
+                .iter()
+                .find(|d| d.ip == "192.168.1.50")
+                .expect("mock lan device preserved on idle");
+            assert_eq!(dev.upload_bytes, 5_000);
+            assert_eq!(dev.upload_bps, 0);
+            assert_eq!(dev.download_bps, 0);
+            let last_pt = live.throughput.last().expect("throughput point");
+            assert_eq!((last_pt.tx_bps, last_pt.rx_bps), (0, 0));
+        }
+
+        // 4. Process PID change resets stale baseline instead of computing bogus diff.
+        if let Some((mut old_child, _)) = mgr.proc.lock().await.take() {
+            let _ = old_child.kill().await;
+            let _ = old_child.wait().await;
+        }
+        let child2 = spawn_dummy_long_process();
+        let pid2 = child2.id().expect("child2 pid");
+        assert_ne!(pid1, pid2);
+        *mgr.proc.lock().await = Some((child2, Instant::now()));
+        state.touch_telemetry_access();
+        mock.up_total
+            .store(2_000, std::sync::atomic::Ordering::SeqCst);
+        mock.down_total
+            .store(4_000, std::sync::atomic::Ordering::SeqCst);
+        mgr.poll_telemetry_and_reconcile(11).await;
+        {
+            let live = state.live.read().await;
+            assert_eq!(live.core_pid, Some(pid2));
+            assert_eq!(live.total_up_bytes, 2_000);
+            assert_eq!(live.total_up_bps, 0);
+        }
+
+        // 5. Core stops/crashes -> all runtime counters & speeds cleared cleanly.
+        if let Some((mut old_child, _)) = mgr.proc.lock().await.take() {
+            let _ = old_child.kill().await;
+            let _ = old_child.wait().await;
+        }
+        mgr.poll_telemetry_and_reconcile(12).await;
+        {
+            let live = state.live.read().await;
+            assert!(!live.core_running);
+            assert_eq!(live.core_pid, None);
+            assert_eq!(live.total_up_bytes, 0);
+            assert_eq!(live.total_down_bytes, 0);
+            assert_eq!(live.total_up_bps, 0);
+            assert_eq!(live.total_down_bps, 0);
+            assert_eq!(live.active_connections, 0);
+        }
+
+        srv_handle.abort();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn test_apply_or_reload_serialization_and_start_fallbacks_no_deadlock() {
+        let mock = Arc::new(MockClashState {
+            put_delay: Duration::from_millis(60),
+            ..Default::default()
+        });
+        let (port, srv_handle) = spawn_test_mock_clash_server(Arc::clone(&mock)).await;
+
+        let dir = std::env::temp_dir().join(format!("tachyon_reload_test_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let state = AppState::load_or_create(dir.join("store.json")).expect("load state");
+        {
+            let mut d = state.data.write().await;
+            d.settings.clash_api_addr = format!("127.0.0.1:{port}");
+            d.settings.clash_api_secret.clear();
+            d.settings.core_config_path = dir.join("core-cfg.json").to_string_lossy().to_string();
+            d.settings.core_bin_path = dir
+                .join("missing-tachyon-core")
+                .to_string_lossy()
+                .to_string();
+            d.settings.proxy_mode = "socks".to_string();
+            d.settings.enable_watchdog = false;
+        }
+        let mut dummy = spawn_dummy_long_process();
+        let dummy_pid = dummy.id().expect("dummy pid");
+        {
+            let mut live = state.live.write().await;
+            live.core_running = true;
+            live.core_pid = Some(dummy_pid);
+        }
+
+        let mgr = CoreManager::new(Arc::clone(&state));
+
+        // 1. Four concurrent apply_or_reload calls serialize strictly on reload_lock.
+        let batch = tokio::time::timeout(Duration::from_secs(5), async {
+            tokio::join!(
+                mgr.apply_or_reload(),
+                mgr.apply_or_reload(),
+                mgr.apply_or_reload(),
+                mgr.apply_or_reload(),
+            )
+        })
+        .await
+        .expect("concurrent apply_or_reload timed out");
+        assert!(batch.0.is_ok() && batch.1.is_ok() && batch.2.is_ok() && batch.3.is_ok());
+        assert_eq!(mock.put_hits.load(std::sync::atomic::Ordering::SeqCst), 4);
+        assert_eq!(
+            mock.put_max_in_flight
+                .load(std::sync::atomic::Ordering::SeqCst),
+            1
+        );
+
+        // 2. Fallback into start() when !core_running must drop reload_guard and avoid deadlock.
+        {
+            let mut live = state.live.write().await;
+            live.core_running = false;
+            live.core_pid = None;
+        }
+        let res_stopped = tokio::time::timeout(Duration::from_secs(3), mgr.apply_or_reload())
+            .await
+            .expect("fallback !core_running deadlocked/timed out");
+        assert!(res_stopped.is_err());
+
+        // 3. Fallback into start() when PUT /configs fails must also drop reload_guard cleanly.
+        srv_handle.abort();
+        let closed_listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind closed port");
+        let closed_port = closed_listener.local_addr().unwrap().port();
+        drop(closed_listener);
+        state.data.write().await.settings.clash_api_addr = format!("127.0.0.1:{closed_port}");
+        {
+            let mut live = state.live.write().await;
+            live.core_running = true;
+            live.core_pid = Some(dummy_pid);
+        }
+        let res_put_fail = tokio::time::timeout(Duration::from_secs(5), async {
+            tokio::join!(mgr.apply_or_reload(), mgr.apply_or_reload())
+        })
+        .await
+        .expect("fallback on PUT error deadlocked/timed out");
+        assert!(res_put_fail.0.is_err() && res_put_fail.1.is_err());
+
+        let _ = dummy.kill().await;
+        let _ = dummy.wait().await;
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn test_external_command_timeout_and_kill_on_drop() {
+        #[cfg(target_os = "linux")]
+        {
+            let pid_file =
+                std::env::temp_dir().join(format!("tachyon_kill_drop_{}.pid", std::process::id()));
+            let _ = std::fs::remove_file(&pid_file);
+            let script = format!("echo $$ > '{}'; exec sleep 30", pid_file.display());
+            let mut cmd = Command::new("sh");
+            cmd.args(["-c", &script]);
+            let started = Instant::now();
+            let err =
+                CoreManager::run_command_output_with_timeout(&mut cmd, Duration::from_millis(250))
+                    .await
+                    .expect_err("expected slow child to time out");
+            assert_eq!(err.kind(), std::io::ErrorKind::TimedOut);
+            assert!(started.elapsed() < Duration::from_secs(3));
+
+            if let Ok(raw_pid) = std::fs::read_to_string(&pid_file)
+                && let Ok(pid) = raw_pid.trim().parse::<u32>()
+            {
+                let mut exited = false;
+                for _ in 0..20 {
+                    if !Path::new(&format!("/proc/{pid}")).exists() {
+                        exited = true;
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(25)).await;
+                }
+                assert!(exited, "child pid {pid} leaked after timeout/kill_on_drop");
+            }
+            let _ = std::fs::remove_file(&pid_file);
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            let mut cmd = Command::new("ping");
+            cmd.args(["-n", "30", "127.0.0.1"]);
+            let started = Instant::now();
+            let err =
+                CoreManager::run_command_output_with_timeout(&mut cmd, Duration::from_millis(250))
+                    .await
+                    .expect_err("expected slow child to time out");
+            assert_eq!(err.kind(), std::io::ErrorKind::TimedOut);
+            assert!(started.elapsed() < Duration::from_secs(3));
+        }
     }
 }

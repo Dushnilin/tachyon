@@ -2527,16 +2527,30 @@ pub async fn teardown_network_stack() {
     teardown_sqm_qdisc().await;
 }
 
+pub(crate) async fn run_status_with_timeout(
+    cmd: &mut Command,
+    timeout: std::time::Duration,
+) -> std::io::Result<std::process::ExitStatus> {
+    cmd.kill_on_drop(true);
+    match tokio::time::timeout(timeout, cmd.status()).await {
+        Ok(res) => res,
+        Err(_) => Err(std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            format!("command timed out after {}ms", timeout.as_millis()),
+        )),
+    }
+}
+
 /// Check if `table inet TachyonTable` is currently loaded in the kernel.
 pub async fn check_nft_table_active() -> bool {
     if cfg!(not(target_os = "linux")) {
         return true;
     }
-    Command::new("nft")
-        .args(["list", "table", "inet", "TachyonTable"])
+    let mut cmd = Command::new("nft");
+    cmd.args(["list", "table", "inet", "TachyonTable"])
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
+        .stderr(Stdio::null());
+    run_status_with_timeout(&mut cmd, std::time::Duration::from_secs(5))
         .await
         .is_ok_and(|s| s.success())
 }
@@ -3168,5 +3182,28 @@ fd001122334455660000000000000001 05 40 00 80   br-lan
                     .find("tproxy ip to 127.0.0.1:")
                     .expect("tproxy intercept")
         );
+    }
+
+    #[tokio::test]
+    async fn test_run_status_with_timeout_terminates_hung_subprocess() {
+        #[cfg(windows)]
+        let mut cmd = {
+            let mut c = Command::new("ping");
+            c.args(["-n", "30", "127.0.0.1"]);
+            c
+        };
+        #[cfg(not(windows))]
+        let mut cmd = {
+            let mut c = Command::new("sleep");
+            c.arg("30");
+            c
+        };
+        cmd.stdout(Stdio::null()).stderr(Stdio::null());
+        let started = std::time::Instant::now();
+        let err = run_status_with_timeout(&mut cmd, std::time::Duration::from_millis(150))
+            .await
+            .expect_err("expected command timeout");
+        assert_eq!(err.kind(), std::io::ErrorKind::TimedOut);
+        assert!(started.elapsed() < std::time::Duration::from_secs(3));
     }
 }
