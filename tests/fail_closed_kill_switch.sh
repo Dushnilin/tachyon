@@ -35,14 +35,15 @@ UC
 ucode -S -L "$TACHYON_LIB" "$WORK_DIR/probe.uc" >"$WORK_DIR/ruleset.nft"
 
 # Syntax-check the generated ruleset where nft can do so without applying it.
-# Inside unprivileged containers without CAP_NET_ADMIN, nft -c exits 1 on the
-# netlink check after parsing, while parse failures emit "syntax error" / "Error:".
+# Inside unprivileged containers / CI runners without CAP_NET_ADMIN, nft -c exits 1
+# with "netlink: Error: cache initialization failed: Operation not permitted" after
+# parsing, whereas invalid nft syntax emits "syntax error".
 if command -v nft >/dev/null 2>&1; then
   if nft list tables >/dev/null 2>&1; then
     nft -c -f "$WORK_DIR/ruleset.nft" || fail "Generated kill-switch ruleset is rejected by nft"
   else
     nft_out="$(timeout 10 nft -c -f "$WORK_DIR/ruleset.nft" 2>&1 || true)"
-    if printf '%s\n' "$nft_out" | grep -Eq 'syntax error|Error:'; then
+    if printf '%s\n' "$nft_out" | grep -Fq 'syntax error'; then
       fail "Generated kill-switch ruleset has nft syntax errors: $nft_out"
     fi
   fi
