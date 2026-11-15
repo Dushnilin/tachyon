@@ -1037,60 +1037,80 @@ function clone_rule_value(val) {
     return val;
 }
 
+function rule_has_inbound(rule, inbound_tag) {
+    if (type(rule) != "object")
+        return false;
+    if (value_contains(rule.inbound, inbound_tag))
+        return true;
+    if (rule.type == "logical" && type(rule.rules) == "array") {
+        for (let child in rule.rules) {
+            if (rule_has_inbound(child, inbound_tag))
+                return true;
+        }
+    }
+    return false;
+}
+
+function rule_contains_domain(rule, domain_name) {
+    if (type(rule) != "object" || domain_name == "")
+        return false;
+    if (value_contains(rule.domain, domain_name))
+        return true;
+    if (rule.type == "logical" && type(rule.rules) == "array") {
+        for (let child in rule.rules) {
+            if (rule_contains_domain(child, domain_name))
+                return true;
+        }
+    }
+    return false;
+}
+
+function rule_has_positive_source_ip(rule) {
+    if (type(rule) != "object")
+        return false;
+    if (rule.source_ip_cidr != null && !rule.invert)
+        return true;
+    if (rule.type == "logical" && rule.mode == "and" && type(rule.rules) == "array") {
+        for (let child in rule.rules) {
+            if (rule_has_positive_source_ip(child))
+                return true;
+        }
+    }
+    return false;
+}
+
+function rewrite_rule_inbound(rule, source_inbound, target_inbound) {
+    if (type(rule) != "object")
+        return;
+    if (value_contains(rule.inbound, source_inbound))
+        rule.inbound = target_inbound;
+    if (rule.type == "logical" && type(rule.rules) == "array") {
+        for (let child in rule.rules)
+            rewrite_rule_inbound(child, source_inbound, target_inbound);
+    }
+}
+
 function clone_rules_for_inbound(config, source_inbound, target_inbound, skip_domain) {
     let cloned_rules = [];
     for (let rule in array_or_empty(config.route.rules)) {
         if (type(rule) != "object")
             continue;
+        if (rule.__skip_server_clone)
+            continue;
         if (rule.action != "route" && rule.action != "reject" && rule.action != "resolve")
             continue;
-        let matches = value_contains(rule.inbound, source_inbound);
-        if (rule.type == "logical" && rule.mode == "and" && type(rule.rules) == "array") {
-            for (let child in rule.rules) {
-                if (type(child) == "object" && value_contains(child.inbound, source_inbound))
-                    matches = true;
-            }
-        }
-        if (!matches)
+        if (!rule_has_inbound(rule, source_inbound))
             continue;
-
-        let skips_domain = false;
-        if (skip_domain != "") {
-            if (value_contains(rule.domain, skip_domain))
-                skips_domain = true;
-            if (rule.type == "logical" && type(rule.rules) == "array") {
-                for (let child in rule.rules) {
-                    if (type(child) == "object" && value_contains(child.domain, skip_domain))
-                        skips_domain = true;
-                }
-            }
-        }
-        if (skips_domain)
+        if (rule_contains_domain(rule, skip_domain))
             continue;
-
-        if (rule.source_ip_cidr != null)
-            continue;
-        let has_positive_source_ip = false;
-        if (rule.type == "logical" && rule.mode == "and" && type(rule.rules) == "array") {
-            for (let child in rule.rules) {
-                if (type(child) == "object" && child.source_ip_cidr != null && !child.invert)
-                    has_positive_source_ip = true;
-            }
-        }
-        if (has_positive_source_ip)
+        if (rule.source_ip_cidr != null || rule_has_positive_source_ip(rule))
             continue;
 
         let cloned = clone_rule_value(rule);
         if (type(cloned) != "object")
             continue;
-        if (value_contains(cloned.inbound, source_inbound))
-            cloned.inbound = target_inbound;
-        if (cloned.type == "logical" && cloned.mode == "and" && type(cloned.rules) == "array") {
-            for (let child in cloned.rules) {
-                if (type(child) == "object" && value_contains(child.inbound, source_inbound))
-                    child.inbound = target_inbound;
-            }
-        }
+        delete cloned.__skip_server_clone;
+        rewrite_rule_inbound(cloned, source_inbound, target_inbound);
         push(cloned_rules, cloned);
     }
     for (let cloned_rule in cloned_rules)

@@ -223,9 +223,9 @@ function config(settings, runtime) {
                 push(doh_cidrs, cidr);
         }
         for (let ib in client_inbounds)
-            push(result.rules, { action: "reject", inbound: ib, ip_cidr: doh_cidrs });
+            push(result.rules, { action: "reject", inbound: ib, ip_cidr: doh_cidrs, __skip_server_clone: true });
         if (ipv6_active && length(client_inbounds) == 1 && client_inbounds[0] == runtime_constants.TPROXY_INBOUND_TAG)
-            push(result.rules, { action: "reject", inbound: runtime_constants.TPROXY_INBOUND6_TAG, ip_cidr: doh_cidrs });
+            push(result.rules, { action: "reject", inbound: runtime_constants.TPROXY_INBOUND6_TAG, ip_cidr: doh_cidrs, __skip_server_clone: true });
     }
 
     return result;

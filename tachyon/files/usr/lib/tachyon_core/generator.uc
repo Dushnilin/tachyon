@@ -2699,6 +2699,29 @@ function generate_config_once(output_path, service_address, mwan3_active, suppor
             record_owner_delta(config, owners, section[".name"], snap);
         }
     }
+    if (eff_state.fakeip_enabled && type(config.dns) == "object" && type(config.dns.rules) == "array") {
+        let server_dns_inbounds = [];
+        for (let server in servers) {
+            if (runtime_servers.is_native_tailscale(server))
+                continue;
+            if (option(server, "protocol", "vless") == "tailscale")
+                continue;
+            let ib = runtime_constants.server_inbound_tag(server[".name"]);
+            if (option(server, "protocol", "vless") == "shadowtls" &&
+                variant_state.is_tachyon_core() &&
+                trim(as_string(option(server, "shadowtls_detour", ""))) == "")
+                ib += "-inner";
+            if (index(server_dns_inbounds, ib) < 0)
+                push(server_dns_inbounds, ib);
+        }
+        if (length(server_dns_inbounds) > 0) {
+            push(config.dns.rules, {
+                action: "route",
+                inbound: single_or_array(server_dns_inbounds),
+                server: runtime_constants.DNS_SERVER_TAG
+            });
+        }
+    }
     config.__defer_dns_response_rules = true;
     for (let section in sections) {
         let act = option(section, "action", "");
@@ -2731,13 +2754,16 @@ function generate_config_once(output_path, service_address, mwan3_active, suppor
     }
     ctx.current_section = null;
 
+    add_full_tunnel_route_rule(config, sections);
     add_server_routes(config, servers, sections);
+    for (let rule in array_or_empty(config.route.rules))
+        if (type(rule) == "object")
+            delete rule.__skip_server_clone;
     delete config.__lan_interface_cidrs;
     add_proxy_endpoint_dns_rule(config, sections);
     add_source_aware_dns_fallback(config, source_aware_dns);
     add_excluded_clients_dns_rule(config, settings);
     add_excluded_clients_route_rule(config, settings);
-    add_full_tunnel_route_rule(config, sections);
 
     // Append dns_hosts predefined rules AFTER section DNS rules so that
     // FakeIP/section-level DNS routing takes precedence over hardcoded IPs
