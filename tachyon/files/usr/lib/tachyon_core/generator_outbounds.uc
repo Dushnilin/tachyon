@@ -1176,6 +1176,7 @@ function add_imported_wireguard_endpoint(config, endpoint) {
             delete endpoint.fake_packets_delay;
             delete endpoint.fake_packets_mode;
         }
+        endpoint.__wireguard_client = true;
         if (endpoint.address != null)
             endpoint.address = core_ip.normalize_to_cidrs(endpoint.address);
         if (type(endpoint.peers) == "array") {
@@ -3469,6 +3470,7 @@ function add_awg_endpoint(config, section) {
         endpoint.detour = detour;
     }
 
+    endpoint.__wireguard_client = true;
     push(config.endpoints, endpoint);
 }
 

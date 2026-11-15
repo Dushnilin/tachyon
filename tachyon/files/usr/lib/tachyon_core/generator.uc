@@ -2182,6 +2182,54 @@ function normalize_wireguard_addresses(config) {
     }
 }
 
+// JSON object order is immaterial. Keep array order and every emitted option:
+// peer order, dial settings and AWG extensions can change transport behavior.
+function canonical_wireguard_options(value, endpoint) {
+    if (type(value) == "array")
+        return map(value, item => canonical_wireguard_options(item));
+    if (type(value) != "object")
+        return value;
+
+    let ordered = {};
+    for (let key in sort(keys(value))) {
+        if (endpoint && key == "tag")
+            continue;
+        if (substr(key, 0, 2) != "__")
+            ordered[key] = canonical_wireguard_options(value[key]);
+    }
+    return ordered;
+}
+
+function share_wireguard_client_endpoints(config, owners) {
+    let first_by_options = {};
+    let retained = [];
+    for (let endpoint in config.endpoints) {
+        if (endpoint.type == "wireguard" && endpoint.__wireguard_client &&
+            !endpoint.system && !endpoint.listen_port) {
+            // This key contains private transport options and stays in memory.
+            let options = sprintf("%J", canonical_wireguard_options(endpoint, true));
+            let first_tag = first_by_options[options];
+            if (first_tag != null) {
+                // Keep the member tag used by selectors, probes and section metadata.
+                push(config.outbounds, {
+                    type: "selector",
+                    tag: endpoint.tag,
+                    outbounds: [ first_tag ],
+                    default: first_tag
+                });
+                continue;
+            }
+            first_by_options[options] = endpoint.tag;
+        }
+        push(retained, endpoint);
+    }
+    if (length(retained) != length(config.endpoints)) {
+        config.endpoints = retained;
+        // finalize_config_owners rebuilds endpoint indices from the retained tags.
+        owners.endpoints = {};
+    }
+}
+
 function normalize_hysteria2_server_ports(config) {
     if (type(config.outbounds) != "array")
         return;
@@ -2523,9 +2571,11 @@ function generate_config_once(output_path, service_address, mwan3_active, suppor
     prune_dangling_group_members(config);
     assert_unique_outbound_tags(config);
     generator_routes.finalize_remote_custom_rulesets_state();
+    normalize_wireguard_addresses(config);
+    if (is_tachyon_core_detected())
+        share_wireguard_client_endpoints(config, owners);
     strip_internal_fields(config);
     strip_certificate_pins_if_unsupported(config);
-    normalize_wireguard_addresses(config);
     normalize_hysteria2_server_ports(config);
     finalize_config_owners(config, owners, output_path);
     if (!atomic_write_json_file(output_path, config)) {
