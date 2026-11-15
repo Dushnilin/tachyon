@@ -5872,7 +5872,10 @@ body[data-tachyon-ui-mode="simple"] [data-name="dns_failure_threshold"],
 body[data-tachyon-ui-mode="simple"] [data-name="dns_recovery_threshold"],
 body[data-tachyon-ui-mode="simple"] [data-name="dns_rewrite_ttl"],
 body[data-tachyon-ui-mode="simple"] [data-name="dns_cache_size"],
-body[data-tachyon-ui-mode="simple"] [data-name="dns_strategy"],
+body[data-tachyon-ui-mode="simple"] [data-name="fakeip_enabled"],
+body[data-tachyon-ui-mode="simple"] [data-name="fakeip_inet4_range"],
+body[data-tachyon-ui-mode="simple"] [data-name="fakeip_inet6_range"],
+body[data-tachyon-ui-mode="simple"] [data-name="fakeip_exclude"],
 body[data-tachyon-ui-mode="simple"] [data-name="dns_detour_enabled"],
 body[data-tachyon-ui-mode="simple"] [data-name="dns_detour_section"],
 /* Settings -> Network expert knobs */
@@ -5880,6 +5883,8 @@ body[data-tachyon-ui-mode="simple"] [data-name="tun_interface"],
 body[data-tachyon-ui-mode="simple"] [data-name="tun_stack"],
 body[data-tachyon-ui-mode="simple"] [data-name="tun_auto_route"],
 body[data-tachyon-ui-mode="simple"] [data-name="tun_mtu"],
+body[data-tachyon-ui-mode="simple"] [data-name="tun_inet4"],
+body[data-tachyon-ui-mode="simple"] [data-name="tun_inet6"],
 body[data-tachyon-ui-mode="simple"] [data-name="enable_output_network_interface"],
 body[data-tachyon-ui-mode="simple"] [data-name="output_network_interface"],
 body[data-tachyon-ui-mode="simple"] [data-name="enable_badwan_interface_monitoring"],
@@ -5910,7 +5915,6 @@ body[data-tachyon-ui-mode="simple"] [data-name="section_failover_threshold"],
 body[data-tachyon-ui-mode="simple"] [data-name="config_path"],
 body[data-tachyon-ui-mode="simple"] [data-name="cache_path"],
 body[data-tachyon-ui-mode="simple"] [data-name="log_level"],
-body[data-tachyon-ui-mode="simple"] [data-name="webrtc_leak_protect"],
 body[data-tachyon-ui-mode="simple"] [data-name="dns_doq_ech"],
 body[data-tachyon-ui-mode="simple"] [data-name="qos_priority_engine"],
 body[data-tachyon-ui-mode="simple"] [data-name="warp_proxy_section"],
@@ -10059,5 +10063,53 @@ html body #modal_overlay .cbi-button-positive:hover:not(:disabled) {
 #cbi-tachyon-settings .cbi-section-node > [data-tab][data-tab-active="false"],
 #cbi-tachyon-settings .cbi-tabcontainer > [data-tab][data-tab-active="false"] {
     display: none !important;
+}
+
+.tachyon-ipv6-status-box {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--tachyon-border-subtle, var(--border-color-medium, rgba(128, 128, 128, 0.24)));
+    background: var(--tachyon-bg-card-elevated, var(--background-color-low, rgba(128, 128, 128, 0.05)));
+    font-size: 12.5px;
+    line-height: 1.4;
+}
+
+.tachyon-ipv6-status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color-medium, rgba(128, 128, 128, 0.24));
+    background: var(--background-color-low, rgba(128, 128, 128, 0.08));
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.tachyon-ipv6-status-pill--ok {
+    border-color: rgba(16, 185, 129, 0.35);
+    background: rgba(16, 185, 129, 0.1);
+    color: var(--success-color, #10b981);
+}
+
+.tachyon-ipv6-status-pill--warn {
+    border-color: rgba(245, 158, 11, 0.38);
+    background: rgba(245, 158, 11, 0.1);
+    color: var(--warning-color, #d97706);
+}
+
+.tachyon-ipv6-warning-banner {
+    margin-top: 8px;
+    padding: 8px 11px;
+    border-radius: 8px;
+    border: 1px solid rgba(245, 158, 11, 0.38);
+    background: rgba(245, 158, 11, 0.09);
+    color: inherit;
+    font-size: 12px;
+    line-height: 1.45;
 }
 `;

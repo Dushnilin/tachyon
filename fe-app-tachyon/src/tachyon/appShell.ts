@@ -64,12 +64,14 @@ export function getUiMode(): TachyonUiMode {
   try {
     if (typeof localStorage !== 'undefined') {
       const val = localStorage.getItem(UI_MODE_STORAGE_KEY);
+      if (val === 'basic') return 'simple';
       if (val === 'advanced' || val === 'simple') return val;
     }
   } catch {
     // ignore
   }
   const fromRouter = getRouterUiPrefs()?.ui_mode;
+  if (String(fromRouter) === 'basic') return 'simple';
   if (fromRouter === 'advanced' || fromRouter === 'simple') return fromRouter;
   return 'simple';
 }

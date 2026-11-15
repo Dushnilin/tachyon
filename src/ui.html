@@ -1000,6 +1000,7 @@ input:focus, select:focus, textarea:focus {
   align-items: center;
   gap: 8px;
 }
+body[data-ui-mode="simple"] .adv-only,
 body[data-ui-mode="basic"] .adv-only {
   display: none !important;
 }
@@ -1432,7 +1433,12 @@ const S = {
   sidebarPos: localStorage.getItem('tachyon_sidebar_pos') || 'left',
   topbarCollapsed: localStorage.getItem('tachyon_topbar_collapsed') === '1',
   sidebarMenus: loadSidebarMenus(),
-  uiMode: localStorage.getItem('tachyon_mode') || 'advanced',
+  uiMode: (() => {
+    const saved = localStorage.getItem('tachyon_mode');
+    if (saved === 'simple' || saved === 'basic') return 'simple';
+    if (saved === 'advanced') return 'advanced';
+    return 'simple';
+  })(),
   lang: localStorage.getItem('tachyon_lang') || 'ru',
   accent: localStorage.getItem('tachyon_accent') || 'blue',
   authToken: localStorage.getItem('tachyon_token') || '',
@@ -1505,18 +1511,62 @@ function applyThemeAccent(acc) {
   document.documentElement.style.setProperty('--signal-dim', dim);
 }
 
-function setUiMode(mode) {
-  S.uiMode = mode === 'basic' ? 'basic' : 'advanced';
+function normalizeUiMode(mode) {
+  if (mode === 'simple' || mode === 'basic') return 'simple';
+  if (mode === 'advanced') return 'advanced';
+  return 'simple';
+}
+
+function normalizeIpv6ModeUi(mode) {
+  const m = String(mode || '').trim().toLowerCase();
+  if (m === 'off' || m === 'ipv4_only' || m === 'ipv4' || m === 'disabled' || m === 'none' || m === 'false' || m === '0') {
+    return 'off';
+  }
+  if (m === 'dual_stack' || m === 'ipv4_ipv6' || m === 'on' || m === 'full' || m === 'true' || m === '1') {
+    return 'dual_stack';
+  }
+  if (m === 'tunnel_over_v4' || m === 'v6_over_v4') {
+    return 'tunnel_over_v4';
+  }
+  return 'auto';
+}
+
+function syncSettingsDnsStrategyVisibility() {
+  const sel = document.getElementById('stIpv6Mode');
+  const wrap = document.getElementById('stDnsStratWrap');
+  const offHint = document.getElementById('stDnsStratOffHint');
+  const dnsSel = document.getElementById('stDnsStrat');
+  if (!sel || !wrap) return;
+  const isOff = normalizeIpv6ModeUi(sel.value) === 'off';
+  wrap.style.display = isOff ? 'none' : '';
+  if (dnsSel) dnsSel.disabled = isOff;
+  if (offHint) offHint.style.display = isOff ? '' : 'none';
+}
+
+function fmtUriHost(rawHost) {
+  const clean = String(rawHost || '').trim().replace(/^\[|\]$/g, '');
+  return clean.includes(':') ? `[${clean}]` : clean;
+}
+
+function setUiMode(mode, opts) {
+  const persist = !opts || opts.persist !== false;
+  S.uiMode = normalizeUiMode(mode);
   localStorage.setItem('tachyon_mode', S.uiMode);
   document.body.setAttribute('data-ui-mode', S.uiMode);
+  if (S.store && S.store.settings) {
+    S.store.settings.ui_mode = S.uiMode;
+    if (persist) {
+      api('POST', '/api/ui/prefs', { ui_mode: S.uiMode }).catch(() => {});
+    }
+  }
   renderNav();
   renderTopbar();
   renderPage();
 }
 
 function toggleUiMode() {
-  setUiMode(S.uiMode === 'basic' ? 'advanced' : 'basic');
-  toast(S.uiMode === 'basic'
+  setUiMode(S.uiMode === 'simple' ? 'advanced' : 'simple');
+  toast(S.uiMode === 'simple'
     ? tr('Включён обычный режим', 'Simple mode enabled')
     : tr('Включён расширенный режим', 'Advanced mode enabled'));
 }
@@ -1601,6 +1651,32 @@ function splitLines(v) {
     .filter(Boolean);
 }
 
+function gv(id, def = '') {
+  const el = document.getElementById(id);
+  if (!el || el.value === undefined || el.value === null) return def;
+  const v = String(el.value).trim();
+  return v !== '' ? v : def;
+}
+
+function gn(id, def = 0) {
+  const el = document.getElementById(id);
+  if (!el || el.value === undefined || el.value === null) return def;
+  const raw = String(el.value).trim();
+  if (raw === '') return def;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : def;
+}
+
+function gc(id, def = false) {
+  const el = document.getElementById(id);
+  return el ? !!el.checked : !!def;
+}
+
+function gl(id) {
+  const el = document.getElementById(id);
+  return el ? splitLines(el.value) : [];
+}
+
 // ============================================================================
 // REUSABLE UI FIELD BUILDERS
 // ============================================================================
@@ -1659,9 +1735,10 @@ function Fsel(a, b, val, options, opts = {}) {
     `<option value="${esc(k)}" ${val === k ? 'selected' : ''}>${esc(v)}</option>`
   ).join('');
   const onch = opts.onchange ? ` onchange="${opts.onchange}"` : '';
+  const dis = opts.disabled ? ' disabled' : '';
   return `<div class="field${advCls}" style="${style}">
     <div class="field-label">${label}</div>
-    <select id="${id}"${onch}>${optHtml}</select>
+    <select id="${id}"${onch}${dis}>${optHtml}</select>
     ${hint}
   </div>`;
 }
@@ -2446,7 +2523,7 @@ function isNavItemVisible(it) {
     if (st[showProp] === false) return false;
     if (Array.isArray(st.hidden_tabs) && st.hidden_tabs.includes(tabKey)) return false;
   }
-  if (S.uiMode === 'basic' && it.simpleVisible === false && !isNavItemActive(it)) {
+  if (S.uiMode === 'simple' && it.simpleVisible === false && !isNavItemActive(it)) {
     return false;
   }
   return true;
@@ -2472,7 +2549,7 @@ function renderNav() {
   }
   const brandVer = document.getElementById('brandVer');
   if (brandVer) {
-    brandVer.textContent = S.uiMode === 'basic'
+    brandVer.textContent = S.uiMode === 'simple'
       ? tr('Обычный режим', 'Simple mode')
       : tr('Расширенный режим', 'Advanced mode');
   }
@@ -2487,7 +2564,7 @@ function renderNav() {
   const shell = document.getElementById('appShell');
   const pos = S.store.settings?.sidebar_pos || S.sidebarPos || 'left';
   if (shell) shell.classList.toggle('sidebar-right', pos === 'right');
-  document.body.setAttribute('data-ui-mode', S.uiMode || 'advanced');
+  document.body.setAttribute('data-ui-mode', normalizeUiMode(S.uiMode));
 
   let html = '';
   if (isNavItemVisible(NAV_DIRECT_DASHBOARD)) {
@@ -2551,8 +2628,8 @@ function renderTopbar() {
 
   document.getElementById('topbarLeft').innerHTML = `
     <div class="mode-seg" title="${tr('Переключение между обычным и расширенным режимом', 'Switch between Simple and Advanced mode')}">
-      <button class="mode-seg-btn ${S.uiMode === 'basic' ? 'active' : ''}" onclick="setUiMode('basic')">${tr('Обычный', 'Simple')}</button>
-      <button class="mode-seg-btn ${S.uiMode !== 'basic' ? 'active' : ''}" onclick="setUiMode('advanced')">${tr('Расширенный', 'Advanced')}</button>
+      <button class="mode-seg-btn ${S.uiMode === 'simple' ? 'active' : ''}" onclick="setUiMode('simple')">${tr('Обычный', 'Simple')}</button>
+      <button class="mode-seg-btn ${S.uiMode !== 'simple' ? 'active' : ''}" onclick="setUiMode('advanced')">${tr('Расширенный', 'Advanced')}</button>
     </div>
     <button class="btn btn-sm btn-eco ${isLite ? 'is-active' : ''}" onclick="toggleLiteModeQuick()" title="Эко-режим (Tachyon Lite): отключает фоновое сканирование и экономит ОЗУ на роутерах с малым объёмом памяти">
       ${ic('bolt', 12)} <span>${tr('Эко-режим', 'Eco Mode')}</span>
@@ -2583,7 +2660,7 @@ function renderTopbar() {
 
 function renderPaneQuickbar() {
   const meta = getActiveNavMeta();
-  const isSimple = S.uiMode === 'basic';
+  const isSimple = S.uiMode === 'simple';
   let quickActionBtn = '';
   if (S.tab === 'dashboard') {
     quickActionBtn = `
@@ -7098,6 +7175,8 @@ function buildNodeFromVisualForm() {
   if (!host) { toast('Укажите адрес сервера (Host / IP)', true); return; }
 
   const fullTag = tag.startsWith('[') ? tag : `[${cc}] ${tag}`;
+  const cleanHost = String(host || '').trim().replace(/^\[|\]$/g, '');
+  const uriHost = fmtUriHost(cleanHost);
   let line = '';
   if (proto === 'vless') {
     const q = new URLSearchParams({ encryption: 'none', security: sec, sni, fp, type: trp });
@@ -7106,19 +7185,19 @@ function buildNodeFromVisualForm() {
     if (sid) q.set('sid', sid);
     if (trp !== 'tcp') q.set('path', path);
     if (trp === 'xhttp') q.set('mode', 'packet-up');
-    line = `vless://${encodeURIComponent(secret)}@${host}:${port}?${q.toString()}#${encodeURIComponent(fullTag)}`;
+    line = `vless://${encodeURIComponent(secret)}@${uriHost}:${port}?${q.toString()}#${encodeURIComponent(fullTag)}`;
   } else if (proto === 'hysteria2') {
-    line = `hysteria2://${encodeURIComponent(secret)}@${host}:${port}?sni=${encodeURIComponent(sni)}#${encodeURIComponent(fullTag)}`;
+    line = `hysteria2://${encodeURIComponent(secret)}@${uriHost}:${port}?sni=${encodeURIComponent(sni)}#${encodeURIComponent(fullTag)}`;
   } else if (proto === 'tuic') {
-    line = `tuic://${encodeURIComponent(secret)}:${encodeURIComponent(secret)}@${host}:${port}?congestion_control=bbr&alpn=h3&sni=${encodeURIComponent(sni)}#${encodeURIComponent(fullTag)}`;
+    line = `tuic://${encodeURIComponent(secret)}:${encodeURIComponent(secret)}@${uriHost}:${port}?congestion_control=bbr&alpn=h3&sni=${encodeURIComponent(sni)}#${encodeURIComponent(fullTag)}`;
   } else if (proto === 'trojan') {
-    line = `trojan://${encodeURIComponent(secret)}@${host}:${port}?security=${sec}&sni=${encodeURIComponent(sni)}&type=${trp}#${encodeURIComponent(fullTag)}`;
+    line = `trojan://${encodeURIComponent(secret)}@${uriHost}:${port}?security=${sec}&sni=${encodeURIComponent(sni)}&type=${trp}#${encodeURIComponent(fullTag)}`;
   } else if (proto === 'ss') {
-    line = `ss://${btoa(`2022-blake3-aes-256-gcm:${secret}`)}@${host}:${port}#${encodeURIComponent(fullTag)}`;
+    line = `ss://${btoa(`2022-blake3-aes-256-gcm:${secret}`)}@${uriHost}:${port}#${encodeURIComponent(fullTag)}`;
   } else if (proto === 'socks5' || proto === 'http') {
-    line = `${proto}://${encodeURIComponent(secret)}@${host}:${port}#${encodeURIComponent(fullTag)}`;
+    line = `${proto}://${encodeURIComponent(secret)}@${uriHost}:${port}#${encodeURIComponent(fullTag)}`;
   } else {
-    const obj = { type: proto, tag: fullTag, server: host, server_port: port, uuid: secret, password: secret };
+    const obj = { type: proto, tag: fullTag, server: cleanHost, server_port: port, uuid: secret, password: secret };
     if (sec !== 'none') obj.tls = { enabled: true, server_name: sni };
     if (proto === 'tewfai') { obj.shaper_profile = 'webrtc_video'; obj.morph_profile = 'chrome_h3'; }
     const cj = document.getElementById('mSrcCustomJson');
@@ -8516,7 +8595,7 @@ function openSubServerSettingsModal() {
   const fmt = st.sub_server_format || st.server_subscription_format || 'auto';
   const incAll = st.sub_server_include_all !== false;
   const selectedIds = st.sub_server_inbound_ids || srvs.map(s => s.id);
-  const fullSubUrl = `${scheme}://${pubHost}:${port}/sub/${subTok}`;
+  const fullSubUrl = `${scheme}://${fmtUriHost(pubHost)}:${port}/sub/${subTok}`;
 
   openModal('Настройка единой подписки входящих серверов (Sub-Server)', `
     <div style="display:flex;flex-direction:column;gap:14px">
@@ -8601,7 +8680,7 @@ function regenerateSubServerToken() {
   const host = gv('mSubSrvHost', location.hostname || '192.168.1.1');
   const scheme = gv('mSubSrvScheme', 'http');
   const port = gn('mSubSrvPort', 1680);
-  const full = `${scheme}://${host}:${port}/sub/${tok}`;
+  const full = `${scheme}://${fmtUriHost(host)}:${port}/sub/${tok}`;
   const urlEl = document.getElementById('mSubSrvFullUrl');
   if (urlEl) urlEl.value = full;
   const qrBox = document.getElementById('mSubSrvQrBox');
@@ -10477,7 +10556,7 @@ function vDiagnostics() {
         <div style="padding:10px 12px;background:var(--bg-elev);border:1px solid var(--border);border-radius:var(--radius);display:flex;justify-content:space-between;align-items:center">
           <div>
             <div style="font-size:11px;color:var(--text-3)">Контур DNS & FakeIP</div>
-            <div class="mono" style="font-size:13px;font-weight:700;margin-top:2px">${esc(S.store.settings?.fakeip_range || '198.18.0.0/15')}</div>
+            <div class="mono" style="font-size:13px;font-weight:700;margin-top:2px">${esc(S.store.settings?.fakeip_enabled === false ? 'RealIP DNS' : `${S.store.settings?.fakeip_inet4_range || S.store.settings?.fakeip_range || '198.18.0.0/15'}${S.store.settings?.ipv6_mode && normalizeIpv6ModeUi(S.store.settings.ipv6_mode) !== 'off' ? ' · ' + (S.store.settings?.fakeip_inet6_range || 'fc00::/18') : ''}`)}</div>
           </div>
           <span class="badge badge-signal mono">127.0.0.42:53</span>
         </div>
@@ -10913,7 +10992,7 @@ function vDiagLeak() {
         <div class="grid-4">
           <div style="padding:12px;background:var(--bg-elev);border:1px solid var(--border);border-radius:var(--radius)">
             <div class="kpi-label">Пул FakeIP и DNS-сокет</div>
-            <div class="mono" style="font-size:13px;font-weight:600;margin-top:4px">${esc(res.fakeip_range || '198.18.0.0/15')}</div>
+            <div class="mono" style="font-size:13px;font-weight:600;margin-top:4px">${esc(res.fakeip_enabled === false ? 'RealIP (FakeIP выкл.)' : `${res.fakeip_range || '198.18.0.0/15'} · ${res.fakeip_inet6_range || 'fc00::/18'}`)}</div>
             <div class="mono" style="font-size:11px;color:var(--text-3)">Сокет: ${esc(res.dns_listener || '127.0.0.42:53')}</div>
           </div>
           <div style="padding:12px;background:var(--bg-elev);border:1px solid var(--border);border-radius:var(--radius)">
@@ -11534,6 +11613,8 @@ function vSettings() {
   const rawTab = S.settingsTab || 'dns';
   const cur = rawTab === 'net' ? 'network' : rawTab === 'ui' ? 'navigation' : rawTab === 'security' ? 'advanced' : rawTab;
   const secOpts = [['', '— Прямой канал / Авто —'], ...secs.map(s => [s.id, s.label || s.id])];
+  const ipv6ModeVal = st.ipv6_mode ? normalizeIpv6ModeUi(st.ipv6_mode) : (st.enable_ipv6 ? 'dual_stack' : 'auto');
+  const ipv6IsOff = ipv6ModeVal === 'off';
   const tabs = [
     ['dns', '1. DNS и защита'],
     ['network', '2. Сеть и TUN'],
@@ -11582,12 +11663,18 @@ function vSettings() {
               ['parallel', 'parallel — Параллельный'],
               ['sequential', 'sequential — Последовательный']
             ])}
-            ${Fsel('Стратегия IP (dns_strategy)', 'stDnsStrat', st.dns_strategy || 'prefer_ipv4', [
-              ['prefer_ipv4', 'prefer_ipv4'],
-              ['ipv4_only', 'ipv4_only'],
-              ['prefer_ipv6', 'prefer_ipv6'],
-              ['ipv6_only', 'ipv6_only']
-            ])}
+            <div id="stDnsStratWrap" style="${ipv6IsOff ? 'display:none' : ''}">
+              ${Fsel(tr('Стратегия DNS (dns_strategy)', 'DNS Strategy (dns_strategy)'), 'stDnsStrat', st.dns_strategy || 'prefer_ipv4', [
+                ['prefer_ipv4', tr('Приоритет IPv4', 'Prefer IPv4')],
+                ['prefer_ipv6', tr('Приоритет IPv6', 'Prefer IPv6')],
+                ['ipv4_only', tr('Только DNS IPv4 (A)', 'IPv4 only (A)')],
+                ['ipv6_only', tr('Только DNS IPv6 (AAAA)', 'IPv6 only (AAAA)')]
+              ], { disabled: ipv6IsOff })}
+            </div>
+            <div id="stDnsStratOffHint" class="field" style="${ipv6IsOff ? '' : 'display:none'}">
+              <div class="field-label">${tr('Стратегия DNS (dns_strategy)', 'DNS Strategy (dns_strategy)')}</div>
+              <div class="field-hint" style="margin-top:4px">${tr('При режиме IPv6 «Только IPv4 (без IPv6 на устройствах)» автоматически используется Только DNS IPv4 (A).', 'Automatically locked to IPv4 only (A) while IPv6 Mode is IPv4 Only.')}</div>
+            </div>
           </div>
           <div class="grid-3">
             ${Flist('Основные серверы DNS', 'stDnsSrvs', st.dns_servers || ['77.88.8.8', '9.9.9.9'])}
@@ -11619,14 +11706,16 @@ function vSettings() {
         </div>
 
         <div style="display:flex;flex-direction:column;gap:14px">
-          <div class="card adv-only">
+          <div class="card">
             <div class="card-title">Подсистема FakeIP (синтетические адреса для мгновенной маршрутизации)</div>
             ${Fchk('Включить FakeIP для перехватываемых доменов', 'stFakeIpEn', st.fakeip_enabled)}
-            <div class="grid-2">
+            <div class="grid-2 adv-only">
               ${F('Диапазон FakeIP IPv4', 'stFakeIpV4', st.fakeip_inet4_range || '198.18.0.0/15', { mono: true })}
               ${F('Диапазон FakeIP IPv6', 'stFakeIpV6', st.fakeip_inet6_range || 'fc00::/18', { mono: true })}
             </div>
-            ${Flist('Исключения FakeIP (домены, которым нужен реальный IP)', 'stFakeIpExcl', st.fakeip_exclude || [], { placeholder: 'stun.*, *.local, time.apple.com' })}
+            <div class="adv-only">
+              ${Flist('Исключения FakeIP (домены, которым нужен реальный IP)', 'stFakeIpExcl', st.fakeip_exclude || [], { placeholder: 'stun.*, *.local, time.apple.com' })}
+            </div>
           </div>
 
           <div class="card">
@@ -11679,7 +11768,19 @@ function vSettings() {
           ${Fsel('Секция для трафика самого роутера', 'stRouterSelfSec', st.route_router_traffic_section || '', secOpts)}
         </div>
         <div class="grid-3">
-          ${Fchk('Разрешить маршрутизацию IPv6', 'stIpv6', st.enable_ipv6)}
+          <div class="grid-2">
+            ${Fsel(tr('Режим IPv6 (ipv6_mode)', 'IPv6 Mode (ipv6_mode)'), 'stIpv6Mode', ipv6ModeVal, [
+              ['auto', tr('IPv4 + IPv6: Авто (рекомендуется)', 'IPv4 + IPv6: Auto (Recommended)')],
+              ['off', tr('Только IPv4 (без IPv6 на устройствах)', 'IPv4 Only (no IPv6 on LAN devices)')],
+              ['dual_stack', tr('IPv4 + IPv6: Двойной стек (Dual-Stack)', 'IPv4 + IPv6: Full Dual-Stack')],
+              ['tunnel_over_v4', tr('IPv4 + IPv6: Через IPv4-туннель', 'IPv4 + IPv6: Over IPv4 Tunnel')]
+            ], { onchange: 'syncSettingsDnsStrategyVisibility()' })}
+            ${Fchk('Защита от утечек IPv6 (leak guard)', 'stIpv6LeakGuard', st.ipv6_leak_guard !== false)}
+          </div>
+          <div class="grid-2 adv-only">
+            ${F('TUN IPv4 подсеть', 'stTunInet4', st.tun_inet4 || '172.19.0.1/30', { mono: true })}
+            ${F('TUN IPv6 подсеть (опц.)', 'stTunInet6', st.tun_inet6 || '', { mono: true, ph: 'fdfe:dcba:9876::1/126' })}
+          </div>
           ${Fchk('Маршрутизировать трафик самого роутера', 'stRouterSelf', st.route_router_traffic)}
           ${Fchk('Включить порт прямого обхода', 'stDirectEn', st.direct_bypass_enabled)}
           ${Fchk('Авто-маршруты TUN (tun_auto_route)', 'stTunAutoRoute', st.tun_auto_route !== false, { adv: true })}
@@ -11946,7 +12047,7 @@ function vSettings() {
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;padding-top:6px">
             <button class="btn" onclick="openDashboardLayoutModal()">${ic('panel', 13)} Настроить виджеты Дашборда (2 колонки)</button>
-            <button class="btn" onclick="toggleUiMode()">${S.uiMode === 'basic' ? 'Переключить в Инженерный режим' : 'Переключить в Простой режим'}</button>
+            <button class="btn" onclick="toggleUiMode()">${S.uiMode === 'simple' ? 'Переключить в Инженерный режим' : 'Переключить в Простой режим'}</button>
           </div>
         </div>
 
@@ -11993,7 +12094,7 @@ function vSettings() {
           </div>
           <div class="grid-3">
             ${F('Путь к конфигу ядра', 'stCoreCfgPath', st.core_config_path || '/etc/tachyon-core/config.json', { mono: true })}
-            ${F('Путь к кэшу (cache.db)', 'stCachePath', st.cache_path || '/usr/share/tachyon-core/cache.db', { mono: true })}
+            ${F('Путь к кэшу (cache.db)', 'stCachePath', st.cache_path || '/tmp/tachyon-core/cache.db', { mono: true })}
             ${Fsel('Прокси-секция генератора WARP', 'stWarpSec', st.warp_proxy_section || '', secOpts)}
           </div>
           <div class="grid-2">
@@ -12046,6 +12147,7 @@ async function saveSettings() {
   const accent = val('stThemeAccent', 'blue');
 
   const payload = {
+    ui_mode: normalizeUiMode(S.uiMode),
     // 1. DNS & Hosts
     dns_type: val('stDnsType', 'doh'),
     dns_upstream_mode: val('stDnsUpMode', 'parallel'),
@@ -12092,7 +12194,11 @@ async function saveSettings() {
     direct_bypass_enabled: chk('stDirectEn'),
     route_router_traffic: chk('stRouterSelf'),
     route_router_traffic_section: val('stRouterSelfSec'),
-    enable_ipv6: chk('stIpv6'),
+    ipv6_mode: normalizeIpv6ModeUi(val('stIpv6Mode', 'auto')),
+    ipv6_leak_guard: chk('stIpv6LeakGuard'),
+    tun_inet4: val('stTunInet4', '172.19.0.1/30'),
+    tun_inet6: val('stTunInet6', ''),
+    enable_ipv6: normalizeIpv6ModeUi(val('stIpv6Mode', 'auto')) === 'dual_stack',
     tun_auto_route: chk('stTunAutoRoute'),
     tun_gso: chk('stTunGso'),
     tun_endpoint_independent_nat: chk('stTunEiNat'),
@@ -12211,7 +12317,7 @@ async function saveSettings() {
     qos_priority_engine: val('stQosEng', 'auto'),
     section_failover_threshold: num('stSecFoThr', 3),
     core_config_path: val('stCoreCfgPath', '/etc/tachyon-core/config.json'),
-    cache_path: val('stCachePath', '/usr/share/tachyon-core/cache.db'),
+    cache_path: val('stCachePath', '/tmp/tachyon-core/cache.db'),
     warp_proxy_section: val('stWarpSec'),
     lite_mode: chk('stLiteMode'),
     dont_touch_dhcp: chk('stNoDhcp'),
@@ -12288,6 +12394,15 @@ async function bootstrap() {
     if (d.live) S.live = d.live;
     if (d.doctor) S.doctor = d.doctor;
     if (d.updates) S.updates = d.updates;
+    const savedMode = localStorage.getItem('tachyon_mode');
+    if (savedMode === 'simple' || savedMode === 'basic' || savedMode === 'advanced') {
+      S.uiMode = normalizeUiMode(savedMode);
+    } else if (S.store && S.store.settings && S.store.settings.ui_mode) {
+      S.uiMode = normalizeUiMode(S.store.settings.ui_mode);
+    } else {
+      S.uiMode = 'simple';
+    }
+    document.body.setAttribute('data-ui-mode', S.uiMode);
     if (S.store && S.store.settings && S.store.settings.theme_accent) {
       applyThemeAccent(S.store.settings.theme_accent);
     } else {
@@ -12314,6 +12429,7 @@ async function pollTelemetry() {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
+  document.body.setAttribute('data-ui-mode', normalizeUiMode(S.uiMode));
   applyThemeAccent(S.themeAccent);
   bootstrap();
   setInterval(pollTelemetry, 3000);

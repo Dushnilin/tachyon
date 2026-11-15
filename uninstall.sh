@@ -176,6 +176,33 @@ if command -v uci >/dev/null 2>&1 && [ -f /etc/config/dhcp ]; then
     if [ "$(uci -q get dhcp.@dnsmasq[0].cachesize 2>/dev/null)" = "0" ]; then
         uci -q set dhcp.@dnsmasq[0].cachesize="150" 2>/dev/null || true
     fi
+
+    # Restore backed up odhcpd LAN options (handles both 2.0 "unset"/comma and 1.x "__absent__"/whitespace)
+    for _lan_opt in ra dhcpv6 ndp ra_dns ra_default; do
+        _lan_val="$(uci -q get "dhcp.lan.tachyon_lan_${_lan_opt}" 2>/dev/null || true)"
+        if [ -n "$_lan_val" ]; then
+            if [ "$_lan_val" = "unset" ] || [ "$_lan_val" = "__absent__" ] || [ "$_lan_val" = "__tachyon_unset__" ]; then
+                uci -q delete "dhcp.lan.${_lan_opt}" 2>/dev/null || true
+            else
+                uci -q set "dhcp.lan.${_lan_opt}=${_lan_val}" 2>/dev/null || true
+            fi
+            uci -q delete "dhcp.lan.tachyon_lan_${_lan_opt}" 2>/dev/null || true
+        fi
+    done
+    _lan_dns="$(uci -q get dhcp.lan.tachyon_lan_dns 2>/dev/null || true)"
+    if [ -n "$_lan_dns" ]; then
+        uci -q delete dhcp.lan.dns 2>/dev/null || true
+        if [ "$_lan_dns" != "unset" ] && [ "$_lan_dns" != "__absent__" ] && [ "$_lan_dns" != "__tachyon_unset__" ]; then
+            while IFS= read -r _dns_entry; do
+                [ -n "$_dns_entry" ] && uci -q add_list "dhcp.lan.dns=${_dns_entry}" 2>/dev/null || true
+            done <<EOF
+$(printf '%s\n' "$_lan_dns" | tr ', \t' '\n')
+EOF
+        fi
+        uci -q delete dhcp.lan.tachyon_lan_dns 2>/dev/null || true
+    fi
+    uci -q delete dhcp.lan.tachyon_lan_managed 2>/dev/null || true
+
     uci -q delete dhcp.tachyon 2>/dev/null || true
     uci -q commit dhcp 2>/dev/null || true
 fi
@@ -183,6 +210,10 @@ fi
 if [ -x /etc/init.d/dnsmasq ]; then
     /etc/init.d/dnsmasq restart >/dev/null 2>&1 || true
     printf '[OK] DNS and dnsmasq restored\n'
+fi
+if [ -x /etc/init.d/odhcpd ]; then
+    /etc/init.d/odhcpd restart >/dev/null 2>&1 || true
+    printf '[OK] IPv6 LAN (odhcpd) restored\n'
 fi
 
 # Step 5: Remove packages & crontab entries

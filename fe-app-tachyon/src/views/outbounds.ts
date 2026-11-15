@@ -140,6 +140,42 @@ function serverNameList(val) {
     .filter(Boolean);
 }
 
+function canonPoolServerName(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (
+    typeof main !== 'undefined' &&
+    main &&
+    typeof main.stripDynamicServerTelemetry === 'function'
+  ) {
+    return main.stripDynamicServerTelemetry(raw);
+  }
+  return raw;
+}
+
+function buildPoolServerFilterSets(listVal) {
+  const rawSet = new Set();
+  const canonSet = new Set();
+  serverNameList(listVal).forEach((item) => {
+    rawSet.add(item);
+    const canon = canonPoolServerName(item);
+    if (canon) canonSet.add(canon);
+  });
+  return { rawSet, canonSet };
+}
+
+function poolServerMatchesFilterSets(sets, candidates) {
+  if (!sets || !sets.rawSet || !sets.rawSet.size) return false;
+  for (let i = 0; i < candidates.length; i += 1) {
+    const raw = String(candidates[i] || '').trim();
+    if (!raw) continue;
+    if (sets.rawSet.has(raw)) return true;
+    const canon = canonPoolServerName(raw);
+    if (canon && sets.canonSet.has(canon)) return true;
+  }
+  return false;
+}
+
 const SUB_CACHE_DIR = '/etc/tachyon/subscription-cache';
 
 function extractFlagCountryIso(str) {
@@ -298,6 +334,7 @@ function loadGlobalPoolChoices() {
   return Promise.all([readSectionCaches(), readSubCaches()]).then(
     ([caches, subCaches]) => {
       const serverMap = new Map();
+      const canonToMapKey = new Map();
       const countrySet = new Set();
       const prefixSet = new Set();
       const urlToSources = new Map();
@@ -326,12 +363,28 @@ function loadGlobalPoolChoices() {
           }
         }
 
-        const mapKey =
+        let mapKey =
           prefix &&
           !cleanName.startsWith(`${prefix}: `) &&
           !cleanName.startsWith(`[${prefix}]`)
             ? `[${prefix}] ${cleanName}`
             : cleanName;
+        const canonKeyName = canonPoolServerName(mapKey);
+        const canonIndexKey = canonKeyName
+          ? `${prefix.toLowerCase()}|${String(details.proto || '').toLowerCase()}|${String(details.port || '')}|${canonKeyName}`
+          : '';
+        if (details.fromSubCache && canonIndexKey) {
+          if (!canonToMapKey.has(canonIndexKey)) {
+            canonToMapKey.set(canonIndexKey, mapKey);
+          }
+        } else if (
+          details.fromSectionCache &&
+          !serverMap.has(mapKey) &&
+          canonIndexKey &&
+          canonToMapKey.has(canonIndexKey)
+        ) {
+          mapKey = canonToMapKey.get(canonIndexKey);
+        }
         const existing = serverMap.get(mapKey);
         const proto = String(
           details.proto || (existing && existing.proto) || '',
@@ -376,8 +429,14 @@ function loadGlobalPoolChoices() {
 
         serverMap.set(mapKey, {
           value: mapKey,
-          rawName: cleanName,
-          label,
+          rawName:
+            details.fromSectionCache && existing && existing.rawName
+              ? existing.rawName
+              : cleanName,
+          label:
+            details.fromSectionCache && existing && existing.label
+              ? existing.label
+              : label,
           proto,
           trans,
           sec,
@@ -557,6 +616,7 @@ function loadGlobalPoolChoices() {
               prefix: ms.prefix,
               link: resolvedLink,
               sourceId: ms.sid,
+              fromSubCache: true,
             });
           });
         });
@@ -657,6 +717,12 @@ function loadGlobalPoolChoices() {
             prefix: pfx,
             link,
             country,
+            sourceId: String(
+              (meta.source_ids && meta.source_ids[tag]) ||
+                (c && c.source_ids && c.source_ids[tag]) ||
+                '',
+            ).trim(),
+            fromSectionCache: true,
           });
         });
 
@@ -726,8 +792,8 @@ function filterPoolServersForGroup(poolServers, grp) {
   const excCountries = asArray(grp.exclude_countries).map((s) =>
     s.toUpperCase(),
   );
-  const incNames = new Set(serverNameList(grp.include_outbounds));
-  const excNames = new Set(serverNameList(grp.exclude_outbounds));
+  const incNameSets = buildPoolServerFilterSets(grp.include_outbounds);
+  const excNameSets = buildPoolServerFilterSets(grp.exclude_outbounds);
   const incRx = asArray(grp.include_regex)
     .map((r) => {
       try {
@@ -778,7 +844,10 @@ function filterPoolServersForGroup(poolServers, grp) {
     if (mode === 'include' || mode === 'mixed') {
       if (incPfx.length && !incPfx.includes(pfx)) return false;
       if (incCountries.length && !incCountries.includes(cc)) return false;
-      if (incNames.size && !incNames.has(name) && !incNames.has(rawName))
+      if (
+        incNameSets.rawSet.size &&
+        !poolServerMatchesFilterSets(incNameSets, [name, rawName])
+      )
         return false;
       if (
         incRx.length &&
@@ -794,7 +863,8 @@ function filterPoolServersForGroup(poolServers, grp) {
     if (mode === 'exclude' || mode === 'mixed') {
       if (excPfx.length && pfx && excPfx.includes(pfx)) return false;
       if (excCountries.length && cc && excCountries.includes(cc)) return false;
-      if (excNames.has(name) || excNames.has(rawName)) return false;
+      if (poolServerMatchesFilterSets(excNameSets, [name, rawName]))
+        return false;
       if (excRx.length && excRx.some((rx) => rx.test(name) || rx.test(rawName)))
         return false;
       if (excProto.length && proto && excProto.includes(proto)) return false;
@@ -4202,6 +4272,47 @@ function createOutboundsContent(section) {
     fileInput.click();
   };
 
+  function validateAmneziaVpnLink(link: string): string | true {
+    const vr = main.validateVpnUrl(main.compactVpnUri(link));
+    return vr.valid
+      ? true
+      : vr.message ||
+          _('Invalid vpn:// link; use a WG/AWG .conf or Amnezia export');
+  }
+
+  function normalizeAmneziaConfigEntry(
+    rawEntry: unknown,
+    defaultName: string,
+  ): string[] {
+    const trimmed = String(rawEntry || '').trim();
+    if (!trimmed) return [];
+    if (trimmed.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (
+          parsed &&
+          typeof parsed === 'object' &&
+          typeof parsed.config === 'string' &&
+          parsed.config.trim()
+        ) {
+          return [trimmed];
+        }
+      } catch (_e) {
+        // Not valid JSON; fall through to text/URI splitting
+      }
+    }
+    const normalized = trimmed.replace(/\r\n?/g, '\n');
+    if (
+      trimmed.startsWith('vpn://') &&
+      !normalized.toLowerCase().includes('[interface]') &&
+      !/\n\s*vpn:\/\//i.test(normalized)
+    ) {
+      return [main.compactVpnUri(trimmed)];
+    }
+    const split = main.splitAmneziaTextEntries(normalized, defaultName);
+    return split.entries.length ? split.entries : [main.compactVpnUri(trimmed)];
+  }
+
   o = section.taboption(
     'general',
     form.DynamicList,
@@ -4211,8 +4322,80 @@ function createOutboundsContent(section) {
   );
   o.modalonly = true;
   o.depends('source_type', 'amnezia_config');
+  o.validate = function (_sectionId, value) {
+    const items = Array.isArray(value)
+      ? value
+      : value !== undefined && value !== null
+        ? [value]
+        : [];
+    for (const rawItem of items) {
+      const trimmed = String(rawItem || '').trim();
+      if (!trimmed) continue;
+      if (trimmed.startsWith('{')) {
+        let parsed: any = null;
+        try {
+          parsed = JSON.parse(trimmed);
+        } catch (_e) {
+          return _(
+            'Invalid Amnezia configuration JSON: expected {name, config}.',
+          );
+        }
+        if (
+          !parsed ||
+          typeof parsed !== 'object' ||
+          typeof parsed.config !== 'string' ||
+          !parsed.config.trim()
+        ) {
+          return _(
+            'Invalid Amnezia configuration JSON: expected {name, config}.',
+          );
+        }
+        const cfg = parsed.config.trim();
+        if (cfg.startsWith('vpn://')) {
+          const vpnCheck = validateAmneziaVpnLink(cfg);
+          if (vpnCheck !== true) return vpnCheck;
+        }
+        continue;
+      }
+      const normalized = trimmed.replace(/\r\n?/g, '\n');
+      if (
+        trimmed.startsWith('vpn://') &&
+        !normalized.toLowerCase().includes('[interface]') &&
+        !/\n\s*vpn:\/\//i.test(normalized)
+      ) {
+        const vpnCheck = validateAmneziaVpnLink(trimmed);
+        if (vpnCheck !== true) return vpnCheck;
+        continue;
+      }
+      const parsed = main.splitAmneziaTextEntries(normalized);
+      for (const link of parsed.vpnLinks) {
+        const vpnCheck = validateAmneziaVpnLink(link);
+        if (vpnCheck !== true) return vpnCheck;
+      }
+      if (
+        parsed.confBody &&
+        !parsed.confBody.toLowerCase().includes('[interface]')
+      ) {
+        return _(
+          'Invalid Amnezia configuration: paste a vpn:// link or WireGuard / AmneziaWG .conf with [Interface].',
+        );
+      }
+      if (!parsed.vpnLinks.length && !parsed.confBody) {
+        return _(
+          'Invalid Amnezia configuration: paste a vpn:// link or WireGuard / AmneziaWG .conf with [Interface].',
+        );
+      }
+    }
+    return true;
+  };
   o.write = function (sectionId, value) {
-    const fromWidget = asRawList(value);
+    const name = uci.get(UCI_PACKAGE, sectionId, 'name') || sectionId;
+    const fromWidget: string[] = [];
+    asRawList(value).forEach((entry) => {
+      normalizeAmneziaConfigEntry(entry, name).forEach((item) => {
+        if (!fromWidget.includes(item)) fromWidget.push(item);
+      });
+    });
     const loaded =
       (section._loadedAmneziaConfigs &&
         section._loadedAmneziaConfigs[sectionId]) ||
@@ -4254,6 +4437,28 @@ function createOutboundsContent(section) {
   o.rows = 6;
   o.rmempty = true;
   o.depends('source_type', 'amnezia_config');
+  o.validate = function (_sectionId, value) {
+    const trimmed = String(value || '')
+      .replace(/\r\n?/g, '\n')
+      .trim();
+    if (!trimmed) return true;
+    const { vpnLinks, confBody } = main.splitAmneziaTextEntries(trimmed);
+    for (const link of vpnLinks) {
+      const vpnCheck = validateAmneziaVpnLink(link);
+      if (vpnCheck !== true) return vpnCheck;
+    }
+    if (confBody && !confBody.toLowerCase().includes('[interface]')) {
+      return _(
+        'Configuration must contain [Interface] section or valid vpn:// links.',
+      );
+    }
+    if (!vpnLinks.length && !confBody) {
+      return _(
+        'Configuration must contain [Interface] section or valid vpn:// links.',
+      );
+    }
+    return true;
+  };
   o.remove = function (sectionId) {
     uci.unset(UCI_PACKAGE, sectionId, 'amnezia_conf_text');
   };
@@ -4277,19 +4482,11 @@ function createOutboundsContent(section) {
       if (!cur.includes(entry)) cur.push(entry);
     });
     const name = uci.get(UCI_PACKAGE, sectionId, 'name') || sectionId;
-    const vpnLines: string[] = [];
-    const confLines: string[] = [];
-    trimmed.split('\n').forEach((line) => {
-      const t = line.trim();
-      if (t.startsWith('vpn://')) vpnLines.push(t);
-      else confLines.push(line);
-    });
-    const confBody = confLines.join('\n').trim();
-    const candidates: string[] = [];
-    if (confBody) {
-      candidates.push(JSON.stringify({ name, config: confBody }));
-    }
-    vpnLines.forEach((v) => candidates.push(v));
+    const {
+      vpnLinks,
+      confBody,
+      entries: candidates,
+    } = main.splitAmneziaTextEntries(trimmed, name);
 
     const next = [...cur];
     candidates.forEach((candidate) => {
@@ -4317,7 +4514,7 @@ function createOutboundsContent(section) {
     if (next.length) {
       uci.set(UCI_PACKAGE, sectionId, 'amnezia_configs', next);
     }
-    if (cur.length > 0 || vpnLines.length > 0 || next.length > 1) {
+    if (cur.length > 0 || vpnLinks.length > 0 || next.length > 1) {
       uci.unset(UCI_PACKAGE, sectionId, 'amnezia_conf_text');
     } else if (confBody) {
       uci.set(UCI_PACKAGE, sectionId, 'amnezia_conf_text', confBody);
@@ -4512,20 +4709,28 @@ function createOutboundsContent(section) {
             kv.persistentkeepalive,
           );
         if (kv.endpoint) {
-          const lastColon = kv.endpoint.lastIndexOf(':');
-          if (lastColon > 0) {
-            const host = kv.endpoint
-              .slice(0, lastColon)
-              .replace(/^\[|\]$/g, '');
-            const port = kv.endpoint.slice(lastColon + 1);
-            setModalFieldValue(section, sectionId, 'awg_server_address', host);
-            setModalFieldValue(section, sectionId, 'awg_server_port', port);
+          const parsedEndpoint = main.splitHostPort(kv.endpoint);
+          if (parsedEndpoint) {
+            setModalFieldValue(
+              section,
+              sectionId,
+              'awg_server_address',
+              parsedEndpoint.host,
+            );
+            if (parsedEndpoint.port) {
+              setModalFieldValue(
+                section,
+                sectionId,
+                'awg_server_port',
+                parsedEndpoint.port,
+              );
+            }
           } else {
             setModalFieldValue(
               section,
               sectionId,
               'awg_server_address',
-              kv.endpoint,
+              kv.endpoint.replace(/^\[|\]$/g, ''),
             );
           }
         }

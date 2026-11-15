@@ -94,6 +94,15 @@ export async function runFakeIPCheck() {
           atLeastOneGood: checks.routerFakeIP || checks.browserFakeIP,
         });
 
+  const routerFakeIPValue = (() => {
+    if (!routerFakeIPResponse.success) return '';
+    const d = routerFakeIPResponse.data;
+    const v4 = d.IPv4 || (d.IP && !d.IP.includes(':') ? d.IP : '');
+    const v6 = d.IPv6 || (d.IP && d.IP.includes(':') ? d.IP : '');
+    if (v4 && v6) return `IPv4: ${v4} · IPv6: ${v6}`;
+    return v4 || v6 || d.IP || '';
+  })();
+
   updateCheckStore({
     order,
     code,
@@ -106,7 +115,7 @@ export async function runFakeIPCheck() {
         key: checks.routerFakeIP
           ? _('FakeIP DNS works')
           : _('FakeIP DNS does not work'),
-        value: routerFakeIPResponse.success ? routerFakeIPResponse.data.IP : '',
+        value: routerFakeIPValue,
       },
       {
         state: browserFakeIPCheckUnavailable

@@ -117,7 +117,7 @@ describe('runFakeIPCheck', () => {
     );
   });
 
-  it('marks check as success when only DPI bypass sections exist and public IPs match', async () => {
+  it('marks check as success when only packet desync sections exist and public IPs match', async () => {
     mocks.checkFakeIP.mockResolvedValue({
       success: true,
       data: { fakeip: true, IP: '198.18.1.1' },
@@ -149,6 +149,41 @@ describe('runFakeIPCheck', () => {
             state: 'success',
             key: 'FakeIP and control checks use the same public IP',
             value: 'Direct connection via ISP',
+          }),
+        ]),
+      }),
+    );
+  });
+
+  it('formats both IPv4 and IPv6 FakeIP router results when available', async () => {
+    mocks.checkFakeIP.mockResolvedValue({
+      success: true,
+      data: {
+        fakeip: true,
+        IP: '198.18.0.5',
+        IPv4: '198.18.0.5',
+        IPv6: 'fc00::5',
+      },
+    });
+    mocks.getFakeIpCheck.mockResolvedValue({
+      success: true,
+      data: { fakeip: true, IP: '203.0.113.10' },
+    });
+    mocks.getIpCheck.mockResolvedValue({
+      success: true,
+      data: { IP: '198.51.100.20' },
+    });
+
+    await runFakeIPCheck();
+
+    expect(mocks.updateCheckStore).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        state: 'success',
+        items: expect.arrayContaining([
+          expect.objectContaining({
+            state: 'success',
+            key: 'FakeIP DNS works',
+            value: 'IPv4: 198.18.0.5 · IPv6: fc00::5',
           }),
         ]),
       }),

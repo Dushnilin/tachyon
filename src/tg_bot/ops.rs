@@ -930,6 +930,18 @@ async fn run_leak_reply(state: &Arc<AppState>, core: &Arc<CoreManager>) -> BotRe
         .get("fakeip_range")
         .and_then(Value::as_str)
         .unwrap_or("198.18.0.0/15");
+    let fakeip_v6_range = res
+        .get("fakeip_inet6_range")
+        .and_then(Value::as_str)
+        .unwrap_or("fc00::/18");
+    let ipv6_state_str = res
+        .get("ipv6_effective_state")
+        .and_then(Value::as_str)
+        .unwrap_or("disabled");
+    let ipv6_leaked = res
+        .get("ipv6_leaked")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
     let dns_type = res.get("dns_type").and_then(Value::as_str).unwrap_or("-");
     let webrtc = res
         .get("webrtc_leak_protect")
@@ -949,6 +961,18 @@ async fn run_leak_reply(state: &Arc<AppState>, core: &Arc<CoreManager>) -> BotRe
                 "Аудит утечек DNS / WebRTC / IPv6",
                 "DNS / WebRTC / IPv6 Leak Check"
             )
+        ),
+        format!(
+            "IPv6: {} | {}: {} | FakeIP: {}, {}",
+            ipv6_state_str,
+            tr(ru, "Утечка IPv6", "IPv6 leak"),
+            if ipv6_leaked {
+                tr(ru, "ДА", "YES")
+            } else {
+                tr(ru, "нет", "no")
+            },
+            fakeip_range,
+            fakeip_v6_range
         ),
         format!(
             "{}: {} | nftables: {} | DNS listener: {}",

@@ -10,6 +10,7 @@ import {
 import { cleanBalancerTagId, getOutboundTagBySection } from '../../runtimeTags';
 import { TachyonShellMethods } from '../shell';
 import { detectOutboundCountry } from '../../helpers/country';
+import { compactVpnUri } from '../../../validators/validateVpnUrl';
 
 interface IGetDashboardSectionsResponse {
   success: boolean;
@@ -594,7 +595,7 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
         if (awgCfgs.length) {
           awgCfgs.forEach((c, idx) => {
             extraAmneziaConfigs.push(c);
-            const trimmedC = String(c || '').trim();
+            const trimmedC = compactVpnUri(String(c || ''));
             if (trimmedC.startsWith('vpn://')) {
               if (next.action !== 'awg') {
                 const withFrag = trimmedC.includes('#')
@@ -3583,7 +3584,7 @@ export async function getDashboardSections(
 
           return {
             withTagSelect: true,
-            code: selector?.code || latencyTestCode || sectionName,
+            code: selector?.code || getOutboundTagBySection(sectionName),
             sectionName,
             displayName,
             action: sectionAction,
@@ -3616,13 +3617,13 @@ export async function getDashboardSections(
 
           return {
             withTagSelect: false,
-            code: outbound?.code || sectionName,
+            code: outbound?.code || outboundTag,
             sectionName,
             displayName,
             action: sectionAction,
             outbounds: [
               {
-                code: outbound?.code || sectionName,
+                code: outbound?.code || outboundTag,
                 displayName:
                   section.label ||
                   section.name ||
@@ -3652,13 +3653,13 @@ export async function getDashboardSections(
 
           return {
             withTagSelect: false,
-            code: outbound?.code || sectionName,
+            code: outbound?.code || outboundTag,
             sectionName,
             displayName,
             action: sectionAction,
             outbounds: [
               {
-                code: outbound?.code || sectionName,
+                code: outbound?.code || outboundTag,
                 displayName:
                   getJsonOutboundDisplayName(section) ||
                   outbound?.value?.name ||

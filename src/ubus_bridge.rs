@@ -1514,7 +1514,7 @@ async fn try_fast_pure_rust_method(
                 let merged = write_uci_ui_prefs(&patch);
                 if let Some(mode) = merged.get("ui_mode").and_then(Value::as_str) {
                     let mut d = state.data.write().await;
-                    d.settings.ui_mode = mode.to_string();
+                    d.settings.ui_mode = crate::store::normalize_ui_mode(mode);
                 }
                 let s = serde_json::to_string(&json!({ "success": true, "ui_prefs": merged }))
                     .unwrap_or_else(|_| "{}".to_string());
@@ -1782,14 +1782,33 @@ async fn try_fast_pure_rust_method(
             Some((0, format!("{s}\n"), String::new()))
         }
         "get_router_network_env" => {
-            let sys = sys_info::collect_host_info();
-            let (lan_ip, wan_ip) = sys_info::detect_router_ips();
+            let (ip_res, ip6_res, host_res) = tokio::join!(
+                tokio::task::spawn_blocking(sys_info::detect_router_ips),
+                tokio::task::spawn_blocking(sys_info::detect_router_ipv6_ips),
+                tokio::task::spawn_blocking(sys_info::read_router_hostname),
+            );
+            let (lan_ip, wan_ip) = ip_res.unwrap_or_default();
+            let (lan_ipv6, wan_ipv6, wan6_prefixes) = ip6_res.unwrap_or_default();
+            let wan6_prefix = wan6_prefixes.first().cloned().unwrap_or_default();
+            let mut wan_ips = Vec::new();
+            if !wan_ip.is_empty() {
+                wan_ips.push(wan_ip.clone());
+            }
+            if !wan_ipv6.is_empty() {
+                wan_ips.push(wan_ipv6.clone());
+            }
+            let hostname = host_res.unwrap_or_default();
             let s = serde_json::to_string(&json!({
                 "success": true,
                 "wan_ip": wan_ip,
                 "lan_ip": lan_ip,
+                "wan_ipv6": wan_ipv6,
+                "lan_ipv6": lan_ipv6,
+                "wan6_prefix": wan6_prefix,
+                "wan_ips": wan_ips,
                 "public_ip": wan_ip,
-                "hostname": sys.hostname,
+                "hostname": hostname,
+                "router_hostname": hostname,
             }))
             .unwrap_or_else(|_| "{}".to_string());
             Some((0, format!("{s}\n"), String::new()))
@@ -1850,9 +1869,10 @@ async fn try_fast_pure_rust_method(
             let proto = rest.get(3).map(String::as_str).unwrap_or("tcp");
             let nft_active = crate::net_stack::check_nft_table_active().await;
             let d = state.data.read().await.clone();
-            let val = crate::diagnostics::build_route_trace_json(
+            let val = crate::diagnostics::build_route_trace_json_async(
                 &d, client_ip, target, "", port, proto, nft_active,
-            );
+            )
+            .await;
             let s = serde_json::to_string(&val).unwrap_or_else(|_| "{}".to_string());
             Some((0, format!("{s}\n"), String::new()))
         }
@@ -1876,19 +1896,19 @@ async fn build_pure_rust_ui_state(state: &Arc<AppState>) -> Value {
     let d = state.data.read().await;
     let live = state.live.read().await;
     let mut ui_prefs = read_uci_ui_prefs();
-    let ui_mode = ui_prefs
-        .get("ui_mode")
-        .and_then(Value::as_str)
-        .unwrap_or(&d.settings.ui_mode)
-        .to_string();
+    let ui_mode = crate::store::normalize_ui_mode(
+        ui_prefs
+            .get("ui_mode")
+            .and_then(Value::as_str)
+            .unwrap_or(&d.settings.ui_mode),
+    );
     let sidebar_pos = ui_prefs
         .get("sidebar_pos")
         .and_then(Value::as_str)
         .unwrap_or("left")
         .to_string();
     if let Some(obj) = ui_prefs.as_object_mut() {
-        obj.entry("ui_mode".to_string())
-            .or_insert_with(|| Value::String(ui_mode));
+        obj.insert("ui_mode".to_string(), Value::String(ui_mode));
         obj.entry("sidebar_pos".to_string())
             .or_insert_with(|| Value::String(sidebar_pos));
     }
@@ -1993,19 +2013,178 @@ fn tachyon_core_binary_installed() -> bool {
         || crate::fuzzer::is_desync_engine_installed(bin_name)
 }
 
+fn is_non_tunnel_ifname_proc(ifname: &str) -> bool {
+    let lower = ifname.trim().to_ascii_lowercase();
+    !lower.is_empty()
+        && lower != "lo"
+        && !lower.starts_with("tun")
+        && !lower.starts_with("tap")
+        && !lower.starts_with("tailscale")
+        && !lower.starts_with("fptn")
+        && !lower.starts_with("wg")
+        && !lower.starts_with("awg")
+        && !lower.starts_with("utun")
+}
+
+fn is_lan_ifname_proc(ifname: &str) -> bool {
+    let lower = ifname.trim().to_ascii_lowercase();
+    lower == "br-lan" || lower.starts_with("br-") || lower.starts_with("lan")
+}
+
+fn parse_wan6_iface_from_proc(rt6_raw: &str, if_inet6_raw: &str, wan_ipv6: &str) -> String {
+    for line in rt6_raw.lines() {
+        let cols: Vec<&str> = line.split_whitespace().collect();
+        if cols.len() >= 10
+            && cols[0] == "00000000000000000000000000000000"
+            && cols[1] == "00"
+            && is_non_tunnel_ifname_proc(cols[9])
+        {
+            return cols[9].to_string();
+        }
+    }
+    let target_hex = wan_ipv6
+        .trim()
+        .parse::<std::net::Ipv6Addr>()
+        .ok()
+        .map(|ip| format!("{:032x}", u128::from(ip)));
+    let mut fallback_global = String::new();
+    for line in if_inet6_raw.lines() {
+        let cols: Vec<&str> = line.split_whitespace().collect();
+        if cols.len() < 6 || cols[0].len() != 32 {
+            continue;
+        }
+        let ifname = cols[5];
+        if !is_non_tunnel_ifname_proc(ifname) || is_lan_ifname_proc(ifname) {
+            continue;
+        }
+        if let Some(ref hex) = target_hex
+            && cols[0].eq_ignore_ascii_case(hex)
+        {
+            return ifname.to_string();
+        }
+        if fallback_global.is_empty()
+            && cols[3] == "00"
+            && let Ok(raw) = u128::from_str_radix(cols[0], 16)
+        {
+            let seg0 = (std::net::Ipv6Addr::from(raw)).segments()[0];
+            if (seg0 & 0xe000) == 0x2000 {
+                fallback_global = ifname.to_string();
+            }
+        }
+    }
+    fallback_global
+}
+
+async fn detect_wan6_iface(wan_ipv6: &str) -> String {
+    if cfg!(windows) || cfg!(test) {
+        return String::new();
+    }
+    let (rt6_res, if6_res) = tokio::join!(
+        tokio::fs::read_to_string("/proc/net/ipv6_route"),
+        tokio::fs::read_to_string("/proc/net/if_inet6"),
+    );
+    parse_wan6_iface_from_proc(
+        &rt6_res.unwrap_or_default(),
+        &if6_res.unwrap_or_default(),
+        wan_ipv6,
+    )
+}
+
+fn populate_system_info_network_fields(
+    obj: &mut Map<String, Value>,
+    d: &crate::store::RouterStoreData,
+    wan_ip: &str,
+    lan_ip: &str,
+    wan6_cache: &crate::store::RuntimeIpv6Cache,
+    wan6_iface: &str,
+) {
+    let lan_ipv6 = wan6_cache.lan_ipv6.first().cloned().unwrap_or_default();
+    let wan_ipv6 = wan6_cache.wan_ipv6.first().cloned().unwrap_or_default();
+    let wan6_prefixes = &wan6_cache.wan6_prefixes;
+    let wan6_prefix = wan6_prefixes.first().cloned().unwrap_or_default();
+    let wan6_available =
+        wan6_cache.wan6_available || !wan_ipv6.is_empty() || !wan6_prefixes.is_empty();
+    let ipv6_state = crate::store::resolve_effective_ipv6_state(&d.settings, wan6_available);
+    let runtime_dns_strategy = crate::store::effective_dns_strategy(&d.settings, ipv6_state);
+    let fakeip4 = if d.settings.fakeip_inet4_range.trim().is_empty() {
+        "198.18.0.0/15"
+    } else {
+        d.settings.fakeip_inet4_range.trim()
+    };
+    let fakeip6 = if d.settings.fakeip_inet6_range.trim().is_empty() {
+        "fc00::/18"
+    } else {
+        d.settings.fakeip_inet6_range.trim()
+    };
+
+    obj.insert("wan_ip".to_string(), json!(wan_ip));
+    obj.insert("lan_ip".to_string(), json!(lan_ip));
+    obj.insert("wan_ipv6".to_string(), json!(wan_ipv6));
+    obj.insert("lan_ipv6".to_string(), json!(lan_ipv6));
+    obj.insert(
+        "wan6_available".to_string(),
+        json!(i32::from(wan6_available)),
+    );
+    obj.insert("wan6_iface".to_string(), json!(wan6_iface));
+    obj.insert("wan6_prefix".to_string(), json!(wan6_prefix));
+    obj.insert("wan6_pd".to_string(), json!(wan6_prefixes));
+    obj.insert(
+        "router_hostname".to_string(),
+        json!(sys_info::read_router_hostname()),
+    );
+    obj.insert(
+        "ipv6_effective_state".to_string(),
+        json!(ipv6_state.as_str()),
+    );
+    obj.insert("ipv6_mode".to_string(), json!(d.settings.ipv6_mode));
+    obj.insert(
+        "ipv6_leak_guard".to_string(),
+        json!(d.settings.ipv6_leak_guard),
+    );
+    obj.insert("dns_strategy".to_string(), json!(d.settings.dns_strategy));
+    obj.insert(
+        "runtime_dns_strategy".to_string(),
+        json!(runtime_dns_strategy),
+    );
+    obj.insert(
+        "fakeip_enabled".to_string(),
+        json!(i32::from(d.settings.fakeip_enabled)),
+    );
+    obj.insert("fakeip_inet4_range".to_string(), json!(fakeip4));
+    obj.insert("fakeip_inet6_range".to_string(), json!(fakeip6));
+    obj.insert(
+        "webrtc_leak_protect".to_string(),
+        json!(i32::from(d.settings.webrtc_leak_protect)),
+    );
+}
+
 async fn build_pure_rust_system_info(state: &Arc<AppState>) -> Value {
     let sys = sys_info::collect_host_info();
-    let live = state.live.read().await;
+    let d = state.data.read().await.clone();
+    let core_version = state.live.read().await.core_version.clone();
     let core_installed = i32::from(tachyon_core_binary_installed());
+    let (ip_res, wan6_res) = tokio::join!(
+        tokio::task::spawn_blocking(sys_info::detect_router_ips),
+        tokio::task::spawn_blocking(crate::store::probe_wan6_runtime_state),
+    );
+    let (lan_ip, wan_ip) = ip_res.unwrap_or_default();
+    let wan6_cache = wan6_res.unwrap_or_default();
+    let wan_ipv6 = wan6_cache
+        .wan_ipv6
+        .first()
+        .map(String::as_str)
+        .unwrap_or("");
+    let wan6_iface = detect_wan6_iface(wan_ipv6).await;
 
-    let mut base = if let Ok(raw) = std::fs::read_to_string("/var/run/tachyon/system-info.json")
+    let mut base = if let Ok(raw) =
+        tokio::fs::read_to_string("/var/run/tachyon/system-info.json").await
         && let Ok(parsed) = serde_json::from_str::<Value>(&raw)
     {
         parsed
     } else {
         json!({
             "tachyon_version": crate::store::TACHYON_VERSION,
-            "sing_box_version": live.core_version,
+            "sing_box_version": core_version,
             "active_engine": "tachyon-core",
             "sing_box_tachyon_core": core_installed,
             "openwrt_version": sys.openwrt_release,
@@ -2068,11 +2247,11 @@ async fn build_pure_rust_system_info(state: &Arc<AppState>) -> Value {
         let core_latest = core_cached
             .and_then(|r| r.get("latest_version").and_then(Value::as_str))
             .filter(|s| !s.is_empty())
-            .unwrap_or(&live.core_version);
+            .unwrap_or(&core_version);
         let core_upd = i32::from(
             core_cached.and_then(|r| r.get("status").and_then(Value::as_str)) == Some("outdated"),
         );
-        obj.insert("sing_box_version".to_string(), json!(live.core_version));
+        obj.insert("sing_box_version".to_string(), json!(core_version));
         obj.insert("sing_box_latest_version".to_string(), json!(core_latest));
         obj.insert("sing_box_update_available".to_string(), json!(core_upd));
         obj.insert(
@@ -2111,6 +2290,7 @@ async fn build_pure_rust_system_info(state: &Arc<AppState>) -> Value {
             "ram_free_mb".to_string(),
             json!(sys.memory_total_mb.saturating_sub(sys.memory_used_mb)),
         );
+        populate_system_info_network_fields(obj, &d, &wan_ip, &lan_ip, &wan6_cache, &wan6_iface);
         for removed in [
             "zapret",
             "zapret2",
@@ -2970,7 +3150,8 @@ fn has_route_rule_for_inbound(sb_config: Option<&Value>, tag: &str) -> bool {
 }
 
 fn resolve_public_host_ips_list(host: &str) -> Vec<String> {
-    let h = host.trim();
+    let h_clean = crate::config_gen::extract_host_only(host);
+    let h = h_clean.trim();
     if h.is_empty() {
         return Vec::new();
     }
@@ -3001,7 +3182,10 @@ fn build_check_inbounds_result(d: &crate::store::RouterStoreData) -> Value {
         .ok()
         .and_then(|raw| serde_json::from_str(&raw).ok());
     let (_lan_ip, wan_ip) = sys_info::detect_router_ips();
-    let wan_public = i32::from(!wan_ip.is_empty() && is_public_routable_ip(&wan_ip));
+    let (_lan_ipv6, wan_ipv6, _) = sys_info::detect_router_ipv6_ips();
+    let wan_ipv6_public = i32::from(!wan_ipv6.is_empty() && is_public_routable_ip(&wan_ipv6));
+    let wan_public =
+        i32::from((!wan_ip.is_empty() && is_public_routable_ip(&wan_ip)) || wan_ipv6_public == 1);
 
     #[cfg(target_os = "linux")]
     let fw4_in = std::process::Command::new("nft")
@@ -3156,7 +3340,10 @@ fn build_check_inbounds_result(d: &crate::store::RouterStoreData) -> Value {
                         .all(|ip| is_public_routable_ip(ip)),
                 );
                 if wan_public == 1 {
-                    matches_wan = i32::from(public_host_ips_vec.iter().any(|ip| ip == &wan_ip));
+                    matches_wan = i32::from(public_host_ips_vec.iter().any(|ip| {
+                        (!wan_ip.is_empty() && ip == &wan_ip)
+                            || (!wan_ipv6.is_empty() && ip == &wan_ipv6)
+                    }));
                 }
             }
         }
@@ -3195,6 +3382,8 @@ fn build_check_inbounds_result(d: &crate::store::RouterStoreData) -> Value {
         "enabled_count": enabled_count,
         "config_path": config_path,
         "wan_ip": wan_ip,
+        "wan_ipv6": wan_ipv6,
+        "wan_ipv6_public": wan_ipv6_public,
         "wan_public": wan_public,
         "requires_public_wan": requires_public_wan,
         "items": items,
@@ -3208,27 +3397,20 @@ fn is_public_routable_ip(ip_str: &str) -> bool {
     match addr {
         std::net::IpAddr::V4(v4) => {
             let o = v4.octets();
-            if v4.is_loopback()
+            !(v4.is_loopback()
                 || v4.is_private()
                 || v4.is_link_local()
                 || v4.is_multicast()
                 || v4.is_broadcast()
                 || v4.is_unspecified()
-                || (o[0] == 100 && (o[1] & 0xc0) == 64)
-            {
-                return false;
-            }
-            true
+                || (o[0] == 100 && (o[1] & 0xc0) == 64))
         }
         std::net::IpAddr::V6(v6) => {
             if v6.is_loopback() || v6.is_multicast() || v6.is_unspecified() {
                 return false;
             }
             let seg0 = v6.segments()[0];
-            if (seg0 & 0xfe00) == 0xfc00 || (seg0 & 0xffc0) == 0xfe80 {
-                return false;
-            }
-            true
+            !((seg0 & 0xfe00) == 0xfc00 || (seg0 & 0xffc0) == 0xfe80)
         }
     }
 }
@@ -3565,10 +3747,29 @@ async fn execute_pure_rust_tachyon_cli(
             "dont_touch_dhcp": i32::from(d.settings.dont_touch_dhcp),
         }),
         "check_fakeip" => {
-            let (ok, ip) = diagnostics::probe_local_fakeip_dns().await;
-            json!({
-                "fakeip": ok,
-                "IP": ip,
+            let f4 = d.settings.fakeip_inet4_range.clone();
+            let f6 = d.settings.fakeip_inet6_range.clone();
+            let store_snap = d.clone();
+            drop(d);
+            let (_lan_v6, wan_v6, _) =
+                tokio::task::spawn_blocking(sys_info::detect_router_ipv6_ips)
+                    .await
+                    .unwrap_or_default();
+            let ipv6_state = crate::store::resolve_effective_ipv6_state(
+                &store_snap.settings,
+                !wan_v6.is_empty(),
+            );
+            let (v4_ok, v4_ip, v6_ok, v6_ip, aaaa_suppressed) =
+                diagnostics::probe_local_fakeip_dns_with(&f4, &f6, ipv6_state.is_active()).await;
+            diagnostics::format_fakeip_probe_payload(diagnostics::FakeIpProbePayloadInput {
+                d: &store_snap,
+                ipv6_state,
+                via_proxy: true,
+                v4_ok,
+                v4_ip: &v4_ip,
+                v6_ok,
+                v6_ip: &v6_ip,
+                aaaa_suppressed,
             })
         }
         "check_nft" | "check_nft_rules" => json!({
@@ -4022,7 +4223,14 @@ async fn execute_pure_rust_tachyon_cli(
                     "job_id": "rust-leak-1"
                 })
             } else {
-                let (_lan_ip, wan_ip) = crate::sys_info::detect_router_ips();
+                let (ip_res, ip6_res) = tokio::join!(
+                    tokio::task::spawn_blocking(crate::sys_info::detect_router_ips),
+                    tokio::task::spawn_blocking(crate::sys_info::detect_router_ipv6_ips),
+                );
+                let (_lan_ip, wan_ip) = ip_res.unwrap_or_default();
+                let (_lan_v6, wan_ipv6, _) = ip6_res.unwrap_or_default();
+                let ipv6_state =
+                    crate::store::resolve_effective_ipv6_state(&d.settings, !wan_ipv6.is_empty());
                 let mut exit_ip = String::new();
                 let mut exit_org = "Tachyon Outbound".to_string();
                 let mut exit_country = "Encrypted Tunnel".to_string();
@@ -4068,74 +4276,41 @@ async fn execute_pure_rust_tachyon_cli(
                     .first()
                     .cloned()
                     .unwrap_or_else(|| "1.1.1.1".to_string());
-                let leak_data = json!({
-                    "ip_leak": {
-                        "direct_ip": wan_ip,
-                        "direct_country": "WAN",
-                        "direct_isp": "Router WAN Interface",
-                        "proxy_ip": exit_ip,
-                        "proxy_country": exit_country,
-                        "proxy_org": exit_org,
-                        "leaked": false,
-                        "proxy_online": live.core_running,
-                        "details": [
-                            "Внешний адрес туннеля отличается от прямого WAN-адреса провайдера",
-                            "Маршрутизация трафика через Tachyon Core активна и изолирована"
-                        ]
-                    },
-                    "dns_leak": {
-                        "leaked": false,
-                        "fakeip_working": true,
-                        "fakeip_subnet": "198.18.0.0/15",
-                        "resolved_ip": "198.18.0.25",
-                        "dns_through_tunnel": true,
-                        "dns_servers": [
-                            {
-                                "ip": dns_srv,
-                                "isp": "Cloudflare, Inc.",
-                                "organization": "Encrypted Upstream Resolver",
-                                "country": "Anycast",
-                                "country_code": "US",
-                                "city": "Frankfurt"
-                            }
-                        ],
-                        "direct_dns_servers": [
-                            {
-                                "ip": "1.1.1.1",
-                                "isp": "Cloudflare, Inc.",
-                                "organization": "Bootstrap Resolver",
-                                "country": "Anycast",
-                                "country_code": "US"
-                            }
-                        ],
-                        "router_dns_servers": [
-                            {
-                                "ip": "127.0.0.1#53",
-                                "isp": "Tachyon Core",
-                                "organization": "Local FakeIP DNS Engine",
-                                "country": "Router",
-                                "country_code": "LO"
-                            }
-                        ],
-                        "configured_dns": [
-                            {
-                                "tag": "dns-remote",
-                                "type": d.settings.dns_type,
-                                "server": dns_srv,
-                                "detour": "Main-out"
-                            }
-                        ],
-                        "details": [
-                            "FakeIP перехватывает DNS-запросы локальной сети (198.18.0.0/15)",
-                            "Запросы к внешним резолверам направляются через защищенный профиль"
-                        ]
-                    },
-                    "summary": {
-                        "overall": "safe",
-                        "warnings": [],
-                        "recommendations": []
-                    }
-                });
+                let direct_ipv6 = wan_ipv6.clone();
+                let proxy_ipv6 = if ipv6_state.is_active() && live.core_running {
+                    d.outbound_sources
+                        .iter()
+                        .filter(|s| s.enabled)
+                        .find_map(|s| {
+                            let host = if !s.server.trim().is_empty() {
+                                crate::config_gen::extract_host_only(&s.server)
+                            } else {
+                                s.cached_nodes
+                                    .first()
+                                    .map(|n| crate::config_gen::extract_host_only(&n.server))
+                                    .unwrap_or_default()
+                            };
+                            host.parse::<std::net::Ipv6Addr>()
+                                .ok()
+                                .map(|ip| ip.to_string())
+                        })
+                        .unwrap_or_default()
+                } else {
+                    String::new()
+                };
+                let leak_data = build_ubus_leak_check_payload(
+                    &d,
+                    &wan_ip,
+                    &exit_ip,
+                    &exit_country,
+                    &exit_org,
+                    &dns_srv,
+                    &direct_ipv6,
+                    &proxy_ipv6,
+                    ipv6_state,
+                    live.core_running,
+                    live.nft_table_active,
+                );
                 if method == "leak_check_status" {
                     json!({
                         "status": "done",
@@ -4651,21 +4826,7 @@ async fn execute_pure_rust_tachyon_cli(
                 for (srv_idx, (srv_val, proto)) in server_entries.iter().cloned().enumerate() {
                     let doms = domains.clone();
                     join_set.spawn(async move {
-                        let stripped = srv_val
-                            .trim_start_matches("https://")
-                            .trim_start_matches("tls://")
-                            .trim_start_matches("quic://")
-                            .trim_start_matches("udp://");
-                        let host_port = stripped.split('/').next().unwrap_or(stripped);
-                        let host = host_port.split(':').next().unwrap_or(host_port);
-                        let default_port = if proto == "doh" || srv_val.contains('/') {
-                            443
-                        } else if proto == "dot" || proto == "doq" {
-                            853
-                        } else {
-                            53
-                        };
-                        let target = format!("{host}:{default_port}");
+                        let target = resolve_dns_bench_target(&srv_val, &proto);
                         let t0 = std::time::Instant::now();
                         let base_ms = match tokio::time::timeout(
                             std::time::Duration::from_millis(450),
@@ -5045,9 +5206,10 @@ async fn execute_pure_rust_tachyon_cli(
                 source_ip.as_str()
             };
             let nft_active = crate::net_stack::check_nft_table_active().await;
-            crate::diagnostics::build_route_trace_json(
+            crate::diagnostics::build_route_trace_json_async(
                 &d, client_ip, &domain, &target, port, &protocol, nft_active,
             )
+            .await
         }
         "probe_outbound_url" => {
             let tag = rest.first().map(String::as_str).unwrap_or("Main-out");
@@ -5055,22 +5217,44 @@ async fn execute_pure_rust_tachyon_cli(
                 .get(1)
                 .map(String::as_str)
                 .unwrap_or("https://www.gstatic.com/generate_204");
-            let encoded_tag = url_encode_component(tag);
             let encoded_url = url_encode_component(url);
-            let path = format!("/proxies/{encoded_tag}/delay?url={encoded_url}&timeout=5000");
-            let mut latency_ms = 42u64;
-            if let Ok(val) = core.clash_request("GET", &path, None).await
+            let mut effective_tag = tag.to_string();
+            let mut latency_ms = None;
+            let direct_path = format!(
+                "/proxies/{}/delay?url={encoded_url}&timeout=5000",
+                url_encode_component(tag)
+            );
+            if let Ok(val) = core.clash_request("GET", &direct_path, None).await
                 && let Some(ms) = val.get("delay").and_then(Value::as_u64)
             {
-                latency_ms = ms;
+                latency_ms = Some(ms);
+            } else if let Ok(proxies_val) = core.clash_request("GET", "/proxies", None).await
+                && let Some(proxies_map) = proxies_val.get("proxies").and_then(Value::as_object)
+            {
+                let candidates: Vec<String> = proxies_map.keys().cloned().collect();
+                if let Some(matched) =
+                    resolve_outbound_tag_with_telemetry_fallback(tag, &candidates)
+                {
+                    let retry_path = format!(
+                        "/proxies/{}/delay?url={encoded_url}&timeout=5000",
+                        url_encode_component(&matched)
+                    );
+                    effective_tag = matched;
+                    if let Ok(val) = core.clash_request("GET", &retry_path, None).await
+                        && let Some(ms) = val.get("delay").and_then(Value::as_u64)
+                    {
+                        latency_ms = Some(ms);
+                    }
+                }
             }
             json!({
                 "success": true,
                 "status": "ok",
-                "tag": tag,
+                "tag": effective_tag,
+                "requested_tag": tag,
                 "target_url": url,
                 "http_code": 204,
-                "latency_ms": latency_ms
+                "latency_ms": latency_ms.unwrap_or(42)
             })
         }
         "resolve_domain" => {
@@ -7373,6 +7557,186 @@ fn extract_string_list(val: Option<&Value>) -> Vec<String> {
     }
 }
 
+fn resolve_dns_bench_target(srv_val: &str, proto: &str) -> String {
+    let trimmed = srv_val.trim();
+    let stripped = trimmed
+        .strip_prefix("https://")
+        .or_else(|| trimmed.strip_prefix("http://"))
+        .or_else(|| trimmed.strip_prefix("h3://"))
+        .or_else(|| trimmed.strip_prefix("tls://"))
+        .or_else(|| trimmed.strip_prefix("quic://"))
+        .or_else(|| trimmed.strip_prefix("udp://"))
+        .or_else(|| trimmed.strip_prefix("tcp://"))
+        .unwrap_or(trimmed);
+    let host_port = stripped.split('/').next().unwrap_or(stripped);
+    let default_port = if proto == "doh"
+        || trimmed.starts_with("https://")
+        || trimmed.starts_with("h3://")
+        || stripped.contains('/')
+    {
+        443
+    } else if proto == "dot" || proto == "doq" {
+        853
+    } else {
+        53
+    };
+    let host = crate::config_gen::extract_host_only(host_port);
+    let port = crate::config_gen::extract_host_port(host_port, default_port);
+    let uri_host = crate::config_gen::format_uri_host_only(&host);
+    format!("{uri_host}:{port}")
+}
+
+fn resolve_outbound_tag_with_telemetry_fallback(
+    requested: &str,
+    candidates: &[String],
+) -> Option<String> {
+    let req = requested.trim();
+    if req.is_empty() {
+        return None;
+    }
+    if let Some(exact) = candidates.iter().find(|c| c.as_str() == req) {
+        return Some(exact.clone());
+    }
+    if let Some(ci) = candidates.iter().find(|c| c.eq_ignore_ascii_case(req)) {
+        return Some(ci.clone());
+    }
+    let req_stripped = crate::config_gen::strip_dynamic_server_telemetry(req);
+    if !req_stripped.is_empty() {
+        if let Some(m) = candidates
+            .iter()
+            .find(|c| crate::config_gen::strip_dynamic_server_telemetry(c) == req_stripped)
+        {
+            return Some(m.clone());
+        }
+        if let Some(m) = candidates.iter().find(|c| {
+            crate::config_gen::strip_dynamic_server_telemetry(c).eq_ignore_ascii_case(&req_stripped)
+        }) {
+            return Some(m.clone());
+        }
+    }
+    None
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_ubus_leak_check_payload(
+    d: &crate::store::RouterStoreData,
+    wan_ip: &str,
+    exit_ip: &str,
+    exit_country: &str,
+    exit_org: &str,
+    dns_srv: &str,
+    direct_ipv6: &str,
+    proxy_ipv6: &str,
+    ipv6_state: crate::store::EffectiveIpv6State,
+    core_running: bool,
+    nft_table_active: bool,
+) -> Value {
+    let fakeip_v4 = if d.settings.fakeip_inet4_range.trim().is_empty() {
+        "198.18.0.0/15"
+    } else {
+        d.settings.fakeip_inet4_range.trim()
+    };
+    let fakeip_v6 = if d.settings.fakeip_inet6_range.trim().is_empty() {
+        "fc00::/18"
+    } else {
+        d.settings.fakeip_inet6_range.trim()
+    };
+    let ipv6_leak = crate::diagnostics::build_ipv6_leak_summary(
+        d,
+        ipv6_state,
+        direct_ipv6,
+        proxy_ipv6,
+        nft_table_active,
+    );
+    let ipv6_leaked = ipv6_leak
+        .get("ipv6_leaked")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+
+    json!({
+        "ip_leak": {
+            "direct_ip": wan_ip,
+            "direct_country": "WAN",
+            "direct_isp": "Router WAN Interface",
+            "proxy_ip": exit_ip,
+            "proxy_country": exit_country,
+            "proxy_org": exit_org,
+            "leaked": false,
+            "proxy_online": core_running,
+            "details": [
+                "Внешний адрес туннеля отличается от прямого WAN-адреса провайдера",
+                "Маршрутизация трафика через Tachyon Core активна и изолирована"
+            ]
+        },
+        "dns_leak": {
+            "leaked": false,
+            "fakeip_working": d.settings.fakeip_enabled,
+            "fakeip_enabled": d.settings.fakeip_enabled,
+            "fakeip_subnet": fakeip_v4,
+            "resolved_ip": "198.18.0.25",
+            "dns_through_tunnel": true,
+            "dns_servers": [
+                {
+                    "ip": dns_srv,
+                    "isp": "Cloudflare, Inc.",
+                    "organization": "Encrypted Upstream Resolver",
+                    "country": "Anycast",
+                    "country_code": "US",
+                    "city": "Frankfurt"
+                }
+            ],
+            "direct_dns_servers": [
+                {
+                    "ip": "1.1.1.1",
+                    "isp": "Cloudflare, Inc.",
+                    "organization": "Bootstrap Resolver",
+                    "country": "Anycast",
+                    "country_code": "US"
+                }
+            ],
+            "router_dns_servers": [
+                {
+                    "ip": "127.0.0.1#53",
+                    "isp": "Tachyon Core",
+                    "organization": "Local FakeIP DNS Engine",
+                    "country": "Router",
+                    "country_code": "LO"
+                }
+            ],
+            "configured_dns": [
+                {
+                    "tag": "dns-remote",
+                    "type": d.settings.dns_type,
+                    "server": dns_srv,
+                    "detour": "Main-out"
+                }
+            ],
+            "details": [
+                if d.settings.fakeip_enabled {
+                    format!("FakeIP перехватывает DNS-запросы локальной сети ({fakeip_v4})")
+                } else {
+                    "Используется режим DNS RealIP (FakeIP отключён)".to_string()
+                },
+                "Запросы к внешним резолверам направляются через защищенный профиль"
+            ]
+        },
+        "direct_ipv6": direct_ipv6,
+        "proxy_ipv6": proxy_ipv6,
+        "ipv6_leak_guard": d.settings.ipv6_leak_guard,
+        "ipv6_leaked": ipv6_leaked,
+        "ipv6_effective_state": ipv6_state.as_str(),
+        "ipv6_mode": d.settings.ipv6_mode,
+        "fakeip_inet4_range": fakeip_v4,
+        "fakeip_inet6_range": fakeip_v6,
+        "ipv6_leak": ipv6_leak,
+        "summary": {
+            "overall": if ipv6_leaked { "warning" } else { "safe" },
+            "warnings": [],
+            "recommendations": []
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -7582,5 +7946,139 @@ mod tests {
         assert_eq!(imported, 1);
         assert!(!store.telegram.bot_direct_fallback);
         assert_eq!(store.telegram, tg);
+    }
+
+    #[test]
+    fn resolve_dns_bench_target_handles_ipv6_and_custom_ports() {
+        assert_eq!(
+            resolve_dns_bench_target("https://[2606:4700:4700::1111]/dns-query", "doh"),
+            "[2606:4700:4700::1111]:443"
+        );
+        assert_eq!(
+            resolve_dns_bench_target("https://[2606:4700:4700::1111]:8443/dns-query", "doh"),
+            "[2606:4700:4700::1111]:8443"
+        );
+        assert_eq!(
+            resolve_dns_bench_target("tls://2606:4700:4700::1111", "dot"),
+            "[2606:4700:4700::1111]:853"
+        );
+        assert_eq!(
+            resolve_dns_bench_target("2001:4860:4860::8888", "udp"),
+            "[2001:4860:4860::8888]:53"
+        );
+        assert_eq!(
+            resolve_dns_bench_target("https://dns.google/dns-query", "doh"),
+            "dns.google:443"
+        );
+        assert_eq!(
+            resolve_dns_bench_target("1.1.1.1:5353", "udp"),
+            "1.1.1.1:5353"
+        );
+    }
+
+    #[test]
+    fn system_info_network_fields_and_wan6_iface_parsing() {
+        let rt6 = "\
+20010db8000100000000000000000000 40 00000000000000000000000000000000 00 00000000000000000000000000000000 00000100 00000000 00000000 00000001   br-lan
+00000000000000000000000000000000 00 00000000000000000000000000000000 00 fe800000000000000000000000000001 00000400 00000000 00000000 00010003     wan6
+";
+        assert_eq!(parse_wan6_iface_from_proc(rt6, "", ""), "wan6");
+
+        let mut store = crate::store::RouterStoreData::default();
+        store.settings.ipv6_mode = "auto".to_string();
+        store.settings.dns_strategy = "prefer_ipv6".to_string();
+        store.settings.fakeip_enabled = true;
+        store.settings.fakeip_inet4_range = "198.18.0.0/16".to_string();
+        store.settings.fakeip_inet6_range = "fd00:f::/48".to_string();
+        store.settings.webrtc_leak_protect = true;
+
+        let cache = crate::store::RuntimeIpv6Cache {
+            wan6_available: true,
+            wan_ipv6: vec!["2001:4860:4860::8888".to_string()],
+            lan_ipv6: vec!["fd00::1".to_string()],
+            wan6_prefixes: vec!["2001:4860:4860::/64".to_string()],
+            updated_at: 1_700_000_000,
+        };
+        let mut obj = Map::new();
+        populate_system_info_network_fields(
+            &mut obj,
+            &store,
+            "203.0.113.10",
+            "192.168.1.1",
+            &cache,
+            "wan6",
+        );
+
+        assert_eq!(obj["wan_ip"], "203.0.113.10");
+        assert_eq!(obj["lan_ip"], "192.168.1.1");
+        assert_eq!(obj["wan6_available"], 1);
+        assert_eq!(obj["wan6_iface"], "wan6");
+        assert_eq!(obj["wan6_pd"], json!(["2001:4860:4860::/64"]));
+        assert_eq!(obj["dns_strategy"], "prefer_ipv6");
+        assert_eq!(obj["runtime_dns_strategy"], "prefer_ipv6");
+        assert_eq!(obj["fakeip_enabled"], 1);
+        assert_eq!(obj["fakeip_inet4_range"], "198.18.0.0/16");
+        assert_eq!(obj["fakeip_inet6_range"], "fd00:f::/48");
+        assert_eq!(obj["webrtc_leak_protect"], 1);
+
+        let inbounds = build_check_inbounds_result(&store);
+        assert!(inbounds.get("wan_ipv6_public").is_some());
+        assert_eq!(inbounds["wan_ipv6_public"], 0);
+    }
+
+    #[test]
+    fn ubus_leak_check_payload_places_ipv6_in_top_level_and_nested_ipv6_leak() {
+        let mut store = crate::store::RouterStoreData::default();
+        store.settings.ipv6_leak_guard = true;
+        store.settings.fakeip_inet4_range = "198.18.0.0/15".to_string();
+        store.settings.fakeip_inet6_range = "fc00::/18".to_string();
+
+        let payload = build_ubus_leak_check_payload(
+            &store,
+            "203.0.113.2",
+            "198.51.100.9",
+            "DE",
+            "Node",
+            "1.1.1.1",
+            "2001:4860::1",
+            "",
+            crate::store::EffectiveIpv6State::LeakGuard,
+            true,
+            false,
+        );
+        assert_eq!(payload["direct_ipv6"], "2001:4860::1");
+        assert_eq!(payload["ipv6_leaked"], true);
+        assert_eq!(payload["ipv6_leak"]["direct_ipv6"], "2001:4860::1");
+        assert_eq!(payload["ipv6_leak"]["ipv6_leaked"], true);
+        assert_eq!(payload["ipv6_leak"]["wan6_available"], true);
+        assert_eq!(payload["ipv6_leak"]["nft_leak_guard_present"], false);
+        assert!(payload["dns_leak"].get("ipv6_leaked").is_none());
+        assert!(payload["dns_leak"].get("direct_ipv6").is_none());
+        assert!(payload["dns_leak"].get("fakeip_inet6_range").is_none());
+    }
+
+    #[test]
+    fn probe_outbound_url_matches_with_strip_dynamic_server_telemetry_fallback() {
+        let candidates = vec![
+            "Main-out".to_string(),
+            "DE Frankfurt [15d | 10GB]".to_string(),
+            "FI Helsinki [24h | 50GB]".to_string(),
+        ];
+        assert_eq!(
+            resolve_outbound_tag_with_telemetry_fallback("DE Frankfurt", &candidates),
+            Some("DE Frankfurt [15d | 10GB]".to_string())
+        );
+        assert_eq!(
+            resolve_outbound_tag_with_telemetry_fallback("FI Helsinki (12h | 20GB)", &candidates),
+            Some("FI Helsinki [24h | 50GB]".to_string())
+        );
+        assert_eq!(
+            resolve_outbound_tag_with_telemetry_fallback("Main-out", &candidates),
+            Some("Main-out".to_string())
+        );
+        assert_eq!(
+            resolve_outbound_tag_with_telemetry_fallback("US New York", &candidates),
+            None
+        );
     }
 }

@@ -14,6 +14,7 @@ export const additionalValidDns = [
   ['DoH domain with port 443', 'cloudflare-dns.com:443/dns-query'],
   ['IPv6 DNS', '2606:4700:4700::1111'],
   ['IPv6 DNS with port', '[2606:4700:4700::1111]:853'],
+  ['IPv6 DoH with brackets', '[2606:4700:4700::1111]/dns-query'],
   ['IPv6 DoH with port', '[2606:4700:4700::1111]:443/dns-query'],
 ];
 

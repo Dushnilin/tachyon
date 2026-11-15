@@ -10,9 +10,28 @@ use serde_json::{Value, json};
 
 use crate::config_gen;
 use crate::crypto_gen;
-use crate::store::{AppState, RouterStoreData, unix_now_secs};
+use crate::store::{
+    AppState, RouterStoreData, cidrs_overlap, parse_ipv4_cidr, parse_ipv6_cidr, unix_now_secs,
+};
 
 pub const LKG_OBSERVATION_WINDOW_SECS: u64 = 180;
+
+fn valid_cidr_with_slash_v4(raw: &str) -> bool {
+    let s = raw.trim();
+    s.contains('/') && parse_ipv4_cidr(s).is_some()
+}
+
+fn valid_cidr_with_slash_v6(raw: &str) -> bool {
+    let s = raw.trim();
+    s.contains('/') && parse_ipv6_cidr(s).is_some()
+}
+
+fn valid_bool_setting_text(raw: &str) -> bool {
+    matches!(
+        raw.trim().to_ascii_lowercase().as_str(),
+        "0" | "1" | "true" | "false" | "yes" | "no" | "on" | "off"
+    )
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConfigPlanReport {
@@ -72,6 +91,13 @@ pub fn analyze_config_plan(candidate: &RouterStoreData) -> ConfigPlanReport {
             errors.push(format!(
                 "Section '{}' references missing outbound_group '{}'",
                 sec.id, sec.outbound_group_ref
+            ));
+        }
+        let raw_v6_sup = sec.ipv6_support.trim().to_ascii_lowercase();
+        if !raw_v6_sup.is_empty() && raw_v6_sup != "auto" && !valid_bool_setting_text(&raw_v6_sup) {
+            errors.push(format!(
+                "Section '{}' has invalid ipv6_support '{}' (expected auto, 0, or 1)",
+                sec.id, sec.ipv6_support
             ));
         }
         if sec.enabled
@@ -138,6 +164,52 @@ pub fn analyze_config_plan(candidate: &RouterStoreData) -> ConfigPlanReport {
         }
     }
 
+    let fakeip4 = candidate.settings.fakeip_inet4_range.trim();
+    if !fakeip4.is_empty() && !valid_cidr_with_slash_v4(fakeip4) {
+        errors.push(format!("Invalid FakeIPv4 CIDR range '{fakeip4}'"));
+    }
+    let fakeip6 = candidate.settings.fakeip_inet6_range.trim();
+    if !fakeip6.is_empty() && !valid_cidr_with_slash_v6(fakeip6) {
+        errors.push(format!("Invalid FakeIPv6 CIDR range '{fakeip6}'"));
+    }
+    let tun4 = candidate.settings.tun_inet4.trim();
+    if !tun4.is_empty() && !valid_cidr_with_slash_v4(tun4) {
+        errors.push(format!("Invalid TUN IPv4 CIDR '{tun4}'"));
+    }
+    let tun6 = candidate.settings.tun_inet6.trim();
+    if !tun6.is_empty() && !valid_cidr_with_slash_v6(tun6) {
+        errors.push(format!("Invalid TUN IPv6 CIDR '{tun6}'"));
+    }
+
+    let eff_fakeip4 = if fakeip4.is_empty() {
+        "198.18.0.0/15"
+    } else {
+        fakeip4
+    };
+    let eff_fakeip6 = if fakeip6.is_empty() {
+        "fc00::/18"
+    } else {
+        fakeip6
+    };
+    if !tun4.is_empty()
+        && valid_cidr_with_slash_v4(tun4)
+        && valid_cidr_with_slash_v4(eff_fakeip4)
+        && cidrs_overlap(tun4, eff_fakeip4)
+    {
+        errors.push(format!(
+            "TUN IPv4 CIDR '{tun4}' overlaps FakeIPv4 range '{eff_fakeip4}'"
+        ));
+    }
+    if !tun6.is_empty()
+        && valid_cidr_with_slash_v6(tun6)
+        && valid_cidr_with_slash_v6(eff_fakeip6)
+        && cidrs_overlap(tun6, eff_fakeip6)
+    {
+        errors.push(format!(
+            "TUN IPv6 CIDR '{tun6}' overlaps FakeIPv6 range '{eff_fakeip6}'"
+        ));
+    }
+
     // Validate compiled `tachyon-core` JSON generation
     if let Err(e) = config_gen::compile_core_config(candidate) {
         errors.push(format!("Core config compilation error: {e}"));
@@ -198,7 +270,8 @@ pub async fn commit_transaction(
     state: &Arc<AppState>,
     mut candidate: RouterStoreData,
 ) -> anyhow::Result<ConfigPlanReport> {
-    // Phase 1: PLAN (enforce cascade invariants)
+    // Phase 1: PLAN (deduplicate cloned conditions and enforce cascade invariants)
+    candidate.deduplicate_cloned_conditions();
     enforce_section_server_cascade(&mut candidate);
 
     // Phase 2: PREFLIGHT & Phase 5: VALIDATE
@@ -279,5 +352,212 @@ mod tests {
         });
         enforce_section_server_cascade(&mut data);
         assert!(!data.servers[0].enabled);
+    }
+
+    #[test]
+    fn test_analyze_config_plan_cidr_overlap_and_syntax() {
+        let mut data = RouterStoreData::default();
+        data.settings.tun_inet4 = "172.19.0.1/30".to_string();
+        data.settings.fakeip_inet4_range = "198.18.0.0/15".to_string();
+        data.settings.tun_inet6 = "fdfe:dcba:9876::1/126".to_string();
+        data.settings.fakeip_inet6_range = "fc00::/18".to_string();
+        let baseline = analyze_config_plan(&data);
+        assert!(baseline.valid, "unexpected errors: {:?}", baseline.errors);
+
+        // Bare IPs without /prefix must be rejected
+        let mut bare_fakeip4 = data.clone();
+        bare_fakeip4.settings.fakeip_inet4_range = "198.18.0.0".to_string();
+        let report = analyze_config_plan(&bare_fakeip4);
+        assert!(!report.valid);
+        assert!(
+            report
+                .errors
+                .iter()
+                .any(|e| e.contains("Invalid FakeIPv4 CIDR range"))
+        );
+
+        let mut bad_fakeip6 = data.clone();
+        bad_fakeip6.settings.fakeip_inet6_range = "fc00::/129".to_string();
+        let report = analyze_config_plan(&bad_fakeip6);
+        assert!(!report.valid);
+        assert!(
+            report
+                .errors
+                .iter()
+                .any(|e| e.contains("Invalid FakeIPv6 CIDR range"))
+        );
+
+        let mut bad_tun4 = data.clone();
+        bad_tun4.settings.tun_inet4 = "999.0.0.1/24".to_string();
+        let report = analyze_config_plan(&bad_tun4);
+        assert!(!report.valid);
+        assert!(
+            report
+                .errors
+                .iter()
+                .any(|e| e.contains("Invalid TUN IPv4 CIDR"))
+        );
+
+        let mut bad_tun6 = data.clone();
+        bad_tun6.settings.tun_inet6 = "not-an-ipv6".to_string();
+        let report = analyze_config_plan(&bad_tun6);
+        assert!(!report.valid);
+        assert!(
+            report
+                .errors
+                .iter()
+                .any(|e| e.contains("Invalid TUN IPv6 CIDR"))
+        );
+
+        // Explicit IPv4 overlap
+        let mut overlap4 = data.clone();
+        overlap4.settings.tun_inet4 = "198.19.0.1/30".to_string();
+        let report = analyze_config_plan(&overlap4);
+        assert!(!report.valid);
+        assert!(
+            report
+                .errors
+                .iter()
+                .any(|e| e.contains("overlaps FakeIPv4 range"))
+        );
+
+        // Default FakeIPv4 fallback (empty fakeip_inet4_range -> 198.18.0.0/15) still detects overlap
+        let mut overlap4_default = data.clone();
+        overlap4_default.settings.fakeip_inet4_range.clear();
+        overlap4_default.settings.tun_inet4 = "198.18.42.1/30".to_string();
+        let report = analyze_config_plan(&overlap4_default);
+        assert!(!report.valid);
+        assert!(
+            report
+                .errors
+                .iter()
+                .any(|e| e.contains("overlaps FakeIPv4 range '198.18.0.0/15'"))
+        );
+
+        // Explicit IPv6 overlap
+        let mut overlap6 = data.clone();
+        overlap6.settings.tun_inet6 = "fc00:10::1/126".to_string();
+        let report = analyze_config_plan(&overlap6);
+        assert!(!report.valid);
+        assert!(
+            report
+                .errors
+                .iter()
+                .any(|e| e.contains("overlaps FakeIPv6 range"))
+        );
+
+        // Default FakeIPv6 fallback (empty fakeip_inet6_range -> fc00::/18) still detects overlap
+        let mut overlap6_default = data.clone();
+        overlap6_default.settings.fakeip_inet6_range.clear();
+        overlap6_default.settings.tun_inet6 = "fc00:200::1/126".to_string();
+        let report = analyze_config_plan(&overlap6_default);
+        assert!(!report.valid);
+        assert!(
+            report
+                .errors
+                .iter()
+                .any(|e| e.contains("overlaps FakeIPv6 range 'fc00::/18'"))
+        );
+    }
+
+    #[test]
+    fn test_analyze_config_plan_validates_section_ipv6_support() {
+        let mut data = RouterStoreData::default();
+        for valid_val in ["", "auto", "true", "false", "0", "1", "on", "off"] {
+            data.sections[0].ipv6_support = valid_val.to_string();
+            let report = analyze_config_plan(&data);
+            assert!(
+                !report.errors.iter().any(|e| e.contains("ipv6_support")),
+                "unexpected ipv6_support error for '{valid_val}': {:?}",
+                report.errors
+            );
+        }
+
+        data.sections[0].ipv6_support = "prefer_v6".to_string();
+        let report = analyze_config_plan(&data);
+        assert!(!report.valid);
+        assert!(
+            report
+                .errors
+                .iter()
+                .any(|e| e.contains("invalid ipv6_support"))
+        );
+    }
+
+    #[tokio::test]
+    async fn test_commit_transaction_deduplicates_cloned_conditions() {
+        use crate::store::{RoutingSection, TrafficCondition};
+
+        let tmp_dir = std::env::temp_dir().join(format!(
+            "tachyon_tx_dedup_{}_{}",
+            std::process::id(),
+            unix_now_secs()
+        ));
+        let _ = std::fs::create_dir_all(&tmp_dir);
+        let store_path = tmp_dir.join("store.json");
+        let core_path = tmp_dir.join("tachyon-core-config.json");
+
+        let state = AppState::load_or_create(&store_path).expect("load_or_create");
+        let mut candidate = RouterStoreData::default();
+        candidate.settings.core_config_path = core_path.to_string_lossy().into_owned();
+        candidate.settings.tun_inet4 = "172.19.0.1/30".to_string();
+        candidate.settings.fakeip_inet4_range = "198.18.0.0/15".to_string();
+        candidate.settings.tun_inet6 = "fdfe:dcba:9876::1/126".to_string();
+        candidate.settings.fakeip_inet6_range = "fc00::/18".to_string();
+
+        let base_cond = TrafficCondition {
+            id: "cond_dup_base".to_string(),
+            enabled: true,
+            name: "Base Rule".to_string(),
+            condition_type: "atomic".to_string(),
+            user_domains: vec!["example.org".to_string()],
+            community_subnets: true,
+            ..Default::default()
+        };
+        let mut clone_cond = base_cond.clone();
+        clone_cond.id = "cond_dup_base_copy".to_string();
+
+        let before_count = candidate.conditions.len();
+        candidate.conditions.push(base_cond);
+        candidate.conditions.push(clone_cond);
+        candidate.sections.push(RoutingSection {
+            id: "sec_dedup_test".to_string(),
+            enabled: true,
+            label: "Dedup Direct".to_string(),
+            connection_type: "direct".to_string(),
+            action: "direct".to_string(),
+            condition_refs: vec!["cond_dup_base_copy".to_string()],
+            condition_expression: "cond_dup_base_copy".to_string(),
+            ipv6_support: "auto".to_string(),
+            ..Default::default()
+        });
+
+        let report = commit_transaction(&state, candidate)
+            .await
+            .expect("commit_transaction should succeed");
+        assert!(report.valid);
+        assert_eq!(
+            report.summary["conditions_total"].as_u64(),
+            Some((before_count + 1) as u64)
+        );
+
+        let committed = state.data.read().await;
+        assert!(committed.conditions.iter().any(|c| c.id == "cond_dup_base"));
+        assert!(
+            !committed
+                .conditions
+                .iter()
+                .any(|c| c.id == "cond_dup_base_copy")
+        );
+        let sec = committed
+            .sections
+            .iter()
+            .find(|s| s.id == "sec_dedup_test")
+            .expect("sec_dedup_test present");
+        assert_eq!(sec.condition_refs, vec!["cond_dup_base"]);
+        assert_eq!(sec.condition_expression, "cond_dup_base");
+        drop(committed);
+
+        let _ = std::fs::remove_dir_all(&tmp_dir);
     }
 }

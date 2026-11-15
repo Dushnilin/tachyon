@@ -4,13 +4,14 @@ import { updateCheckStore } from './updateCheckStore';
 import { getMeta } from '../helpers/getMeta';
 import { IDiagnosticsChecksItem } from '../../../services';
 import { Tachyon } from '../../../types';
+import { formatHostForUri } from '../../../../validators/hostPort';
 
 function serverPrefix(item: Tachyon.InboundCheckItem) {
   return `${item.label}:`;
 }
 
 function formatListen(item: Tachyon.InboundCheckItem) {
-  return `${item.listen}:${Number(item.listen_port || 0)} [${item.required_proto}]`;
+  return `${formatHostForUri(item.listen)}:${Number(item.listen_port || 0)} [${item.required_proto}]`;
 }
 
 function getPortConflictItem(
@@ -200,10 +201,15 @@ export async function runInboundsCheck() {
             item.protocol !== 'tailscale' && item.protocol !== 'json_inbound',
         );
 
+  const extraWanV6 =
+    data.wan_ipv6 && (!data.wan_ip || !data.wan_ip.includes(data.wan_ipv6))
+      ? data.wan_ipv6
+      : '';
+  const wanDisplay = [data.wan_ip, extraWanV6].filter(Boolean).join(' · ');
   let wanState: IDiagnosticsChecksItem['state'] = 'warning';
-  let wanValue = data.wan_ip || _('Not detected');
+  let wanValue = wanDisplay || _('Not detected');
 
-  if (data.wan_public) {
+  if (data.wan_public || data.wan_ipv6_public) {
     wanState = 'success';
   } else if (!requiresPublicWan) {
     wanState = 'success';
@@ -213,7 +219,7 @@ export async function runInboundsCheck() {
     const note = isOnlyTailscale
       ? _('Tailscale does not require public WAN')
       : _('Public IP not required for this configuration');
-    wanValue = data.wan_ip ? `${data.wan_ip} (${note})` : note;
+    wanValue = wanDisplay ? `${wanDisplay} (${note})` : note;
   }
 
   const items: IDiagnosticsChecksItem[] = [

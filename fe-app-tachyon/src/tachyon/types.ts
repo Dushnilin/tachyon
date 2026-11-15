@@ -836,6 +836,22 @@ export namespace Tachyon {
     ai_adaptive_intervals_enabled?: '0' | '1';
     ai_anomaly_detection_enabled?: '0' | '1';
     ai_anomaly_reconnect_threshold?: string;
+    // IPv6, DNS strategy, FakeIP & TUN canonical settings
+    ipv6_mode?: 'auto' | 'dual_stack' | 'off' | 'tunnel_over_v4' | string;
+    ipv6_leak_guard?: '0' | '1';
+    dns_strategy?:
+      | 'prefer_ipv4'
+      | 'ipv4_only'
+      | 'prefer_ipv6'
+      | 'ipv6_only'
+      | string;
+    fakeip_enabled?: '0' | '1';
+    fakeip_inet4_range?: string;
+    fakeip_inet6_range?: string;
+    fakeip_exclude?: string | string[];
+    tun_inet4?: string;
+    tun_inet6?: string;
+    webrtc_leak_protect?: '0' | '1';
   }
 
   export interface MethodSuccessResponse<T> {
@@ -933,7 +949,9 @@ export namespace Tachyon {
     enabled_count: number;
     config_path: string;
     wan_ip: string;
+    wan_ipv6?: string;
     wan_public: 0 | 1;
+    wan_ipv6_public?: 0 | 1;
     requires_public_wan?: 0 | 1;
     items: InboundCheckItem[];
   }
@@ -944,7 +962,16 @@ export namespace Tachyon {
 
   export interface FakeIPCheckResult {
     fakeip: boolean;
+    fakeip_enabled?: boolean;
+    fakeip_v4?: boolean;
+    fakeip_v6?: boolean;
+    aaaa_suppressed?: boolean;
+    ipv6_effective_state?: string;
     IP: string;
+    IPv4?: string;
+    IPv6?: string;
+    fakeip_inet4_range?: string;
+    fakeip_inet6_range?: string;
   }
 
   export interface GetStatus {
@@ -952,6 +979,22 @@ export namespace Tachyon {
     enabled: number;
     status: string;
     dns_configured?: number;
+    wan_ip?: string;
+    wan_ipv6?: string;
+    lan_ip?: string;
+    lan_ipv6?: string;
+    wan6_prefix?: string;
+    wan6_pd?: string[];
+    wan6_available?: 0 | 1 | boolean;
+    wan6_iface?: string;
+    router_hostname?: string;
+    runtime_dns_strategy?: string;
+    ipv6_effective_state?:
+      | 'disabled'
+      | 'leak_guard'
+      | 'tunnel_over_v4'
+      | 'full'
+      | string;
     lite_mode?: number;
     memory_rss_mb?: number;
     pid?: number;
@@ -1099,7 +1142,29 @@ export namespace Tachyon {
     conntrack_count?: number;
     conntrack_max?: number;
     dns_type?: string;
+    dns_strategy?: string;
     fakeip_enabled?: number;
+    fakeip_inet4_range?: string;
+    fakeip_inet6_range?: string;
+    wan_ip?: string;
+    wan_ipv6?: string;
+    lan_ip?: string;
+    lan_ipv6?: string;
+    wan6_prefix?: string;
+    wan6_pd?: string[];
+    wan6_available?: 0 | 1 | boolean;
+    wan6_iface?: string;
+    router_hostname?: string;
+    runtime_dns_strategy?: string;
+    webrtc_leak_protect?: '0' | '1' | number | boolean;
+    ipv6_effective_state?:
+      | 'disabled'
+      | 'leak_guard'
+      | 'tunnel_over_v4'
+      | 'full'
+      | string;
+    ipv6_mode?: string;
+    ipv6_leak_guard?: '0' | '1' | number | boolean;
     inbound_mode?: string;
     active_sections_count?: number;
     total_sections_count?: number;
@@ -1822,6 +1887,12 @@ export namespace Tachyon {
     proxy_city?: string;
     proxy_org?: string;
     proxy_online: boolean;
+    direct_ipv6?: string;
+    proxy_ipv6?: string;
+    ipv6_leaked?: boolean;
+    ipv6_leak_guard?: boolean;
+    leak_guard_active?: boolean;
+    ipv6_effective_state?: string;
   }
 
   export interface DNSResolverInfo {
@@ -1866,10 +1937,26 @@ export namespace Tachyon {
     proxy_online: boolean;
   }
 
+  export interface IPv6LeakResult {
+    direct_ipv6?: string;
+    proxy_ipv6?: string;
+    ipv6_leak_guard?: boolean;
+    ipv6_leaked?: boolean;
+    ipv6_effective_state?: string;
+    wan6_available?: boolean;
+    nft_leak_guard_present?: boolean;
+  }
+
   export interface LeakCheckResult {
     mode?: 'default' | 'plus';
     ip_leak: IPLeakResult;
     dns_leak: DNSLeakResult;
+    direct_ipv6?: string;
+    proxy_ipv6?: string;
+    ipv6_leak_guard?: boolean;
+    ipv6_leaked?: boolean;
+    ipv6_effective_state?: string;
+    ipv6_leak?: IPv6LeakResult;
     timestamp?: number;
   }
 

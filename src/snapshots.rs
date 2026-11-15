@@ -348,24 +348,26 @@ fn collect_active_components(state: &AppState, store: &RouterStoreData) -> Vec<S
         version: crate::store::TACHYON_VERSION.to_string(),
     }];
 
-    let core_ver = std::fs::read_to_string("/etc/tachyon/tachyon-core-version")
-        .ok()
-        .map(|s| s.trim().trim_start_matches(['v', 'V']).to_string())
-        .filter(|s| !s.is_empty() && s != "unknown" && s != "not installed")
-        .or_else(|| {
-            state
-                .live
-                .try_read()
-                .ok()
-                .map(|l| {
-                    l.core_version
-                        .trim()
-                        .trim_start_matches(['v', 'V'])
-                        .to_string()
-                })
-                .filter(|s| !s.is_empty() && s != "unknown" && s != "not installed")
-        })
-        .unwrap_or_else(|| crate::store::TACHYON_VERSION.to_string());
+    let core_ver =
+        std::fs::read_to_string(crate::store::runtime_state_dir().join("tachyon-core-version"))
+            .ok()
+            .or_else(|| std::fs::read_to_string("/etc/tachyon/tachyon-core-version").ok())
+            .map(|s| s.trim().trim_start_matches(['v', 'V']).to_string())
+            .filter(|s| !s.is_empty() && s != "unknown" && s != "not installed")
+            .or_else(|| {
+                state
+                    .live
+                    .try_read()
+                    .ok()
+                    .map(|l| {
+                        l.core_version
+                            .trim()
+                            .trim_start_matches(['v', 'V'])
+                            .to_string()
+                    })
+                    .filter(|s| !s.is_empty() && s != "unknown" && s != "not installed")
+            })
+            .unwrap_or_else(|| crate::store::TACHYON_VERSION.to_string());
 
     comps.push(SnapshotComponent {
         id: "tachyon-core".to_string(),

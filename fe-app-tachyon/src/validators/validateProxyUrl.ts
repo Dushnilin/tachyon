@@ -213,7 +213,16 @@ function validateExtendedShareLink(url: string): ValidationResult {
         };
       }
     } else {
+      const firstColon = hostPortPart.indexOf(':');
       const colonIdx = hostPortPart.lastIndexOf(':');
+      if (firstColon >= 0 && firstColon !== colonIdx) {
+        return {
+          valid: false,
+          message: _(
+            'Invalid Mieru URL: IPv6 host must be enclosed in brackets',
+          ),
+        };
+      }
       if (colonIdx >= 0) {
         hostOnly = hostPortPart.slice(0, colonIdx);
         authorityPortStr = hostPortPart.slice(colonIdx + 1);
@@ -299,8 +308,11 @@ function validateExtendedShareLink(url: string): ValidationResult {
     'naive+https',
     'naive+quic',
   ];
+  const hasExplicitPort = hostPortPart.startsWith('[')
+    ? /\]:[^/\s]*$/.test(hostPortPart)
+    : hostPortPart.includes(':');
   const effectiveHostPort =
-    !hostPortPart.includes(':') && defaultPortSchemes.includes(scheme)
+    !hasExplicitPort && defaultPortSchemes.includes(scheme)
       ? `${hostPortPart}:443`
       : hostPortPart;
 

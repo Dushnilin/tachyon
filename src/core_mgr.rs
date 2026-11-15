@@ -150,6 +150,7 @@ impl CoreManager {
         self.stop_locked().await;
 
         let store_snapshot = { self.state.data.read().await.clone() };
+        let _ = crate::store::probe_wan6_runtime_state();
         Self::ensure_runtime_cache_dir(&store_snapshot.settings.cache_path);
         let cfg_val = config_gen::compile_core_config(&store_snapshot)?;
         let cfg_path = self
@@ -336,10 +337,8 @@ impl CoreManager {
         {
             let text = String::from_utf8_lossy(&out.stdout);
             if let Some(ver) = extract_semver_token(&text) {
-                let _ = crypto_gen::write_file_if_changed(
-                    "/etc/tachyon/tachyon-core-version",
-                    format!("{ver}\n").as_bytes(),
-                );
+                let ver_path = crate::store::runtime_state_dir().join("tachyon-core-version");
+                let _ = crypto_gen::write_file_if_changed(ver_path, format!("{ver}\n").as_bytes());
                 self.state.live.write().await.core_version = ver.clone();
                 return ver;
             }
@@ -348,11 +347,12 @@ impl CoreManager {
     }
 
     async fn restore_saved_selectors(&self, store_snapshot: &crate::store::RouterStoreData) {
-        let mut sel_map: HashMap<String, String> =
-            std::fs::read_to_string("/etc/tachyon/selector_state.json")
-                .ok()
-                .and_then(|s| serde_json::from_str(&s).ok())
-                .unwrap_or_default();
+        let sel_path = crate::store::runtime_state_dir().join("selector_state.json");
+        let mut sel_map: HashMap<String, String> = std::fs::read_to_string(&sel_path)
+            .or_else(|_| std::fs::read_to_string("/etc/tachyon/selector_state.json"))
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default();
         for sec in &store_snapshot.sections {
             if sec.enabled && !sec.active_selected_tag.trim().is_empty() {
                 sel_map.insert(format!("sel-{}", sec.id), sec.active_selected_tag.clone());
@@ -407,16 +407,15 @@ impl CoreManager {
             sel_map.insert(group.clone(), tag.clone());
         }
         if pruned_dirty && let Ok(raw) = serde_json::to_string_pretty(&sel_map) {
-            let _ = crypto_gen::write_file_if_changed(
-                "/etc/tachyon/selector_state.json",
-                raw.as_bytes(),
-            );
+            let sel_path = crate::store::runtime_state_dir().join("selector_state.json");
+            let _ = crypto_gen::write_file_if_changed(sel_path, raw.as_bytes());
         }
     }
 
     pub fn save_selector_choice(group_or_sec: &str, chosen_tag: &str) {
-        let path = Path::new("/etc/tachyon/selector_state.json");
-        let mut map: HashMap<String, String> = std::fs::read_to_string(path)
+        let path = crate::store::runtime_state_dir().join("selector_state.json");
+        let mut map: HashMap<String, String> = std::fs::read_to_string(&path)
+            .or_else(|_| std::fs::read_to_string("/etc/tachyon/selector_state.json"))
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or_default();

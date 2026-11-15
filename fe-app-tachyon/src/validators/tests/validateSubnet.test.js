@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateSubnet } from '../validateSubnet';
+import { cidrsOverlap, validateCidr, validateSubnet } from '../validateSubnet';
 
 export const validSubnets = [
   ['Simple IP', '192.168.1.1'],
@@ -32,6 +32,8 @@ export const invalidSubnets = [
   ['Forbidden ::', '::'],
   ['Invalid IPv6 CIDR', '2001:db8::1/129'],
   ['Invalid IPv6 address', '2001:db8::zzzz/64'],
+  ['Trailing slash IPv4', '192.168.1.0/'],
+  ['Trailing slash IPv6', '2001:db8::/'],
 ];
 
 describe('validateSubnet', () => {
@@ -47,5 +49,24 @@ describe('validateSubnet', () => {
       const res = validateSubnet(subnet);
       expect(res.valid).toBe(false);
     });
+  });
+
+  it('validates strict CIDR families and rejects trailing slashes or bare IPs', () => {
+    expect(validateCidr('198.18.0.0/15', 4).valid).toBe(true);
+    expect(validateCidr('198.18.0.0', 4).valid).toBe(false);
+    expect(validateCidr('fc00::/18', 4).valid).toBe(false);
+    expect(validateCidr('fc00::/18', 6).valid).toBe(true);
+    expect(validateCidr('fdfe:dcba:9876::1/126', 6).valid).toBe(true);
+    expect(validateCidr('fc00::1', 6).valid).toBe(false);
+    expect(validateCidr('fc00::/', 6).valid).toBe(false);
+    expect(validateCidr('198.18.0.0/15', 6).valid).toBe(false);
+  });
+
+  it('detects overlapping IPv4 and IPv6 CIDR ranges accurately', () => {
+    expect(cidrsOverlap('fc00::/18', 'fc00:1000::1/126')).toBe(true);
+    expect(cidrsOverlap('fc00::/18', 'fdfe:dcba:9876::1/126')).toBe(false);
+    expect(cidrsOverlap('198.18.0.0/15', '198.19.255.0/24')).toBe(true);
+    expect(cidrsOverlap('198.18.0.0/15', '172.19.0.1/30')).toBe(false);
+    expect(cidrsOverlap('198.18.0.0/15', 'fc00::/18')).toBe(false);
   });
 });

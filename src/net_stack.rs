@@ -7,11 +7,12 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
+use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
 use crate::crypto_gen;
-use crate::store::RouterStoreData;
+use crate::store::{EffectiveIpv6State, RouterStoreData};
 
 pub const TPROXY_PORT: u16 = 1602;
 pub const TPROXY_FWMARK: &str = "0x04000000";
@@ -26,11 +27,329 @@ const TAILSCALE_MAGICDNS_SERVERS_FILE: &str = "/etc/tachyon/dnsmasq-tailscale.se
 const TAILSCALE_LEGACY_DNSMASQ_CONF: &str = "/tmp/dnsmasq.d/tachyon-tailscale.conf";
 const TAILSCALE_MAGICDNS_IP: &str = "100.100.100.100";
 pub const FPTN_TUNNEL_BYPASS_MARK: &str = "0x00300000";
+pub const TPROXY6_LISTEN_ADDR: &str = "::1";
+
+fn parse_port_spec_tokens(spec: &str, out: &mut Vec<u16>) {
+    for tok in spec.split([',', ' ', '\t']) {
+        let t = tok.trim();
+        if t.is_empty() {
+            continue;
+        }
+        let norm = t.replace(':', "-");
+        if let Some((a_s, b_s)) = norm.split_once('-') {
+            if let (Ok(lo), Ok(hi)) = (a_s.trim().parse::<u16>(), b_s.trim().parse::<u16>())
+                && lo > 0
+                && hi >= lo
+            {
+                let capped_hi = hi.min(lo.saturating_add(64));
+                for p in lo..=capped_hi {
+                    out.push(p);
+                }
+            }
+        } else if let Ok(p) = norm.parse::<u16>()
+            && p > 0
+        {
+            out.push(p);
+        }
+    }
+}
+
+fn push_nz_port(ports: &mut Vec<u16>, p: u16) {
+    if p > 0 {
+        ports.push(p);
+    }
+}
+
+fn collect_proxy_udp_ports(store: &RouterStoreData) -> Vec<u16> {
+    let mut ports: Vec<u16> = Vec::new();
+
+    for src in store.outbound_sources.iter().filter(|s| s.enabled) {
+        push_nz_port(&mut ports, src.server_port);
+        push_nz_port(&mut ports, src.warp_server_port);
+        push_nz_port(&mut ports, src.csqtt_server_port);
+        push_nz_port(&mut ports, src.csqtt_raw_port);
+        push_nz_port(&mut ports, src.csqtt_wg_port);
+        for node in &src.cached_nodes {
+            push_nz_port(&mut ports, node.server_port);
+            if let Some(p) = node
+                .outbound_json
+                .get("server_port")
+                .and_then(|v| v.as_u64())
+                .and_then(|v| u16::try_from(v).ok())
+            {
+                push_nz_port(&mut ports, p);
+            }
+            if let Some(p) = node
+                .outbound_json
+                .get("port")
+                .and_then(|v| v.as_u64())
+                .and_then(|v| u16::try_from(v).ok())
+            {
+                push_nz_port(&mut ports, p);
+            }
+            if let Some(peers) = node.outbound_json.get("peers").and_then(|v| v.as_array()) {
+                for peer in peers {
+                    if let Some(p) = peer
+                        .get("server_port")
+                        .and_then(|v| v.as_u64())
+                        .and_then(|v| u16::try_from(v).ok())
+                    {
+                        push_nz_port(&mut ports, p);
+                    }
+                }
+            }
+            if let Some(sp) = node
+                .outbound_json
+                .get("server_ports")
+                .and_then(|v| v.as_array())
+            {
+                for item in sp {
+                    if let Some(s) = item.as_str() {
+                        parse_port_spec_tokens(s, &mut ports);
+                    }
+                }
+            }
+        }
+    }
+
+    for srv in store.servers.iter().filter(|s| s.enabled) {
+        push_nz_port(&mut ports, srv.listen_port);
+        push_nz_port(&mut ports, srv.wdtt_raw_port);
+        if !srv.listen_port_range.trim().is_empty() {
+            parse_port_spec_tokens(&srv.listen_port_range, &mut ports);
+        }
+    }
+
+    for sec in store.sections.iter().filter(|s| s.enabled) {
+        push_nz_port(&mut ports, sec.csqtt_server_port);
+        push_nz_port(&mut ports, sec.csqtt_raw_port);
+        push_nz_port(&mut ports, sec.csqtt_wg_port);
+    }
+
+    ports.sort_unstable();
+    ports.dedup();
+    ports
+}
+
+fn format_localv6_elements(fakeip_v6: &str, extra_local_v6: &[String]) -> String {
+    let mut elems = vec![
+        "::1/128".to_string(),
+        "64:ff9b::/96".to_string(),
+        "100::/64".to_string(),
+        "2001:db8::/32".to_string(),
+        "fc00::/7".to_string(),
+        "fe80::/10".to_string(),
+        "ff00::/8".to_string(),
+    ];
+    for raw in extra_local_v6 {
+        let p = raw.trim();
+        if p.is_empty() || !p.contains(':') {
+            continue;
+        }
+        let Some(masked) = crate::store::mask_cidr(p) else {
+            continue;
+        };
+        if !masked.contains(':') {
+            continue;
+        }
+        let overlaps_builtin = elems
+            .iter()
+            .any(|b| crate::store::cidr_v6_overlaps(&masked, b))
+            || crate::store::cidr_v6_overlaps(&masked, fakeip_v6);
+        if !overlaps_builtin && !elems.iter().any(|e| e == &masked) {
+            elems.push(masked);
+        }
+    }
+    elems.join(",\n            ")
+}
+
+fn collect_managed_lan_ifaces(store: &RouterStoreData) -> Vec<String> {
+    let mut excluded: Vec<String> = collect_tailscale_bypass_ifaces(store)
+        .into_iter()
+        .map(|s| s.to_ascii_lowercase())
+        .collect();
+    for static_excl in ["lo", "wan", "wan6"] {
+        excluded.push(static_excl.to_string());
+    }
+    for opt in [
+        &store.settings.output_network_interface,
+        &store.settings.wan_failover_primary,
+        &store.settings.wan_failover_backup,
+        &store.settings.tun_interface,
+    ] {
+        if let Some(clean) = sanitize_iface_name(opt) {
+            excluded.push(clean.to_ascii_lowercase());
+        }
+    }
+    for opt in &store.settings.badwan_monitored_interfaces {
+        if let Some(clean) = sanitize_iface_name(opt) {
+            excluded.push(clean.to_ascii_lowercase());
+        }
+    }
+
+    let mut lan_ifaces = Vec::new();
+    for raw in &store.settings.source_network_interfaces {
+        let Some(clean) = sanitize_iface_name(raw) else {
+            continue;
+        };
+        let lower = clean.to_ascii_lowercase();
+        if excluded.iter().any(|e| e == &lower)
+            || lower.starts_with("tun")
+            || lower.starts_with("tap")
+            || lower.starts_with("tailscale")
+            || lower.starts_with("fptn")
+            || lower.starts_with("wg")
+            || lower.starts_with("awg")
+            || lower.starts_with("utun")
+            || lower.starts_with("wan")
+        {
+            continue;
+        }
+        if !lan_ifaces.iter().any(|x| x == &clean) {
+            lan_ifaces.push(clean);
+        }
+    }
+    if lan_ifaces.is_empty() {
+        lan_ifaces.push("br-lan".to_string());
+    } else if !lan_ifaces.iter().any(|x| x == "br-lan") && !excluded.iter().any(|e| e == "br-lan") {
+        lan_ifaces.insert(0, "br-lan".to_string());
+    }
+    lan_ifaces
+}
+
+fn append_webrtc_filter_chain(
+    out: &mut String,
+    bypass_ifaces_literal: &str,
+    proxy_udp_ports_literal: &str,
+) {
+    let _ = writeln!(out, "    chain webrtc_filter {{");
+    let _ = writeln!(out, "        iifname {{ {bypass_ifaces_literal} }} return");
+    let _ = writeln!(out, "        meta mark {ROUTER_TPROXY_FWMARK} return");
+    let _ = writeln!(out, "        meta mark {BYPASS_FWMARK} return");
+    let _ = writeln!(
+        out,
+        "        meta mark & 0x00ff0000 == {TAILSCALE_TUNNEL_BYPASS_MARK_MASK} return"
+    );
+    let _ = writeln!(
+        out,
+        "        meta mark & 0x00ff0000 == {TAILSCALE_DAEMON_BYPASS_MARK} return"
+    );
+    let _ = writeln!(
+        out,
+        "        meta mark & 0x00ff0000 == {FPTN_TUNNEL_BYPASS_MARK} return"
+    );
+    if !proxy_udp_ports_literal.is_empty() {
+        let _ = writeln!(
+            out,
+            "        udp dport {{ {proxy_udp_ports_literal} }} return"
+        );
+        let _ = writeln!(
+            out,
+            "        udp sport {{ {proxy_udp_ports_literal} }} return"
+        );
+    }
+    let _ = writeln!(out, "        udp dport {{ 3478, 5349, 19302 }} reject");
+    let _ = writeln!(out, "    }}");
+}
+
+fn append_lan_ipv6_isolation_chains(
+    out: &mut String,
+    lan_ifaces: &[String],
+    ipv6_active: bool,
+    forward_guard: bool,
+) {
+    let lan_ifaces_literal = lan_ifaces
+        .iter()
+        .map(|i| format!("\"{i}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    if !ipv6_active && !lan_ifaces_literal.is_empty() {
+        let _ = writeln!(
+            out,
+            "    chain lan_ipv6_guard_in {{
+        type filter hook input priority filter; policy accept;
+        iifname {{ {lan_ifaces_literal} }} icmpv6 type nd-router-solicit drop
+        iifname {{ {lan_ifaces_literal} }} udp sport 546 udp dport 547 drop
+    }}"
+        );
+        let _ = writeln!(
+            out,
+            "    chain lan_ipv6_guard_out {{
+        type filter hook output priority filter; policy accept;
+        oifname {{ {lan_ifaces_literal} }} icmpv6 type nd-router-advert drop
+        oifname {{ {lan_ifaces_literal} }} udp sport 547 udp dport 546 drop
+    }}"
+        );
+    }
+    if forward_guard {
+        let _ = writeln!(out, "    chain ipv6_forward_guard {{");
+        let _ = writeln!(
+            out,
+            "        type filter hook forward priority filter; policy accept;"
+        );
+        if !ipv6_active && !lan_ifaces_literal.is_empty() {
+            let _ = writeln!(
+                out,
+                "        iifname {{ {lan_ifaces_literal} }} icmpv6 type nd-router-solicit drop"
+            );
+            let _ = writeln!(
+                out,
+                "        oifname {{ {lan_ifaces_literal} }} icmpv6 type nd-router-advert drop"
+            );
+            let _ = writeln!(
+                out,
+                "        iifname {{ {lan_ifaces_literal} }} udp sport 546 udp dport 547 drop"
+            );
+            let _ = writeln!(
+                out,
+                "        oifname {{ {lan_ifaces_literal} }} udp sport 547 udp dport 546 drop"
+            );
+        }
+        let _ = writeln!(
+            out,
+            "        icmpv6 type {{ destination-unreachable, packet-too-big, time-exceeded, parameter-problem }} return"
+        );
+        let _ = writeln!(out, "        ip6 daddr @localv6 return");
+        let _ = writeln!(
+            out,
+            "        meta nfproto ipv6 reject with icmpx type admin-prohibited"
+        );
+        let _ = writeln!(out, "    }}");
+    }
+}
 
 /// Compile the complete `inet TachyonTable` nftables ruleset from `RouterStoreData`.
 /// With native `tachyon-core` handling all protocols (`desync`, `wdtt`, `fptn`, `tailscale`, `proxy`),
 /// there are zero `NFQUEUE` chains and zero local `ciadpi` redirects — a single clean TProxy contour.
 pub fn compile_nftables_ruleset(store: &RouterStoreData) -> String {
+    let wan6 = crate::store::detect_wan6_runtime_available();
+    let cache = crate::store::load_cached_wan6_runtime_state();
+    compile_nftables_ruleset_with_wan6(store, wan6, &cache.wan6_prefixes)
+}
+
+pub fn compile_nftables_ruleset_with_wan6(
+    store: &RouterStoreData,
+    wan6_available: bool,
+    extra_local_v6: &[String],
+) -> String {
+    let ipv6_state = crate::store::resolve_effective_ipv6_state(&store.settings, wan6_available);
+    let ipv6_active = ipv6_state.is_active();
+    let ipv6_mode_off = crate::store::normalize_ipv6_mode(&store.settings.ipv6_mode) == "off";
+    let forward_guard = ipv6_state.is_leak_guard() || ipv6_mode_off;
+    let need_localv6 = ipv6_active || forward_guard;
+    let lan_ifaces = collect_managed_lan_ifaces(store);
+
+    let fakeip_v4 = if store.settings.fakeip_inet4_range.trim().is_empty() {
+        "198.18.0.0/15"
+    } else {
+        store.settings.fakeip_inet4_range.trim()
+    };
+    let fakeip_v6 = if store.settings.fakeip_inet6_range.trim().is_empty() {
+        "fc00::/18"
+    } else {
+        store.settings.fakeip_inet6_range.trim()
+    };
+
     let mut out = String::with_capacity(4096);
     let _ = writeln!(out, "table inet TachyonTable");
     let _ = writeln!(out, "delete table inet TachyonTable");
@@ -56,38 +375,36 @@ pub fn compile_nftables_ruleset(store: &RouterStoreData) -> String {
     }}"
     );
 
-    if store.settings.enable_ipv6 {
+    if need_localv6 {
+        let localv6_elems = format_localv6_elements(fakeip_v6, extra_local_v6);
         let _ = writeln!(
             out,
             "    set localv6 {{
         type ipv6_addr
         flags interval
         elements = {{
-            ::1/128,
-            fc00::/7,
-            fe80::/10,
-            ff00::/8
+            {localv6_elems}
         }}
     }}"
         );
     }
-
-    let fakeip_v4 = if store.settings.fakeip_inet4_range.trim().is_empty() {
-        "198.18.0.0/15"
-    } else {
-        store.settings.fakeip_inet4_range.trim()
-    };
-    let fakeip_v6 = if store.settings.fakeip_inet6_range.trim().is_empty() {
-        "fc00::/18"
-    } else {
-        store.settings.fakeip_inet6_range.trim()
-    };
 
     let bypass_ifaces_literal = collect_tailscale_bypass_ifaces(store)
         .into_iter()
         .map(|i| format!("\"{i}\""))
         .collect::<Vec<_>>()
         .join(", ");
+    let proxy_udp_ports = collect_proxy_udp_ports(store);
+    let proxy_udp_ports_literal = proxy_udp_ports
+        .iter()
+        .map(u16::to_string)
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    if store.settings.webrtc_leak_protect {
+        append_webrtc_filter_chain(&mut out, &bypass_ifaces_literal, &proxy_udp_ports_literal);
+    }
+
     let _ = writeln!(
         out,
         "    chain prerouting {{
@@ -162,17 +479,63 @@ pub fn compile_nftables_ruleset(store: &RouterStoreData) -> String {
         }
     }
 
-    // Guest mode LAN isolation, router admin protection, port allowlist & rate shaping
+    // Guest mode LAN isolation, router admin protection, port allowlist & rate shaping (IPv4 + IPv6 + MAC)
     if store.guest_mode.enabled {
-        let guests: Vec<String> = store
-            .guest_mode
-            .guest_devices
-            .iter()
-            .map(|g| g.trim().to_string())
-            .filter(|g| g.contains('.'))
-            .collect();
-        if !guests.is_empty() {
-            let guest_set = guests.join(", ");
+        let mut guests_v4: Vec<String> = Vec::new();
+        let mut guests_v6: Vec<String> = Vec::new();
+        let mut guests_mac: Vec<String> = Vec::new();
+        for g_raw in &store.guest_mode.guest_devices {
+            let g = g_raw.trim();
+            if g.is_empty() {
+                continue;
+            }
+            if crate::store::is_mac_address(g) {
+                guests_mac.push(g.to_ascii_lowercase());
+            } else if let Some((ip_part, prefix_part)) = g.split_once('/') {
+                if let (Ok(_), Ok(p)) = (
+                    ip_part.parse::<std::net::Ipv4Addr>(),
+                    prefix_part.parse::<u8>(),
+                ) && p <= 32
+                {
+                    guests_v4.push(g.to_string());
+                } else if let (Ok(_), Ok(p)) = (
+                    ip_part.parse::<std::net::Ipv6Addr>(),
+                    prefix_part.parse::<u8>(),
+                ) && p <= 128
+                {
+                    guests_v6.push(g.to_string());
+                }
+            } else if g.parse::<std::net::Ipv4Addr>().is_ok() {
+                guests_v4.push(g.to_string());
+            } else if g.parse::<std::net::Ipv6Addr>().is_ok() {
+                guests_v6.push(g.to_string());
+            }
+        }
+        let guest_allowed_ports = if !store.guest_mode.allowed_ports.is_empty() {
+            let mut ports: Vec<u16> = store.guest_mode.allowed_ports.clone();
+            if !ports.contains(&53) {
+                ports.push(53);
+            }
+            ports.sort_unstable();
+            ports.dedup();
+            Some(
+                ports
+                    .iter()
+                    .map(u16::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            )
+        } else {
+            None
+        };
+        let fakeip_v6_exempt_clause =
+            if store.guest_mode.allow_proxy && ipv6_active && store.settings.fakeip_enabled {
+                format!(" ip6 daddr != {fakeip_v6}")
+            } else {
+                String::new()
+            };
+        if !guests_v4.is_empty() {
+            let guest_set = guests_v4.join(", ");
             if store.guest_mode.block_router_admin {
                 let _ = writeln!(
                     out,
@@ -185,18 +548,7 @@ pub fn compile_nftables_ruleset(store: &RouterStoreData) -> String {
                     "        ip saddr {{ {guest_set} }} ip daddr @localv4 meta l4proto {{ tcp, udp }} th dport != 53 drop"
                 );
             }
-            if !store.guest_mode.allowed_ports.is_empty() {
-                let mut ports: Vec<u16> = store.guest_mode.allowed_ports.clone();
-                if !ports.contains(&53) {
-                    ports.push(53);
-                }
-                ports.sort_unstable();
-                ports.dedup();
-                let port_list = ports
-                    .iter()
-                    .map(u16::to_string)
-                    .collect::<Vec<_>>()
-                    .join(", ");
+            if let Some(ref port_list) = guest_allowed_ports {
                 let _ = writeln!(
                     out,
                     "        ip saddr {{ {guest_set} }} ip daddr != @localv4 meta l4proto {{ tcp, udp }} th dport != {{ {port_list} }} drop"
@@ -213,6 +565,90 @@ pub fn compile_nftables_ruleset(store: &RouterStoreData) -> String {
                     "        ip daddr {{ {guest_set} }} limit rate over {rate_kbytes} kbytes/second drop"
                 );
             }
+            if !store.guest_mode.allow_proxy {
+                let _ = writeln!(out, "        ip saddr {{ {guest_set} }} return");
+            }
+        }
+        if !guests_v6.is_empty() {
+            let guest6_set = guests_v6.join(", ");
+            if need_localv6 {
+                if store.guest_mode.block_router_admin {
+                    let _ = writeln!(
+                        out,
+                        "        ip6 saddr {{ {guest6_set} }} ip6 daddr @localv6{fakeip_v6_exempt_clause} meta l4proto {{ tcp, udp }} th dport {{ 22, 80, 443, 1680, 9090 }} drop"
+                    );
+                }
+                if store.guest_mode.isolate_lan {
+                    let _ = writeln!(
+                        out,
+                        "        ip6 saddr {{ {guest6_set} }} ip6 daddr @localv6{fakeip_v6_exempt_clause} meta l4proto {{ tcp, udp }} th dport != 53 drop"
+                    );
+                }
+                if let Some(ref port_list) = guest_allowed_ports {
+                    let _ = writeln!(
+                        out,
+                        "        ip6 saddr {{ {guest6_set} }} ip6 daddr != @localv6 meta l4proto {{ tcp, udp }} th dport != {{ {port_list} }} drop"
+                    );
+                }
+                if store.guest_mode.bandwidth_limit_mbps > 0 {
+                    let rate_kbytes =
+                        (u64::from(store.guest_mode.bandwidth_limit_mbps) * 125).max(1);
+                    let _ = writeln!(
+                        out,
+                        "        ip6 saddr {{ {guest6_set} }} limit rate over {rate_kbytes} kbytes/second drop"
+                    );
+                    let _ = writeln!(
+                        out,
+                        "        ip6 daddr {{ {guest6_set} }} limit rate over {rate_kbytes} kbytes/second drop"
+                    );
+                }
+            }
+            if !store.guest_mode.allow_proxy {
+                let _ = writeln!(out, "        ip6 saddr {{ {guest6_set} }} return");
+            }
+        }
+        if !guests_mac.is_empty() {
+            let mac_set = guests_mac.join(", ");
+            if store.guest_mode.block_router_admin {
+                let _ = writeln!(
+                    out,
+                    "        ether saddr {{ {mac_set} }} ip daddr @localv4 meta l4proto {{ tcp, udp }} th dport {{ 22, 80, 443, 1680, 9090 }} drop"
+                );
+                if need_localv6 {
+                    let _ = writeln!(
+                        out,
+                        "        ether saddr {{ {mac_set} }} ip6 daddr @localv6{fakeip_v6_exempt_clause} meta l4proto {{ tcp, udp }} th dport {{ 22, 80, 443, 1680, 9090 }} drop"
+                    );
+                }
+            }
+            if store.guest_mode.isolate_lan {
+                let _ = writeln!(
+                    out,
+                    "        ether saddr {{ {mac_set} }} ip daddr @localv4 meta l4proto {{ tcp, udp }} th dport != 53 drop"
+                );
+                if need_localv6 {
+                    let _ = writeln!(
+                        out,
+                        "        ether saddr {{ {mac_set} }} ip6 daddr @localv6{fakeip_v6_exempt_clause} meta l4proto {{ tcp, udp }} th dport != 53 drop"
+                    );
+                }
+            }
+            if let Some(ref port_list) = guest_allowed_ports {
+                let _ = writeln!(
+                    out,
+                    "        ether saddr {{ {mac_set} }} ip daddr != @localv4 meta l4proto {{ tcp, udp }} th dport != {{ {port_list} }} drop"
+                );
+            }
+            if store.guest_mode.bandwidth_limit_mbps > 0 {
+                let rate_kbytes = (u64::from(store.guest_mode.bandwidth_limit_mbps) * 125).max(1);
+                let _ = writeln!(
+                    out,
+                    "        ether saddr {{ {mac_set} }} limit rate over {rate_kbytes} kbytes/second drop"
+                );
+            }
+            if !store.guest_mode.allow_proxy {
+                let _ = writeln!(out, "        ether saddr {{ {mac_set} }} return");
+            }
         }
     }
 
@@ -223,21 +659,48 @@ pub fn compile_nftables_ruleset(store: &RouterStoreData) -> String {
             out,
             "        ip daddr 100.64.0.0/10 meta l4proto {{ tcp, udp }} tproxy ip to 127.0.0.1:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} accept"
         );
-        if store.settings.enable_ipv6 {
+        if ipv6_active && !TPROXY6_LISTEN_ADDR.trim().is_empty() {
             let _ = writeln!(
                 out,
-                "        ip6 daddr fd7a:115c:a1e0::/48 meta l4proto {{ tcp, udp }} tproxy ip6 to [::1]:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} accept"
+                "        ip6 daddr fd7a:115c:a1e0::/48 meta l4proto {{ tcp, udp }} tproxy ip6 to [{TPROXY6_LISTEN_ADDR}]:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} accept"
             );
         }
     }
 
     // Intercept DNS queries (`:53`) to `tachyon-core` FakeIP/DNS listener (`127.0.0.42:53`)
     let _ = writeln!(out, "        ip daddr @localv4 return");
-    if store.settings.enable_ipv6 {
+    if ipv6_active {
+        if store.settings.fakeip_enabled && !TPROXY6_LISTEN_ADDR.trim().is_empty() {
+            let _ = writeln!(
+                out,
+                "        ip6 daddr {fakeip_v6} meta l4proto {{ tcp, udp }} tproxy ip6 to [{TPROXY6_LISTEN_ADDR}]:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} accept"
+            );
+        }
+        let _ = writeln!(out, "        meta l4proto icmpv6 return");
         let _ = writeln!(
             out,
             "        ip6 daddr @localv6 ip6 daddr != {fakeip_v6} return"
         );
+    } else if forward_guard {
+        let _ = writeln!(
+            out,
+            "        icmpv6 type {{ destination-unreachable, packet-too-big, time-exceeded, parameter-problem }} return"
+        );
+        let _ = writeln!(out, "        ip6 daddr @localv6 return");
+        let _ = writeln!(
+            out,
+            "        meta nfproto ipv6 meta l4proto {{ tcp, udp }} th dport {{ 53, 853 }} reject with icmpx type admin-prohibited"
+        );
+        let _ = writeln!(
+            out,
+            "        ip6 daddr {{ 2606:4700:4700::1111, 2606:4700:4700::1001, 2001:4860:4860::8888, 2001:4860:4860::8844, 2620:fe::fe, 2620:fe::9 }} tcp dport {{ 443, 853 }} reject with icmpx type admin-prohibited"
+        );
+        let _ = writeln!(
+            out,
+            "        meta nfproto ipv6 reject with icmpx type admin-prohibited"
+        );
+    } else {
+        let _ = writeln!(out, "        meta nfproto ipv6 return");
     }
 
     // Paused / quota-exhausted parental control devices matched by L2 MAC address
@@ -286,8 +749,21 @@ pub fn compile_nftables_ruleset(store: &RouterStoreData) -> String {
 
     // Exclude FPTN upstream server IPs so FPTN tunnel packets never self-intercept
     let fptn_ips = crate::config_gen::extract_fptn_server_ips(store);
-    if !fptn_ips.is_empty() {
-        let _ = writeln!(out, "        ip daddr {{ {} }} return", fptn_ips.join(", "));
+    let fptn_v4: Vec<String> = fptn_ips
+        .iter()
+        .filter(|s| s.parse::<std::net::Ipv4Addr>().is_ok())
+        .cloned()
+        .collect();
+    let fptn_v6: Vec<String> = fptn_ips
+        .iter()
+        .filter(|s| s.parse::<std::net::Ipv6Addr>().is_ok())
+        .cloned()
+        .collect();
+    if !fptn_v4.is_empty() {
+        let _ = writeln!(out, "        ip daddr {{ {} }} return", fptn_v4.join(", "));
+    }
+    if !fptn_v6.is_empty() && ipv6_active {
+        let _ = writeln!(out, "        ip6 daddr {{ {} }} return", fptn_v6.join(", "));
     }
 
     if store.settings.exclude_ntp {
@@ -308,6 +784,10 @@ pub fn compile_nftables_ruleset(store: &RouterStoreData) -> String {
         );
     }
 
+    if store.settings.webrtc_leak_protect {
+        let _ = writeln!(out, "        jump webrtc_filter");
+    }
+
     if store.settings.disable_quic {
         let _ = writeln!(out, "        udp dport 443 reject");
     }
@@ -317,16 +797,22 @@ pub fn compile_nftables_ruleset(store: &RouterStoreData) -> String {
             out,
             "        ip daddr {{ 1.1.1.1, 1.0.0.1, 8.8.8.8, 8.8.4.4, 9.9.9.9 }} tcp dport {{ 443, 853 }} reject"
         );
+        if ipv6_active {
+            let _ = writeln!(
+                out,
+                "        ip6 daddr {{ 2606:4700:4700::1111, 2606:4700:4700::1001, 2001:4860:4860::8888, 2001:4860:4860::8844, 2620:fe::fe, 2620:fe::9 }} tcp dport {{ 443, 853 }} reject"
+            );
+        }
     }
 
     let _ = writeln!(
         out,
         "        meta l4proto {{ tcp, udp }} tproxy ip to 127.0.0.1:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} accept"
     );
-    if store.settings.enable_ipv6 {
+    if ipv6_active && !TPROXY6_LISTEN_ADDR.trim().is_empty() {
         let _ = writeln!(
             out,
-            "        meta l4proto {{ tcp, udp }} tproxy ip6 to [::1]:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} accept"
+            "        meta l4proto {{ tcp, udp }} tproxy ip6 to [{TPROXY6_LISTEN_ADDR}]:{TPROXY_PORT} meta mark set {TPROXY_FWMARK} accept"
         );
     }
 
@@ -335,11 +821,6 @@ pub fn compile_nftables_ruleset(store: &RouterStoreData) -> String {
     // Router-originated traffic (`OUTPUT` hook): prevent loops via `BYPASS_FWMARK`,
     // always intercept router FakeIP connections so local checks/tools work, and optionally
     // intercept all non-local router traffic when `route_router_traffic` is enabled.
-    let bypass_ifaces_literal = collect_tailscale_bypass_ifaces(store)
-        .into_iter()
-        .map(|i| format!("\"{i}\""))
-        .collect::<Vec<_>>()
-        .join(", ");
     let _ = writeln!(
         out,
         "    chain mangle_output {{
@@ -358,8 +839,11 @@ pub fn compile_nftables_ruleset(store: &RouterStoreData) -> String {
         );
     }
     let _ = writeln!(out, "        ip daddr @localv4 return");
-    if !fptn_ips.is_empty() {
-        let _ = writeln!(out, "        ip daddr {{ {} }} return", fptn_ips.join(", "));
+    if !fptn_v4.is_empty() {
+        let _ = writeln!(out, "        ip daddr {{ {} }} return", fptn_v4.join(", "));
+    }
+    if !fptn_v6.is_empty() && ipv6_active {
+        let _ = writeln!(out, "        ip6 daddr {{ {} }} return", fptn_v6.join(", "));
     }
     if store.settings.exclude_ntp {
         let _ = writeln!(out, "        udp dport 123 return");
@@ -377,15 +861,19 @@ pub fn compile_nftables_ruleset(store: &RouterStoreData) -> String {
             ports.join(", ")
         );
     }
-    let _ = writeln!(
-        out,
-        "        ip daddr {fakeip_v4} meta l4proto {{ tcp, udp }} meta mark set {ROUTER_TPROXY_FWMARK} accept"
-    );
-    if store.settings.enable_ipv6 {
+    if store.settings.fakeip_enabled {
         let _ = writeln!(
             out,
-            "        ip6 daddr {fakeip_v6} meta l4proto {{ tcp, udp }} meta mark set {ROUTER_TPROXY_FWMARK} accept"
+            "        ip daddr {fakeip_v4} meta l4proto {{ tcp, udp }} meta mark set {ROUTER_TPROXY_FWMARK} accept"
         );
+    }
+    if ipv6_active {
+        if store.settings.fakeip_enabled {
+            let _ = writeln!(
+                out,
+                "        ip6 daddr {fakeip_v6} meta l4proto {{ tcp, udp }} meta mark set {ROUTER_TPROXY_FWMARK} accept"
+            );
+        }
         if intercept_embedded_ts {
             let _ = writeln!(
                 out,
@@ -393,6 +881,29 @@ pub fn compile_nftables_ruleset(store: &RouterStoreData) -> String {
             );
         }
         let _ = writeln!(out, "        ip6 daddr @localv6 return");
+    } else if forward_guard {
+        let _ = writeln!(
+            out,
+            "        icmpv6 type {{ destination-unreachable, packet-too-big, time-exceeded, parameter-problem }} return"
+        );
+        let _ = writeln!(out, "        ip6 daddr @localv6 return");
+        let _ = writeln!(
+            out,
+            "        meta nfproto ipv6 reject with icmpx type admin-prohibited"
+        );
+    }
+    if store.settings.webrtc_leak_protect {
+        if !proxy_udp_ports_literal.is_empty() {
+            let _ = writeln!(
+                out,
+                "        udp dport {{ {proxy_udp_ports_literal} }} return"
+            );
+            let _ = writeln!(
+                out,
+                "        udp sport {{ {proxy_udp_ports_literal} }} return"
+            );
+        }
+        let _ = writeln!(out, "        udp dport {{ 3478, 5349, 19302 }} reject");
     }
     if store.settings.route_router_traffic {
         if store.settings.disable_quic {
@@ -403,6 +914,12 @@ pub fn compile_nftables_ruleset(store: &RouterStoreData) -> String {
                 out,
                 "        ip daddr {{ 1.1.1.1, 1.0.0.1, 8.8.8.8, 8.8.4.4, 9.9.9.9 }} tcp dport {{ 443, 853 }} reject"
             );
+            if ipv6_active {
+                let _ = writeln!(
+                    out,
+                    "        ip6 daddr {{ 2606:4700:4700::1111, 2606:4700:4700::1001, 2001:4860:4860::8888, 2001:4860:4860::8844, 2620:fe::fe, 2620:fe::9 }} tcp dport {{ 443, 853 }} reject"
+                );
+            }
         }
         let _ = writeln!(
             out,
@@ -411,8 +928,89 @@ pub fn compile_nftables_ruleset(store: &RouterStoreData) -> String {
     }
     let _ = writeln!(out, "    }}");
 
+    if store.settings.webrtc_leak_protect {
+        let _ = writeln!(
+            out,
+            "    chain webrtc_forward {{
+        type filter hook forward priority filter; policy accept;
+        oifname {{ {bypass_ifaces_literal} }} return
+        jump webrtc_filter
+    }}"
+        );
+    }
+    append_lan_ipv6_isolation_chains(&mut out, &lan_ifaces, ipv6_active, forward_guard);
+
     let _ = writeln!(out, "}}");
     out
+}
+
+pub fn compile_tun_guard_ruleset_with_wan6(
+    store: &RouterStoreData,
+    wan6_available: bool,
+    extra_local_v6: &[String],
+) -> Option<String> {
+    let ipv6_state = crate::store::resolve_effective_ipv6_state(&store.settings, wan6_available);
+    let ipv6_active = ipv6_state.is_active();
+    let ipv6_mode_off = crate::store::normalize_ipv6_mode(&store.settings.ipv6_mode) == "off";
+    let forward_guard = ipv6_state.is_leak_guard() || ipv6_mode_off;
+    if !store.settings.webrtc_leak_protect && ipv6_active && !forward_guard {
+        return None;
+    }
+    let lan_ifaces = collect_managed_lan_ifaces(store);
+    let fakeip_v6 = if store.settings.fakeip_inet6_range.trim().is_empty() {
+        "fc00::/18"
+    } else {
+        store.settings.fakeip_inet6_range.trim()
+    };
+    let mut bypass_ifaces = collect_tailscale_bypass_ifaces(store);
+    if let Some(tun_if) = sanitize_iface_name(&store.settings.tun_interface)
+        && !bypass_ifaces.iter().any(|i| i == &tun_if)
+    {
+        bypass_ifaces.push(tun_if);
+    }
+    let bypass_ifaces_literal = bypass_ifaces
+        .into_iter()
+        .map(|i| format!("\"{i}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let proxy_udp_ports = collect_proxy_udp_ports(store);
+    let proxy_udp_ports_literal = proxy_udp_ports
+        .iter()
+        .map(u16::to_string)
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let mut out = String::with_capacity(2048);
+    let _ = writeln!(out, "table inet TachyonTable");
+    let _ = writeln!(out, "delete table inet TachyonTable");
+    let _ = writeln!(out, "table inet TachyonTable {{");
+    if forward_guard {
+        let localv6_elems = format_localv6_elements(fakeip_v6, extra_local_v6);
+        let _ = writeln!(
+            out,
+            "    set localv6 {{
+        type ipv6_addr
+        flags interval
+        elements = {{
+            {localv6_elems}
+        }}
+    }}"
+        );
+    }
+    if store.settings.webrtc_leak_protect {
+        append_webrtc_filter_chain(&mut out, &bypass_ifaces_literal, &proxy_udp_ports_literal);
+        let _ = writeln!(
+            out,
+            "    chain webrtc_forward {{
+        type filter hook forward priority filter; policy accept;
+        oifname {{ {bypass_ifaces_literal} }} return
+        jump webrtc_filter
+    }}"
+        );
+    }
+    append_lan_ipv6_isolation_chains(&mut out, &lan_ifaces, ipv6_active, forward_guard);
+    let _ = writeln!(out, "}}");
+    Some(out)
 }
 
 async fn run_checked_ip(args: &[&str]) -> anyhow::Result<()> {
@@ -883,18 +1481,558 @@ async fn run_dnsmasq_init(action: &str) {
         .await;
 }
 
+async fn run_odhcpd_reload() {
+    let _ = Command::new("/etc/init.d/odhcpd")
+        .arg("reload")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .await;
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct OdhcpdLanBackup {
+    pub ra: Option<String>,
+    pub dhcpv6: Option<String>,
+    pub ndp: Option<String>,
+    pub ra_dns: Option<String>,
+    pub ra_default: Option<String>,
+    pub dns: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct OdhcpdLanSnapshot {
+    pub exists: bool,
+    pub ra: Option<String>,
+    pub dhcpv6: Option<String>,
+    pub ndp: Option<String>,
+    pub ra_dns: Option<String>,
+    pub ra_default: Option<String>,
+    pub dns: Vec<String>,
+    pub backup: Option<OdhcpdLanBackup>,
+    pub marker_keys_present: Vec<&'static str>,
+}
+
+impl OdhcpdLanSnapshot {
+    pub fn to_backup(&self) -> OdhcpdLanBackup {
+        OdhcpdLanBackup {
+            ra: self.ra.clone(),
+            dhcpv6: self.dhcpv6.clone(),
+            ndp: self.ndp.clone(),
+            ra_dns: self.ra_dns.clone(),
+            ra_default: self.ra_default.clone(),
+            dns: self.dns.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct OdhcpdSyncPlan {
+    pub changed: bool,
+    pub write_backup: Option<OdhcpdLanBackup>,
+    pub set_opts: Vec<(&'static str, String)>,
+    pub del_opts: Vec<&'static str>,
+    pub replace_dns: bool,
+    pub target_dns: Vec<String>,
+    pub flush_lan_v6: bool,
+    pub check_renew_lan: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct OdhcpdRestorePlan {
+    pub changed: bool,
+    pub set_opts: Vec<(&'static str, String)>,
+    pub del_opts: Vec<&'static str>,
+    pub replace_dns: bool,
+    pub target_dns: Vec<String>,
+    pub del_markers: Vec<&'static str>,
+    pub check_renew_lan: bool,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+struct OdhcpdLanRuntimeState {
+    pub inactive_applied: bool,
+}
+
+fn parse_uci_quoted_tokens(rhs: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let s = rhs.trim();
+    if s.is_empty() {
+        return tokens;
+    }
+    let bytes = s.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i >= bytes.len() {
+            break;
+        }
+        if bytes[i] == b'\'' || bytes[i] == b'"' {
+            let quote = bytes[i];
+            i += 1;
+            let mut buf = String::new();
+            while i < bytes.len() {
+                if bytes[i] == b'\\' && i + 1 < bytes.len() {
+                    buf.push(bytes[i + 1] as char);
+                    i += 2;
+                    continue;
+                }
+                if bytes[i] == quote {
+                    i += 1;
+                    break;
+                }
+                buf.push(bytes[i] as char);
+                i += 1;
+            }
+            if !buf.is_empty() {
+                tokens.push(buf);
+            }
+        } else {
+            let start = i;
+            while i < bytes.len() && !bytes[i].is_ascii_whitespace() {
+                i += 1;
+            }
+            let tok = &s[start..i];
+            if !tok.is_empty() {
+                tokens.push(tok.to_string());
+            }
+        }
+    }
+    tokens
+}
+
+fn decode_backup_scalar(raw: &str) -> Option<String> {
+    let t = raw.trim();
+    if t.is_empty() || t == "unset" {
+        None
+    } else {
+        Some(t.to_string())
+    }
+}
+
+pub fn parse_uci_dhcp_lan_snapshot(uci_show_out: &str) -> OdhcpdLanSnapshot {
+    let mut snap = OdhcpdLanSnapshot::default();
+    let mut backup = OdhcpdLanBackup::default();
+    let mut has_backup = false;
+
+    for raw_line in uci_show_out.lines() {
+        let line = raw_line.trim();
+        if line == "dhcp.lan=dhcp" {
+            snap.exists = true;
+            continue;
+        }
+        let Some(rest) = line.strip_prefix("dhcp.lan.") else {
+            continue;
+        };
+        let Some((key, val)) = rest.split_once('=') else {
+            continue;
+        };
+        snap.exists = true;
+        let tokens = parse_uci_quoted_tokens(val);
+        let first = tokens.first().cloned().filter(|v| !v.is_empty());
+        match key {
+            "ra" => snap.ra = first,
+            "dhcpv6" => snap.dhcpv6 = first,
+            "ndp" => snap.ndp = first,
+            "ra_dns" => snap.ra_dns = first,
+            "ra_default" => snap.ra_default = first,
+            "dns" => snap.dns = tokens,
+            "tachyon_lan_ra" => {
+                has_backup = true;
+                snap.marker_keys_present.push("tachyon_lan_ra");
+                backup.ra = first.and_then(|v| decode_backup_scalar(&v));
+            }
+            "tachyon_lan_dhcpv6" => {
+                has_backup = true;
+                snap.marker_keys_present.push("tachyon_lan_dhcpv6");
+                backup.dhcpv6 = first.and_then(|v| decode_backup_scalar(&v));
+            }
+            "tachyon_lan_ndp" => {
+                has_backup = true;
+                snap.marker_keys_present.push("tachyon_lan_ndp");
+                backup.ndp = first.and_then(|v| decode_backup_scalar(&v));
+            }
+            "tachyon_lan_ra_dns" => {
+                has_backup = true;
+                snap.marker_keys_present.push("tachyon_lan_ra_dns");
+                backup.ra_dns = first.and_then(|v| decode_backup_scalar(&v));
+            }
+            "tachyon_lan_ra_default" => {
+                has_backup = true;
+                snap.marker_keys_present.push("tachyon_lan_ra_default");
+                backup.ra_default = first.and_then(|v| decode_backup_scalar(&v));
+            }
+            "tachyon_lan_dns" => {
+                has_backup = true;
+                snap.marker_keys_present.push("tachyon_lan_dns");
+                if let Some(raw_dns) = first
+                    && raw_dns != "unset"
+                {
+                    backup.dns = raw_dns
+                        .split(',')
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .map(ToString::to_string)
+                        .collect();
+                } else {
+                    backup.dns.clear();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if has_backup {
+        snap.backup = Some(backup);
+    }
+    snap
+}
+
+fn diff_odhcpd_scalars(
+    cur: &OdhcpdLanSnapshot,
+    targets: [(&'static str, &Option<String>, &Option<String>); 5],
+) -> (Vec<(&'static str, String)>, Vec<&'static str>) {
+    let mut set_opts = Vec::new();
+    let mut del_opts = Vec::new();
+    for (key, cur_val, tgt_val) in targets {
+        if cur_val != tgt_val {
+            match tgt_val {
+                Some(v) => set_opts.push((key, v.clone())),
+                None => {
+                    if cur_val.is_some() {
+                        del_opts.push(key);
+                    }
+                }
+            }
+        }
+    }
+    let _ = cur;
+    (set_opts, del_opts)
+}
+
+pub fn compute_odhcpd_sync_plan(
+    cur: &OdhcpdLanSnapshot,
+    ipv6_state: EffectiveIpv6State,
+    ipv6_mode: &str,
+    was_inactive: bool,
+) -> OdhcpdSyncPlan {
+    if !cur.exists {
+        return OdhcpdSyncPlan::default();
+    }
+    let norm_mode = crate::store::normalize_ipv6_mode(ipv6_mode);
+    let base = cur.backup.clone().unwrap_or_else(|| cur.to_backup());
+    let (
+        tgt_ra,
+        tgt_dhcpv6,
+        tgt_ndp,
+        tgt_ra_dns,
+        tgt_ra_default,
+        tgt_dns,
+        flush_lan_v6,
+        check_renew_lan,
+    ) = if !ipv6_state.is_active() {
+        (
+            Some("disabled".to_string()),
+            Some("disabled".to_string()),
+            Some("disabled".to_string()),
+            Some("0".to_string()),
+            Some("0".to_string()),
+            Vec::new(),
+            true,
+            false,
+        )
+    } else if ipv6_state.is_tunnel_over_v4() {
+        let ra = if matches!(base.ra.as_deref(), None | Some("") | Some("disabled")) {
+            Some("server".to_string())
+        } else {
+            base.ra.clone()
+        };
+        (
+            ra,
+            base.dhcpv6.clone(),
+            base.ndp.clone(),
+            Some("1".to_string()),
+            Some("2".to_string()),
+            Vec::new(),
+            false,
+            was_inactive || cur.ra.as_deref() == Some("disabled"),
+        )
+    } else {
+        let ra = if norm_mode == "dual_stack"
+            && matches!(base.ra.as_deref(), None | Some("") | Some("disabled"))
+        {
+            Some("server".to_string())
+        } else {
+            base.ra.clone()
+        };
+        (
+            ra,
+            base.dhcpv6.clone(),
+            base.ndp.clone(),
+            Some("1".to_string()),
+            base.ra_default.clone(),
+            Vec::new(),
+            false,
+            was_inactive || cur.ra.as_deref() == Some("disabled"),
+        )
+    };
+
+    let (set_opts, del_opts) = diff_odhcpd_scalars(
+        cur,
+        [
+            ("ra", &cur.ra, &tgt_ra),
+            ("dhcpv6", &cur.dhcpv6, &tgt_dhcpv6),
+            ("ndp", &cur.ndp, &tgt_ndp),
+            ("ra_dns", &cur.ra_dns, &tgt_ra_dns),
+            ("ra_default", &cur.ra_default, &tgt_ra_default),
+        ],
+    );
+    let replace_dns = cur.dns != tgt_dns;
+    let changed = !set_opts.is_empty() || !del_opts.is_empty() || replace_dns;
+    let write_backup = if cur.backup.is_none() && changed {
+        Some(cur.to_backup())
+    } else {
+        None
+    };
+
+    OdhcpdSyncPlan {
+        changed,
+        write_backup,
+        set_opts,
+        del_opts,
+        replace_dns,
+        target_dns: tgt_dns,
+        flush_lan_v6,
+        check_renew_lan,
+    }
+}
+
+pub fn compute_odhcpd_restore_plan(cur: &OdhcpdLanSnapshot) -> OdhcpdRestorePlan {
+    if !cur.exists {
+        return OdhcpdRestorePlan::default();
+    }
+    let Some(ref backup) = cur.backup else {
+        return OdhcpdRestorePlan::default();
+    };
+    let (set_opts, del_opts) = diff_odhcpd_scalars(
+        cur,
+        [
+            ("ra", &cur.ra, &backup.ra),
+            ("dhcpv6", &cur.dhcpv6, &backup.dhcpv6),
+            ("ndp", &cur.ndp, &backup.ndp),
+            ("ra_dns", &cur.ra_dns, &backup.ra_dns),
+            ("ra_default", &cur.ra_default, &backup.ra_default),
+        ],
+    );
+    let replace_dns = cur.dns != backup.dns;
+    let del_markers = cur.marker_keys_present.clone();
+    let changed =
+        !set_opts.is_empty() || !del_opts.is_empty() || replace_dns || !del_markers.is_empty();
+    let check_renew_lan = cur.ra.as_deref() == Some("disabled");
+
+    OdhcpdRestorePlan {
+        changed,
+        set_opts,
+        del_opts,
+        replace_dns,
+        target_dns: backup.dns.clone(),
+        del_markers,
+        check_renew_lan,
+    }
+}
+
+#[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
+pub fn proc_if_inet6_has_global_v6(raw_if6: &str, ifname: &str) -> bool {
+    for line in raw_if6.lines() {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() >= 6 && parts[5] == ifname && u8::from_str_radix(parts[3], 16) == Ok(0) {
+            return true;
+        }
+    }
+    false
+}
+
+async fn detect_iface_has_global_v6(ifname: &str) -> bool {
+    #[cfg(all(target_os = "linux", not(test)))]
+    {
+        if let Ok(raw) = tokio::fs::read_to_string("/proc/net/if_inet6").await {
+            return proc_if_inet6_has_global_v6(&raw, ifname);
+        }
+    }
+    let _ = ifname;
+    false
+}
+
+async fn apply_uci_dhcp_lan_dns(dns: &[String]) {
+    uci_run(&["-q", "delete", "dhcp.lan.dns"]).await;
+    for item in dns {
+        if !item.trim().is_empty() {
+            uci_run(&["add_list", &format!("dhcp.lan.dns={}", item.trim())]).await;
+        }
+    }
+}
+
+async fn write_uci_odhcpd_backup(backup: &OdhcpdLanBackup) {
+    let pairs = [
+        ("tachyon_lan_ra", backup.ra.as_deref().unwrap_or("unset")),
+        (
+            "tachyon_lan_dhcpv6",
+            backup.dhcpv6.as_deref().unwrap_or("unset"),
+        ),
+        ("tachyon_lan_ndp", backup.ndp.as_deref().unwrap_or("unset")),
+        (
+            "tachyon_lan_ra_dns",
+            backup.ra_dns.as_deref().unwrap_or("unset"),
+        ),
+        (
+            "tachyon_lan_ra_default",
+            backup.ra_default.as_deref().unwrap_or("unset"),
+        ),
+    ];
+    for (k, v) in pairs {
+        uci_run(&["set", &format!("dhcp.lan.{k}={v}")]).await;
+    }
+    let dns_val = if backup.dns.is_empty() {
+        "unset".to_string()
+    } else {
+        backup.dns.join(",")
+    };
+    uci_run(&["set", &format!("dhcp.lan.tachyon_lan_dns={dns_val}")]).await;
+    let backup_path = crate::store::runtime_state_dir().join("odhcpd-lan-backup.json");
+    let backup_owned = backup.clone();
+    let _ = tokio::task::spawn_blocking(move || {
+        crypto_gen::write_json_if_changed(backup_path, &backup_owned)
+    })
+    .await;
+}
+
+pub async fn sync_odhcpd_lan_ipv6(store: &RouterStoreData, ipv6_state: EffectiveIpv6State) {
+    if cfg!(not(target_os = "linux")) || store.settings.dont_touch_dhcp {
+        return;
+    }
+    let state_path = crate::store::runtime_state_dir().join("odhcpd-lan-state.json");
+    let prev_state: OdhcpdLanRuntimeState = tokio::fs::read_to_string(&state_path)
+        .await
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default();
+
+    let Some(show_out) = uci_query(&["-q", "show", "dhcp.lan"]).await else {
+        return;
+    };
+    let snap = parse_uci_dhcp_lan_snapshot(&show_out);
+    let plan = compute_odhcpd_sync_plan(
+        &snap,
+        ipv6_state,
+        &store.settings.ipv6_mode,
+        prev_state.inactive_applied,
+    );
+
+    if plan.changed {
+        if let Some(ref backup) = plan.write_backup {
+            write_uci_odhcpd_backup(backup).await;
+        }
+        for (k, v) in &plan.set_opts {
+            uci_run(&["set", &format!("dhcp.lan.{k}={v}")]).await;
+        }
+        for k in &plan.del_opts {
+            uci_run(&["-q", "delete", &format!("dhcp.lan.{k}")]).await;
+        }
+        if plan.replace_dns {
+            apply_uci_dhcp_lan_dns(&plan.target_dns).await;
+        }
+        uci_run(&["commit", "dhcp"]).await;
+        run_odhcpd_reload().await;
+    }
+
+    if plan.flush_lan_v6 {
+        for iface in collect_managed_lan_ifaces(store) {
+            let _ = Command::new("ip")
+                .args(["-6", "addr", "flush", "dev", &iface, "scope", "global"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .await;
+        }
+    } else if plan.check_renew_lan && !detect_iface_has_global_v6("br-lan").await {
+        let _ = Command::new("ubus")
+            .args(["call", "network.interface.lan", "renew"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .await;
+    }
+
+    let next_state = OdhcpdLanRuntimeState {
+        inactive_applied: !ipv6_state.is_active(),
+    };
+    let _ = tokio::task::spawn_blocking(move || {
+        crypto_gen::write_json_if_changed(state_path, &next_state)
+    })
+    .await;
+}
+
+pub async fn restore_odhcpd_lan_ipv6() {
+    if cfg!(not(target_os = "linux")) {
+        return;
+    }
+    let Some(show_out) = uci_query(&["-q", "show", "dhcp.lan"]).await else {
+        return;
+    };
+    let snap = parse_uci_dhcp_lan_snapshot(&show_out);
+    let plan = compute_odhcpd_restore_plan(&snap);
+    if plan.changed {
+        for (k, v) in &plan.set_opts {
+            uci_run(&["set", &format!("dhcp.lan.{k}={v}")]).await;
+        }
+        for k in &plan.del_opts {
+            uci_run(&["-q", "delete", &format!("dhcp.lan.{k}")]).await;
+        }
+        if plan.replace_dns {
+            apply_uci_dhcp_lan_dns(&plan.target_dns).await;
+        }
+        for marker in &plan.del_markers {
+            uci_run(&["-q", "delete", &format!("dhcp.lan.{marker}")]).await;
+        }
+        uci_run(&["commit", "dhcp"]).await;
+        run_odhcpd_reload().await;
+    }
+    if plan.check_renew_lan && !detect_iface_has_global_v6("br-lan").await {
+        let _ = Command::new("ubus")
+            .args(["call", "network.interface.lan", "renew"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .await;
+    }
+    let state_path = crate::store::runtime_state_dir().join("odhcpd-lan-state.json");
+    let _ = tokio::fs::remove_file(state_path).await;
+}
+
 async fn sync_tailscale_magicdns(enabled: bool, release: bool) {
-    let servers_file = Path::new(TAILSCALE_MAGICDNS_SERVERS_FILE);
-    let legacy_conf = Path::new(TAILSCALE_LEGACY_DNSMASQ_CONF);
     let sections = discover_dnsmasq_sections().await;
 
     if enabled {
-        let file_sync =
-            sync_tailscale_magicdns_files_at(servers_file, legacy_conf, true, false, false)
-                .unwrap_or(MagicDnsFileSync {
-                    file_changed: false,
-                    legacy_removed: false,
-                });
+        let file_sync = tokio::task::spawn_blocking(|| {
+            sync_tailscale_magicdns_files_at(
+                Path::new(TAILSCALE_MAGICDNS_SERVERS_FILE),
+                Path::new(TAILSCALE_LEGACY_DNSMASQ_CONF),
+                true,
+                false,
+                false,
+            )
+        })
+        .await
+        .ok()
+        .and_then(|res| res.ok())
+        .unwrap_or(MagicDnsFileSync {
+            file_changed: false,
+            legacy_removed: false,
+        });
         match claim_dnsmasq_settings(&sections, TAILSCALE_MAGICDNS_SERVERS_FILE).await {
             Some(uci_changed) => {
                 if file_sync.legacy_removed {
@@ -908,7 +2046,7 @@ async fn sync_tailscale_magicdns(enabled: bool, release: bool) {
                     "MagicDNS for *.ts.net skipped: dnsmasq already uses a custom serversfile"
                 );
                 if !dnsmasq_servers_file_in_use(&sections, TAILSCALE_MAGICDNS_SERVERS_FILE).await {
-                    let _ = std::fs::remove_file(servers_file);
+                    let _ = tokio::fs::remove_file(TAILSCALE_MAGICDNS_SERVERS_FILE).await;
                 }
                 if file_sync.legacy_removed {
                     run_dnsmasq_init("restart").await;
@@ -928,12 +2066,22 @@ async fn sync_tailscale_magicdns(enabled: bool, release: bool) {
     } else {
         true
     };
-    let file_sync =
-        sync_tailscale_magicdns_files_at(servers_file, legacy_conf, false, release, in_use)
-            .unwrap_or(MagicDnsFileSync {
-                file_changed: false,
-                legacy_removed: false,
-            });
+    let file_sync = tokio::task::spawn_blocking(move || {
+        sync_tailscale_magicdns_files_at(
+            Path::new(TAILSCALE_MAGICDNS_SERVERS_FILE),
+            Path::new(TAILSCALE_LEGACY_DNSMASQ_CONF),
+            false,
+            release,
+            in_use,
+        )
+    })
+    .await
+    .ok()
+    .and_then(|res| res.ok())
+    .unwrap_or(MagicDnsFileSync {
+        file_changed: false,
+        legacy_removed: false,
+    });
 
     if file_sync.legacy_removed {
         run_dnsmasq_init("restart").await;
@@ -1015,6 +2163,63 @@ async fn cleanup_policy_rules() {
     for &(ipv6, args) in legacy_policy_cleanup_specs() {
         del_ip_rule_all(ipv6, args).await;
     }
+    let _ = Command::new("ip")
+        .args([
+            "-6",
+            "route",
+            "del",
+            "local",
+            "::/0",
+            "dev",
+            "lo",
+            "table",
+            TPROXY_ROUTE_TABLE,
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .await;
+}
+
+async fn ensure_bridge_netfilter_disabled() {
+    #[cfg(target_os = "linux")]
+    {
+        for sysctl_key in [
+            "net.bridge.bridge-nf-call-iptables=0",
+            "net.bridge.bridge-nf-call-ip6tables=0",
+        ] {
+            let _ = Command::new("sysctl")
+                .args(["-w", sysctl_key])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .await;
+        }
+    }
+}
+
+async fn apply_nft_stdin(ruleset: &str) -> anyhow::Result<()> {
+    let mut child = Command::new("nft")
+        .arg("-f")
+        .arg("-")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    if let Some(mut stdin) = child.stdin.take()
+        && let Err(write_err) = stdin.write_all(ruleset.as_bytes()).await
+    {
+        drop(stdin);
+        let _ = child.kill().await;
+        let _ = child.wait().await;
+        return Err(write_err.into());
+    }
+    let out = child.wait_with_output().await?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        anyhow::bail!("nft apply failed: {}", err.trim());
+    }
+    Ok(())
 }
 
 /// Apply `inet TachyonTable` atomically via `nft -f -` and configure `ip rule` / `ip route`.
@@ -1023,6 +2228,10 @@ pub async fn apply_network_stack(store: &RouterStoreData) -> anyhow::Result<()> 
         return Ok(());
     }
 
+    ensure_bridge_netfilter_disabled().await;
+    let wan6_cache = tokio::task::spawn_blocking(crate::store::probe_wan6_runtime_state).await?;
+    let ipv6_state =
+        crate::store::resolve_effective_ipv6_state(&store.settings, wan6_cache.wan6_available);
     let intercept_embedded_ts =
         embedded_tailscale_enabled(store) && !native_tailscale_enabled(store);
 
@@ -1030,22 +2239,12 @@ pub async fn apply_network_stack(store: &RouterStoreData) -> anyhow::Result<()> 
         if intercept_embedded_ts {
             neutralize_standalone_tailscale_service().await;
         }
-        let ruleset = compile_nftables_ruleset(store);
-        let mut child = Command::new("nft")
-            .arg("-f")
-            .arg("-")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::null())
-            .stderr(Stdio::piped())
-            .spawn()?;
-        if let Some(mut stdin) = child.stdin.take() {
-            stdin.write_all(ruleset.as_bytes()).await?;
-        }
-        let out = child.wait_with_output().await?;
-        if !out.status.success() {
-            let err = String::from_utf8_lossy(&out.stderr);
-            anyhow::bail!("nft apply failed: {}", err.trim());
-        }
+        let ruleset = compile_nftables_ruleset_with_wan6(
+            store,
+            wan6_cache.wan6_available,
+            &wan6_cache.wan6_prefixes,
+        );
+        apply_nft_stdin(&ruleset).await?;
 
         // Clean stale or duplicate policy rules (including `table tachyon`) before adding ours.
         cleanup_policy_rules().await;
@@ -1098,8 +2297,8 @@ pub async fn apply_network_stack(store: &RouterStoreData) -> anyhow::Result<()> 
             TPROXY_ROUTE_TABLE,
         ])
         .await?;
-        if store.settings.enable_ipv6 {
-            let _ = run_checked_ip(&[
+        if ipv6_state.is_active() {
+            run_checked_ip(&[
                 "-6",
                 "rule",
                 "add",
@@ -1110,8 +2309,8 @@ pub async fn apply_network_stack(store: &RouterStoreData) -> anyhow::Result<()> 
                 "pref",
                 "100",
             ])
-            .await;
-            let _ = run_checked_ip(&[
+            .await?;
+            run_checked_ip(&[
                 "-6",
                 "rule",
                 "add",
@@ -1122,8 +2321,8 @@ pub async fn apply_network_stack(store: &RouterStoreData) -> anyhow::Result<()> 
                 "pref",
                 "101",
             ])
-            .await;
-            let _ = run_checked_ip(&[
+            .await?;
+            run_checked_ip(&[
                 "-6",
                 "route",
                 "replace",
@@ -1134,7 +2333,21 @@ pub async fn apply_network_stack(store: &RouterStoreData) -> anyhow::Result<()> 
                 "table",
                 TPROXY_ROUTE_TABLE,
             ])
-            .await;
+            .await?;
+        }
+    } else if store.settings.proxy_mode == "tun" {
+        cleanup_policy_rules().await;
+        if let Some(guard_nft) = compile_tun_guard_ruleset_with_wan6(
+            store,
+            wan6_cache.wan6_available,
+            &wan6_cache.wan6_prefixes,
+        ) {
+            apply_nft_stdin(&guard_nft).await?;
+        } else {
+            let _ = Command::new("nft")
+                .args(["delete", "table", "inet", "TachyonTable"])
+                .status()
+                .await;
         }
     }
 
@@ -1159,6 +2372,7 @@ pub async fn apply_network_stack(store: &RouterStoreData) -> anyhow::Result<()> 
             let ts_dns = native_tailscale_magicdns_enabled(store);
             sync_tailscale_magicdns(ts_dns, !ts_dns).await;
         }
+        sync_odhcpd_lan_ipv6(store, ipv6_state).await;
     }
 
     #[cfg(unix)]
@@ -1309,6 +2523,7 @@ pub async fn teardown_network_stack() {
         run_dnsmasq_init("reload").await;
     }
     sync_tailscale_magicdns(false, false).await;
+    restore_odhcpd_lan_ipv6().await;
     teardown_sqm_qdisc().await;
 }
 
@@ -1554,5 +2769,404 @@ mod tests {
         assert!(!native_nft.contains("ip daddr 100.64.0.0/10 meta l4proto"));
         assert!(!native_nft.contains("ip6 daddr fd7a:115c:a1e0::/48 meta l4proto"));
         assert!(native_nft.contains("\"tailscale0\""));
+    }
+
+    #[test]
+    fn test_ipv6_stack_fakeip6_leak_guard_webrtc_exemptions_and_guest() {
+        // 1) Auto IPv6 with wan6=false and ipv6_leak_guard=true enables LeakGuard
+        let mut store = RouterStoreData::default();
+        store.settings.ipv6_mode = "auto".to_string();
+        store.settings.ipv6_leak_guard = true;
+        store.settings.webrtc_leak_protect = true;
+        store.outbound_sources.push(crate::store::OutboundSource {
+            id: "hy2".to_string(),
+            enabled: true,
+            source_type: "hysteria2".to_string(),
+            server_port: 4433,
+            ..Default::default()
+        });
+        let guard_nft = compile_nftables_ruleset_with_wan6(&store, false, &[]);
+        assert!(
+            guard_nft.contains("chain ipv6_forward_guard")
+                && guard_nft.contains("admin-prohibited")
+        );
+        // WebRTC STUN filter with mandatory exemptions (fwmark 0x10000000 + proxy UDP port 4433)
+        assert!(guard_nft.contains("chain webrtc_filter"));
+        assert!(guard_nft.contains("meta mark 0x10000000 return"));
+        assert!(guard_nft.contains("meta mark 0x40000000 return"));
+        assert!(guard_nft.contains("udp dport {") && guard_nft.contains("4433"));
+        assert!(guard_nft.contains("\"tailscale0\"") && guard_nft.contains("\"fptn0\""));
+
+        // 2) Dual-stack with FakeIPv6 enabled: fc00::/18 precedes @localv6 return, extra WAN6 prefix in @localv6
+        store.settings.ipv6_mode = "dual_stack".to_string();
+        store.settings.fakeip_enabled = true;
+        store.settings.fakeip_inet6_range = "fc00::/18".to_string();
+        let extra = vec![
+            "2606:4700:4700::/64".to_string(),
+            "2001:db8:42::/64".to_string(),
+        ];
+        let dual_nft = compile_nftables_ruleset_with_wan6(&store, true, &extra);
+        assert!(dual_nft.contains("2606:4700:4700::/64"));
+        // 2001:db8:42::/64 overlaps builtin 2001:db8::/32 so it is deduplicated cleanly
+        assert!(!dual_nft.contains("2001:db8:42::/64"));
+        let pre_start = dual_nft.find("chain prerouting").expect("prerouting");
+        let out_start = dual_nft.find("chain mangle_output").expect("mangle_output");
+        let prerouting = &dual_nft[pre_start..out_start];
+        let mangle_output = &dual_nft[out_start..];
+        assert!(
+            prerouting.find("ip6 daddr fc00::/18").expect("pre fakeip6")
+                < prerouting.find("ip6 daddr @localv6").expect("pre localv6")
+        );
+        assert!(
+            mangle_output
+                .find("ip6 daddr fc00::/18")
+                .expect("out fakeip6")
+                < mangle_output
+                    .find("ip6 daddr @localv6")
+                    .expect("out localv6")
+        );
+
+        // 3) Guest isolation supports IPv4, IPv6, and MAC separately without syntax collision
+        store.guest_mode.enabled = true;
+        store.guest_mode.guest_devices = vec![
+            "192.168.4.10".to_string(),
+            "2001:db8:4::10".to_string(),
+            "aa:bb:cc:dd:ee:ff".to_string(),
+        ];
+        store.guest_mode.isolate_lan = true;
+        let guest_nft = compile_nftables_ruleset_with_wan6(&store, true, &[]);
+        assert!(guest_nft.contains("ip saddr { 192.168.4.10 }"));
+        assert!(guest_nft.contains("ip6 saddr { 2001:db8:4::10 }"));
+        assert!(guest_nft.contains("ether saddr { aa:bb:cc:dd:ee:ff }"));
+    }
+
+    #[test]
+    fn test_ipv6_off_and_auto_inactive_lan_isolation_rules() {
+        let mut store = RouterStoreData::default();
+        store.settings.ipv6_mode = "off".to_string();
+        store.settings.ipv6_leak_guard = false;
+        store.settings.source_network_interfaces = vec![
+            "br-lan".to_string(),
+            "br-guest".to_string(),
+            "wan".to_string(),
+            "wan6".to_string(),
+            "lo".to_string(),
+        ];
+
+        let tproxy_nft = compile_nftables_ruleset_with_wan6(&store, true, &[]);
+        let tun_nft = compile_tun_guard_ruleset_with_wan6(&store, true, &[])
+            .expect("tun guard must emit IPv6 isolation rules when ipv6_mode=off");
+
+        for nft in [&tproxy_nft, &tun_nft] {
+            let guard_in_start = nft
+                .find("chain lan_ipv6_guard_in")
+                .expect("lan_ipv6_guard_in");
+            let guard_out_start = nft
+                .find("chain lan_ipv6_guard_out")
+                .expect("lan_ipv6_guard_out");
+            let fwd_start = nft
+                .find("chain ipv6_forward_guard")
+                .expect("ipv6_forward_guard");
+            let guard_in = &nft[guard_in_start..guard_out_start];
+            let guard_out = &nft[guard_out_start..fwd_start];
+            let fwd = &nft[fwd_start..];
+
+            assert!(guard_in.contains(
+                "iifname { \"br-lan\", \"br-guest\" } icmpv6 type nd-router-solicit drop"
+            ));
+            assert!(
+                guard_in.contains(
+                    "iifname { \"br-lan\", \"br-guest\" } udp sport 546 udp dport 547 drop"
+                )
+            );
+            assert!(guard_out.contains(
+                "oifname { \"br-lan\", \"br-guest\" } icmpv6 type nd-router-advert drop"
+            ));
+            assert!(
+                guard_out.contains(
+                    "oifname { \"br-lan\", \"br-guest\" } udp sport 547 udp dport 546 drop"
+                )
+            );
+            for ch in [guard_in, guard_out, fwd] {
+                assert!(!ch.contains("\"wan\""));
+                assert!(!ch.contains("\"wan6\""));
+                assert!(!ch.contains("\"lo\""));
+            }
+            assert!(!nft.contains("meta l4proto icmpv6 return"));
+            assert!(!nft.contains("udp sport 546 udp dport 547 return"));
+            assert!(fwd.contains(
+                "icmpv6 type { destination-unreachable, packet-too-big, time-exceeded, parameter-problem } return"
+            ));
+            assert!(fwd.contains("meta nfproto ipv6 reject with icmpx type admin-prohibited"));
+        }
+
+        // Verify alias ipv4_only produces identical off isolation
+        store.settings.ipv6_mode = "ipv4_only".to_string();
+        let alias_nft = compile_nftables_ruleset_with_wan6(&store, true, &[]);
+        assert_eq!(alias_nft, tproxy_nft);
+
+        // Auto without WAN6 and leak_guard=false drops LAN RA/DHCPv6 without forcing ipv6_forward_guard
+        store.settings.ipv6_mode = "auto".to_string();
+        store.settings.ipv6_leak_guard = false;
+        let auto_tproxy = compile_nftables_ruleset_with_wan6(&store, false, &[]);
+        let auto_tun = compile_tun_guard_ruleset_with_wan6(&store, false, &[])
+            .expect("tun guard must drop LAN RA/DHCPv6 when auto lacks wan6");
+        for nft in [&auto_tproxy, &auto_tun] {
+            assert!(nft.contains("chain lan_ipv6_guard_in"));
+            assert!(nft.contains("chain lan_ipv6_guard_out"));
+            assert!(!nft.contains("chain ipv6_forward_guard"));
+        }
+    }
+
+    #[test]
+    fn test_odhcpd_lan_snapshot_sync_and_restore_plans() {
+        let raw_initial = "\
+dhcp.lan=dhcp
+dhcp.lan.interface='lan'
+dhcp.lan.start='100'
+dhcp.lan.limit='150'
+dhcp.lan.leasetime='12h'
+dhcp.lan.dhcpv6='server'
+dhcp.lan.ra='server'
+dhcp.lan.ndp='relay'
+dhcp.lan.ra_dns='1'
+dhcp.lan.ra_default='1'
+dhcp.lan.dns='fd00::1' '2001:4860:4860::8888'
+";
+        let initial = parse_uci_dhcp_lan_snapshot(raw_initial);
+        assert!(initial.exists);
+        assert_eq!(initial.ra.as_deref(), Some("server"));
+        assert_eq!(initial.dhcpv6.as_deref(), Some("server"));
+        assert_eq!(initial.ndp.as_deref(), Some("relay"));
+        assert_eq!(initial.ra_dns.as_deref(), Some("1"));
+        assert_eq!(initial.ra_default.as_deref(), Some("1"));
+        assert_eq!(
+            initial.dns,
+            vec!["fd00::1".to_string(), "2001:4860:4860::8888".to_string()]
+        );
+        assert!(initial.backup.is_none());
+
+        // Switching to off writes backup once and disables RA/DHCPv6/NDP/ra_dns/ra_default + clears dns
+        let off_plan = compute_odhcpd_sync_plan(
+            &initial,
+            crate::store::EffectiveIpv6State::Disabled,
+            "off",
+            false,
+        );
+        assert!(off_plan.changed);
+        assert!(off_plan.flush_lan_v6);
+        assert!(!off_plan.check_renew_lan);
+        assert!(off_plan.replace_dns && off_plan.target_dns.is_empty());
+        let written_backup = off_plan
+            .write_backup
+            .clone()
+            .expect("backup written on first change");
+        assert_eq!(written_backup.ra.as_deref(), Some("server"));
+        assert_eq!(written_backup.dns, vec!["fd00::1", "2001:4860:4860::8888"]);
+        assert!(off_plan.set_opts.contains(&("ra", "disabled".to_string())));
+        assert!(
+            off_plan
+                .set_opts
+                .contains(&("dhcpv6", "disabled".to_string()))
+        );
+        assert!(off_plan.set_opts.contains(&("ndp", "disabled".to_string())));
+        assert!(off_plan.set_opts.contains(&("ra_dns", "0".to_string())));
+        assert!(off_plan.set_opts.contains(&("ra_default", "0".to_string())));
+
+        // Re-applying off when already applied is idempotent (changed == false)
+        let raw_after_off = "\
+dhcp.lan=dhcp
+dhcp.lan.interface='lan'
+dhcp.lan.ra='disabled'
+dhcp.lan.dhcpv6='disabled'
+dhcp.lan.ndp='disabled'
+dhcp.lan.ra_dns='0'
+dhcp.lan.ra_default='0'
+dhcp.lan.tachyon_lan_ra='server'
+dhcp.lan.tachyon_lan_dhcpv6='server'
+dhcp.lan.tachyon_lan_ndp='relay'
+dhcp.lan.tachyon_lan_ra_dns='1'
+dhcp.lan.tachyon_lan_ra_default='1'
+dhcp.lan.tachyon_lan_dns='fd00::1,2001:4860:4860::8888'
+";
+        let after_off = parse_uci_dhcp_lan_snapshot(raw_after_off);
+        assert!(after_off.backup.is_some());
+        let off_idem = compute_odhcpd_sync_plan(
+            &after_off,
+            crate::store::EffectiveIpv6State::Disabled,
+            "off",
+            true,
+        );
+        assert!(!off_idem.changed);
+        assert!(off_idem.write_backup.is_none());
+        assert!(off_idem.flush_lan_v6);
+
+        // Switching from off -> tunnel_over_v4 enables RA + ra_default=2 + ra_dns=1 and triggers LAN renew check
+        let tun_v4_plan = compute_odhcpd_sync_plan(
+            &after_off,
+            crate::store::EffectiveIpv6State::TunnelOverV4,
+            "tunnel_over_v4",
+            true,
+        );
+        assert!(tun_v4_plan.changed);
+        assert!(!tun_v4_plan.flush_lan_v6);
+        assert!(tun_v4_plan.check_renew_lan);
+        assert!(tun_v4_plan.set_opts.contains(&("ra", "server".to_string())));
+        assert!(tun_v4_plan.set_opts.contains(&("ra_dns", "1".to_string())));
+        assert!(
+            tun_v4_plan
+                .set_opts
+                .contains(&("ra_default", "2".to_string()))
+        );
+        assert!(
+            tun_v4_plan
+                .set_opts
+                .contains(&("dhcpv6", "server".to_string()))
+        );
+        assert!(tun_v4_plan.set_opts.contains(&("ndp", "relay".to_string())));
+
+        // Switching from off -> dual_stack restores backup ra/dhcpv6/ndp/ra_default, sets ra_dns=1, triggers renew
+        let dual_plan = compute_odhcpd_sync_plan(
+            &after_off,
+            crate::store::EffectiveIpv6State::Full,
+            "dual_stack",
+            true,
+        );
+        assert!(dual_plan.changed);
+        assert!(dual_plan.check_renew_lan);
+        assert!(dual_plan.set_opts.contains(&("ra", "server".to_string())));
+        assert!(dual_plan.set_opts.contains(&("ra_dns", "1".to_string())));
+        assert!(
+            dual_plan
+                .set_opts
+                .contains(&("ra_default", "1".to_string()))
+        );
+
+        // Dual-stack forces ra='server' even when original router backup had ra='disabled'
+        let mut disabled_orig_snap = after_off.clone();
+        if let Some(ref mut b) = disabled_orig_snap.backup {
+            b.ra = Some("disabled".to_string());
+        }
+        let dual_force_ra = compute_odhcpd_sync_plan(
+            &disabled_orig_snap,
+            crate::store::EffectiveIpv6State::Full,
+            "dual_stack",
+            true,
+        );
+        assert!(
+            dual_force_ra
+                .set_opts
+                .contains(&("ra", "server".to_string()))
+        );
+
+        // Teardown restore restores exact original values & dns list and cleans markers
+        let restore = compute_odhcpd_restore_plan(&after_off);
+        assert!(restore.changed);
+        assert!(restore.check_renew_lan);
+        assert!(restore.set_opts.contains(&("ra", "server".to_string())));
+        assert!(restore.set_opts.contains(&("ra_dns", "1".to_string())));
+        assert!(restore.set_opts.contains(&("ra_default", "1".to_string())));
+        assert!(restore.replace_dns);
+        assert_eq!(restore.target_dns, vec!["fd00::1", "2001:4860:4860::8888"]);
+        assert!(restore.del_markers.contains(&"tachyon_lan_ra"));
+        assert!(restore.del_markers.contains(&"tachyon_lan_dns"));
+    }
+
+    #[test]
+    fn test_proc_if_inet6_has_global_v6() {
+        let only_ll = "\
+fe80000000000000021122fffe334455 05 40 20 80   br-lan
+00000000000000000000000000000001 01 80 10 80       lo
+";
+        assert!(!proc_if_inet6_has_global_v6(only_ll, "br-lan"));
+        assert!(!proc_if_inet6_has_global_v6(only_ll, "lo"));
+
+        let with_ula_and_gua = "\
+fe80000000000000021122fffe334455 05 40 20 80   br-lan
+fd001122334455660000000000000001 05 40 00 80   br-lan
+20010db8000100000000000000000001 02 40 00 80     eth0
+";
+        assert!(proc_if_inet6_has_global_v6(with_ula_and_gua, "br-lan"));
+        assert!(proc_if_inet6_has_global_v6(with_ula_and_gua, "eth0"));
+        assert!(!proc_if_inet6_has_global_v6(with_ula_and_gua, "wan6"));
+    }
+
+    #[test]
+    fn test_format_localv6_elements_masks_host_bits_via_mask_cidr() {
+        let extra = vec![
+            "2606:4700:4700::1234/64".to_string(),
+            "2606:4700:4700::abcd/64".to_string(),
+            "2001:4860:4860::8888".to_string(),
+            "fc00::99/18".to_string(),
+            "192.168.1.1/24".to_string(),
+            "not-a-cidr".to_string(),
+        ];
+        let elems = format_localv6_elements("fc00::/18", &extra);
+        assert!(elems.contains("2606:4700:4700::/64"));
+        assert!(!elems.contains("2606:4700:4700::1234/64"));
+        assert!(!elems.contains("2606:4700:4700::abcd/64"));
+        assert_eq!(elems.matches("2606:4700:4700::/64").count(), 1);
+        assert!(elems.contains("2001:4860:4860::8888/128"));
+        assert!(!elems.contains("192.168.1.0/24"));
+        assert!(!elems.contains("fc00::99/18"));
+    }
+
+    #[test]
+    fn test_guest_mode_allow_proxy_emits_fakeip_v6_exemption_or_early_return() {
+        let mut store = RouterStoreData::default();
+        store.settings.ipv6_mode = "dual_stack".to_string();
+        store.settings.fakeip_enabled = true;
+        store.settings.fakeip_inet6_range = "fc00::/18".to_string();
+        store.guest_mode.enabled = true;
+        store.guest_mode.isolate_lan = true;
+        store.guest_mode.block_router_admin = true;
+        store.guest_mode.guest_devices = vec![
+            "192.168.4.10".to_string(),
+            "2001:4860::10".to_string(),
+            "aa:bb:cc:dd:ee:ff".to_string(),
+        ];
+
+        // allow_proxy = true -> exempt FakeIPv6 on @localv6 drops, no early return before TProxy
+        store.guest_mode.allow_proxy = true;
+        let nft_allow = compile_nftables_ruleset_with_wan6(&store, true, &[]);
+        assert!(nft_allow.contains(
+            "ip6 saddr { 2001:4860::10 } ip6 daddr @localv6 ip6 daddr != fc00::/18 meta l4proto { tcp, udp } th dport != 53 drop"
+        ));
+        assert!(nft_allow.contains(
+            "ether saddr { aa:bb:cc:dd:ee:ff } ip6 daddr @localv6 ip6 daddr != fc00::/18 meta l4proto { tcp, udp } th dport { 22, 80, 443, 1680, 9090 } drop"
+        ));
+        assert!(!nft_allow.contains("ip saddr { 192.168.4.10 } return"));
+        assert!(!nft_allow.contains("ip6 saddr { 2001:4860::10 } return"));
+        assert!(!nft_allow.contains("ether saddr { aa:bb:cc:dd:ee:ff } return"));
+
+        // allow_proxy = false -> no FakeIPv6 exemption and early return skips TProxy
+        store.guest_mode.allow_proxy = false;
+        let nft_deny = compile_nftables_ruleset_with_wan6(&store, true, &[]);
+        assert!(
+            !nft_deny
+                .contains("ip6 saddr { 2001:4860::10 } ip6 daddr @localv6 ip6 daddr != fc00::/18")
+        );
+        assert!(nft_deny.contains("ip saddr { 192.168.4.10 } return"));
+        assert!(nft_deny.contains("ip6 saddr { 2001:4860::10 } return"));
+        assert!(nft_deny.contains("ether saddr { aa:bb:cc:dd:ee:ff } return"));
+        // Isolation drop still precedes early return in prerouting
+        let pre_start = nft_deny.find("chain prerouting").expect("prerouting");
+        let prerouting = &nft_deny[pre_start..];
+        assert!(
+            prerouting
+                .find("ip saddr { 192.168.4.10 } ip daddr @localv4")
+                .expect("guest isolate drop")
+                < prerouting
+                    .find("ip saddr { 192.168.4.10 } return")
+                    .expect("guest early return")
+        );
+        assert!(
+            prerouting
+                .find("ip saddr { 192.168.4.10 } return")
+                .expect("guest early return")
+                < prerouting
+                    .find("tproxy ip to 127.0.0.1:")
+                    .expect("tproxy intercept")
+        );
     }
 }

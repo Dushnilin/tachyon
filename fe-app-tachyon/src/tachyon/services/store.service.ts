@@ -297,12 +297,34 @@ export interface StoreType {
     conntrack_count?: number;
     conntrack_max?: number;
     dns_type?: string;
+    dns_strategy?: string;
     fakeip_enabled?: number;
+    fakeip_inet4_range?: string;
+    fakeip_inet6_range?: string;
     inbound_mode?: string;
     active_sections_count?: number;
     total_sections_count?: number;
     quarantined_sections_count?: number;
     deferred_sections_count?: number;
+    wan_ip?: string;
+    wan_ipv6?: string;
+    lan_ip?: string;
+    lan_ipv6?: string;
+    wan6_prefix?: string;
+    wan6_pd?: string[];
+    wan6_available?: 0 | 1 | boolean;
+    wan6_iface?: string;
+    router_hostname?: string;
+    runtime_dns_strategy?: string;
+    webrtc_leak_protect?: '0' | '1' | number | boolean;
+    ipv6_mode?: string;
+    ipv6_leak_guard?: '0' | '1' | number | boolean;
+    ipv6_effective_state?:
+      | 'disabled'
+      | 'leak_guard'
+      | 'tunnel_over_v4'
+      | 'full'
+      | string;
   };
   updatesActions: {
     tachyonCheck: { loading: boolean };

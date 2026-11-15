@@ -1531,51 +1531,1323 @@ pub fn extract_fptn_server_ips(store: &RouterStoreData) -> Vec<String> {
     ips
 }
 
-fn parse_vpn_uri(full_uri: &str, rest: &str, idx: usize) -> Option<ParsedProxyNode> {
+const AMNEZIA_VPN_MAX_PAYLOAD_BYTES: usize = 65536;
+const MAX_AMNEZIA_DEPTH: usize = 4;
+
+/// Compact multiline or whitespace-wrapped `vpn://` share URIs into a single token line
+/// while preserving any `#fragment` label.
+pub fn compact_vpn_uri(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if !trimmed.starts_with("vpn://") {
+        return trimmed.to_string();
+    }
+    match trimmed.split_once('#') {
+        Some((head, frag)) => {
+            let compact_head: String = head.chars().filter(|c| !c.is_whitespace()).collect();
+            let clean_frag = frag.trim();
+            if clean_frag.is_empty() {
+                compact_head
+            } else {
+                format!("{compact_head}#{clean_frag}")
+            }
+        }
+        None => trimmed.chars().filter(|c| !c.is_whitespace()).collect(),
+    }
+}
+
+fn is_zlib_cmf_flg(cmf: u8, flg: u8) -> bool {
+    (cmf & 0x0f) == 8
+        && (cmf >> 4) <= 7
+        && (flg & 0x20) == 0
+        && ((u16::from(cmf) << 8) | u16::from(flg)).is_multiple_of(31)
+}
+
+fn looks_like_zlib_or_qt(data: &[u8]) -> bool {
+    if data.len() < 6 {
+        return false;
+    }
+    if data[0] == 0 {
+        return data.len() >= 10 && is_zlib_cmf_flg(data[4], data[5]);
+    }
+    is_zlib_cmf_flg(data[0], data[1])
+}
+
+fn compute_adler32(bytes: &[u8]) -> u32 {
+    const MOD_ADLER: u32 = 65521;
+    let mut s1: u32 = 1;
+    let mut s2: u32 = 0;
+    for chunk in bytes.chunks(5552) {
+        for &b in chunk {
+            s1 += u32::from(b);
+            s2 += s1;
+        }
+        s1 %= MOD_ADLER;
+        s2 %= MOD_ADLER;
+    }
+    (s2 << 16) | s1
+}
+
+struct DeflateReader<'a> {
+    bytes: &'a [u8],
+    pos: usize,
+    bit_buf: u32,
+    bit_cnt: u8,
+}
+
+impl<'a> DeflateReader<'a> {
+    fn new(bytes: &'a [u8]) -> Self {
+        Self {
+            bytes,
+            pos: 0,
+            bit_buf: 0,
+            bit_cnt: 0,
+        }
+    }
+
+    #[inline]
+    fn ensure(&mut self, n: u8) -> Option<()> {
+        while self.bit_cnt < n {
+            if self.pos >= self.bytes.len() {
+                return None;
+            }
+            self.bit_buf |= u32::from(self.bytes[self.pos]) << self.bit_cnt;
+            self.pos += 1;
+            self.bit_cnt += 8;
+        }
+        Some(())
+    }
+
+    #[inline]
+    fn read_bits(&mut self, n: u8) -> Option<u32> {
+        if n == 0 {
+            return Some(0);
+        }
+        self.ensure(n)?;
+        let mask = (1u32 << n) - 1;
+        let val = self.bit_buf & mask;
+        self.bit_buf >>= n;
+        self.bit_cnt -= n;
+        Some(val)
+    }
+
+    /// Discard partial bits from the current byte and rewind any full unread bytes
+    /// already pulled into `bit_buf`.
+    fn align_byte(&mut self) {
+        let discard = self.bit_cnt & 7;
+        if discard > 0 {
+            self.bit_buf >>= discard;
+            self.bit_cnt -= discard;
+        }
+        let whole_bytes = (self.bit_cnt / 8) as usize;
+        self.pos = self.pos.saturating_sub(whole_bytes);
+        self.bit_buf = 0;
+        self.bit_cnt = 0;
+    }
+}
+
+struct HuffTable {
+    max_bits: u8,
+    counts: [u16; 16],
+    offsets: [u16; 16],
+    symbols: Vec<u16>,
+}
+
+impl HuffTable {
+    fn build(lengths: &[u8]) -> Option<Self> {
+        const MAX_BITS: usize = 15;
+        let mut counts = [0u16; 16];
+        let mut max_bits = 0u8;
+        for &len in lengths {
+            if len as usize > MAX_BITS {
+                return None;
+            }
+            if len > 0 {
+                counts[len as usize] = counts[len as usize].checked_add(1)?;
+                if len > max_bits {
+                    max_bits = len;
+                }
+            }
+        }
+        if max_bits == 0 {
+            return Some(Self {
+                max_bits: 0,
+                counts,
+                offsets: [0u16; 16],
+                symbols: Vec::new(),
+            });
+        }
+        let mut left: i32 = 1;
+        for &cnt in &counts[1..=usize::from(max_bits)] {
+            left <<= 1;
+            left -= i32::from(cnt);
+            if left < 0 {
+                return None;
+            }
+        }
+        let mut offsets = [0u16; 16];
+        let mut total = 0u16;
+        for bits in 1..=MAX_BITS {
+            offsets[bits] = total;
+            total = total.checked_add(counts[bits])?;
+        }
+        let mut next_slot = offsets;
+        let mut symbols = vec![0u16; total as usize];
+        for (sym, &len) in lengths.iter().enumerate() {
+            if len > 0 {
+                let l = len as usize;
+                let slot = next_slot[l] as usize;
+                symbols[slot] = sym as u16;
+                next_slot[l] += 1;
+            }
+        }
+        Some(Self {
+            max_bits,
+            counts,
+            offsets,
+            symbols,
+        })
+    }
+
+    fn decode(&self, reader: &mut DeflateReader<'_>) -> Option<u16> {
+        if self.max_bits == 0 {
+            return None;
+        }
+        let mut code: i32 = 0;
+        let mut first: i32 = 0;
+        for len in 1..=self.max_bits as usize {
+            let bit = reader.read_bits(1)? as i32;
+            code = (code << 1) | bit;
+            let count = i32::from(self.counts[len]);
+            if code - count < first {
+                let idx = usize::from(self.offsets[len]) + (code - first) as usize;
+                return self.symbols.get(idx).copied();
+            }
+            first = (first + count) << 1;
+        }
+        None
+    }
+}
+
+/// Pure-Rust RFC 1950 zlib + RFC 1951 DEFLATE (stored/fixed/dynamic) + Qt `qCompress`
+/// decompressor with strict uncompressed upper-bound enforcement (`max_size`).
+pub fn inflate_zlib_bounded(data: &[u8], max_size: usize) -> Option<Vec<u8>> {
+    if max_size == 0 || data.len() < 8 {
+        return None;
+    }
+
+    let (has_qt_header, expected_exact_len, zlib_slice) = if data[0] == 0 {
+        if data.len() < 12 {
+            return None;
+        }
+        let declared = u32::from_be_bytes([data[0], data[1], data[2], data[3]]) as usize;
+        if declared == 0xFF {
+            (true, None, &data[4..])
+        } else if declared == 0 || declared > max_size {
+            return None;
+        } else {
+            (true, Some(declared), &data[4..])
+        }
+    } else {
+        (false, None, data)
+    };
+
+    if zlib_slice.len() < 8 {
+        return None;
+    }
+    let cmf = zlib_slice[0];
+    let flg = zlib_slice[1];
+    if !is_zlib_cmf_flg(cmf, flg) {
+        return None;
+    }
+    let window_size = 1usize << (usize::from(cmf >> 4) + 8);
+    let out_limit = expected_exact_len.unwrap_or(max_size);
+    let expected_adler = u32::from_be_bytes([
+        zlib_slice[zlib_slice.len() - 4],
+        zlib_slice[zlib_slice.len() - 3],
+        zlib_slice[zlib_slice.len() - 2],
+        zlib_slice[zlib_slice.len() - 1],
+    ]);
+    let deflate_bytes = &zlib_slice[2..zlib_slice.len() - 4];
+
+    const CL_ORDER: [usize; 19] = [
+        16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15,
+    ];
+    const LENGTH_BASE: [u16; 29] = [
+        3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115,
+        131, 163, 195, 227, 258,
+    ];
+    const LENGTH_EXTRA: [u8; 29] = [
+        0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0,
+    ];
+    const DIST_BASE: [u16; 30] = [
+        1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537,
+        2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577,
+    ];
+    const DIST_EXTRA: [u8; 30] = [
+        0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12,
+        13, 13,
+    ];
+
+    let mut reader = DeflateReader::new(deflate_bytes);
+    let mut out = Vec::with_capacity(expected_exact_len.unwrap_or_else(|| out_limit.min(4096)));
+
+    loop {
+        let bfinal = reader.read_bits(1)?;
+        let btype = reader.read_bits(2)?;
+        match btype {
+            0 => {
+                reader.align_byte();
+                if reader.pos.checked_add(4)? > deflate_bytes.len() {
+                    return None;
+                }
+                let len =
+                    u16::from_le_bytes([deflate_bytes[reader.pos], deflate_bytes[reader.pos + 1]]);
+                let nlen = u16::from_le_bytes([
+                    deflate_bytes[reader.pos + 2],
+                    deflate_bytes[reader.pos + 3],
+                ]);
+                reader.pos += 4;
+                if (len ^ nlen) != 0xFFFF {
+                    return None;
+                }
+                let n = usize::from(len);
+                if out.len().checked_add(n)? > out_limit {
+                    return None;
+                }
+                if reader.pos.checked_add(n)? > deflate_bytes.len() {
+                    return None;
+                }
+                out.extend_from_slice(&deflate_bytes[reader.pos..reader.pos + n]);
+                reader.pos += n;
+            }
+            1 | 2 => {
+                let (lit_table, dist_table) = if btype == 1 {
+                    let mut lit_lens = [0u8; 288];
+                    lit_lens[..144].fill(8);
+                    lit_lens[144..256].fill(9);
+                    lit_lens[256..280].fill(7);
+                    lit_lens[280..288].fill(8);
+                    let dist_lens = [5u8; 32];
+                    (HuffTable::build(&lit_lens)?, HuffTable::build(&dist_lens)?)
+                } else {
+                    let hlit = (reader.read_bits(5)? as usize) + 257;
+                    if hlit > 286 {
+                        return None;
+                    }
+                    let hdist = (reader.read_bits(5)? as usize) + 1;
+                    if hdist > 32 {
+                        return None;
+                    }
+                    let hclen = (reader.read_bits(4)? as usize) + 4;
+                    let mut cl_lens = [0u8; 19];
+                    for &slot in CL_ORDER.iter().take(hclen) {
+                        cl_lens[slot] = reader.read_bits(3)? as u8;
+                    }
+                    let cl_table = HuffTable::build(&cl_lens)?;
+                    let total = hlit + hdist;
+                    let mut all_lens = Vec::with_capacity(total);
+                    while all_lens.len() < total {
+                        let sym = cl_table.decode(&mut reader)?;
+                        match sym {
+                            0..=15 => all_lens.push(sym as u8),
+                            16 => {
+                                let &prev = all_lens.last()?;
+                                let rep = (reader.read_bits(2)? as usize) + 3;
+                                if all_lens.len() + rep > total {
+                                    return None;
+                                }
+                                all_lens.resize(all_lens.len() + rep, prev);
+                            }
+                            17 => {
+                                let rep = (reader.read_bits(3)? as usize) + 3;
+                                if all_lens.len() + rep > total {
+                                    return None;
+                                }
+                                all_lens.resize(all_lens.len() + rep, 0);
+                            }
+                            18 => {
+                                let rep = (reader.read_bits(7)? as usize) + 11;
+                                if all_lens.len() + rep > total {
+                                    return None;
+                                }
+                                all_lens.resize(all_lens.len() + rep, 0);
+                            }
+                            _ => return None,
+                        }
+                    }
+                    if all_lens.get(256).copied().unwrap_or(0) == 0 {
+                        return None;
+                    }
+                    (
+                        HuffTable::build(&all_lens[..hlit])?,
+                        HuffTable::build(&all_lens[hlit..])?,
+                    )
+                };
+
+                loop {
+                    let sym = lit_table.decode(&mut reader)?;
+                    if sym < 256 {
+                        if out.len() >= out_limit {
+                            return None;
+                        }
+                        out.push(sym as u8);
+                    } else if sym == 256 {
+                        break;
+                    } else if sym <= 285 {
+                        let idx = usize::from(sym - 257);
+                        let copy_len = usize::from(LENGTH_BASE[idx])
+                            + (reader.read_bits(LENGTH_EXTRA[idx])? as usize);
+                        let dist_sym = dist_table.decode(&mut reader)?;
+                        if dist_sym >= 30 {
+                            return None;
+                        }
+                        let didx = usize::from(dist_sym);
+                        let distance = usize::from(DIST_BASE[didx])
+                            + (reader.read_bits(DIST_EXTRA[didx])? as usize);
+                        if distance == 0 || distance > out.len() || distance > window_size {
+                            return None;
+                        }
+                        if out.len().checked_add(copy_len)? > out_limit {
+                            return None;
+                        }
+                        for _ in 0..copy_len {
+                            let b = out[out.len() - distance];
+                            out.push(b);
+                        }
+                    } else {
+                        return None;
+                    }
+                }
+            }
+            _ => return None,
+        }
+        if bfinal == 1 {
+            break;
+        }
+    }
+
+    reader.align_byte();
+    if reader.pos != deflate_bytes.len() {
+        return None;
+    }
+    if let Some(exact) = expected_exact_len {
+        if out.len() != exact {
+            return None;
+        }
+    } else if has_qt_header && out.is_empty() {
+        return None;
+    }
+    if out.len() > max_size {
+        return None;
+    }
+    if compute_adler32(&out) != expected_adler {
+        return None;
+    }
+    Some(out)
+}
+
+fn sanitize_amnezia_label(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed.len() > 200 {
+        return String::new();
+    }
+    trimmed.chars().filter(|&c| !c.is_control()).collect()
+}
+
+fn decode_vpn_uri_payload(uri: &str) -> Result<(String, String), &'static str> {
+    let compact = compact_vpn_uri(uri);
+    let Some(rest) = compact.strip_prefix("vpn://") else {
+        return Err("not_vpn_uri");
+    };
     let (b64_part, raw_tag) = match rest.split_once('#') {
         Some((b, t)) => (b.trim(), url_decode(t)),
         None => (rest.trim(), String::new()),
     };
-    let clean: String = b64_part.chars().filter(|c| !c.is_whitespace()).collect();
-    if clean.is_empty() {
-        return None;
+    if b64_part.is_empty() {
+        return Err("empty_payload");
     }
-    let mut padded = clean.replace('-', "+").replace('_', "/");
-    while !padded.len().is_multiple_of(4) {
-        padded.push('=');
+    if b64_part.len() > 262_144 {
+        return Err("payload_too_large");
     }
-    let decoded = B64_STD
-        .decode(&padded)
-        .or_else(|_| B64_URL.decode(clean.trim_end_matches('=')))
-        .ok()?;
-    let text = String::from_utf8(decoded).ok()?;
-    let tag_prefix = if !raw_tag.trim().is_empty() {
-        raw_tag.trim().to_string()
+    let Some(decoded) = decode_b64_flex(b64_part) else {
+        return Err("invalid_base64");
+    };
+    let raw_bytes = if looks_like_zlib_or_qt(&decoded) {
+        inflate_zlib_bounded(&decoded, AMNEZIA_VPN_MAX_PAYLOAD_BYTES)
+            .ok_or("decompression_failed")?
+    } else if (decoded.len() >= 6 && decoded[0] == 0) || decoded.contains(&0) {
+        return Err("decompression_failed");
+    } else {
+        if decoded.len() > AMNEZIA_VPN_MAX_PAYLOAD_BYTES {
+            return Err("payload_too_large");
+        }
+        decoded
+    };
+    if raw_bytes.len() > AMNEZIA_VPN_MAX_PAYLOAD_BYTES {
+        return Err("payload_too_large");
+    }
+    if raw_bytes.contains(&0) {
+        return Err("decompression_failed");
+    }
+    let text = String::from_utf8(raw_bytes).map_err(|_| "invalid_utf8")?;
+    Ok((text, sanitize_amnezia_label(&raw_tag)))
+}
+
+fn substitute_amnezia_placeholders(text: &str, remote_host: &str) -> String {
+    let host = remote_host.trim();
+    if host.is_empty() {
+        return text.to_string();
+    }
+    let clean_host = strip_ipv6_brackets(host);
+    let host_for_port = format_uri_host_only(&clean_host);
+    let mut out = text.to_string();
+    for placeholder in ["$REMOTE_HOST", "$SERVER_IP_ADDRESS"] {
+        let with_colon = format!("{placeholder}:");
+        if clean_host.contains(':') && out.contains(&with_colon) {
+            out = out.replace(&with_colon, &format!("{host_for_port}:"));
+        }
+        out = out.replace(placeholder, &clean_host);
+    }
+    out
+}
+
+fn replace_placeholders_in_json(val: &mut Value, remote_host: &str) {
+    match val {
+        Value::String(s) => {
+            if s.contains("$REMOTE_HOST") || s.contains("$SERVER_IP_ADDRESS") {
+                *s = substitute_amnezia_placeholders(s, remote_host);
+            }
+        }
+        Value::Array(arr) => {
+            for item in arr {
+                replace_placeholders_in_json(item, remote_host);
+            }
+        }
+        Value::Object(map) => {
+            for v in map.values_mut() {
+                replace_placeholders_in_json(v, remote_host);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn lookup_json_scalar_str(maps: &[&Map<String, Value>], keys: &[&str]) -> Option<String> {
+    for map in maps {
+        for &k in keys {
+            if let Some(v) = map.get(k) {
+                match v {
+                    Value::String(s) => {
+                        let t = s.trim();
+                        if !t.is_empty() && !t.starts_with('$') {
+                            return Some(t.to_string());
+                        }
+                    }
+                    Value::Number(n) => return Some(n.to_string()),
+                    Value::Bool(b) => return Some(b.to_string()),
+                    _ => {}
+                }
+            }
+        }
+    }
+    None
+}
+
+fn format_amnezia_endpoint(host: &str, port: &str) -> String {
+    let h = strip_ipv6_brackets(host.trim());
+    let p = port.trim();
+    if h.is_empty() {
+        return String::new();
+    }
+    if p.is_empty() {
+        return h;
+    }
+    format!("{}:{p}", format_uri_host_only(&h))
+}
+
+fn finalize_amnezia_wg_conf(
+    raw_conf: &str,
+    meta_maps: &[&Map<String, Value>],
+    remote_host: &str,
+) -> String {
+    let substituted = substitute_amnezia_placeholders(raw_conf, remote_host);
+    let mut lines: Vec<String> = substituted
+        .lines()
+        .map(|l| l.trim_end_matches('\r').to_string())
+        .collect();
+    let has_interface = lines
+        .iter()
+        .any(|l| l.trim().eq_ignore_ascii_case("[interface]"));
+    if !has_interface {
+        return String::new();
+    }
+
+    let mut present_keys: HashSet<String> = HashSet::new();
+    let mut iface_idx: Option<usize> = None;
+    let mut has_peer = false;
+    for (idx, line) in lines.iter().enumerate() {
+        let t = line.trim();
+        if t.eq_ignore_ascii_case("[interface]") && iface_idx.is_none() {
+            iface_idx = Some(idx);
+        } else if t.eq_ignore_ascii_case("[peer]") {
+            has_peer = true;
+        } else if !t.is_empty()
+            && !t.starts_with('#')
+            && !t.starts_with(';')
+            && let Some((k, _)) = t.split_once('=')
+        {
+            present_keys.insert(k.trim().to_ascii_lowercase());
+        }
+    }
+
+    const AWG_JSON_TO_INI: &[(&[&str], &str)] = &[
+        (&["Jc", "jc"], "Jc"),
+        (&["Jmin", "jmin"], "Jmin"),
+        (&["Jmax", "jmax"], "Jmax"),
+        (&["S1", "s1"], "S1"),
+        (&["S2", "s2"], "S2"),
+        (&["S3", "s3"], "S3"),
+        (&["S4", "s4"], "S4"),
+        (&["H1", "h1"], "H1"),
+        (&["H2", "h2"], "H2"),
+        (&["H3", "h3"], "H3"),
+        (&["H4", "h4"], "H4"),
+        (&["I1", "i1"], "I1"),
+        (&["I2", "i2"], "I2"),
+        (&["I3", "i3"], "I3"),
+        (&["I4", "i4"], "I4"),
+        (&["I5", "i5"], "I5"),
+        (&["J1", "j1"], "J1"),
+        (&["J2", "j2"], "J2"),
+        (&["J3", "j3"], "J3"),
+        (&["Itime", "itime"], "Itime"),
+        (
+            &[
+                "HeaderProtectionKey",
+                "header_protection_key",
+                "headerProtectionKey",
+            ],
+            "HeaderProtectionKey",
+        ),
+        (
+            &["ContentPaddingAddition", "content_padding_addition"],
+            "ContentPaddingAddition",
+        ),
+        (&["mtu", "MTU"], "MTU"),
+    ];
+
+    let mut inject_lines = Vec::new();
+    for &(json_keys, ini_name) in AWG_JSON_TO_INI {
+        let ini_lower = ini_name.to_ascii_lowercase();
+        if present_keys.contains(&ini_lower) {
+            continue;
+        }
+        if let Some(val) = lookup_json_scalar_str(meta_maps, json_keys) {
+            inject_lines.push(format!("{ini_name} = {val}"));
+        }
+    }
+    if !present_keys.contains("address")
+        && let Some(addr) =
+            lookup_json_scalar_str(meta_maps, &["client_ip", "address", "local_address"])
+    {
+        let formatted = if addr.contains('/') {
+            addr
+        } else if addr.contains(':') {
+            format!("{addr}/128")
+        } else {
+            format!("{addr}/32")
+        };
+        inject_lines.push(format!("Address = {formatted}"));
+    }
+    if !inject_lines.is_empty()
+        && let Some(iidx) = iface_idx
+    {
+        let mut insert_at = iidx + 1;
+        while insert_at < lines.len() {
+            let t = lines[insert_at].trim();
+            if t.starts_with('[') && t.ends_with(']') {
+                break;
+            }
+            insert_at += 1;
+        }
+        for (off, line) in inject_lines.into_iter().enumerate() {
+            lines.insert(insert_at + off, line);
+        }
+    }
+
+    if !has_peer {
+        let peer_pub = lookup_json_scalar_str(
+            meta_maps,
+            &[
+                "server_pub_key",
+                "peer_public_key",
+                "public_key",
+                "publicKey",
+            ],
+        );
+        let psk = lookup_json_scalar_str(
+            meta_maps,
+            &["psk_key", "pre_shared_key", "preshared_key", "presharedKey"],
+        );
+        let allowed = lookup_json_scalar_str(meta_maps, &["allowed_ips", "allowedIps"])
+            .unwrap_or_else(|| "0.0.0.0/0, ::/0".to_string());
+        let port = lookup_json_scalar_str(meta_maps, &["port", "server_port"])
+            .unwrap_or_else(|| "51820".to_string());
+        let host = lookup_json_scalar_str(meta_maps, &["hostName", "host_name", "server", "host"])
+            .filter(|h| !h.is_empty())
+            .unwrap_or_else(|| remote_host.trim().to_string());
+        let endpoint = format_amnezia_endpoint(&host, &port);
+        let keepalive = lookup_json_scalar_str(
+            meta_maps,
+            &["persistent_keepalive", "persistentKeepalive", "keepalive"],
+        )
+        .unwrap_or_else(|| "25".to_string());
+        if let Some(pk) = peer_pub
+            && !endpoint.is_empty()
+        {
+            lines.push(String::new());
+            lines.push("[Peer]".to_string());
+            lines.push(format!("PublicKey = {pk}"));
+            if let Some(psk_val) = psk {
+                lines.push(format!("PresharedKey = {psk_val}"));
+            }
+            lines.push(format!("AllowedIPs = {allowed}"));
+            lines.push(format!("Endpoint = {endpoint}"));
+            if keepalive != "0" {
+                lines.push(format!("PersistentKeepalive = {keepalive}"));
+            }
+        }
+    }
+
+    lines.join("\n")
+}
+
+fn synthesize_wg_conf_from_maps(
+    meta_maps: &[&Map<String, Value>],
+    remote_host: &str,
+) -> Option<String> {
+    let priv_key =
+        lookup_json_scalar_str(meta_maps, &["client_priv_key", "private_key", "privateKey"])?;
+    let addr = lookup_json_scalar_str(meta_maps, &["client_ip", "address", "local_address"])
+        .unwrap_or_else(|| "10.8.0.2/32".to_string());
+    let addr_cidr = if addr.contains('/') {
+        addr
+    } else if addr.contains(':') {
+        format!("{addr}/128")
+    } else {
+        format!("{addr}/32")
+    };
+    let mut conf = format!("[Interface]\nPrivateKey = {priv_key}\nAddress = {addr_cidr}\n");
+    if let Some(dns1) = lookup_json_scalar_str(meta_maps, &["dns1", "dns"]) {
+        conf.push_str(&format!("DNS = {dns1}\n"));
+    }
+    Some(finalize_amnezia_wg_conf(&conf, meta_maps, remote_host))
+}
+
+fn extract_amnezia_shadowsocks_node(
+    meta_maps: &[&Map<String, Value>],
+    remote_host: &str,
+    tag_name: &str,
+    raw_uri: &str,
+) -> Result<ParsedProxyNode, &'static str> {
+    let server = lookup_json_scalar_str(
+        meta_maps,
+        &["server", "hostName", "host_name", "host", "address"],
+    )
+    .map(|s| substitute_amnezia_placeholders(&s, remote_host))
+    .filter(|s| !s.trim().is_empty())
+    .unwrap_or_else(|| strip_ipv6_brackets(remote_host));
+    let port_raw = lookup_json_scalar_str(
+        meta_maps,
+        &["server_port", "port", "remote_port", "local_port"],
+    )
+    .unwrap_or_default();
+    let server_port = port_raw.trim().parse::<u16>().unwrap_or(0);
+    let method =
+        lookup_json_scalar_str(meta_maps, &["method", "cipher", "encryption"]).unwrap_or_default();
+    let password = lookup_json_scalar_str(meta_maps, &["password", "pass"]).unwrap_or_default();
+    if server.is_empty() || server_port == 0 || method.is_empty() || password.is_empty() {
+        return Err("incomplete_container");
+    }
+    let clean_server = strip_ipv6_brackets(&server);
+    let mut obj = Map::new();
+    obj.insert("type".into(), json!("shadowsocks"));
+    obj.insert("tag".into(), json!(tag_name));
+    obj.insert("server".into(), json!(clean_server));
+    obj.insert("server_port".into(), json!(server_port));
+    obj.insert("method".into(), json!(method));
+    obj.insert("password".into(), json!(password));
+    if let Some(plugin) = lookup_json_scalar_str(meta_maps, &["plugin"]) {
+        obj.insert("plugin".into(), json!(plugin));
+    }
+    if let Some(plugin_opts) = lookup_json_scalar_str(meta_maps, &["plugin_opts", "pluginOpts"]) {
+        obj.insert("plugin_opts".into(), json!(plugin_opts));
+    }
+    let country = detect_country_code(tag_name);
+    Ok(ParsedProxyNode {
+        tag: tag_name.to_string(),
+        protocol: "shadowsocks".to_string(),
+        server: clean_server,
+        server_port,
+        country,
+        raw_uri: raw_uri.to_string(),
+        outbound_json: Value::Object(obj),
+    })
+}
+
+fn is_amnezia_generic_tag(tag: &str) -> bool {
+    let tl = tag.trim().to_ascii_lowercase();
+    tl.is_empty()
+        || tl == "proxy"
+        || tl == "outbound"
+        || tl.starts_with("xray-")
+        || tl.starts_with("singbox-")
+        || tl.starts_with("vless-")
+        || tl.starts_with("vmess-")
+        || tl.starts_with("trojan-")
+}
+
+fn retag_parsed_node(node: &mut ParsedProxyNode, desired_tag: &str) {
+    if desired_tag.trim().is_empty() {
+        return;
+    }
+    node.tag = desired_tag.trim().to_string();
+    node.country = detect_country_code(&node.tag);
+    if let Some(obj) = node.outbound_json.as_object_mut() {
+        obj.insert("tag".into(), json!(node.tag));
+    }
+}
+
+fn extract_amnezia_container_nodes(
+    container: &Map<String, Value>,
+    outer_host: &str,
+    base_tag: &str,
+    idx: usize,
+    raw_uri: &str,
+    depth: usize,
+) -> Result<Vec<ParsedProxyNode>, &'static str> {
+    if depth >= MAX_AMNEZIA_DEPTH {
+        return Err("recursion_limit_exceeded");
+    }
+    let kind = container
+        .get("container")
+        .and_then(Value::as_str)
+        .map(|s| s.trim().to_ascii_lowercase())
+        .unwrap_or_default();
+    let local_host =
+        lookup_json_scalar_str(&[container], &["hostName", "host_name", "server", "host"])
+            .unwrap_or_else(|| outer_host.to_string());
+
+    let sub_obj: Option<&Map<String, Value>> = [
+        kind.as_str(),
+        "awg",
+        "amnezia-awg",
+        "amnezia-awg2",
+        "wireguard",
+        "amnezia-wireguard",
+        "xray",
+        "amnezia-xray",
+        "xray-reality",
+        "amnezia-ssxray",
+        "ssxray",
+        "shadowsocks",
+        "amnezia-shadowsocks",
+        "ss",
+        "amnezia-ss",
+    ]
+    .into_iter()
+    .filter(|k| !k.is_empty())
+    .find_map(|k| container.get(k).and_then(Value::as_object));
+
+    let lc_val: Option<Value> = sub_obj
+        .and_then(|s| s.get("last_config"))
+        .or_else(|| container.get("last_config"))
+        .and_then(|v| match v {
+            Value::String(s) => {
+                let subst = substitute_amnezia_placeholders(s, &local_host);
+                let tr = subst.trim();
+                if tr.starts_with('{') {
+                    serde_json::from_str::<Value>(tr).ok()
+                } else {
+                    None
+                }
+            }
+            Value::Object(_) => {
+                let mut cloned = v.clone();
+                replace_placeholders_in_json(&mut cloned, &local_host);
+                Some(cloned)
+            }
+            _ => None,
+        });
+    let lc_map = lc_val.as_ref().and_then(Value::as_object);
+
+    let is_wg_kind = matches!(
+        kind.as_str(),
+        "amnezia-awg" | "amnezia-awg2" | "amnezia-wireguard" | "wireguard" | "awg" | "awg2" | "wg"
+    ) || (kind.is_empty()
+        && (container.contains_key("awg")
+            || container.contains_key("amnezia-awg")
+            || container.contains_key("wireguard")
+            || container.contains_key("amnezia-wireguard")
+            || container.contains_key("wg_config")
+            || container.contains_key("awg_config")));
+
+    let is_xray_kind = matches!(
+        kind.as_str(),
+        "amnezia-xray" | "xray" | "xray-reality" | "amnezia-ssxray" | "ssxray"
+    ) || (kind.is_empty()
+        && (container.contains_key("xray")
+            || container.contains_key("amnezia-xray")
+            || container.contains_key("xray-reality")
+            || container.contains_key("amnezia-ssxray")
+            || container.contains_key("ssxray")));
+
+    let is_ss_kind = matches!(
+        kind.as_str(),
+        "amnezia-shadowsocks" | "shadowsocks" | "amnezia-ss" | "ss"
+    ) || (kind.is_empty()
+        && (container.contains_key("shadowsocks")
+            || container.contains_key("amnezia-shadowsocks")
+            || container.contains_key("ss")));
+
+    if is_wg_kind {
+        let mut meta_maps: Vec<&Map<String, Value>> = Vec::new();
+        if let Some(m) = lc_map {
+            meta_maps.push(m);
+        }
+        if let Some(m) = sub_obj {
+            meta_maps.push(m);
+        }
+        meta_maps.push(container);
+
+        let raw_conf = meta_maps.iter().find_map(|m| {
+            ["config", "wg_config", "awg_config", "last_config"]
+                .iter()
+                .find_map(|k| m.get(*k).and_then(Value::as_str))
+                .map(str::trim)
+                .filter(|s| !s.is_empty() && !s.starts_with('{'))
+        });
+
+        let conf_text = if let Some(raw_str) = raw_conf {
+            if raw_str.starts_with("vpn://") {
+                return extract_amnezia_vpn_nodes_inner(raw_str, idx, base_tag, depth + 1);
+            }
+            finalize_amnezia_wg_conf(raw_str, &meta_maps, &local_host)
+        } else if let Some(synthesized) = synthesize_wg_conf_from_maps(&meta_maps, &local_host) {
+            synthesized
+        } else {
+            return Err("incomplete_container");
+        };
+
+        let peers = parse_amnezia_conf_outbounds_with_prefix(base_tag, &conf_text);
+        if peers.is_empty() {
+            return Err("incomplete_container");
+        }
+        return Ok(peers
+            .into_iter()
+            .map(|(tag, val)| {
+                let server = val
+                    .get("server")
+                    .and_then(Value::as_str)
+                    .unwrap_or("127.0.0.1")
+                    .to_string();
+                let server_port = val
+                    .get("server_port")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(51820) as u16;
+                let country = detect_country_code(&tag);
+                ParsedProxyNode {
+                    tag,
+                    protocol: "wireguard".to_string(),
+                    server,
+                    server_port,
+                    country,
+                    raw_uri: raw_uri.to_string(),
+                    outbound_json: val,
+                }
+            })
+            .collect());
+    }
+
+    if is_xray_kind {
+        let Some(xc) = lc_val.as_ref().or_else(|| {
+            sub_obj
+                .and_then(|s| s.get("config"))
+                .or_else(|| container.get("config"))
+        }) else {
+            return Err("incomplete_container");
+        };
+        let mut xc_owned = xc.clone();
+        replace_placeholders_in_json(&mut xc_owned, &local_host);
+        let (xray_cfg, raw_outbounds): (Value, Vec<Value>) =
+            if let Some(arr) = xc_owned.get("outbounds").and_then(Value::as_array) {
+                let items = arr.clone();
+                (xc_owned, items)
+            } else if xc_owned.get("protocol").and_then(Value::as_str).is_some()
+                || xc_owned.get("type").and_then(Value::as_str).is_some()
+            {
+                let items = vec![xc_owned];
+                (json!({ "outbounds": &items }), items)
+            } else {
+                return Err("incomplete_container");
+            };
+        let mut nodes = normalize_xray_json_configs(&[xray_cfg]);
+        if nodes.is_empty() {
+            nodes = normalize_singbox_json_outbounds(&raw_outbounds);
+        }
+        if nodes.is_empty() {
+            return Err("incomplete_container");
+        }
+        let multi = nodes.len() > 1;
+        for (nidx, n) in nodes.iter_mut().enumerate() {
+            n.raw_uri = raw_uri.to_string();
+            if is_amnezia_generic_tag(&n.tag) && !base_tag.trim().is_empty() {
+                let desired = if multi {
+                    format!("{base_tag} ({})", nidx + 1)
+                } else {
+                    base_tag.to_string()
+                };
+                retag_parsed_node(n, &desired);
+            }
+        }
+        return Ok(nodes);
+    }
+
+    if is_ss_kind {
+        let mut meta_maps: Vec<&Map<String, Value>> = Vec::new();
+        if let Some(m) = lc_map {
+            meta_maps.push(m);
+        }
+        if let Some(m) = sub_obj {
+            meta_maps.push(m);
+        }
+        meta_maps.push(container);
+        let node = extract_amnezia_shadowsocks_node(&meta_maps, &local_host, base_tag, raw_uri)?;
+        return Ok(vec![node]);
+    }
+
+    Err("unsupported_container")
+}
+
+fn extract_amnezia_vpn_nodes_inner(
+    raw_input: &str,
+    idx: usize,
+    default_tag_prefix: &str,
+    depth: usize,
+) -> Result<Vec<ParsedProxyNode>, &'static str> {
+    if depth >= MAX_AMNEZIA_DEPTH {
+        return Err("recursion_limit_exceeded");
+    }
+    let trimmed = raw_input.trim();
+    let (payload, frag_tag, orig_uri) = if trimmed.starts_with("vpn://") {
+        let compact = compact_vpn_uri(trimmed);
+        let (text, frag) = decode_vpn_uri_payload(&compact)?;
+        (text, frag, compact)
+    } else {
+        (trimmed.to_string(), String::new(), trimmed.to_string())
+    };
+
+    let ptrim = payload.trim();
+    if ptrim.starts_with("vpn://") {
+        let inner = extract_amnezia_vpn_nodes_inner(ptrim, idx, default_tag_prefix, depth + 1)?;
+        if !frag_tag.is_empty() && inner.len() == 1 {
+            let mut single = inner;
+            retag_parsed_node(&mut single[0], &frag_tag);
+            return Ok(single);
+        }
+        return Ok(inner);
+    }
+
+    if ptrim.starts_with('{') {
+        let Ok(root) = serde_json::from_str::<Value>(ptrim) else {
+            return Err("invalid_json");
+        };
+        let Some(root_obj) = root.as_object() else {
+            return Err("invalid_json");
+        };
+
+        // Named .conf import wrapper: `{ "name": "...", "config": "..." }`
+        if let (Some(named), Some(inner_cfg)) = (
+            root_obj.get("name").and_then(Value::as_str),
+            root_obj.get("config").and_then(Value::as_str),
+        ) {
+            let clean_name = sanitize_amnezia_label(named);
+            let effective_prefix = if !frag_tag.is_empty() {
+                frag_tag
+            } else if !clean_name.is_empty() {
+                clean_name
+            } else if !default_tag_prefix.trim().is_empty() {
+                default_tag_prefix.trim().to_string()
+            } else {
+                format!("vpn-{idx}")
+            };
+            let cfg_trim = inner_cfg.trim();
+            if cfg_trim.starts_with("vpn://") {
+                return extract_amnezia_vpn_nodes_inner(
+                    cfg_trim,
+                    idx,
+                    &effective_prefix,
+                    depth + 1,
+                );
+            }
+            let peers = parse_amnezia_conf_outbounds_with_prefix(&effective_prefix, inner_cfg);
+            if peers.is_empty() {
+                return Err("incomplete_container");
+            }
+            return Ok(peers
+                .into_iter()
+                .map(|(tag, val)| {
+                    let server = val
+                        .get("server")
+                        .and_then(Value::as_str)
+                        .unwrap_or("127.0.0.1")
+                        .to_string();
+                    let server_port = val
+                        .get("server_port")
+                        .and_then(Value::as_u64)
+                        .unwrap_or(51820) as u16;
+                    let country = detect_country_code(&tag);
+                    ParsedProxyNode {
+                        tag,
+                        protocol: "wireguard".to_string(),
+                        server,
+                        server_port,
+                        country,
+                        raw_uri: orig_uri.clone(),
+                        outbound_json: val,
+                    }
+                })
+                .collect());
+        }
+
+        if root_obj.contains_key("cloud_api_key") || root_obj.contains_key("api_key") {
+            return Err("cloud_api_key");
+        }
+        if let Some(proto) = root_obj.get("protocol").and_then(Value::as_str)
+            && proto.to_ascii_lowercase().contains("cloud")
+        {
+            return Err("cloud_api_key");
+        }
+
+        let outer_host =
+            lookup_json_scalar_str(&[root_obj], &["hostName", "host_name", "server", "host"])
+                .unwrap_or_default();
+        let outer_name = lookup_json_scalar_str(&[root_obj], &["description", "name"])
+            .map(|s| sanitize_amnezia_label(&s))
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| sanitize_amnezia_label(&outer_host));
+
+        let base_tag = if !frag_tag.is_empty() {
+            frag_tag
+        } else if !outer_name.is_empty() {
+            outer_name
+        } else if !default_tag_prefix.trim().is_empty() {
+            default_tag_prefix.trim().to_string()
+        } else {
+            format!("vpn-{idx}")
+        };
+
+        if let Some(containers) = root_obj.get("containers").and_then(Value::as_array) {
+            if containers.is_empty() || containers.len() > 32 {
+                return Err("incomplete_container");
+            }
+            let def_kind = root_obj
+                .get("defaultContainer")
+                .and_then(Value::as_str)
+                .map(|s| s.trim().to_ascii_lowercase())
+                .unwrap_or_default();
+            let mut ordered: Vec<&Map<String, Value>> = Vec::with_capacity(containers.len());
+            for c in containers {
+                if let Some(m) = c.as_object()
+                    && m.get("container")
+                        .and_then(Value::as_str)
+                        .is_some_and(|k| k.trim().eq_ignore_ascii_case(&def_kind))
+                {
+                    ordered.push(m);
+                }
+            }
+            for c in containers {
+                if let Some(m) = c.as_object()
+                    && !m
+                        .get("container")
+                        .and_then(Value::as_str)
+                        .is_some_and(|k| k.trim().eq_ignore_ascii_case(&def_kind))
+                {
+                    ordered.push(m);
+                }
+            }
+
+            let mut all_nodes = Vec::new();
+            let mut last_err: Option<&'static str> = None;
+            for c_map in ordered {
+                let c_kind = c_map
+                    .get("container")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .unwrap_or("");
+                let c_tag = if containers.len() > 1 && !c_kind.is_empty() {
+                    let short = c_kind.strip_prefix("amnezia-").unwrap_or(c_kind);
+                    format!("{base_tag} [{short}]")
+                } else {
+                    base_tag.clone()
+                };
+                match extract_amnezia_container_nodes(
+                    c_map,
+                    &outer_host,
+                    if all_nodes.is_empty() {
+                        &base_tag
+                    } else {
+                        &c_tag
+                    },
+                    idx,
+                    &orig_uri,
+                    depth + 1,
+                ) {
+                    Ok(nodes) => all_nodes.extend(nodes),
+                    Err(e) => {
+                        if last_err.is_none() || e == "incomplete_container" {
+                            last_err = Some(e);
+                        }
+                    }
+                }
+            }
+            if !all_nodes.is_empty() {
+                return Ok(all_nodes);
+            }
+            return Err(last_err.unwrap_or("unsupported_container"));
+        }
+
+        if root_obj.contains_key("container")
+            || root_obj.contains_key("awg")
+            || root_obj.contains_key("wireguard")
+            || root_obj.contains_key("xray")
+            || root_obj.contains_key("shadowsocks")
+        {
+            return extract_amnezia_container_nodes(
+                root_obj,
+                &outer_host,
+                &base_tag,
+                idx,
+                &orig_uri,
+                depth + 1,
+            );
+        }
+
+        if root_obj
+            .get("outbounds")
+            .and_then(Value::as_array)
+            .is_some()
+        {
+            let mut root_val = Value::Object(root_obj.clone());
+            replace_placeholders_in_json(&mut root_val, &outer_host);
+            let mut nodes = normalize_xray_json_configs(std::slice::from_ref(&root_val));
+            if nodes.is_empty()
+                && let Some(arr) = root_val.get("outbounds").and_then(Value::as_array)
+            {
+                nodes = normalize_singbox_json_outbounds(arr);
+            }
+            if !nodes.is_empty() {
+                return Ok(nodes);
+            }
+        }
+        if let Some(raw_wg_str) = root_obj
+            .get("config")
+            .or_else(|| root_obj.get("wg_config"))
+            .or_else(|| root_obj.get("awg_config"))
+            .and_then(Value::as_str)
+        {
+            if raw_wg_str.trim().starts_with("vpn://") {
+                return extract_amnezia_vpn_nodes_inner(raw_wg_str, idx, &base_tag, depth + 1);
+            }
+            let conf = finalize_amnezia_wg_conf(raw_wg_str, &[root_obj], &outer_host);
+            let peers = parse_amnezia_conf_outbounds_with_prefix(&base_tag, &conf);
+            if !peers.is_empty() {
+                return Ok(peers
+                    .into_iter()
+                    .map(|(tag, val)| {
+                        let server = val
+                            .get("server")
+                            .and_then(Value::as_str)
+                            .unwrap_or("127.0.0.1")
+                            .to_string();
+                        let server_port = val
+                            .get("server_port")
+                            .and_then(Value::as_u64)
+                            .unwrap_or(51820) as u16;
+                        let country = detect_country_code(&tag);
+                        ParsedProxyNode {
+                            tag,
+                            protocol: "wireguard".to_string(),
+                            server,
+                            server_port,
+                            country,
+                            raw_uri: orig_uri.clone(),
+                            outbound_json: val,
+                        }
+                    })
+                    .collect());
+            }
+        }
+        return Err("unsupported_container");
+    }
+
+    let tag_prefix = if !frag_tag.is_empty() {
+        frag_tag
+    } else if !default_tag_prefix.trim().is_empty() {
+        default_tag_prefix.trim().to_string()
     } else {
         format!("vpn-{idx}")
     };
-    if let Some((tag, outbound_json)) = parse_amnezia_conf_outbound(&tag_prefix, idx, &text) {
-        let server = outbound_json
-            .get("server")
-            .and_then(Value::as_str)
-            .unwrap_or("127.0.0.1")
-            .to_string();
-        let server_port = outbound_json
-            .get("server_port")
-            .and_then(Value::as_u64)
-            .unwrap_or(51820) as u16;
-        let country = detect_country_code(&tag);
-        return Some(ParsedProxyNode {
-            tag,
-            protocol: "wireguard".to_string(),
-            server,
-            server_port,
-            country,
-            raw_uri: full_uri.to_string(),
-            outbound_json,
-        });
+    let peers = parse_amnezia_conf_outbounds_with_prefix(&tag_prefix, ptrim);
+    if peers.is_empty() {
+        return Err("missing_endpoint_or_keys");
     }
-    None
+    Ok(peers
+        .into_iter()
+        .map(|(tag, outbound_json)| {
+            let server = outbound_json
+                .get("server")
+                .and_then(Value::as_str)
+                .unwrap_or("127.0.0.1")
+                .to_string();
+            let server_port = outbound_json
+                .get("server_port")
+                .and_then(Value::as_u64)
+                .unwrap_or(51820) as u16;
+            let country = detect_country_code(&tag);
+            ParsedProxyNode {
+                tag,
+                protocol: "wireguard".to_string(),
+                server,
+                server_port,
+                country,
+                raw_uri: orig_uri.clone(),
+                outbound_json,
+            }
+        })
+        .collect())
+}
+
+/// Diagnose an Amnezia `vpn://` share link without throwing or mutating state,
+/// distinguishing compression, encoding, cloud-API, unsupported container, and
+/// incomplete configuration errors.
+pub fn diagnose_amnezia_vpn_uri(uri: &str) -> Result<(), &'static str> {
+    if !uri.trim().starts_with("vpn://") {
+        return Err("not_vpn_uri");
+    }
+    extract_amnezia_vpn_nodes_inner(uri, 0, "", 0).map(|_| ())
+}
+
+fn parse_vpn_uri(full_uri: &str, _rest: &str, idx: usize) -> Option<ParsedProxyNode> {
+    extract_amnezia_vpn_nodes_inner(full_uri, idx, "", 0)
+        .ok()
+        .and_then(|mut nodes| {
+            if nodes.is_empty() {
+                None
+            } else {
+                Some(nodes.swap_remove(0))
+            }
+        })
 }
 
 fn split_mieru_host_optional_port(hp: &str) -> Option<(String, Option<u16>)> {
@@ -1827,7 +3099,63 @@ fn parse_mieru_uri(full_uri: &str, scheme_lower: &str, rest: &str) -> Option<Par
     })
 }
 
-fn format_uri_host_only(server: &str) -> String {
+pub(crate) fn extract_host_only(raw: &str) -> String {
+    let s = raw.trim();
+    if s.is_empty() {
+        return String::new();
+    }
+    let without_scheme = if let Some((_, rest)) = s.split_once("://") {
+        rest
+    } else {
+        s
+    };
+    let after_userinfo = without_scheme
+        .rsplit_once('@')
+        .map_or(without_scheme, |(_, hostpart)| hostpart);
+    let authority = after_userinfo
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or(after_userinfo)
+        .trim();
+    if let Some(after_open) = authority.strip_prefix('[') {
+        if let Some((inner, _)) = after_open.split_once(']') {
+            return inner.trim().to_string();
+        }
+        return after_open.trim().to_string();
+    }
+    if authority.matches(':').count() >= 2 {
+        return authority.to_string();
+    }
+    authority
+        .split(':')
+        .next()
+        .unwrap_or(authority)
+        .trim()
+        .to_string()
+}
+
+pub(crate) fn extract_host_port(raw: &str, default_port: u16) -> u16 {
+    let s = raw.trim();
+    if let Some(after_open) = s.strip_prefix('[') {
+        if let Some((_, rest)) = after_open.split_once("]:")
+            && let Ok(p) = rest.trim().parse::<u16>()
+            && p > 0
+        {
+            return p;
+        }
+        return default_port;
+    }
+    if s.matches(':').count() == 1
+        && let Some((_, port_str)) = s.split_once(':')
+        && let Ok(p) = port_str.trim().parse::<u16>()
+        && p > 0
+    {
+        return p;
+    }
+    default_port
+}
+
+pub(crate) fn format_uri_host_only(server: &str) -> String {
     let s = server.trim();
     if s.contains(':') && !s.starts_with('[') {
         format!("[{s}]")
@@ -2439,23 +3767,79 @@ fn build_source_outbounds(src: &OutboundSource) -> Vec<(String, Value, bool)> {
         }
         "amnezia_config" => {
             let mut parsed_any = false;
-            let mut texts = src.amnezia_configs.clone();
+            let mut raw_blocks = src.amnezia_configs.clone();
             if !src.amnezia_conf_text.trim().is_empty() {
-                texts.push(src.amnezia_conf_text.clone());
+                raw_blocks.push(src.amnezia_conf_text.clone());
+            }
+            let mut texts: Vec<String> = Vec::new();
+            for block in raw_blocks {
+                let bt = block.trim();
+                if bt.is_empty() {
+                    continue;
+                }
+                let lower = bt.to_ascii_lowercase();
+                if bt.starts_with('{') || lower.contains("[interface]") || lower.contains("[peer]")
+                {
+                    texts.push(bt.to_string());
+                    continue;
+                }
+                if bt.starts_with("vpn://") {
+                    let mut current = String::new();
+                    for line in bt.lines() {
+                        let lt = line.trim();
+                        if lt.is_empty() {
+                            continue;
+                        }
+                        if lt.starts_with("vpn://")
+                            || lt.starts_with("awg://")
+                            || lt.starts_with("wg://")
+                        {
+                            if !current.is_empty() {
+                                texts.push(compact_vpn_uri(&current));
+                                current.clear();
+                            }
+                            current.push_str(lt);
+                        } else if current.starts_with("vpn://") {
+                            current.push_str(lt);
+                        } else {
+                            texts.push(lt.to_string());
+                        }
+                    }
+                    if !current.is_empty() {
+                        texts.push(compact_vpn_uri(&current));
+                    }
+                } else {
+                    texts.push(bt.to_string());
+                }
             }
             for (idx, conf_text) in texts.iter().enumerate() {
                 let trimmed = conf_text.trim();
-                if (trimmed.starts_with("vpn://")
-                    || trimmed.starts_with("awg://")
-                    || trimmed.starts_with("wg://"))
+                if trimmed.starts_with("vpn://") || trimmed.starts_with('{') {
+                    let def_prefix = if idx == 0 {
+                        format!("awgconf-{}", src.id)
+                    } else {
+                        format!("awgconf-{}-{idx}", src.id)
+                    };
+                    if let Ok(nodes) = extract_amnezia_vpn_nodes_inner(trimmed, idx, &def_prefix, 0)
+                        && !nodes.is_empty()
+                    {
+                        for node in nodes {
+                            out.push((node.tag, node.outbound_json));
+                        }
+                        parsed_any = true;
+                        continue;
+                    }
+                }
+                if (trimmed.starts_with("awg://") || trimmed.starts_with("wg://"))
                     && let Some(node) = parse_proxy_uri(trimmed, idx)
                 {
                     out.push((node.tag, node.outbound_json));
                     parsed_any = true;
                     continue;
                 }
-                if let Some((tag, val)) = parse_amnezia_conf_outbound(&src.id, idx, conf_text) {
-                    out.push((tag, val));
+                let peers = parse_amnezia_conf_outbounds(&src.id, idx, conf_text);
+                if !peers.is_empty() {
+                    out.extend(peers);
                     parsed_any = true;
                 }
             }
@@ -4508,9 +5892,7 @@ fn build_filtered_source_nodes(src: &OutboundSource) -> Vec<(String, Value, bool
                 continue;
             }
             if !src.filter_deny_regex.is_empty()
-                && n.tag
-                    .to_ascii_lowercase()
-                    .contains(&src.filter_deny_regex.to_ascii_lowercase())
+                && tag_matches_keyword_or_telemetry(&n.tag, &src.filter_deny_regex, &[])
             {
                 continue;
             }
@@ -4696,91 +6078,924 @@ fn apply_outbound_common_opts(src: &OutboundSource, v: &mut Value) {
     }
 }
 
-fn parse_amnezia_conf_outbound(src_id: &str, idx: usize, conf: &str) -> Option<(String, Value)> {
-    let mut priv_key = String::new();
-    let mut pub_key = String::new();
-    let mut psk = String::new();
-    let mut address = "10.8.0.2/32".to_string();
-    let mut endpoint = String::new();
-    let mut mtu: u16 = 0;
-    let mut jc: i64 = 0;
-    let mut jmin: i64 = 0;
-    let mut jmax: i64 = 0;
-    let mut s1: i64 = 0;
-    let mut s2: i64 = 0;
-    let mut h1: i64 = 0;
-    let mut h2: i64 = 0;
-    let mut h3: i64 = 0;
-    let mut h4: i64 = 0;
-
-    for line in conf.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with('[') {
-            continue;
+fn strip_ini_comment(raw: &str, preserve_semicolons: bool) -> &str {
+    let mut in_angle = false;
+    let mut prev_space = true;
+    let bytes = raw.as_bytes();
+    for (i, &b) in bytes.iter().enumerate() {
+        if b == b'<' {
+            in_angle = true;
+        } else if b == b'>' {
+            in_angle = false;
+        } else if !in_angle
+            && (b == b'#' || (!preserve_semicolons && b == b';'))
+            && (i == 0 || prev_space)
+        {
+            return raw[..i].trim_end();
         }
-        let Some((k, v)) = trimmed.split_once('=') else {
-            continue;
-        };
-        let key = k.trim().to_ascii_lowercase();
-        let val = v.trim();
-        match key.as_str() {
-            "privatekey" => priv_key = val.to_string(),
-            "publickey" => pub_key = val.to_string(),
-            "presharedkey" => psk = val.to_string(),
-            "address" => {
-                if let Some(first) = val.split(',').next() {
-                    address = first.trim().to_string();
-                }
-            }
-            "endpoint" => endpoint = val.to_string(),
-            "mtu" => mtu = val.parse().unwrap_or(0),
-            "jc" => jc = val.parse().unwrap_or(0),
-            "jmin" => jmin = val.parse().unwrap_or(0),
-            "jmax" => jmax = val.parse().unwrap_or(0),
-            "s1" => s1 = val.parse().unwrap_or(0),
-            "s2" => s2 = val.parse().unwrap_or(0),
-            "h1" => h1 = val.parse().unwrap_or(0),
-            "h2" => h2 = val.parse().unwrap_or(0),
-            "h3" => h3 = val.parse().unwrap_or(0),
-            "h4" => h4 = val.parse().unwrap_or(0),
-            _ => {}
-        }
+        prev_space = b == b' ' || b == b'\t';
     }
-    if priv_key.is_empty() || pub_key.is_empty() || endpoint.is_empty() {
+    raw.trim_end()
+}
+
+fn parse_awg_h_value(raw: &str) -> Option<Value> {
+    let t = raw.trim();
+    if t.is_empty() {
         return None;
     }
-    let (host, port) = split_host_port(&endpoint, 51820)?;
-    let tag = if idx == 0 {
+    if let Ok(v) = t.parse::<i64>() {
+        if (0..=i64::from(u32::MAX)).contains(&v) {
+            return Some(json!(v));
+        }
+        if (i64::from(i32::MIN)..0).contains(&v) {
+            let as_u32 = (v as i32) as u32;
+            return Some(json!(as_u32));
+        }
+        return None;
+    }
+    if let Some((left, right)) = t.split_once('-')
+        && !left.trim().is_empty()
+        && let (Ok(lo), Ok(hi)) = (left.trim().parse::<i64>(), right.trim().parse::<i64>())
+        && lo <= hi
+    {
+        let map_u32 = |v: i64| -> Option<u32> {
+            if (0..=i64::from(u32::MAX)).contains(&v) {
+                Some(v as u32)
+            } else if (i64::from(i32::MIN)..0).contains(&v) {
+                Some((v as i32) as u32)
+            } else {
+                None
+            }
+        };
+        if let (Some(u_lo), Some(u_hi)) = (map_u32(lo), map_u32(hi))
+            && u_lo <= u_hi
+        {
+            if u_lo == u_hi {
+                return Some(json!(u_lo));
+            }
+            return Some(json!(format!("{u_lo}-{u_hi}")));
+        }
+    }
+    None
+}
+
+#[derive(Default)]
+struct WgPeerDraft {
+    pub_key: String,
+    psk: String,
+    endpoint: String,
+    keepalive: u16,
+}
+
+fn parse_amnezia_conf_outbounds_with_prefix(base_prefix: &str, conf: &str) -> Vec<(String, Value)> {
+    let mut priv_key = String::new();
+    let mut addresses: Vec<String> = Vec::new();
+    let mut mtu: u16 = 0;
+    let mut iface_keepalive: u16 = 0;
+    let mut jc: Option<i64> = None;
+    let mut jmin: Option<i64> = None;
+    let mut jmax: Option<i64> = None;
+    let mut s1: Option<i64> = None;
+    let mut s2: Option<i64> = None;
+    let mut s3: Option<i64> = None;
+    let mut s4: Option<i64> = None;
+    let mut h1: Option<Value> = None;
+    let mut h2: Option<Value> = None;
+    let mut h3: Option<Value> = None;
+    let mut h4: Option<Value> = None;
+    let mut i_params: [Option<String>; 5] = Default::default();
+    let mut j_params: [Option<String>; 3] = Default::default();
+    let mut itime: Option<u64> = None;
+    let mut header_protection_key: Option<String> = None;
+
+    let mut peers: Vec<WgPeerDraft> = Vec::new();
+    let mut section = "";
+
+    for raw_line in conf.lines() {
+        let trimmed = raw_line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with(';') {
+            continue;
+        }
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            let sec_name = trimmed[1..trimmed.len() - 1].trim().to_ascii_lowercase();
+            section = if sec_name == "interface" {
+                "interface"
+            } else if sec_name == "peer" {
+                peers.push(WgPeerDraft::default());
+                "peer"
+            } else {
+                "other"
+            };
+            continue;
+        }
+        let Some((k_raw, v_raw)) = trimmed.split_once('=') else {
+            continue;
+        };
+        let key = k_raw.trim().to_ascii_lowercase();
+        let preserve_semi = matches!(
+            key.as_str(),
+            "i1" | "i2" | "i3" | "i4" | "i5" | "j1" | "j2" | "j3"
+        );
+        let val = strip_ini_comment(v_raw, preserve_semi).trim();
+        if val.is_empty() || val.starts_with('$') {
+            continue;
+        }
+        match section {
+            "peer" => {
+                if let Some(peer) = peers.last_mut() {
+                    match key.as_str() {
+                        "publickey" | "public_key" | "peer_public_key" => {
+                            peer.pub_key = val.to_string();
+                        }
+                        "presharedkey" | "preshared_key" | "pre_shared_key" | "psk" => {
+                            peer.psk = val.to_string();
+                        }
+                        "endpoint" => {
+                            peer.endpoint = val.to_string();
+                        }
+                        "persistentkeepalive"
+                        | "persistent_keepalive"
+                        | "persistent_keepalive_interval" => {
+                            if let Ok(ka) = val.parse::<u16>() {
+                                peer.keepalive = ka;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            _ => match key.as_str() {
+                "privatekey" | "private_key" | "client_priv_key" => {
+                    priv_key = val.to_string();
+                }
+                "publickey" | "public_key" | "peer_public_key" => {
+                    if peers.is_empty() {
+                        peers.push(WgPeerDraft::default());
+                    }
+                    if let Some(p) = peers.last_mut()
+                        && p.pub_key.is_empty()
+                    {
+                        p.pub_key = val.to_string();
+                    }
+                }
+                "presharedkey" | "preshared_key" | "pre_shared_key" | "psk" => {
+                    if peers.is_empty() {
+                        peers.push(WgPeerDraft::default());
+                    }
+                    if let Some(p) = peers.last_mut()
+                        && p.psk.is_empty()
+                    {
+                        p.psk = val.to_string();
+                    }
+                }
+                "endpoint" => {
+                    if peers.is_empty() {
+                        peers.push(WgPeerDraft::default());
+                    }
+                    if let Some(p) = peers.last_mut()
+                        && p.endpoint.is_empty()
+                    {
+                        p.endpoint = val.to_string();
+                    }
+                }
+                "persistentkeepalive"
+                | "persistent_keepalive"
+                | "persistent_keepalive_interval" => {
+                    if let Ok(ka) = val.parse::<u16>() {
+                        iface_keepalive = ka;
+                    }
+                }
+                "address" | "local_address" | "ip" | "client_ip" => {
+                    for part in val.split(',') {
+                        let p = part.trim();
+                        if !p.is_empty() && !addresses.iter().any(|existing| existing == p) {
+                            addresses.push(p.to_string());
+                        }
+                    }
+                }
+                "mtu" => mtu = val.parse().unwrap_or(0),
+                "jc" => jc = val.parse().ok(),
+                "jmin" => jmin = val.parse().ok(),
+                "jmax" => jmax = val.parse().ok(),
+                "s1" => s1 = val.parse().ok(),
+                "s2" => s2 = val.parse().ok(),
+                "s3" => s3 = val.parse().ok(),
+                "s4" => s4 = val.parse().ok(),
+                "h1" => h1 = parse_awg_h_value(val),
+                "h2" => h2 = parse_awg_h_value(val),
+                "h3" => h3 = parse_awg_h_value(val),
+                "h4" => h4 = parse_awg_h_value(val),
+                "i1" => i_params[0] = Some(val.to_string()),
+                "i2" => i_params[1] = Some(val.to_string()),
+                "i3" => i_params[2] = Some(val.to_string()),
+                "i4" => i_params[3] = Some(val.to_string()),
+                "i5" => i_params[4] = Some(val.to_string()),
+                "j1" => j_params[0] = Some(val.to_string()),
+                "j2" => j_params[1] = Some(val.to_string()),
+                "j3" => j_params[2] = Some(val.to_string()),
+                "itime" => itime = val.parse().ok(),
+                "headerprotectionkey" | "header_protection_key" => {
+                    if decode_b64_flex(val).is_some_and(|b| b.len() == 32) {
+                        header_protection_key = Some(val.to_string());
+                    } else {
+                        return Vec::new();
+                    }
+                }
+                _ => {}
+            },
+        }
+    }
+
+    if priv_key.is_empty() {
+        return Vec::new();
+    }
+    if addresses.is_empty() {
+        addresses.push("10.8.0.2/32".to_string());
+    }
+    if header_protection_key.is_some() {
+        for slot in [&mut s1, &mut s2, &mut s3, &mut s4] {
+            if slot.is_none_or(|v| v < 12) {
+                *slot = Some(20);
+            }
+        }
+    }
+
+    let valid_peers: Vec<(String, String, u16, String, u16)> = peers
+        .into_iter()
+        .filter_map(|p| {
+            if p.pub_key.is_empty() || p.endpoint.is_empty() {
+                return None;
+            }
+            let (host, port) = split_host_port(&p.endpoint, 51820)?;
+            let ka = if p.keepalive > 0 {
+                p.keepalive
+            } else {
+                iface_keepalive
+            };
+            Some((host, p.pub_key, port, p.psk, ka))
+        })
+        .collect();
+    if valid_peers.is_empty() {
+        return Vec::new();
+    }
+
+    let has_awg = jc.is_some_and(|v| v > 0)
+        || jmin.is_some_and(|v| v > 0)
+        || jmax.is_some_and(|v| v > 0)
+        || s1.is_some_and(|v| v > 0)
+        || s2.is_some_and(|v| v > 0)
+        || s3.is_some_and(|v| v > 0)
+        || s4.is_some_and(|v| v > 0)
+        || h1.is_some()
+        || h2.is_some()
+        || h3.is_some()
+        || h4.is_some()
+        || i_params.iter().any(Option::is_some)
+        || j_params.iter().any(Option::is_some)
+        || itime.is_some_and(|v| v > 0)
+        || header_protection_key.is_some();
+
+    let multi_peer = valid_peers.len() > 1;
+    let mut out = Vec::with_capacity(valid_peers.len());
+    for (pidx, (host, pub_key, port, psk, keepalive)) in valid_peers.into_iter().enumerate() {
+        let tag = if multi_peer {
+            format!("{base_prefix} ({})", pidx + 1)
+        } else {
+            base_prefix.to_string()
+        };
+        let mut obj = Map::new();
+        obj.insert("type".into(), json!("wireguard"));
+        obj.insert("tag".into(), json!(tag));
+        obj.insert("server".into(), json!(host));
+        obj.insert("server_port".into(), json!(port));
+        obj.insert("private_key".into(), json!(priv_key));
+        obj.insert("peer_public_key".into(), json!(pub_key));
+        obj.insert("local_address".into(), json!(addresses));
+        if !psk.is_empty() {
+            obj.insert("pre_shared_key".into(), json!(psk));
+        }
+        if mtu > 0 {
+            obj.insert("mtu".into(), json!(mtu));
+        }
+        if keepalive > 0 {
+            obj.insert("persistent_keepalive_interval".into(), json!(keepalive));
+        }
+        if has_awg {
+            if let Some(v) = jc {
+                obj.insert("jc".into(), json!(v));
+            }
+            if let Some(v) = jmin {
+                obj.insert("jmin".into(), json!(v));
+            }
+            if let Some(v) = jmax {
+                obj.insert("jmax".into(), json!(v));
+            }
+            if let Some(v) = s1 {
+                obj.insert("s1".into(), json!(v));
+            }
+            if let Some(v) = s2 {
+                obj.insert("s2".into(), json!(v));
+            }
+            if let Some(v) = s3
+                && v > 0
+            {
+                obj.insert("s3".into(), json!(v));
+            }
+            if let Some(v) = s4
+                && v > 0
+            {
+                obj.insert("s4".into(), json!(v));
+            }
+            if let Some(ref v) = h1 {
+                obj.insert("h1".into(), v.clone());
+            }
+            if let Some(ref v) = h2 {
+                obj.insert("h2".into(), v.clone());
+            }
+            if let Some(ref v) = h3 {
+                obj.insert("h3".into(), v.clone());
+            }
+            if let Some(ref v) = h4 {
+                obj.insert("h4".into(), v.clone());
+            }
+            for (name, val_opt) in [
+                ("i1", &i_params[0]),
+                ("i2", &i_params[1]),
+                ("i3", &i_params[2]),
+                ("i4", &i_params[3]),
+                ("i5", &i_params[4]),
+                ("j1", &j_params[0]),
+                ("j2", &j_params[1]),
+                ("j3", &j_params[2]),
+            ] {
+                if let Some(val) = val_opt {
+                    obj.insert(name.into(), json!(val));
+                }
+            }
+            if let Some(it) = itime
+                && it > 0
+            {
+                obj.insert("itime".into(), json!(it));
+            }
+            if let Some(ref hpk) = header_protection_key {
+                obj.insert("header_protection_key".into(), json!(hpk));
+            }
+        }
+        out.push((tag, Value::Object(obj)));
+    }
+    out
+}
+
+fn parse_amnezia_conf_outbounds(src_id: &str, idx: usize, conf: &str) -> Vec<(String, Value)> {
+    let base_tag = if idx == 0 {
         format!("awgconf-{src_id}")
     } else {
         format!("awgconf-{src_id}-{idx}")
     };
-    let mut obj = Map::new();
-    obj.insert("type".into(), json!("wireguard"));
-    obj.insert("tag".into(), json!(tag));
-    obj.insert("server".into(), json!(host));
-    obj.insert("server_port".into(), json!(port));
-    obj.insert("private_key".into(), json!(priv_key));
-    obj.insert("peer_public_key".into(), json!(pub_key));
-    obj.insert("local_address".into(), json!([address]));
-    if !psk.is_empty() {
-        obj.insert("pre_shared_key".into(), json!(psk));
+    parse_amnezia_conf_outbounds_with_prefix(&base_tag, conf)
+}
+
+fn normalize_telemetry_text(value: &str) -> String {
+    let bytes = value.as_bytes();
+    let len = bytes.len();
+    let mut out = String::with_capacity(len);
+    for (idx, ch) in value.char_indices() {
+        if ch.is_ascii_uppercase() {
+            out.push(ch.to_ascii_lowercase());
+        } else if ch == ',' {
+            let prev_digit = idx > 0 && bytes[idx - 1].is_ascii_digit();
+            let next_digit = idx + 1 < len && bytes[idx + 1].is_ascii_digit();
+            out.push(if prev_digit && next_digit { '.' } else { ',' });
+        } else if ('\x20'..='\x7e').contains(&ch) {
+            out.push(ch);
+        } else if ('\u{0410}'..='\u{042f}').contains(&ch)
+            || ('\u{0430}'..='\u{044f}').contains(&ch)
+            || ch == '\u{0401}'
+            || ch == '\u{0451}'
+        {
+            for lc in ch.to_lowercase() {
+                out.push(lc);
+            }
+        } else {
+            out.push(' ');
+        }
     }
-    if mtu > 0 {
-        obj.insert("mtu".into(), json!(mtu));
+    out
+}
+
+fn split_leading_telemetry_number(tok: &str) -> Option<(&str, &str)> {
+    let bytes = tok.as_bytes();
+    if bytes.is_empty() || !bytes[0].is_ascii_digit() {
+        return None;
     }
-    if jc > 0 {
-        obj.insert("jc".into(), json!(jc));
-        obj.insert("jmin".into(), json!(jmin));
-        obj.insert("jmax".into(), json!(jmax));
-        obj.insert("s1".into(), json!(s1));
-        obj.insert("s2".into(), json!(s2));
-        obj.insert("h1".into(), json!(h1));
-        obj.insert("h2".into(), json!(h2));
-        obj.insert("h3".into(), json!(h3));
-        obj.insert("h4".into(), json!(h4));
+    let mut idx = 0usize;
+    let mut seen_dot = false;
+    while idx < bytes.len() {
+        let b = bytes[idx];
+        if b.is_ascii_digit() {
+            idx += 1;
+        } else if b == b'.' && !seen_dot && idx + 1 < bytes.len() && bytes[idx + 1].is_ascii_digit()
+        {
+            seen_dot = true;
+            idx += 1;
+        } else {
+            break;
+        }
     }
-    Some((tag, Value::Object(obj)))
+    if idx == 0 || idx >= bytes.len() {
+        None
+    } else {
+        Some((&tok[..idx], &tok[idx..]))
+    }
+}
+
+fn is_telemetry_number_or_pct_token(tok: &str) -> Option<bool> {
+    let (num_part, has_pct) = if let Some(stripped) = tok.strip_suffix('%') {
+        (stripped, true)
+    } else {
+        (tok, false)
+    };
+    if num_part.is_empty() {
+        return None;
+    }
+    if let Some((left, right)) = num_part.split_once('.') {
+        if left.is_empty()
+            || right.is_empty()
+            || !left.bytes().all(|b| b.is_ascii_digit())
+            || !right.bytes().all(|b| b.is_ascii_digit())
+        {
+            return None;
+        }
+    } else if !num_part.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    Some(has_pct)
+}
+
+fn is_ascii_digits(s: &str, len: usize) -> bool {
+    s.len() == len && s.bytes().all(|b| b.is_ascii_digit())
+}
+
+fn matches_iso_or_eu_telemetry_date(s: &str, had_date_prefix: bool) -> bool {
+    let (date_part, time_part) = match s.find(' ') {
+        Some(pos) => {
+            let t = s[pos + 1..].trim_start();
+            if t.is_empty() {
+                (s[..pos].trim_end(), None)
+            } else {
+                (&s[..pos], Some(t))
+            }
+        }
+        None => (s, None),
+    };
+    if let Some(t) = time_part {
+        let tb = t.as_bytes();
+        if tb.len() != 5
+            || tb[2] != b':'
+            || !tb[0].is_ascii_digit()
+            || !tb[1].is_ascii_digit()
+            || !tb[3].is_ascii_digit()
+            || !tb[4].is_ascii_digit()
+            || tb[0] > b'2'
+            || tb[3] > b'5'
+        {
+            return false;
+        }
+    }
+    let db = date_part.as_bytes();
+    if db.len() == 10 && db[4] == b'-' && db[7] == b'-' {
+        return &date_part[0..2] == "20"
+            && is_ascii_digits(&date_part[2..4], 2)
+            && is_ascii_digits(&date_part[5..7], 2)
+            && (b'0'..=b'1').contains(&db[5])
+            && is_ascii_digits(&date_part[8..10], 2)
+            && (b'0'..=b'3').contains(&db[8]);
+    }
+    if db.len() == 10 && db[2] == b'.' && db[5] == b'.' && &date_part[6..8] == "20" {
+        return is_ascii_digits(&date_part[0..2], 2)
+            && (b'0'..=b'3').contains(&db[0])
+            && is_ascii_digits(&date_part[3..5], 2)
+            && (b'0'..=b'1').contains(&db[3])
+            && is_ascii_digits(&date_part[8..10], 2);
+    }
+    if had_date_prefix && db.len() == 5 && matches!(db[2], b'.' | b'/' | b'-') {
+        let p1 = &date_part[0..2];
+        let p2 = &date_part[3..5];
+        if is_ascii_digits(p1, 2) && is_ascii_digits(p2, 2) {
+            let dd_mm = (b'0'..=b'3').contains(&db[0]) && (b'0'..=b'1').contains(&db[3]);
+            let mm_dd = (b'0'..=b'1').contains(&db[0]) && (b'0'..=b'3').contains(&db[3]);
+            return dd_mm || mm_dd;
+        }
+    }
+    false
+}
+
+/// Return true if a bracketed or delimiter-separated server tag segment represents
+/// dynamic account/traffic/expiry telemetry rather than static server identity.
+pub fn is_dynamic_telemetry_segment(seg: &str) -> bool {
+    const BYTE_UNITS: &[&str] = &[
+        "b",
+        "kb",
+        "kib",
+        "mb",
+        "mib",
+        "gb",
+        "gib",
+        "tb",
+        "tib",
+        "pb",
+        "pib",
+        "byte",
+        "bytes",
+        "б",
+        "кб",
+        "киб",
+        "мб",
+        "миб",
+        "гб",
+        "гиб",
+        "тб",
+        "тиб",
+        "байт",
+        "кбайт",
+        "мбайт",
+        "гбайт",
+        "тбайт",
+    ];
+    const DURATION_UNITS: &[&str] = &[
+        "d",
+        "day",
+        "days",
+        "h",
+        "hr",
+        "hrs",
+        "hour",
+        "hours",
+        "m",
+        "min",
+        "mins",
+        "д",
+        "дн",
+        "дн.",
+        "день",
+        "дня",
+        "дней",
+        "ч",
+        "час",
+        "часа",
+        "часов",
+        "мин",
+    ];
+    const TELEMETRY_WORDS: &[&str] = &[
+        "left",
+        "rem",
+        "remain",
+        "remaining",
+        "used",
+        "free",
+        "total",
+        "limit",
+        "quota",
+        "traffic",
+        "data",
+        "usage",
+        "balance",
+        "bw",
+        "of",
+        "unlim",
+        "unlimited",
+        "inf",
+        "exp",
+        "expire",
+        "expires",
+        "until",
+        "valid",
+        "reset",
+        "renew",
+        "due",
+        "days",
+        "осталось",
+        "остаток",
+        "трафик",
+        "из",
+        "срок",
+        "лимит",
+        "доступно",
+        "исп",
+        "использовано",
+        "безлимит",
+        "до",
+        "истекает",
+        "сброс",
+        "годен",
+    ];
+    const PROTECTED_TOKENS: &[&str] = &[
+        "ipv4",
+        "ipv6",
+        "http",
+        "https",
+        "vless",
+        "vmess",
+        "trojan",
+        "hysteria",
+        "hysteria2",
+        "tuic",
+        "wireguard",
+        "amnezia",
+        "amneziawg",
+        "awg",
+        "shadowsocks",
+        "shadowtls",
+        "reality",
+        "xhttp",
+        "grpc",
+        "ws",
+        "tcp",
+        "udp",
+        "quic",
+        "tls",
+        "lte",
+    ];
+    const PROTECTED_SUBSTRINGS: &[&str] = &[
+        "ipv4",
+        "ipv6",
+        "http",
+        "vless",
+        "vmess",
+        "trojan",
+        "hysteria",
+        "tuic",
+        "wireguard",
+        "amnezia",
+        "shadowsocks",
+        "reality",
+        "xhttp",
+        "grpc",
+        "quic",
+    ];
+    const DATE_PREFIXES: &[&str] = &[
+        "valid until",
+        "expires",
+        "expire",
+        "exp",
+        "until",
+        "valid",
+        "истекает",
+        "годен до",
+        "до",
+    ];
+
+    let norm_owned = normalize_telemetry_text(seg);
+    let mut norm = norm_owned.trim();
+    while let Some(inner) = norm
+        .strip_prefix('[')
+        .and_then(|s| s.strip_suffix(']'))
+        .or_else(|| norm.strip_prefix('(').and_then(|s| s.strip_suffix(')')))
+    {
+        norm = inner.trim();
+    }
+    if norm.is_empty() || norm.contains('#') {
+        return false;
+    }
+    if ["bps", "bit", "бит", "/s", "/c", "/с", "/сек", "/sec"]
+        .iter()
+        .any(|s| norm.contains(s))
+    {
+        return false;
+    }
+    if PROTECTED_SUBSTRINGS.iter().any(|kw| norm.contains(kw)) {
+        return false;
+    }
+
+    let mut date_candidate = norm;
+    let mut had_date_prefix = false;
+    for &pfx in DATE_PREFIXES {
+        if let Some(after) = date_candidate.strip_prefix(pfx)
+            && let Some(first) = after.chars().next()
+            && matches!(first, ':' | ' ' | '\t')
+        {
+            date_candidate = after.trim_start_matches([':', ' ', '\t']).trim();
+            had_date_prefix = true;
+            break;
+        }
+    }
+    if matches_iso_or_eu_telemetry_date(date_candidate, had_date_prefix) {
+        return true;
+    }
+
+    let spaced: String = norm
+        .chars()
+        .map(|c| {
+            if matches!(
+                c,
+                '/' | '|' | ':' | ';' | '+' | '(' | ')' | '[' | ']' | ',' | '-'
+            ) {
+                ' '
+            } else {
+                c
+            }
+        })
+        .collect();
+    let tokens: Vec<&str> = spaced.split_whitespace().collect();
+    if tokens.is_empty() {
+        return false;
+    }
+
+    let mut has_value_unit = false;
+    let mut has_telemetry_word = false;
+    let mut has_percent = false;
+    let mut prev_was_number = false;
+    for &tok in &tokens {
+        if PROTECTED_TOKENS.contains(&tok) {
+            return false;
+        }
+        if let Some(has_pct) = is_telemetry_number_or_pct_token(tok) {
+            if has_pct {
+                has_percent = true;
+                prev_was_number = false;
+            } else {
+                prev_was_number = true;
+            }
+            continue;
+        }
+        if tok == "%" && prev_was_number {
+            has_percent = true;
+            prev_was_number = false;
+            continue;
+        }
+        if let Some((_, unit)) = split_leading_telemetry_number(tok) {
+            if !BYTE_UNITS.contains(&unit) && !DURATION_UNITS.contains(&unit) {
+                return false;
+            }
+            if tokens.len() == 1 && (tok == "2d" || tok == "3d") {
+                return false;
+            }
+            has_value_unit = true;
+            prev_was_number = false;
+            continue;
+        }
+        if BYTE_UNITS.contains(&tok) || DURATION_UNITS.contains(&tok) {
+            if prev_was_number {
+                has_value_unit = true;
+            }
+            prev_was_number = false;
+            continue;
+        }
+        if TELEMETRY_WORDS.contains(&tok) {
+            has_telemetry_word = true;
+            prev_was_number = false;
+            continue;
+        }
+        return false;
+    }
+
+    has_value_unit || (has_telemetry_word && has_percent)
+}
+
+fn collapse_ascii_spaces_trim(s: &str) -> String {
+    s.split([' ', '\t'])
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+        .trim()
+        .to_string()
+}
+
+/// Strip dynamic telemetry segments (quota, expiry, remaining days) from a node tag while
+/// preserving static identifiers like `(#N)`, `(1)`, `[2D]`, `[10 Gbps]`, `vless`, and `Europe 1.1`.
+pub fn strip_dynamic_server_telemetry(name: &str) -> String {
+    let orig = name.trim();
+    if orig.is_empty() {
+        return String::new();
+    }
+    let bytes = orig.as_bytes();
+    let len = bytes.len();
+    let mut out = String::with_capacity(len);
+    let mut i = 0usize;
+    let mut removed_bracket = false;
+
+    while i < len {
+        let b = bytes[i];
+        if b == b'[' || b == b'(' {
+            let close_b = if b == b'[' { b']' } else { b')' };
+            let mut depth = 0usize;
+            let mut close_idx: Option<usize> = None;
+            let mut j = i;
+            while j < len {
+                if bytes[j] == b {
+                    depth += 1;
+                } else if bytes[j] == close_b {
+                    depth -= 1;
+                    if depth == 0 {
+                        close_idx = Some(j);
+                        break;
+                    }
+                }
+                j += 1;
+            }
+            if let Some(cidx) = close_idx {
+                let inner = &orig[i + 1..cidx];
+                if is_dynamic_telemetry_segment(inner) {
+                    removed_bracket = true;
+                    i = cidx + 1;
+                    continue;
+                }
+                out.push_str(&orig[i..=cidx]);
+                i = cidx + 1;
+                continue;
+            }
+        }
+        if let Some(ch) = orig[i..].chars().next() {
+            out.push(ch);
+            i += ch.len_utf8();
+        } else {
+            break;
+        }
+    }
+
+    out = collapse_ascii_spaces_trim(&out);
+    if removed_bracket {
+        for d_tail in [" |", " \u{2022}", " \u{2014}", " \u{2013}", " -"] {
+            if out.len() > d_tail.len()
+                && let Some(stripped) = out.strip_suffix(d_tail)
+            {
+                out = stripped.trim().to_string();
+                break;
+            }
+        }
+    }
+
+    const DELIMITERS: &[&str] = &[" | ", " \u{2022} ", " \u{2014} ", " \u{2013} ", " - "];
+    loop {
+        let mut best: Option<(usize, &str)> = None;
+        for &sep in DELIMITERS {
+            if let Some(idx) = out.rfind(sep)
+                && idx > 0
+                && best.is_none_or(|(prev_idx, _)| idx > prev_idx)
+            {
+                best = Some((idx, sep));
+            }
+        }
+        let Some((best_idx, best_sep)) = best else {
+            break;
+        };
+        let tail = &out[best_idx + best_sep.len()..];
+        if !is_dynamic_telemetry_segment(tail) {
+            break;
+        }
+        out = out[..best_idx].trim().to_string();
+    }
+
+    out = collapse_ascii_spaces_trim(&out);
+    if out.is_empty() {
+        orig.to_string()
+    } else {
+        out
+    }
+}
+
+/// Compare a live server `tag` against a saved `filter` string, tolerating source prefix
+/// variations and dynamic telemetry segments without collapsing numbered or protocol labels.
+pub fn server_filter_name_matches(tag: &str, filter: &str, known_prefixes: &[String]) -> bool {
+    let tag_trim = tag.trim();
+    let flt_trim = filter.trim();
+    if flt_trim.is_empty() || tag_trim.is_empty() {
+        return false;
+    }
+    if tag_trim == flt_trim {
+        return true;
+    }
+    let tag_unp = strip_node_tag_prefix(tag_trim, known_prefixes).trim();
+    let flt_unp = strip_node_tag_prefix(flt_trim, known_prefixes).trim();
+    if !tag_unp.is_empty() && tag_unp == flt_unp {
+        return true;
+    }
+
+    let tag_canon = strip_dynamic_server_telemetry(tag_trim);
+    let flt_canon = strip_dynamic_server_telemetry(flt_trim);
+    if !tag_canon.is_empty() && (tag_canon == flt_trim || tag_canon == flt_canon) {
+        return true;
+    }
+    let tag_unp_canon = strip_dynamic_server_telemetry(tag_unp);
+    let flt_unp_canon = strip_dynamic_server_telemetry(flt_unp);
+    !tag_unp_canon.is_empty() && (tag_unp_canon == flt_unp || tag_unp_canon == flt_unp_canon)
+}
+
+fn tag_matches_keyword_or_telemetry(tag: &str, pattern: &str, known_prefixes: &[String]) -> bool {
+    let pat_trim = pattern.trim();
+    if pat_trim.is_empty() {
+        return false;
+    }
+    let tl = tag.to_lowercase();
+    let pl = pat_trim.to_lowercase();
+    if tl.contains(&pl) {
+        return true;
+    }
+    let canon_pat = strip_dynamic_server_telemetry(pat_trim);
+    if !canon_pat.is_empty() && canon_pat != pat_trim {
+        return server_filter_name_matches(tag, pat_trim, known_prefixes);
+    }
+    false
 }
 
 fn passes_source_filters(src: &OutboundSource, tag: &str, country: &str) -> bool {
@@ -4802,17 +7017,18 @@ fn passes_source_filters(src: &OutboundSource, tag: &str, country: &str) -> bool
     {
         return false;
     }
+    let src_prefixes: Vec<String> = if src.prefix_nodes && !src.node_prefix.trim().is_empty() {
+        vec![src.node_prefix.trim().to_string()]
+    } else {
+        Vec::new()
+    };
     if !src.filter_allow_regex.is_empty()
-        && !tag
-            .to_ascii_lowercase()
-            .contains(&src.filter_allow_regex.to_ascii_lowercase())
+        && !tag_matches_keyword_or_telemetry(tag, &src.filter_allow_regex, &src_prefixes)
     {
         return false;
     }
     if !src.filter_deny_regex.is_empty()
-        && tag
-            .to_ascii_lowercase()
-            .contains(&src.filter_deny_regex.to_ascii_lowercase())
+        && tag_matches_keyword_or_telemetry(tag, &src.filter_deny_regex, &src_prefixes)
     {
         return false;
     }
@@ -4850,6 +7066,11 @@ const DEFAULT_TELEGRAM_SUBNETS: &[&str] = &[
     "149.154.160.0/20",
     "185.76.151.0/24",
     "194.221.0.0/16",
+    "2001:67c:4e8::/48",
+    "2001:b28:f23c::/48",
+    "2001:b28:f23d::/48",
+    "2001:b28:f23f::/48",
+    "2a0a:f280::/32",
 ];
 
 fn strip_node_tag_prefix<'a>(tag: &'a str, known_prefixes: &[String]) -> &'a str {
@@ -4873,16 +7094,7 @@ fn strip_node_tag_prefix<'a>(tag: &'a str, known_prefixes: &[String]) -> &'a str
 }
 
 fn server_tag_matches(tag: &str, filter: &str, known_prefixes: &[String]) -> bool {
-    let tag_trim = tag.trim();
-    let flt_trim = filter.trim();
-    if flt_trim.is_empty() {
-        return false;
-    }
-    if tag_trim == flt_trim {
-        return true;
-    }
-    strip_node_tag_prefix(tag_trim, known_prefixes)
-        == strip_node_tag_prefix(flt_trim, known_prefixes)
+    server_filter_name_matches(tag, filter, known_prefixes)
 }
 
 fn parse_valid_cidr_token(raw: &str) -> Option<String> {
@@ -5047,6 +7259,15 @@ fn allocate_loopback_port(preferred: u16, used_ports: &mut HashSet<u16>) -> u16 
 }
 
 pub fn compile_core_config(store: &RouterStoreData) -> anyhow::Result<Value> {
+    compile_core_config_with_wan6(store, crate::store::detect_wan6_runtime_available())
+}
+
+pub fn compile_core_config_with_wan6(
+    store: &RouterStoreData,
+    wan6_available: bool,
+) -> anyhow::Result<Value> {
+    let ipv6_state = crate::store::resolve_effective_ipv6_state(&store.settings, wan6_available);
+    let ipv6_active = ipv6_state.is_active();
     let mut inbounds: Vec<Value> = Vec::new();
     let mut outbounds: Vec<Value> = Vec::new();
     let mut rules: Vec<Value> = Vec::new();
@@ -5057,11 +7278,16 @@ pub fn compile_core_config(store: &RouterStoreData) -> anyhow::Result<Value> {
     // 1. Primary router interception inbound (`tproxy` :1602 or `tun` tun0)
     match store.settings.proxy_mode.as_str() {
         "tun" => {
+            let tun_v4 = crate::store::effective_tun_inet4(&store.settings);
+            let mut tun_addrs = vec![json!(tun_v4)];
+            if let Some(tun_v6) = crate::store::effective_tun_inet6(&store.settings, ipv6_state) {
+                tun_addrs.push(json!(tun_v6));
+            }
             inbounds.push(json!({
                 "type": "tun",
                 "tag": "tun-in",
                 "interface_name": store.settings.tun_interface,
-                "address": ["172.19.0.1/30"],
+                "address": tun_addrs,
                 "mtu": store.settings.tun_mtu,
                 "auto_route": true,
                 "strict_route": true,
@@ -5072,7 +7298,7 @@ pub fn compile_core_config(store: &RouterStoreData) -> anyhow::Result<Value> {
             inbounds.push(json!({
                 "type": "mixed",
                 "tag": "mixed-in",
-                "listen": "0.0.0.0",
+                "listen": if ipv6_active { "::" } else { "0.0.0.0" },
                 "listen_port": 1080
             }));
         }
@@ -5101,7 +7327,7 @@ pub fn compile_core_config(store: &RouterStoreData) -> anyhow::Result<Value> {
         inbounds.push(json!({
             "type": "mixed",
             "tag": "direct-bypass-in",
-            "listen": "0.0.0.0",
+            "listen": if ipv6_active { "::" } else { "0.0.0.0" },
             "listen_port": store.settings.direct_bypass_port
         }));
         rules.push(json!({
@@ -5177,14 +7403,9 @@ pub fn compile_core_config(store: &RouterStoreData) -> anyhow::Result<Value> {
     if store.settings.listen_port > 0 {
         used_ports.insert(store.settings.listen_port);
     }
-    if let Some(clash_p) = store
-        .settings
-        .clash_api_addr
-        .rsplit_once(':')
-        .and_then(|(_, p)| p.trim().parse::<u16>().ok())
-        .filter(|&p| p > 0)
-    {
-        used_ports.insert(clash_p);
+    let clash_port_check = extract_host_port(&store.settings.clash_api_addr, 0);
+    if clash_port_check > 0 {
+        used_ports.insert(clash_port_check);
     }
 
     // Internal loopback mixed inbound for daemon services (e.g. Telegram bot auto-proxy)
@@ -5357,9 +7578,26 @@ pub fn compile_core_config(store: &RouterStoreData) -> anyhow::Result<Value> {
             continue;
         }
         if prof.block_doh {
+            let mut doh_cidrs = vec![
+                "1.1.1.1/32",
+                "1.0.0.1/32",
+                "8.8.8.8/32",
+                "8.8.4.4/32",
+                "9.9.9.9/32",
+            ];
+            if ipv6_active {
+                doh_cidrs.extend([
+                    "2606:4700:4700::1111/128",
+                    "2606:4700:4700::1001/128",
+                    "2001:4860:4860::8888/128",
+                    "2001:4860:4860::8844/128",
+                    "2620:fe::fe/128",
+                    "2620:fe::9/128",
+                ]);
+            }
             rules.push(json!({
                 "source_ip_cidr": dev_ips,
-                "ip_cidr": ["1.1.1.1/32", "1.0.0.1/32", "8.8.8.8/32", "8.8.4.4/32", "9.9.9.9/32"],
+                "ip_cidr": doh_cidrs,
                 "port": [443, 853],
                 "outbound": "block"
             }));
@@ -5456,6 +7694,7 @@ pub fn compile_core_config(store: &RouterStoreData) -> anyhow::Result<Value> {
     };
 
     let ts_route_insert_idx = rules.len();
+    let mut per_sec_aaaa_dns_rules: Vec<Value> = Vec::new();
     for sec in store.sections.iter().filter(|s| s.enabled) {
         if sec.action == "dns" || sec.connection_type == "dns" {
             continue;
@@ -5484,7 +7723,7 @@ pub fn compile_core_config(store: &RouterStoreData) -> anyhow::Result<Value> {
             let mut mixed_in = json!({
                 "type": "mixed",
                 "tag": mixed_in_tag,
-                "listen": "0.0.0.0",
+                "listen": if ipv6_active { "::" } else { "0.0.0.0" },
                 "listen_port": sec.mixed_proxy_port,
             });
             if sec.mixed_proxy_auth_enabled && !sec.mixed_proxy_username.is_empty() {
@@ -5522,7 +7761,7 @@ pub fn compile_core_config(store: &RouterStoreData) -> anyhow::Result<Value> {
         // Section-level Exclusions (excluded LAN devices, domains, subnets) -> bypass to `direct`
         if !sec.excluded_ips.is_empty() {
             let mut cidrs = resolve_device_targets_to_cidrs(&sec.excluded_ips);
-            if !store.settings.enable_ipv6 {
+            if !ipv6_active {
                 cidrs.retain(|s| !s.contains(':'));
             }
             if !cidrs.is_empty() {
@@ -5539,10 +7778,18 @@ pub fn compile_core_config(store: &RouterStoreData) -> anyhow::Result<Value> {
             }));
         }
         if !sec.exclude_subnets.is_empty() {
-            rules.push(json!({
-                "ip_cidr": sec.exclude_subnets,
-                "outbound": "direct"
-            }));
+            let filtered: Vec<String> = sec
+                .exclude_subnets
+                .iter()
+                .filter(|c| ipv6_active || !c.contains(':'))
+                .cloned()
+                .collect();
+            if !filtered.is_empty() {
+                rules.push(json!({
+                    "ip_cidr": filtered,
+                    "outbound": "direct"
+                }));
+            }
         }
         if !sec.exclude_ports.is_empty() {
             let mut pr = Map::new();
@@ -5573,7 +7820,7 @@ pub fn compile_core_config(store: &RouterStoreData) -> anyhow::Result<Value> {
 
         if !sec.fully_routed_ips.is_empty() {
             let mut cidrs = resolve_device_targets_to_cidrs(&sec.fully_routed_ips);
-            if !store.settings.enable_ipv6 {
+            if !ipv6_active {
                 cidrs.retain(|s| !s.contains(':'));
             }
             if !cidrs.is_empty() {
@@ -5602,7 +7849,7 @@ pub fn compile_core_config(store: &RouterStoreData) -> anyhow::Result<Value> {
                 &store.settings.github_mirror,
                 &mut rule_sets,
                 &mut seen_rule_sets,
-                store.settings.enable_ipv6,
+                ipv6_active,
                 pre_resolve_ip,
                 &mut outbounds,
             );
@@ -5658,7 +7905,7 @@ pub fn compile_core_config(store: &RouterStoreData) -> anyhow::Result<Value> {
                 &store.settings.github_mirror,
                 &mut rule_sets,
                 &mut seen_rule_sets,
-                store.settings.enable_ipv6,
+                ipv6_active,
                 pre_resolve_ip,
                 &mut outbounds,
             );
@@ -5672,6 +7919,25 @@ pub fn compile_core_config(store: &RouterStoreData) -> anyhow::Result<Value> {
             rules.push(json!({
                 "outbound": target_outbound_tag
             }));
+        }
+
+        if ipv6_active
+            && !section_ipv6_supported(sec)
+            && sec.action != "block"
+            && sec.connection_type != "block"
+            && target_outbound_tag != "block"
+        {
+            collect_section_aaaa_noerror_dns_rules(
+                sec,
+                &cond_map,
+                &store.settings.rulesets_dir,
+                &store.settings.github_mirror,
+                &mut rule_sets,
+                &mut seen_rule_sets,
+                ipv6_active,
+                section_matched_any,
+                &mut per_sec_aaaa_dns_rules,
+            );
         }
     }
 
@@ -5773,12 +8039,43 @@ pub fn compile_core_config(store: &RouterStoreData) -> anyhow::Result<Value> {
         .first()
         .cloned()
         .unwrap_or_else(|| "77.88.8.8".to_string());
-    let boot_host = boot_dns
-        .trim_start_matches("udp://")
-        .trim_start_matches("https://")
-        .split(['/', ':'])
-        .next()
-        .unwrap_or("77.88.8.8");
+    let boot_host_owned = extract_host_only(&boot_dns);
+    let boot_host = if boot_host_owned.is_empty() {
+        "77.88.8.8"
+    } else {
+        boot_host_owned.as_str()
+    };
+    let boot_scheme = boot_dns.trim().to_ascii_lowercase();
+    let dns_bootstrap_obj =
+        if boot_scheme.starts_with("tls://") || boot_scheme.starts_with("dot://") {
+            let boot_port = extract_url_port(&boot_dns, 853);
+            let boot_is_ip = crate::store::valid_ip_with_zone(boot_host);
+            let mut tls_obj = json!({ "enabled": true });
+            if boot_is_ip {
+                if let Some(sni) = lookup_known_dns_server_name(boot_host) {
+                    tls_obj["server_name"] = json!(sni);
+                }
+            } else {
+                tls_obj["server_name"] = json!(boot_host);
+            }
+            json!({
+                "type": "tls",
+                "tag": "dns-bootstrap",
+                "server": boot_host,
+                "server_port": boot_port,
+                "tls": tls_obj,
+                "detour": "direct"
+            })
+        } else {
+            let boot_port = extract_url_port(&boot_dns, 53);
+            json!({
+                "type": "udp",
+                "tag": "dns-bootstrap",
+                "server": boot_host,
+                "server_port": boot_port,
+                "detour": "direct"
+            })
+        };
 
     let main_dns = store
         .settings
@@ -5786,40 +8083,65 @@ pub fn compile_core_config(store: &RouterStoreData) -> anyhow::Result<Value> {
         .first()
         .cloned()
         .unwrap_or_else(|| "1.1.1.1".to_string());
-    let main_host = main_dns
-        .trim_start_matches("https://")
-        .trim_start_matches("tls://")
-        .trim_start_matches("quic://")
-        .trim_start_matches("h3://")
-        .trim_start_matches("udp://")
-        .split(['/', ':'])
-        .next()
-        .unwrap_or("1.1.1.1");
-    let dns_remote_obj = if main_dns.starts_with("https://") || store.settings.dns_type == "doh" {
-        json!({
+    let main_host_owned = extract_host_only(&main_dns);
+    let main_host = if main_host_owned.is_empty() {
+        "1.1.1.1"
+    } else {
+        main_host_owned.as_str()
+    };
+    let main_is_ip = crate::store::valid_ip_with_zone(main_host);
+    let known_dns_sni = lookup_known_dns_server_name(main_host);
+    let build_tls_obj = || -> Value {
+        let mut t = json!({ "enabled": true });
+        if main_is_ip {
+            if let Some(sni) = known_dns_sni {
+                t["server_name"] = json!(sni);
+            }
+        } else {
+            t["server_name"] = json!(main_host);
+        }
+        t
+    };
+
+    let mut dns_remote_obj = if main_dns.starts_with("https://") || store.settings.dns_type == "doh"
+    {
+        let mut obj = json!({
             "type": "https",
             "tag": "dns-remote",
             "server": main_host,
-            "server_port": 443,
-            "domain_resolver": "dns-bootstrap",
+            "server_port": extract_url_port(&main_dns, 443),
+            "tls": build_tls_obj(),
             "detour": "direct"
-        })
-    } else if main_dns.starts_with("tls://") || store.settings.dns_type == "dot" {
+        });
+        if let Some(path) = extract_url_path(&main_dns)
+            && !path.is_empty()
+            && path != "/"
+        {
+            obj["path"] = json!(path);
+        }
+        obj
+    } else if main_dns.starts_with("tls://")
+        || main_dns.starts_with("dot://")
+        || store.settings.dns_type == "dot"
+    {
         json!({
             "type": "tls",
             "tag": "dns-remote",
             "server": main_host,
-            "server_port": 853,
-            "domain_resolver": "dns-bootstrap",
+            "server_port": extract_url_port(&main_dns, 853),
+            "tls": build_tls_obj(),
             "detour": "direct"
         })
-    } else if main_dns.starts_with("quic://") || store.settings.dns_type == "doq" {
+    } else if main_dns.starts_with("quic://")
+        || main_dns.starts_with("doq://")
+        || store.settings.dns_type == "doq"
+    {
         json!({
             "type": "quic",
             "tag": "dns-remote",
             "server": main_host,
-            "server_port": 853,
-            "domain_resolver": "dns-bootstrap",
+            "server_port": extract_url_port(&main_dns, 853),
+            "tls": build_tls_obj(),
             "detour": "direct"
         })
     } else {
@@ -5827,10 +8149,13 @@ pub fn compile_core_config(store: &RouterStoreData) -> anyhow::Result<Value> {
             "type": "udp",
             "tag": "dns-remote",
             "server": main_host,
-            "server_port": 53,
+            "server_port": extract_url_port(&main_dns, 53),
             "detour": "direct"
         })
     };
+    if !main_is_ip && dns_remote_obj.get("type").and_then(Value::as_str) != Some("udp") {
+        dns_remote_obj["domain_resolver"] = json!("dns-bootstrap");
+    }
 
     let fakeip_v4 = if store.settings.fakeip_inet4_range.trim().is_empty() {
         "198.18.0.0/15"
@@ -5843,27 +8168,18 @@ pub fn compile_core_config(store: &RouterStoreData) -> anyhow::Result<Value> {
         store.settings.fakeip_inet6_range.trim()
     };
 
-    let mut dns_servers_vec = vec![
-        json!({
-            "type": "udp",
-            "tag": "dns-bootstrap",
-            "server": boot_host,
-            "server_port": 53,
-            "detour": "direct"
-        }),
-        dns_remote_obj,
-        {
-            let mut fakeip_srv = json!({
-                "type": "fakeip",
-                "tag": "dns-fakeip",
-                "inet4_range": fakeip_v4
-            });
-            if store.settings.enable_ipv6 {
-                fakeip_srv["inet6_range"] = json!(fakeip_v6);
-            }
-            fakeip_srv
-        },
-    ];
+    let mut dns_servers_vec = vec![dns_bootstrap_obj, dns_remote_obj];
+    if store.settings.fakeip_enabled {
+        let mut fakeip_srv = json!({
+            "type": "fakeip",
+            "tag": "dns-fakeip",
+            "inet4_range": fakeip_v4
+        });
+        if ipv6_active {
+            fakeip_srv["inet6_range"] = json!(fakeip_v6);
+        }
+        dns_servers_vec.push(fakeip_srv);
+    }
     let mut dns_rules_vec: Vec<Value> = Vec::new();
     let ntp_domains = collect_system_ntp_domains();
     if !ntp_domains.is_empty() {
@@ -5916,18 +8232,19 @@ pub fn compile_core_config(store: &RouterStoreData) -> anyhow::Result<Value> {
             "server": "dns-safesearch"
         }));
     }
-    if !store.settings.fakeip_exclude.is_empty() {
-        dns_rules_vec.push(json!({
-            "domain_suffix": store.settings.fakeip_exclude,
-            "server": "dns-remote"
-        }));
+    if !store.settings.fakeip_exclude.is_empty() && store.settings.fakeip_enabled {
+        dns_rules_vec.extend(build_fakeip_exclude_dns_rules(
+            &store.settings.fakeip_exclude,
+        ));
     }
-    if !store.settings.enable_ipv6 {
+    if !ipv6_active {
         dns_rules_vec.push(json!({
             "query_type": ["AAAA"],
             "action": "predefined",
             "rcode": "NOERROR"
         }));
+    } else if !per_sec_aaaa_dns_rules.is_empty() {
+        dns_rules_vec.extend(per_sec_aaaa_dns_rules);
     }
     if !ts_dns_metas.is_empty() {
         let mut has_ts_net_rule = false;
@@ -5969,23 +8286,19 @@ pub fn compile_core_config(store: &RouterStoreData) -> anyhow::Result<Value> {
             }
         }
     }
-    dns_rules_vec.push(json!({
-        "query_type": if store.settings.enable_ipv6 {
-            json!(["A", "AAAA"])
-        } else {
-            json!(["A"])
-        },
-        "server": "dns-fakeip",
-        "rewrite_ttl": store.settings.dns_rewrite_ttl
-    }));
+    if store.settings.fakeip_enabled {
+        dns_rules_vec.push(json!({
+            "query_type": if ipv6_active {
+                json!(["A", "AAAA"])
+            } else {
+                json!(["A"])
+            },
+            "server": "dns-fakeip",
+            "rewrite_ttl": store.settings.dns_rewrite_ttl
+        }));
+    }
 
-    let eff_dns_strategy = if !store.settings.enable_ipv6 {
-        "ipv4_only"
-    } else if store.settings.dns_strategy.trim().is_empty() {
-        "prefer_ipv4"
-    } else {
-        store.settings.dns_strategy.trim()
-    };
+    let eff_dns_strategy = crate::store::effective_dns_strategy(&store.settings, ipv6_state);
     let mut dns_map = Map::new();
     dns_map.insert("servers".into(), Value::Array(dns_servers_vec));
     dns_map.insert("rules".into(), Value::Array(dns_rules_vec));
@@ -5999,14 +8312,13 @@ pub fn compile_core_config(store: &RouterStoreData) -> anyhow::Result<Value> {
     }
     let dns_block = Value::Object(dns_map);
 
-    let clash_port = store
-        .settings
-        .clash_api_addr
-        .rsplit_once(':')
-        .and_then(|(_, p)| p.trim().parse::<u16>().ok())
-        .unwrap_or(9090);
+    let clash_port = extract_host_port(&store.settings.clash_api_addr, 9090);
     let clash_controller = if store.settings.enable_yacd || store.settings.enable_yacd_wan_access {
-        format!("0.0.0.0:{clash_port}")
+        if ipv6_active {
+            format!("[::]:{clash_port}")
+        } else {
+            format!("0.0.0.0:{clash_port}")
+        }
     } else if store.settings.clash_api_addr.starts_with("127.0.0.1:") {
         store.settings.clash_api_addr.clone()
     } else {
@@ -6023,6 +8335,8 @@ pub fn compile_core_config(store: &RouterStoreData) -> anyhow::Result<Value> {
     if store.settings.enable_yacd {
         clash_api_obj.insert("external_ui".into(), json!("ui"));
     }
+
+    let safe_cache_path = crate::store::sanitize_cache_path(&store.settings.cache_path);
 
     Ok(json!({
         "log": {
@@ -6044,12 +8358,490 @@ pub fn compile_core_config(store: &RouterStoreData) -> anyhow::Result<Value> {
         "experimental": {
             "cache_file": {
                 "enabled": true,
-                "path": store.settings.cache_path,
-                "store_fakeip": true
+                "path": safe_cache_path,
+                "store_fakeip": store.settings.fakeip_enabled
             },
             "clash_api": Value::Object(clash_api_obj)
         }
     }))
+}
+
+fn extract_url_port(raw: &str, default_port: u16) -> u16 {
+    let s = raw.trim();
+    let without_scheme = if let Some((_, rest)) = s.split_once("://") {
+        rest
+    } else {
+        s
+    };
+    let after_userinfo = without_scheme
+        .rsplit_once('@')
+        .map_or(without_scheme, |(_, hp)| hp);
+    let authority = after_userinfo
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or(after_userinfo)
+        .trim();
+    extract_host_port(authority, default_port)
+}
+
+fn extract_url_path(raw: &str) -> Option<String> {
+    let s = raw.trim();
+    let without_scheme = s.split_once("://").map(|(_, r)| r)?;
+    let slash_idx = without_scheme.find('/')?;
+    let path_and_more = &without_scheme[slash_idx..];
+    let path = path_and_more.split(['?', '#']).next().unwrap_or("").trim();
+    if path.is_empty() {
+        None
+    } else {
+        Some(path.to_string())
+    }
+}
+
+fn dns_server_lookup_key(host: &str) -> String {
+    let clean = strip_ipv6_brackets(host.trim());
+    let no_zone = match clean.split_once('%') {
+        Some((addr, _)) => addr,
+        None => clean.as_str(),
+    };
+    if let Ok(v6) = no_zone.parse::<std::net::Ipv6Addr>() {
+        return v6.to_string();
+    }
+    no_zone.to_ascii_lowercase()
+}
+
+fn lookup_known_dns_server_name(host: &str) -> Option<&'static str> {
+    let key = dns_server_lookup_key(host);
+    match key.as_str() {
+        "8.8.8.8" | "8.8.4.4" | "2001:4860:4860::8888" | "2001:4860:4860::8844" => {
+            Some("dns.google")
+        }
+        "1.1.1.1" | "1.0.0.1" | "2606:4700:4700::1111" | "2606:4700:4700::1001" => {
+            Some("cloudflare-dns.com")
+        }
+        "2606:4700:4700::1112" => Some("security.cloudflare-dns.com"),
+        "2606:4700:4700::1113" => Some("family.cloudflare-dns.com"),
+        "77.88.8.8"
+        | "77.88.8.1"
+        | "2a02:6b8::feed:ff"
+        | "2a02:6b8::feed:0ff"
+        | "2a02:6b8:0:1::feed:ff"
+        | "2a02:6b8:0:1::feed:0ff" => Some("common.dot.dns.yandex.net"),
+        "77.88.8.88" | "77.88.8.2" | "2a02:6b8::feed:bad" | "2a02:6b8:0:1::feed:bad" => {
+            Some("safe.dot.dns.yandex.net")
+        }
+        "77.88.8.7" | "77.88.8.3" | "2a02:6b8::feed:a11" | "2a02:6b8:0:1::feed:a11" => {
+            Some("family.dot.dns.yandex.net")
+        }
+        "9.9.9.9" | "149.112.112.112" | "2620:fe::fe" | "2620:fe::9" => Some("dns.quad9.net"),
+        "9.9.9.10" | "149.112.112.10" | "2620:fe::10" | "2620:fe::fe:10" => Some("dns10.quad9.net"),
+        "94.140.14.14" | "94.140.15.15" | "2a10:50c0::ad1:ff" | "2a10:50c0::ad2:ff" => {
+            Some("dns.adguard-dns.com")
+        }
+        "94.140.14.140" | "94.140.14.141" | "2a10:50c0::1:ff" | "2a10:50c0::2:ff" => {
+            Some("unfiltered.adguard-dns.com")
+        }
+        "94.140.14.15" | "94.140.15.16" | "2a10:50c0::bad1:ff" | "2a10:50c0::bad2:ff" => {
+            Some("family.adguard-dns.com")
+        }
+        "194.242.2.2" | "194.242.2.3" | "194.242.2.4" | "194.242.2.5" | "2a07:e340::2"
+        | "2a07:e340::3" => Some("dns.mullvad.net"),
+        "76.76.2.0" | "76.76.10.0" | "2606:1a40::" | "2606:1a40:1::" => {
+            Some("freedns.controld.com")
+        }
+        "223.5.5.5" | "223.6.6.6" | "2400:3200::1" | "2400:3200:baba::1" => Some("dns.alidns.com"),
+        "208.67.222.222" | "208.67.220.220" | "2620:119:35::35" | "2620:119:53::53" => {
+            Some("doh.opendns.com")
+        }
+        "185.222.222.222" | "45.11.45.11" | "2a09::" | "2a11::" => Some("doh.dns.sb"),
+        "185.228.168.9" | "185.228.169.9" | "2a0d:2a00:1::" | "2a0d:2a00:2::" => {
+            Some("doh.cleanbrowsing.org")
+        }
+        _ => None,
+    }
+}
+
+fn build_fakeip_exclude_dns_rules(entries: &[String]) -> Vec<Value> {
+    let mut exact_domains: Vec<String> = Vec::new();
+    let mut suffix_domains: Vec<String> = Vec::new();
+    let mut keyword_domains: Vec<String> = Vec::new();
+    let mut regex_domains: Vec<String> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+
+    let mut push_unique = |kind: &str, bucket: &mut Vec<String>, val: &str, lowercase: bool| {
+        let clean = val.trim();
+        if clean.is_empty() {
+            return;
+        }
+        let norm = if lowercase {
+            clean.to_ascii_lowercase()
+        } else {
+            clean.to_string()
+        };
+        let key = format!("{kind}:{norm}");
+        if seen.insert(key) {
+            bucket.push(norm);
+        }
+    };
+
+    for raw_entry in entries {
+        let entry_s = raw_entry.trim();
+        if entry_s.is_empty() || entry_s.starts_with('#') {
+            continue;
+        }
+        for tok_raw in entry_s.split(|c: char| c == ',' || c.is_whitespace()) {
+            let tok = tok_raw.trim();
+            if tok.is_empty() {
+                continue;
+            }
+            if tok.starts_with('#') {
+                break;
+            }
+            if crate::store::valid_ip_with_zone(tok)
+                || (tok.contains('/') && crate::store::mask_cidr(tok).is_some())
+            {
+                continue;
+            }
+            let lower = tok.to_ascii_lowercase();
+            if lower.starts_with("full:") {
+                push_unique("domain", &mut exact_domains, &tok[5..], true);
+            } else if lower.starts_with("domain:") {
+                push_unique("domain", &mut exact_domains, &tok[7..], true);
+            } else if lower.starts_with("domain_suffix:") {
+                push_unique("domain_suffix", &mut suffix_domains, &tok[14..], true);
+            } else if lower.starts_with("domain_keyword:") {
+                push_unique("domain_keyword", &mut keyword_domains, &tok[15..], true);
+            } else if lower.starts_with("keyword:") {
+                push_unique("domain_keyword", &mut keyword_domains, &tok[8..], true);
+            } else if lower.starts_with("domain_regex:") {
+                push_unique("domain_regex", &mut regex_domains, &tok[13..], false);
+            } else if lower.starts_with("regex:") {
+                push_unique("domain_regex", &mut regex_domains, &tok[6..], false);
+            } else if let Some(rest) = tok.strip_prefix("*.") {
+                push_unique("domain_suffix", &mut suffix_domains, rest, true);
+            } else if let Some(rest) = tok.strip_prefix('.') {
+                push_unique("domain_suffix", &mut suffix_domains, rest, true);
+            } else {
+                push_unique("domain_suffix", &mut suffix_domains, tok, true);
+            }
+        }
+    }
+
+    let mut rules = Vec::new();
+    for (key, vals) in [
+        ("domain", exact_domains),
+        ("domain_suffix", suffix_domains),
+        ("domain_keyword", keyword_domains),
+        ("domain_regex", regex_domains),
+    ] {
+        if vals.is_empty() {
+            continue;
+        }
+        rules.push(json!({
+            key: vals,
+            "server": "dns-remote"
+        }));
+    }
+    rules
+}
+
+/// Return true if a routing section supports IPv6 traffic (`ipv6_support` flag
+/// and DPI engine `--filter-l3` capabilities).
+pub fn section_ipv6_supported(sec: &RoutingSection) -> bool {
+    let raw_v6 = sec.ipv6_support.trim().to_ascii_lowercase();
+    if matches!(raw_v6.as_str(), "0" | "false" | "off" | "no" | "disabled") {
+        return false;
+    }
+    if matches!(sec.action.as_str(), "zapret" | "zapret2" | "desync")
+        || matches!(
+            sec.connection_type.as_str(),
+            "zapret" | "zapret2" | "desync"
+        )
+    {
+        let opts = [&sec.nfqws2_opt, &sec.nfqws_opt, &sec.desync_opts]
+            .into_iter()
+            .find(|s| !s.trim().is_empty())
+            .map(|s| s.trim())
+            .unwrap_or("");
+        if opts.contains("--filter-l3=ipv4")
+            && !opts
+                .split_whitespace()
+                .any(|tok| tok.starts_with("--filter-l3=") && tok.contains("ipv6"))
+        {
+            return false;
+        }
+    }
+    true
+}
+
+fn extract_dns_domain_rule_sets(branch: &Map<String, Value>) -> Option<Vec<String>> {
+    let val = branch.get("rule_set")?;
+    let tags: Vec<String> = match val {
+        Value::String(s) => vec![s.clone()],
+        Value::Array(arr) => arr
+            .iter()
+            .filter_map(Value::as_str)
+            .map(String::from)
+            .collect(),
+        _ => Vec::new(),
+    };
+    let domain_only: Vec<String> = tags
+        .into_iter()
+        .filter(|t| !t.starts_with("geoip-"))
+        .collect();
+    if domain_only.is_empty() {
+        None
+    } else {
+        Some(domain_only)
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn collect_condition_aaaa_dns_rules(
+    cond: &TrafficCondition,
+    cond_map: &HashMap<&str, &TrafficCondition>,
+    rulesets_dir: &str,
+    github_mirror: &str,
+    rule_sets: &mut Vec<Value>,
+    seen_rule_sets: &mut HashMap<String, bool>,
+    enable_ipv6: bool,
+    depth: usize,
+    out: &mut Vec<Value>,
+) {
+    if depth > 8 || !cond.enabled {
+        return;
+    }
+    let ctype = cond.condition_type.trim().to_ascii_lowercase();
+    if matches!(ctype.as_str(), "all" | "any" | "not") && !cond.children.is_empty() {
+        let mut child_matchers = Vec::new();
+        for cid in &cond.children {
+            if let Some(child) = cond_map.get(cid.as_str()).copied() {
+                collect_condition_aaaa_dns_rules(
+                    child,
+                    cond_map,
+                    rulesets_dir,
+                    github_mirror,
+                    rule_sets,
+                    seen_rule_sets,
+                    enable_ipv6,
+                    depth + 1,
+                    &mut child_matchers,
+                );
+            }
+        }
+        if child_matchers.is_empty() {
+            return;
+        }
+        let parent_parts = collect_atomic_condition_parts(
+            cond,
+            rulesets_dir,
+            github_mirror,
+            rule_sets,
+            seen_rule_sets,
+            enable_ipv6,
+        );
+        if parent_parts.blocked_unresolved_clients {
+            return;
+        }
+        let parent_src = parent_parts.scope.get("source_ip_cidr").cloned();
+        if ctype == "any" && !cond.invert {
+            for mut m in child_matchers {
+                if let Some(ref psrc) = parent_src
+                    && let Some(obj) = m.as_object_mut()
+                {
+                    obj.entry("source_ip_cidr").or_insert_with(|| psrc.clone());
+                }
+                out.push(m);
+            }
+            return;
+        }
+        let stripped_children: Vec<Value> = child_matchers
+            .into_iter()
+            .filter_map(|mut m| {
+                if let Some(obj) = m.as_object_mut() {
+                    obj.remove("query_type");
+                    obj.remove("action");
+                    obj.remove("rcode");
+                    if !obj.is_empty() {
+                        return Some(Value::Object(obj.clone()));
+                    }
+                }
+                None
+            })
+            .collect();
+        if !stripped_children.is_empty() {
+            let mut logical = json!({
+                "type": "logical",
+                "mode": if ctype == "any" { "or" } else { "and" },
+                "rules": stripped_children,
+            });
+            if ctype == "not" || cond.invert {
+                logical["invert"] = json!(true);
+            }
+            let mut and_rules = vec![json!({ "query_type": ["AAAA"] }), logical];
+            if let Some(psrc) = parent_src {
+                and_rules.push(json!({ "source_ip_cidr": psrc }));
+            }
+            out.push(json!({
+                "type": "logical",
+                "mode": "and",
+                "rules": and_rules,
+                "action": "predefined",
+                "rcode": "NOERROR"
+            }));
+        }
+        return;
+    }
+
+    let parts = collect_atomic_condition_parts(
+        cond,
+        rulesets_dir,
+        github_mirror,
+        rule_sets,
+        seen_rule_sets,
+        enable_ipv6,
+    );
+    if parts.blocked_unresolved_clients {
+        return;
+    }
+    let src_cidr = parts.scope.get("source_ip_cidr").cloned();
+
+    let mut emitted_branch = false;
+    for branch in &parts.branches {
+        let mut r = Map::new();
+        for k in ["domain", "domain_suffix", "domain_keyword", "domain_regex"] {
+            if let Some(v) = branch.get(k) {
+                r.insert(k.to_string(), v.clone());
+            }
+        }
+        if let Some(rs) = extract_dns_domain_rule_sets(branch) {
+            r.insert("rule_set".into(), json!(rs));
+        }
+        if r.is_empty() {
+            continue;
+        }
+        if let Some(ref src) = src_cidr {
+            r.insert("source_ip_cidr".into(), src.clone());
+        }
+        if cond.invert {
+            r.insert("invert".into(), json!(true));
+        }
+        r.insert("query_type".into(), json!(["AAAA"]));
+        r.insert("action".into(), json!("predefined"));
+        r.insert("rcode".into(), json!("NOERROR"));
+        out.push(Value::Object(r));
+        emitted_branch = true;
+    }
+
+    if !emitted_branch
+        && parts.branches.is_empty()
+        && let Some(src) = src_cidr
+    {
+        let mut r = json!({
+            "source_ip_cidr": src,
+            "query_type": ["AAAA"],
+            "action": "predefined",
+            "rcode": "NOERROR"
+        });
+        if cond.invert {
+            r["invert"] = json!(true);
+        }
+        out.push(r);
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn collect_section_aaaa_noerror_dns_rules(
+    sec: &RoutingSection,
+    cond_map: &HashMap<&str, &TrafficCondition>,
+    rulesets_dir: &str,
+    github_mirror: &str,
+    rule_sets: &mut Vec<Value>,
+    seen_rule_sets: &mut HashMap<String, bool>,
+    enable_ipv6: bool,
+    section_matched_any: bool,
+    out: &mut Vec<Value>,
+) {
+    let before_len = out.len();
+
+    if !sec.fully_routed_ips.is_empty() {
+        let mut cidrs = resolve_device_targets_to_cidrs(&sec.fully_routed_ips);
+        if !enable_ipv6 {
+            cidrs.retain(|s| !s.contains(':'));
+        }
+        if !cidrs.is_empty() {
+            out.push(json!({
+                "source_ip_cidr": cidrs,
+                "query_type": ["AAAA"],
+                "action": "predefined",
+                "rcode": "NOERROR"
+            }));
+        }
+    }
+
+    for cref in &sec.condition_refs {
+        if let Some(cond) = cond_map.get(cref.as_str()).copied() {
+            collect_condition_aaaa_dns_rules(
+                cond,
+                cond_map,
+                rulesets_dir,
+                github_mirror,
+                rule_sets,
+                seen_rule_sets,
+                enable_ipv6,
+                0,
+                out,
+            );
+        }
+    }
+
+    let mut combined_domains = sec.domains.clone();
+    for d in &sec.user_domains {
+        if !combined_domains.contains(d) {
+            combined_domains.push(d.clone());
+        }
+    }
+    if (!section_matched_any || out.len() == before_len)
+        && (!sec.community_lists.is_empty()
+            || !combined_domains.is_empty()
+            || !sec.geosite_codes.is_empty()
+            || !sec.source_ip_cidr.is_empty())
+    {
+        let synthetic = TrafficCondition {
+            id: format!("inline-dns-{}", sec.id),
+            enabled: true,
+            name: sec.label.clone(),
+            condition_type: "atomic".to_string(),
+            community_lists: sec.community_lists.clone(),
+            community_subnets: sec.community_subnets,
+            user_domains: combined_domains,
+            geoip_codes: sec.geoip_codes.clone(),
+            geoip_mode: sec.geoip_mode.clone(),
+            geosite_codes: sec.geosite_codes.clone(),
+            client_ips: sec.source_ip_cidr.clone(),
+            ..Default::default()
+        };
+        collect_condition_aaaa_dns_rules(
+            &synthetic,
+            cond_map,
+            rulesets_dir,
+            github_mirror,
+            rule_sets,
+            seen_rule_sets,
+            enable_ipv6,
+            0,
+            out,
+        );
+    }
+
+    if (out.len() == before_len && sec.condition_refs.is_empty() && !section_matched_any)
+        || sec.match_all
+    {
+        out.push(json!({
+            "query_type": ["AAAA"],
+            "action": "predefined",
+            "rcode": "NOERROR"
+        }));
+    }
 }
 
 fn parental_category_domains(cat: &str) -> &'static [&'static str] {
@@ -6350,33 +9142,40 @@ fn resolve_section_outbound(
             .iter()
             .map(|c| c.to_uppercase())
             .collect();
-        let allow_kw: Vec<String> = sec
+        let allow_kw: Vec<&str> = sec
             .node_filter_allow
             .split('|')
-            .map(|s| s.trim().to_lowercase())
+            .map(str::trim)
             .filter(|s| !s.is_empty())
             .collect();
-        let deny_kw: Vec<String> = sec
+        let deny_kw: Vec<&str> = sec
             .node_filter_deny
             .split('|')
-            .map(|s| s.trim().to_lowercase())
+            .map(str::trim)
             .filter(|s| !s.is_empty())
             .collect();
         let filtered: Vec<String> = candidate_tags
             .iter()
             .filter(|tag| {
                 let cc = detect_country_code(tag).to_uppercase();
-                let tl = tag.to_lowercase();
                 if !inc_c.is_empty() && !inc_c.contains(&cc) {
                     return false;
                 }
                 if !exc_c.is_empty() && exc_c.contains(&cc) {
                     return false;
                 }
-                if !allow_kw.is_empty() && !allow_kw.iter().any(|k| tl.contains(k)) {
+                if !allow_kw.is_empty()
+                    && !allow_kw
+                        .iter()
+                        .any(|k| tag_matches_keyword_or_telemetry(tag, k, &[]))
+                {
                     return false;
                 }
-                if !deny_kw.is_empty() && deny_kw.iter().any(|k| tl.contains(k)) {
+                if !deny_kw.is_empty()
+                    && deny_kw
+                        .iter()
+                        .any(|k| tag_matches_keyword_or_telemetry(tag, k, &[]))
+                {
                     return false;
                 }
                 true
@@ -6620,10 +9419,17 @@ fn resolve_section_outbound(
     let sel_tag = format!("sel-{}", sec.id);
     if !seen_outbound_tags.contains_key(&sel_tag) {
         seen_outbound_tags.insert(sel_tag.clone(), true);
-        let default_tag = if !sec.active_selected_tag.is_empty()
-            && candidate_tags.contains(&sec.active_selected_tag)
-        {
-            sec.active_selected_tag.clone()
+        let default_tag = if !sec.active_selected_tag.trim().is_empty() {
+            candidate_tags
+                .iter()
+                .find(|t| **t == sec.active_selected_tag)
+                .or_else(|| {
+                    candidate_tags
+                        .iter()
+                        .find(|t| server_filter_name_matches(t, &sec.active_selected_tag, &[]))
+                })
+                .cloned()
+                .unwrap_or_else(|| candidate_tags[0].clone())
         } else {
             candidate_tags[0].clone()
         };
@@ -6831,19 +9637,50 @@ fn enable_desync_udp_fake(outbounds: &mut [Value], outbound_tag: &str) {
 
 fn collect_atomic_condition_parts(
     cond: &TrafficCondition,
-    _rulesets_dir: &str,
+    rulesets_dir: &str,
     github_mirror: &str,
     rule_sets: &mut Vec<Value>,
     seen_rule_sets: &mut HashMap<String, bool>,
     enable_ipv6: bool,
 ) -> AtomicConditionParts {
+    collect_atomic_condition_parts_with_tables(
+        cond,
+        rulesets_dir,
+        github_mirror,
+        rule_sets,
+        seen_rule_sets,
+        enable_ipv6,
+        None,
+    )
+}
+
+fn collect_atomic_condition_parts_with_tables(
+    cond: &TrafficCondition,
+    _rulesets_dir: &str,
+    github_mirror: &str,
+    rule_sets: &mut Vec<Value>,
+    seen_rule_sets: &mut HashMap<String, bool>,
+    enable_ipv6: bool,
+    tables: Option<(&str, &str)>,
+) -> AtomicConditionParts {
     let mut scope = Map::new();
     let mut branches = Vec::new();
     let mut discord_udp_voice_fired = false;
 
-    let has_client_targets = cond.client_ips.iter().any(|s| !s.trim().is_empty());
-    if has_client_targets {
-        let mut cidrs = resolve_device_targets_to_cidrs(&cond.client_ips);
+    let raw_client_targets: Vec<String> = cond
+        .client_ips
+        .iter()
+        .chain(cond.source_macs.iter())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if !raw_client_targets.is_empty() {
+        let mut cidrs = match tables {
+            Some((arp, leases)) => {
+                resolve_device_targets_with_tables(&raw_client_targets, arp, leases)
+            }
+            None => resolve_device_targets_to_cidrs(&raw_client_targets),
+        };
         if !enable_ipv6 {
             cidrs.retain(|s| !s.contains(':'));
         }
@@ -6971,12 +9808,16 @@ fn collect_atomic_condition_parts(
     if cond.community_subnets {
         if has_telegram {
             for sub in DEFAULT_TELEGRAM_SUBNETS {
-                push_unique_str(&mut ip_cidrs, sub);
+                if enable_ipv6 || !sub.contains(':') {
+                    push_unique_str(&mut ip_cidrs, sub);
+                }
             }
         }
         if has_discord {
             for sub in DISCORD_DEDICATED_SUBNETS {
-                push_unique_str(&mut ip_cidrs, sub);
+                if enable_ipv6 || !sub.contains(':') {
+                    push_unique_str(&mut ip_cidrs, sub);
+                }
             }
         }
     }
@@ -7286,10 +10127,7 @@ fn active_inbound_clients(srv: &InboundServer) -> Vec<&InboundClient> {
                     return false;
                 }
             }
-            if c.total_limit_bytes > 0 && c.up.saturating_add(c.down) >= c.total_limit_bytes {
-                return false;
-            }
-            true
+            !(c.total_limit_bytes > 0 && c.up.saturating_add(c.down) >= c.total_limit_bytes)
         })
         .collect()
 }
@@ -7974,20 +10812,28 @@ fn build_inbound_servers(srv: &InboundServer) -> Vec<Value> {
 
 /// Build a shareable client URI for a router-hosted `InboundServer`.
 pub fn build_server_share_uri(srv: &InboundServer, host_override: Option<&str>) -> String {
-    let host = host_override
+    let raw_host = host_override
         .filter(|h| !h.trim().is_empty())
-        .map(|h| h.split(':').next().unwrap_or(h))
+        .map(str::trim)
         .unwrap_or_else(|| {
             if srv.public_host.is_empty() {
                 "192.168.1.205"
             } else {
-                &srv.public_host
+                srv.public_host.trim()
             }
         });
+    let bare_host_owned = extract_host_only(raw_host);
+    let bare_host = if bare_host_owned.is_empty() {
+        "192.168.1.205"
+    } else {
+        bare_host_owned.as_str()
+    };
+    let uri_host_owned = format_uri_host_only(bare_host);
+    let host = uri_host_owned.as_str();
     let port = srv.listen_port;
     let label = &srv.label;
     let sni = if srv.tls_server_name.is_empty() {
-        host
+        bare_host
     } else {
         &srv.tls_server_name
     };
@@ -8037,7 +10883,7 @@ pub fn build_server_share_uri(srv: &InboundServer, host_override: Option<&str>) 
             let v = json!({
                 "v": "2",
                 "ps": label,
-                "add": host,
+                "add": bare_host,
                 "port": port.to_string(),
                 "id": srv.server_uuid,
                 "aid": srv.vmess_alter_id.to_string(),
@@ -8138,7 +10984,7 @@ pub fn build_server_share_uri(srv: &InboundServer, host_override: Option<&str>) 
             let mut ob = Map::new();
             ob.insert("type".into(), json!("mieru"));
             ob.insert("tag".into(), json!(label));
-            ob.insert("server".into(), json!(host));
+            ob.insert("server".into(), json!(bare_host));
             ob.insert("username".into(), json!(user_or_label));
             ob.insert("password".into(), json!(srv.password));
             ob.insert("transport".into(), json!(transport));
@@ -8148,7 +10994,7 @@ pub fn build_server_share_uri(srv: &InboundServer, host_override: Option<&str>) 
                 ob.insert("server_port".into(), json!(port));
             }
             serialize_mieru_outbound(&Value::Object(ob)).unwrap_or_else(|| {
-                let uri_host = format_uri_host_only(host);
+                let uri_host = format_uri_host_only(bare_host);
                 format!(
                     "mierus://{}:{}@{uri_host}?protocol={transport}#{label}",
                     url_encode_component(user_or_label),
@@ -8265,7 +11111,7 @@ pub fn build_server_share_uri(srv: &InboundServer, host_override: Option<&str>) 
             if mode == "wg" || mode == "raw" {
                 let mut payload = json!({
                     "v": 1,
-                    "ip": host,
+                    "ip": bare_host,
                     "dtls": port,
                     "pass": pw,
                     "vpn": mode,
@@ -8285,7 +11131,7 @@ pub fn build_server_share_uri(srv: &InboundServer, host_override: Option<&str>) 
                 let mut uri = format!(
                     "csqtt://connect?v={}&host={}&peer={port}&password={}",
                     if is_v1 { "1" } else { "2" },
-                    url_encode_component(host),
+                    url_encode_component(bare_host),
                     url_encode_component(pw)
                 );
                 if is_v1 {
@@ -8341,7 +11187,7 @@ pub fn build_server_share_uri(srv: &InboundServer, host_override: Option<&str>) 
         }
         "mtproto" => {
             format!(
-                "tg://proxy?server={host}&port={port}&secret={}",
+                "tg://proxy?server={bare_host}&port={port}&secret={}",
                 srv.mtproto_secret
             )
         }
@@ -8374,16 +11220,23 @@ pub fn build_server_share_uri(srv: &InboundServer, host_override: Option<&str>) 
 
 /// Build an AmneziaWG / WireGuard `.conf` file for a router-hosted `InboundServer`.
 pub fn build_server_wg_conf(srv: &InboundServer, host_override: Option<&str>) -> String {
-    let host = host_override
+    let raw_host = host_override
         .filter(|h| !h.trim().is_empty())
-        .map(|h| h.split(':').next().unwrap_or(h))
+        .map(str::trim)
         .unwrap_or_else(|| {
             if srv.public_host.is_empty() {
                 "192.168.1.205"
             } else {
-                &srv.public_host
+                srv.public_host.trim()
             }
         });
+    let bare_host = extract_host_only(raw_host);
+    let host_clean = if bare_host.is_empty() {
+        "192.168.1.205"
+    } else {
+        bare_host.as_str()
+    };
+    let endpoint_host = format_uri_host_only(host_clean);
     let mut lines = vec![
         "[Interface]".to_string(),
         format!("PrivateKey = {}", srv.awg_client_private_key),
@@ -8445,7 +11298,7 @@ pub fn build_server_wg_conf(srv: &InboundServer, host_override: Option<&str>) ->
     if !srv.awg_preshared_key.is_empty() {
         lines.push(format!("PresharedKey = {}", srv.awg_preshared_key));
     }
-    lines.push(format!("Endpoint = {host}:{}", srv.listen_port));
+    lines.push(format!("Endpoint = {endpoint_host}:{}", srv.listen_port));
     lines.push("AllowedIPs = 0.0.0.0/0, ::/0".to_string());
     lines.push(format!(
         "PersistentKeepalive = {}",
@@ -10047,5 +12900,756 @@ config timeserver 'ntp'
         assert_eq!(ob["server_ports"], json!(["20100-20110"]));
         assert_eq!(ob["multiplexing"], "MULTIPLEXING_HIGH");
         assert!(ob.get("server_port").is_none());
+    }
+
+    #[test]
+    fn test_ipv6_share_uri_wg_conf_and_host_port_extraction() {
+        assert_eq!(extract_host_only("[2001:db8::1]:443"), "2001:db8::1");
+        assert_eq!(extract_host_only("[2001:db8::1]"), "2001:db8::1");
+        assert_eq!(extract_host_only("2001:db8::1"), "2001:db8::1");
+        assert_eq!(extract_host_only("vpn.example.com:8443"), "vpn.example.com");
+
+        for proto in [
+            "vless",
+            "trojan",
+            "hysteria2",
+            "tuic",
+            "shadowsocks",
+            "tewfai",
+        ] {
+            let srv = crate::store::InboundServer {
+                id: format!("srv_{proto}"),
+                enabled: true,
+                label: "V6Node".to_string(),
+                protocol: proto.to_string(),
+                listen_port: 8443,
+                server_uuid: "11111111-1111-1111-1111-111111111111".to_string(),
+                password: "secret".to_string(),
+                method: "2022-blake3-aes-128-gcm".to_string(),
+                ..Default::default()
+            };
+            for raw_host in ["[2001:db8::1]:443", "[2001:db8::1]", "2001:db8::1"] {
+                let uri = build_server_share_uri(&srv, Some(raw_host));
+                assert!(
+                    uri.contains("@[2001:db8::1]:8443"),
+                    "{proto} with {raw_host} produced invalid URI: {uri}"
+                );
+                assert!(!uri.contains("[["));
+                assert!(!uri.contains("sni=["));
+                if proto != "shadowsocks" {
+                    assert!(
+                        uri.contains("sni=2001:db8::1"),
+                        "{proto} fallback sni must be unbracketed: {uri}"
+                    );
+                }
+            }
+        }
+
+        // ShadowTLS with empty handshake server falls back to unbracketed SNI
+        let stls_srv = crate::store::InboundServer {
+            id: "srv_stls".to_string(),
+            enabled: true,
+            label: "V6STLS".to_string(),
+            protocol: "shadowtls".to_string(),
+            listen_port: 443,
+            password: "secret".to_string(),
+            ..Default::default()
+        };
+        let stls_uri = build_server_share_uri(&stls_srv, Some("[2001:db8::1]:443"));
+        assert!(stls_uri.contains("@[2001:db8::1]:443"), "stls={stls_uri}");
+        assert!(stls_uri.contains("sni=2001:db8::1"), "stls={stls_uri}");
+        assert!(!stls_uri.contains("sni=["), "stls={stls_uri}");
+
+        // VMess stores unbracketed host inside base64 JSON "add" field
+        let vmess_srv = crate::store::InboundServer {
+            id: "srv_vmess".to_string(),
+            enabled: true,
+            label: "V6VMess".to_string(),
+            protocol: "vmess".to_string(),
+            listen_port: 443,
+            server_uuid: "11111111-1111-1111-1111-111111111111".to_string(),
+            ..Default::default()
+        };
+        let vmess_uri = build_server_share_uri(&vmess_srv, Some("[2001:db8::2]:8443"));
+        let b64 = vmess_uri.strip_prefix("vmess://").expect("vmess scheme");
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(b64)
+            .expect("valid vmess base64");
+        let vmess_json: Value = serde_json::from_slice(&decoded).expect("vmess json");
+        assert_eq!(vmess_json["add"], "2001:db8::2");
+        assert_eq!(vmess_json["sni"], "2001:db8::2");
+        assert_eq!(vmess_json["host"], "2001:db8::2");
+        assert_eq!(vmess_json["port"], "443");
+
+        // MTProto keeps bare IPv6 in tg://proxy?server=...
+        let mt_srv = crate::store::InboundServer {
+            id: "srv_mt".to_string(),
+            enabled: true,
+            label: "V6MT".to_string(),
+            protocol: "mtproto".to_string(),
+            listen_port: 443,
+            mtproto_secret: "dd000102030405060708090a0b0c0d0e0f".to_string(),
+            ..Default::default()
+        };
+        let mt_uri = build_server_share_uri(&mt_srv, Some("[2001:db8::3]:443"));
+        assert!(
+            mt_uri.contains("server=2001:db8::3&port=443"),
+            "mt={mt_uri}"
+        );
+
+        // WireGuard / AWG client config puts [ipv6]:port in Endpoint
+        let wg_srv = crate::store::InboundServer {
+            id: "srv_wg".to_string(),
+            enabled: true,
+            label: "V6WG".to_string(),
+            protocol: "wireguard".to_string(),
+            listen_port: 51820,
+            awg_server_public_key: "PUBKEY".to_string(),
+            ..Default::default()
+        };
+        let wg_conf = build_server_wg_conf(&wg_srv, Some("[2001:db8::4]:443"));
+        assert!(
+            wg_conf.contains("Endpoint = [2001:db8::4]:51820"),
+            "wg_conf={wg_conf}"
+        );
+    }
+
+    #[test]
+    fn test_fakeip_disabled_and_ipv6_aaaa_noerror_and_dns_strategy_clamp() {
+        let mut store = RouterStoreData::default();
+        store.settings.ipv6_mode = "off".to_string();
+        store.settings.ipv6_leak_guard = true;
+        store.settings.dns_strategy = "prefer_ipv6".to_string();
+        store.settings.fakeip_enabled = false;
+        store.settings.cache_path = "/usr/share/tachyon-core/cache.db".to_string();
+
+        let cfg_v4_nofake =
+            compile_core_config_with_wan6(&store, true).expect("compile ipv6 off no fakeip");
+        assert_eq!(cfg_v4_nofake["dns"]["strategy"], "ipv4_only");
+        assert!(
+            !cfg_v4_nofake["dns"]["servers"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|s| s["tag"] == "dns-fakeip")
+        );
+        assert!(
+            !cfg_v4_nofake["experimental"]["cache_file"]["store_fakeip"]
+                .as_bool()
+                .unwrap_or(false)
+        );
+        assert_eq!(
+            cfg_v4_nofake["experimental"]["cache_file"]["path"],
+            "/tmp/tachyon-core/cache.db"
+        );
+        let dns_rules = cfg_v4_nofake["dns"]["rules"].as_array().unwrap();
+        assert!(dns_rules.iter().any(|r| {
+            r["action"] == "predefined"
+                && r["query_type"] == json!(["AAAA"])
+                && r["rcode"] == "NOERROR"
+        }));
+        assert!(
+            !dns_rules
+                .iter()
+                .any(|r| r["action"] == "reject" && r["query_type"] == json!(["AAAA"]))
+        );
+
+        // Enable dual_stack + fakeip: both IPv4 & IPv6 FakeIP ranges + prefer_ipv6 honored
+        store.settings.ipv6_mode = "dual_stack".to_string();
+        store.settings.fakeip_enabled = true;
+        store.settings.fakeip_inet4_range = "198.18.0.0/15".to_string();
+        store.settings.fakeip_inet6_range = "fc00::/18".to_string();
+        store.settings.tun_inet4 = "172.19.0.1/30".to_string();
+        store.settings.tun_inet6 = "fdfe:dcba:9876::1/126".to_string();
+        store.settings.proxy_mode = "tun".to_string();
+
+        let cfg_dual =
+            compile_core_config_with_wan6(&store, true).expect("compile dual stack fakeip");
+        assert_eq!(cfg_dual["dns"]["strategy"], "prefer_ipv6");
+        let fakeip_srv = cfg_dual["dns"]["servers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["tag"] == "dns-fakeip")
+            .expect("dns-fakeip server present");
+        assert_eq!(fakeip_srv["inet4_range"], "198.18.0.0/15");
+        assert_eq!(fakeip_srv["inet6_range"], "fc00::/18");
+        assert_eq!(
+            cfg_dual["experimental"]["cache_file"]["store_fakeip"],
+            json!(true)
+        );
+        let tun_ib = cfg_dual["inbounds"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["type"] == "tun")
+            .expect("tun inbound present");
+        assert_eq!(
+            tun_ib["address"],
+            json!(["172.19.0.1/30", "fdfe:dcba:9876::1/126"])
+        );
+    }
+
+    #[test]
+    fn test_m1_compact_vpn_uri_and_inflate_zlib_bounded() {
+        assert_eq!(
+            compact_vpn_uri("  vpn://AA BB\n\tCC\r\n DD #my node  "),
+            "vpn://AABBCCDD#my node"
+        );
+        assert_eq!(compact_vpn_uri("vpn://AA BB\nCC"), "vpn://AABBCC");
+
+        // 1. Stored DEFLATE block (BTYPE=00)
+        let b0_zlib: &[u8] = &[
+            0x78, 0x01, 0x01, 0x23, 0x00, 0xdc, 0xff, 0x73, 0x74, 0x6f, 0x72, 0x65, 0x64, 0x20,
+            0x64, 0x65, 0x66, 0x6c, 0x61, 0x74, 0x65, 0x20, 0x70, 0x61, 0x79, 0x6c, 0x6f, 0x61,
+            0x64, 0x20, 0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x20, 0x77, 0x6f, 0x72, 0x6c, 0x64, 0x21,
+            0xf2, 0x8c, 0x0d, 0x2e,
+        ];
+        assert_eq!(
+            inflate_zlib_bounded(b0_zlib, AMNEZIA_VPN_MAX_PAYLOAD_BYTES).as_deref(),
+            Some(b"stored deflate payload hello world!".as_slice())
+        );
+
+        // 2. Fixed Huffman (BTYPE=01) + Qt qCompress header + Qt 0x000000FF framing
+        let b1_zlib: &[u8] = &[
+            0x78, 0x01, 0xab, 0x56, 0xca, 0xc8, 0x2f, 0x2e, 0x51, 0xb2, 0x52, 0x4a, 0xad, 0x48,
+            0xcc, 0x2d, 0xc8, 0x49, 0xd5, 0x4b, 0xce, 0xcf, 0x55, 0xd2, 0x51, 0x2a, 0xc8, 0x2f,
+            0x2a, 0x51, 0xb2, 0x32, 0x31, 0x31, 0xd6, 0x51, 0x2a, 0x28, 0xca, 0x2f, 0xc9, 0x57,
+            0xb2, 0x52, 0x4a, 0x2c, 0x4f, 0x57, 0xaa, 0x05, 0x00, 0x76, 0x8c, 0x0f, 0x3d,
+        ];
+        let b1_expected = br#"{"host":"example.com","port":443,"proto":"awg"}"#;
+        assert_eq!(
+            inflate_zlib_bounded(b1_zlib, AMNEZIA_VPN_MAX_PAYLOAD_BYTES).as_deref(),
+            Some(b1_expected.as_slice())
+        );
+
+        let mut qt_framed = vec![0x00, 0x00, 0x00, b1_expected.len() as u8];
+        qt_framed.extend_from_slice(b1_zlib);
+        assert_eq!(
+            inflate_zlib_bounded(&qt_framed, AMNEZIA_VPN_MAX_PAYLOAD_BYTES).as_deref(),
+            Some(b1_expected.as_slice())
+        );
+
+        let mut ff_framed = vec![0x00, 0x00, 0x00, 0xff];
+        ff_framed.extend_from_slice(b1_zlib);
+        assert_eq!(
+            inflate_zlib_bounded(&ff_framed, AMNEZIA_VPN_MAX_PAYLOAD_BYTES).as_deref(),
+            Some(b1_expected.as_slice())
+        );
+
+        // 3. Dynamic Huffman (BTYPE=10) multi-KB container
+        let b2_zlib = base64::engine::general_purpose::STANDARD
+            .decode("eNrtkE1rAjEQhv+KzNmmSdatccGD0oJaWgTb00ZKuhsloLOSTT+X/e+d1EOvHnrMhCTvTDLDy9NB1WAwDq1voSi7vxQKMEe0385cmY89DCGeRQcLQS9CZqOcagtJyc1YTTglp8YHKHKhJB/CwbThhYbtHHVBucRg/c5Udqtx7d27Cfbefg2mg9nlMdU4q2tv25b6BGeKCSavM6nx4ek5ljLFNd4+bqJmv0vjqqJsRPfRYVQ8SvNJckxyI+LfnIQkIUmUa2t9NPn2enDV2eP88iCPd1ifGochTp4olpMNzmmfyWiEvt/2XeKeuCfuiXvinrgn7v/G/QfVs4QL")
+            .expect("valid b2 zlib fixture");
+        let b2_expected = base64::engine::general_purpose::STANDARD
+            .decode("eyJjb250YWluZXJzIjpbeyJjb250YWluZXIiOiJhbW5lemlhLWF3ZyIsImF3ZyI6eyJIMSI6IjEyMzQ1IiwiSDIiOiI2Nzg5MCIsInBvcnQiOjUxODIwLCJsYXN0X2NvbmZpZyI6IltJbnRlcmZhY2VdXG5Qcml2YXRlS2V5ID0gQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQT1cbkFkZHJlc3MgPSAxMC44LjEuMi8zMlxuTVRVID0gMTM4MFxuRE5TID0gMS4xLjEuMVxuSmMgPSA0XG5KbWluID0gNDBcbkptYXggPSA3MFxuUzEgPSAxNVxuUzIgPSAyNVxuW1BlZXJdXG5QdWJsaWNLZXkgPSBCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCPVxuRW5kcG9pbnQgPSAxOTguNTEuMTAwLjEwOjUxODIwXG4ifX1dfXsiY29udGFpbmVycyI6W3siY29udGFpbmVyIjoiYW1uZXppYS1hd2ciLCJhd2ciOnsiSDEiOiIxMjM0NSIsIkgyIjoiNjc4OTAiLCJwb3J0Ijo1MTgyMCwibGFzdF9jb25maWciOiJbSW50ZXJmYWNlXVxuUHJpdmF0ZUtleSA9IEFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE9XG5BZGRyZXNzID0gMTAuOC4xLjIvMzJcbk1UVSA9IDEzODBcbkROUyA9IDEuMS4xLjFcbkpjID0gNFxuSm1pbiA9IDQwXG5KbWF4ID0gNzBcblMxID0gMTVcblMyID0gMjVcbltQZWVyXVxuUHVibGljS2V5ID0gQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQj1cbkVuZHBvaW50ID0gMTk4LjUxLjEwMC4xMDo1MTgyMFxuIn19XX17ImNvbnRhaW5lcnMiOlt7ImNvbnRhaW5lciI6ImFtbmV6aWEtYXdnIiwiYXdnIjp7IkgxIjoiMTIzNDUiLCJIMiI6IjY3ODkwIiwicG9ydCI6NTE4MjAsImxhc3RfY29uZmlnIjoiW0ludGVyZmFjZV1cblByaXZhdGVLZXkgPSBBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBPVxuQWRkcmVzcyA9IDEwLjguMS4yLzMyXG5NVFUgPSAxMzgwXG5ETlMgPSAxLjEuMS4xXG5KYyA9IDRcbkptaW4gPSA0MFxuSm1heCA9IDcwXG5TMSA9IDE1XG5TMiA9IDI1XG5bUGVlcl1cblB1YmxpY0tleSA9IEJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI9XG5FbmRwb2ludCA9IDE5OC41MS4xMDAuMTA6NTE4MjBcbiJ9fV19eyJjb250YWluZXJzIjpbeyJjb250YWluZXIiOiJhbW5lemlhLWF3ZyIsImF3ZyI6eyJIMSI6IjEyMzQ1IiwiSDIiOiI2Nzg5MCIsInBvcnQiOjUxODIwLCJsYXN0X2NvbmZpZyI6IltJbnRlcmZhY2VdXG5Qcml2YXRlS2V5ID0gQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQT1cbkFkZHJlc3MgPSAxMC44LjEuMi8zMlxuTVRVID0gMTM4MFxuRE5TID0gMS4xLjEuMVxuSmMgPSA0XG5KbWluID0gNDBcbkptYXggPSA3MFxuUzEgPSAxNVxuUzIgPSAyNVxuW1BlZXJdXG5QdWJsaWNLZXkgPSBCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCPVxuRW5kcG9pbnQgPSAxOTguNTEuMTAwLjEwOjUxODIwXG4ifX1dfXsiY29udGFpbmVycyI6W3siY29udGFpbmVyIjoiYW1uZXppYS1hd2ciLCJhd2ciOnsiSDEiOiIxMjM0NSIsIkgyIjoiNjc4OTAiLCJwb3J0Ijo1MTgyMCwibGFzdF9jb25maWciOiJbSW50ZXJmYWNlXVxuUHJpdmF0ZUtleSA9IEFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE9XG5BZGRyZXNzID0gMTAuOC4xLjIvMzJcbk1UVSA9IDEzODBcbkROUyA9IDEuMS4xLjFcbkpjID0gNFxuSm1pbiA9IDQwXG5KbWF4ID0gNzBcblMxID0gMTVcblMyID0gMjVcbltQZWVyXVxuUHVibGljS2V5ID0gQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQj1cbkVuZHBvaW50ID0gMTk4LjUxLjEwMC4xMDo1MTgyMFxuIn19XX17ImNvbnRhaW5lcnMiOlt7ImNvbnRhaW5lciI6ImFtbmV6aWEtYXdnIiwiYXdnIjp7IkgxIjoiMTIzNDUiLCJIMiI6IjY3ODkwIiwicG9ydCI6NTE4MjAsImxhc3RfY29uZmlnIjoiW0ludGVyZmFjZV1cblByaXZhdGVLZXkgPSBBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBPVxuQWRkcmVzcyA9IDEwLjguMS4yLzMyXG5NVFUgPSAxMzgwXG5ETlMgPSAxLjEuMS4xXG5KYyA9IDRcbkptaW4gPSA0MFxuSm1heCA9IDcwXG5TMSA9IDE1XG5TMiA9IDI1XG5bUGVlcl1cblB1YmxpY0tleSA9IEJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI9XG5FbmRwb2ludCA9IDE5OC41MS4xMDAuMTA6NTE4MjBcbiJ9fV19")
+            .expect("valid b2 expected fixture");
+        assert_eq!(
+            inflate_zlib_bounded(&b2_zlib, AMNEZIA_VPN_MAX_PAYLOAD_BYTES).as_deref(),
+            Some(b2_expected.as_slice())
+        );
+
+        // 4. Reject corrupt Adler-32, truncated stream, invalid distance back-ref, and zip bombs
+        let corrupt_adler: &[u8] = &[
+            0x78, 0x01, 0xab, 0x56, 0xca, 0xc8, 0x2f, 0x2e, 0x51, 0xb2, 0x52, 0x4a, 0xad, 0x48,
+            0xcc, 0x2d, 0xc8, 0x49, 0xd5, 0x4b, 0xce, 0xcf, 0x55, 0xd2, 0x51, 0x2a, 0xc8, 0x2f,
+            0x2a, 0x51, 0xb2, 0x32, 0x31, 0x31, 0xd6, 0x51, 0x2a, 0x28, 0xca, 0x2f, 0xc9, 0x57,
+            0xb2, 0x52, 0x4a, 0x2c, 0x4f, 0x57, 0xaa, 0x05, 0x00, 0x76, 0x8c, 0x0f, 0xc2,
+        ];
+        assert!(inflate_zlib_bounded(corrupt_adler, AMNEZIA_VPN_MAX_PAYLOAD_BYTES).is_none());
+        assert!(
+            inflate_zlib_bounded(&b1_zlib[..b1_zlib.len() - 3], AMNEZIA_VPN_MAX_PAYLOAD_BYTES)
+                .is_none()
+        );
+        let invalid_backref: &[u8] = &[0x78, 0x9c, 0x03, 0x02, 0x00, 0x00, 0x00, 0x00, 0x01];
+        assert!(inflate_zlib_bounded(invalid_backref, AMNEZIA_VPN_MAX_PAYLOAD_BYTES).is_none());
+
+        let zip_bomb: &[u8] = &[
+            0x78, 0xda, 0xed, 0xc1, 0x31, 0x01, 0x00, 0x00, 0x00, 0xc2, 0xa0, 0x6c, 0xeb, 0x5f,
+            0xca, 0x12, 0x9e, 0x40, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x6f, 0x03, 0x3f, 0xee, 0x71, 0x7c,
+        ];
+        assert!(inflate_zlib_bounded(zip_bomb, AMNEZIA_VPN_MAX_PAYLOAD_BYTES).is_none());
+        let ok_exact = inflate_zlib_bounded(zip_bomb, 70_000).expect("70000 fits exact bound");
+        assert_eq!(ok_exact.len(), 70_000);
+        assert!(ok_exact.iter().all(|&b| b == b'A'));
+    }
+
+    #[test]
+    fn test_m1_amnezia_containers_placeholders_multi_peer_and_diagnostics() {
+        let awg_vpn = "vpn://AAACt3icjVJdb9sgFP0rCO0xH4AdKUXzpEzLljRKa7XRujaOImJuVir7YmGSJo3y3yfww14LD5xzD_dwuXChpUWvDIJrqSTry39OJaGqRvgwqq_e_9IeoWGR5EIb63yQR3wsWBC8U9iG6LZx1tugHXQTlBkPpM8jFgFzxvqCxbRZEgJJkkSSBpKmaSC3ZSQR1ga7vI6pUzw6ssfozkcRR3fR4WjcwWg7DnAed3_dEXbiXIhv0a9ziLI3NcSCYjmgNLjcWQ-lNxYXcA7a89Pt28uv3_WLeG1U7dvd0-hYzn6ey-SBa9Qp_LGn5duS3a2es2BTqdZvS4t7E1pH13P04PaqhE2BE60dtC3JCGeD8YAPxDARPbLXjEkphlyMC8ydOSoPCziTjEw-P7ICC1znAG5TYH7YVabsPL5_fmQFTlE31qAnGfnyMF3er6bb2f3jSsaXL3BSVfYd9DwPl2CDOIesR6QcsgJzcK1pPaBfADSqMkcgGRGjAun1uukR-mpbf6e6pgvGuNS7sZQ3N6FxGtrSmSa0PsiT7ieSHwdV0es__DK_0g";
+        assert_eq!(diagnose_amnezia_vpn_uri(awg_vpn), Ok(()));
+        let awg_node = parse_proxy_uri(awg_vpn, 0).expect("parse awg vpn uri");
+        assert_eq!(awg_node.protocol, "wireguard");
+        assert_eq!(awg_node.tag, "Amnezia Dual");
+        assert_eq!(awg_node.server, "2001:db8::99");
+        assert_eq!(awg_node.server_port, 51820);
+        assert_eq!(
+            awg_node.outbound_json["local_address"],
+            json!(["10.8.1.2/32", "fd00::2/128"])
+        );
+        assert_eq!(
+            awg_node.outbound_json["persistent_keepalive_interval"],
+            json!(25)
+        );
+        assert_eq!(awg_node.outbound_json["h1"], json!(u32::MAX));
+        assert_eq!(awg_node.outbound_json["h2"], json!("100-200"));
+        assert_eq!(awg_node.outbound_json["h3"], json!(333));
+        assert_eq!(awg_node.outbound_json["h4"], json!(444));
+        assert_eq!(awg_node.outbound_json["jc"], json!(4));
+        assert_eq!(awg_node.outbound_json["jmin"], json!(10));
+        assert_eq!(awg_node.outbound_json["jmax"], json!(50));
+        assert_eq!(awg_node.outbound_json["s1"], json!(15));
+        assert_eq!(awg_node.outbound_json["s2"], json!(25));
+        // HeaderProtectionKey raises S3=5, S4=8 to minimum 20
+        assert_eq!(awg_node.outbound_json["s3"], json!(20));
+        assert_eq!(awg_node.outbound_json["s4"], json!(20));
+        assert_eq!(awg_node.outbound_json["i1"], json!("<b 0x1122>"));
+        assert_eq!(awg_node.outbound_json["j1"], json!("1"));
+        assert_eq!(awg_node.outbound_json["itime"], json!(3));
+        assert_eq!(
+            awg_node.outbound_json["header_protection_key"],
+            json!("YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY=")
+        );
+
+        // 0x000000FF framing + Shadowsocks container + $SERVER_IP_ADDRESS placeholder
+        let ff_vpn = "vpn://AAAA_3icTYtBC4IwGIb_yvjoqOIUw7wFeugSodClxRhzqZRO9o2ExP8ew6KOz_s-zwytRnsUvYKMAN2lQUIDGoZBAh4BqQcrukEZhIxc5h87WfSDenXCx1bUekIt7-iaf8zIDA-Blks93LrGVTMDVOapDIOMMNhURXkuSn448X2el0VVMfDI1-GjNtaJaZymbu6VbXW9pkKhHyVbv5H92owCcdLmc48TjWIGCyzLdXkDMPVJHQ";
+        let ff_node = parse_proxy_uri(ff_vpn, 1).expect("parse 0xff framed ss vpn uri");
+        assert_eq!(ff_node.protocol, "shadowsocks");
+        assert_eq!(ff_node.server, "198.51.100.5");
+        assert_eq!(ff_node.server_port, 8388);
+        assert_eq!(ff_node.outbound_json["method"], json!("aes-256-gcm"));
+
+        // Nested vpn:// (depth <= 4 ok; depth > 4 rejected)
+        let outer_vpn = "vpn://AAABFHicFcjJcoIwAADQX3E4lxGqLPXGvgikBRH14kQEDE0AWSSh03_v9B3fD9dAUnC7FQemseizHnbc24rL26ZE1X-_uma3Xmuapikuyg9nRTcGb7as-OoXTAoyEqBPwQuoHGFfH243M8KEzRCgayK_IyphyWRQ92JeVGl1dhobvGYWaaYol-bznsvquKQLoZ3m8x4fJabe1k_hsVGaHqLUroEDvlKrtu2EBSSOcZPRo2T4yscD2MDfu_skhYuIlBBP9URE-ZTifFtQxnLoknS8SwMPC3iZ21JgujNWVZZJF88fwopMxresTtNpuxmyjoZDILjHA5i53z_bxlwv";
+        let nested_node = parse_proxy_uri(outer_vpn, 2).expect("nested vpn uri resolves");
+        assert_eq!(nested_node.protocol, "shadowsocks");
+        assert_eq!(nested_node.server, "203.0.113.7");
+        assert_eq!(nested_node.server_port, 9000);
+        assert_eq!(nested_node.tag, "Nested SS");
+
+        let too_deep_vpn = "vpn://AAACpHicFcfJkqIwAADQX5nyPFSjrPYNRBZB6AAJyCWFAQRlFQzL1Pz71Lzb-7Nr0ybfff_aRfzu968d6dqievw_7dvvry9FUU4_ZkV0UlxezQQURQMx06zF0D_XAXHl5VmpL2MOkvpZd-ObpTGDMyh9sOto57o4a8diubAlbmf_EFYwK2Kcqz1D30cdJkE3XiUvSupWWXwdxrfT2BQhYsNNqtFcGre9KHllbsUirYqVSVNuz8NzDxTsES9XuZDmDp1iH2ITiyVbWkzeh84jj3n48CgKENVXlGNd2Py5Mz-RHQToLJPFufPSJ-EJws-5xZVBuYzI25BlPXE-SB9ZwcfHTeA1m7V0KFIIb4Mm7p88imPnioOnPYB0tbnpFLt4PK4HLjnECJZBvdUi009ABFiCwwAw2xXL3qzAuiGBq9_cYeSByVp4_1gpu0aKCKXoIhvXCHlHkA5uZhr9mPVObhJT1cgsfkpetGH62Qd-Y7DHkEzttiqeU1soMiVC01q37ys4CYJhpZoL9PwynddORdeXx1BtmQ7hvUkougF2esc9YUGoqgwTNSEslRs1Xp4ZOksv99Jbs0tvVrgu-PgPfjnEi-14rrtwG1zGirGj4FSFR3mVtujKuzlViP0zWRkiqZCuheo-aoWBWWTKrCP4tTxe21Zyx2l6sZYpP16HhKX3S5bZgqC6b-PpHROpc9G1Ife0nLnhhhY7yOp89bfRtpmf8QcAkenm3d9_WhniXw";
+        assert_eq!(
+            diagnose_amnezia_vpn_uri(too_deep_vpn),
+            Err("recursion_limit_exceeded")
+        );
+
+        // Diagnostic errors parity
+        let cloud_vpn =
+            "vpn://AAAAKnicq1ZKzskvTYlPLMiMz06tVLJSUKqorFLSUVBKzs8rSczMSy0qVrJSiI6tBQA9sw52";
+        let unsup_vpn = "vpn://AAAAWHicq1ZKzs8rSczMSy0qVrJSiK5G8JWsFJQSc_NSqzITdfMLUvPKCvKUdBSUYEwrhWqlnMTikvjk_Ly0zHSQ6uSczNS8EqXa2thaAGcOHww";
+        let incomp_vpn = "vpn://AAAAEnicq1ZKzs8rSczMSy0qVrJSiI6tBQA_5gaF";
+        assert_eq!(diagnose_amnezia_vpn_uri(cloud_vpn), Err("cloud_api_key"));
+        assert_eq!(
+            diagnose_amnezia_vpn_uri(unsup_vpn),
+            Err("unsupported_container")
+        );
+        assert_eq!(
+            diagnose_amnezia_vpn_uri(incomp_vpn),
+            Err("incomplete_container")
+        );
+        assert_eq!(diagnose_amnezia_vpn_uri("vless://abc"), Err("not_vpn_uri"));
+        assert_eq!(diagnose_amnezia_vpn_uri("vpn://!!!"), Err("invalid_base64"));
+        assert_eq!(
+            diagnose_amnezia_vpn_uri("vpn://AAAA"),
+            Err("decompression_failed")
+        );
+
+        // Multi-container + multiline compacted vpn:// in amnezia_config + missing [Peer] JSON synthesis
+        let multi_vpn = "vpn://AAAC9nicdVLRatswFP0VI_aYhDjOIORtrIaW0nXEZS91MIp8E4vYuka6TuIZ_fuQJXfdaPUgc3XPOfccSwMrwQgtW5Ko2DZiT11N8h4NsVnESjjyrqbvqIhLBdoBeKPgt-Tzm-a9w1Ro6AdvwPVWy2SxXMRxslivXE9MRMO20evwt34vZCpe4tWgOBvHeV9uo4HV3FAhUB3lybGGnBnQF9A520Y5-7JLn55f0uL-OXvJ2SyaukWLmhxkk2w27rgBqrD0JFFxUfHVci6BjvMW6z5Oll89veXGXFEHZHstjMmZZdbOok_8Tz9i_H7sGDs6YKdK41Rfh5y1GgkF1n7KpQY3xbsnkuo0AoecXRTcaCLxstQjcAyepbtf6a54-Fl8u7vbpVkW_Ifc63Xiys6AfpsqQ6o4rPkH27S8Giih-_FteKZCBTmze7u3o1vSwJvsX88K6Ir67Akk2imY6LSk3h9r4PVYuFYo_pPx9-helqfAjTdtDQvUp5C0O9RSPEKQbLvDGfp4lYR5FWp6CIH5QZQ5s9bu3U3u7R94evOy";
+        let split_multi = format!("{}\n{}", &multi_vpn[..64], &multi_vpn[64..]);
+        let synth_json = r#"{"hostName":"198.51.100.77","description":"SynthPeer","containers":[{"container":"amnezia-awg","awg":{"port":"51820","server_pub_key":"BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=","last_config":"[Interface]\nPrivateKey = AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\nAddress = 10.8.0.2/32\n"}}]}"#.to_string();
+        let mut src = crate::store::OutboundSource {
+            id: "amz1".to_string(),
+            enabled: true,
+            source_type: "amnezia_config".to_string(),
+            amnezia_configs: vec![split_multi, synth_json],
+            amnezia_conf_text: "[Interface]\nPrivateKey = AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\nAddress = 10.8.2.2/32 ; inline comment\nS1 = 15 ; cmt\n[Peer]\nPublicKey = BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=\nEndpoint = 198.51.100.11:51820\nPersistentKeepalive = 20\n[Peer]\nPublicKey = CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=\nEndpoint = 198.51.100.12:51821 ; p2\n".to_string(),
+            ..Default::default()
+        };
+        let outs = build_source_outbounds(&src);
+        assert!(
+            outs.iter()
+                .any(|(_, v, _)| v["type"] == "vless" && v["server"] == "203.0.113.42"),
+            "expected xray reality node from multi-container: {outs:?}"
+        );
+        assert!(
+            outs.iter()
+                .any(|(_, v, _)| v["type"] == "shadowsocks" && v["server"] == "203.0.113.42"),
+            "expected shadowsocks node from multi-container: {outs:?}"
+        );
+        assert!(
+            outs.iter().any(|(tag, v, _)| tag == "SynthPeer"
+                && v["type"] == "wireguard"
+                && v["server"] == "198.51.100.77"
+                && v["persistent_keepalive_interval"] == json!(25)),
+            "expected synthesized [Peer] wireguard outbound: {outs:?}"
+        );
+        let peer1 = outs
+            .iter()
+            .find(|(_, v, _)| v["server"] == "198.51.100.11")
+            .expect("peer 1 from multi-peer conf");
+        let peer2 = outs
+            .iter()
+            .find(|(_, v, _)| v["server"] == "198.51.100.12")
+            .expect("peer 2 from multi-peer conf");
+        assert!(peer1.0.ends_with(" (1)") && peer2.0.ends_with(" (2)"));
+        assert_eq!(peer1.1["s1"], json!(15));
+        assert_eq!(peer1.1["persistent_keepalive_interval"], json!(20));
+        src.amnezia_configs.clear();
+        assert_eq!(build_source_outbounds(&src).len(), 2);
+    }
+
+    #[test]
+    fn test_m2_dynamic_telemetry_stripping_and_filters() {
+        assert!(is_dynamic_telemetry_segment("[154.77 GiB]"));
+        assert!(is_dynamic_telemetry_segment("(123,45 ГБ)"));
+        assert!(is_dynamic_telemetry_segment("(осталось: 12%)"));
+        assert!(is_dynamic_telemetry_segment("exp: 2026-01-01"));
+        assert!(is_dynamic_telemetry_segment("5 дней • 50.0% used"));
+
+        // Static identifiers, speeds, and protocols must NOT be treated as telemetry
+        assert!(!is_dynamic_telemetry_segment("(#1)"));
+        assert!(!is_dynamic_telemetry_segment("(1)"));
+        assert!(!is_dynamic_telemetry_segment("[2D]"));
+        assert!(!is_dynamic_telemetry_segment("100 Mbit/s"));
+        assert!(!is_dynamic_telemetry_segment("100 Мбит/с"));
+        assert!(!is_dynamic_telemetry_segment("10 Gbps"));
+        assert!(!is_dynamic_telemetry_segment("vless"));
+        assert!(!is_dynamic_telemetry_segment("ipv6"));
+
+        assert_eq!(
+            strip_dynamic_server_telemetry("DE Berlin (#1) [154.77 GiB]"),
+            "DE Berlin (#1)"
+        );
+        assert_eq!(
+            strip_dynamic_server_telemetry("NL Amsterdam (1) | exp: 2026-12-31"),
+            "NL Amsterdam (1)"
+        );
+        assert_eq!(
+            strip_dynamic_server_telemetry("JP Tokyo [2D] (100 Mbit/s) | 3 дня left"),
+            "JP Tokyo [2D] (100 Mbit/s)"
+        );
+        assert_eq!(
+            strip_dynamic_server_telemetry("FI Helsinki [10 Gbps] (vless) (осталось: 12%)"),
+            "FI Helsinki [10 Gbps] (vless)"
+        );
+        assert_eq!(
+            strip_dynamic_server_telemetry("Europe 1.1 [12.0 GiB]"),
+            "Europe 1.1"
+        );
+
+        let prefixes = vec!["[sub]".to_string()];
+        assert!(server_filter_name_matches(
+            "[sub] DE Berlin (#1) [151.02 GiB]",
+            "DE Berlin (#1) [154.77 GiB]",
+            &prefixes
+        ));
+        assert!(!server_filter_name_matches(
+            "Europe 1.1 [12.0 GiB]",
+            "Europe 1",
+            &[]
+        ));
+        assert!(!server_filter_name_matches(
+            "DE Berlin (#2)",
+            "DE Berlin (#1)",
+            &[]
+        ));
+        assert!(!server_filter_name_matches("NL (2)", "NL (1)", &[]));
+
+        let deny_src = crate::store::OutboundSource {
+            filter_deny_regex: "DE Berlin".to_string(),
+            ..Default::default()
+        };
+        assert!(!passes_source_filters(
+            &deny_src,
+            "DE Berlin [99.1 GiB]",
+            "DE"
+        ));
+        assert!(passes_source_filters(
+            &deny_src,
+            "NL Amsterdam [99.1 GiB]",
+            "NL"
+        ));
+
+        // active_selected_tag fallback across telemetry quota changes
+        let mut store = RouterStoreData::default();
+        store.outbound_sources.push(crate::store::OutboundSource {
+            id: "s1".to_string(),
+            enabled: true,
+            source_type: "proxy_links".to_string(),
+            proxy_links: vec![
+                "vless://11111111-1111-1111-1111-111111111111@198.51.100.1:443?security=tls#NL%20Node%20%5B80%20GiB%5D".to_string(),
+                "vless://22222222-2222-2222-2222-222222222222@198.51.100.2:443?security=tls#DE%20Berlin%20(%231)%20%5B151.02%20GiB%5D".to_string(),
+            ],
+            ..Default::default()
+        });
+        store.sections.push(crate::store::RoutingSection {
+            id: "main".to_string(),
+            enabled: true,
+            connection_type: "proxy".to_string(),
+            action: "proxy".to_string(),
+            match_all: true,
+            outbound_source_refs: vec!["s1".to_string()],
+            active_selected_tag: "DE Berlin (#1) [154.77 GiB]".to_string(),
+            ..Default::default()
+        });
+        let cfg = compile_core_config_with_wan6(&store, false).expect("compile selector match");
+        let sel = cfg["outbounds"]
+            .as_array()
+            .expect("outbounds array")
+            .iter()
+            .find(|o| o["tag"] == "sel-main")
+            .expect("selector sel-main");
+        assert_eq!(sel["default"], "DE Berlin (#1) [151.02 GiB]");
+    }
+
+    #[test]
+    fn test_m3_section_ipv6_supported_and_per_section_aaaa_noerror() {
+        assert!(!section_ipv6_supported(&crate::store::RoutingSection {
+            ipv6_support: "0".to_string(),
+            ..Default::default()
+        }));
+        assert!(!section_ipv6_supported(&crate::store::RoutingSection {
+            ipv6_support: "false".to_string(),
+            ..Default::default()
+        }));
+        assert!(!section_ipv6_supported(&crate::store::RoutingSection {
+            ipv6_support: "off".to_string(),
+            ..Default::default()
+        }));
+        assert!(section_ipv6_supported(&crate::store::RoutingSection {
+            ipv6_support: "1".to_string(),
+            ..Default::default()
+        }));
+        assert!(!section_ipv6_supported(&crate::store::RoutingSection {
+            connection_type: "zapret".to_string(),
+            desync_opts: "--filter-l3=ipv4 --dpi-desync=fake".to_string(),
+            ..Default::default()
+        }));
+        assert!(section_ipv6_supported(&crate::store::RoutingSection {
+            connection_type: "zapret2".to_string(),
+            nfqws2_opt: "--filter-l3=ipv4,ipv6".to_string(),
+            ..Default::default()
+        }));
+
+        let mut store = RouterStoreData::default();
+        store.settings.ipv6_mode = "dual_stack".to_string();
+        store.settings.fakeip_enabled = true;
+        store.sections.push(crate::store::RoutingSection {
+            id: "sec_v4only".to_string(),
+            enabled: true,
+            connection_type: "proxy".to_string(),
+            action: "proxy".to_string(),
+            ipv6_support: "0".to_string(),
+            user_domains: vec!["v4only.example".to_string()],
+            ..Default::default()
+        });
+        store.sections.push(crate::store::RoutingSection {
+            id: "sec_dual".to_string(),
+            enabled: true,
+            connection_type: "proxy".to_string(),
+            action: "proxy".to_string(),
+            ipv6_support: "1".to_string(),
+            user_domains: vec!["dual.example".to_string()],
+            ..Default::default()
+        });
+
+        let cfg = compile_core_config_with_wan6(&store, true).expect("compile per-section AAAA");
+        let rules = cfg["dns"]["rules"].as_array().expect("dns rules");
+        let aaaa_idx = rules
+            .iter()
+            .position(|r| {
+                r["action"] == "predefined"
+                    && r["query_type"] == json!(["AAAA"])
+                    && r["rcode"] == "NOERROR"
+                    && r["domain_suffix"] == json!(["v4only.example"])
+            })
+            .expect("per-section AAAA NOERROR rule present for v4only.example");
+        let fakeip_idx = rules
+            .iter()
+            .position(|r| r["server"] == "dns-fakeip")
+            .expect("dns-fakeip rule present");
+        assert!(
+            aaaa_idx < fakeip_idx,
+            "per-section AAAA NOERROR must appear before FakeIP rule"
+        );
+        assert!(
+            !rules.iter().any(|r| {
+                r["action"] == "predefined"
+                    && r["query_type"] == json!(["AAAA"])
+                    && r.to_string().contains("dual.example")
+            }),
+            "dual-stack section must NOT suppress AAAA"
+        );
+    }
+
+    #[test]
+    fn test_m3_fakeip_exclude_prefixes_and_dns_ipv6_sni_zone() {
+        let exclude_rules = build_fakeip_exclude_dns_rules(&[
+            "# comment line".to_string(),
+            "192.168.1.1".to_string(),
+            "2001:db8::/32".to_string(),
+            "full:exact.example # inline comment".to_string(),
+            "domain:root.example".to_string(),
+            "domain_suffix:sfx.example".to_string(),
+            "*.wild.example".to_string(),
+            ".dot.example".to_string(),
+            "bare.example".to_string(),
+            "domain_keyword:kwpart".to_string(),
+            "keyword:kw2".to_string(),
+            "domain_regex:^re\\.".to_string(),
+            "regex:^r2".to_string(),
+            "FULL:exact.example".to_string(),
+        ]);
+        assert!(exclude_rules.iter().any(|r| {
+            r["domain"] == json!(["exact.example", "root.example"]) && r["server"] == "dns-remote"
+        }));
+        assert!(exclude_rules.iter().any(|r| {
+            r["domain_suffix"]
+                == json!(["sfx.example", "wild.example", "dot.example", "bare.example"])
+                && r["server"] == "dns-remote"
+        }));
+        assert!(exclude_rules.iter().any(|r| {
+            r["domain_keyword"] == json!(["kwpart", "kw2"]) && r["server"] == "dns-remote"
+        }));
+        assert!(exclude_rules.iter().any(|r| {
+            r["domain_regex"] == json!(["^re\\.", "^r2"]) && r["server"] == "dns-remote"
+        }));
+        assert!(!exclude_rules.iter().any(|r| {
+            let s = r.to_string();
+            s.contains("192.168.1.1") || s.contains("2001:db8::") || s.contains("comment")
+        }));
+
+        // Zone stripping & full IPv6 DoT/DoH SNI parity
+        assert_eq!(
+            dns_server_lookup_key("[2001:4860:4860:0000:0000:0000:0000:8888%eth0]"),
+            "2001:4860:4860::8888"
+        );
+        for (addr, sni) in [
+            ("2606:4700:4700::1111%eth0", "cloudflare-dns.com"),
+            ("2a02:6b8::feed:ff%wan", "common.dot.dns.yandex.net"),
+            ("2620:fe::fe", "dns.quad9.net"),
+            ("2a10:50c0::ad1:ff", "dns.adguard-dns.com"),
+            ("2a07:e340::2", "dns.mullvad.net"),
+            ("2606:1a40::", "freedns.controld.com"),
+            ("2400:3200::1", "dns.alidns.com"),
+            ("2620:119:35::35", "doh.opendns.com"),
+            ("2a09::", "doh.dns.sb"),
+            ("2a0d:2a00:1::", "doh.cleanbrowsing.org"),
+        ] {
+            assert_eq!(lookup_known_dns_server_name(addr), Some(sni), "addr={addr}");
+        }
+
+        let mut store = RouterStoreData::default();
+        store.settings.ipv6_mode = "dual_stack".to_string();
+        store.settings.dns_servers =
+            vec!["https://[2001:4860:4860::8888%eth0]:8443/custom-dns".to_string()];
+        store.settings.bootstrap_dns_servers = vec!["tls://fe80::1%eth0".to_string()];
+        let cfg_ip = compile_core_config_with_wan6(&store, true).expect("compile zoned ipv6 dns");
+        let dns_srvs = cfg_ip["dns"]["servers"].as_array().expect("dns servers");
+        let boot = dns_srvs
+            .iter()
+            .find(|s| s["tag"] == "dns-bootstrap")
+            .expect("dns-bootstrap");
+        assert_eq!(boot["type"], "tls");
+        assert_eq!(boot["server"], "fe80::1%eth0");
+        assert_eq!(boot["server_port"], json!(853));
+        let rem = dns_srvs
+            .iter()
+            .find(|s| s["tag"] == "dns-remote")
+            .expect("dns-remote");
+        assert_eq!(rem["type"], "https");
+        assert_eq!(rem["server"], "2001:4860:4860::8888%eth0");
+        assert_eq!(rem["server_port"], json!(8443));
+        assert_eq!(rem["path"], "/custom-dns");
+        assert_eq!(rem["tls"]["server_name"], "dns.google");
+        assert!(rem.get("domain_resolver").is_none());
+
+        store.settings.dns_servers = vec!["https://dns.quad9.net/dns-query".to_string()];
+        let cfg_dom = compile_core_config_with_wan6(&store, true).expect("compile domain dns");
+        let rem_dom = cfg_dom["dns"]["servers"]
+            .as_array()
+            .expect("dns servers")
+            .iter()
+            .find(|s| s["tag"] == "dns-remote")
+            .expect("dns-remote domain");
+        assert_eq!(rem_dom["domain_resolver"], "dns-bootstrap");
+        assert_eq!(rem_dom["tls"]["server_name"], "dns.quad9.net");
+        assert_eq!(rem_dom["path"], "/dns-query");
+    }
+
+    #[test]
+    fn test_m3_traffic_condition_source_macs_resolution() {
+        let arp = "IP address       HW type     Flags       HW address            Mask     Device\n192.168.1.50     0x1         0x2         aa:bb:cc:11:22:33     *        br-lan\n";
+        let leases = "1700000000 aa:bb:cc:44:55:66 192.168.1.60 phone *\n";
+
+        let cond_resolved = crate::store::TrafficCondition {
+            id: "c_mac_ok".to_string(),
+            enabled: true,
+            source_macs: vec![
+                "AA:BB:CC:11:22:33".to_string(),
+                "aa:bb:cc:44:55:66".to_string(),
+            ],
+            user_domains: vec!["client.example".to_string()],
+            ..Default::default()
+        };
+        let mut rule_sets = Vec::new();
+        let mut seen_rs = HashMap::new();
+        let parts_ok = collect_atomic_condition_parts_with_tables(
+            &cond_resolved,
+            "/tmp/rs",
+            "",
+            &mut rule_sets,
+            &mut seen_rs,
+            false,
+            Some((arp, leases)),
+        );
+        assert!(!parts_ok.blocked_unresolved_clients);
+        assert_eq!(
+            parts_ok.scope.get("source_ip_cidr"),
+            Some(&json!(["192.168.1.50/32", "192.168.1.60/32"]))
+        );
+
+        let cond_unresolved = crate::store::TrafficCondition {
+            id: "c_mac_miss".to_string(),
+            enabled: true,
+            source_macs: vec!["de:ad:be:ef:00:01".to_string()],
+            user_domains: vec!["must-not-leak.example".to_string()],
+            ..Default::default()
+        };
+        let parts_miss = collect_atomic_condition_parts_with_tables(
+            &cond_unresolved,
+            "/tmp/rs",
+            "",
+            &mut rule_sets,
+            &mut seen_rs,
+            false,
+            Some((arp, leases)),
+        );
+        assert!(parts_miss.blocked_unresolved_clients);
+
+        let cond_map = HashMap::from([(cond_unresolved.id.as_str(), &cond_unresolved)]);
+        let mut outbounds = Vec::new();
+        let leaked_rules = build_condition_rules(
+            &cond_unresolved,
+            &cond_map,
+            "direct",
+            "/tmp/rs",
+            "",
+            &mut rule_sets,
+            &mut seen_rs,
+            false,
+            false,
+            &mut outbounds,
+        );
+        assert!(
+            leaked_rules.is_empty(),
+            "unresolved source_macs condition must never degrade into an unscoped rule"
+        );
     }
 }

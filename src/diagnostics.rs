@@ -99,13 +99,93 @@ pub struct UnlockProbeEntry {
     pub latency_ms: u32,
 }
 
-/// Run Local Doctor heuristic and runtime checks across 12 router subsystems.
+pub fn evaluate_odhcpd_ipv6_dns(dhcp_conf_raw: &str, odhcpd_present: bool) -> (bool, String) {
+    if !odhcpd_present {
+        return (
+            true,
+            "odhcpd не установлен (проверка IPv6 DNS не требуется)".to_string(),
+        );
+    }
+    let mut in_lan = false;
+    let mut dhcpv6 = String::new();
+    let mut ra_dns = String::new();
+    let mut dns_list: Vec<String> = Vec::new();
+    let unquote = |raw: &str| -> String {
+        let mut s = raw.trim();
+        if s.len() >= 2
+            && ((s.starts_with('\'') && s.ends_with('\''))
+                || (s.starts_with('"') && s.ends_with('"')))
+        {
+            s = &s[1..s.len() - 1];
+        }
+        s.trim().to_string()
+    };
+
+    for raw_line in dhcp_conf_raw.lines() {
+        let line = raw_line.split('#').next().unwrap_or("").trim();
+        if line.is_empty() {
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("config ") {
+            let mut parts = rest.split_whitespace();
+            let kind = parts.next().map(unquote).unwrap_or_default();
+            let sec_name = parts.next().map(unquote).unwrap_or_default();
+            in_lan = kind == "dhcp" && sec_name == "lan";
+            continue;
+        }
+        if !in_lan {
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("option ") {
+            let mut parts = rest.splitn(2, char::is_whitespace);
+            let key = parts.next().map(unquote).unwrap_or_default();
+            let val = parts.next().map(unquote).unwrap_or_default();
+            match key.as_str() {
+                "dhcpv6" => dhcpv6 = val,
+                "ra_dns" => ra_dns = val,
+                "dns" => {
+                    for tok in val.split_whitespace() {
+                        if !tok.is_empty() && !dns_list.iter().any(|d| d == tok) {
+                            dns_list.push(tok.to_string());
+                        }
+                    }
+                }
+                _ => {}
+            }
+        } else if let Some(rest) = line.strip_prefix("list ") {
+            let mut parts = rest.splitn(2, char::is_whitespace);
+            let key = parts.next().map(unquote).unwrap_or_default();
+            let val = parts.next().map(unquote).unwrap_or_default();
+            if key == "dns" && !val.is_empty() && !dns_list.iter().any(|d| d == &val) {
+                dns_list.push(val);
+            }
+        }
+    }
+
+    if !dhcpv6.eq_ignore_ascii_case("server") {
+        return (true, "DHCPv6-сервер odhcpd на lan неактивен".to_string());
+    }
+    if ra_dns == "1" || !dns_list.is_empty() {
+        let detail = if !dns_list.is_empty() {
+            format!("DHCPv6 DNS настроен ({})", dns_list.join(", "))
+        } else {
+            "DHCPv6 RA DNS активен (ra_dns=1)".to_string()
+        };
+        return (true, detail);
+    }
+    (
+        false,
+        "При включённом dhcp.lan.dhcpv6='server' не заданы ra_dns='1' и list dns".to_string(),
+    )
+}
+
+/// Run Local Doctor heuristic and runtime checks across 16 router subsystems.
 pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
     let mut findings = Vec::new();
     let d = state.data.read().await.clone();
     let live = state.live.read().await.clone();
     let sys = sys_info::collect_host_info();
-    let checks_total = 15usize;
+    let checks_total = 16usize;
 
     // 1. Core process liveness
     if !live.core_running {
@@ -227,10 +307,32 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
         });
     }
 
+    // 9. odhcpd IPv6 DNS check (when DHCPv6 server is active on LAN)
+    let (odhcpd_ok, odhcpd_detail) = if cfg!(windows) {
+        (true, "Windows test mode: odhcpd пропущен".to_string())
+    } else {
+        let odhcpd_present = tokio::fs::metadata("/etc/init.d/odhcpd").await.is_ok();
+        let dhcp_raw = tokio::fs::read_to_string("/etc/config/dhcp")
+            .await
+            .unwrap_or_default();
+        evaluate_odhcpd_ipv6_dns(&dhcp_raw, odhcpd_present)
+    };
+    if !odhcpd_ok {
+        findings.push(DoctorFinding {
+            id: "odhcpd_ipv6_dns_missing".to_string(),
+            severity: "warning".to_string(),
+            subsystem: "dhcp".to_string(),
+            title: "Не настроен IPv6 DNS в odhcpd для LAN".to_string(),
+            detail: odhcpd_detail.clone(),
+            quick_fix_id: "heal_network_stack".to_string(),
+            quick_fix_label: "Настроить стек IPv6/DNS".to_string(),
+        });
+    }
+
     let checks_passed = checks_total.saturating_sub(findings.len());
     let healthy = !findings.iter().any(|f| f.severity == "critical");
     let summary = if findings.is_empty() {
-        "Все 15 подсистем роутера и ядра tachyon-core работают штатно".to_string()
+        format!("Все {checks_total} подсистем роутера и ядра tachyon-core работают штатно")
     } else {
         format!(
             "Проверено подсистем: {checks_total}, замечаний: {}",
@@ -242,7 +344,28 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
     let subsystems = vec![
         json!({"name": "1. Ядро tachyon-core", "status": if live.core_running { "ok" } else { "warn" }, "detail": format!("PID {} · RSS {} KB", live.core_pid.unwrap_or(0), live.core_rss_bytes / 1024), "fix_id": "restart_core", "fix_label": "Перезапустить"}),
         json!({"name": "2. Таблица nftables TProxy", "status": if live.nft_table_active { "ok" } else { "warn" }, "detail": "inet TachyonTable :1602", "fix_id": "heal_network_stack", "fix_label": "Восстановить стек"}),
-        json!({"name": "3. DNS и FakeIP (198.18.0.0/15)", "status": if live.dns_healthy { "ok" } else { "warn" }, "detail": "FakeIP 127.0.0.42:53", "fix_id": "clear_dns_cache", "fix_label": "Сбросить кэш DNS"}),
+        json!({
+            "name": if d.settings.fakeip_enabled {
+                format!(
+                    "3. DNS и FakeIP ({})",
+                    if d.settings.fakeip_inet4_range.trim().is_empty() {
+                        "198.18.0.0/15"
+                    } else {
+                        d.settings.fakeip_inet4_range.trim()
+                    }
+                )
+            } else {
+                "3. DNS (RealIP)".to_string()
+            },
+            "status": if live.dns_healthy { "ok" } else { "warn" },
+            "detail": if d.settings.fakeip_enabled {
+                "FakeIP 127.0.0.42:53"
+            } else {
+                "RealIP 127.0.0.42:53"
+            },
+            "fix_id": "clear_dns_cache",
+            "fix_label": "Сбросить кэш DNS"
+        }),
         json!({"name": "4. Внешний канал WAN", "status": if live.wan_healthy { "ok" } else { "warn" }, "detail": "Маршрут по умолчанию активен", "fix_id": "fix_wan_interface", "fix_label": "Проверить шлюз"}),
         json!({"name": "5. Секции маршрутизации", "status": if d.sections.iter().any(|s| s.enabled) { "ok" } else { "warn" }, "detail": format!("Активно {} из {}", d.sections.iter().filter(|s| s.enabled).count(), d.sections.len()), "fix_id": "enable_default_desync", "fix_label": "Включить секции"}),
         json!({"name": "6. Источники и Подписки", "status": "ok", "detail": format!("Источников: {}", d.outbound_sources.len()), "fix_id": "update_subscriptions", "fix_label": "Обновить подписки"}),
@@ -255,6 +378,7 @@ pub async fn run_local_doctor(state: &Arc<AppState>) -> DoctorReport {
         json!({"name": "13. Каскад dnsmasq -> FakeIP", "status": "ok", "detail": "noresolv=1 · 127.0.0.42#53", "fix_id": "fix_dnsmasq", "fix_label": "Перезапустить dnsmasq"}),
         json!({"name": "14. Системный /etc/resolv.conf", "status": if resolv_ok { "ok" } else { "warn" }, "detail": "Резолвер хоста роутера", "fix_id": "fix_resolv_symlink", "fix_label": "Починить симлинк"}),
         json!({"name": "15. Конфликты Firewall (Flow Offloading)", "status": if flow_offload_active { "warn" } else { "ok" }, "detail": if flow_offload_active { "Обнаружен Flow Offloading при TProxy/SQM" } else { "Конфликтов с netfilter/TProxy не обнаружено" }, "fix_id": "disable_flow_offloading", "fix_label": "Отключить Flow Offloading"}),
+        json!({"name": "16. odhcpd IPv6 DNS", "status": if odhcpd_ok { "ok" } else { "warn" }, "detail": odhcpd_detail, "fix_id": "heal_network_stack", "fix_label": "Настроить стек IPv6/DNS"}),
     ];
 
     DoctorReport {
@@ -685,6 +809,132 @@ pub fn search_knowledge_docs(query: &str) -> Vec<Value> {
     out
 }
 
+#[derive(Debug, Clone, Default)]
+struct MacIpTable {
+    ip_to_mac: std::collections::HashMap<String, String>,
+    mac_to_ips: std::collections::HashMap<String, Vec<String>>,
+}
+
+impl MacIpTable {
+    fn resolve_client_mac(&self, client: &str) -> Option<String> {
+        let trimmed = client.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        if let Some(mac) = parse_normalized_mac(trimmed) {
+            return Some(mac);
+        }
+        self.ip_to_mac.get(&trimmed.to_ascii_lowercase()).cloned()
+    }
+}
+
+fn normalize_mac_str(raw: &str) -> String {
+    raw.trim().replace('-', ":").to_ascii_lowercase()
+}
+
+fn parse_normalized_mac(raw: &str) -> Option<String> {
+    let t = raw.trim();
+    if t.contains(':') && t.contains('-') {
+        return None;
+    }
+    let normalized = normalize_mac_str(t);
+    crate::store::is_mac_address(&normalized).then_some(normalized)
+}
+
+fn parse_mac_ip_table(arp_raw: &str, leases_raw: &str) -> MacIpTable {
+    let mut table = MacIpTable::default();
+    let mut record = |ip_raw: &str, mac_raw: &str| {
+        let ip = ip_raw.trim().to_ascii_lowercase();
+        let Some(mac) = parse_normalized_mac(mac_raw) else {
+            return;
+        };
+        if ip.is_empty() || mac == "00:00:00:00:00:00" {
+            return;
+        }
+        table
+            .ip_to_mac
+            .entry(ip.clone())
+            .or_insert_with(|| mac.clone());
+        let ips = table.mac_to_ips.entry(mac).or_default();
+        if !ips.iter().any(|existing| existing == &ip) {
+            ips.push(ip);
+        }
+    };
+
+    for line in arp_raw.lines().skip(1) {
+        let cols: Vec<&str> = line.split_whitespace().collect();
+        if cols.len() >= 4 {
+            record(cols[0], cols[3]);
+        }
+    }
+    for line in leases_raw.lines() {
+        let cols: Vec<&str> = line.split_whitespace().collect();
+        if cols.len() >= 3 {
+            record(cols[2], cols[1]);
+        }
+    }
+    table
+}
+
+fn load_system_mac_ip_table() -> MacIpTable {
+    if cfg!(windows) || cfg!(test) {
+        return MacIpTable::default();
+    }
+    let arp_raw = std::fs::read_to_string("/proc/net/arp").unwrap_or_default();
+    let leases_raw = std::fs::read_to_string("/tmp/dhcp.leases").unwrap_or_default();
+    parse_mac_ip_table(&arp_raw, &leases_raw)
+}
+
+async fn load_system_mac_ip_table_async() -> MacIpTable {
+    if cfg!(windows) || cfg!(test) {
+        return MacIpTable::default();
+    }
+    let (arp_res, leases_res) = tokio::join!(
+        tokio::fs::read_to_string("/proc/net/arp"),
+        tokio::fs::read_to_string("/tmp/dhcp.leases"),
+    );
+    parse_mac_ip_table(
+        &arp_res.unwrap_or_default(),
+        &leases_res.unwrap_or_default(),
+    )
+}
+
+fn client_matches_entry(
+    entry: &str,
+    client_ip: &str,
+    client_mac: Option<&str>,
+    table: &MacIpTable,
+) -> bool {
+    let entry_trim = entry.trim();
+    if entry_trim.is_empty() {
+        return false;
+    }
+    let client_trim = client_ip.trim();
+    if !client_trim.is_empty()
+        && (entry_trim.eq_ignore_ascii_case(client_trim)
+            || crate::store::ip_in_cidr(client_trim, entry_trim))
+    {
+        return true;
+    }
+    if let Some(target_mac) = parse_normalized_mac(entry_trim) {
+        if let Some(cm) = client_mac
+            && parse_normalized_mac(cm).as_deref() == Some(target_mac.as_str())
+        {
+            return true;
+        }
+        if parse_normalized_mac(client_trim).as_deref() == Some(target_mac.as_str()) {
+            return true;
+        }
+        if let Some(ips) = table.mac_to_ips.get(&target_mac) {
+            return ips.iter().any(|mapped| {
+                mapped.eq_ignore_ascii_case(client_trim)
+                    || crate::store::ip_in_cidr(client_trim, mapped)
+            });
+        }
+    }
+    false
+}
+
 /// Trace packet route across `RouterStoreData` (`route_explain`).
 pub fn explain_route(
     store: &RouterStoreData,
@@ -693,8 +943,29 @@ pub fn explain_route(
     port: u16,
     protocol: &str,
 ) -> RouteExplainResult {
+    let mac_table = load_system_mac_ip_table();
+    explain_route_with_mac_table(store, client_ip, target, port, protocol, &mac_table)
+}
+
+fn explain_route_with_mac_table(
+    store: &RouterStoreData,
+    client_ip: &str,
+    target: &str,
+    port: u16,
+    protocol: &str,
+    mac_table: &MacIpTable,
+) -> RouteExplainResult {
     let target_lower = target.trim().to_ascii_lowercase();
     let proto_lower = protocol.trim().to_ascii_lowercase();
+    let resolved_client_mac = mac_table.resolve_client_mac(client_ip);
+    let match_ctx = RouteMatchTarget {
+        client_ip,
+        client_mac: resolved_client_mac.as_deref(),
+        mac_table,
+        target_lower: &target_lower,
+        port,
+        proto_lower: &proto_lower,
+    };
     let mut steps = vec![
         format!("1. Входящий пакет от {client_ip} -> {target}:{port} ({proto_lower})"),
         format!(
@@ -705,12 +976,12 @@ pub fn explain_route(
 
     // Check parental profiles first
     for prof in store.profiles.iter().filter(|p| p.enabled) {
-        if prof.device_ips.iter().any(|ip| ip == client_ip)
-            && prof.blocked_domains.iter().any(|d| {
-                target_lower == d.to_ascii_lowercase()
-                    || target_lower.ends_with(&format!(".{}", d.to_ascii_lowercase()))
-            })
-        {
+        if prof.device_ips.iter().any(|ip| {
+            client_matches_entry(ip, client_ip, resolved_client_mac.as_deref(), mac_table)
+        }) && prof.blocked_domains.iter().any(|d| {
+            target_lower == d.to_ascii_lowercase()
+                || target_lower.ends_with(&format!(".{}", d.to_ascii_lowercase()))
+        }) {
             steps.push(format!(
                 "3. Совпадение с семейным профилем «{}» -> БЛОКИРОВКА",
                 prof.label
@@ -766,16 +1037,23 @@ pub fn explain_route(
             continue;
         }
 
-        let fakeip_active = store.settings.fakeip_enabled || store.settings.proxy_mode == "tproxy";
+        let fakeip_active = store.settings.fakeip_enabled;
+        let fakeip_v4_label = if store.settings.fakeip_inet4_range.trim().is_empty() {
+            "198.18.0.0/15"
+        } else {
+            store.settings.fakeip_inet4_range.trim()
+        };
         let dns_strategy = if fakeip_active && !resolved_out.eq_ignore_ascii_case("direct") {
-            "fakeip (198.18.0.0/15)".to_string()
+            format!("fakeip ({fakeip_v4_label})")
         } else if fakeip_active {
             "fakeip / realip".to_string()
         } else {
             "system (77.88.8.8)".to_string()
         };
 
-        if sec.fully_routed_ips.iter().any(|ip| ip == client_ip) {
+        if sec.fully_routed_ips.iter().any(|ip| {
+            client_matches_entry(ip, client_ip, resolved_client_mac.as_deref(), mac_table)
+        }) {
             steps.push(format!(
                 "3. Клиент {client_ip} входит в список полной маршрутизации секции «{}» -> {resolved_out}",
                 sec.label
@@ -804,14 +1082,9 @@ pub fn explain_route(
             let Some(cond) = store.conditions.iter().find(|c| &c.id == cref && c.enabled) else {
                 continue;
             };
-            if let Some(reason) = match_condition_against_target(
-                cond,
-                &store.conditions,
-                client_ip,
-                &target_lower,
-                port,
-                &proto_lower,
-            ) {
+            if let Some(reason) =
+                match_condition_against_target_with_table(cond, &store.conditions, &match_ctx)
+            {
                 steps.push(format!(
                     "3. Совпадение с условием «{}» ({reason}) в секции «{}»",
                     cond.name, sec.label
@@ -872,14 +1145,9 @@ pub fn explain_route(
             l4_proto: inline_l4_proto,
             ..Default::default()
         };
-        if let Some(reason) = match_condition_against_target(
-            &inline_cond,
-            &store.conditions,
-            client_ip,
-            &target_lower,
-            port,
-            &proto_lower,
-        ) {
+        if let Some(reason) =
+            match_condition_against_target_with_table(&inline_cond, &store.conditions, &match_ctx)
+        {
             steps.push(format!(
                 "3. Совпадение с правилами секции «{}» ({reason})",
                 sec.label
@@ -1070,27 +1338,26 @@ fn match_list_tag_against_domain(tag_lower: &str, target_lower: &str) -> bool {
     }
 }
 
-fn match_condition_against_target(
+struct RouteMatchTarget<'a> {
+    client_ip: &'a str,
+    client_mac: Option<&'a str>,
+    mac_table: &'a MacIpTable,
+    target_lower: &'a str,
+    port: u16,
+    proto_lower: &'a str,
+}
+
+fn match_condition_against_target_with_table(
     cond: &crate::store::TrafficCondition,
     all_conditions: &[crate::store::TrafficCondition],
-    client_ip: &str,
-    target_lower: &str,
-    port: u16,
-    proto_lower: &str,
+    ctx: &RouteMatchTarget<'_>,
 ) -> Option<String> {
     match cond.condition_type.as_str() {
         "all" if !cond.children.is_empty() => {
             let mut matched_reasons = Vec::new();
             for cid in &cond.children {
                 let child = all_conditions.iter().find(|c| c.id == *cid && c.enabled)?;
-                let reason = match_condition_against_target(
-                    child,
-                    all_conditions,
-                    client_ip,
-                    target_lower,
-                    port,
-                    proto_lower,
-                )?;
+                let reason = match_condition_against_target_with_table(child, all_conditions, ctx)?;
                 matched_reasons.push(reason);
             }
             return Some(matched_reasons.join(" AND "));
@@ -1098,14 +1365,8 @@ fn match_condition_against_target(
         "any" if !cond.children.is_empty() => {
             for cid in &cond.children {
                 if let Some(child) = all_conditions.iter().find(|c| c.id == *cid && c.enabled)
-                    && let Some(reason) = match_condition_against_target(
-                        child,
-                        all_conditions,
-                        client_ip,
-                        target_lower,
-                        port,
-                        proto_lower,
-                    )
+                    && let Some(reason) =
+                        match_condition_against_target_with_table(child, all_conditions, ctx)
                 {
                     return Some(reason);
                 }
@@ -1115,15 +1376,7 @@ fn match_condition_against_target(
         "not" if !cond.children.is_empty() => {
             let cid = &cond.children[0];
             if let Some(child) = all_conditions.iter().find(|c| c.id == *cid && c.enabled)
-                && match_condition_against_target(
-                    child,
-                    all_conditions,
-                    client_ip,
-                    target_lower,
-                    port,
-                    proto_lower,
-                )
-                .is_none()
+                && match_condition_against_target_with_table(child, all_conditions, ctx).is_none()
             {
                 return Some(format!("Отрицание условия «{}»", cond.name));
             }
@@ -1132,50 +1385,56 @@ fn match_condition_against_target(
         _ => {}
     }
 
-    if !cond.l4_proto.is_empty() && !cond.l4_proto.eq_ignore_ascii_case(proto_lower) {
+    if !cond.l4_proto.is_empty() && !cond.l4_proto.eq_ignore_ascii_case(ctx.proto_lower) {
         return None;
     }
-    if !cond.client_ips.is_empty()
+    let has_client_filter = !cond.client_ips.is_empty() || !cond.source_macs.is_empty();
+    if has_client_filter
         && !cond
             .client_ips
             .iter()
-            .any(|ip| !ip.contains(':') && ip == client_ip)
+            .chain(cond.source_macs.iter())
+            .any(|entry| client_matches_entry(entry, ctx.client_ip, ctx.client_mac, ctx.mac_table))
     {
         return None;
     }
-    if cond.exclude_client_ips.iter().any(|ip| ip == client_ip) {
+    if cond
+        .exclude_client_ips
+        .iter()
+        .any(|entry| client_matches_entry(entry, ctx.client_ip, ctx.client_mac, ctx.mac_table))
+    {
         return None;
     }
     if cond.exclude_domains.iter().any(|d| {
         let dl = d.trim().to_ascii_lowercase();
-        !dl.is_empty() && (target_lower == dl || target_lower.ends_with(&format!(".{dl}")))
+        !dl.is_empty() && (ctx.target_lower == dl || ctx.target_lower.ends_with(&format!(".{dl}")))
     }) {
         return None;
     }
 
     if cond.user_domains.iter().any(|d| {
         let dl = d.trim().to_ascii_lowercase();
-        !dl.is_empty() && (target_lower == dl || target_lower.ends_with(&format!(".{dl}")))
+        !dl.is_empty() && (ctx.target_lower == dl || ctx.target_lower.ends_with(&format!(".{dl}")))
     }) {
         return Some(format!("Пользовательский домен в условии «{}»", cond.name));
     }
 
-    if !cond.ports.is_empty() && cond.ports.iter().any(|p| p.trim() == port.to_string()) {
-        return Some(format!("Порт {port} в условии «{}»", cond.name));
+    if !cond.ports.is_empty() && cond.ports.iter().any(|p| p.trim() == ctx.port.to_string()) {
+        return Some(format!("Порт {} в условии «{}»", ctx.port, cond.name));
     }
 
     if !cond.user_subnets.is_empty()
         && cond
             .user_subnets
             .iter()
-            .any(|s| s.trim().eq_ignore_ascii_case(target_lower))
+            .any(|s| s.trim().eq_ignore_ascii_case(ctx.target_lower))
     {
         return Some(format!("Подсеть в условии «{}»", cond.name));
     }
 
     for list in &cond.community_lists {
         let ll = list.trim().to_ascii_lowercase();
-        if !ll.is_empty() && match_list_tag_against_domain(&ll, target_lower) {
+        if !ll.is_empty() && match_list_tag_against_domain(&ll, ctx.target_lower) {
             return Some(format!(
                 "Список сообщества trs-{list} в условии «{}»",
                 cond.name
@@ -1185,9 +1444,19 @@ fn match_condition_against_target(
 
     for gs in &cond.geosite_codes {
         let gl = gs.trim().to_ascii_lowercase();
-        if !gl.is_empty() && match_list_tag_against_domain(&gl, target_lower) {
+        if !gl.is_empty() && match_list_tag_against_domain(&gl, ctx.target_lower) {
             return Some(format!("Набор geosite-{gs} в условии «{}»", cond.name));
         }
+    }
+
+    if has_client_filter
+        && cond.user_domains.is_empty()
+        && cond.ports.is_empty()
+        && cond.user_subnets.is_empty()
+        && cond.community_lists.is_empty()
+        && cond.geosite_codes.is_empty()
+    {
+        return Some(format!("Устройство/источник в условии «{}»", cond.name));
     }
     None
 }
@@ -1216,7 +1485,7 @@ pub async fn run_dns_speed_test() -> Vec<DnsBenchmarkEntry> {
                 9999
             };
             DnsBenchmarkEntry {
-                server: addr.split(':').next().unwrap_or(addr).to_string(),
+                server: crate::config_gen::extract_host_only(addr),
                 protocol: label.to_string(),
                 latency_ms,
                 reachable: ok,
@@ -1381,7 +1650,7 @@ pub async fn run_unlock_probe() -> Vec<UnlockProbeEntry> {
             UnlockProbeEntry {
                 service: service.to_string(),
                 category: category.to_string(),
-                host: addr.split(':').next().unwrap_or(addr).to_string(),
+                host: crate::config_gen::extract_host_only(addr),
                 reachable: ok,
                 latency_ms,
             }
@@ -1396,6 +1665,18 @@ pub async fn run_unlock_probe() -> Vec<UnlockProbeEntry> {
     out
 }
 
+struct RouteTraceInput<'a> {
+    d: &'a RouterStoreData,
+    client_ip: &'a str,
+    domain: &'a str,
+    target_or_ip: &'a str,
+    port: u16,
+    protocol: &'a str,
+    nft_active: bool,
+    wan6_available: bool,
+    mac_table: &'a MacIpTable,
+}
+
 /// Build the unified 7-stage routing explanation JSON used by CLI, RPC (`trace_rules`/`route_explain`), and HTTP API.
 pub fn build_route_trace_json(
     d: &RouterStoreData,
@@ -1406,6 +1687,61 @@ pub fn build_route_trace_json(
     protocol: &str,
     nft_active: bool,
 ) -> Value {
+    let mac_table = load_system_mac_ip_table();
+    let (_lan_v6, wan_v6, _) = crate::sys_info::detect_router_ipv6_ips();
+    build_route_trace_json_with_mac_table(&RouteTraceInput {
+        d,
+        client_ip,
+        domain,
+        target_or_ip,
+        port,
+        protocol,
+        nft_active,
+        wan6_available: !wan_v6.is_empty(),
+        mac_table: &mac_table,
+    })
+}
+
+/// Async variant of [`build_route_trace_json`] using non-blocking Tokio file reads.
+pub async fn build_route_trace_json_async(
+    d: &RouterStoreData,
+    client_ip: &str,
+    domain: &str,
+    target_or_ip: &str,
+    port: u16,
+    protocol: &str,
+    nft_active: bool,
+) -> Value {
+    let (mac_table, v6_res) = tokio::join!(
+        load_system_mac_ip_table_async(),
+        tokio::task::spawn_blocking(crate::sys_info::detect_router_ipv6_ips),
+    );
+    let (_lan_v6, wan_v6, _) = v6_res.unwrap_or_default();
+    build_route_trace_json_with_mac_table(&RouteTraceInput {
+        d,
+        client_ip,
+        domain,
+        target_or_ip,
+        port,
+        protocol,
+        nft_active,
+        wan6_available: !wan_v6.is_empty(),
+        mac_table: &mac_table,
+    })
+}
+
+fn build_route_trace_json_with_mac_table(input: &RouteTraceInput<'_>) -> Value {
+    let RouteTraceInput {
+        d,
+        client_ip,
+        domain,
+        target_or_ip,
+        port,
+        protocol,
+        nft_active,
+        wan6_available,
+        mac_table,
+    } = *input;
     let effective_target = if !domain.trim().is_empty() {
         domain.trim()
     } else if !target_or_ip.trim().is_empty() {
@@ -1413,7 +1749,11 @@ pub fn build_route_trace_json(
     } else {
         "example.com"
     };
-    let tr = explain_route(d, client_ip, effective_target, port, protocol);
+    let client_mac = mac_table.resolve_client_mac(client_ip);
+    let tr =
+        explain_route_with_mac_table(d, client_ip, effective_target, port, protocol, mac_table);
+    let ipv6_state = crate::store::resolve_effective_ipv6_state(&d.settings, wan6_available);
+    let runtime_dns_strategy = crate::store::effective_dns_strategy(&d.settings, ipv6_state);
     let is_direct = tr.selected_outbound.eq_ignore_ascii_case("direct");
     let is_block = tr.selected_outbound.eq_ignore_ascii_case("block")
         || tr.connection_type.eq_ignore_ascii_case("block");
@@ -1525,11 +1865,13 @@ pub fn build_route_trace_json(
         "resolved_outbound": tr.resolved_outbound,
         "selected_outbound": tr.selected_outbound,
         "dns_strategy": tr.dns_strategy,
+        "runtime_dns_strategy": runtime_dns_strategy,
+        "ipv6_effective_state": ipv6_state.as_str(),
         "connection_type": tr.connection_type,
         "reason": tr.matched_reason,
         "query": {
             "client": client_ip,
-            "client_mac": null,
+            "client_mac": client_mac,
             "target": tr.target,
             "target_type": if is_ip_target { "ip" } else { "domain" },
             "port": tr.port,
@@ -1553,7 +1895,7 @@ pub fn build_route_trace_json(
                 "port": tr.port,
                 "proto": tr.protocol,
                 "is_private_ip": false,
-                "is_fakeip": (d.settings.fakeip_enabled || is_tproxy) && !is_ip_target,
+                "is_fakeip": d.settings.fakeip_enabled && !is_ip_target,
                 "details": format!("Назначение {}:{} ({})", tr.target, tr.port, tr.protocol.to_uppercase())
             },
             "3_section_matching": {
@@ -1569,13 +1911,22 @@ pub fn build_route_trace_json(
             "4_dns_decision": {
                 "stage": 4,
                 "name": "Решение DNS / FakeIP",
-                "mode": if d.settings.fakeip_enabled || is_tproxy { "fakeip" } else { "realip" },
+                "mode": if d.settings.fakeip_enabled { "fakeip" } else { "realip" },
                 "resolver": d.settings.dns_type,
-                "fakeip_active": d.settings.fakeip_enabled || is_tproxy,
-                "details": if d.settings.fakeip_enabled || is_tproxy {
-                    "Домен сопоставлен через таблицу FakeIP (198.18.0.0/15)"
+                "fakeip_active": d.settings.fakeip_enabled,
+                "ipv6_effective_state": ipv6_state.as_str(),
+                "runtime_dns_strategy": runtime_dns_strategy,
+                "details": if d.settings.fakeip_enabled {
+                    format!(
+                        "Домен сопоставлен через таблицу FakeIP ({})",
+                        if d.settings.fakeip_inet4_range.trim().is_empty() {
+                            "198.18.0.0/15"
+                        } else {
+                            d.settings.fakeip_inet4_range.trim()
+                        }
+                    )
                 } else {
-                    "Используется реальное разрешение имён без подмены FakeIP"
+                    "Используется реальное разрешение имён без подмены FakeIP".to_string()
                 }
             },
             "5_nftables_interception": {
@@ -1648,7 +1999,8 @@ pub async fn explain_route_with_engine(
 ) -> Value {
     let nft_active = crate::net_stack::check_nft_table_active().await;
     let mut out =
-        build_route_trace_json(store, client_ip, target, target, port, protocol, nft_active);
+        build_route_trace_json_async(store, client_ip, target, target, port, protocol, nft_active)
+            .await;
     let req_body = json!({
         "target": target,
         "port": port,
@@ -1750,11 +2102,52 @@ pub async fn run_network_tool(tool: &str, target: &str) -> Value {
     }
 }
 
+pub(crate) fn build_ipv6_leak_summary(
+    d: &RouterStoreData,
+    ipv6_state: crate::store::EffectiveIpv6State,
+    wan_v6: &str,
+    proxy_ipv6: &str,
+    nft_table_active: bool,
+) -> Value {
+    let wan6_available = !wan_v6.is_empty();
+    let nft_leak_guard_present = nft_table_active && ipv6_state.is_leak_guard();
+    let ipv6_leaked = d.settings.ipv6_leak_guard
+        && ipv6_state.is_leak_guard()
+        && wan6_available
+        && !nft_table_active;
+    json!({
+        "direct_ipv6": wan_v6,
+        "proxy_ipv6": proxy_ipv6,
+        "ipv6_leak_guard": d.settings.ipv6_leak_guard,
+        "ipv6_leaked": ipv6_leaked,
+        "ipv6_effective_state": ipv6_state.as_str(),
+        "ipv6_mode": d.settings.ipv6_mode,
+        "wan6_available": wan6_available,
+        "nft_leak_guard_present": nft_leak_guard_present,
+    })
+}
+
 /// DNS Leak, IPv4/IPv6, WebRTC STUN & FakeIP pipeline verification (`POST /api/diagnostics/leak-check`),
 /// delegating directly to `tachyon-core` `POST /tachyon/leak`.
 pub async fn run_leak_check(state: &Arc<AppState>, core: Option<&Arc<CoreManager>>) -> Value {
     let d = state.data.read().await.clone();
     let live = state.live.read().await.clone();
+    let (_lan_v6, wan_v6, _prefixes_v6) =
+        tokio::task::spawn_blocking(crate::sys_info::detect_router_ipv6_ips)
+            .await
+            .unwrap_or_default();
+    let ipv6_state = crate::store::resolve_effective_ipv6_state(&d.settings, !wan_v6.is_empty());
+    let eff_dns = crate::store::effective_dns_strategy(&d.settings, ipv6_state);
+    let fakeip_v4 = if d.settings.fakeip_inet4_range.trim().is_empty() {
+        "198.18.0.0/15".to_string()
+    } else {
+        d.settings.fakeip_inet4_range.trim().to_string()
+    };
+    let fakeip_v6 = if d.settings.fakeip_inet6_range.trim().is_empty() {
+        "fc00::/18".to_string()
+    } else {
+        d.settings.fakeip_inet6_range.trim().to_string()
+    };
     let dns_port_open = tokio::time::timeout(
         Duration::from_millis(600),
         TcpStream::connect("127.0.0.42:53"),
@@ -1770,25 +2163,89 @@ pub async fn run_leak_check(state: &Arc<AppState>, core: Option<&Arc<CoreManager
         None
     };
 
+    let direct_ipv6 = wan_v6.clone();
+    let proxy_ipv6 = if ipv6_state.is_active() && live.core_running {
+        d.outbound_sources
+            .iter()
+            .filter(|s| s.enabled)
+            .find_map(|s| {
+                let host = if !s.server.trim().is_empty() {
+                    crate::config_gen::extract_host_only(&s.server)
+                } else {
+                    s.cached_nodes
+                        .first()
+                        .map(|n| crate::config_gen::extract_host_only(&n.server))
+                        .unwrap_or_default()
+                };
+                host.parse::<std::net::Ipv6Addr>()
+                    .ok()
+                    .map(|ip| ip.to_string())
+            })
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
+    let ipv6_leak = build_ipv6_leak_summary(
+        &d,
+        ipv6_state,
+        &direct_ipv6,
+        &proxy_ipv6,
+        live.nft_table_active,
+    );
+    let ipv6_leaked = ipv6_leak
+        .get("ipv6_leaked")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+
+    let verdict = if !live.core_running {
+        "Ядро остановлено — используется системный DNS роутера".to_string()
+    } else if ipv6_leaked {
+        "Обнаружен риск прямой маршрутизации IPv6 при отключённой таблице nftables".to_string()
+    } else if d.settings.fakeip_enabled && ipv6_state.is_tunnel_over_v4() {
+        format!(
+            "Защита FakeIP ({fakeip_v4}, {fakeip_v6}), туннель IPv6-over-IPv4 и WebRTC-фильтр активны"
+        )
+    } else if d.settings.fakeip_enabled && ipv6_state.is_active() {
+        format!(
+            "Защита FakeIP ({fakeip_v4}, {fakeip_v6}), режим IPv6 ({}) и WebRTC-фильтр активны",
+            ipv6_state.as_str()
+        )
+    } else if d.settings.fakeip_enabled {
+        format!(
+            "Защита FakeIP ({fakeip_v4}), подавление AAAA (NOERROR) и перехват WebRTC STUN активны"
+        )
+    } else {
+        format!(
+            "DNS RealIP ({eff_dns}), режим IPv6 ({}) и перехват WebRTC STUN активны",
+            ipv6_state.as_str()
+        )
+    };
+
     json!({
         "ok": true,
         "core_running": live.core_running,
         "nft_table_active": live.nft_table_active,
-        "fakeip_enabled": true,
-        "fakeip_range": "198.18.0.0/15",
+        "fakeip_enabled": d.settings.fakeip_enabled,
+        "fakeip_range": fakeip_v4,
+        "fakeip_inet4_range": fakeip_v4,
+        "fakeip_inet6_range": fakeip_v6,
         "dns_listener": "127.0.0.42:53",
         "dns_listener_reachable": dns_port_open || live.core_running,
         "dns_type": d.settings.dns_type,
+        "dns_strategy": eff_dns,
         "dns_servers": d.settings.dns_servers,
         "bootstrap_dns": d.settings.bootstrap_dns_servers,
         "webrtc_leak_protect": d.settings.webrtc_leak_protect,
         "block_doh": d.settings.block_doh,
+        "ipv6_mode": d.settings.ipv6_mode,
+        "ipv6_effective_state": ipv6_state.as_str(),
+        "ipv6_leak_guard": d.settings.ipv6_leak_guard,
+        "direct_ipv6": direct_ipv6,
+        "proxy_ipv6": proxy_ipv6,
+        "ipv6_leaked": ipv6_leaked,
+        "ipv6_leak": ipv6_leak,
         "engine_leak_audit": engine_leak,
-        "verdict": if live.core_running {
-            "Защита FakeIP (198.18.0.0/15), перехват WebRTC STUN и DNS-конвейер активны"
-        } else {
-            "Ядро остановлено — используется системный DNS роутера"
-        }
+        "verdict": verdict
     })
 }
 
@@ -1904,84 +2361,163 @@ fn skip_dns_name(buf: &[u8], mut pos: usize) -> Option<usize> {
     None
 }
 
-pub(crate) fn parse_dns_a_response(buf: &[u8]) -> (bool, String) {
-    if buf.len() < 12 {
-        return (false, String::new());
+fn ipv4_in_cidr(ip: std::net::Ipv4Addr, cidr: &str) -> bool {
+    let trimmed = cidr.trim();
+    if let Some((ip_part, prefix_part)) = trimmed.split_once('/')
+        && let (Ok(net), Ok(prefix)) = (
+            ip_part.trim().parse::<std::net::Ipv4Addr>(),
+            prefix_part.trim().parse::<u32>(),
+        )
+        && prefix <= 32
+    {
+        let mask = if prefix == 0 {
+            0u32
+        } else {
+            u32::MAX << (32 - prefix)
+        };
+        return (u32::from(ip) & mask) == (u32::from(net) & mask);
     }
+    let o = ip.octets();
+    o[0] == 198 && (o[1] == 18 || o[1] == 19)
+}
+
+fn ipv6_in_cidr(ip: std::net::Ipv6Addr, cidr: &str) -> bool {
+    if let Some((net, prefix)) = crate::store::parse_ipv6_cidr(cidr) {
+        let mask = if prefix == 0 {
+            0u128
+        } else {
+            u128::MAX << (128 - u32::from(prefix))
+        };
+        return (u128::from(ip) & mask) == (net & mask);
+    }
+    false
+}
+
+pub(crate) fn parse_dns_fakeip_response(
+    buf: &[u8],
+    expected_v4_cidr: &str,
+    expected_v6_cidr: &str,
+) -> (bool, String, u8) {
+    if buf.len() < 12 {
+        return (false, String::new(), 255);
+    }
+    let rcode = buf[3] & 0x0f;
     let qdcount = u16::from_be_bytes([buf[4], buf[5]]) as usize;
     let ancount = u16::from_be_bytes([buf[6], buf[7]]) as usize;
     if ancount == 0 {
-        return (false, String::new());
+        return (false, String::new(), rcode);
     }
 
     let mut pos = 12usize;
     for _ in 0..qdcount.min(32) {
         let Some(next) = skip_dns_name(buf, pos) else {
-            return (false, String::new());
+            return (false, String::new(), rcode);
         };
         let Some(after_q) = next.checked_add(4) else {
-            return (false, String::new());
+            return (false, String::new(), rcode);
         };
         if after_q > buf.len() {
-            return (false, String::new());
+            return (false, String::new(), rcode);
         }
         pos = after_q;
     }
 
     for _ in 0..ancount.min(32) {
         let Some(after_name) = skip_dns_name(buf, pos) else {
-            return (false, String::new());
+            return (false, String::new(), rcode);
         };
         let Some(hdr_end) = after_name.checked_add(10) else {
-            return (false, String::new());
+            return (false, String::new(), rcode);
         };
         let Some(hdr) = buf.get(after_name..hdr_end) else {
-            return (false, String::new());
+            return (false, String::new(), rcode);
         };
         let rtype = u16::from_be_bytes([hdr[0], hdr[1]]);
         let rdlength = u16::from_be_bytes([hdr[8], hdr[9]]) as usize;
         let Some(rdata_end) = hdr_end.checked_add(rdlength) else {
-            return (false, String::new());
+            return (false, String::new(), rcode);
         };
         let Some(rdata) = buf.get(hdr_end..rdata_end) else {
-            return (false, String::new());
+            return (false, String::new(), rcode);
         };
         if rtype == 1 && rdata.len() == 4 {
             let ip = std::net::Ipv4Addr::new(rdata[0], rdata[1], rdata[2], rdata[3]);
-            let is_fakeip = rdata[0] == 198 && (rdata[1] == 18 || rdata[1] == 19);
-            return (is_fakeip, ip.to_string());
+            return (ipv4_in_cidr(ip, expected_v4_cidr), ip.to_string(), rcode);
+        }
+        if rtype == 28 && rdata.len() == 16 {
+            let mut octets = [0u8; 16];
+            octets.copy_from_slice(rdata);
+            let ip = std::net::Ipv6Addr::from(octets);
+            return (ipv6_in_cidr(ip, expected_v6_cidr), ip.to_string(), rcode);
         }
         pos = rdata_end;
     }
 
-    (false, String::new())
+    (false, String::new(), rcode)
 }
 
-/// Probe the local FakeIP DNS listener (`127.0.0.42:53`) with an A query for `probe.example.com`.
-pub async fn probe_local_fakeip_dns() -> (bool, String) {
-    let Ok(sock) = tokio::net::UdpSocket::bind("127.0.0.1:0").await else {
-        return (false, String::new());
-    };
+#[cfg(test)]
+pub(crate) fn parse_dns_a_response(buf: &[u8]) -> (bool, String) {
+    let (ok, ip, _) = parse_dns_fakeip_response(buf, "198.18.0.0/15", "fc00::/18");
+    (ok, ip)
+}
+
+async fn send_dns_probe(qtype_low: u8) -> Option<Vec<u8>> {
+    let sock = tokio::net::UdpSocket::bind("127.0.0.1:0").await.ok()?;
     let query: [u8; 35] = [
         0x54, 0x43, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 5, b'p', b'r',
         b'o', b'b', b'e', 7, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 3, b'c', b'o', b'm', 0,
-        0x00, 0x01, 0x00, 0x01,
+        0x00, qtype_low, 0x00, 0x01,
     ];
-    let Ok(Ok(_)) = tokio::time::timeout(
+    tokio::time::timeout(
         Duration::from_millis(800),
         sock.send_to(&query, "127.0.0.42:53"),
     )
     .await
-    else {
-        return (false, String::new());
-    };
+    .ok()?
+    .ok()?;
     let mut resp = [0u8; 512];
-    let Ok(Ok((n, _))) =
-        tokio::time::timeout(Duration::from_millis(800), sock.recv_from(&mut resp)).await
-    else {
-        return (false, String::new());
+    let (n, _) = tokio::time::timeout(Duration::from_millis(800), sock.recv_from(&mut resp))
+        .await
+        .ok()?
+        .ok()?;
+    Some(resp[..n].to_vec())
+}
+
+/// Probe the local FakeIP DNS listener (`127.0.0.42:53`) with A and AAAA queries
+/// against configured FakeIP ranges. Returns `(v4_ok, v4_ip, v6_ok, v6_ip, aaaa_suppressed_noerror)`.
+pub async fn probe_local_fakeip_dns_with(
+    expected_v4_cidr: &str,
+    expected_v6_cidr: &str,
+    ipv6_active: bool,
+) -> (bool, String, bool, String, bool) {
+    let v4_cidr = if expected_v4_cidr.trim().is_empty() {
+        "198.18.0.0/15"
+    } else {
+        expected_v4_cidr.trim()
     };
-    parse_dns_a_response(&resp[..n])
+    let v6_cidr = if expected_v6_cidr.trim().is_empty() {
+        "fc00::/18"
+    } else {
+        expected_v6_cidr.trim()
+    };
+
+    let (v4_ok, v4_ip) = if let Some(resp) = send_dns_probe(0x01).await {
+        let (ok, ip, _) = parse_dns_fakeip_response(&resp, v4_cidr, v6_cidr);
+        (ok, ip)
+    } else {
+        (false, String::new())
+    };
+
+    let (v6_ok, v6_ip, aaaa_suppressed) = if let Some(resp) = send_dns_probe(0x1c).await {
+        let (ok, ip, rcode) = parse_dns_fakeip_response(&resp, v4_cidr, v6_cidr);
+        let suppressed = !ipv6_active && rcode == 0 && ip.is_empty();
+        (ipv6_active && ok, ip, suppressed)
+    } else {
+        (false, String::new(), false)
+    };
+
+    (v4_ok, v4_ip, v6_ok, v6_ip, aaaa_suppressed)
 }
 
 fn read_service_mixed_in_port() -> u16 {
@@ -2027,10 +2563,81 @@ async fn run_curl_trace_ip(mut cmd: Command) -> Option<String> {
     extract_trace_ip(&body)
 }
 
-/// Self-contained FakeIP & public exit IP probe for frontend diagnostics.
-pub async fn run_fakeip_probe(_state: &Arc<AppState>, via_proxy: bool) -> Value {
+pub(crate) struct FakeIpProbePayloadInput<'a> {
+    pub d: &'a RouterStoreData,
+    pub ipv6_state: crate::store::EffectiveIpv6State,
+    pub via_proxy: bool,
+    pub v4_ok: bool,
+    pub v4_ip: &'a str,
+    pub v6_ok: bool,
+    pub v6_ip: &'a str,
+    pub aaaa_suppressed: bool,
+}
+
+pub(crate) fn format_fakeip_probe_payload(input: FakeIpProbePayloadInput<'_>) -> Value {
+    let FakeIpProbePayloadInput {
+        d,
+        ipv6_state,
+        via_proxy,
+        v4_ok,
+        v4_ip,
+        v6_ok,
+        v6_ip,
+        aaaa_suppressed,
+    } = input;
+    let fakeip4 = if d.settings.fakeip_inet4_range.trim().is_empty() {
+        "198.18.0.0/15"
+    } else {
+        d.settings.fakeip_inet4_range.trim()
+    };
+    let fakeip6 = if d.settings.fakeip_inet6_range.trim().is_empty() {
+        "fc00::/18"
+    } else {
+        d.settings.fakeip_inet6_range.trim()
+    };
+    let ipv4_only = if v4_ip.contains(':') { "" } else { v4_ip };
     if via_proxy {
-        let (fakeip_ok, dns_ip) = probe_local_fakeip_dns().await;
+        json!({
+            "fakeip": d.settings.fakeip_enabled && v4_ok,
+            "fakeip_enabled": d.settings.fakeip_enabled,
+            "fakeip_inet4_range": fakeip4,
+            "fakeip_inet6_range": fakeip6,
+            "fakeip_v4": v4_ok,
+            "fakeip_v6": v6_ok,
+            "aaaa_suppressed": aaaa_suppressed,
+            "ipv6_effective_state": ipv6_state.as_str(),
+            "IP": v4_ip,
+            "IPv4": ipv4_only,
+            "IPv6": v6_ip
+        })
+    } else {
+        json!({
+            "fakeip": false,
+            "fakeip_enabled": d.settings.fakeip_enabled,
+            "fakeip_inet4_range": fakeip4,
+            "fakeip_inet6_range": fakeip6,
+            "ipv6_effective_state": ipv6_state.as_str(),
+            "IP": v4_ip,
+            "IPv4": ipv4_only,
+            "IPv6": v6_ip
+        })
+    }
+}
+
+/// Self-contained FakeIP & public exit IP probe for frontend diagnostics.
+pub async fn run_fakeip_probe(state: &Arc<AppState>, via_proxy: bool) -> Value {
+    let d = state.data.read().await.clone();
+    let (_lan_v6, wan_v6, _) = tokio::task::spawn_blocking(crate::sys_info::detect_router_ipv6_ips)
+        .await
+        .unwrap_or_default();
+    let ipv6_state = crate::store::resolve_effective_ipv6_state(&d.settings, !wan_v6.is_empty());
+    if via_proxy {
+        let (v4_ok, dns_ip, v6_ok, v6_ip, aaaa_suppressed) = probe_local_fakeip_dns_with(
+            &d.settings.fakeip_inet4_range,
+            &d.settings.fakeip_inet6_range,
+            ipv6_state.is_active(),
+        )
+        .await;
         let port = read_service_mixed_in_port();
         let proxy_url = format!("http://127.0.0.1:{port}");
         let mut cmd = Command::new("curl");
@@ -2045,7 +2652,16 @@ pub async fn run_fakeip_probe(_state: &Arc<AppState>, via_proxy: bool) -> Value 
             "https://cloudflare.com/cdn-cgi/trace",
         ]);
         let exit_ip = run_curl_trace_ip(cmd).await.unwrap_or(dns_ip);
-        json!({ "fakeip": fakeip_ok, "IP": exit_ip })
+        format_fakeip_probe_payload(FakeIpProbePayloadInput {
+            d: &d,
+            ipv6_state,
+            via_proxy: true,
+            v4_ok,
+            v4_ip: &exit_ip,
+            v6_ok,
+            v6_ip: &v6_ip,
+            aaaa_suppressed,
+        })
     } else {
         let mut cmd = Command::new("curl");
         cmd.args([
@@ -2059,7 +2675,16 @@ pub async fn run_fakeip_probe(_state: &Arc<AppState>, via_proxy: bool) -> Value 
             "https://1.1.1.1/cdn-cgi/trace",
         ]);
         let direct_ip = run_curl_trace_ip(cmd).await.unwrap_or_default();
-        json!({ "fakeip": false, "IP": direct_ip })
+        format_fakeip_probe_payload(FakeIpProbePayloadInput {
+            d: &d,
+            ipv6_state,
+            via_proxy: false,
+            v4_ok: false,
+            v4_ip: &direct_ip,
+            v6_ok: false,
+            v6_ip: &wan_v6,
+            aaaa_suppressed: false,
+        })
     }
 }
 
@@ -2213,5 +2838,187 @@ config zone
             parse_dns_a_response(&fakeip_pkt[..fakeip_pkt.len() - 2]),
             (false, String::new())
         );
+    }
+
+    #[test]
+    fn test_parse_dns_fakeip_response_aaaa_and_noerror_suppression() {
+        // FakeIPv6 fc00::19 (AAAA rtype=28)
+        let aaaa_fakeip: &[u8] = &[
+            0x54, 0x43, 0x81, 0x80, // QR=1, RCODE=0
+            0x00, 0x01, 0x00, 0x01, // QD=1, AN=1
+            0x00, 0x00, 0x00, 0x00, //
+            5, b'p', b'r', b'o', b'b', b'e', 7, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 3, b'c',
+            b'o', b'm', 0, //
+            0x00, 0x1c, 0x00, 0x01, // QTYPE=AAAA
+            0xC0, 0x0C, // ptr
+            0x00, 0x1c, 0x00, 0x01, // TYPE=AAAA
+            0x00, 0x00, 0x00, 0x3C, // TTL
+            0x00, 0x10, // RDLENGTH=16
+            0xfc, 0x00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x19, // fc00::19
+        ];
+        assert_eq!(
+            parse_dns_fakeip_response(aaaa_fakeip, "198.18.0.0/15", "fc00::/18"),
+            (true, "fc00::19".to_string(), 0)
+        );
+
+        // Public AAAA 2001:4860:4860::8888 is not FakeIP
+        let mut aaaa_pub = aaaa_fakeip.to_vec();
+        let n = aaaa_pub.len();
+        aaaa_pub[n - 16..n].copy_from_slice(&[
+            0x20, 0x01, 0x48, 0x60, 0x48, 0x60, 0, 0, 0, 0, 0, 0, 0, 0, 0x88, 0x88,
+        ]);
+        assert_eq!(
+            parse_dns_fakeip_response(&aaaa_pub, "198.18.0.0/15", "fc00::/18"),
+            (false, "2001:4860:4860::8888".to_string(), 0)
+        );
+
+        // Suppressed AAAA: predefined NOERROR (rcode=0, ancount=0)
+        let aaaa_noerror: &[u8] = &[
+            0x54, 0x43, 0x81, 0x80, // QR=1, RCODE=0
+            0x00, 0x01, 0x00, 0x00, // QD=1, AN=0
+            0x00, 0x00, 0x00, 0x00, //
+            5, b'p', b'r', b'o', b'b', b'e', 7, b'e', b'x', b'a', b'm', b'p', b'l', b'e', 3, b'c',
+            b'o', b'm', 0, //
+            0x00, 0x1c, 0x00, 0x01, //
+        ];
+        assert_eq!(
+            parse_dns_fakeip_response(aaaa_noerror, "198.18.0.0/15", "fc00::/18"),
+            (false, String::new(), 0)
+        );
+    }
+
+    #[test]
+    fn test_evaluate_odhcpd_ipv6_dns() {
+        assert!(evaluate_odhcpd_ipv6_dns("", false).0);
+
+        let no_dns = r#"
+config dhcp 'lan'
+	option interface 'lan'
+	option dhcpv6 'server'
+	option ra 'server'
+	option ra_dns '0'
+"#;
+        assert!(!evaluate_odhcpd_ipv6_dns(no_dns, true).0);
+
+        let with_ra_dns = r#"
+config dhcp 'lan'
+	option dhcpv6 'server'
+	option ra_dns '1'
+"#;
+        assert!(evaluate_odhcpd_ipv6_dns(with_ra_dns, true).0);
+
+        let with_dns_list = r#"
+config dhcp 'lan'
+	option dhcpv6 'server'
+	list dns 'fd00::1'
+"#;
+        assert!(evaluate_odhcpd_ipv6_dns(with_dns_list, true).0);
+    }
+
+    #[test]
+    fn test_source_macs_resolution_and_route_trace_fields() {
+        let arp = "\
+IP address       HW type     Flags       HW address            Mask     Device
+192.168.1.50     0x1         0x2         AA:BB:CC:DD:EE:FF     *        br-lan
+";
+        let leases = "1700000000 11:22:33:44:55:66 192.168.1.77 laptop *";
+        let table = parse_mac_ip_table(arp, leases);
+
+        let mut store = RouterStoreData::default();
+        store.settings.ipv6_mode = "auto".to_string();
+        store.sections = vec![RoutingSection {
+            id: "MacSec".to_string(),
+            label: "MacSec".to_string(),
+            enabled: true,
+            action: "proxy".to_string(),
+            connection_type: "vless".to_string(),
+            condition_refs: vec!["cond_mac".to_string()],
+            outbound_source_refs: vec!["sub_1".to_string()],
+            ..Default::default()
+        }];
+        store.conditions = vec![TrafficCondition {
+            id: "cond_mac".to_string(),
+            enabled: true,
+            name: "MAC Target".to_string(),
+            condition_type: "atomic".to_string(),
+            source_macs: vec!["aa-bb-cc-dd-ee-ff".to_string()],
+            user_domains: vec!["example.org".to_string()],
+            ..Default::default()
+        }];
+
+        let trace = build_route_trace_json_with_mac_table(&RouteTraceInput {
+            d: &store,
+            client_ip: "192.168.1.50",
+            domain: "example.org",
+            target_or_ip: "",
+            port: 443,
+            protocol: "tcp",
+            nft_active: true,
+            wan6_available: false,
+            mac_table: &table,
+        });
+        assert_eq!(trace["matched_section_id"], "MacSec");
+        assert_eq!(trace["query"]["client_mac"], "aa:bb:cc:dd:ee:ff");
+        assert_eq!(trace["ipv6_effective_state"], "leak_guard");
+        assert_eq!(trace["runtime_dns_strategy"], "ipv4_only");
+        assert_eq!(
+            trace["stages"]["4_dns_decision"]["ipv6_effective_state"],
+            "leak_guard"
+        );
+        assert_eq!(
+            trace["stages"]["4_dns_decision"]["runtime_dns_strategy"],
+            "ipv4_only"
+        );
+
+        let miss = build_route_trace_json_with_mac_table(&RouteTraceInput {
+            d: &store,
+            client_ip: "192.168.1.77",
+            domain: "example.org",
+            target_or_ip: "",
+            port: 443,
+            protocol: "tcp",
+            nft_active: true,
+            wan6_available: false,
+            mac_table: &table,
+        });
+        assert_eq!(miss["matched_section_id"], "final");
+        assert_eq!(miss["action"], "direct");
+        assert_eq!(miss["query"]["client_mac"], "11:22:33:44:55:66");
+    }
+
+    #[test]
+    fn test_ipv6_leak_summary_and_fakeip_probe_fields() {
+        let mut store = RouterStoreData::default();
+        store.settings.fakeip_inet4_range = "198.18.0.0/16".to_string();
+        store.settings.fakeip_inet6_range = "fd12::/64".to_string();
+        store.settings.ipv6_leak_guard = true;
+
+        let leak = build_ipv6_leak_summary(
+            &store,
+            crate::store::EffectiveIpv6State::LeakGuard,
+            "2001:4860::1",
+            "",
+            false,
+        );
+        assert_eq!(leak["direct_ipv6"], "2001:4860::1");
+        assert_eq!(leak["ipv6_leaked"], true);
+        assert_eq!(leak["ipv6_leak_guard"], true);
+        assert_eq!(leak["ipv6_effective_state"], "leak_guard");
+        assert_eq!(leak["wan6_available"], true);
+        assert_eq!(leak["nft_leak_guard_present"], false);
+
+        let probe_proxy = format_fakeip_probe_payload(FakeIpProbePayloadInput {
+            d: &store,
+            ipv6_state: crate::store::EffectiveIpv6State::Full,
+            via_proxy: true,
+            v4_ok: true,
+            v4_ip: "203.0.113.5",
+            v6_ok: true,
+            v6_ip: "fd12::5",
+            aaaa_suppressed: false,
+        });
+        assert_eq!(probe_proxy["IPv4"], "203.0.113.5");
+        assert_eq!(probe_proxy["fakeip_inet4_range"], "198.18.0.0/16");
+        assert_eq!(probe_proxy["fakeip_inet6_range"], "fd12::/64");
     }
 }

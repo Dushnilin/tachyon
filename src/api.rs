@@ -578,13 +578,18 @@ async fn dispatch_api(
             };
             let mut subs_to_refresh = Vec::new();
             for src in &mut candidate.outbound_sources {
-                if !src.proxy_links.is_empty() && src.cached_nodes.is_empty() {
-                    for link_or_b64 in &src.proxy_links {
-                        for node in CoreManager::parse_subscription_payload(link_or_b64) {
-                            src.cached_nodes.push(node);
-                        }
+                if !src.proxy_links.is_empty() {
+                    if let Err(err) = validate_source_proxy_links(&src.proxy_links) {
+                        return send_json(stream, 400, &json!({"ok": false, "error": err})).await;
                     }
-                    src.last_updated_unix = unix_now_secs();
+                    if src.cached_nodes.is_empty() {
+                        for link_or_b64 in &src.proxy_links {
+                            for node in CoreManager::parse_subscription_payload(link_or_b64) {
+                                src.cached_nodes.push(node);
+                            }
+                        }
+                        src.last_updated_unix = unix_now_secs();
+                    }
                 } else if src.source_type == "subscription"
                     && !src.subscription_urls.is_empty()
                     && src.cached_nodes.is_empty()
@@ -610,23 +615,10 @@ async fn dispatch_api(
                 return send_json(stream, 400, &json!({"error": "invalid json"})).await;
             };
             let mut candidate = state.data.read().await.clone();
-            if let Ok(mut cur_json) = serde_json::to_value(&candidate.settings) {
-                if let (Some(dst), Some(src)) = (cur_json.as_object_mut(), val.as_object()) {
-                    for (k, v) in src {
-                        if k == "new_password" {
-                            if let Some(pw) = v.as_str().filter(|s| !s.trim().is_empty()) {
-                                let salt = crypto_gen::generate_hex(8);
-                                let hash = crypto_gen::hash_password(pw.trim(), &salt);
-                                dst.insert("admin_pass_salt".to_string(), json!(salt));
-                                dst.insert("admin_pass_hash".to_string(), json!(hash));
-                            }
-                        } else {
-                            dst.insert(k.clone(), v.clone());
-                        }
-                    }
-                }
-                if let Ok(updated_settings) = serde_json::from_value(cur_json) {
-                    candidate.settings = updated_settings;
+            match apply_settings_save_payload(&candidate.settings, &val) {
+                Ok(updated) => candidate.settings = updated,
+                Err(err) => {
+                    return send_json(stream, 400, &json!({"ok": false, "error": err})).await;
                 }
             }
             let new_port = candidate.settings.listen_port;
@@ -643,12 +635,19 @@ async fn dispatch_api(
             }
         }
         ("POST", "/api/sections/save") => {
-            let Ok(sec) = serde_json::from_slice::<RoutingSection>(body) else {
-                return send_json(stream, 400, &json!({"error": "invalid section"})).await;
-            };
             let mut candidate = state.data.read().await.clone();
-            if let Some(existing) = candidate.sections.iter_mut().find(|s| s.id == sec.id) {
-                *existing = sec;
+            let existing = serde_json::from_slice::<Value>(body)
+                .ok()
+                .and_then(|v| v.get("id").and_then(Value::as_str).map(String::from))
+                .and_then(|id| candidate.sections.iter().find(|s| s.id == id).cloned());
+            let sec = match apply_section_save_payload(existing.as_ref(), body) {
+                Ok(s) => s,
+                Err(err) => {
+                    return send_json(stream, 400, &json!({"ok": false, "error": err})).await;
+                }
+            };
+            if let Some(slot) = candidate.sections.iter_mut().find(|s| s.id == sec.id) {
+                *slot = sec;
             } else {
                 candidate.sections.push(sec);
             }
@@ -793,6 +792,9 @@ async fn dispatch_api(
                 return send_json(stream, 400, &json!({"error": "invalid source"})).await;
             };
             if !src.proxy_links.is_empty() {
+                if let Err(err) = validate_source_proxy_links(&src.proxy_links) {
+                    return send_json(stream, 400, &json!({"ok": false, "error": err})).await;
+                }
                 src.cached_nodes.clear();
                 for link_or_b64 in &src.proxy_links {
                     for node in CoreManager::parse_subscription_payload(link_or_b64) {
@@ -1102,12 +1104,13 @@ async fn dispatch_api(
             }
         }
         ("POST", "/api/guest-mode/save") => {
-            let Ok(gm) = serde_json::from_slice::<GuestModeConfig>(body) else {
-                return send_json(stream, 400, &json!({"error": "invalid guest mode config"}))
-                    .await;
-            };
             let mut candidate = state.data.read().await.clone();
-            candidate.guest_mode = gm;
+            match apply_guest_mode_save_payload(&candidate.guest_mode, body) {
+                Ok(gm) => candidate.guest_mode = gm,
+                Err(err) => {
+                    return send_json(stream, 400, &json!({"ok": false, "error": err})).await;
+                }
+            }
             match transaction::commit_transaction(state, candidate).await {
                 Ok(plan) => {
                     let _ = core.apply_or_reload().await;
@@ -1209,10 +1212,12 @@ async fn dispatch_api(
             let val = serde_json::from_slice::<Value>(body).unwrap_or_else(|_| json!({}));
             let client_ip = val
                 .get("client_ip")
+                .or_else(|| val.get("source_ip"))
                 .and_then(Value::as_str)
                 .unwrap_or("192.168.1.100");
             let target = val
                 .get("target")
+                .or_else(|| val.get("domain"))
                 .and_then(Value::as_str)
                 .unwrap_or("www.youtube.com");
             let port = val.get("port").and_then(Value::as_u64).unwrap_or(443) as u16;
@@ -1742,6 +1747,30 @@ async fn dispatch_api(
                 }
             }
         }
+        ("POST", "/api/ui/prefs") => {
+            let Ok(val) = serde_json::from_slice::<Value>(body) else {
+                return send_json(stream, 400, &json!({"error": "invalid json"})).await;
+            };
+            let mut candidate = state.data.read().await.clone();
+            if let Some(mode) = val.get("ui_mode").and_then(Value::as_str) {
+                candidate.settings.ui_mode = crate::store::normalize_ui_mode(mode);
+            }
+            if let Some(pos) = val.get("sidebar_pos").and_then(Value::as_str)
+                && (pos == "left" || pos == "top" || pos == "right")
+            {
+                candidate.settings.sidebar_pos = pos.to_string();
+            }
+            if let Some(acc) = val.get("theme_accent").and_then(Value::as_str) {
+                candidate.settings.accent_theme = acc.trim().to_string();
+            }
+            let ui_mode = candidate.settings.ui_mode.clone();
+            match transaction::commit_transaction(state, candidate).await {
+                Ok(_) => send_json(stream, 200, &json!({"ok": true, "ui_mode": ui_mode})).await,
+                Err(e) => {
+                    send_json(stream, 400, &json!({"ok": false, "error": e.to_string()})).await
+                }
+            }
+        }
         ("POST", "/api/profiles/quota") => {
             let Ok(val) = serde_json::from_slice::<Value>(body) else {
                 return send_json(stream, 400, &json!({"error": "invalid json"})).await;
@@ -2003,18 +2032,42 @@ async fn handle_login(
 }
 
 fn is_trusted_lan_ip(ip: &str) -> bool {
-    ip == "127.0.0.1"
-        || ip == "::1"
-        || ip == "localhost"
-        || ip.starts_with("192.168.")
-        || ip.starts_with("10.")
-        || ip.starts_with("172.16.")
-        || ip.starts_with("172.17.")
-        || ip.starts_with("172.18.")
-        || ip.starts_with("172.19.")
-        || ip.starts_with("172.2")
-        || ip.starts_with("172.30.")
-        || ip.starts_with("172.31.")
+    let trimmed = ip.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    if trimmed.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    let parsed_ip = if let Ok(sa) = trimmed.parse::<std::net::SocketAddr>() {
+        Some(sa.ip())
+    } else {
+        let no_brackets = trimmed
+            .strip_prefix('[')
+            .and_then(|s| s.split(']').next())
+            .unwrap_or(trimmed);
+        let no_zone = no_brackets.split('%').next().unwrap_or(no_brackets);
+        no_zone.parse::<std::net::IpAddr>().ok()
+    };
+    let Some(addr) = parsed_ip else {
+        return false;
+    };
+    let check_v4 =
+        |v4: std::net::Ipv4Addr| v4.is_loopback() || v4.is_private() || v4.is_link_local();
+    match addr {
+        std::net::IpAddr::V4(v4) => check_v4(v4),
+        std::net::IpAddr::V6(v6) => {
+            if let Some(v4) = v6.to_ipv4_mapped() {
+                return check_v4(v4);
+            }
+            if v6.is_loopback() {
+                return true;
+            }
+            let seg0 = v6.segments()[0];
+            // RFC 4193 ULA (fc00::/7) and RFC 4291 link-local unicast (fe80::/10)
+            (seg0 & 0xfe00) == 0xfc00 || (seg0 & 0xffc0) == 0xfe80
+        }
+    }
 }
 
 async fn is_authenticated(state: &Arc<AppState>, token: &str, peer_ip: &str) -> bool {
@@ -2208,4 +2261,349 @@ async fn stream_static_file(
         stream.write_all(&chunk[..n]).await?;
     }
     Ok(())
+}
+
+fn apply_settings_save_payload(
+    current: &crate::store::GlobalSettings,
+    val: &Value,
+) -> Result<crate::store::GlobalSettings, String> {
+    let Some(src) = val.as_object() else {
+        return Err("settings payload must be a JSON object".to_string());
+    };
+    if let Some(raw_v6) = src.get("ipv6_mode").and_then(Value::as_str) {
+        let lower = raw_v6.trim().to_ascii_lowercase();
+        if !lower.is_empty()
+            && !matches!(
+                lower.as_str(),
+                "off"
+                    | "ipv4_only"
+                    | "ipv4-only"
+                    | "ipv4"
+                    | "disabled"
+                    | "none"
+                    | "auto"
+                    | "dual_stack"
+                    | "dual-stack"
+                    | "ipv4_ipv6"
+                    | "ipv4-ipv6"
+                    | "on"
+                    | "full"
+                    | "always"
+                    | "tunnel_over_v4"
+                    | "tunnel-over-v4"
+                    | "v6_over_v4"
+                    | "v6-over-v4"
+                    | "tunnel"
+            )
+        {
+            return Err(format!(
+                "Unsupported ipv6_mode '{raw_v6}'. Expected off, auto, dual_stack, or tunnel_over_v4."
+            ));
+        }
+    }
+    if let Some(raw_dns) = src.get("dns_strategy").and_then(Value::as_str) {
+        let lower = raw_dns.trim().to_ascii_lowercase();
+        if !lower.is_empty()
+            && !matches!(
+                lower.as_str(),
+                "prefer_ipv4" | "ipv4_only" | "prefer_ipv6" | "ipv6_only"
+            )
+        {
+            return Err(format!(
+                "Unsupported dns_strategy '{raw_dns}'. Expected prefer_ipv4, ipv4_only, prefer_ipv6, or ipv6_only."
+            ));
+        }
+    }
+
+    let mut cur_json = serde_json::to_value(current).map_err(|e| e.to_string())?;
+    let sent_ipv6_mode = src.contains_key("ipv6_mode");
+    let sent_enable_ipv6 = src.contains_key("enable_ipv6");
+    if let Some(dst) = cur_json.as_object_mut() {
+        for (k, v) in src {
+            if k == "new_password" {
+                if let Some(pw) = v.as_str().filter(|s| !s.trim().is_empty()) {
+                    let salt = crypto_gen::generate_hex(8);
+                    let hash = crypto_gen::hash_password(pw.trim(), &salt);
+                    dst.insert("admin_pass_salt".to_string(), json!(salt));
+                    dst.insert("admin_pass_hash".to_string(), json!(hash));
+                }
+            } else {
+                dst.insert(k.clone(), v.clone());
+            }
+        }
+    }
+    let mut updated: crate::store::GlobalSettings =
+        serde_json::from_value(cur_json).map_err(|_| "invalid settings schema".to_string())?;
+    updated.ui_mode = crate::store::normalize_ui_mode(&updated.ui_mode);
+    updated.ipv6_mode = crate::store::normalize_ipv6_mode(&updated.ipv6_mode);
+    if sent_enable_ipv6 && !sent_ipv6_mode {
+        updated.ipv6_mode = if updated.enable_ipv6 {
+            "dual_stack".to_string()
+        } else {
+            "off".to_string()
+        };
+    } else if sent_ipv6_mode {
+        updated.enable_ipv6 = updated.ipv6_mode == "dual_stack";
+    }
+    updated.dns_strategy = crate::store::normalize_dns_strategy(&updated.dns_strategy);
+    updated.cache_path = crate::store::sanitize_cache_path(&updated.cache_path);
+    updated.fakeip_inet4_range = if updated.fakeip_inet4_range.trim().is_empty() {
+        "198.18.0.0/15".to_string()
+    } else {
+        updated.fakeip_inet4_range.trim().to_string()
+    };
+    updated.fakeip_inet6_range = if updated.fakeip_inet6_range.trim().is_empty() {
+        "fc00::/18".to_string()
+    } else {
+        updated.fakeip_inet6_range.trim().to_string()
+    };
+    updated.tun_inet4 = if updated.tun_inet4.trim().is_empty() {
+        "172.19.0.1/30".to_string()
+    } else {
+        updated.tun_inet4.trim().to_string()
+    };
+    updated.tun_inet6 = updated.tun_inet6.trim().to_string();
+
+    let is_v4_cidr = |s: &str| s.contains('/') && crate::store::parse_ipv4_cidr(s).is_some();
+    let is_v6_cidr = |s: &str| s.contains('/') && crate::store::parse_ipv6_cidr(s).is_some();
+    if !is_v4_cidr(&updated.fakeip_inet4_range) {
+        return Err(format!(
+            "Invalid fakeip_inet4_range '{}'",
+            updated.fakeip_inet4_range
+        ));
+    }
+    if !is_v6_cidr(&updated.fakeip_inet6_range) {
+        return Err(format!(
+            "Invalid fakeip_inet6_range '{}'",
+            updated.fakeip_inet6_range
+        ));
+    }
+    if !is_v4_cidr(&updated.tun_inet4) {
+        return Err(format!("Invalid tun_inet4 '{}'", updated.tun_inet4));
+    }
+    if !updated.tun_inet6.is_empty() && !is_v6_cidr(&updated.tun_inet6) {
+        return Err(format!("Invalid tun_inet6 '{}'", updated.tun_inet6));
+    }
+    if crate::store::cidrs_overlap(&updated.tun_inet4, &updated.fakeip_inet4_range) {
+        return Err(format!(
+            "TUN IPv4 CIDR '{}' overlaps FakeIPv4 range '{}'",
+            updated.tun_inet4, updated.fakeip_inet4_range
+        ));
+    }
+    if !updated.tun_inet6.is_empty()
+        && crate::store::cidrs_overlap(&updated.tun_inet6, &updated.fakeip_inet6_range)
+    {
+        return Err(format!(
+            "TUN IPv6 CIDR '{}' overlaps FakeIPv6 range '{}'",
+            updated.tun_inet6, updated.fakeip_inet6_range
+        ));
+    }
+    Ok(updated)
+}
+
+fn apply_section_save_payload(
+    existing: Option<&RoutingSection>,
+    body: &[u8],
+) -> Result<RoutingSection, String> {
+    let raw_val: Value = serde_json::from_slice(body).map_err(|_| "invalid section".to_string())?;
+    let has_ipv6_support_key = raw_val
+        .as_object()
+        .is_some_and(|obj| obj.contains_key("ipv6_support"));
+    let mut sec: RoutingSection =
+        serde_json::from_value(raw_val).map_err(|_| "invalid section".to_string())?;
+    if !has_ipv6_support_key && let Some(prev) = existing {
+        sec.ipv6_support = prev.ipv6_support.clone();
+    } else {
+        let lower = sec.ipv6_support.trim().to_ascii_lowercase();
+        if !lower.is_empty()
+            && lower != "auto"
+            && !matches!(
+                lower.as_str(),
+                "0" | "1" | "true" | "false" | "yes" | "no" | "on" | "off"
+            )
+        {
+            return Err(format!(
+                "Invalid ipv6_support '{}' (expected auto, 0, or 1)",
+                sec.ipv6_support
+            ));
+        }
+        sec.ipv6_support = lower;
+    }
+    Ok(sec)
+}
+
+fn apply_guest_mode_save_payload(
+    current: &GuestModeConfig,
+    body: &[u8],
+) -> Result<GuestModeConfig, String> {
+    let raw_val: Value =
+        serde_json::from_slice(body).map_err(|_| "invalid guest mode config".to_string())?;
+    let Some(src) = raw_val.as_object() else {
+        return Err("invalid guest mode config".to_string());
+    };
+    let mut cur_json =
+        serde_json::to_value(current).map_err(|_| "invalid guest mode config".to_string())?;
+    if let Some(dst) = cur_json.as_object_mut() {
+        for (k, v) in src {
+            if k == "allow_proxy"
+                && let Some(s) = v.as_str()
+            {
+                let lower = s.trim().to_ascii_lowercase();
+                match lower.as_str() {
+                    "1" | "true" | "yes" | "on" => {
+                        dst.insert(k.clone(), json!(true));
+                    }
+                    "0" | "false" | "no" | "off" => {
+                        dst.insert(k.clone(), json!(false));
+                    }
+                    _ => return Err(format!("invalid allow_proxy value '{s}'")),
+                }
+            } else {
+                dst.insert(k.clone(), v.clone());
+            }
+        }
+    }
+    let mut gm: GuestModeConfig =
+        serde_json::from_value(cur_json).map_err(|_| "invalid guest mode config".to_string())?;
+    let norm_mode = gm.mode.trim().to_ascii_lowercase();
+    gm.mode = if norm_mode.is_empty() {
+        "selected".to_string()
+    } else if matches!(norm_mode.as_str(), "selected" | "inverted") {
+        norm_mode
+    } else {
+        return Err(format!("unsupported guest mode '{}'", gm.mode));
+    };
+    gm.guest_devices = gm
+        .guest_devices
+        .into_iter()
+        .map(|d| d.trim().to_string())
+        .filter(|d| !d.is_empty())
+        .collect();
+    gm.trusted_devices = gm
+        .trusted_devices
+        .into_iter()
+        .map(|d| d.trim().to_string())
+        .filter(|d| !d.is_empty())
+        .collect();
+    Ok(gm)
+}
+
+fn validate_source_proxy_links(proxy_links: &[String]) -> Result<(), String> {
+    for raw in proxy_links {
+        for line in raw.lines() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("vpn://") {
+                config_gen::diagnose_amnezia_vpn_uri(trimmed)
+                    .map_err(|msg| format!("Invalid Amnezia vpn:// URI: {msg}"))?;
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_trusted_lan_ip_strict_v4_and_v6() {
+        assert!(is_trusted_lan_ip("127.0.0.1"));
+        assert!(is_trusted_lan_ip("::1"));
+        assert!(is_trusted_lan_ip("localhost"));
+        assert!(is_trusted_lan_ip("192.168.1.50"));
+        assert!(is_trusted_lan_ip("10.0.0.5"));
+        assert!(is_trusted_lan_ip("172.16.0.1"));
+        assert!(is_trusted_lan_ip("172.31.255.254"));
+        assert!(is_trusted_lan_ip("fe80::1"));
+        assert!(is_trusted_lan_ip("[fe80::1%br-lan]:1234"));
+        assert!(is_trusted_lan_ip("fd00::1"));
+        assert!(is_trusted_lan_ip("::ffff:192.168.1.1"));
+
+        // Must NOT match public IPs (including previous "172.2" prefix bug)
+        assert!(!is_trusted_lan_ip("172.2.0.1"));
+        assert!(!is_trusted_lan_ip("172.200.1.1"));
+        assert!(!is_trusted_lan_ip("172.15.255.254"));
+        assert!(!is_trusted_lan_ip("172.32.0.1"));
+        assert!(!is_trusted_lan_ip("2001:4860:4860::8888"));
+        assert!(!is_trusted_lan_ip("100.64.0.1"));
+        assert!(!is_trusted_lan_ip(""));
+    }
+
+    #[test]
+    fn test_settings_save_validates_and_normalizes_ipv6_fakeip_tun_and_dns_strategy() {
+        let base = crate::store::GlobalSettings::default();
+        let ok_payload = json!({
+            "ipv6_mode": "tunnel_over_v4",
+            "dns_strategy": "prefer_ipv6",
+            "fakeip_inet4_range": "198.18.0.0/16",
+            "fakeip_inet6_range": "fd10::/48",
+            "tun_inet4": "172.16.250.1/30",
+            "tun_inet6": "fd20::1/126"
+        });
+        let updated = apply_settings_save_payload(&base, &ok_payload).expect("valid settings");
+        assert_eq!(updated.ipv6_mode, "tunnel_over_v4");
+        assert_eq!(updated.dns_strategy, "prefer_ipv6");
+        assert_eq!(updated.fakeip_inet4_range, "198.18.0.0/16");
+        assert_eq!(updated.fakeip_inet6_range, "fd10::/48");
+        assert_eq!(updated.tun_inet4, "172.16.250.1/30");
+        assert_eq!(updated.tun_inet6, "fd20::1/126");
+
+        assert!(apply_settings_save_payload(&base, &json!({"ipv6_mode": "invalid_v6"})).is_err());
+        assert!(apply_settings_save_payload(&base, &json!({"dns_strategy": "bogus"})).is_err());
+        assert!(
+            apply_settings_save_payload(&base, &json!({"fakeip_inet4_range": "999.0.0.0/15"}))
+                .is_err()
+        );
+        assert!(
+            apply_settings_save_payload(
+                &base,
+                &json!({
+                    "fakeip_inet6_range": "fc00::/18",
+                    "tun_inet6": "fc00::1/126"
+                })
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn test_section_guest_mode_and_vpn_uri_save_validation() {
+        let mut prev_sec = RoutingSection {
+            id: "Main".to_string(),
+            ipv6_support: "auto".to_string(),
+            ..Default::default()
+        };
+        let without_field = br#"{"id":"Main","label":"Main","action":"proxy"}"#;
+        let preserved =
+            apply_section_save_payload(Some(&prev_sec), without_field).expect("preserve");
+        assert_eq!(preserved.ipv6_support, "auto");
+
+        let explicit_one = br#"{"id":"Main","ipv6_support":"1"}"#;
+        prev_sec = apply_section_save_payload(Some(&preserved), explicit_one).expect("explicit 1");
+        assert_eq!(prev_sec.ipv6_support, "1");
+
+        let invalid_v6 = br#"{"id":"Main","ipv6_support":"prefer_v6"}"#;
+        assert!(apply_section_save_payload(Some(&prev_sec), invalid_v6).is_err());
+
+        let gm_false = apply_guest_mode_save_payload(
+            &GuestModeConfig::default(),
+            br#"{"enabled":true,"allow_proxy":false,"guest_devices":[" 192.168.4.5 "]}"#,
+        )
+        .expect("guest allow_proxy=false");
+        assert!(!gm_false.allow_proxy);
+        assert_eq!(gm_false.guest_devices, vec!["192.168.4.5"]);
+
+        // Omitted allow_proxy in subsequent partial save must preserve allow_proxy=false
+        let gm_preserved = apply_guest_mode_save_payload(&gm_false, br#"{"isolate_lan":false}"#)
+            .expect("preserve allow_proxy");
+        assert!(!gm_preserved.allow_proxy);
+        assert!(!gm_preserved.isolate_lan);
+
+        // Broken vpn:// link returns structured error from diagnose_amnezia_vpn_uri
+        let bad_links = vec!["vpn://not-valid-base64-payload!!!".to_string()];
+        assert!(validate_source_proxy_links(&bad_links).is_err());
+        let plain_links =
+            vec!["vless://11111111-1111-1111-1111-111111111111@1.2.3.4:443#DE".to_string()];
+        assert!(validate_source_proxy_links(&plain_links).is_ok());
+    }
 }

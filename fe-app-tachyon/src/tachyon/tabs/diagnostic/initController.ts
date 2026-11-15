@@ -6,6 +6,7 @@ import {
 import { showToast } from '../../../helpers/showToast';
 import { notifyActionFailure } from '../../helpers/notifyActionFailure';
 import { capSetSize } from '../../helpers/capCollectionSize';
+import { getIPv6RuntimeSnapshot } from '../../helpers/ipv6Summary';
 import { runDnsCheck } from './checks/runDnsCheck';
 import { runSingBoxCheck } from './checks/runSingBoxCheck';
 import { runInboundsCheck } from './checks/runInboundsCheck';
@@ -1960,25 +1961,73 @@ function renderDiagnosticSystemInfoWidget() {
     });
   }
 
+  const ipv6 = getIPv6RuntimeSnapshot(diagnosticsSystemInfo);
+
   if (diagnosticsSystemInfo.dns_type || diagnosticsSystemInfo.inbound_mode) {
     const dnsMode = (diagnosticsSystemInfo.dns_type || 'udp').toUpperCase();
     const inboundMode = (
       diagnosticsSystemInfo.inbound_mode || 'tproxy'
     ).toUpperCase();
-    const fakeIpOn = diagnosticsSystemInfo.fakeip_enabled !== 0;
+    const fakeIpOn = ipv6.fakeIpEnabled;
+    const dnsStrategyNote =
+      ipv6.dnsStrategy === 'ipv6_only' ? ' (ipv6_only)' : '';
+    const dnsSubParts: string[] = [
+      typeof svcData.dnsmasqCacheSize === 'number' &&
+      svcData.dnsmasqCacheSize > 0
+        ? `dnsmasq: ${svcData.dnsmasqCacheSize} ${tr('записей', 'entries')}`
+        : '127.0.0.42:53 · :1602',
+    ];
+    if (fakeIpOn) {
+      dnsSubParts.push(`FakeIPv6: ${ipv6.fakeIp6Range}`);
+    }
 
     items.push({
       key: tr('DNS и перехват', 'DNS & Intercept'),
-      value: `${dnsMode} · ${inboundMode}`,
+      value: `${dnsMode}${dnsStrategyNote} · ${inboundMode}`,
       tag: {
         label: fakeIpOn ? 'FakeIP' : tr('Без FakeIP', 'No FakeIP'),
         kind: fakeIpOn ? 'success' : 'neutral',
       },
-      subvalue:
-        typeof svcData.dnsmasqCacheSize === 'number' &&
-        svcData.dnsmasqCacheSize > 0
-          ? `dnsmasq: ${svcData.dnsmasqCacheSize} ${tr('записей', 'entries')}`
-          : '127.0.0.42:53 · :1602',
+      subvalue: dnsSubParts.join(' · '),
+    });
+  }
+
+  {
+    const ipv6SubParts = [
+      `WAN6: ${ipv6.wan6Label || tr('нет префикса', 'no prefix')}`,
+      `FakeIPv6: ${ipv6.fakeIpEnabled ? ipv6.fakeIp6Range : tr('выкл', 'off')}`,
+      `WebRTC: ${ipv6.webrtcGuardActive ? tr('защита вкл', 'guard on') : tr('обычный', 'default')}`,
+    ];
+    if (diagnosticsSystemInfo.lan_ipv6) {
+      ipv6SubParts.push(`LAN6: ${diagnosticsSystemInfo.lan_ipv6}`);
+    }
+    if (ipv6.warningText) {
+      ipv6SubParts.push(ipv6.warningText);
+    }
+
+    items.push({
+      key: tr('IPv6 и защита от утечек', 'IPv6 & Leak Guard'),
+      value: ipv6.wan6Label
+        ? `${ipv6.modeLabel} · ${ipv6.wan6Label}`
+        : ipv6.modeLabel,
+      tag: ipv6.isWarning
+        ? {
+            label:
+              ipv6.dnsStrategy === 'ipv6_only'
+                ? tr('Риск ipv6_only', 'ipv6_only warning')
+                : tr('Leak Guard выкл', 'Leak Guard off'),
+            kind: 'warning',
+          }
+        : ipv6.leakGuardActive
+          ? {
+              label: 'Leak Guard',
+              kind: 'success',
+            }
+          : {
+              label: ipv6.effectiveState,
+              kind: 'neutral',
+            },
+      subvalue: ipv6SubParts.join(' · '),
     });
   }
 

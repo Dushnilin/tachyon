@@ -46,7 +46,55 @@ fn default_true() -> bool {
 }
 
 fn default_ui_mode() -> String {
-    "advanced".to_string()
+    "simple".to_string()
+}
+
+fn default_ipv6_mode() -> String {
+    "auto".to_string()
+}
+
+fn default_tun_inet4() -> String {
+    "172.19.0.1/30".to_string()
+}
+
+pub fn normalize_ui_mode(raw: &str) -> String {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "advanced" => "advanced".to_string(),
+        "simple" | "basic" | "" => "simple".to_string(),
+        _ => "simple".to_string(),
+    }
+}
+
+pub fn normalize_ipv6_mode(raw: &str) -> String {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "off" | "disabled" | "disable" | "0" | "false" | "no" | "leak_guard" | "ipv4_only"
+        | "ipv4" => "off".to_string(),
+        "dual_stack" | "full" | "1" | "true" | "yes" | "on" | "ipv4_ipv6" => {
+            "dual_stack".to_string()
+        }
+        "tunnel_over_v4" | "v6_over_v4" => "tunnel_over_v4".to_string(),
+        "auto" | "" => "auto".to_string(),
+        _ => "auto".to_string(),
+    }
+}
+
+pub fn normalize_dns_strategy(raw: &str) -> String {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "ipv4_only" => "ipv4_only".to_string(),
+        "prefer_ipv4" | "" => "prefer_ipv4".to_string(),
+        "prefer_ipv6" => "prefer_ipv6".to_string(),
+        "ipv6_only" => "ipv6_only".to_string(),
+        _ => "prefer_ipv4".to_string(),
+    }
+}
+
+pub fn sanitize_cache_path(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.starts_with("/tmp/") || trimmed.starts_with("/var/run/") {
+        trimmed.to_string()
+    } else {
+        "/tmp/tachyon-core/cache.db".to_string()
+    }
 }
 
 fn default_sidebar_pos() -> String {
@@ -195,6 +243,418 @@ fn default_fakeip_v6() -> String {
     "fc00::/18".to_string()
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EffectiveIpv6State {
+    Disabled,
+    LeakGuard,
+    TunnelOverV4,
+    Full,
+}
+
+impl EffectiveIpv6State {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Disabled => "disabled",
+            Self::LeakGuard => "leak_guard",
+            Self::TunnelOverV4 => "tunnel_over_v4",
+            Self::Full => "full",
+        }
+    }
+
+    pub fn is_active(self) -> bool {
+        matches!(self, Self::TunnelOverV4 | Self::Full)
+    }
+
+    pub fn is_leak_guard(self) -> bool {
+        matches!(self, Self::LeakGuard)
+    }
+
+    pub fn is_tunnel_over_v4(self) -> bool {
+        matches!(self, Self::TunnelOverV4)
+    }
+}
+
+pub fn parse_ipv6_cidr(raw: &str) -> Option<(u128, u8)> {
+    let s = raw.trim();
+    let (ip_str, prefix_len) = match s.split_once('/') {
+        Some((ip, plen)) => (ip.trim(), plen.trim().parse::<u8>().ok()?),
+        None => (s, 128u8),
+    };
+    if prefix_len > 128 {
+        return None;
+    }
+    let ip: std::net::Ipv6Addr = ip_str.parse().ok()?;
+    let mask = if prefix_len == 0 {
+        0u128
+    } else {
+        !0u128 << (128 - prefix_len as u32)
+    };
+    Some((u128::from(ip) & mask, prefix_len))
+}
+
+pub fn cidr_v6_overlaps(a: &str, b: &str) -> bool {
+    let Some((net_a, len_a)) = parse_ipv6_cidr(a) else {
+        return false;
+    };
+    let Some((net_b, len_b)) = parse_ipv6_cidr(b) else {
+        return false;
+    };
+    let min_len = len_a.min(len_b);
+    if min_len == 0 {
+        return true;
+    }
+    let mask = !0u128 << (128 - min_len as u32);
+    (net_a & mask) == (net_b & mask)
+}
+
+/// Parse an IPv4 CIDR string (`a.b.c.d/prefix` or bare `a.b.c.d` -> `/32`)
+/// into `(masked_network_u32, prefix_len)`.
+pub fn parse_ipv4_cidr(raw: &str) -> Option<(u32, u8)> {
+    let s = raw.trim();
+    if s.is_empty() {
+        return None;
+    }
+    let (ip_str, prefix_len) = match s.split_once('/') {
+        Some((ip, plen)) => {
+            let plen_trim = plen.trim();
+            if plen_trim.is_empty() || !plen_trim.bytes().all(|b| b.is_ascii_digit()) {
+                return None;
+            }
+            (ip.trim(), plen_trim.parse::<u8>().ok()?)
+        }
+        None => (s, 32u8),
+    };
+    if prefix_len > 32 {
+        return None;
+    }
+    let ip: std::net::Ipv4Addr = ip_str.parse().ok()?;
+    let mask = if prefix_len == 0 {
+        0u32
+    } else {
+        !0u32 << (32 - prefix_len as u32)
+    };
+    Some((u32::from(ip) & mask, prefix_len))
+}
+
+/// Return true if two valid IPv4 CIDRs overlap.
+pub fn cidr_v4_overlaps(a: &str, b: &str) -> bool {
+    let Some((net_a, len_a)) = parse_ipv4_cidr(a) else {
+        return false;
+    };
+    let Some((net_b, len_b)) = parse_ipv4_cidr(b) else {
+        return false;
+    };
+    let min_len = len_a.min(len_b);
+    if min_len == 0 {
+        return true;
+    }
+    let mask = !0u32 << (32 - min_len as u32);
+    (net_a & mask) == (net_b & mask)
+}
+
+/// Return true if two CIDRs of the same address family overlap.
+pub fn cidrs_overlap(a: &str, b: &str) -> bool {
+    cidr_v4_overlaps(a, b) || cidr_v6_overlaps(a, b)
+}
+
+/// Canonicalize an IPv4 or IPv6 CIDR by zeroing host bits.
+pub fn mask_cidr(raw: &str) -> Option<String> {
+    if let Some((net, len)) = parse_ipv4_cidr(raw) {
+        return Some(format!("{}/{}", std::net::Ipv4Addr::from(net), len));
+    }
+    if let Some((net, len)) = parse_ipv6_cidr(raw) {
+        return Some(format!("{}/{}", std::net::Ipv6Addr::from(net), len));
+    }
+    None
+}
+
+/// Return true if `raw` is a valid IPv4 address, IPv6 address, or IPv6 link-local
+/// address with a `%zone` interface suffix.
+pub fn valid_ip_with_zone(raw: &str) -> bool {
+    let s = raw.trim();
+    if s.is_empty() || s.contains('/') {
+        return false;
+    }
+    if let Some((addr, zone)) = s.split_once('%') {
+        if addr.is_empty() || zone.is_empty() || zone.len() > 32 || zone.contains('%') {
+            return false;
+        }
+        if !zone
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b':' | b'-'))
+        {
+            return false;
+        }
+        return addr.parse::<std::net::Ipv6Addr>().is_ok();
+    }
+    s.parse::<std::net::IpAddr>().is_ok()
+}
+
+/// Return true if `ip_str` belongs to `cidr_str` (same family).
+pub fn ip_in_cidr(ip_str: &str, cidr_str: &str) -> bool {
+    let ip_clean = ip_str.trim();
+    if ip_clean.is_empty() || ip_clean.contains('/') {
+        return false;
+    }
+    if ip_clean.contains('%') && !valid_ip_with_zone(ip_clean) {
+        return false;
+    }
+    let ip_no_zone = ip_clean.split_once('%').map_or(ip_clean, |(a, _)| a);
+    let Ok(ip) = ip_no_zone.parse::<std::net::IpAddr>() else {
+        return false;
+    };
+    match ip {
+        std::net::IpAddr::V4(v4) => {
+            let Some((net, len)) = parse_ipv4_cidr(cidr_str) else {
+                return false;
+            };
+            let mask = if len == 0 {
+                0u32
+            } else {
+                !0u32 << (32 - len as u32)
+            };
+            (u32::from(v4) & mask) == net
+        }
+        std::net::IpAddr::V6(v6) => {
+            let Some((net, len)) = parse_ipv6_cidr(cidr_str) else {
+                return false;
+            };
+            let mask = if len == 0 {
+                0u128
+            } else {
+                !0u128 << (128 - len as u32)
+            };
+            (u128::from(v6) & mask) == net
+        }
+    }
+}
+
+pub fn runtime_state_dir() -> std::path::PathBuf {
+    #[cfg(not(test))]
+    {
+        let var_run = std::path::Path::new("/var/run/tachyon");
+        if var_run.is_dir() || std::fs::create_dir_all(var_run).is_ok() {
+            return var_run.to_path_buf();
+        }
+        let tmp_dir = std::path::Path::new("/tmp/tachyon-rs");
+        if tmp_dir.is_dir() || std::fs::create_dir_all(tmp_dir).is_ok() {
+            return tmp_dir.to_path_buf();
+        }
+    }
+    let fallback = std::env::temp_dir().join("tachyon-rs");
+    let _ = std::fs::create_dir_all(&fallback);
+    fallback
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RuntimeIpv6Cache {
+    pub wan6_available: bool,
+    pub wan_ipv6: Vec<String>,
+    pub lan_ipv6: Vec<String>,
+    pub wan6_prefixes: Vec<String>,
+    pub updated_at: i64,
+}
+
+#[cfg(all(target_os = "linux", not(test)))]
+fn is_non_tunnel_ifname(ifname: &str) -> bool {
+    let lower = ifname.to_ascii_lowercase();
+    lower != "lo"
+        && !lower.starts_with("tun")
+        && !lower.starts_with("tap")
+        && !lower.starts_with("tailscale")
+        && !lower.starts_with("fptn")
+        && !lower.starts_with("wg")
+        && !lower.starts_with("awg")
+        && !lower.starts_with("utun")
+}
+
+#[cfg(all(target_os = "linux", not(test)))]
+fn parse_proc_if_inet6_line(line: &str) -> Option<(std::net::Ipv6Addr, u8, u8, String)> {
+    let parts: Vec<&str> = line.split_whitespace().collect();
+    if parts.len() < 6 || parts[0].len() != 32 {
+        return None;
+    }
+    let raw = u128::from_str_radix(parts[0], 16).ok()?;
+    let plen = u8::from_str_radix(parts[2], 16).ok()?;
+    let scope = u8::from_str_radix(parts[3], 16).ok()?;
+    let ifname = parts[5].to_string();
+    Some((std::net::Ipv6Addr::from(raw), plen.min(128), scope, ifname))
+}
+
+#[cfg(all(target_os = "linux", not(test)))]
+fn is_global_routable_v6(ip: &std::net::Ipv6Addr) -> bool {
+    let segs = ip.segments();
+    // 2000::/3 global unicast, excluding 2001:db8::/32 docs and 2001:20::/28 ORCHIDv2
+    let is_global_unicast = (segs[0] & 0xe000) == 0x2000;
+    let is_doc = segs[0] == 0x2001 && segs[1] == 0x0db8;
+    let is_orchid = segs[0] == 0x2001 && (segs[1] & 0xfff0) == 0x0020;
+    is_global_unicast && !is_doc && !is_orchid
+}
+
+pub fn probe_wan6_runtime_state() -> RuntimeIpv6Cache {
+    #[cfg_attr(not(all(target_os = "linux", not(test))), allow(unused_mut))]
+    let mut cache = RuntimeIpv6Cache {
+        updated_at: unix_now_secs(),
+        ..Default::default()
+    };
+    #[cfg(all(target_os = "linux", not(test)))]
+    {
+        let mut wan_addrs = Vec::new();
+        let mut lan_addrs = Vec::new();
+        let mut prefixes = Vec::new();
+        if let Ok(raw_if6) = std::fs::read_to_string("/proc/net/if_inet6") {
+            for line in raw_if6.lines() {
+                let Some((ip, plen, scope, ifname)) = parse_proc_if_inet6_line(line) else {
+                    continue;
+                };
+                if scope != 0 || !is_non_tunnel_ifname(&ifname) || !is_global_routable_v6(&ip) {
+                    continue;
+                }
+                let lower_if = ifname.to_ascii_lowercase();
+                let is_lan = lower_if == "br-lan"
+                    || lower_if.starts_with("br-")
+                    || lower_if.starts_with("lan");
+                if is_lan {
+                    if !lan_addrs.contains(&ip.to_string()) {
+                        lan_addrs.push(ip.to_string());
+                    }
+                    if plen <= 64 {
+                        let mask = if plen == 0 {
+                            0u128
+                        } else {
+                            !0u128 << (128 - plen as u32)
+                        };
+                        let net = std::net::Ipv6Addr::from(u128::from(ip) & mask);
+                        let pfx = format!("{net}/{plen}");
+                        if !prefixes.contains(&pfx) {
+                            prefixes.push(pfx);
+                        }
+                    }
+                } else {
+                    let s = ip.to_string();
+                    if !wan_addrs.contains(&s) {
+                        wan_addrs.push(s);
+                    }
+                }
+            }
+        }
+        let mut has_default_v6_route = false;
+        if let Ok(raw_rt6) = std::fs::read_to_string("/proc/net/ipv6_route") {
+            for line in raw_rt6.lines() {
+                let cols: Vec<&str> = line.split_whitespace().collect();
+                if cols.len() >= 10
+                    && cols[0] == "00000000000000000000000000000000"
+                    && cols[1] == "00"
+                    && is_non_tunnel_ifname(cols[9])
+                {
+                    has_default_v6_route = true;
+                    break;
+                }
+            }
+        }
+        cache.wan6_available =
+            !wan_addrs.is_empty() || !lan_addrs.is_empty() || has_default_v6_route;
+        cache.wan_ipv6 = wan_addrs;
+        cache.lan_ipv6 = lan_addrs;
+        cache.wan6_prefixes = prefixes;
+        let path = runtime_state_dir().join("ipv6-state.json");
+        let _ = crate::crypto_gen::write_json_if_changed(path, &cache);
+    }
+    cache
+}
+
+pub fn load_cached_wan6_runtime_state() -> RuntimeIpv6Cache {
+    let path = runtime_state_dir().join("ipv6-state.json");
+    if let Ok(raw) = std::fs::read_to_string(&path)
+        && let Ok(parsed) = serde_json::from_str::<RuntimeIpv6Cache>(&raw)
+    {
+        return parsed;
+    }
+    RuntimeIpv6Cache::default()
+}
+
+pub fn detect_wan6_runtime_available() -> bool {
+    #[cfg(test)]
+    {
+        false
+    }
+    #[cfg(not(test))]
+    {
+        probe_wan6_runtime_state().wan6_available
+    }
+}
+
+pub fn resolve_effective_ipv6_state(
+    settings: &GlobalSettings,
+    wan6_available: bool,
+) -> EffectiveIpv6State {
+    match normalize_ipv6_mode(&settings.ipv6_mode).as_str() {
+        "off" => {
+            if settings.ipv6_leak_guard {
+                EffectiveIpv6State::LeakGuard
+            } else {
+                EffectiveIpv6State::Disabled
+            }
+        }
+        "dual_stack" => EffectiveIpv6State::Full,
+        "tunnel_over_v4" => EffectiveIpv6State::TunnelOverV4,
+        _ => {
+            // In "auto" mode: active when upstream WAN6 exists, or when legacy callers/tests
+            // explicitly set `settings.enable_ipv6 = true`.
+            if wan6_available || settings.enable_ipv6 {
+                EffectiveIpv6State::Full
+            } else if settings.ipv6_leak_guard {
+                EffectiveIpv6State::LeakGuard
+            } else {
+                EffectiveIpv6State::Disabled
+            }
+        }
+    }
+}
+
+pub fn effective_dns_strategy(settings: &GlobalSettings, ipv6_state: EffectiveIpv6State) -> String {
+    if !ipv6_state.is_active() {
+        "ipv4_only".to_string()
+    } else {
+        normalize_dns_strategy(&settings.dns_strategy)
+    }
+}
+
+pub fn effective_tun_inet4(settings: &GlobalSettings) -> String {
+    let t = settings.tun_inet4.trim();
+    if t.is_empty() {
+        "172.19.0.1/30".to_string()
+    } else {
+        t.to_string()
+    }
+}
+
+pub fn effective_tun_inet6(
+    settings: &GlobalSettings,
+    ipv6_state: EffectiveIpv6State,
+) -> Option<String> {
+    if !ipv6_state.is_active() {
+        return None;
+    }
+    let fakeip_v6 = if settings.fakeip_inet6_range.trim().is_empty() {
+        "fc00::/18"
+    } else {
+        settings.fakeip_inet6_range.trim()
+    };
+    let configured = settings.tun_inet6.trim();
+    if !configured.is_empty() && !cidr_v6_overlaps(configured, fakeip_v6) {
+        return Some(configured.to_string());
+    }
+    let fallback = "fdfe:dcba:9876::1/126";
+    if !cidr_v6_overlaps(fallback, fakeip_v6) {
+        Some(fallback.to_string())
+    } else {
+        Some("fd99:7ac4:9001::1/126".to_string())
+    }
+}
+
 fn default_sub_engine() -> String {
     "core".to_string()
 }
@@ -323,6 +783,10 @@ pub struct GlobalSettings {
     pub tun_auto_route: bool,
     #[serde(default = "default_tun_mtu")]
     pub tun_mtu: u16,
+    #[serde(default = "default_tun_inet4")]
+    pub tun_inet4: String,
+    #[serde(default)]
+    pub tun_inet6: String,
     #[serde(default)]
     pub tun_gso: bool,
     #[serde(default = "default_true")]
@@ -354,6 +818,10 @@ pub struct GlobalSettings {
     pub badwan_monitored_interfaces: Vec<String>,
     #[serde(default = "default_threshold_5")]
     pub badwan_reload_delay: u32,
+    #[serde(default = "default_ipv6_mode")]
+    pub ipv6_mode: String,
+    #[serde(default = "default_true")]
+    pub ipv6_leak_guard: bool,
     #[serde(default)]
     pub enable_ipv6: bool,
     #[serde(default = "default_true")]
@@ -439,7 +907,7 @@ pub struct GlobalSettings {
     pub dns_turbo_cache: bool,
     #[serde(default)]
     pub dns_cache_size: u32,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub fakeip_enabled: bool,
     #[serde(default = "default_fakeip_v4")]
     pub fakeip_inet4_range: String,
@@ -644,7 +1112,7 @@ impl Default for GlobalSettings {
             admin_pass_hash: pass_hash,
             admin_pass_salt: salt,
             session_secret: crypto_gen::generate_hex(32),
-            ui_mode: "advanced".to_string(),
+            ui_mode: "simple".to_string(),
             lite_mode: false,
             sidebar_pos: "left".to_string(),
             sidebar_collapsed: false,
@@ -694,6 +1162,8 @@ impl Default for GlobalSettings {
             tun_stack: "mixed".to_string(),
             tun_auto_route: true,
             tun_mtu: 9000,
+            tun_inet4: "172.19.0.1/30".to_string(),
+            tun_inet6: String::new(),
             tun_gso: false,
             tun_endpoint_independent_nat: true,
             tun_udp_timeout: "5m".to_string(),
@@ -710,6 +1180,8 @@ impl Default for GlobalSettings {
             enable_badwan_interface_monitoring: false,
             badwan_monitored_interfaces: Vec::new(),
             badwan_reload_delay: 5,
+            ipv6_mode: "auto".to_string(),
+            ipv6_leak_guard: true,
             enable_ipv6: false,
             enable_yacd: true,
             enable_yacd_wan_access: false,
@@ -753,7 +1225,7 @@ impl Default for GlobalSettings {
             dns_local_cache: true,
             dns_turbo_cache: true,
             dns_cache_size: 10000,
-            fakeip_enabled: false,
+            fakeip_enabled: true,
             fakeip_inet4_range: "198.18.0.0/15".to_string(),
             fakeip_inet6_range: "fc00::/18".to_string(),
             fakeip_exclude: Vec::new(),
@@ -1236,6 +1708,9 @@ pub struct RoutingSection {
     pub hosts_list_auto_update: bool,
     #[serde(default)]
     pub hosts_list_update_interval: String,
+    /// Section IPv6 handling: `""` / `"auto"` / `"true"` / `"false"` (or `"1"` / `"0"`).
+    #[serde(default)]
+    pub ipv6_support: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -2456,7 +2931,7 @@ pub struct ScheduleRule {
     pub notify: bool,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GuestModeConfig {
     #[serde(default)]
     pub enabled: bool,
@@ -2470,6 +2945,8 @@ pub struct GuestModeConfig {
     pub isolate_lan: bool,
     #[serde(default = "default_true")]
     pub block_router_admin: bool,
+    #[serde(default = "default_true")]
+    pub allow_proxy: bool,
     #[serde(default)]
     pub daily_time_limit: u32,
     #[serde(default)]
@@ -2490,6 +2967,30 @@ pub struct GuestModeConfig {
     pub days: Vec<String>,
     #[serde(default)]
     pub notify: bool,
+}
+
+impl Default for GuestModeConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            mode: "selected".to_string(),
+            guest_devices: Vec::new(),
+            trusted_devices: Vec::new(),
+            isolate_lan: true,
+            block_router_admin: true,
+            allow_proxy: true,
+            daily_time_limit: 0,
+            daily_traffic_limit: 0,
+            bandwidth_limit_mbps: 0,
+            allowed_ports: Vec::new(),
+            allowed_domains: Vec::new(),
+            landing_url: String::new(),
+            start_time: String::new(),
+            end_time: String::new(),
+            days: Vec::new(),
+            notify: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2615,22 +3116,7 @@ impl Default for RouterStoreData {
             servers: Vec::new(),
             profiles: Vec::new(),
             schedules: Vec::new(),
-            guest_mode: GuestModeConfig {
-                enabled: false,
-                mode: "selected".to_string(),
-                guest_devices: Vec::new(),
-                trusted_devices: Vec::new(),
-                isolate_lan: true,
-                block_router_admin: true,
-                daily_time_limit: 0,
-                daily_traffic_limit: 0,
-                bandwidth_limit_mbps: 0,
-                allowed_ports: Vec::new(),
-                start_time: String::new(),
-                end_time: String::new(),
-                days: Vec::new(),
-                ..Default::default()
-            },
+            guest_mode: GuestModeConfig::default(),
             telegram: TgBotConfig::default(),
             device_registry: HashMap::new(),
             applied_migrations: Vec::new(),
@@ -2641,6 +3127,233 @@ impl Default for RouterStoreData {
         s.apply_relax_probe_intervals_v1();
         s
     }
+}
+
+fn strip_one_condition_clone_suffix(s: &str) -> Option<&str> {
+    if !s.starts_with("cond_") {
+        return None;
+    }
+    if let Some(pos) = s.rfind("_copy") {
+        let tail = &s[pos + 5..];
+        let digits_tail = tail.strip_prefix('_').unwrap_or(tail);
+        if pos > "cond_".len()
+            && (tail.is_empty()
+                || (!digits_tail.is_empty() && digits_tail.bytes().all(|b| b.is_ascii_digit())))
+        {
+            return Some(&s[..pos]);
+        }
+    }
+    if let Some(pos) = s.rfind('_') {
+        let tail = &s[pos + 1..];
+        let bytes = tail.as_bytes();
+        let is_clone_index = match bytes.len() {
+            0 => false,
+            1 => (b'2'..=b'9').contains(&bytes[0]),
+            _ => (b'1'..=b'9').contains(&bytes[0]) && bytes[1..].iter().all(|b| b.is_ascii_digit()),
+        };
+        if pos > "cond_".len() && is_clone_index {
+            return Some(&s[..pos]);
+        }
+    }
+    None
+}
+
+fn condition_clone_base_id(cid: &str) -> String {
+    let mut base = cid;
+    while let Some(next) = strip_one_condition_clone_suffix(base) {
+        base = next;
+    }
+    base.to_string()
+}
+
+fn normalize_sig_tokens<'a, I>(items: I) -> Vec<String>
+where
+    I: IntoIterator<Item = &'a str>,
+{
+    let mut out = Vec::new();
+    for raw in items {
+        for part in raw.split(['\n', '\r']) {
+            let trimmed = part.trim();
+            if !trimmed.is_empty() {
+                out.push(trimmed.to_string());
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
+fn condition_rule_signature(cond: &TrafficCondition) -> Option<String> {
+    let raw_type = cond.condition_type.trim().to_ascii_lowercase();
+    if !cond.children.is_empty()
+        || !cond.expression.trim().is_empty()
+        || matches!(raw_type.as_str(), "composite" | "all" | "any" | "not")
+    {
+        return None;
+    }
+
+    let norm_type = if raw_type.is_empty() {
+        "atomic"
+    } else {
+        raw_type.as_str()
+    };
+
+    let mut has_rule_content = false;
+    let mut parts: Vec<(&str, Vec<String>)> = vec![
+        (
+            "enabled",
+            vec![if cond.enabled { "1" } else { "0" }.to_string()],
+        ),
+        ("condition_type", vec![norm_type.to_string()]),
+    ];
+
+    let list_fields: [(&str, &[String]); 24] = [
+        ("community_lists", &cond.community_lists),
+        ("user_domains", &cond.user_domains),
+        ("exclude_domains", &cond.exclude_domains),
+        ("user_subnets", &cond.user_subnets),
+        ("exclude_subnets", &cond.exclude_subnets),
+        ("asn_list", &cond.asn_list),
+        ("remote_domain_lists", &cond.remote_domain_lists),
+        ("remote_subnet_lists", &cond.remote_subnet_lists),
+        ("geoip_codes", &cond.geoip_codes),
+        ("geosite_codes", &cond.geosite_codes),
+        ("client_ips", &cond.client_ips),
+        ("exclude_client_ips", &cond.exclude_client_ips),
+        ("ports", &cond.ports),
+        ("source_ports", &cond.source_ports),
+        ("exclude_ports", &cond.exclude_ports),
+        ("protocol", &cond.protocol),
+        ("excluded_protocol", &cond.excluded_protocol),
+        ("dscp", &cond.dscp),
+        ("rule_set", &cond.rule_set),
+        ("rule_set_with_subnets", &cond.rule_set_with_subnets),
+        ("domain_ip_lists", &cond.domain_ip_lists),
+        ("fully_routed_ips", &cond.fully_routed_ips),
+        ("source_macs", &cond.source_macs),
+        ("source_inbounds", &cond.source_inbounds),
+    ];
+
+    for (name, slice) in list_fields {
+        let tokens = normalize_sig_tokens(slice.iter().map(String::as_str));
+        if !tokens.is_empty() {
+            has_rule_content = true;
+            parts.push((name, tokens));
+        }
+    }
+
+    for (name, raw) in [
+        ("l4_proto", cond.l4_proto.as_str()),
+        ("time_window", cond.time_window.as_str()),
+    ] {
+        let tokens = normalize_sig_tokens([raw]);
+        if !tokens.is_empty() {
+            has_rule_content = true;
+            parts.push((name, tokens));
+        }
+    }
+
+    let gmode = cond.geoip_mode.trim().to_ascii_lowercase();
+    if !cond.geoip_codes.is_empty() || (!gmode.is_empty() && gmode != "include") {
+        let eff_gmode = if gmode.is_empty() {
+            "include".to_string()
+        } else {
+            gmode
+        };
+        parts.push(("geoip_mode", vec![eff_gmode]));
+    }
+
+    parts.push((
+        "community_subnets",
+        vec![if cond.community_subnets { "1" } else { "0" }.to_string()],
+    ));
+
+    if cond.invert {
+        has_rule_content = true;
+        parts.push(("invert", vec!["1".to_string()]));
+    }
+
+    if !has_rule_content {
+        return None;
+    }
+
+    serde_json::to_string(&parts).ok()
+}
+
+fn cond_uf_find(parent: &mut [usize], mut x: usize) -> usize {
+    while parent[x] != x {
+        parent[x] = parent[parent[x]];
+        x = parent[x];
+    }
+    x
+}
+
+fn cond_uf_union(parent: &mut [usize], a: usize, b: usize) {
+    let ra = cond_uf_find(parent, a);
+    let rb = cond_uf_find(parent, b);
+    if ra == rb {
+        return;
+    }
+    if ra < rb {
+        parent[rb] = ra;
+    } else {
+        parent[ra] = rb;
+    }
+}
+
+fn is_cond_expr_ident_char(ch: char) -> bool {
+    ch.is_ascii_alphanumeric() || ch == '_' || ch == '-'
+}
+
+fn replace_condition_expression_ids(expr: &str, id_remap: &HashMap<String, String>) -> String {
+    let mut out = String::with_capacity(expr.len());
+    let mut ident_start: Option<usize> = None;
+
+    for (idx, ch) in expr.char_indices() {
+        if is_cond_expr_ident_char(ch) {
+            if ident_start.is_none() {
+                ident_start = Some(idx);
+            }
+        } else {
+            if let Some(start) = ident_start.take() {
+                let ident = &expr[start..idx];
+                if let Some(mapped) = id_remap.get(ident) {
+                    out.push_str(mapped);
+                } else {
+                    out.push_str(ident);
+                }
+            }
+            out.push(ch);
+        }
+    }
+
+    if let Some(start) = ident_start {
+        let ident = &expr[start..];
+        if let Some(mapped) = id_remap.get(ident) {
+            out.push_str(mapped);
+        } else {
+            out.push_str(ident);
+        }
+    }
+
+    out
+}
+
+fn remap_cond_ref_vec(items: Vec<String>, id_remap: &HashMap<String, String>) -> Vec<String> {
+    let mut out = Vec::with_capacity(items.len());
+    let mut seen = std::collections::HashSet::with_capacity(items.len());
+    for item in items {
+        let trimmed = item.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let mapped = id_remap.get(trimmed).map(String::as_str).unwrap_or(trimmed);
+        if seen.insert(mapped.to_string()) {
+            out.push(mapped.to_string());
+        }
+    }
+    out
 }
 
 pub fn validate_tailscale_network_options(
@@ -2865,6 +3578,125 @@ impl RouterStoreData {
         true
     }
 
+    /// Collapse duplicate cloned atomic `TrafficCondition` entries (`*_copy*`, `*_2*`, or
+    /// matching `"<X> Rules"` labels with identical rule signatures) and rewrite condition
+    /// references in sections and composite conditions using token-boundary matching.
+    ///
+    /// Returns the number of duplicate conditions removed.
+    pub fn deduplicate_cloned_conditions(&mut self) -> usize {
+        let n = self.conditions.len();
+        if n < 2 {
+            return 0;
+        }
+
+        let mut parent: Vec<usize> = (0..n).collect();
+        let mut by_base_sig: HashMap<(String, String), Vec<usize>> = HashMap::new();
+        let mut by_name_sig: HashMap<(String, String), Vec<usize>> = HashMap::new();
+
+        for (idx, cond) in self.conditions.iter().enumerate() {
+            let Some(sig) = condition_rule_signature(cond) else {
+                continue;
+            };
+            let cid = cond.id.trim();
+            if !cid.is_empty() {
+                let base = condition_clone_base_id(cid);
+                by_base_sig
+                    .entry((base, sig.clone()))
+                    .or_default()
+                    .push(idx);
+            }
+            let cname = cond.name.trim();
+            if cname.ends_with(" Rules") {
+                by_name_sig
+                    .entry((cname.to_string(), sig))
+                    .or_default()
+                    .push(idx);
+            }
+        }
+
+        for indices in by_base_sig.values().chain(by_name_sig.values()) {
+            if indices.len() > 1 {
+                let first = indices[0];
+                for &other in &indices[1..] {
+                    cond_uf_union(&mut parent, first, other);
+                }
+            }
+        }
+
+        let mut groups: HashMap<usize, Vec<usize>> = HashMap::new();
+        for idx in 0..n {
+            let root = cond_uf_find(&mut parent, idx);
+            groups.entry(root).or_default().push(idx);
+        }
+
+        let mut removed_mask = vec![false; n];
+        let mut id_remap: HashMap<String, String> = HashMap::new();
+
+        for mut members in groups.into_values() {
+            if members.len() < 2 {
+                continue;
+            }
+            members.sort_unstable();
+
+            let canon_idx = members
+                .iter()
+                .copied()
+                .find(|&idx| {
+                    let cid = self.conditions[idx].id.trim();
+                    !cid.is_empty() && cid == condition_clone_base_id(cid)
+                })
+                .unwrap_or(members[0]);
+
+            let canon_id = self.conditions[canon_idx].id.trim().to_string();
+            if canon_id.is_empty() {
+                continue;
+            }
+
+            for &idx in &members {
+                if idx == canon_idx {
+                    continue;
+                }
+                let dup_id = self.conditions[idx].id.trim();
+                if !dup_id.is_empty() && dup_id != canon_id {
+                    id_remap.insert(dup_id.to_string(), canon_id.clone());
+                }
+                removed_mask[idx] = true;
+            }
+        }
+
+        let before_len = self.conditions.len();
+        if !removed_mask.iter().any(|&r| r) {
+            return 0;
+        }
+
+        let mut idx = 0usize;
+        self.conditions.retain(|_| {
+            let keep = !removed_mask[idx];
+            idx += 1;
+            keep
+        });
+        let removed_count = before_len - self.conditions.len();
+
+        if !id_remap.is_empty() {
+            for sec in &mut self.sections {
+                sec.condition_refs =
+                    remap_cond_ref_vec(std::mem::take(&mut sec.condition_refs), &id_remap);
+                if !sec.condition_expression.is_empty() {
+                    sec.condition_expression =
+                        replace_condition_expression_ids(&sec.condition_expression, &id_remap);
+                }
+            }
+            for cond in &mut self.conditions {
+                cond.children = remap_cond_ref_vec(std::mem::take(&mut cond.children), &id_remap);
+                if !cond.expression.is_empty() {
+                    cond.expression = replace_condition_expression_ids(&cond.expression, &id_remap);
+                }
+            }
+        }
+
+        removed_count
+    }
+
     /// Import router configuration from explicit UCI paths (first readable non-empty wins)
     /// and load subscription node caches from `sub_cache_dir`.
     pub fn import_legacy_router_files_with_cache(
@@ -3003,8 +3835,9 @@ impl RouterStoreData {
         }
 
         let selector_state: HashMap<String, String> =
-            std::fs::read_to_string("/etc/tachyon/selector_state.json")
+            std::fs::read_to_string(runtime_state_dir().join("selector_state.json"))
                 .ok()
+                .or_else(|| std::fs::read_to_string("/etc/tachyon/selector_state.json").ok())
                 .and_then(|s| serde_json::from_str(&s).ok())
                 .unwrap_or_default();
 
@@ -3044,6 +3877,15 @@ impl RouterStoreData {
                     }
                     if let Some(v) = b.opt("tun_mtu").and_then(|s| s.parse().ok()) {
                         self.settings.tun_mtu = v;
+                    }
+                    if let Some(v) = b.opt("tun_inet4") {
+                        let t = v.trim();
+                        if !t.is_empty() {
+                            self.settings.tun_inet4 = t.to_string();
+                        }
+                    }
+                    if let Some(v) = b.opt("tun_inet6") {
+                        self.settings.tun_inet6 = v.trim().to_string();
                     }
                     if let Some(v) = b.opt("tun_gso") {
                         self.settings.tun_gso = parse_bool(v);
@@ -3094,8 +3936,20 @@ impl RouterStoreData {
                     if let Some(v) = b.opt("output_network_interface") {
                         self.settings.output_network_interface = v.to_string();
                     }
-                    if let Some(v) = b.opt("enable_ipv6") {
-                        self.settings.enable_ipv6 = parse_bool(v);
+                    if let Some(v) = b.opt("ipv6_leak_guard") {
+                        self.settings.ipv6_leak_guard = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("ipv6_mode") {
+                        self.settings.ipv6_mode = normalize_ipv6_mode(v);
+                        self.settings.enable_ipv6 = self.settings.ipv6_mode == "dual_stack";
+                    } else if let Some(v) = b.opt("enable_ipv6") {
+                        let en = parse_bool(v);
+                        self.settings.enable_ipv6 = en;
+                        self.settings.ipv6_mode = if en {
+                            "dual_stack".to_string()
+                        } else {
+                            "off".to_string()
+                        };
                     }
                     if let Some(v) = b.opt("enable_yacd") {
                         self.settings.enable_yacd = parse_bool(v);
@@ -3125,7 +3979,7 @@ impl RouterStoreData {
                         self.settings.fallback_dns_server = v.to_string();
                     }
                     if let Some(v) = b.opt("dns_strategy") {
-                        self.settings.dns_strategy = v.to_string();
+                        self.settings.dns_strategy = normalize_dns_strategy(v);
                     }
                     if let Some(v) = b.opt("dns_upstream_mode") {
                         self.settings.dns_upstream_mode = v.to_string();
@@ -3200,7 +4054,7 @@ impl RouterStoreData {
                         self.settings.lite_mode = parse_bool(v);
                     }
                     if let Some(v) = b.opt("ui_mode") {
-                        self.settings.ui_mode = v.to_string();
+                        self.settings.ui_mode = normalize_ui_mode(v);
                     }
                     if let Some(v) = b.opt("sidebar_pos") {
                         self.settings.sidebar_pos = v.to_string();
@@ -4697,6 +5551,7 @@ impl RouterStoreData {
                             .opt("tailscale_udp_timeout")
                             .unwrap_or("")
                             .to_string(),
+                        ipv6_support: b.opt("ipv6_support").unwrap_or("").trim().to_string(),
                         ..Default::default()
                     });
                     imported += 1;
@@ -5246,6 +6101,7 @@ impl RouterStoreData {
                         trusted_devices: b.list("trusted_devices"),
                         isolate_lan: b.opt("isolate_lan").is_none_or(parse_bool),
                         block_router_admin: b.opt("block_router_admin").is_none_or(parse_bool),
+                        allow_proxy: b.opt("allow_proxy").is_none_or(parse_bool),
                         daily_time_limit: b
                             .opt("daily_time_limit")
                             .and_then(|s| s.parse().ok())
@@ -5904,7 +6760,55 @@ impl AppState {
 
         let data = if path.exists() {
             let raw = std::fs::read_to_string(&path)?;
+            let raw_val = serde_json::from_str::<serde_json::Value>(&raw).ok();
+            let raw_has_ipv6_mode = raw_val
+                .as_ref()
+                .and_then(|v| v.pointer("/settings/ipv6_mode"))
+                .and_then(|v| v.as_str())
+                .is_some();
+            let raw_enable_ipv6 = raw_val
+                .as_ref()
+                .and_then(|v| v.pointer("/settings/enable_ipv6"))
+                .and_then(|v| v.as_bool());
             let mut parsed = serde_json::from_str::<RouterStoreData>(&raw)?;
+            let mut migrated = false;
+
+            if !raw_has_ipv6_mode && let Some(en) = raw_enable_ipv6 {
+                parsed.settings.ipv6_mode = if en {
+                    "dual_stack".to_string()
+                } else {
+                    "off".to_string()
+                };
+                migrated = true;
+            }
+            let norm_ui = normalize_ui_mode(&parsed.settings.ui_mode);
+            if norm_ui != parsed.settings.ui_mode {
+                parsed.settings.ui_mode = norm_ui;
+                migrated = true;
+            }
+            let norm_v6 = normalize_ipv6_mode(&parsed.settings.ipv6_mode);
+            if norm_v6 != parsed.settings.ipv6_mode {
+                parsed.settings.ipv6_mode = norm_v6;
+                migrated = true;
+            }
+            if parsed.settings.ipv6_mode == "dual_stack" && !parsed.settings.enable_ipv6 {
+                parsed.settings.enable_ipv6 = true;
+                migrated = true;
+            } else if parsed.settings.ipv6_mode == "off" && parsed.settings.enable_ipv6 {
+                parsed.settings.enable_ipv6 = false;
+                migrated = true;
+            }
+            let norm_dns = normalize_dns_strategy(&parsed.settings.dns_strategy);
+            if norm_dns != parsed.settings.dns_strategy {
+                parsed.settings.dns_strategy = norm_dns;
+                migrated = true;
+            }
+            let safe_cache = sanitize_cache_path(&parsed.settings.cache_path);
+            if safe_cache != parsed.settings.cache_path {
+                parsed.settings.cache_path = safe_cache;
+                migrated = true;
+            }
+
             // If store only has the initial demo sections/servers and `/etc/config/tachyon`
             // (or `/etc/tachyon/backup-pre-2.0/tachyon.uci`) exists, auto-import the router's
             // full configuration so nothing is missing.
@@ -5915,10 +6819,13 @@ impl AppState {
             {
                 let count = parsed.import_legacy_router_files();
                 if count > 0 {
-                    let _ = crypto_gen::write_json_if_changed(&path, &parsed);
+                    migrated = true;
                 }
             }
             if parsed.apply_relax_probe_intervals_v1() {
+                migrated = true;
+            }
+            if migrated {
                 let _ = crypto_gen::write_json_if_changed(&path, &parsed);
             }
             parsed
@@ -5928,9 +6835,12 @@ impl AppState {
             default_data
         };
 
-        let core_ver = std::fs::read_to_string("/etc/tachyon/tachyon-core-version")
+        let runtime_ver_path = runtime_state_dir().join("tachyon-core-version");
+        let core_ver = std::fs::read_to_string(&runtime_ver_path)
+            .or_else(|_| std::fs::read_to_string("/etc/tachyon/tachyon-core-version"))
             .ok()
             .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
             .unwrap_or_else(|| "0.3.7".to_string());
 
         let mut live = LiveTelemetry {
@@ -6397,5 +7307,415 @@ config schedule 'Nahui'
         store.settings.dns_check_interval = "15s".to_string();
         assert!(!store.apply_relax_probe_intervals_v1());
         assert_eq!(store.settings.dns_check_interval, "15s");
+    }
+
+    #[test]
+    fn test_canonical_ipv6_ui_mode_cache_path_and_nand_guard() {
+        assert_eq!(normalize_ui_mode("basic"), "simple");
+        assert_eq!(normalize_ui_mode("SIMPLE"), "simple");
+        assert_eq!(normalize_ui_mode("advanced"), "advanced");
+        assert_eq!(normalize_ui_mode("anything_else"), "simple");
+
+        assert_eq!(normalize_ipv6_mode("dual_stack"), "dual_stack");
+        assert_eq!(normalize_ipv6_mode("ipv4_ipv6"), "dual_stack");
+        assert_eq!(normalize_ipv6_mode("on"), "dual_stack");
+        assert_eq!(normalize_ipv6_mode("full"), "dual_stack");
+        assert_eq!(normalize_ipv6_mode("tunnel_over_v4"), "tunnel_over_v4");
+        assert_eq!(normalize_ipv6_mode("v6_over_v4"), "tunnel_over_v4");
+        assert_eq!(normalize_ipv6_mode("off"), "off");
+        assert_eq!(normalize_ipv6_mode("ipv4_only"), "off");
+        assert_eq!(normalize_ipv6_mode("ipv4"), "off");
+        assert_eq!(normalize_ipv6_mode("unknown"), "auto");
+
+        assert_eq!(normalize_dns_strategy("prefer_ipv6"), "prefer_ipv6");
+        assert_eq!(normalize_dns_strategy("ipv6_only"), "ipv6_only");
+        assert_eq!(normalize_dns_strategy("bogus"), "prefer_ipv4");
+
+        // NAND protection: never allow flash paths for cache.db
+        assert_eq!(
+            sanitize_cache_path("/usr/share/tachyon-core/cache.db"),
+            "/tmp/tachyon-core/cache.db"
+        );
+        assert_eq!(
+            sanitize_cache_path("/etc/tachyon/cache.db"),
+            "/tmp/tachyon-core/cache.db"
+        );
+        assert_eq!(
+            sanitize_cache_path("/var/run/tachyon/cache.db"),
+            "/var/run/tachyon/cache.db"
+        );
+        assert_eq!(
+            sanitize_cache_path("/tmp/custom-cache.db"),
+            "/tmp/custom-cache.db"
+        );
+
+        let mut s = GlobalSettings {
+            ipv6_mode: "auto".to_string(),
+            ipv6_leak_guard: true,
+            enable_ipv6: false,
+            dns_strategy: "prefer_ipv6".to_string(),
+            ..Default::default()
+        };
+
+        let state_guard = resolve_effective_ipv6_state(&s, false);
+        assert_eq!(state_guard, EffectiveIpv6State::LeakGuard);
+        assert!(!state_guard.is_active());
+        assert!(state_guard.is_leak_guard());
+        assert_eq!(effective_dns_strategy(&s, state_guard), "ipv4_only");
+        assert_eq!(effective_tun_inet6(&s, state_guard), None);
+
+        s.ipv6_leak_guard = false;
+        let state_off = resolve_effective_ipv6_state(&s, false);
+        assert_eq!(state_off, EffectiveIpv6State::Disabled);
+        assert_eq!(effective_dns_strategy(&s, state_off), "ipv4_only");
+
+        let state_full = resolve_effective_ipv6_state(&s, true);
+        assert_eq!(state_full, EffectiveIpv6State::Full);
+        assert!(state_full.is_active());
+        assert_eq!(effective_dns_strategy(&s, state_full), "prefer_ipv6");
+
+        s.ipv6_mode = "tunnel_over_v4".to_string();
+        let state_tov4 = resolve_effective_ipv6_state(&s, false);
+        assert_eq!(state_tov4, EffectiveIpv6State::TunnelOverV4);
+        assert!(state_tov4.is_active());
+        assert!(state_tov4.is_tunnel_over_v4());
+
+        // Overlapping tun_inet6 vs fakeip_inet6_range must fall back safely
+        s.fakeip_inet6_range = "fc00::/18".to_string();
+        s.tun_inet6 = "fc00:1::1/126".to_string();
+        let non_overlapping = effective_tun_inet6(&s, state_full).expect("tun_inet6 fallback");
+        assert!(!cidr_v6_overlaps(&non_overlapping, "fc00::/18"));
+
+        // NAND write_json_if_changed skips identical rewrites
+        let tmp_dir = std::env::temp_dir().join(format!("tachyon_nand_{}", unix_now_secs()));
+        let _ = std::fs::create_dir_all(&tmp_dir);
+        let test_file = tmp_dir.join("state.json");
+        let payload = serde_json::json!({"ok": true, "mode": "simple"});
+        assert!(crate::crypto_gen::write_json_if_changed(&test_file, &payload).unwrap());
+        assert!(!crate::crypto_gen::write_json_if_changed(&test_file, &payload).unwrap());
+        let payload2 = serde_json::json!({"ok": true, "mode": "advanced"});
+        assert!(crate::crypto_gen::write_json_if_changed(&test_file, &payload2).unwrap());
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+
+        // Migration test via temp store JSON lacking ipv6_mode with ui_mode="basic"
+        let mig_dir = std::env::temp_dir().join(format!("tachyon_mig_{}", unix_now_secs()));
+        let _ = std::fs::create_dir_all(&mig_dir);
+        let store_path = mig_dir.join("store.json");
+        let mut legacy_doc = serde_json::to_value(RouterStoreData::default()).unwrap();
+        if let Some(st) = legacy_doc
+            .get_mut("settings")
+            .and_then(|v| v.as_object_mut())
+        {
+            st.remove("ipv6_mode");
+            st.insert("ui_mode".to_string(), serde_json::json!("basic"));
+            st.insert("enable_ipv6".to_string(), serde_json::json!(true));
+            st.insert(
+                "cache_path".to_string(),
+                serde_json::json!("/usr/share/tachyon-core/cache.db"),
+            );
+        }
+        std::fs::write(&store_path, legacy_doc.to_string()).unwrap();
+        let state = AppState::load_or_create(&store_path).expect("load_or_create");
+        let loaded = state.data.blocking_read();
+        assert_eq!(loaded.settings.ui_mode, "simple");
+        assert_eq!(loaded.settings.ipv6_mode, "dual_stack");
+        assert_eq!(loaded.settings.cache_path, "/tmp/tachyon-core/cache.db");
+        drop(loaded);
+        let _ = std::fs::remove_dir_all(&mig_dir);
+    }
+
+    #[test]
+    fn test_ip_cidr_and_zone_helpers() {
+        assert_eq!(parse_ipv4_cidr("192.168.1.55/24"), Some((0xC0A8_0100, 24)));
+        assert_eq!(parse_ipv4_cidr("10.0.0.1"), Some((0x0A00_0001, 32)));
+        assert_eq!(parse_ipv4_cidr("0.0.0.0/0"), Some((0, 0)));
+        assert_eq!(parse_ipv4_cidr("192.168.1.0/33"), None);
+        assert_eq!(parse_ipv4_cidr("192.168.1.0/+24"), None);
+        assert_eq!(parse_ipv4_cidr(""), None);
+
+        assert!(cidr_v4_overlaps("172.19.0.1/30", "172.19.0.0/24"));
+        assert!(cidrs_overlap("198.18.0.0/15", "198.19.0.1/30"));
+        assert!(!cidrs_overlap("172.19.0.1/30", "198.18.0.0/15"));
+        assert!(cidrs_overlap("fc00::/18", "fc00:100::1/126"));
+        assert!(!cidrs_overlap("fc00::/18", "fdfe:dcba:9876::1/126"));
+        assert!(!cidrs_overlap("198.18.0.0/15", "fc00::/18"));
+
+        assert_eq!(
+            mask_cidr("192.168.1.99/24").as_deref(),
+            Some("192.168.1.0/24")
+        );
+        assert_eq!(mask_cidr("10.0.0.1").as_deref(), Some("10.0.0.1/32"));
+        assert_eq!(
+            mask_cidr("2001:0db8:0000::1/32").as_deref(),
+            Some("2001:db8::/32")
+        );
+        assert_eq!(mask_cidr("::1/0").as_deref(), Some("::/0"));
+        assert_eq!(mask_cidr("not-a-cidr"), None);
+
+        assert!(valid_ip_with_zone("192.168.1.1"));
+        assert!(valid_ip_with_zone("2001:db8::1"));
+        assert!(valid_ip_with_zone("fe80::1%eth0"));
+        assert!(valid_ip_with_zone("fe80::1%br-lan.10"));
+        assert!(!valid_ip_with_zone("192.168.1.1%eth0"));
+        assert!(!valid_ip_with_zone("fe80::1%"));
+        assert!(!valid_ip_with_zone("fe80::1%bad zone"));
+        assert!(!valid_ip_with_zone("fe80::1/64"));
+        assert!(!valid_ip_with_zone(""));
+
+        assert!(ip_in_cidr("192.168.1.42", "192.168.1.0/24"));
+        assert!(!ip_in_cidr("192.168.2.42", "192.168.1.0/24"));
+        assert!(ip_in_cidr("2001:db8:abcd::5", "2001:db8::/32"));
+        assert!(ip_in_cidr("fe80::1%eth0", "fe80::/10"));
+        assert!(!ip_in_cidr("fe80::1%bad zone", "fe80::/10"));
+        assert!(!ip_in_cidr("192.168.1.1", "fe80::/10"));
+    }
+
+    #[test]
+    fn test_guest_mode_defaults_and_uci_import() {
+        let gm = GuestModeConfig::default();
+        assert_eq!(gm.mode, "selected");
+        assert!(gm.isolate_lan);
+        assert!(gm.block_router_admin);
+        assert!(gm.allow_proxy);
+
+        let deser: GuestModeConfig =
+            serde_json::from_str("{}").expect("empty GuestModeConfig JSON");
+        assert!(deser.isolate_lan);
+        assert!(deser.block_router_admin);
+        assert!(deser.allow_proxy);
+
+        let rt_empty: RuntimeIpv6Cache =
+            serde_json::from_str("{}").expect("empty RuntimeIpv6Cache JSON");
+        assert!(!rt_empty.wan6_available);
+        assert!(rt_empty.wan_ipv6.is_empty());
+        let rt_partial: RuntimeIpv6Cache = serde_json::from_str(r#"{"wan6_available":true}"#)
+            .expect("partial RuntimeIpv6Cache JSON");
+        assert!(rt_partial.wan6_available);
+        assert_eq!(rt_partial.updated_at, 0);
+
+        let uci_explicit = r#"
+config guest_mode 'guest'
+    option enabled '1'
+    option mode 'all'
+    option allow_proxy '0'
+
+config section 'sec_v6'
+    option label 'Dual Section'
+    option connection_type 'direct'
+    option ipv6_support 'auto'
+"#;
+        let blocks = parse_legacy_uci_blocks(uci_explicit);
+        let mut store = RouterStoreData {
+            settings: GlobalSettings::default(),
+            sections: Vec::new(),
+            conditions: Vec::new(),
+            outbound_sources: Vec::new(),
+            balancers: Vec::new(),
+            outbound_groups: Vec::new(),
+            servers: Vec::new(),
+            profiles: Vec::new(),
+            schedules: Vec::new(),
+            guest_mode: GuestModeConfig::default(),
+            telegram: TgBotConfig::default(),
+            device_registry: HashMap::new(),
+            applied_migrations: Vec::new(),
+        };
+        store.import_from_blocks_with_cache(&blocks, Path::new("/nonexistent"));
+        assert!(!store.guest_mode.allow_proxy);
+        assert_eq!(store.guest_mode.mode, "all");
+        assert_eq!(store.sections.len(), 1);
+        assert_eq!(store.sections[0].ipv6_support, "auto");
+
+        let uci_omitted = r#"
+config guest_mode 'guest'
+    option enabled '1'
+"#;
+        store.import_from_blocks_with_cache(
+            &parse_legacy_uci_blocks(uci_omitted),
+            Path::new("/nonexistent"),
+        );
+        assert!(store.guest_mode.allow_proxy);
+    }
+
+    #[test]
+    fn test_deduplicate_cloned_conditions_and_token_boundaries() {
+        let base_cond = TrafficCondition {
+            id: "cond_media".to_string(),
+            enabled: true,
+            name: "Media Rules".to_string(),
+            condition_type: "atomic".to_string(),
+            user_domains: vec!["youtube.com".to_string(), "googlevideo.com".to_string()],
+            community_subnets: true,
+            ..Default::default()
+        };
+
+        let mut conditions = vec![base_cond];
+        for i in 1..=50 {
+            let id = if i == 1 {
+                "cond_media_copy".to_string()
+            } else if i <= 15 {
+                format!("cond_media_copy_{i}")
+            } else if i <= 30 {
+                format!("cond_media_{i}")
+            } else {
+                format!("cond_media_copy{i}")
+            };
+            conditions.push(TrafficCondition {
+                id,
+                enabled: true,
+                name: format!("Clone {i}"),
+                condition_type: "atomic".to_string(),
+                user_domains: vec!["googlevideo.com\nyoutube.com".to_string()],
+                community_subnets: true,
+                ..Default::default()
+            });
+        }
+
+        // Different ID family but matching "<X> Rules" name and identical signature
+        conditions.push(TrafficCondition {
+            id: "cond_z_99".to_string(),
+            enabled: true,
+            name: "Media Rules".to_string(),
+            condition_type: "atomic".to_string(),
+            user_domains: vec!["youtube.com".to_string(), "googlevideo.com".to_string()],
+            community_subnets: true,
+            ..Default::default()
+        });
+
+        // Distinct rule content under clone-like ID must survive
+        conditions.push(TrafficCondition {
+            id: "cond_media_diff".to_string(),
+            enabled: true,
+            name: "Media Diff".to_string(),
+            condition_type: "atomic".to_string(),
+            user_domains: vec!["youtube.com".to_string(), "vimeo.com".to_string()],
+            community_subnets: true,
+            ..Default::default()
+        });
+
+        // Token-boundary trap: `cond_media_copy_extra` starts with `cond_media_copy`
+        conditions.push(TrafficCondition {
+            id: "cond_media_copy_extra".to_string(),
+            enabled: true,
+            name: "Extra Stream".to_string(),
+            condition_type: "atomic".to_string(),
+            user_domains: vec!["twitch.tv".to_string()],
+            community_subnets: true,
+            ..Default::default()
+        });
+
+        // Disabled variant and differing `community_subnets` must not collapse
+        conditions.push(TrafficCondition {
+            id: "cond_media_copy_200".to_string(),
+            enabled: false,
+            name: "Disabled Copy".to_string(),
+            condition_type: "atomic".to_string(),
+            user_domains: vec!["youtube.com".to_string(), "googlevideo.com".to_string()],
+            community_subnets: true,
+            ..Default::default()
+        });
+        conditions.push(TrafficCondition {
+            id: "cond_media_copy_201".to_string(),
+            enabled: true,
+            name: "No Subnets".to_string(),
+            condition_type: "atomic".to_string(),
+            user_domains: vec!["youtube.com".to_string(), "googlevideo.com".to_string()],
+            community_subnets: false,
+            ..Default::default()
+        });
+
+        // Composite conditions must never be collapsed even with identical children
+        for comp_id in ["cond_comp_1", "cond_comp_2"] {
+            conditions.push(TrafficCondition {
+                id: comp_id.to_string(),
+                enabled: true,
+                name: comp_id.to_string(),
+                condition_type: "all".to_string(),
+                children: vec![
+                    "cond_media_copy_2".to_string(),
+                    "cond_media_copy_extra".to_string(),
+                    "cond_media_copy".to_string(),
+                ],
+                expression: "cond_media_copy && (cond_media_copy_extra || !cond_media_copy_2)"
+                    .to_string(),
+                ..Default::default()
+            });
+        }
+
+        let mut store = RouterStoreData {
+            settings: GlobalSettings::default(),
+            sections: vec![RoutingSection {
+                id: "sec_1".to_string(),
+                enabled: true,
+                label: "Main".to_string(),
+                connection_type: "proxy".to_string(),
+                condition_refs: vec![
+                    "cond_media_copy".to_string(),
+                    "cond_z_99".to_string(),
+                    "cond_media_copy_extra".to_string(),
+                ],
+                condition_expression: "cond_media_copy || cond_media_copy_extra && !cond_z_99"
+                    .to_string(),
+                ..Default::default()
+            }],
+            conditions,
+            outbound_sources: Vec::new(),
+            balancers: Vec::new(),
+            outbound_groups: Vec::new(),
+            servers: Vec::new(),
+            profiles: Vec::new(),
+            schedules: Vec::new(),
+            guest_mode: GuestModeConfig::default(),
+            telegram: TgBotConfig::default(),
+            device_registry: HashMap::new(),
+            applied_migrations: Vec::new(),
+        };
+
+        let removed = store.deduplicate_cloned_conditions();
+        assert_eq!(removed, 51);
+        assert!(store.conditions.iter().any(|c| c.id == "cond_media"));
+        assert!(store.conditions.iter().any(|c| c.id == "cond_media_diff"));
+        assert!(
+            store
+                .conditions
+                .iter()
+                .any(|c| c.id == "cond_media_copy_extra")
+        );
+        assert!(
+            store
+                .conditions
+                .iter()
+                .any(|c| c.id == "cond_media_copy_200")
+        );
+        assert!(
+            store
+                .conditions
+                .iter()
+                .any(|c| c.id == "cond_media_copy_201")
+        );
+        assert!(store.conditions.iter().any(|c| c.id == "cond_comp_1"));
+        assert!(store.conditions.iter().any(|c| c.id == "cond_comp_2"));
+
+        assert_eq!(
+            store.sections[0].condition_refs,
+            vec!["cond_media", "cond_media_copy_extra"]
+        );
+        assert_eq!(
+            store.sections[0].condition_expression,
+            "cond_media || cond_media_copy_extra && !cond_media"
+        );
+
+        let comp1 = store
+            .conditions
+            .iter()
+            .find(|c| c.id == "cond_comp_1")
+            .unwrap();
+        assert_eq!(comp1.children, vec!["cond_media", "cond_media_copy_extra"]);
+        assert_eq!(
+            comp1.expression,
+            "cond_media && (cond_media_copy_extra || !cond_media)"
+        );
+
+        assert_eq!(store.deduplicate_cloned_conditions(), 0);
     }
 }

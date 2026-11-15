@@ -1815,6 +1815,238 @@ const EntryPoint = {
               .map((b) => (b ? b['.name'] : null))
               .filter(Boolean),
           );
+          // Deduplicate cloned atomic conditions (no writes when zero duplicates exist)
+          const rawCondSections = (
+            uci.sections(self.config, 'condition') || []
+          ).filter((c) => c && c['.name']);
+          if (rawCondSections.length > 1) {
+            const condMetaKeys = new Set([
+              'name',
+              'condition_type',
+              'type',
+              'enabled',
+            ]);
+            const normalizeCondVal = (
+              val: unknown,
+            ): string | string[] | null => {
+              if (Array.isArray(val)) {
+                const items = val
+                  .map((v) => String(v ?? '').trim())
+                  .filter(Boolean);
+                return items.length ? items : null;
+              }
+              if (val === undefined || val === null) return null;
+              const s = String(val).trim();
+              return s ? s : null;
+            };
+            const condSignature = (
+              c: Record<string, unknown>,
+            ): string | null => {
+              const ctype = String(
+                c.condition_type || c.type || 'atomic',
+              ).toLowerCase();
+              if (ctype === 'composite') return null;
+              if (
+                normalizeCondVal(c.expression) ||
+                normalizeCondVal(c.members) ||
+                normalizeCondVal(c.conditions)
+              ) {
+                return null;
+              }
+              const entries: Array<[string, string | string[]]> = [];
+              for (const k of Object.keys(c).sort()) {
+                if (k.startsWith('.') || condMetaKeys.has(k)) continue;
+                const nv = normalizeCondVal(c[k]);
+                if (nv !== null) entries.push([k, nv]);
+              }
+              if (!entries.length) return null;
+              const enabledNorm = String(c.enabled ?? '1').trim() || '1';
+              return JSON.stringify([enabledNorm, entries]);
+            };
+
+            const condInfos = rawCondSections
+              .map((c) => ({
+                id: String(c['.name']),
+                name: String(c.name || '').trim(),
+                sig: condSignature(c),
+              }))
+              .filter((info) => info.sig !== null);
+
+            const cloneRe = /^(cond_.+?)(?:_copy\d*|_[2-9]\d*)$/;
+            const condReplaceMap: Record<string, string> = {};
+
+            // Pass 1: exact rule-identical suffixed clones (`_copy*` / `_2+`)
+            const suffixGroups = new Map<string, typeof condInfos>();
+            for (const info of condInfos) {
+              const m = info.id.match(cloneRe);
+              const baseId = m ? m[1] : info.id;
+              const key = `${baseId}\0${info.sig}`;
+              const grp = suffixGroups.get(key) || [];
+              grp.push(info);
+              suffixGroups.set(key, grp);
+            }
+            for (const grp of suffixGroups.values()) {
+              if (grp.length < 2) continue;
+              const canonical =
+                grp.find((x) => !cloneRe.test(x.id)) ||
+                grp.slice().sort((a, b) => a.id.length - b.id.length)[0];
+              for (const item of grp) {
+                if (item.id !== canonical.id) {
+                  condReplaceMap[item.id] = canonical.id;
+                }
+              }
+            }
+
+            // Pass 2: duplicate `" Rules"` conditions with identical rules
+            const rulesNameGroups = new Map<string, typeof condInfos>();
+            for (const info of condInfos) {
+              if (condReplaceMap[info.id]) continue;
+              if (!info.name.endsWith(' Rules')) continue;
+              const normName = info.name.replace(/(?:\s+Rules)+$/, ' Rules');
+              const key = `${normName}\0${info.sig}`;
+              const grp = rulesNameGroups.get(key) || [];
+              grp.push(info);
+              rulesNameGroups.set(key, grp);
+            }
+            for (const grp of rulesNameGroups.values()) {
+              if (grp.length < 2) continue;
+              const canonical =
+                grp.find(
+                  (x) =>
+                    !cloneRe.test(x.id) && !x.name.endsWith(' Rules Rules'),
+                ) ||
+                grp.find((x) => !cloneRe.test(x.id)) ||
+                grp.slice().sort((a, b) => a.id.length - b.id.length)[0];
+              for (const item of grp) {
+                if (item.id !== canonical.id) {
+                  condReplaceMap[item.id] = canonical.id;
+                }
+              }
+            }
+
+            const dupIds = Object.keys(condReplaceMap);
+            if (dupIds.length > 0) {
+              for (const k of dupIds) {
+                let target = condReplaceMap[k];
+                const seen = new Set([k]);
+                while (
+                  condReplaceMap[target] &&
+                  !seen.has(condReplaceMap[target])
+                ) {
+                  seen.add(target);
+                  target = condReplaceMap[target];
+                }
+                condReplaceMap[k] = target;
+              }
+              const resolveCondId = (id: string) => condReplaceMap[id] || id;
+              const asStrArr = (raw: unknown): string[] =>
+                Array.isArray(raw)
+                  ? raw.map((x) => String(x || '').trim()).filter(Boolean)
+                  : raw
+                    ? String(raw)
+                        .trim()
+                        .split(/[\s,]+/)
+                        .filter(Boolean)
+                    : [];
+              const remapRefArray = (
+                raw: unknown,
+              ): { changed: boolean; next: string[] } => {
+                const orig = asStrArr(raw);
+                if (!orig.length) return { changed: false, next: orig };
+                const next: string[] = [];
+                const seen = new Set<string>();
+                let changed = false;
+                for (const item of orig) {
+                  const m = item.match(/^([+!-])(.*)$/);
+                  const prefix = m ? m[1] : '';
+                  const core = m ? m[2] : item;
+                  const mapped = resolveCondId(core);
+                  if (mapped !== core) changed = true;
+                  const token = `${prefix}${mapped}`;
+                  if (seen.has(token)) {
+                    changed = true;
+                  } else {
+                    seen.add(token);
+                    next.push(token);
+                  }
+                }
+                return { changed, next };
+              };
+              const dupPattern = new RegExp(
+                `(^|[^A-Za-z0-9_])(${dupIds
+                  .map((d) => d.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+                  .join('|')})(?=$|[^A-Za-z0-9_])`,
+                'g',
+              );
+              const remapExpr = (
+                raw: unknown,
+              ): { changed: boolean; next: string } => {
+                const s = String(raw ?? '');
+                if (!s) return { changed: false, next: '' };
+                const next = s.replace(dupPattern, (_m, lead, id) => {
+                  return `${lead}${resolveCondId(id)}`;
+                });
+                return { changed: next !== s, next };
+              };
+
+              for (const sec of uci.sections(self.config, 'section') || []) {
+                if (!sec || !sec['.name']) continue;
+                const sid = String(sec['.name']);
+                const refsRes = remapRefArray(
+                  uci.get(self.config, sid, 'condition_refs'),
+                );
+                if (refsRes.changed) {
+                  uci.set(self.config, sid, 'condition_refs', refsRes.next);
+                }
+                const exprRes = remapExpr(
+                  uci.get(self.config, sid, 'condition_expression'),
+                );
+                if (exprRes.changed) {
+                  uci.set(
+                    self.config,
+                    sid,
+                    'condition_expression',
+                    exprRes.next,
+                  );
+                }
+                const implicitDupTarget = condReplaceMap[`cond_${sid}`];
+                if (
+                  implicitDupTarget &&
+                  !asStrArr(uci.get(self.config, sid, 'condition_refs'))
+                    .length &&
+                  !String(
+                    uci.get(self.config, sid, 'condition_expression') || '',
+                  ).trim()
+                ) {
+                  uci.set(self.config, sid, 'condition_refs', [
+                    implicitDupTarget,
+                  ]);
+                }
+              }
+
+              for (const c of rawCondSections) {
+                const cid = String(c['.name']);
+                if (condReplaceMap[cid]) continue;
+                for (const listKey of ['members', 'conditions']) {
+                  const res = remapRefArray(uci.get(self.config, cid, listKey));
+                  if (res.changed) {
+                    uci.set(self.config, cid, listKey, res.next);
+                  }
+                }
+                const exprRes = remapExpr(
+                  uci.get(self.config, cid, 'expression'),
+                );
+                if (exprRes.changed) {
+                  uci.set(self.config, cid, 'expression', exprRes.next);
+                }
+              }
+
+              for (const dupId of dupIds) {
+                uci.remove(self.config, dupId);
+              }
+            }
+          }
+
           const validConditions = new Set(
             (uci.sections(self.config, 'condition') || [])
               .map((c) => (c ? c['.name'] : null))

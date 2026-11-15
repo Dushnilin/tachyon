@@ -27,9 +27,20 @@ start_service() {
 }
 
 stop_service() {
-    "$PROG" stop >/dev/null 2>&1 || true
+    TACHYON_DATA_DIR="$DATA_DIR" "$PROG" stop >/dev/null 2>&1 || true
 }
 
 reload_service() {
-    "$PROG" reload
+    local reason="$1"
+    local status
+
+    trap 'exit 1' INT TERM
+    if [ -n "$reason" ]; then
+        TACHYON_DATA_DIR="$DATA_DIR" TACHYON_RELOAD_REASON="$reason" "$PROG" reload
+    else
+        TACHYON_DATA_DIR="$DATA_DIR" "$PROG" reload
+    fi
+    status="$?"
+    trap - INT TERM
+    return "$status"
 }

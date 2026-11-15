@@ -1512,12 +1512,12 @@ fn extract_host_port(url: &str) -> Option<(String, u16)> {
     if authority.is_empty() {
         return None;
     }
-    if let Some((host, port_s)) = authority.split_once(':') {
-        let port = port_s.parse::<u16>().ok().unwrap_or(default_port);
-        Some((host.to_string(), port))
-    } else {
-        Some((authority.to_string(), default_port))
+    let host = crate::config_gen::extract_host_only(authority);
+    if host.is_empty() {
+        return None;
     }
+    let port = crate::config_gen::extract_host_port(authority, default_port);
+    Some((host, port))
 }
 
 async fn prewarm_dns_cache(endpoints: &[ProbeEndpoint]) -> HashMap<(String, u16), IpAddr> {

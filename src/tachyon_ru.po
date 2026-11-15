@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-14 17:01+0300\n"
-"PO-Revision-Date: 2026-11-14 17:01+0300\n"
+"POT-Creation-Date: 2026-11-15 16:16+0300\n"
+"PO-Revision-Date: 2026-11-15 16:16+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -269,11 +269,26 @@ msgstr "AWG 3.1 (Случайные трейлеры и контроль Cookie)
 msgid "AWG Fake Packets / MTU"
 msgstr "Обфускация AWG Fake Packets / MTU"
 
+msgid "Accept Tailscale DNS (MagicDNS)"
+msgstr "Использовать MagicDNS (Accept DNS)"
+
+msgid "Accept default DNS resolvers"
+msgstr "Принимать DNS-резолверы по умолчанию"
+
 msgid "Accept external proxy connections and route them with Tachyon Core."
 msgstr "Принимать внешние прокси-подключения и маршрутизировать их через Tachyon Core."
 
+msgid "Accept fallback DNS resolvers distributed by the tailnet when Tailscale DNS is enabled."
+msgstr "Принимать резервные DNS-резолверы, передаваемые сетью Tailnet при включённом Tailscale DNS."
+
 msgid "Accept routes"
 msgstr "Принимать маршруты"
+
+msgid "Accept subnet routes"
+msgstr "Принимать подсети (Accept routes)"
+
+msgid "Accept subnet routes advertised by other tailnet nodes."
+msgstr "Принимать маршруты подсетей, анонсируемые другими узлами Tailnet."
 
 msgid "Accept-Language Header"
 msgstr "Заголовок Accept-Language"
@@ -524,6 +539,9 @@ msgstr "Адрес скопирован в буфер обмена"
 msgid "Address type"
 msgstr "Тип адреса"
 
+msgid "Admin Chat IDs configured"
+msgstr "Chat ID администраторов настроены"
+
 msgid "Administrator Chat IDs"
 msgstr "Chat ID администраторов"
 
@@ -671,8 +689,20 @@ msgstr "Разрешать / Включать ТОЛЬКО в указанные
 msgid "Allow Insecure TLS"
 msgstr "Разрешить небезопасный TLS"
 
+msgid "Allow LAN access when using exit node"
+msgstr "Разрешить доступ к LAN при использовании выходного узла"
+
+msgid "Allow Proxied Routing"
+msgstr "Разрешить маршрутизацию через прокси"
+
 msgid "Allow always"
 msgstr "Разрешено всегда"
+
+msgid "Allow direct access to local LAN subnets while forwarding outbound traffic through an exit node."
+msgstr "Разрешить прямой доступ к локальным подсетям LAN при маршрутизации исходящего трафика через выходной узел."
+
+msgid "Allow guest devices to use configured proxy routing sections in TPROXY mode while keeping router administration blocked."
+msgstr "Разрешить гостевым устройствам использовать настроенные прокси-секции маршрутизации в режиме TPROXY, сохраняя запрет доступа к администрированию роутера."
 
 msgid "Allow in interval"
 msgstr "Разрешено в интервале"
@@ -754,9 +784,6 @@ msgstr "Конфиг Amnezia вместе с именем не должен пр
 
 msgid "Amnezia configurations"
 msgstr "Amnezia конфиги"
-
-msgid "Amnezia export; full validation before apply"
-msgstr "Экспорт Amnezia: полная проверка перед применением"
 
 msgid "AmneziaWG (Cloudflare WARP) configuration generated and loaded successfully!"
 msgstr "Конфигурация AmneziaWG (Cloudflare WARP) успешно сгенерирована и загружена!"
@@ -1637,6 +1664,9 @@ msgstr "Проверка"
 msgid "Check Connection"
 msgstr "Проверить подключение"
 
+msgid "Check IPv6/DNS"
+msgstr "Проверьте IPv6/DNS"
+
 msgid "Check Interval"
 msgstr "Интервал проверки"
 
@@ -2096,8 +2126,14 @@ msgstr "Конфигурация применена"
 msgid "Configuration for Tachyon service"
 msgstr "Конфигурация сервиса Tachyon"
 
+msgid "Configuration must contain [Interface] section or valid vpn:// links."
+msgstr "Конфигурация должна содержать секцию [Interface] или корректные ссылки vpn://."
+
 msgid "Configure"
 msgstr "Изменить"
+
+msgid "Configure Bot Token and Admin Chat IDs first"
+msgstr "Сначала укажите токен бота и Chat ID администратора"
 
 msgid "Configure Policy"
 msgstr "Изменить"
@@ -2212,6 +2248,9 @@ msgstr "Дополнительный паддинг содержимого (Cont
 
 msgid "Continuously probe servers and route traffic through the lowest-latency alive node"
 msgstr "Регулярное измерение пинга и автоматическое переключение на самый быстрый сервер"
+
+msgid "Control URL must start with http:// or https://"
+msgstr "Control URL должен начинаться с http:// или https://"
 
 msgid "Control how BitTorrent and P2P traffic is handled: allow normal routing, force direct via WAN to prevent VPN bans, or block completely."
 msgstr "Управление обработкой трафика BitTorrent и P2P: разрешить обычную маршрутизацию, принудительно направлять напрямую через WAN для предотвращения блокировок VPN или полностью заблокировать."
@@ -2510,6 +2549,9 @@ msgstr "Интервал проверки DNS (с)"
 msgid "DNS Failures Before Switching"
 msgstr "Ошибок DNS до переключения"
 
+msgid "DNS IPv4 / IPv6 Priority"
+msgstr "Приоритет DNS (IPv4 / IPv6)"
+
 msgid "DNS Protocol"
 msgstr "Протокол DNS"
 
@@ -2539,9 +2581,6 @@ msgstr "DNS-серверы"
 
 msgid "DNS Settings"
 msgstr "Настройки DNS"
-
-msgid "DNS Strategy"
-msgstr "Стратегия DNS"
 
 msgid "DNS Successful Checks Before Recovery"
 msgstr "Успешных проверок DNS до восстановления"
@@ -2623,6 +2662,12 @@ msgstr "Результаты проверки DNS"
 
 msgid "DNS speed test results have changed. Run the test again."
 msgstr "Результаты проверки DNS изменились. Повторите тест."
+
+msgid "DNS strategy is ipv6_only without an active IPv6 transport — runtime fell back to ipv4_only."
+msgstr "Выбрана стратегия ipv6_only, но активного IPv6-транспорта нет — ядро переключило DNS в режим ipv4_only."
+
+msgid "DNS strategy is ipv6_only without an active IPv6 transport: IPv4-only domains will fail to resolve."
+msgstr "Выбрана стратегия ipv6_only, но активного IPv6-транспорта нет: домены без AAAA/IPv6-связности не будут открываться."
 
 msgid "DNS through proxy"
 msgstr "DNS через прокси"
@@ -2750,8 +2795,8 @@ msgstr "По умолчанию (из общих настроек)"
 msgid "Default (TCP MD5 / Auto)"
 msgstr "По умолчанию (TCP MD5 / Авто)"
 
-msgid "Default (auto)"
-msgstr "По умолчанию (авто)"
+msgid "Default (auto — service mixed proxy)"
+msgstr "По умолчанию (авто — внутренний смешанный прокси)"
 
 msgid "Default (upstream)"
 msgstr "Default (штатный)"
@@ -2870,6 +2915,9 @@ msgstr "Устройство не передаёт своё имя по DHCP п�
 msgid "Device filter"
 msgstr "Фильтр устройств"
 
+msgid "Device hostname visible inside your tailnet (optional)."
+msgstr "Имя хоста устройства, видимое внутри вашей сети Tailnet (необязательно)."
+
 msgid "Device name"
 msgstr "Имя устройства"
 
@@ -2924,6 +2972,12 @@ msgstr "Прямое соединение (Direct / Резерв)"
 msgid "Direct Connectivity Verified"
 msgstr "Прямая связность подтверждена"
 
+msgid "Direct IPv4 to Telegram API works"
+msgstr "Прямой доступ IPv4 к Telegram API работает"
+
+msgid "Direct IPv6:"
+msgstr "Прямой IPv6:"
+
 msgid "Direct NFQUEUE Mode (Bypass Proxy Core)"
 msgstr "Прямой режим NFQUEUE (мимо прокси-ядра)"
 
@@ -2941,6 +2995,9 @@ msgstr "Прямой WAN"
 
 msgid "Direct WAN (ISP)"
 msgstr "Напрямую в WAN (провайдер)"
+
+msgid "Direct WAN (no proxy)"
+msgstr "Прямой WAN (без прокси)"
 
 msgid "Direct WAN bypass"
 msgstr "Прямой выход мимо прокси (WAN)"
@@ -3263,6 +3320,18 @@ msgstr "Редактировать группу серверов"
 msgid "Eligible components for auto-update"
 msgstr "Разрешенные компоненты для автообновления"
 
+msgid "Embedded"
+msgstr "Встроенный"
+
+msgid "Embedded (tachyon-core / sing-box, default)"
+msgstr "Встроенный (tachyon-core / sing-box, по умолчанию)"
+
+msgid "Embedded Tailscale is running"
+msgstr "Встроенный Tailscale работает"
+
+msgid "Embedded runs Tailscale directly inside the routing core without a separate tailscaled daemon or tailscale0 interface."
+msgstr "Встроенный режим запускает Tailscale напрямую внутри ядра маршрутизации без отдельного демона tailscaled и интерфейса tailscale0."
+
 msgid "Empty composite rule"
 msgstr "Пустое составное правило"
 
@@ -3500,6 +3569,12 @@ msgstr "Введите URL подписки"
 msgid "Enter valid domain names, one per line."
 msgstr "Введите корректные домены, по одному на строку."
 
+msgid "Ephemeral node"
+msgstr "Эфемерный узел"
+
+msgid "Ephemeral node (remove on disconnect)"
+msgstr "Эфемерный узел (удалять после отключения)"
+
 msgid "Error"
 msgstr "Ошибка"
 
@@ -3623,6 +3698,12 @@ msgstr "Исключенные из Smart Detect домены"
 msgid "Excluded servers"
 msgstr "Исключённые серверы"
 
+msgid "Exit Node (optional)"
+msgstr "Выходной узел (Exit node, необязательно)"
+
+msgid "Exit node"
+msgstr "Выходной узел"
+
 msgid "Expand all"
 msgstr "Развернуть все"
 
@@ -3643,6 +3724,12 @@ msgstr "Развернуть панель инструментов"
 
 msgid "Expected HTTP status code(s) for probe success (e.g. 200, 204). Leave empty for any completed request."
 msgstr "Ожидаемые HTTP-коды ответа для успешной проверки (например, 200, 204). Оставьте пустым для любого завершённого запроса."
+
+msgid "Expected an IPv4 CIDR (e.g. 198.18.0.0/15)"
+msgstr "Ожидался IPv4 CIDR (например, 198.18.0.0/15)"
+
+msgid "Expected an IPv6 CIDR (e.g. fc00::/18)"
+msgstr "Ожидался IPv6 CIDR (например, fc00::/18)"
 
 msgid "Expecting: %s"
 msgstr "Ожидалось: %s"
@@ -4064,6 +4151,9 @@ msgstr "FakeIP и контрольная проверка используют �
 msgid "FakeIP works; public IP comparison is inconclusive"
 msgstr "FakeIP работает; сравнение публичных IP не дает однозначного результата"
 
+msgid "FakeIPv6: off"
+msgstr "FakeIPv6: выкл"
+
 msgid "FakeTLS host"
 msgstr "FakeTLS host"
 
@@ -4427,6 +4517,9 @@ msgstr "Участники группы"
 msgid "Group nodes"
 msgstr "Узлов в группе"
 
+msgid "Guarded (Leak Guard)"
+msgstr "Защищено (Leak Guard)"
+
 msgid "Guest Devices (MAC / IP)"
 msgstr "Гостевые устройства (MAC / IP)"
 
@@ -4661,14 +4754,14 @@ msgstr "Как часто проверяются уровни с более вы
 msgid "How often the currently selected server is checked"
 msgstr "Как часто проверяется текущий сервер"
 
-msgid "How often to check DNS health in seconds (default 60)."
-msgstr "Как часто проверять здоровье DNS в секундах (по умолчанию 60)."
+msgid "How often to check DNS health in seconds (default 180)."
+msgstr "Как часто проверять состояние DNS в секундах (по умолчанию 180)."
 
 msgid "How often to check Telegram for new messages (default: 5)."
 msgstr "Как часто проверять Telegram на новые сообщения (по умолчанию: 5)."
 
-msgid "How often to check proxy health in seconds (fast tier, default 30)."
-msgstr "Как часто проверять здоровье прокси в секундах (быстрый уровень, по умолчанию 30)."
+msgid "How often to check proxy health in seconds (fast tier, default 60)."
+msgstr "Как часто проверять состояние прокси в секундах (быстрый уровень, по умолчанию 60)."
 
 msgid "How often to check the active DNS servers."
 msgstr "Как часто проверять активные DNS-серверы."
@@ -4736,23 +4829,74 @@ msgstr "IP"
 msgid "IPs, CIDR blocks, or hostnames pre-resolved and added directly into the nftables routing set."
 msgstr "IP-адреса, блоки CIDR или имена хостов, предварительно разрешаемые и добавляемые напрямую в набор маршрутизации nftables."
 
+msgid "IPv4 + IPv6: Auto (Dual-Stack)"
+msgstr "IPv4 + IPv6: Авто (Dual-Stack)"
+
+msgid "IPv4 + IPv6: Auto (IPv4 + Leak Guard)"
+msgstr "IPv4 + IPv6: Авто (IPv4 + Leak Guard)"
+
+msgid "IPv4 + IPv6: Auto (Recommended)"
+msgstr "IPv4 + IPv6: Авто (рекомендуется)"
+
+msgid "IPv4 + IPv6: Full Dual-Stack"
+msgstr "IPv4 + IPv6: Двойной стек (Dual-Stack)"
+
+msgid "IPv4 + IPv6: Over IPv4 Tunnel"
+msgstr "IPv4 + IPv6: Через IPv4-туннель"
+
+msgid "IPv4 DNS only (A)"
+msgstr "Только DNS IPv4 (A)"
+
+msgid "IPv4 DNS only (A) — locked in IPv4 Only mode"
+msgstr "Только DNS IPv4 (A) — фиксировано в режиме «Только IPv4»"
+
+msgid "IPv4 Only (no IPv6 on LAN devices)"
+msgstr "Только IPv4 (без IPv6 на устройствах)"
+
 msgid "IPv4 Pool (optional)"
 msgstr "Пул IPv4 (необязательно)"
-
-msgid "IPv4 only"
-msgstr "Только IPv4"
 
 msgid "IPv4 pool (CIDR)"
 msgstr "Пул IPv4 (CIDR)"
 
+msgid "IPv6 & Leak Guard"
+msgstr "IPv6 и защита от утечек"
+
+msgid "IPv6 DNS only (AAAA)"
+msgstr "Только DNS IPv6 (AAAA)"
+
 msgid "IPv6 Dual Hop-by-Hop Extension (hopbyhop2)"
 msgstr "Двойной заголовок расширения IPv6 Hop-by-Hop (hopbyhop2)"
 
-msgid "IPv6 only"
-msgstr "Только IPv6"
+msgid "IPv6 LEAK GUARD"
+msgstr "ЗАЩИТА IPv6 (LEAK GUARD)"
+
+msgid "IPv6 LEAKED"
+msgstr "УТЕЧКА IPv6"
+
+msgid "IPv6 Leak Guard is disabled — enabling leak protection is recommended for strict route isolation."
+msgstr "Защита от утечек IPv6 (Leak Guard) отключена — рекомендуется включить её для строгой изоляции маршрута."
+
+msgid "IPv6 Leak Protection (IPv6 Leak Guard)"
+msgstr "Защита от утечек IPv6 (IPv6 Leak Guard)"
+
+msgid "IPv6 Mode"
+msgstr "Режим работы IPv6"
+
+msgid "IPv6 N/A"
+msgstr "IPv6 НЕ НАСТРОЕН"
+
+msgid "IPv6 TUNNELED"
+msgstr "IPv6 В ТУННЕЛЕ"
+
+msgid "IPv6 egress leak detected: IPv4 traffic is concealed, but direct WAN IPv6 matches proxy IPv6."
+msgstr "Обнаружена утечка IPv6: IPv4-трафик скрыт, однако прямой WAN IPv6 совпадает с прокси IPv6."
 
 msgid "IPv6 pool (CIDR)"
 msgstr "Пул IPv6 (CIDR)"
+
+msgid "IPv6, FakeIPv6 & Leak Protection"
+msgstr "IPv6, FakeIPv6 и защита от утечек"
 
 msgid "ISP / Organization"
 msgstr "Провайдер / Организация"
@@ -4789,6 +4933,9 @@ msgstr "Если все загрузочные (Bootstrap) DNS не ответя
 
 msgid "If all Main DNS fail 3 times, queries will be sent to your ISP's DNS in plaintext. Only use as a last resort to prevent complete internet loss."
 msgstr "Если все основные (Main) DNS не ответят 3 раза подряд, запросы будут отправлены к DNS провайдера в открытом виде. Используйте только как крайнюю меру против полной потери интернета."
+
+msgid "If omitted, an interactive login URL is printed in the service logs."
+msgstr "Если не указан, ссылка для интерактивного входа появится в журнале сервиса."
 
 msgid "If one health check fails with an error, continue running other checks instead of stopping."
 msgstr "Если одна проверка завершается ошибкой, продолжать другие проверки, а не останавливаться."
@@ -5105,8 +5252,17 @@ msgstr "Интервал в секундах между проверками в�
 msgid "Invalid Amnezia .conf file"
 msgstr "Некорректный файл Amnezia .conf"
 
+msgid "Invalid Amnezia configuration JSON: expected {name, config}."
+msgstr "Некорректный JSON конфигурации Amnezia: ожидается {name, config}."
+
+msgid "Invalid Amnezia configuration: paste a vpn:// link or WireGuard / AmneziaWG .conf with [Interface]."
+msgstr "Некорректная конфигурация Amnezia: вставьте ссылку vpn:// или файл .conf WireGuard / AmneziaWG с секцией [Interface]."
+
 msgid "Invalid ByeDPI strategy"
 msgstr "Неверная стратегия ByeDPI"
+
+msgid "Invalid CIDR format (expected IP/prefix)"
+msgstr "Неверный формат CIDR (ожидается IP/префикс)"
 
 msgid "Invalid CIDR prefix"
 msgstr "Неверный префикс CIDR"
@@ -5213,6 +5369,9 @@ msgstr "Неверный URL Hysteria2: неподдерживаемый тип 
 msgid "Invalid IP address"
 msgstr "Неверный IP-адрес"
 
+msgid "Invalid IP address format"
+msgstr "Неверный формат IP-адреса"
+
 msgid "Invalid IP or MAC address format"
 msgstr "Неверный формат IP или MAC-адреса"
 
@@ -5222,11 +5381,20 @@ msgstr "Неверный IP или MAC-адрес. Ожидается, напр�
 msgid "Invalid IPs"
 msgstr "Некорректные IP"
 
+msgid "Invalid IPv4 CIDR format (expected prefix, e.g. 198.18.0.0/15)"
+msgstr "Неверный формат IPv4 CIDR (ожидается префикс, например 198.18.0.0/15)"
+
+msgid "Invalid IPv6 CIDR format (expected prefix, e.g. fc00::/18)"
+msgstr "Неверный формат IPv6 CIDR (ожидается префикс, например fc00::/18)"
+
 msgid "Invalid JSON format"
 msgstr "Неверный формат JSON"
 
 msgid "Invalid MAC address format (expected AA:BB:CC:DD:EE:FF)"
 msgstr "Неверный формат MAC-адреса (ожидается AA:BB:CC:DD:EE:FF)"
+
+msgid "Invalid Mieru URL: IPv6 host must be enclosed in brackets"
+msgstr "Некорректный URL Mieru: IPv6-адрес должен быть заключён в квадратные скобки"
 
 msgid "Invalid Mieru URL: invalid host or port"
 msgstr "Некорректный URL Mieru: неверный хост или порт"
@@ -5374,6 +5542,9 @@ msgstr "Некорректное глобальное правило \"%s\": н�
 
 msgid "Invalid line: \"%s\". Use: domain ip or ip domain"
 msgstr "Неверная строка: \"%s\". Используйте: domain ip или ip domain"
+
+msgid "Invalid link format"
+msgstr "Некорректный формат ссылки"
 
 msgid "Invalid or missing DNS response"
 msgstr "Нет корректного DNS-ответа"
@@ -5597,6 +5768,9 @@ msgstr "IP-адреса или подсети устройств в локаль
 msgid "LAN client MAC addresses (e.g. AA:BB:CC:DD:EE:FF). Resolved automatically via DHCP leases and ARP."
 msgstr "MAC-адреса устройств в локальной сети (например, AA:BB:CC:DD:EE:FF). Автоматически сопоставляются с IP через DHCP и ARP."
 
+msgid "LAN devices receive no IPv6 addresses (RA/DHCPv6/ULA disabled) and operate strictly over IPv4."
+msgstr "Устройства в LAN не получают IPv6-адреса (RA/DHCPv6/ULA отключены) и работают строго по IPv4."
+
 msgid "LEAST LOAD • ACTIVE × RTT"
 msgstr "LEAST LOAD • ПО НАГРУЗКЕ"
 
@@ -5659,6 +5833,9 @@ msgstr "Уровень 1: Общий пул серверов (подписки, 
 
 msgid "Layer 2: Reusable Outbound Server Groups"
 msgstr "Уровень 2: Переиспользуемые группы серверов (Outbound Groups)"
+
+msgid "Leak Guard off"
+msgstr "Leak Guard выкл"
 
 msgid "Least Load (Active Connections × RTT)"
 msgstr "Наименьшая нагрузка (активные соединения × RTT)"
@@ -5810,6 +5987,9 @@ msgstr "Загрузка версий..."
 msgid "Loading..."
 msgstr "Загрузка..."
 
+msgid "Local (LAN IPv6)"
+msgstr "Локальный (LAN IPv6)"
+
 msgid "Local (LAN)"
 msgstr "Локальный (LAN)"
 
@@ -5842,6 +6022,9 @@ msgstr "Локальное имя хоста"
 
 msgid "Localhost"
 msgstr "Локальный хост (Localhost)"
+
+msgid "Localhost (IPv6)"
+msgstr "Локальный хост (IPv6)"
 
 msgid "Location"
 msgstr "Местоположение"
@@ -6257,6 +6440,9 @@ msgstr "Имя, отображаемое на дашборде"
 msgid "Name shown in the priority level list"
 msgstr "Имя в списке уровней приоритета"
 
+msgid "Native (system tailscaled / tailscale0)"
+msgstr "Нативный (системный tailscaled / tailscale0)"
+
 msgid "Native Desync"
 msgstr "Встроенный Desync"
 
@@ -6310,6 +6496,9 @@ msgstr "Имя сетевого интерфейса"
 
 msgid "Network Interface Name (wg0, awg0, tun0)"
 msgstr "Имя сетевого интерфейса (или несколько через запятую)"
+
+msgid "Network Interface Name is required"
+msgstr "Необходимо указать имя сетевого интерфейса"
 
 msgid "Network interface settings"
 msgstr "Настройки сетевого интерфейса"
@@ -6650,6 +6839,9 @@ msgstr "Количество мусорных пакетов перед руко
 msgid "Numeric (0-63), hex (0x2e), or class name (ef, cs5, af41)."
 msgstr "Число (0–63), hex-значение (0x2e) или имя класса (ef, cs5, af41)."
 
+msgid "OK"
+msgstr "ОК"
+
 msgid "OOB Values (-o)"
 msgstr "Значения OOB (-o)"
 
@@ -6860,6 +7052,9 @@ msgstr "Опция \"%s\" содержит недопустимое значен
 msgid "Optional HTTP/HTTPS URLs probed through this section's outbound/strategy (e.g. https://i.ytimg.com/generate_204). Leave empty to use the global latency test URL. Note: HTTP/HTTPS probes do not validate UDP game traffic or Discord voice."
 msgstr "Необязательные URL HTTP/HTTPS для проверки через прокси/стратегию этой секции (например, https://i.ytimg.com/generate_204). Оставьте пустым для использования глобального URL проверки задержки. Примечание: HTTP/HTTPS-проверки не проверяют игровой трафик UDP и голосовые каналы Discord."
 
+msgid "Optional UDP port to expose this endpoint as a Tailscale peer relay server."
+msgstr "Необязательный UDP-порт для работы этого узла в роли ретранслятора Tailscale peer relay."
+
 msgid "Optional additional URLs to probe simultaneously with Health Check URL. If no server passes 100% of URLs, Fallback mode selects the server with the highest number of reachable URLs (> 0)."
 msgstr "Дополнительные URL для одновременной проверки вместе с основным URL. Если ни один сервер не проходит 100% URL, резервный режим (Fallback) выберет сервер с наибольшим числом доступных URL (> 0)."
 
@@ -6887,11 +7082,23 @@ msgstr "Необязательное имя, отображаемое в вер�
 msgid "Optional raw WireGuard / AmneziaWG [Interface] + [Peer] configuration text."
 msgstr "Необязательный текст конфигурации WireGuard / AmneziaWG с секциями [Interface] и [Peer]."
 
+msgid "Optional reusable or ephemeral pre-authentication key to join your Tailnet (e.g. tskey-auth-...). If omitted, an interactive login URL is printed in the service logs."
+msgstr "Необязательный многоразовый или эфемерный ключ предварительной авторизации для подключения к сети Tailnet (например, tskey-auth-...). Если не указан, ссылка для интерактивного входа будет выведена в журнале сервиса."
+
 msgid "Optional schedule when this condition is active (tachyon-core), e.g. 09:00-18:00 or Mon-Fri 22:00-07:00."
 msgstr "Необязательное расписание активности этого условия (tachyon-core), например 09:00-18:00 или Mon-Fri 22:00-07:00."
 
 msgid "Optional server name or IP from the token to prefer."
 msgstr "Необязательное имя или IP-адрес предпочитаемого сервера из токена."
+
+msgid "Optional static host:port or IP:port endpoints advertised for the peer relay server."
+msgstr "Необязательные статические адреса host:port или IP:port, анонсируемые для сервера peer relay."
+
+msgid "Optional tailnet peer hostname or Tailscale IP to route outbound endpoint traffic through."
+msgstr "Необязательное имя узла или Tailscale IP в сети Tailnet для маршрутизации исходящего трафика конечной точки."
+
+msgid "Optional tailnet peer hostname or Tailscale IP to route outbound traffic through."
+msgstr "Необязательное имя узла или Tailscale IP в сети Tailnet для маршрутизации исходящего трафика."
 
 msgid "Optional tls-auth or tls-crypt key"
 msgstr "Опциональный ключ tls-auth или tls-crypt"
@@ -7368,10 +7575,10 @@ msgid "Predefined service domain/subnet lists."
 msgstr "Предустановленные списки доменов и подсетей популярных сервисов."
 
 msgid "Prefer IPv4"
-msgstr "Предпочитать IPv4"
+msgstr "Приоритет IPv4"
 
 msgid "Prefer IPv6"
-msgstr "Предпочитать IPv6"
+msgstr "Приоритет IPv6"
 
 msgid "Preferred"
 msgstr "Предпочитаемый сервер"
@@ -7439,8 +7646,8 @@ msgstr "Запретить гостевым устройствам доступ 
 msgid "Prevent guest devices from accessing router management services (LuCI Web UI, SSH, Clash API). DHCP and DNS remain accessible."
 msgstr "Запретить гостевым устройствам доступ к службам управления роутером (LuCI Web UI, SSH, Clash API). DHCP и DNS остаются доступными."
 
-msgid "Prevents ISP DNS spoofing or blocking when using foreign resolvers like Cloudflare or Google"
-msgstr "Защищает зарубежные DNS-серверы (Cloudflare/Google/Quad9) от подмены и блокировки со стороны провайдера"
+msgid "Prevents ISP DNS interference when using foreign resolvers like Cloudflare or Google"
+msgstr "Защищает зарубежные DNS-серверы (Cloudflare/Google/Quad9) от подмены и фильтрации со стороны провайдера"
 
 msgid "Prevents multiple reload_firewall calls within 120 seconds to avoid connection drops."
 msgstr "Предотвращает множественные вызовы reload_firewall в течение 120 секунд для избежания разрыва соединений."
@@ -7607,6 +7814,9 @@ msgstr "Интервал проверки здоровья прокси (с)"
 msgid "Proxy Health Check URL"
 msgstr "URL проверки здоровья прокси"
 
+msgid "Proxy IPv6:"
+msgstr "Прокси IPv6:"
+
 msgid "Proxy Link"
 msgstr "Ссылка"
 
@@ -7636,6 +7846,12 @@ msgstr "Ссылка прокси недоступна"
 
 msgid "Proxy outbound is inactive or not configured for local testing."
 msgstr "Исходящий прокси неактивен или не настроен для локального тестирования."
+
+msgid "Proxy port"
+msgstr "Порт прокси"
+
+msgid "Proxy route to Telegram API works"
+msgstr "Маршрут через прокси к Telegram API работает"
 
 msgid "Proxy to use for WARP API registration (api.cloudflareclient.com)"
 msgstr "Прокси для регистрации WARP API (api.cloudflareclient.com)"
@@ -7898,6 +8114,9 @@ msgstr "Обновление индекса пакетов"
 msgid "Regex"
 msgstr "Регулярное выражение"
 
+msgid "Register as an ephemeral node that is automatically removed from the tailnet when the service stops."
+msgstr "Регистрировать как эфемерный узел, который автоматически удаляется из сети Tailnet при остановке сервиса."
+
 msgid "Registering Cloudflare WARP account..."
 msgstr "Регистрация аккаунта Cloudflare WARP..."
 
@@ -7925,6 +8144,9 @@ msgstr "Отклонение трафика"
 msgid "RejectAfterTime (s)"
 msgstr "Время отклонения сессии RejectAfterTime (с)"
 
+msgid "Rejects unproxied IPv6 traffic across WAN/LAN boundaries when IPv6 proxying is disabled or unavailable"
+msgstr "Отклоняет незащищённый IPv6-трафик на границе WAN/LAN, если IPv6-прокси отключён или недоступен"
+
 msgid "Rekey After Time"
 msgstr "Интервал смены ключа (Rekey After Time)"
 
@@ -7936,6 +8158,12 @@ msgstr "Время смены ключей RekeyAfterTime (с)"
 
 msgid "RekeyTimeout (s)"
 msgstr "Таймаут смены ключей RekeyTimeout (с)"
+
+msgid "Relay server UDP port"
+msgstr "UDP-порт ретранслятора (Relay server)"
+
+msgid "Relay server static endpoints"
+msgstr "Статические адреса ретранслятора (Relay server)"
 
 msgid "Reload now"
 msgstr "Перезагрузить сейчас"
@@ -8144,9 +8372,6 @@ msgstr "Переиспользуемые балансировщики URLTest и
 msgid "Reusable atomic traffic conditions and composite boolean rules (AND / OR / NOT) with 2-mode Rule Tracer."
 msgstr "Переиспользуемые атомарные условия и составные булевы правила (И / ИЛИ / НЕ) с двухрежимным трассировщиком."
 
-msgid "Reusable or ephemeral pre-authentication key to join your Tailnet (e.g. tskey-auth-...)."
-msgstr "Многоразовый или эфемерный pre-auth ключ для подключения к вашему Tailnet (например, tskey-auth-...)."
-
 msgid "Reusable service lists, domain/IP sets, and boolean rules (AND / OR / NOT) attached to routing sections."
 msgstr "Списки сервисов, домены, подсети и составные логические условия (AND / OR / NOT) для секций."
 
@@ -8207,8 +8432,8 @@ msgstr "Маршрутизировать весь трафик (глобальн
 msgid "Route all traffic arriving on selected local Inbound Servers (from the Server tab) through this section."
 msgstr "Направлять весь трафик, приходящий на выбранные локальные входящие серверы (из вкладки «Сервер»), через эту секцию."
 
-msgid "Route bot API requests through this section. Leave empty to use the default mixed proxy."
-msgstr "Маршрутизировать запросы API бота через эту секцию. Оставьте пустым для использования смешанного прокси по умолчанию."
+msgid "Route bot API requests through a selected section (e.g. Main), Direct WAN without proxy, or leave Default (auto) to use the internal mixed proxy."
+msgstr "Маршрутизировать запросы API бота через выбранную секцию (например, Main), напрямую через WAN без прокси или оставить «По умолчанию (авто)» для использования внутреннего смешанного прокси."
 
 msgid "Route community list subnets (IP/CIDR)"
 msgstr "Маршрутизировать подсети списков сообщества (IP/CIDR)"
@@ -8266,6 +8491,9 @@ msgstr "Протокол маршрутизированного DNS"
 
 msgid "Routed DNS Servers"
 msgstr "Серверы маршрутизированного DNS"
+
+msgid "Router"
+msgstr "Роутер"
 
 msgid "Router (WAN)"
 msgstr "Роутер (WAN)"
@@ -8632,6 +8860,9 @@ msgstr "Действие секции"
 
 msgid "Section cloned"
 msgstr "Секция клонирована"
+
+msgid "Section is not active in the routing core yet — click Save & Apply first, or check section configuration."
+msgstr "Секция ещё не активна в ядре маршрутизации — сначала нажмите «Сохранить и применить» или проверьте настройки секции."
 
 msgid "Section name"
 msgstr "Имя секции"
@@ -9299,6 +9530,9 @@ msgstr "Социальные сети"
 msgid "Soft traffic cap per node in MiB before shifting new streams to remaining under-quota nodes."
 msgstr "Мягкий порог трафика на узел в МиБ, после которого новые потоки переключаются на узлы с неизрасходованной квотой."
 
+msgid "Some checks failed — review the items above"
+msgstr "Некоторые проверки не пройдены — проверьте пункты выше"
+
 msgid "Sort Alphabetically"
 msgstr "Сортировать по алфавиту"
 
@@ -9604,6 +9838,9 @@ msgstr "Строгий"
 
 msgid "Strict ECH + DoQ DNS Enforcer"
 msgstr "Строгий ECH + DoQ DNS Enforcer"
+
+msgid "Strict ipv6_only DNS strategy is enabled — domains without AAAA records will not resolve."
+msgstr "Включена строгая стратегия ipv6_only — ресурсы без AAAA-записей не будут резолвиться."
 
 msgid "Subnet %s belongs to a shared Anycast/CDN range (%s). Third-party websites hosted on this CDN will also be routed through this section."
 msgstr "Подсеть %s входит в публичный Anycast/CDN-диапазон (%s). Сторонние сайты, размещенные на этом CDN, также будут направляться через эту секцию."
@@ -9968,9 +10205,6 @@ msgstr "JSON outbound для Tachyon Core"
 msgid "Tachyon Core autostart disabled"
 msgstr "Автостарт Tachyon Core отключен"
 
-msgid "Tachyon Core endpoint (userspace, default)"
-msgstr "Конечная точка Tachyon Core (userspace, по умолчанию)"
-
 msgid "Tachyon Core installed"
 msgstr "Tachyon Core установлен"
 
@@ -10088,14 +10322,26 @@ msgstr "NFQWS2 Tachyon готов"
 msgid "Tailscale"
 msgstr "Tailscale"
 
+msgid "Tailscale Auth Key (optional)"
+msgstr "Ключ авторизации Tailscale (необязательно)"
+
+msgid "Tailscale Control URL"
+msgstr "URL контроллера (Control URL)"
+
+msgid "Tailscale Hostname"
+msgstr "Имя хоста (Hostname)"
+
 msgid "Tailscale Interface Name on Router"
 msgstr "Сетевой интерфейс Tailscale на роутере"
 
 msgid "Tailscale Mesh VPN"
 msgstr "Tailscale Mesh VPN"
 
-msgid "Tailscale auth key"
-msgstr "Ключ авторизации Tailscale"
+msgid "Tailscale Mode"
+msgstr "Режим Tailscale"
+
+msgid "Tailscale auth key (optional)"
+msgstr "Ключ авторизации Tailscale (необязательно)"
 
 msgid "Tailscale control URL"
 msgstr "Control URL Tailscale"
@@ -10348,6 +10594,9 @@ msgstr "В этой секции используется прямой или р
 
 msgid "This speed test supports DoH, DoT, DoQ, and UDP DNS servers."
 msgstr "Этот тест скорости поддерживает DNS-серверы DoH, DoT, DoQ и UDP."
+
+msgid "This vpn:// key is an Amnezia Cloud API token without embedded WireGuard keys. Export a .conf file or full container config in the Amnezia app."
+msgstr "Этот ключ vpn:// является токеном Amnezia Cloud API без встроенных ключей WireGuard. Экспортируйте файл .conf или полную конфигурацию контейнера в приложении Amnezia."
 
 msgid "This will erase all Tachyon settings and restore the factory defaults. The service will restart. This action cannot be undone."
 msgstr "Все настройки Tachyon будут удалены и восстановлены заводские значения. Сервис будет перезапущен. Это действие нельзя отменить."
@@ -10952,6 +11201,9 @@ msgstr "Используйте CIDR-префиксы, например 192.168.1
 msgid "Use CIDR prefixes or IP addresses like 192.168.1.0/24, 192.168.1.10, or 2001:db8::1"
 msgstr "Используйте префиксы CIDR или IP-адреса, например 192.168.1.0/24, 192.168.1.10 или 2001:db8::1"
 
+msgid "Use DNS configuration advertised by the tailnet (MagicDNS)."
+msgstr "Использовать настройки DNS, передаваемые сетью Tailnet (MagicDNS)."
+
 msgid "Use DTLS (anyconnect only)"
 msgstr "Использовать DTLS (только AnyConnect)"
 
@@ -11189,6 +11441,9 @@ msgstr "Обрывов WAN:"
 msgid "WAN public IP"
 msgstr "Публичный WAN IP"
 
+msgid "WAN6: not detected (IPv4 only)"
+msgstr "WAN6: не обнаружен (только IPv4)"
+
 msgid "WARP Access Token"
 msgstr "Токен доступа WARP"
 
@@ -11293,6 +11548,9 @@ msgstr "Ожидание менеджера пакетов"
 
 msgid "Waiting for router services to restart..."
 msgstr "Ожидание перезапуска служб роутера..."
+
+msgid "Warning: DNS strategy is currently set to \"IPv6 DNS only (AAAA)\". Destinations without AAAA records may fail without end-to-end IPv6."
+msgstr "Внимание: сейчас выбрана DNS-стратегия «Только DNS IPv6 (AAAA)». Сайты без AAAA-записей могут не открываться без полного IPv6."
 
 msgid "Warning: current filter excludes all servers!"
 msgstr "Внимание: текущий фильтр исключает все серверы!"
@@ -11537,6 +11795,9 @@ msgstr "соед."
 msgid "d"
 msgstr "д"
 
+msgid "default"
+msgstr "обычный"
+
 msgid "deferred"
 msgstr "отложено"
 
@@ -11687,11 +11948,20 @@ msgstr "fake_split (фейк + нарезка)"
 msgid "gRPC service"
 msgstr "Сервис gRPC"
 
+msgid "guard on"
+msgstr "защита вкл"
+
 msgid "h"
 msgstr "ч"
 
 msgid "host+1 (1 byte into hostname)"
 msgstr "host+1 (1-й байт имени хоста)"
+
+msgid "ipv6_only warning"
+msgstr "Риск ipv6_only"
+
+msgid "is listening"
+msgstr "прослушивается"
 
 msgid "is unavailable"
 msgstr "недоступно"
@@ -11731,6 +12001,18 @@ msgstr "новая сборка"
 
 msgid "no devices"
 msgstr "нет устройств"
+
+msgid "no prefix"
+msgstr "нет префикса"
+
+msgid "not detected"
+msgstr "не обнаружен"
+
+msgid "off"
+msgstr "выкл"
+
+msgid "on"
+msgstr "вкл"
 
 msgid "online"
 msgstr "в сети"
@@ -12154,6 +12436,48 @@ msgstr "🇱🇻 Латвия (lv)"
 
 msgid "🇵🇱 Poland (pl)"
 msgstr "🇵🇱 Польша (pl)"
+
+msgid "Amnezia export; full validation before apply"
+msgstr "Экспорт Amnezia: полная проверка перед применением"
+
+msgid "IPv6 isolated"
+msgstr "IPv6 изолирован"
+
+msgid "IPv6 leak risk detected"
+msgstr "Обнаружен риск утечки IPv6"
+
+msgid "Prevents ISP DNS spoofing or blocking when using foreign resolvers like Cloudflare or Google"
+msgstr "Защищает зарубежные DNS-серверы (Cloudflare/Google/Quad9) от подмены и блокировки со стороны провайдера"
+
+msgid "DNS Strategy"
+msgstr "Стратегия DNS"
+
+msgid "IPv4 only"
+msgstr "Только IPv4"
+
+msgid "IPv6 only"
+msgstr "Только IPv6"
+
+msgid "How often to check DNS health in seconds (default 60)."
+msgstr "Как часто проверять здоровье DNS в секундах (по умолчанию 60)."
+
+msgid "How often to check proxy health in seconds (fast tier, default 30)."
+msgstr "Как часто проверять здоровье прокси в секундах (быстрый уровень, по умолчанию 30)."
+
+msgid "Reusable or ephemeral pre-authentication key to join your Tailnet (e.g. tskey-auth-...)."
+msgstr "Многоразовый или эфемерный pre-auth ключ для подключения к вашему Tailnet (например, tskey-auth-...)."
+
+msgid "Tachyon Core endpoint (userspace, default)"
+msgstr "Конечная точка Tachyon Core (userspace, по умолчанию)"
+
+msgid "Tailscale auth key"
+msgstr "Ключ авторизации Tailscale"
+
+msgid "Default (auto)"
+msgstr "По умолчанию (авто)"
+
+msgid "Route bot API requests through this section. Leave empty to use the default mixed proxy."
+msgstr "Маршрутизировать запросы API бота через эту секцию. Оставьте пустым для использования смешанного прокси по умолчанию."
 
 msgid "Censorship Bypass Method"
 msgstr "Метод обхода цензуры"
@@ -14087,9 +14411,6 @@ msgstr "Нет прямого доступа к Telegram API (IPv4 заблок�
 msgid "Direct API connection failed"
 msgstr "Прямое подключение к API не удалось"
 
-msgid "Direct IPv4 to Telegram API works"
-msgstr "Прямой доступ IPv4 к Telegram API работает"
-
 msgid "DNS cannot resolve api.telegram.org — check DNS settings"
 msgstr "DNS не может разрешить api.telegram.org — проверьте настройки DNS"
 
@@ -14116,9 +14437,6 @@ msgstr "Подключение к API через прокси не удалос�
 
 msgid "Proxy route to Telegram API failed — check proxy outbound config"
 msgstr "Маршрут через прокси к Telegram API не сработал — проверьте конфигурацию outbound прокси"
-
-msgid "Proxy route to Telegram API works"
-msgstr "Маршрут через прокси к Telegram API работает"
 
 msgid "sing-box is NOT running — bot cannot route through proxy"
 msgstr "sing-box не запущен — бот не может маршрутизировать через прокси"
@@ -14620,3 +14938,99 @@ msgstr "Пользовательские профили десинхрониза
 
 msgid "Endpoint unreachable at the IP layer (no response to TCP SYN). Packet desync only modifies handshake framing — configure a proxy or tunnel outbound for this domain."
 msgstr "Узел недоступен на уровне IP (нет ответа на TCP SYN). Десинхронизация изменяет только структуру рукопожатия — настройте маршрут через прокси или туннель для этого домена."
+
+msgid "Bot token is configured"
+msgstr "Токен бота настроен"
+
+msgid "Bot token is missing"
+msgstr "Токен бота не указан"
+
+msgid "No admin_ids configured"
+msgstr "Не заданы admin_ids"
+
+msgid "Tachyon Core is running"
+msgstr "Tachyon Core запущен"
+
+msgid "Tachyon Core is NOT running — bot cannot route through proxy"
+msgstr "Tachyon Core НЕ запущен — бот не может маршрутизировать через прокси"
+
+msgid "Direct WAN route configured (no local proxy port needed)"
+msgstr "Настроен прямой маршрут WAN (локальный порт прокси не требуется)"
+
+msgid "Proxy port 4534 is listening"
+msgstr "Порт прокси 4534 прослушивается"
+
+msgid "Proxy port 4535 is listening"
+msgstr "Порт прокси 4535 прослушивается"
+
+msgid "Local proxy port is not listening"
+msgstr "Локальный порт прокси не прослушивается"
+
+msgid "Direct route to Telegram API works"
+msgstr "Прямой маршрут к Telegram API работает"
+
+msgid "Direct route to Telegram API failed"
+msgstr "Прямой маршрут к Telegram API не сработал"
+
+msgid "Cannot reach Telegram API directly"
+msgstr "Нет прямого доступа к Telegram API"
+
+msgid "Bot"
+msgstr "Бот"
+
+msgid "Packet desynchronization engine (nfqws v1)"
+msgstr "Движок десинхронизации пакетов (nfqws v1)"
+
+msgid "Advanced packet desynchronization engine with Lua scripts (nfqws2)"
+msgstr "Продвинутый движок десинхронизации пакетов со скриптами Lua (nfqws2)"
+
+msgid "Automatically runs a diagnostic probe against the target service, queries the built-in DPI Knowledge Base, and synthesizes 3-5 custom packet desynchronization strategies tailored to your ISP."
+msgstr "Автоматически выполняет диагностический зонд целевого сервиса, обращается к встроенной базе знаний и синтезирует 3-5 параметров десинхронизации пакетов с учётом особенностей сети вашего оператора."
+
+msgid "Benchmark completed. No working strategy found for this target."
+msgstr "Тестирование завершено. Подходящая стратегия для этой цели не найдена."
+
+msgid "Check routing section order"
+msgstr "Обратите внимание на порядок секций"
+
+msgid "IP-level filtering detected! The resource is unreachable at the network layer (no TCP SYN response). Packet desynchronization engines (Zapret / ByeDPI) cannot traverse an IP-level block — configure proxy/VPN routing for this domain."
+msgstr "Обнаружена фильтрация по IP! Ресурс недоступен на сетевом уровне (нет ответа на TCP SYN). Механизмы десинхронизации пакетов (Zapret / ByeDPI) здесь неприменимы — настройте маршрутизацию через прокси или VPN для этого домена."
+
+msgid "Reorder sections →"
+msgstr "Изменить порядок →"
+
+msgid "TCP connect timed out before TLS handshake — host is unreachable at the IP layer. Packet desynchronization cannot traverse an IP-level block; route via VPN/Proxy outbound instead."
+msgstr "Истекло время ожидания TCP-подключения до рукопожатия TLS — узел недоступен на уровне IP. Десинхронизация пакетов не поможет; используйте маршрутизацию через VPN или прокси."
+
+msgid "Testing desync strategies in isolated sandbox..."
+msgstr "Проверка стратегий десинхронизации в изолированной среде..."
+
+msgid "Auto (Dual-Stack)"
+msgstr "Авто (Dual-Stack)"
+
+msgid "Auto (IPv4 + Leak Guard)"
+msgstr "Авто (IPv4 + Leak Guard)"
+
+msgid "Auto (Recommended)"
+msgstr "Авто (рекомендуется)"
+
+msgid "IPv6 routing and Leak Guard are disabled — client IPv6 queries may go direct."
+msgstr "IPv6-маршрутизация и Leak Guard выключены — IPv6-запросы клиентов могут идти напрямую."
+
+msgid "Off (IPv4 only)"
+msgstr "Выкл (только IPv4)"
+
+msgid "Off (Leak Guard)"
+msgstr "Выкл (Leak Guard)"
+
+msgid "On (Dual-Stack IPv4 + IPv6)"
+msgstr "Вкл (Dual-Stack IPv4 + IPv6)"
+
+msgid "Over IPv4 (TUN)"
+msgstr "Через IPv4 (TUN)"
+
+msgid "Over IPv4 (tunnel IPv6 over IPv4)"
+msgstr "Через IPv4 (туннель IPv6 поверх IPv4)"
+
+msgid "Warning: DNS strategy is currently set to \"IPv6 only\". Destinations without AAAA records may fail without end-to-end IPv6."
+msgstr "Внимание: сейчас выбрана DNS-стратегия «Только IPv6» (ipv6_only). Сайты без AAAA-записей могут не открываться без полного IPv6."

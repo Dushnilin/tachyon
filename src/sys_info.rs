@@ -764,6 +764,26 @@ fn parse_kb(s: &str) -> u64 {
         .unwrap_or(0)
 }
 
+/// Detect active non-loopback, non-tunnel LAN and WAN global IPv6 addresses plus
+/// candidate routed IPv6 prefixes (`/64` derived from global WAN/LAN addresses).
+pub fn detect_router_ipv6_ips() -> (String, String, Vec<String>) {
+    let cache = crate::store::probe_wan6_runtime_state();
+    let lan_v6 = cache.lan_ipv6.first().cloned().unwrap_or_default();
+    let wan_v6 = cache.wan_ipv6.first().cloned().unwrap_or_default();
+    (lan_v6, wan_v6, cache.wan6_prefixes)
+}
+
+/// Read the system hostname with fallback to detected `HostSysInfo`.
+pub fn read_router_hostname() -> String {
+    if let Ok(raw) = std::fs::read_to_string("/proc/sys/kernel/hostname") {
+        let trimmed = raw.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    collect_host_info().hostname
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

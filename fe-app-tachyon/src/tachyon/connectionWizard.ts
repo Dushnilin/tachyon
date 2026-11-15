@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { tr } from './helpers/i18n';
+import { getIPv6ModeLabel, normalizeIpv6Mode } from './helpers/ipv6Summary';
 import { showToast } from '../helpers/showToast';
 import {
   createInteractiveHintBanner,
@@ -26,6 +27,10 @@ import { TachyonShellMethods } from './methods/shell';
 import { store } from './services/store.service';
 import { applyUiStateToStore } from './services/uiState.service';
 import { renderStrategyFuzzerModal } from './tabs/diagnostic/partials/renderStrategyFuzzerModal';
+import {
+  splitAmneziaTextEntries,
+  validateVpnUrl,
+} from '../validators/validateVpnUrl';
 import type { Tachyon } from './types';
 
 function getUi(): any {
@@ -1575,6 +1580,17 @@ export function openConnectionWizardModal(
   let customGlobalDnsType: 'udp' | 'doh' | 'dot' = 'udp';
   let customGlobalDnsServer = '77.88.8.8';
   let enableDnsDetour = false;
+  let wizardIpv6Mode = normalizeIpv6Mode(
+    uciObj.get(TACHYON_UCI_PACKAGE, 'settings', 'ipv6_mode') || 'auto',
+  );
+  let wizardIpv6LeakGuard =
+    uciObj.get(TACHYON_UCI_PACKAGE, 'settings', 'ipv6_leak_guard') !== '0';
+  let wizardDnsStrategy = String(
+    uciObj.get(TACHYON_UCI_PACKAGE, 'settings', 'dns_strategy') ||
+      'prefer_ipv4',
+  );
+  let wizardIpv6Hydrated = false;
+  let wizardStatusSnapshot: Tachyon.GetStatus | null = null;
   let enableDirectGamesBypass = false;
   let directBypassDnsPreset = 'yandex_udp';
   let customDirectBypassDnsServer = '77.88.8.8';
@@ -5977,14 +5993,289 @@ export function openConnectionWizardModal(
                     'div',
                     { class: 'tachyon-wizard__checkbox-desc' },
                     tr(
-                      'Защищает зарубежные DNS-серверы (Cloudflare/Google/Quad9) от подмены и блокировки со стороны провайдера',
-                      'Prevents ISP DNS spoofing or blocking when using foreign resolvers like Cloudflare or Google',
+                      'Защищает зарубежные DNS-серверы (Cloudflare/Google/Quad9) от подмены и фильтрации со стороны провайдера',
+                      'Prevents ISP DNS interference when using foreign resolvers like Cloudflare or Google',
                     ),
                   ),
                 ]),
               ]),
             ])
           : '',
+
+        (() => {
+          const curState = store.get();
+          const sysInfo = curState.diagnosticsSystemInfo;
+          if (
+            !wizardIpv6Hydrated &&
+            !sysInfo?.wan_ipv6 &&
+            !wizardStatusSnapshot?.wan_ipv6
+          ) {
+            wizardIpv6Hydrated = true;
+            TachyonShellMethods.getStatus()
+              .then((res) => {
+                if (res?.success && res.data) {
+                  wizardStatusSnapshot = res.data;
+                  if (step === 4 && root.isConnected) {
+                    rerender();
+                  }
+                }
+              })
+              .catch(() => null);
+          }
+          const wan6Pd =
+            Array.isArray(sysInfo?.wan6_pd) && sysInfo.wan6_pd.length > 0
+              ? String(sysInfo.wan6_pd[0] || '')
+              : Array.isArray(wizardStatusSnapshot?.wan6_pd) &&
+                  wizardStatusSnapshot.wan6_pd.length > 0
+                ? String(wizardStatusSnapshot.wan6_pd[0] || '')
+                : '';
+          const wan6Prefix =
+            sysInfo?.wan6_prefix ||
+            wizardStatusSnapshot?.wan6_prefix ||
+            wan6Pd ||
+            '';
+          const wanIpv6 =
+            sysInfo?.wan_ipv6 || wizardStatusSnapshot?.wan_ipv6 || '';
+          const fakeipOn =
+            uciObj.get(TACHYON_UCI_PACKAGE, 'settings', 'fakeip_enabled') !==
+            '0';
+          const fakeip6Range = String(
+            uciObj.get(TACHYON_UCI_PACKAGE, 'settings', 'fakeip_inet6_range') ||
+              sysInfo?.fakeip_inet6_range ||
+              'fc00::/18',
+          );
+          const normalizedWizardIpv6Mode = normalizeIpv6Mode(wizardIpv6Mode);
+
+          return E(
+            'div',
+            {
+              class: 'tachyon-wizard__toggle-box',
+              style: 'margin-top: 12px;',
+            },
+            [
+              E(
+                'div',
+                {
+                  class: 'tachyon-wizard__section-title',
+                  style: 'margin: 0 0 8px 0;',
+                },
+                tr(
+                  'IPv6, FakeIPv6 и защита от утечек',
+                  'IPv6, FakeIPv6 & Leak Protection',
+                ),
+              ),
+              E(
+                'div',
+                {
+                  class: 'tachyon-ipv6-status-box',
+                  style: 'margin-bottom: 10px;',
+                },
+                [
+                  E(
+                    'span',
+                    {
+                      class:
+                        'tachyon-ipv6-status-pill ' +
+                        (wan6Prefix || wanIpv6
+                          ? 'tachyon-ipv6-status-pill--ok'
+                          : ''),
+                    },
+                    wan6Prefix
+                      ? `WAN6 PD: ${wan6Prefix}`
+                      : wanIpv6
+                        ? `WAN6: ${wanIpv6}`
+                        : tr(
+                            'WAN6: не обнаружен (только IPv4)',
+                            'WAN6: not detected (IPv4 only)',
+                          ),
+                  ),
+                  E(
+                    'span',
+                    {
+                      class:
+                        'tachyon-ipv6-status-pill ' +
+                        (fakeipOn ? 'tachyon-ipv6-status-pill--ok' : ''),
+                    },
+                    fakeipOn
+                      ? `FakeIPv6: ${fakeip6Range}`
+                      : tr('FakeIPv6: выкл', 'FakeIPv6: off'),
+                  ),
+                ],
+              ),
+              E('div', { class: 'tachyon-wizard__field' }, [
+                E(
+                  'label',
+                  { class: 'tachyon-wizard__label' },
+                  tr('Режим работы IPv6', 'IPv6 Mode'),
+                ),
+                E(
+                  'select',
+                  {
+                    class: 'cbi-input-select tachyon-wizard__select',
+                    change: (ev: Event) => {
+                      wizardIpv6Mode = normalizeIpv6Mode(
+                        (ev.target as HTMLSelectElement).value,
+                      );
+                      rerender();
+                    },
+                  } as any,
+                  (
+                    ['off', 'auto', 'dual_stack', 'tunnel_over_v4'] as const
+                  ).map((val) =>
+                    E(
+                      'option',
+                      {
+                        value: val,
+                        selected:
+                          normalizedWizardIpv6Mode === val ? true : undefined,
+                      },
+                      getIPv6ModeLabel(val),
+                    ),
+                  ),
+                ),
+                normalizedWizardIpv6Mode === 'off'
+                  ? E(
+                      'div',
+                      {
+                        class: 'tachyon-wizard__checkbox-desc',
+                        style: 'margin-top: 4px;',
+                      },
+                      tr(
+                        'Устройства в LAN не получают IPv6-адреса (RA/DHCPv6/ULA отключены) и работают строго по IPv4.',
+                        'LAN devices receive no IPv6 addresses (RA/DHCPv6/ULA disabled) and operate strictly over IPv4.',
+                      ),
+                    )
+                  : '',
+              ]),
+              normalizedWizardIpv6Mode !== 'off'
+                ? E(
+                    'div',
+                    {
+                      class: 'tachyon-wizard__field',
+                      style: 'margin-top: 8px;',
+                    },
+                    [
+                      E(
+                        'label',
+                        { class: 'tachyon-wizard__label' },
+                        tr(
+                          'Приоритет DNS (IPv4 / IPv6)',
+                          'DNS IPv4 / IPv6 Priority',
+                        ),
+                      ),
+                      E(
+                        'select',
+                        {
+                          class: 'cbi-input-select tachyon-wizard__select',
+                          change: (ev: Event) => {
+                            wizardDnsStrategy = (ev.target as HTMLSelectElement)
+                              .value;
+                            rerender();
+                          },
+                        } as any,
+                        [
+                          ['prefer_ipv4', tr('Приоритет IPv4', 'Prefer IPv4')],
+                          ['prefer_ipv6', tr('Приоритет IPv6', 'Prefer IPv6')],
+                          [
+                            'ipv4_only',
+                            tr('Только DNS IPv4 (A)', 'IPv4 DNS only (A)'),
+                          ],
+                          [
+                            'ipv6_only',
+                            tr(
+                              'Только DNS IPv6 (AAAA)',
+                              'IPv6 DNS only (AAAA)',
+                            ),
+                          ],
+                        ].map(([val, label]) =>
+                          E(
+                            'option',
+                            {
+                              value: val,
+                              selected:
+                                wizardDnsStrategy === val ? true : undefined,
+                            },
+                            label,
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                : E(
+                    'div',
+                    {
+                      class: 'tachyon-wizard__field',
+                      style: 'margin-top: 8px;',
+                    },
+                    [
+                      E(
+                        'label',
+                        { class: 'tachyon-wizard__label' },
+                        tr(
+                          'Приоритет DNS (IPv4 / IPv6)',
+                          'DNS IPv4 / IPv6 Priority',
+                        ),
+                      ),
+                      E(
+                        'div',
+                        { class: 'tachyon-ipv6-status-pill' },
+                        tr(
+                          'Только DNS IPv4 (A) — фиксировано в режиме «Только IPv4»',
+                          'IPv4 DNS only (A) — locked in IPv4 Only mode',
+                        ),
+                      ),
+                    ],
+                  ),
+              E(
+                'label',
+                {
+                  class: 'tachyon-wizard__checkbox-label',
+                  style: 'margin-top: 8px;',
+                },
+                [
+                  E('input', {
+                    type: 'checkbox',
+                    checked: wizardIpv6LeakGuard ? true : undefined,
+                    change: (ev: Event) => {
+                      wizardIpv6LeakGuard = (ev.target as HTMLInputElement)
+                        .checked;
+                      rerender();
+                    },
+                  } as any),
+                  E('div', {}, [
+                    E(
+                      'div',
+                      { class: 'tachyon-wizard__checkbox-title' },
+                      tr(
+                        'Защита от утечек IPv6 (IPv6 Leak Guard)',
+                        'IPv6 Leak Protection (IPv6 Leak Guard)',
+                      ),
+                    ),
+                    E(
+                      'div',
+                      { class: 'tachyon-wizard__checkbox-desc' },
+                      tr(
+                        'Отклоняет незащищённый IPv6-трафик на границе WAN/LAN, если IPv6-прокси отключён или недоступен',
+                        'Rejects unproxied IPv6 traffic across WAN/LAN boundaries when IPv6 proxying is disabled or unavailable',
+                      ),
+                    ),
+                  ]),
+                ],
+              ),
+              normalizedWizardIpv6Mode !== 'off' &&
+              wizardDnsStrategy === 'ipv6_only'
+                ? E(
+                    'div',
+                    { class: 'tachyon-ipv6-warning-banner' },
+                    tr(
+                      'Внимание: сейчас выбрана DNS-стратегия «Только DNS IPv6 (AAAA)». Сайты без AAAA-записей могут не открываться без полного IPv6.',
+                      'Warning: DNS strategy is currently set to "IPv6 DNS only (AAAA)". Destinations without AAAA records may fail without end-to-end IPv6.',
+                    ),
+                  )
+                : '',
+            ],
+          );
+        })(),
 
         E(
           'div',
@@ -6629,6 +6920,34 @@ export function openConnectionWizardModal(
     options.onComplete?.({ direction: dir, sectionId });
   }
 
+  function parseAndValidateAmneziaInput(
+    rawText: string,
+    defaultName?: string,
+  ): ReturnType<typeof splitAmneziaTextEntries> | null {
+    const parsed = splitAmneziaTextEntries(rawText, defaultName);
+    if (parsed.entries.length === 0) {
+      showToast(
+        tr(
+          'Вставьте ключ vpn:// или загрузите файл .conf',
+          'Please paste a vpn:// link or upload a .conf file',
+        ),
+        'error',
+      );
+      return null;
+    }
+    for (const link of parsed.vpnLinks) {
+      const vr = validateVpnUrl(link);
+      if (!vr.valid) {
+        showToast(
+          vr.message || tr('Некорректный формат ссылки', 'Invalid link format'),
+          'error',
+        );
+        return null;
+      }
+    }
+    return parsed;
+  }
+
   async function finishOutboundWizard(applyImmediately = false) {
     const finalName =
       connName.trim() ||
@@ -6666,15 +6985,13 @@ export function openConnectionWizardModal(
       );
       return;
     }
-    if (outboundMethod === 'amnezia_config' && !amneziaText.trim()) {
-      showToast(
-        tr(
-          'Вставьте ключ vpn:// или загрузите файл .conf',
-          'Please paste a vpn:// link or upload a .conf file',
-        ),
-        'error',
+    let parsedAmnezia: ReturnType<typeof splitAmneziaTextEntries> | null = null;
+    if (outboundMethod === 'amnezia_config') {
+      parsedAmnezia = parseAndValidateAmneziaInput(
+        amneziaText,
+        typeof finalName === 'string' ? finalName : undefined,
       );
-      return;
+      if (!parsedAmnezia) return;
     }
 
     const srcId = sanitizeId(finalName, 'src');
@@ -6738,26 +7055,22 @@ export function openConnectionWizardModal(
         .map((l) => l.trim())
         .filter(Boolean);
       uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'proxy_links', links);
-    } else if (outboundMethod === 'amnezia_config') {
-      const trimmed = amneziaText.replace(/\r\n?/g, '\n').trim();
-      const vpnLines: string[] = [];
-      const confLines: string[] = [];
-      trimmed.split('\n').forEach((line) => {
-        const t = line.trim();
-        if (t.startsWith('vpn://')) vpnLines.push(t);
-        else confLines.push(line);
-      });
-      const confBody = confLines.join('\n').trim();
-      const items: string[] = [];
-      if (confBody) {
-        items.push(JSON.stringify({ name: finalName, config: confBody }));
+    } else if (outboundMethod === 'amnezia_config' && parsedAmnezia) {
+      if (parsedAmnezia.entries.length) {
+        uciObj.set(
+          TACHYON_UCI_PACKAGE,
+          srcId,
+          'amnezia_configs',
+          parsedAmnezia.entries,
+        );
       }
-      vpnLines.forEach((v) => items.push(v));
-      if (items.length) {
-        uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'amnezia_configs', items);
-      }
-      if (confBody && vpnLines.length === 0) {
-        uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'amnezia_conf_text', confBody);
+      if (parsedAmnezia.confBody && parsedAmnezia.vpnLinks.length === 0) {
+        uciObj.set(
+          TACHYON_UCI_PACKAGE,
+          srcId,
+          'amnezia_conf_text',
+          parsedAmnezia.confBody,
+        );
       } else {
         uciObj.unset(TACHYON_UCI_PACKAGE, srcId, 'amnezia_conf_text');
       }
@@ -7767,7 +8080,7 @@ export function openConnectionWizardModal(
       }
     }
 
-    // Create condition if creating a new section OR appending rules to an existing section
+    // Create or update condition when creating a new section OR appending rules to an existing section
     if (isCreatingNewSection || appendPresetsToExisting) {
       const domainLists: string[] = [];
       for (const preset of TRAFFIC_PRESETS) {
@@ -7786,57 +8099,140 @@ export function openConnectionWizardModal(
         .filter(Boolean);
 
       if (domainLists.length > 0 || customDoms.length > 0) {
-        const condId = sanitizeId(rawSecTitle, 'cond');
+        const parseCondRefs = (raw: unknown): string[] =>
+          Array.isArray(raw)
+            ? raw.map((x) => String(x || '').trim()).filter(Boolean)
+            : raw
+              ? String(raw)
+                  .trim()
+                  .split(/[\s,]+/)
+                  .filter(Boolean)
+              : [];
+        const curConds = parseCondRefs(
+          uciObj.get(TACHYON_UCI_PACKAGE, secId, 'condition_refs'),
+        );
         const uniqueLists = Array.from(new Set(domainLists));
-        if (!uciObj.get(TACHYON_UCI_PACKAGE, condId)) {
+
+        let condId = '';
+        let isReusingCond = false;
+        if (
+          appendPresetsToExisting &&
+          !isCreatingNewSection &&
+          curConds.length === 1
+        ) {
+          const candidateId = curConds[0];
+          const isAtomicCond =
+            uciObj.get(TACHYON_UCI_PACKAGE, candidateId, '.type') ===
+              'condition' &&
+            String(
+              uciObj.get(TACHYON_UCI_PACKAGE, candidateId, 'condition_type') ||
+                uciObj.get(TACHYON_UCI_PACKAGE, candidateId, 'type') ||
+                'atomic',
+            ).toLowerCase() !== 'composite';
+          if (isAtomicCond) {
+            const allSections = (
+              (typeof uciObj.sections === 'function'
+                ? uciObj.sections(TACHYON_UCI_PACKAGE, 'section')
+                : []) || []
+            ).filter((s: any) => s && s['.type'] !== 'condition');
+            const sharedWithOther = allSections.some((s: any) => {
+              const otherId = s['.name'];
+              if (!otherId || otherId === secId) return false;
+              const otherRefs = parseCondRefs(
+                s.condition_refs ??
+                  uciObj.get(TACHYON_UCI_PACKAGE, otherId, 'condition_refs'),
+              );
+              if (otherRefs.includes(candidateId)) return true;
+              return (
+                otherRefs.length === 0 && candidateId === `cond_${otherId}`
+              );
+            });
+            if (!sharedWithOther) {
+              condId = candidateId;
+              isReusingCond = true;
+            }
+          }
+        }
+
+        if (!condId) {
+          const preferredCondId = `cond_${secId}`;
+          const preferredBusy = Boolean(
+            uciObj.get(TACHYON_UCI_PACKAGE, preferredCondId) ||
+              uciObj.get(TACHYON_UCI_PACKAGE, preferredCondId, '.type') ||
+              uciObj.get(TACHYON_UCI_PACKAGE, preferredCondId, '.name'),
+          );
+          condId = preferredBusy ? sanitizeId(secId, 'cond') : preferredCondId;
+        }
+
+        if (!isReusingCond && !uciObj.get(TACHYON_UCI_PACKAGE, condId)) {
           uciObj.add(TACHYON_UCI_PACKAGE, 'condition', condId);
         }
         uciObj.set(TACHYON_UCI_PACKAGE, condId, 'enabled', '1');
-        uciObj.set(TACHYON_UCI_PACKAGE, condId, 'name', `${rawSecTitle} Rules`);
+        const existingCondName = isReusingCond
+          ? uciObj.get(TACHYON_UCI_PACKAGE, condId, 'name')
+          : '';
+        if (!existingCondName) {
+          const titleBase = String(rawSecTitle || secId);
+          uciObj.set(
+            TACHYON_UCI_PACKAGE,
+            condId,
+            'name',
+            titleBase.endsWith(' Rules') ? titleBase : `${titleBase} Rules`,
+          );
+        }
         uciObj.set(TACHYON_UCI_PACKAGE, condId, 'condition_type', 'atomic');
         uciObj.set(TACHYON_UCI_PACKAGE, condId, 'type', 'atomic');
+
         if (uniqueLists.length > 0) {
+          const existingLists = isReusingCond
+            ? parseCondRefs(
+                uciObj.get(TACHYON_UCI_PACKAGE, condId, 'community_lists') ??
+                  uciObj.get(TACHYON_UCI_PACKAGE, condId, 'domain_lists'),
+              )
+            : [];
+          const mergedLists = Array.from(
+            new Set([...existingLists, ...uniqueLists]),
+          );
           uciObj.set(
             TACHYON_UCI_PACKAGE,
             condId,
             'community_lists',
-            uniqueLists,
+            mergedLists,
           );
-          uciObj.set(TACHYON_UCI_PACKAGE, condId, 'domain_lists', uniqueLists);
+          uciObj.set(TACHYON_UCI_PACKAGE, condId, 'domain_lists', mergedLists);
           uciObj.set(
             TACHYON_UCI_PACKAGE,
             secId,
             'community_lists',
-            uniqueLists,
+            mergedLists,
           );
         }
         if (customDoms.length > 0) {
-          uciObj.set(TACHYON_UCI_PACKAGE, condId, 'domain_suffix', customDoms);
+          const existingDoms = isReusingCond
+            ? parseCondRefs(
+                uciObj.get(TACHYON_UCI_PACKAGE, condId, 'domain_suffix') ??
+                  uciObj.get(TACHYON_UCI_PACKAGE, condId, 'domains'),
+              )
+            : [];
+          const mergedDoms = Array.from(
+            new Set([...existingDoms, ...customDoms]),
+          );
+          uciObj.set(TACHYON_UCI_PACKAGE, condId, 'domain_suffix', mergedDoms);
           uciObj.set(
             TACHYON_UCI_PACKAGE,
             condId,
             'domain_suffix_text',
-            customDoms.join('\n'),
+            mergedDoms.join('\n'),
           );
-          uciObj.set(TACHYON_UCI_PACKAGE, condId, 'domains', customDoms);
-          uciObj.set(TACHYON_UCI_PACKAGE, secId, 'domain_suffix', customDoms);
+          uciObj.set(TACHYON_UCI_PACKAGE, condId, 'domains', mergedDoms);
+          uciObj.set(TACHYON_UCI_PACKAGE, secId, 'domain_suffix', mergedDoms);
           uciObj.set(
             TACHYON_UCI_PACKAGE,
             secId,
             'domain_suffix_text',
-            customDoms.join('\n'),
+            mergedDoms.join('\n'),
           );
         }
-        const curCondsRaw = uciObj.get(
-          TACHYON_UCI_PACKAGE,
-          secId,
-          'condition_refs',
-        );
-        const curConds = Array.isArray(curCondsRaw)
-          ? curCondsRaw
-          : curCondsRaw
-            ? String(curCondsRaw).split(/\s+/).filter(Boolean)
-            : [];
         if (!curConds.includes(condId)) {
           uciObj.set(TACHYON_UCI_PACKAGE, secId, 'condition_refs', [
             ...curConds,
@@ -7951,6 +8347,23 @@ export function openConnectionWizardModal(
           secId,
         );
       }
+    }
+
+    const finalIpv6Mode = normalizeIpv6Mode(wizardIpv6Mode || 'auto');
+    uciObj.set(TACHYON_UCI_PACKAGE, 'settings', 'ipv6_mode', finalIpv6Mode);
+    uciObj.set(
+      TACHYON_UCI_PACKAGE,
+      'settings',
+      'ipv6_leak_guard',
+      wizardIpv6LeakGuard ? '1' : '0',
+    );
+    if (finalIpv6Mode !== 'off') {
+      uciObj.set(
+        TACHYON_UCI_PACKAGE,
+        'settings',
+        'dns_strategy',
+        wizardDnsStrategy || 'prefer_ipv4',
+      );
     }
 
     // Link outbound_source to target section
@@ -8536,15 +8949,11 @@ export function openConnectionWizardModal(
                 }
                 if (
                   outboundMethod === 'amnezia_config' &&
-                  !amneziaText.trim()
+                  !parseAndValidateAmneziaInput(
+                    amneziaText,
+                    connName.trim() || undefined,
+                  )
                 ) {
-                  showToast(
-                    tr(
-                      'Вставьте ключ vpn:// или загрузите файл .conf',
-                      'Please paste a vpn:// link or upload a .conf file',
-                    ),
-                    'error',
-                  );
                   return;
                 }
                 if (outboundMethod === 'fptn' && !fptnToken.trim()) {

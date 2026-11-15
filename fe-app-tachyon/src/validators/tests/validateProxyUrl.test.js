@@ -179,6 +179,33 @@ describe('validateProxyUrl', () => {
     expect(validateProxyUrl('mierus://203.0.113.10?port=20100').valid).toBe(
       false,
     );
+    expect(
+      validateProxyUrl('mieru://user:pass@2001:db8::1:2012?transport=TCP')
+        .valid,
+    ).toBe(false);
+  });
+
+  it('handles bracketed IPv6 hosts in naive, anytls, hy2, tuic, and shadowsocks links', () => {
+    expect(
+      validateProxyUrl('naive+https://user:pass@[2001:db8::1]').valid,
+    ).toBe(true);
+    expect(
+      validateProxyUrl('naive+https://user:pass@[2001:db8::1]:8443').valid,
+    ).toBe(true);
+    expect(
+      validateProxyUrl('anytls://pass@[2001:db8::1]:443?sni=example.com').valid,
+    ).toBe(true);
+    expect(
+      validateProxyUrl('hy2://pass@[2001:db8::1]:443?sni=example.com').valid,
+    ).toBe(true);
+    expect(
+      validateProxyUrl(
+        'tuic://00000000-0000-4000-8000-000000000001:pass@[2001:db8::1]:443',
+      ).valid,
+    ).toBe(true);
+    expect(
+      validateProxyUrl('ss://YWVzLTI1Ni1nY206cGFzcw@[2001:db8::1]:8388').valid,
+    ).toBe(true);
   });
 
   it('extracts Mieru profile name when hash fragment is absent', () => {
