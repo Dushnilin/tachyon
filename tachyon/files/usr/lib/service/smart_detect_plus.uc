@@ -1,6 +1,8 @@
 // Optional extended detector. Default uses the unmodified 1.4.4 helper.
 let fs = require("fs");
 let common = require("core.common");
+let exec_mod = require("core.exec");
+let ip_mod = require("core.ip");
 let as_string = common.as_string;
 
 function mode(cfg) { return cfg?.smart_detect_mode == "plus" ? "plus" : "default"; }
@@ -278,11 +280,192 @@ function probe_kind(status, http_code) {
     return "local";
 }
 
+function read_settings_safe(opts) {
+    if (type(opts?.settings) == "object")
+        return opts.settings;
+    try {
+        let uci_mod = require("uci");
+        let cursor = uci_mod ? uci_mod.cursor() : null;
+        return cursor ? (cursor.get_all("tachyon", "settings") || {}) : {};
+    } catch (e) {
+        return {};
+    }
+}
+
+function is_fakeip_or_non_public(ip_str, fake4, fake6) {
+    let ip = trim(as_string(ip_str));
+    if (!ip_mod.valid_ip(ip))
+        return true;
+    let fam = ip_mod.ip_family(ip);
+    let f4 = trim(as_string(fake4 || "")) || "198.18.0.0/15";
+    let f6 = trim(as_string(fake6 || "")) || "fc00::/18";
+    if (fam == 4) {
+        for (let cidr in [ f4, "198.18.0.0/15", "127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16", "0.0.0.0/8" ])
+            if (ip_mod.cidrs_overlap(ip, cidr))
+                return true;
+        return false;
+    }
+    if (fam == 6) {
+        for (let cidr in [ f6, "fc00::/18", "::1/128", "fc00::/7", "fe80::/10", "::/128" ])
+            if (ip_mod.cidrs_overlap(ip, cidr))
+                return true;
+        return false;
+    }
+    return true;
+}
+
+function extract_bootstrap_ip(raw_entry, fake4, fake6) {
+    let s = trim(as_string(raw_entry));
+    if (s == "")
+        return null;
+    let host = s;
+    let m_url = match(s, /^[a-zA-Z0-9+.-]+:\/\/(\[[^\]]+\]|[^\/:?#]+)/);
+    if (m_url && m_url[1])
+        host = replace(m_url[1], /^\[|\]$/g, "");
+    else if (index(s, ":") >= 0 && !ip_mod.valid_ip(s)) {
+        let m_hp = match(s, /^([^:]+):[0-9]+$/);
+        if (m_hp && m_hp[1])
+            host = m_hp[1];
+    }
+    return !is_fakeip_or_non_public(host, fake4, fake6) ? host : null;
+}
+
+function collect_direct_resolvers(settings) {
+    let fake4 = settings?.fakeip_inet4_range || "198.18.0.0/15";
+    let fake6 = settings?.fakeip_inet6_range || "fc00::/18";
+    let list = [];
+    let seen = {};
+
+    function add_server(candidate) {
+        let ip = extract_bootstrap_ip(candidate, fake4, fake6);
+        if (ip != null && !seen[ip]) {
+            seen[ip] = true;
+            push(list, ip);
+        }
+    }
+
+    let raw_boot = settings?.bootstrap_dns_server;
+    if (type(raw_boot) == "array") {
+        for (let entry in raw_boot)
+            add_server(entry);
+    } else if (raw_boot != null) {
+        for (let part in split(as_string(raw_boot), /[, \t\r\n]+/))
+            add_server(part);
+    }
+
+    for (let rpath in [ "/tmp/resolv.conf.d/resolv.conf.auto", "/tmp/resolv.conf.auto" ]) {
+        let content = fs.readfile(rpath);
+        if (content == null)
+            continue;
+        for (let line in split(as_string(content), "\n")) {
+            let trimmed = trim(line);
+            if (substr(trimmed, 0, 11) == "nameserver ")
+                add_server(trim(substr(trimmed, 11)));
+        }
+    }
+
+    for (let fallback in [ "77.88.8.8", "1.1.1.1", "8.8.8.8" ])
+        add_server(fallback);
+
+    if (length(list) > 4)
+        return slice(list, 0, 4);
+    return list;
+}
+
+function parse_nslookup_ips(output, server_ip, fake4, fake6) {
+    let v4 = [];
+    let v6 = [];
+    let seen = {};
+    let saw_name = false;
+
+    for (let raw_line in split(as_string(output), "\n")) {
+        let line = trim(raw_line);
+        if (line == "")
+            continue;
+        if (match(line, /^Name:[ \t]/)) {
+            saw_name = true;
+            continue;
+        }
+        if (!saw_name)
+            continue;
+        let m = match(line, /^Address([ \t]+[0-9]+)?[ \t]*:[ \t]*([^ \t\r\n]+)/);
+        if (!m || !m[2])
+            continue;
+        let token = m[2];
+        if (token == server_ip || seen[token] || is_fakeip_or_non_public(token, fake4, fake6))
+            continue;
+        seen[token] = true;
+        if (ip_mod.ip_family(token) == 4)
+            push(v4, token);
+        else
+            push(v6, token);
+    }
+
+    let out = [];
+    for (let ip4 in v4) push(out, ip4);
+    for (let ip6 in v6) push(out, ip6);
+    return out;
+}
+
+function resolve_direct_ips(domain, settings, exec_run) {
+    let runner = type(exec_run) == "function" ? exec_run : exec_mod.run;
+    let fake4 = settings?.fakeip_inet4_range || "198.18.0.0/15";
+    let fake6 = settings?.fakeip_inet6_range || "fc00::/18";
+    let servers = collect_direct_resolvers(settings);
+
+    for (let srv in servers) {
+        let res = null;
+        try {
+            res = runner({ argv: [ "nslookup", domain, srv ], timeout: 2 });
+        } catch (e) {
+            res = null;
+        }
+        if (type(res) != "object" || as_string(res.output || "") == "")
+            continue;
+        let ips = parse_nslookup_ips(res.output, srv, fake4, fake6);
+        if (length(ips) > 0)
+            return ips;
+    }
+
+    return [];
+}
+
+function direct_resolve_args(domain, opts) {
+    let settings = read_settings_safe(opts);
+    let fakeip_active = opts?.fakeip_enabled != null
+        ? !!opts.fakeip_enabled
+        : (as_string(settings.fakeip_enabled) == "1");
+    if (!fakeip_active)
+        return { active: false, ok: true, flags: [] };
+    let resolve_fn = type(opts?.resolve_fn) == "function" ? opts.resolve_fn : resolve_direct_ips;
+    let ips = resolve_fn(domain, settings, opts?.exec_run);
+    if (type(ips) != "array" || !length(ips))
+        return { active: true, ok: false, flags: [] };
+    let target_ip = ips[0];
+    let formatted = index(target_ip, ":") >= 0 ? ("[" + target_ip + "]") : target_ip;
+    return {
+        active: true,
+        ok: true,
+        ip: target_ip,
+        flags: [
+            "--resolve", domain + ":443:" + formatted,
+            "--resolve", domain + ":80:" + formatted
+        ]
+    };
+}
+
 // Inject the runner in tests; production still uses argv and verified Direct flags.
-function probe(domain, item, proxy_addr, direct_flags, run) {
+function probe(domain, item, proxy_addr, direct_flags, run, opts) {
     let url = (item.scheme == "http" ? "http://" : "https://") + domain;
     let argv = ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "-L", "--max-redirs", "3", "--connect-timeout", "3", "--max-time", "8"];
     for (let flag in direct_flags) push(argv, flag);
+    let resolve_info = direct_resolve_args(domain, opts);
+    if (resolve_info.active) {
+        if (!resolve_info.ok)
+            return { act: false, seen: false, defer: true, dns_error: true };
+        for (let flag in resolve_info.flags)
+            push(argv, flag);
+    }
     push(argv, url);
     let direct = probe_kind(run(argv));
     if (direct == "ok") return { act: false, seen: true, defer: false };
@@ -299,6 +482,7 @@ function probe(domain, item, proxy_addr, direct_flags, run) {
 
 return {
     mode, capture_enabled, probe, probe_kind,
+    resolve_direct_ips, direct_resolve_args, parse_nslookup_ips,
     normalize_domain: smart_detect_normalize_domain,
     extract_domain: smart_detect_extract_domain,
     log_candidate: smart_detect_log_candidate,

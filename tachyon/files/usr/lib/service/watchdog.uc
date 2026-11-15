@@ -2679,14 +2679,22 @@ function smart_detect_process_pending() {
         // routed by the section rules - the same path the proxy probe takes,
         // which leaves nothing to compare against. The so-mark the leak check
         // already uses is what exempts a packet from that chain.
-        let direct_argv = [
-            "curl", "-s", "-I", "-o", "/dev/null", "--connect-timeout", "4", "--max-time", "6"
-        ];
-        for (let flag in smart_detect_direct_curl_argv())
-            push(direct_argv, flag);
-        push(direct_argv, "https://" + domain);
-        let direct_status = smart_detect.probe_status(direct_argv);
-        let direct_kind = smart_detect.probe_kind(direct_status);
+        let direct_kind = "dns";
+        let resolve_info = (type(smart_plus.direct_resolve_args) == "function")
+            ? smart_plus.direct_resolve_args(domain, { settings: cfg })
+            : { active: false, ok: true, flags: [] };
+        if (!resolve_info.active || resolve_info.ok) {
+            let direct_argv = [
+                "curl", "-s", "-I", "-o", "/dev/null", "--connect-timeout", "4", "--max-time", "6"
+            ];
+            for (let flag in smart_detect_direct_curl_argv())
+                push(direct_argv, flag);
+            for (let flag in (resolve_info.flags || []))
+                push(direct_argv, flag);
+            push(direct_argv, "https://" + domain);
+            let direct_status = smart_detect.probe_status(direct_argv);
+            direct_kind = smart_detect.probe_kind(direct_status);
+        }
 
         // The proxy leg decides, and it is only worth paying for once the direct
         // leg has shown the destination unreachable. "dns" is included: a local
