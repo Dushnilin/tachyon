@@ -35,4 +35,77 @@ for (let data in [bad_checksum, substr(bytes, 0, length(bytes)-3), bytes + 'extr
 for (let data in [{containers:[{container:'amnezia-openvpn',openvpn:{last_config:'{}'}}]},
     {containers:[{container:'amnezia-awg',awg:{last_config:'{}'}}]}])
     assert(wg.from_vpn(uri(sprintf('%J', data))) == null, 'unsupported or incomplete container rejected');
-print('PASS: Amnezia stored/fixed/dynamic zlib, AWG2, compressed INI, keys/ranges/flags, corruption and container validation\n');
+let awg0 = wg.from_vpn(links[0]);
+let qcompress_ff = chr(0, 0, 0, 255) + substr(bytes, 4);
+let awg_ff = wg.from_vpn(uri(qcompress_ff));
+assert(awg_ff != null && awg_ff.peers != null && length(awg_ff.peers) == 1 && awg_ff.peers[0].address == awg0.peers[0].address && awg_ff.peers[0].port == awg0.peers[0].port && awg_ff.peers[0].public_key == awg0.peers[0].public_key, '0x000000FF qCompress header decoded');
+let test_priv = b64enc('0123456789abcdef0123456789abcdef');
+let test_pub = b64enc('fedcba9876543210fedcba9876543210');
+let remote_host_vpn = uri(sprintf('%J', {
+    hostName: '198.51.100.42',
+    containers: [{
+        container: 'amnezia-awg',
+        awg: {
+            port: '51820',
+            last_config: {
+                config: sprintf('[Interface]\nPrivateKey = %s\nAddress = 10.8.0.2/32\nJc = 4\n[Peer]\nPublicKey = %s\nEndpoint = $REMOTE_HOST:51820\nAllowedIPs = 0.0.0.0/0\n', test_priv, test_pub)
+            }
+        }
+    }]
+}));
+let rh_ep = wg.from_vpn(remote_host_vpn);
+assert(rh_ep != null && rh_ep.peers != null && rh_ep.peers[0].address == '198.51.100.42' && rh_ep.peers[0].port == 51820, '$REMOTE_HOST substituted in Endpoint');
+let server_ip_vpn = uri(sprintf('%J', {
+    hostName: '203.0.113.77',
+    containers: [{
+        container: 'amnezia-wireguard',
+        wireguard: {
+            port: '4444',
+            last_config: {
+                config: sprintf('[Interface]\nPrivateKey = %s\nAddress = 10.8.0.3/32\n[Peer]\nPublicKey = %s\nEndpoint = $SERVER_IP_ADDRESS:4444\nAllowedIPs = 0.0.0.0/0\n', test_priv, test_pub)
+            }
+        }
+    }]
+}));
+let sip_ep = wg.from_vpn(server_ip_vpn);
+assert(sip_ep != null && sip_ep.peers != null && sip_ep.peers[0].address == '203.0.113.77' && sip_ep.peers[0].port == 4444, '$SERVER_IP_ADDRESS substituted in Endpoint');
+let synth_peer_vpn = uri(sprintf('%J', {
+    hostName: '198.51.100.55',
+    containers: [{
+        container: 'amnezia-awg',
+        awg: {
+            port: '51821',
+            server_pub_key: test_pub,
+            last_config: {
+                config: sprintf('[Interface]\nPrivateKey = %s\nAddress = 10.8.0.4/32\nJc = 5\n', test_priv)
+            }
+        }
+    }]
+}));
+let sp_ep = wg.from_vpn(synth_peer_vpn);
+assert(sp_ep != null && sp_ep.peers != null && sp_ep.peers[0].address == '198.51.100.55' && sp_ep.peers[0].port == 51821 && sp_ep.peers[0].public_key == test_pub, 'missing [Peer] synthesized from hostName and server_pub_key');
+let awg3_vpn = uri(sprintf('%J', {
+    description: 'AWG3 Node',
+    hostName: '198.51.100.88',
+    containers: [{
+        container: 'amnezia-awg3',
+        awg3: {
+            port: '51830',
+            last_config: {
+                config: sprintf('[Interface]\nPrivateKey = %s\nAddress = 10.8.0.5/32\nJc = 6\nS3 = 12\n[Peer]\nPublicKey = %s\nEndpoint = 198.51.100.88:51830\nAllowedIPs = 0.0.0.0/0\n', test_priv, test_pub)
+            }
+        }
+    }]
+}));
+let a3_ep = wg.from_vpn(awg3_vpn);
+assert(a3_ep != null && a3_ep.tag == 'AWG3 Node' && a3_ep.peers != null && a3_ep.peers[0].address == '198.51.100.88' && a3_ep.peers[0].port == 51830, 'amnezia-awg3 container decoded');
+let amnezia = require('subscription.amnezia');
+let diag_api_cfg = amnezia.diagnose(uri(sprintf('%J', { api_config: { v: 1 } })));
+assert(diag_api_cfg.reason == 'cloud_api_key', 'diagnose reports cloud_api_key for api_config');
+let diag_api_key = amnezia.diagnose(uri(sprintf('%J', { api_key: 'amnezia-cloud-key' })));
+assert(diag_api_key.reason == 'cloud_api_key', 'diagnose reports cloud_api_key for api_key');
+let diag_ovpn = amnezia.diagnose(uri(sprintf('%J', { containers: [{ container: 'amnezia-openvpn', openvpn: { last_config: '{}' } }] })));
+assert(diag_ovpn.reason == 'unsupported_container' && diag_ovpn.detail == 'amnezia-openvpn', 'diagnose reports unsupported_container for amnezia-openvpn');
+let diag_bad = amnezia.diagnose('vpn://not-a-valid-amnezia-link!!!');
+assert(diag_bad.reason == 'invalid_vpn_link', 'diagnose reports invalid_vpn_link for corrupt link');
+print('PASS: Amnezia stored/fixed/dynamic zlib, AWG2, AWG3, qCompress 0x000000FF, placeholders, peer synthesis, diagnose, corruption and container validation\n');

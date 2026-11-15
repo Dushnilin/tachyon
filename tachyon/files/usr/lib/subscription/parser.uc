@@ -5791,19 +5791,28 @@ parse_amnezia_vpn_container = function(line) {
     }
     for (let container in candidates) {
         let kind = lc(trim(as_string(container.container || "")));
-        if (kind == "amnezia-xray" || kind == "xray") {
-            let xray_sec = json_decode_text(container.xray) || json_decode_text(container["amnezia-xray"]) || json_decode_text(container.params);
+        if (kind == "amnezia-xray" || kind == "xray" || kind == "xray-reality" || kind == "amnezia-ssxray" || kind == "ssxray" ||
+            (kind == "" && (container.xray != null || container["amnezia-xray"] != null || container["xray-reality"] != null || container["amnezia-ssxray"] != null || container.ssxray != null))) {
+            let xray_sec = json_decode_text(container.xray) || json_decode_text(container["amnezia-xray"]) ||
+                json_decode_text(container["xray-reality"]) || json_decode_text(container["amnezia-ssxray"]) ||
+                json_decode_text(container.ssxray) || json_decode_text(container.params) ||
+                ((container.last_config != null || container.config != null) ? container : null);
             if (type(xray_sec) != "object")
                 continue;
             let raw_last = xray_sec.last_config != null ? xray_sec.last_config : xray_sec.config;
             let last_cfg = json_decode_text(raw_last) || xray_sec;
+            if (type(last_cfg) == "object" && !is_xray_config(last_cfg) && last_cfg.config != null) {
+                let inner_cfg = json_decode_text(last_cfg.config);
+                if (type(inner_cfg) == "object")
+                    last_cfg = inner_cfg;
+            }
             if (!is_xray_config(last_cfg))
                 continue;
             let outbounds = normalize_xray_configs([ last_cfg ]);
             for (let ob in outbounds) {
                 if (type(ob) != "object" || ob.__tachyon_hidden || sing_box_urltest_group(ob))
                     continue;
-                if ((as_string(ob.server || "") == "" || ob.server == "$REMOTE_HOST") && host_fallback != "")
+                if ((as_string(ob.server || "") == "" || ob.server == "$REMOTE_HOST" || ob.server == "$SERVER_IP_ADDRESS") && host_fallback != "")
                     ob.server = host_fallback;
                 if (ob.type == "vless" && ob.flow != null) {
                     let nf = normalize_vless_flow(ob.flow);
@@ -5821,16 +5830,24 @@ parse_amnezia_vpn_container = function(line) {
                 ob.share_link = line;
                 return ob;
             }
-        } else if (kind == "amnezia-shadowsocks" || kind == "shadowsocks" || kind == "amnezia-ss" || kind == "ss") {
-            let ss_sec = json_decode_text(container.shadowsocks) || json_decode_text(container["amnezia-shadowsocks"]) || json_decode_text(container.ss) || json_decode_text(container.params);
+        } else if (kind == "amnezia-shadowsocks" || kind == "shadowsocks" || kind == "amnezia-ss" || kind == "ss" ||
+            (kind == "" && (container.shadowsocks != null || container["amnezia-shadowsocks"] != null || container.ss != null))) {
+            let ss_sec = json_decode_text(container.shadowsocks) || json_decode_text(container["amnezia-shadowsocks"]) ||
+                json_decode_text(container.ss) || json_decode_text(container.params) ||
+                ((container.last_config != null || container.config != null) ? container : null);
             if (type(ss_sec) != "object")
                 continue;
             let raw_last = ss_sec.last_config != null ? ss_sec.last_config : ss_sec.config;
             let last_cfg = json_decode_text(raw_last) || ss_sec;
+            if (type(last_cfg) == "object" && last_cfg.config != null && last_cfg.password == null) {
+                let inner_cfg = json_decode_text(last_cfg.config);
+                if (type(inner_cfg) == "object")
+                    last_cfg = inner_cfg;
+            }
             if (type(last_cfg) != "object")
                 continue;
             let srv = trim(as_string(last_cfg.server || last_cfg.hostName || last_cfg.host || host_fallback));
-            if (srv == "$REMOTE_HOST")
+            if (srv == "$REMOTE_HOST" || srv == "$SERVER_IP_ADDRESS")
                 srv = host_fallback;
             let prt = int(last_cfg.server_port || last_cfg.port || ss_sec.port || data.port || 0);
             let pw = as_string(last_cfg.password || ss_sec.password || "");

@@ -72,5 +72,92 @@ let combo_urls = connections.connection_urls({
     outbound_source_refs: [ "src_amnezia_combo" ]
 });
 check(length(combo_urls) == 2, "outbound_source combines amnezia_conf_text (.conf) and valid vpn:// in amnezia_configs while skipping invalid vpn://");
+let multiline_vpn = substr(vpn_link, 0, 14) + "\n  " + substr(vpn_link, 14, 18) + "\r\n" + substr(vpn_link, 32);
+connections.set_item_sections_from_data({
+    outbound_source: [{
+        ".name": "src_amnezia_multiline",
+        ".type": "outbound_source",
+        enabled: "1",
+        name: "Multi Line",
+        source_type: "amnezia_config",
+        amnezia_configs: [ multiline_vpn ],
+        amnezia_conf_text: multiline_vpn
+    }]
+});
+let sec_multiline = {
+    ".name": "MainMulti",
+    ".type": "section",
+    enabled: "1",
+    action: "connection",
+    outbound_source_refs: [ "src_amnezia_multiline" ]
+};
+let resolved_multi = connections.amnezia_configs(sec_multiline);
+check(length(resolved_multi) == 1 && index(resolved_multi[0], vpn_link) == 0 && index(resolved_multi[0], "\n") < 0 && index(resolved_multi[0], "\r") < 0, "amnezia_configs joins multiline vpn:// URI without embedded whitespace");
+let multi_urls = connections.connection_urls(sec_multiline);
+check(length(multi_urls) == 1 && index(multi_urls[0], vpn_link) == 0 && index(multi_urls[0], "\n") < 0 && index(multi_urls[0], "\r") < 0, "connection_urls resolves multiline vpn:// URI from outbound_source");
+
+let generator = require("tachyon_core.generator_outbounds");
+let captured_errors = [];
+generator.init({
+    runtime_settings: function() { return {}; },
+    is_sb_1_14_plus: function() { return true; },
+    atomic_write_json_file: function() { return true; },
+    routes: {
+        section_needs_country_is: function() { return false; },
+        section_has_direct_priority_level: function() { return false; },
+        add_proxy_selector: function() { return null; },
+        urltest_outbound_tag: function(n, p) { return p + "-" + n; },
+        urltest_idle_timeout: function() { return ""; }
+    },
+    runtime_generate_unsupported: function(msg) { push(captured_errors, msg); }
+});
+function to_vpn_uri(obj) {
+    return "vpn://" + replace(replace(replace(b64enc(sprintf("%J", obj)), /\+/g, "-"), /\//g, "_"), /=+$/, "");
+}
+let api_key_vpn = to_vpn_uri({ api_config: { v: 1 }, api_key: "test-cloud-key" });
+let ovpn_vpn = to_vpn_uri({ containers: [{ container: "amnezia-openvpn", openvpn: { last_config: "{}" } }] });
+let expected_prefix = "connection section has no usable outbounds";
+
+connections.set_item_sections_from_data({
+    outbound_source: [
+        {
+            ".name": "src_amnezia_cloud",
+            ".type": "outbound_source",
+            enabled: "1",
+            name: "Cloud Key",
+            source_type: "amnezia_config",
+            amnezia_configs: [ api_key_vpn ]
+        },
+        {
+            ".name": "src_amnezia_ovpn",
+            ".type": "outbound_source",
+            enabled: "1",
+            name: "OVPN Link",
+            source_type: "amnezia_config",
+            amnezia_configs: [ ovpn_vpn ]
+        }
+    ]
+});
+
+captured_errors = [];
+generator.add_connections_outbound({ outbounds: [], endpoints: [] }, {
+    ".name": "SecCloud",
+    ".type": "section",
+    enabled: "1",
+    action: "connection",
+    outbound_source_refs: [ "src_amnezia_cloud" ]
+}, {});
+check(length(captured_errors) == 1 && index(captured_errors[0], expected_prefix) == 0 && index(lc(captured_errors[0]), "amnezia cloud api key") >= 0, "generator_outbounds preserves no-usable-outbounds prefix with cloud_api_key detail");
+
+captured_errors = [];
+generator.add_connections_outbound({ outbounds: [], endpoints: [] }, {
+    ".name": "SecOvpn",
+    ".type": "section",
+    enabled: "1",
+    action: "connection",
+    outbound_source_refs: [ "src_amnezia_ovpn" ]
+}, {});
+check(length(captured_errors) == 1 && index(captured_errors[0], expected_prefix) == 0 && index(lc(captured_errors[0]), "amnezia-openvpn") >= 0, "generator_outbounds preserves no-usable-outbounds prefix with unsupported OpenVPN detail");
+
 connections.set_item_sections_from_data({});
 print("PASS: ",count," named Amnezia import checks\n");

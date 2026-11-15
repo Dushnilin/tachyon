@@ -56,7 +56,9 @@ function emit(s, n) {
 }
 function inflate_stream(data, has_qt_header) {
     assert(length(data) >= (has_qt_header ? 12 : 8), 'short Qt/zlib payload');
-    let expected = has_qt_header ? be32(data, 0) : max_size;
+    let declared = has_qt_header ? be32(data, 0) : 0;
+    let is_amnezia_sig = has_qt_header && declared == 255;
+    let expected = (!has_qt_header || is_amnezia_sig) ? max_size : declared;
     let cmf = byte(data, has_qt_header ? 4 : 0), flg = byte(data, has_qt_header ? 5 : 1);
     assert(expected > 0 && expected <= max_size && (cmf & 15) == 8 &&
         (cmf >> 4) <= 7 && !(flg & 32) && (cmf * 256 + flg) % 31 == 0, 'invalid Qt/zlib header');
@@ -118,7 +120,7 @@ function inflate_stream(data, has_qt_header) {
             for (let i = 0; i < size; i++) emit(s, byte(s.out, length(s.out) - distance));
         }
     }
-    assert(s.at + (s.bit ? 1 : 0) == s.end && (has_qt_header ? length(s.out) == expected : length(s.out) > 0), 'size mismatch or trailing data');
+    assert(s.at + (s.bit ? 1 : 0) == s.end && (has_qt_header && !is_amnezia_sig ? length(s.out) == expected : length(s.out) > 0), 'size mismatch or trailing data');
     assert(s.b * 65536 + s.a == be32(data, s.end), 'invalid Adler-32 checksum');
     return s.out;
 }
@@ -184,103 +186,117 @@ function inject_awg_fields(conf_text, source_obj) {
     }
     return join('\n', out);
 }
+function first_str(objs, keys) {
+    for (let obj in objs) {
+        if (type(obj) != 'object') continue;
+        for (let k in keys) {
+            let v = obj[k];
+            if (type(v) == 'string' && trim(v) != '')
+                return trim(v);
+        }
+    }
+    return '';
+}
+function first_scalar(objs, keys) {
+    for (let obj in objs) {
+        if (type(obj) != 'object') continue;
+        for (let k in keys) {
+            let v = obj[k];
+            if (type(v) == 'string' && trim(v) != '')
+                return trim(v);
+            if (type(v) == 'int')
+                return '' + v;
+        }
+    }
+    return '';
+}
+function clean_label(raw) {
+    if (type(raw) != 'string' || length(raw) > 200) return '';
+    let out = '';
+    for (let i = 0; i < length(raw); i++) {
+        let n = byte(raw, i);
+        if (n >= 32 && n != 127) out += chr(n);
+    }
+    return out;
+}
+function finalize_conf_text(conf_text, last, settings, data) {
+    if (type(conf_text) != 'string' || conf_text == '') return conf_text;
+    let objs = [last, settings, data];
+    let host = first_str(objs, ['hostName', 'hostname', 'host', 'server']);
+    let endpoint_host = (host != '' && index(host, ':') >= 0 && substr(host, 0, 1) != '[') ? ('[' + host + ']') : host;
+    if (endpoint_host != '') {
+        conf_text = replace(conf_text, /\$REMOTE_HOST/g, endpoint_host);
+        conf_text = replace(conf_text, /\$SERVER_IP_ADDRESS/g, endpoint_host);
+    }
+    let lower = lc(conf_text);
+    if (index(lower, '[interface]') >= 0 && index(lower, '[peer]') < 0) {
+        let pub = first_str(objs, ['server_pub_key', 'peer_public_key', 'public_key', 'publicKey', 'serverPublicKey']);
+        let port = first_scalar(objs, ['port', 'server_port']);
+        if (pub != '' && endpoint_host != '' && port != '') {
+            let psk = first_str(objs, ['psk_key', 'preshared_key', 'presharedKey', 'pre_shared_key']);
+            let allowed = first_str(objs, ['allowed_ips', 'allowedIps']);
+            let ka = first_scalar(objs, ['persistent_keepalive', 'persistentKeepalive', 'keepalive']);
+            if (substr(conf_text, length(conf_text) - 1) != '\n')
+                conf_text += '\n';
+            conf_text += '[Peer]\nPublicKey = ' + pub + '\n';
+            if (psk != '' && substr(psk, 0, 1) != '$')
+                conf_text += 'PresharedKey = ' + psk + '\n';
+            conf_text += 'Endpoint = ' + endpoint_host + ':' + port + '\n';
+            conf_text += 'AllowedIPs = ' + (allowed != '' ? allowed : '0.0.0.0/0, ::/0') + '\n';
+            if (ka != '' && substr(ka, 0, 1) != '$')
+                conf_text += 'PersistentKeepalive = ' + ka + '\n';
+        }
+    }
+    return conf_text;
+}
 function synthesize_conf_from_object(last, settings, data) {
     if (type(last) != 'object') return null;
-    let priv = last.client_priv_key || last.private_key || (settings && (settings.client_priv_key || settings.private_key));
-    let pub = last.server_pub_key || last.public_key || (settings && (settings.server_pub_key || settings.public_key));
-    let addr = last.client_ip || last.address || (settings && (settings.client_ip || settings.address));
-    let host = last.hostName || last.host || last.server || (settings && (settings.hostName || settings.host)) || (data && (data.hostName || data.host));
-    let port = last.port || (settings && settings.port) || (data && data.port);
-    let psk = last.psk_key || last.preshared_key || (settings && (settings.psk_key || settings.preshared_key));
-    if (type(priv) != 'string' || type(pub) != 'string' || type(addr) != 'string' || type(host) != 'string' || port == null)
+    let objs = [last, settings, data];
+    let priv = first_str([last, settings], ['client_priv_key', 'private_key', 'privateKey']);
+    let pub = first_str(objs, ['server_pub_key', 'peer_public_key', 'public_key', 'publicKey', 'serverPublicKey']);
+    let addr = first_str([last, settings], ['client_ip', 'address', 'client_address']);
+    let host = first_str(objs, ['hostName', 'hostname', 'host', 'server']);
+    let port = first_scalar(objs, ['port', 'server_port']);
+    let psk = first_str(objs, ['psk_key', 'preshared_key', 'presharedKey', 'pre_shared_key']);
+    if (priv == '' || pub == '' || addr == '' || host == '' || port == '')
         return null;
     let endpoint_host = (index(host, ':') >= 0 && substr(host, 0, 1) != '[') ? ('[' + host + ']') : host;
+    let mtu = first_scalar([last, settings], ['mtu']);
+    let allowed = first_str(objs, ['allowed_ips', 'allowedIps']);
+    let ka = first_scalar(objs, ['persistent_keepalive', 'persistentKeepalive', 'keepalive']);
     let lines = [
         '[Interface]',
-        'PrivateKey = ' + trim(priv),
-        'Address = ' + trim(addr)
+        'PrivateKey = ' + priv,
+        'Address = ' + addr
     ];
-    if (last.mtu || (settings && settings.mtu))
-        push(lines, 'MTU = ' + trim('' + (last.mtu || settings.mtu)));
+    if (mtu != '')
+        push(lines, 'MTU = ' + mtu);
     push(lines, '[Peer]');
-    push(lines, 'PublicKey = ' + trim(pub));
-    if (type(psk) == 'string' && trim(psk) != '')
-        push(lines, 'PresharedKey = ' + trim(psk));
-    push(lines, 'Endpoint = ' + endpoint_host + ':' + trim('' + port));
-    push(lines, 'AllowedIPs = 0.0.0.0/0, ::/0');
+    push(lines, 'PublicKey = ' + pub);
+    if (psk != '' && substr(psk, 0, 1) != '$')
+        push(lines, 'PresharedKey = ' + psk);
+    push(lines, 'Endpoint = ' + endpoint_host + ':' + port);
+    push(lines, 'AllowedIPs = ' + (allowed != '' ? allowed : '0.0.0.0/0, ::/0'));
+    if (ka != '' && substr(ka, 0, 1) != '$')
+        push(lines, 'PersistentKeepalive = ' + ka);
     return join('\n', lines) + '\n';
 }
 function resolve_container_conf(settings, data) {
     if (type(settings) != 'object') return null;
     let raw_last = settings.last_config != null ? settings.last_config : settings.config;
     if (type(raw_last) == 'string' && substr(trim(raw_last), 0, 1) != '{' && index(lc(raw_last), '[interface]') >= 0) {
-        return inject_awg_fields(raw_last, settings);
+        let conf_out = inject_awg_fields(raw_last, settings);
+        return finalize_conf_text(conf_out, settings, settings, data);
     }
     let last = object(raw_last) || settings;
     let conf_str = type(last.config) == 'string' ? last.config :
         (type(settings.config) == 'string' ? settings.config : synthesize_conf_from_object(last, settings, data));
     if (type(conf_str) != 'string' || conf_str == '')
         return null;
+    conf_str = finalize_conf_text(conf_str, last, settings, data);
     conf_str = inject_awg_fields(conf_str, last);
     conf_str = inject_awg_fields(conf_str, settings);
     return conf_str;
-}
-function extract(text) {
-    if (length(text) > max_size || index(text, '\u0000') >= 0) return null;
-    if (substr(trim(text), 0, 1) != '{') return {text, name:'', awg:false};
-    let data = object(text);
-    if (!data) return null;
-    if (type(data.containers) != 'array') {
-        let direct_conf = resolve_container_conf(data, data);
-        if (!direct_conf) return null;
-        let has_awg_hint = data.Jc != null || data.jc != null || data.H1 != null || data.h1 != null ||
-            index(lc(direct_conf), '\njc') >= 0 || index(lc(direct_conf), '\nh1') >= 0;
-        let dname = type(data.description) == 'string' ? data.description : (type(data.name) == 'string' ? data.name : '');
-        let clean_name = '';
-        if (length(dname) <= 200) {
-            for (let i = 0; i < length(dname); i++) {
-                let n = byte(dname, i);
-                if (n >= 32 && n != 127) clean_name += chr(n);
-            }
-        }
-        return {text:direct_conf, name:clean_name, awg:has_awg_hint};
-    }
-    if (!length(data.containers) || length(data.containers) > 16) return null;
-    let choices = [], selected = null;
-    for (let container in data.containers) {
-        if (type(container) != 'object') return null;
-        let kind = container.container;
-        let protocol = index(['amnezia-awg', 'amnezia-awg2', 'amnezia-awg-v2', 'amnezia-awg1.5', 'awg'], kind) >= 0 ? 'awg' :
-            index(['amnezia-wireguard', 'wireguard', 'wg'], kind) >= 0 ? 'wireguard' : null;
-        if (!protocol) continue;
-        let settings = object(container[protocol]) || object(container.awg) || object(container.awg2) || object(container[kind]) || object(container.params);
-        let conf_text = resolve_container_conf(settings, data);
-        if (!conf_text) continue;
-        let candidate = {text:conf_text, name:type(data.description) == 'string' ? data.description : '', awg:protocol == 'awg'};
-        push(choices, candidate);
-        if (kind == data.defaultContainer) {
-            if (selected) return null;
-            selected = candidate;
-        }
-    }
-    if (!selected) {
-        if (!length(choices)) return null;
-        for (let choice in choices) {
-            if (choice.awg) {
-                selected = choice;
-                break;
-            }
-        }
-        if (!selected) selected = choices[0];
-    }
-    let name = '';
-    if (length(selected.name) > 200) selected.name = '';
-    for (let i = 0; i < length(selected.name); i++) {
-        let n = byte(selected.name, i);
-        if (n >= 32 && n != 127) name += chr(n);
-    }
-    selected.name = name;
-    return selected;
 }
 function decompress(raw) {
     if (type(raw) != 'string' || substr(raw, 0, 6) != 'vpn://') return null;
@@ -306,6 +322,86 @@ function decompress(raw) {
         return data;
     } catch (e) { return null; }
 }
+function has_awg_hint_in_obj(data, conf_text) {
+    return (data && (data.Jc != null || data.jc != null || data.H1 != null || data.h1 != null)) ||
+        index(lc(conf_text), '\njc') >= 0 || index(lc(conf_text), '\nh1') >= 0;
+}
+function extract_single_obj(data, fallback_name) {
+    let direct_conf = resolve_container_conf(data, data);
+    if (!direct_conf) return null;
+    let dname = type(data.description) == 'string' ? data.description : (type(data.name) == 'string' ? data.name : fallback_name);
+    return {text:direct_conf, name:clean_label(dname), awg:has_awg_hint_in_obj(data, direct_conf)};
+}
+function extract_containers(data, fallback_name) {
+    if (!length(data.containers) || length(data.containers) > 16) return null;
+    let choices = [], selected = null;
+    let def_kind = type(data.defaultContainer) == 'string' ? lc(trim(data.defaultContainer)) : '';
+    let desc = clean_label(type(data.description) == 'string' ? data.description : (type(data.name) == 'string' ? data.name : fallback_name));
+    for (let container in data.containers) {
+        if (type(container) != 'object') return null;
+        let kind_raw = type(container.container) == 'string' ? trim(container.container) : '';
+        let kind = lc(kind_raw);
+        let protocol = index(['amnezia-awg', 'amnezia-awg2', 'amnezia-awg3', 'amnezia-awg-v2', 'amnezia-awg-v3', 'amnezia-awg1.5', 'amnezia-awg3.1', 'awg', 'awg2', 'awg3'], kind) >= 0 ? 'awg' :
+            index(['amnezia-wireguard', 'wireguard', 'wg'], kind) >= 0 ? 'wireguard' : null;
+        if (!protocol && kind == '') {
+            if (object(container.awg) || object(container.awg2) || object(container.awg3) ||
+                object(container['amnezia-awg']) || object(container['amnezia-awg2']) || object(container['amnezia-awg3']))
+                protocol = 'awg';
+            else if (object(container.wireguard) || object(container.wg) || object(container['amnezia-wireguard']))
+                protocol = 'wireguard';
+        }
+        if (!protocol) continue;
+        let settings = object(container[protocol]) || object(container.awg) || object(container.awg2) ||
+            object(container.awg3) || object(container['amnezia-awg']) || object(container['amnezia-awg2']) ||
+            object(container['amnezia-awg3']) || object(container['amnezia-wireguard']) ||
+            object(container[kind_raw]) || object(container[kind]) || object(container.params) ||
+            ((container.last_config != null || container.config != null) ? container : null);
+        let conf_text = resolve_container_conf(settings, data);
+        if (!conf_text) continue;
+        let candidate = {text:conf_text, name:desc, awg:protocol == 'awg'};
+        push(choices, candidate);
+        if (def_kind != '' && kind == def_kind) {
+            if (selected) return null;
+            selected = candidate;
+        }
+    }
+    if (!selected) {
+        if (!length(choices)) return null;
+        for (let choice in choices) {
+            if (choice.awg) {
+                selected = choice;
+                break;
+            }
+        }
+        if (!selected) selected = choices[0];
+    }
+    return selected;
+}
+function extract(text) {
+    if (length(text) > max_size || index(text, '\u0000') >= 0) return null;
+    if (substr(trim(text), 0, 1) != '{') return {text, name:'', awg:false};
+    let data = object(text);
+    if (!data) return null;
+    if (type(data.containers) != 'array') {
+        let outer_name = type(data.description) == 'string' ? data.description : (type(data.name) == 'string' ? data.name : '');
+        let wrapped = first_str([data], ['config', 'wg_config', 'awg_config']);
+        if (substr(wrapped, 0, 6) == 'vpn://') {
+            let inner = decompress(wrapped);
+            if (type(inner) != 'string') return null;
+            if (substr(trim(inner), 0, 1) != '{') {
+                let conf_out = finalize_conf_text(inner, data, data, data);
+                return {text:conf_out, name:clean_label(outer_name), awg:has_awg_hint_in_obj(data, conf_out)};
+            }
+            let inner_obj = object(inner);
+            if (!inner_obj) return null;
+            if (type(inner_obj.containers) == 'array')
+                return extract_containers(inner_obj, outer_name);
+            return extract_single_obj(inner_obj, outer_name);
+        }
+        return extract_single_obj(data, '');
+    }
+    return extract_containers(data, '');
+}
 function decode(data) {
     try {
         if (length(data) >= 6 && byte(data, 0) == 0)
@@ -318,4 +414,42 @@ function decode(data) {
         return extract(data);
     } catch (e) { return null; }
 }
-return {decode, decompress};
+function diagnose(raw) {
+    let text = decompress(raw);
+    if (type(text) != 'string')
+        return {reason:'invalid_vpn_link', detail:''};
+    if (substr(trim(text), 0, 1) == '{') {
+        let data = object(text);
+        if (!data)
+            return {reason:'invalid_vpn_link', detail:''};
+        if (type(data.containers) != 'array') {
+            if ((data.api_config != null || data.auth_data != null || data.api_key != null) &&
+                data.config == null && data.client_priv_key == null && data.private_key == null)
+                return {reason:'cloud_api_key', detail:''};
+        } else if (length(data.containers) > 0) {
+            let unsupported = [], has_supported = false;
+            let supported = [
+                'amnezia-awg', 'amnezia-awg2', 'amnezia-awg3', 'amnezia-awg-v2', 'amnezia-awg-v3',
+                'amnezia-awg1.5', 'amnezia-awg3.1', 'awg', 'awg2', 'awg3',
+                'amnezia-wireguard', 'wireguard', 'wg',
+                'amnezia-xray', 'xray', 'xray-reality', 'amnezia-ssxray', 'ssxray',
+                'amnezia-shadowsocks', 'shadowsocks', 'amnezia-ss', 'ss'
+            ];
+            for (let c in data.containers) {
+                if (type(c) != 'object' || type(c.container) != 'string') continue;
+                let cname = trim(c.container);
+                let lcname = lc(cname);
+                if (index(supported, lcname) >= 0)
+                    has_supported = true;
+                else if (lcname != 'amnezia-dns' && cname != '')
+                    push(unsupported, cname);
+            }
+            if (!has_supported && length(unsupported) > 0)
+                return {reason:'unsupported_container', detail:join(', ', unsupported)};
+            if (has_supported)
+                return {reason:'incomplete_container', detail:''};
+        }
+    }
+    return {reason:'invalid_vpn_link', detail:''};
+}
+return {decode, decompress, diagnose};

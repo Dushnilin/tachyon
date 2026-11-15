@@ -22,7 +22,7 @@ function host(value) {
     value = trim(str(value));
     if (substr(value, 0, 1) == "[" && substr(value, -1) == "]")
         value = substr(value, 1, length(value) - 2);
-    if (ip.valid_ip(value))
+    if (ip.valid_ip_with_zone(value))
         return value;
     if (!value || length(value) > 253) return "";
     for (let label in split(value, "."))
@@ -32,6 +32,12 @@ function host(value) {
 }
 
 function uri_host(value) {
+    value = str(value);
+    if (substr(value, 0, 1) == "[" && substr(value, -1) == "]")
+        value = substr(value, 1, length(value) - 2);
+    let pct = index(value, "%");
+    if (pct >= 0 && ip.valid_ipv6_zone(value))
+        value = substr(value, 0, pct);
     return ip.valid_ipv6(value) ? "[" + value + "]" : value;
 }
 
@@ -85,7 +91,8 @@ function transport(s) {
 }
 
 function tls_params(s, protocol, address, pin) {
-    let params = { sni: s.tls_server_name || (protocol == "hysteria2" ? "" : address) };
+    let default_sni = (protocol == "hysteria2" || ip.valid_ip_with_zone(address)) ? "" : address;
+    let params = { sni: s.tls_server_name || default_sni };
     let generated = !match(s.tls_certificate_path || "/etc/tachyon/servers/generated", /^\/etc\/(acme|letsencrypt|ssl\/certs)\//);
     if (generated || pin != "") params.insecure = "1";
     if (pin != "") params[protocol == "hysteria2" ? "pinSHA256" : "pcs"] = pin;
@@ -346,7 +353,8 @@ function build(s, fallback_host, pin) {
             "\n\n[Peer]\nPublicKey = " + s.awg_server_public_key +
             (s.awg_preshared_key ? "\nPresharedKey = " + s.awg_preshared_key : "") +
             "\nEndpoint = " + uri_host(address) + ":" + port +
-            "\nAllowedIPs = 0.0.0.0/0, ::/0\nPersistentKeepalive = " + (s.awg_keepalive || "25") + "\n";
+            "\nAllowedIPs = " + (index(str(s.awg_client_address || ""), ":") >= 0 ? "0.0.0.0/0, ::/0" : "0.0.0.0/0") +
+            "\nPersistentKeepalive = " + (s.awg_keepalive || "25") + "\n";
         return "amneziawg://" + replace(b64enc(conf), /=+$/, "") + "#" + encode(user.name);
     }
     if (protocol == "fptn") {
@@ -381,7 +389,8 @@ function build(s, fallback_host, pin) {
     let auth = scheme == "socks5" ? common.bool_value(s.socks_auth_enabled ?? "1") : user.password != "";
     if (protocol == "naive" && !user.password) return "";
     let credential = auth ? encode(user.username) + ":" + encode(user.password) + "@" : "";
-    let naive_query = protocol == "naive" ? query({ sni: s.tls_server_name || address, pcs: pin }) : "";
+    let default_naive_sni = ip.valid_ip_with_zone(address) ? "" : address;
+    let naive_query = protocol == "naive" ? query({ sni: s.tls_server_name || default_naive_sni, pcs: pin }) : "";
     return scheme + "://" + credential + uri_host(address) + ":" + port + naive_query + "#" + encode(user.name);
 }
 

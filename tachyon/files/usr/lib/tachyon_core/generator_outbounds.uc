@@ -14,6 +14,7 @@ let subscription_parser = require("subscription.parser");
 let connections = require("config.connections");
 let subscription_wireguard = require("subscription.wireguard");
 let subscription_amnezia = require("subscription.amnezia_config");
+let amnezia_decoder = require("subscription.amnezia");
 let exec = require("core.exec");
 let core_ip = require("core.ip");
 
@@ -566,16 +567,23 @@ function shadowsocks_userinfo_valid(value) {
 }
 
 function split_host_port(value) {
-    value = as_string(value);
+    value = trim(as_string(value));
     if (substr(value, 0, 1) == "[") {
         let close = index(value, "]");
-        if (close > 0 && substr(value, close + 1, 1) == ":")
-            return [ substr(value, 1, close - 1), substr(value, close + 2) ];
+        if (close > 0) {
+            if (substr(value, close + 1, 1) == ":")
+                return [ substr(value, 1, close - 1), substr(value, close + 2) ];
+            if (close == length(value) - 1)
+                return [ substr(value, 1, close - 1), "" ];
+        }
     }
 
+    let first_colon = index(value, ":");
     let colon = rindex(value, ":");
     if (colon < 0)
         return [ "", "" ];
+    if (first_colon >= 0 && first_colon != colon)
+        return [ value, "" ];
     return [ substr(value, 0, colon), substr(value, colon + 1) ];
 }
 
@@ -3067,6 +3075,51 @@ function add_connection_dpi_sources(config, state, section, taken, selector_tags
     }
 }
 
+function format_amnezia_diagnosis(diag) {
+    if (type(diag) != "object")
+        return "";
+    let reason = as_string(diag.reason || "");
+    let detail = as_string(diag.detail || "");
+    if (reason == "cloud_api_key")
+        return "Amnezia Cloud API key vpn:// link requires gateway exchange; export a WireGuard/AmneziaWG .conf file instead";
+    if (reason == "unsupported_container")
+        return "unsupported Amnezia container" + (detail != "" ? (": " + detail) : "");
+    if (reason == "incomplete_container")
+        return "incomplete Amnezia container" + (detail != "" ? (": " + detail) : "");
+    if (reason == "invalid_vpn_link")
+        return "invalid vpn:// link" + (detail != "" ? (": " + detail) : "");
+    return "";
+}
+
+function diagnose_amnezia_entry(raw_entry) {
+    if (!amnezia_decoder || type(amnezia_decoder.diagnose) != "function")
+        return "";
+    let val = trim(as_string(raw_entry));
+    if (val == "")
+        return "";
+    if (substr(val, 0, 1) == "{") {
+        let parsed = null;
+        try { parsed = json(val); } catch (e) {}
+        if (type(parsed) == "object" && type(parsed.config) == "string" && substr(trim(parsed.config), 0, 6) == "vpn://")
+            val = trim(parsed.config);
+    }
+    if (substr(val, 0, 6) != "vpn://")
+        return "";
+    return format_amnezia_diagnosis(amnezia_decoder.diagnose(val));
+}
+
+function amnezia_config_failure_detail(section) {
+    let cfgs = connections.amnezia_configs(section);
+    if (length(cfgs) == 0)
+        return "";
+    for (let entry in cfgs) {
+        let msg = diagnose_amnezia_entry(entry);
+        if (msg != "")
+            return msg;
+    }
+    return "";
+}
+
 function add_connections_outbound(config, section, taken) {
     let section_name = section[".name"];
     let selector_tags = [];
@@ -3135,7 +3188,11 @@ function add_connections_outbound(config, section, taken) {
             push(urltest_candidate_tags, dummy_tag);
             runtime_subscription.remember_outbound_metadata(state, dummy_tag, dummy_tag, { type: "direct", tag: dummy_tag });
         } else {
-            ctx.runtime_generate_unsupported("connection section has no usable outbounds");
+            let amn_detail = amnezia_config_failure_detail(section);
+            let msg = "connection section has no usable outbounds";
+            if (amn_detail != "")
+                msg += " (" + amn_detail + ")";
+            ctx.runtime_generate_unsupported(msg);
         }
     }
 
@@ -3181,7 +3238,8 @@ function add_awg_config_members(config, section) {
         if (item == null) {
             if (length(all_awg_cfgs) > 1)
                 continue;
-            ctx.runtime_generate_unsupported("Invalid imported Amnezia configuration");
+            let amn_detail = diagnose_amnezia_entry(value);
+            ctx.runtime_generate_unsupported(amn_detail != "" ? ("Invalid imported Amnezia configuration (" + amn_detail + ")") : "Invalid imported Amnezia configuration");
         }
         let endpoints = subscription_wireguard.from_vpn_endpoints(item.link);
         if (endpoints == null) {
@@ -3206,7 +3264,11 @@ function add_awg_config_members(config, section) {
             }
             if (length(all_awg_cfgs) > 1)
                 continue;
-            ctx.runtime_generate_unsupported("invalid imported Amnezia configuration: " + as_string(item.name));
+            let amn_detail = diagnose_amnezia_entry(value) || diagnose_amnezia_entry(item.link);
+            let msg = "invalid imported Amnezia configuration: " + as_string(item.name);
+            if (amn_detail != "")
+                msg += " (" + amn_detail + ")";
+            ctx.runtime_generate_unsupported(msg);
         }
         // Every peer of the .conf is its own member: a multi-peer file behaves
         // like several configs, and each server joins the urltest pool.
@@ -3227,6 +3289,10 @@ function add_awg_config_members(config, section) {
                 : "";
             state.outboundMetadata.sources[member_tag] = src_id != "" ? src_id : "manual";
         }
+    }
+    if (length(selector_tags) == 0) {
+        let amn_detail = amnezia_config_failure_detail(section);
+        ctx.runtime_generate_unsupported(amn_detail != "" ? ("Invalid imported Amnezia configuration (" + amn_detail + ")") : "Invalid imported Amnezia configuration");
     }
 
     // The group the selector defaults to. Same shape as the FPTN expansion;
@@ -3265,17 +3331,25 @@ function add_awg_endpoint(config, section) {
         return;
     }
     let tag = outbound_tag(section[".name"]);
+    let local_addrs = core_ip.normalize_to_cidrs(list_option(section, "awg_local_address"));
+    let has_v6_local = false;
+    for (let addr in local_addrs) {
+        if (index(addr, ":") >= 0) {
+            has_v6_local = true;
+            break;
+        }
+    }
     let endpoint = {
         type: "wireguard",
         tag: tag,
         name: tag,
-        address: core_ip.normalize_to_cidrs(list_option(section, "awg_local_address")),
+        address: local_addrs,
         private_key: option(section, "awg_private_key", ""),
         peers: [{
             address: option(section, "awg_server_address", ""),
             port: int_option(section, "awg_server_port", "0"),
             public_key: option(section, "awg_peer_public_key", ""),
-            allowed_ips: ["0.0.0.0/0", "::/0"]
+            allowed_ips: has_v6_local ? ["0.0.0.0/0", "::/0"] : ["0.0.0.0/0"]
         }]
     };
 
