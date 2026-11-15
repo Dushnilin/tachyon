@@ -30,11 +30,42 @@ function save(path, item) {
     return true;
 }
 
-function submit(token, chat_id, text, parse_mode, keyboard, smart_entries) {
+function submit(token, chat_id, text, parse_mode, keyboard, smart_entries, dedup_key) {
     let owner = bot_id(token);
     if (owner == "" || !match("" + chat_id, /^-?[0-9]+$/)) return false;
     common.ensure_dir(DIR);
-    if (!fs.chmod(DIR, 0700) || length(entries()) >= MAX_ITEMS) {
+    if (!fs.chmod(DIR, 0700)) {
+        log("[err] Notification outbox unavailable");
+        return false;
+    }
+
+    let current_entries = entries();
+    let key = (dedup_key != null && ("" + dedup_key) != "") ? ("" + dedup_key) : null;
+    if (key != null) {
+        for (let existing_path in current_entries) {
+            let raw = fs.readfile(existing_path);
+            if (raw == null) continue;
+            let existing = null;
+            try { existing = json(raw); } catch (e) { continue; }
+            if (type(existing) != "object") continue;
+            if (existing.bot_id == owner && existing.chat_id == ("" + chat_id) && existing.dedup_key == key) {
+                let updated = {
+                    bot_id: owner,
+                    chat_id: "" + chat_id,
+                    text,
+                    parse_mode,
+                    keyboard,
+                    smart_entries,
+                    dedup_key: key,
+                    attempts: int(existing.attempts || 0),
+                    next_try: existing.next_try || time()
+                };
+                return save(existing_path, updated);
+            }
+        }
+    }
+
+    if (length(current_entries) >= MAX_ITEMS) {
         log("[err] Notification outbox unavailable or full");
         return false;
     }
@@ -43,6 +74,8 @@ function submit(token, chat_id, text, parse_mode, keyboard, smart_entries) {
     // Only the public numeric bot ID is persisted, never its API credential.
     let item = { bot_id: owner, chat_id: "" + chat_id, text, parse_mode,
         keyboard, smart_entries, attempts: 0, next_try: time() };
+    if (key != null)
+        item.dedup_key = key;
     let ok = save(path + ".json", item);
     fs.unlink(path);
     return ok;

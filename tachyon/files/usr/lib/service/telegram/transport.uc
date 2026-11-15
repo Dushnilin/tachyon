@@ -20,6 +20,8 @@ const LOG_FILE = "/var/log/tachyon_telegram.log";
 const LOG_MAX_BYTES = 524288;
 const LOG_KEEP_BYTES = 102400;
 const MIXED_PORT_PROBE_TTL = 30;
+const ROUTE_ALERT_STAMP_FILE = getenv("TACHYON_TG_ROUTE_ALERT_STAMP") || "/var/run/tachyon/telegram-route-alert.stamp";
+const ROUTE_ALERT_COOLDOWN = int(getenv("TACHYON_TG_ROUTE_ALERT_COOLDOWN") || "21600");
 
 let as_string = common.as_string;
 let object_or_empty = common.object_or_empty;
@@ -124,6 +126,21 @@ function cb_data(args) {
 
 function settings() {
     return object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
+}
+
+function in_quiet_hours(cfg) {
+    if (!cfg || cfg.quiet_hours_enabled != "1") return false;
+    let start = int(cfg.quiet_hours_start || "23");
+    let end = int(cfg.quiet_hours_end || "7");
+    if (start == end) return false;
+    let tm = localtime(time());
+    if (!tm) return false;
+    let hr = int(tm.hour);
+    if (start <= end) {
+        return hr >= start && hr < end;
+    } else {
+        return hr >= start || hr < end;
+    }
 }
 
 function get_mixed_proxy_info() {
@@ -247,8 +264,9 @@ function tg_request_via(token, method, payload, proxy_args) {
     if (!token) return null;
     let url = "https://api.telegram.org/bot" + token + "/" + method;
     let is_poll = (method == "getUpdates");
-    let max_time = is_poll ? "65" : "12";
-    let conn_timeout = is_poll ? "15" : "5";
+    let poll_wait = (is_poll && payload && payload.timeout != null) ? int(payload.timeout) : 0;
+    let max_time = is_poll ? as_string(max(15, poll_wait + 10)) : "12";
+    let conn_timeout = is_poll ? "8" : "5";
     let args = [ "curl", "-s", "-m", max_time, "--connect-timeout", conn_timeout ];
 
     if (is_poll) {
@@ -280,8 +298,27 @@ function tg_request(token, method, payload) {
     if (res != null)
         return res;
 
-    if (direct_fallback_enabled() && length(proxy_args) > 0)
+    // An idle long-poll getUpdates connection can be dropped before timeout
+    // by an intermediate hop while short requests through the proxy succeed.
+    if (method == "getUpdates" && length(proxy_args) > 0) {
+        let probe = tg_request_via(token, "getMe", {}, proxy_args);
+        if (probe != null && probe.ok === true)
+            return { ok: true, result: [] };
+    }
+
+    if (direct_fallback_enabled() && length(proxy_args) > 0) {
+        if (method == "getUpdates") {
+            let fallback_payload = {};
+            if (type(payload) == "object") {
+                for (let k in payload)
+                    fallback_payload[k] = payload[k];
+            }
+            let requested = (payload && payload.timeout != null) ? int(payload.timeout) : 5;
+            fallback_payload.timeout = min(5, max(0, requested));
+            payload = fallback_payload;
+        }
         res = tg_request_via(token, method, payload, []);
+    }
 
     return res;
 }
@@ -338,9 +375,21 @@ function send_message(token, chat_id, text, parse_mode, keyboard) {
     return res;
 }
 
+function route_alert_recent() {
+    if (ROUTE_ALERT_COOLDOWN <= 0) return false;
+    let raw = fs.readfile(ROUTE_ALERT_STAMP_FILE);
+    if (raw == null) return false;
+    let ts = int(trim(raw));
+    if (ts <= 0) return false;
+    let elapsed = time() - ts;
+    return elapsed >= 0 && elapsed < ROUTE_ALERT_COOLDOWN;
+}
+
 function alert_route_failure(attempt, proxy_alive) {
     let t = get_t();
     let cfg = settings();
+    if (in_quiet_hours(cfg)) return false;
+    if (route_alert_recent()) return true;
     let token = trim(as_string(cfg.bot_token || ""));
     if (token == "") return;
     let admins = split(trim(as_string(cfg.admin_ids || "")), /,/);
@@ -355,7 +404,16 @@ function alert_route_failure(attempt, proxy_alive) {
         t("route_reason") + " " + hint + ".\n" +
         t("route_fallback_hint") + "\n" +
         t("route_heal_hint");
-    return require("service.telegram.notifications").submit(token, chat_id, text, "HTML", null);
+    let submitted = require("service.telegram.notifications").submit(
+        token, chat_id, text, "HTML", null, null, "route_alert"
+    );
+    if (submitted) {
+        let stamp_dir = common.parent_dir(ROUTE_ALERT_STAMP_FILE);
+        if (stamp_dir != "")
+            common.ensure_dir(stamp_dir);
+        write_text_file(ROUTE_ALERT_STAMP_FILE, as_string(time()) + "\n");
+    }
+    return submitted;
 }
 
 function edit_message(token, chat_id, message_id, text, parse_mode, keyboard) {
@@ -479,12 +537,15 @@ return {
     LOG_MAX_BYTES,
     LOG_KEEP_BYTES,
     MIXED_PORT_PROBE_TTL,
+    ROUTE_ALERT_STAMP_FILE,
+    ROUTE_ALERT_COOLDOWN,
     get_t,
     cb_map_load,
     cb_map_store,
     cb_map_get,
     cb_data,
     settings,
+    in_quiet_hours,
     router_name,
     apply_router_prefix,
     get_mixed_proxy_info,

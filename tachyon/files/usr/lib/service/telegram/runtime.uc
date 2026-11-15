@@ -119,6 +119,7 @@ let write_heartbeat = transport.write_heartbeat;
 let rotate_log_if_needed = transport.rotate_log_if_needed;
 let alert_route_failure = transport.alert_route_failure;
 let settings = transport.settings;
+let in_quiet_hours = transport.in_quiet_hours;
 let register_bot_commands = transport.register_bot_commands;
 
 let format_bytes = rendering.format_bytes;
@@ -131,20 +132,6 @@ let view_section_editor = commands.view_section_editor;
 
 let t = i18n.bind("en");
 
-function in_quiet_hours(cfg) {
-    if (cfg.quiet_hours_enabled != "1") return false;
-    let start = int(cfg.quiet_hours_start || "23");
-    let end = int(cfg.quiet_hours_end || "7");
-    if (start == end) return false;
-    let tm = localtime(time());
-    if (!tm) return false;
-    let hr = int(tm.hour);
-    if (start <= end) {
-        return hr >= start && hr < end;
-    } else {
-        return hr >= start || hr < end;
-    }
-}
 
 function send_api(message, smart_entries) {
     let cfg = settings();
@@ -485,7 +472,7 @@ function is_chat_admin_cached(token, chat_id, user_id) {
 
 function process_updates(token, admin_ids) {
     let offset = sync_offset_for_bot(token);
-    let res = tg_request(token, "getUpdates", { offset: offset, timeout: 50 });
+    let res = tg_request(token, "getUpdates", { offset: offset, timeout: 25 });
     
     // A Telegram answer with ok:false is the API talking, not a broken
     // request. 409 ("terminated by other getUpdates request") and 429 (rate
@@ -885,6 +872,22 @@ function process_updates(token, admin_ids) {
     return true;
 }
 
+function sleep_with_heartbeat(total_seconds) {
+    let remaining = int(total_seconds || 0);
+    if (remaining <= 0) {
+        write_heartbeat();
+        return;
+    }
+    while (remaining > 0) {
+        let chunk = remaining > 15 ? 15 : remaining;
+        sleep(chunk * 1000);
+        remaining -= chunk;
+        write_heartbeat();
+        if (settings().enabled != "1")
+            break;
+    }
+}
+
 function worker() {
     let cfg = settings();
     if (cfg.enabled != "1" || !cfg.bot_token) return 0;
@@ -975,7 +978,7 @@ function worker() {
                 command_success_from_args(["logger", "-t", "tachyon-telegram", log_level + " API poll retry " + as_string(consecutive_failures) + ", backing off " + as_string(backoff) + "s"]);
                 if (!route_alert_sent && consecutive_failures >= 5)
                     route_alert_sent = alert_route_failure(consecutive_failures, mixed_port_alive()) === true;
-                sleep(backoff * 1000);
+                sleep_with_heartbeat(backoff);
                 continue;
             }
             consecutive_failures = 0;
@@ -983,7 +986,7 @@ function worker() {
         } catch (e) {
             consecutive_failures++;
             command_success_from_args(["logger", "-t", "tachyon-telegram", "[err] Worker loop error: " + as_string(e)]);
-            sleep(poll_interval * 1000);
+            sleep_with_heartbeat(poll_interval);
         }
     }
     return 0;
@@ -1174,6 +1177,7 @@ return {
     save_blocked_counts,
     check_blocked_activity,
     process_updates,
+    sleep_with_heartbeat,
     worker,
     stop_runtime,
     start_runtime,
