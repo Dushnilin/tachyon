@@ -1,0 +1,2219 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const mocks = vi.hoisted(() => ({
+  getConfigSections: vi.fn(),
+  getClashApiProxies: vi.fn(),
+  getFptnStatus: vi.fn(),
+  canUseDirectClashApi: vi.fn(),
+  fsRead: vi.fn(),
+}));
+
+vi.mock('../getConfigSections', () => ({
+  getConfigSections: mocks.getConfigSections,
+}));
+
+vi.mock('../../shell', () => ({
+  TachyonShellMethods: {
+    getClashApiProxies: mocks.getClashApiProxies,
+    getFptnStatus: mocks.getFptnStatus,
+  },
+}));
+
+vi.mock('../../../../helpers', () => ({
+  canUseDirectClashApi: mocks.canUseDirectClashApi,
+  getClashHttpUrl: () => 'http://router.example:9090',
+  getProxyUrlName: (link?: string) =>
+    link?.includes('#') ? decodeURIComponent(link.split('#').pop() || '') : '',
+  getProxyUrlTransport: (_link?: string) => undefined,
+  formatOutboundType: (type?: string, transport?: string) =>
+    transport ? `${type} (${transport.toUpperCase()})` : type || '',
+  isCopyableProxyLink: (link?: string) => Boolean(link),
+}));
+
+import {
+  getDashboardSections,
+  resetDirectClashApiState,
+} from '../getDashboardSections';
+import { ClashAPI, Tachyon } from '../../../types';
+
+function proxy(
+  type: string,
+  options: Partial<ClashAPI.ProxyBase> = {},
+): ClashAPI.ProxyBase {
+  return {
+    type,
+    name: options.name || '',
+    udp: true,
+    history: options.history || [],
+    now: options.now,
+    all: options.all,
+    ...(options.telemetry ? { telemetry: options.telemetry } : {}),
+  };
+}
+
+function proxySection(
+  options: Partial<Tachyon.ConfigSection> = {},
+): Tachyon.ConfigSection {
+  return {
+    '.name': 'main',
+    '.type': 'section',
+    enabled: '1',
+    action: 'proxy',
+    selector_proxy_links: ['vless://example#one'],
+    urltests: ['urltest'],
+    urltest_settings: urlTestSettings('urltest', {
+      display_name: 'Fastest',
+      urltest_filter_mode: 'exclude',
+    }),
+    ...options,
+  };
+}
+
+function urlTestSettings(
+  id: string,
+  settings: Record<string, string> = {},
+): string {
+  return JSON.stringify({
+    [id]: settings,
+  });
+}
+
+function priorityGroup(
+  id: string,
+  options: Partial<Tachyon.ConfigSection> = {},
+): Tachyon.ConfigSection {
+  return {
+    '.name': id,
+    '.type': 'priority_group',
+    section: 'main',
+    name: 'Codex Priority',
+    health_url: 'https://priority.example/204',
+    active_check_interval: '5s',
+    check_timeout: '2s',
+    recovery_check_interval: '15s',
+    pick_fastest: '0',
+    switch_to_faster_same_priority: '0',
+    fastest_check_interval: '3m',
+    interrupt_exist_connections: '1',
+    pin_dashboard: '1',
+    ...options,
+  };
+}
+
+function priorityLevel(
+  id: string,
+  options: Partial<Tachyon.ConfigSection> = {},
+): Tachyon.ConfigSection {
+  return {
+    '.name': id,
+    '.type': 'priority_level',
+    group: 'pg_main',
+    name: 'Germany',
+    order: '0',
+    detect_server_country: 'flag_emoji',
+    regex: ['Included'],
+    ...options,
+  };
+}
+
+const clashProxies: Record<string, ClashAPI.ProxyBase> = {
+  'main-out': proxy('Selector', {
+    name: 'main-out',
+    now: 'main-1-out',
+    all: ['main-1-out', 'main-2-out', 'main-3-out', 'main-urltest-out'],
+  }),
+  'main-urltest-out': proxy('URLTest', {
+    name: 'main-urltest-out',
+    history: [{ time: '2026-05-27T00:00:00Z', delay: 10 }],
+    all: ['main-1-out', 'main-3-out'],
+  }),
+  'main-1-out': proxy('VLESS', {
+    name: 'Included 1',
+    history: [{ time: '2026-05-27T00:00:00Z', delay: 100 }],
+  }),
+  'main-2-out': proxy('VLESS', {
+    name: 'Filtered 2',
+    history: [{ time: '2026-05-27T00:00:00Z', delay: 200 }],
+  }),
+  'main-3-out': proxy('VLESS', {
+    name: 'Included 3',
+    history: [{ time: '2026-05-27T00:00:00Z', delay: 300 }],
+  }),
+};
+
+describe('getDashboardSections', () => {
+  beforeEach(() => {
+    resetDirectClashApiState();
+    mocks.getConfigSections.mockReset();
+    mocks.getClashApiProxies.mockReset();
+    mocks.canUseDirectClashApi.mockReset();
+    mocks.fsRead.mockReset();
+    mocks.fsRead.mockRejectedValue(new Error('cache miss'));
+    vi.stubGlobal('fs', { read: mocks.fsRead });
+    vi.stubGlobal('window', undefined);
+    vi.stubGlobal('fetch', undefined);
+
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: { proxies: clashProxies },
+    });
+    mocks.canUseDirectClashApi.mockReturnValue(false);
+  });
+
+  it('shows the full selector group by default', async () => {
+    mocks.getConfigSections.mockResolvedValue([proxySection()]);
+
+    const result = await getDashboardSections();
+    const [section] = result.data;
+
+    expect(result.success).toBe(true);
+    expect(section.latencyTestCode).toBe('main-out');
+    expect(section.latencyTestCodes).toEqual([
+      'main-urltest-out',
+      'main-1-out',
+      'main-2-out',
+      'main-3-out',
+    ]);
+    expect(section.outbounds.map((item) => item.code)).toEqual([
+      'main-urltest-out',
+      'main-1-out',
+      'main-2-out',
+      'main-3-out',
+    ]);
+  });
+
+  it('hides every N/A server when hide_na_servers is enabled', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      proxySection({ dashboard_hide_na_servers: '1' }),
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'main-out': proxy('Selector', {
+            name: 'main-out',
+            now: 'main-1-out',
+            all: ['main-1-out', 'main-2-out', 'main-3-out'],
+          }),
+          'main-1-out': proxy('VLESS', {
+            name: 'Included 1',
+            history: [{ time: '2026-05-27T00:00:00Z', delay: 100 }],
+          }),
+          'main-2-out': proxy('VLESS', { name: 'Never tested' }),
+          'main-3-out': proxy('VLESS', {
+            name: 'Included 3',
+            history: [{ time: '2026-05-27T00:00:00Z', delay: -1 }],
+          }),
+        },
+      },
+    });
+
+    const result = await getDashboardSections();
+    const [section] = result.data;
+
+    expect(result.success).toBe(true);
+    expect(section.outbounds.map((item) => item.code)).toEqual(['main-1-out']);
+  });
+
+  it('keeps N/A servers visible when hide_na_servers is disabled', async () => {
+    mocks.getConfigSections.mockResolvedValue([proxySection()]);
+
+    const result = await getDashboardSections();
+    const [section] = result.data;
+
+    expect(result.success).toBe(true);
+    expect(section.outbounds.map((item) => item.code)).toEqual([
+      'main-urltest-out',
+      'main-1-out',
+      'main-2-out',
+      'main-3-out',
+    ]);
+  });
+
+  it('scopes hide_na_servers to the configuring section and keeps N/A servers visible in other sections', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      proxySection({
+        '.name': 'main',
+        dashboard_hide_na_servers: '1',
+      }),
+      proxySection({
+        '.name': 'other',
+        dashboard_hide_na_servers: '0',
+      }),
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'main-out': proxy('Selector', {
+            name: 'main-out',
+            now: 'main-1-out',
+            all: ['main-1-out', 'main-2-out'],
+          }),
+          'main-1-out': proxy('VLESS', {
+            name: 'Main 1',
+            history: [{ time: '2026-05-27T00:00:00Z', delay: 100 }],
+          }),
+          'main-2-out': proxy('VLESS', { name: 'Main 2 untested' }),
+          'other-out': proxy('Selector', {
+            name: 'other-out',
+            now: 'other-1-out',
+            all: ['other-1-out', 'other-2-out'],
+          }),
+          'other-1-out': proxy('VLESS', {
+            name: 'Other 1',
+            history: [{ time: '2026-05-27T00:00:00Z', delay: 150 }],
+          }),
+          'other-2-out': proxy('VLESS', { name: 'Other 2 untested' }),
+        },
+      },
+    });
+
+    const result = await getDashboardSections();
+    expect(result.success).toBe(true);
+    expect(result.data).toHaveLength(2);
+
+    const [mainSec, otherSec] = result.data;
+    expect(mainSec.outbounds.map((item) => item.code)).toEqual(['main-1-out']);
+    expect(otherSec.outbounds.map((item) => item.code)).toEqual([
+      'other-urltest-out',
+      'other-1-out',
+      'other-2-out',
+    ]);
+  });
+
+  it('does not hide N/A servers if the section configuring hide_na_servers is disabled', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      proxySection({
+        '.name': 'disabled_sec',
+        enabled: '0',
+        action: 'fptn',
+        dashboard_hide_na_servers: '1',
+      }),
+      proxySection({
+        '.name': 'main',
+        enabled: '1',
+        dashboard_hide_na_servers: '0',
+      }),
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'main-out': proxy('Selector', {
+            name: 'main-out',
+            now: 'main-1-out',
+            all: ['main-1-out', 'main-2-out'],
+          }),
+          'main-1-out': proxy('VLESS', {
+            name: 'Main 1',
+            history: [{ time: '2026-05-27T00:00:00Z', delay: 100 }],
+          }),
+          'main-2-out': proxy('VLESS', { name: 'Main 2 untested' }),
+        },
+      },
+    });
+
+    const result = await getDashboardSections();
+    expect(result.success).toBe(true);
+    expect(result.data).toHaveLength(1);
+
+    const [mainSec] = result.data;
+    expect(mainSec.outbounds.map((item) => item.code)).toEqual([
+      'main-urltest-out',
+      'main-1-out',
+      'main-2-out',
+    ]);
+  });
+
+  it('hydrates URLTest details from the section cache and Clash API', async () => {
+    mocks.getConfigSections.mockResolvedValue([proxySection()]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          ...clashProxies,
+          'main-urltest-out': proxy('URLTest', {
+            name: 'main-urltest-out',
+            now: 'main-3-out',
+            history: [{ time: '2026-05-27T00:00:00Z', delay: 10 }],
+            all: ['main-1-out', 'main-3-out'],
+          }),
+        },
+      },
+    });
+    mocks.fsRead.mockResolvedValue(
+      JSON.stringify({
+        outboundMetadata: {
+          names: {
+            'main-1-out': 'First cached',
+            'main-3-out': 'Third cached',
+          },
+          countries: {},
+        },
+        urltestGroups: {
+          'main-urltest-out': {
+            displayName: 'Fastest',
+            outbounds: ['main-1-out', 'main-3-out', 'main-2-out'],
+            url: 'https://probe.example/204',
+            interval: '3m',
+            tolerance: 50,
+            interrupt_exist_connections: true,
+          },
+        },
+      }),
+    );
+
+    const result = await getDashboardSections();
+    const [section] = result.data;
+    const urltest = section.outbounds.find(
+      (item) => item.code === 'main-urltest-out',
+    );
+
+    expect(result.success).toBe(true);
+    expect(urltest?.urlTestInfo).toMatchObject({
+      code: 'main-urltest-out',
+      displayName: 'Fastest',
+      url: 'https://probe.example/204',
+      interval: '3m',
+      tolerance: 50,
+      idleTimeout: '30m',
+      interruptExistConnections: true,
+      selectedCode: 'main-3-out',
+      selectedName: 'Third cached',
+    });
+    expect(urltest?.urlTestInfo?.outbounds.map((item) => item.code)).toEqual([
+      'main-3-out',
+      'main-1-out',
+      'main-2-out',
+    ]);
+    expect(urltest?.urlTestInfo?.outbounds[0]).toMatchObject({
+      displayName: 'Third cached',
+      latency: 300,
+      type: 'VLESS',
+      selected: true,
+    });
+    expect(urltest?.urlTestInfo?.outbounds[1]).toMatchObject({
+      displayName: 'one',
+      latency: 100,
+      selected: false,
+    });
+  });
+
+  it('marks URLTest group as manually selected when a hidden child is active in the selector', async () => {
+    mocks.getConfigSections.mockResolvedValue([proxySection()]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'main-out': proxy('Selector', {
+            name: 'main-out',
+            now: 'main-3-out',
+            all: ['main-urltest-out'],
+          }),
+          'main-urltest-out': proxy('URLTest', {
+            name: 'main-urltest-out',
+            now: 'main-1-out',
+            history: [{ time: '2026-05-27T00:00:00Z', delay: 100 }],
+            all: ['main-1-out', 'main-3-out'],
+          }),
+          'main-1-out': clashProxies['main-1-out'],
+          'main-3-out': clashProxies['main-3-out'],
+        },
+      },
+    });
+    mocks.fsRead.mockResolvedValue(
+      JSON.stringify({
+        outboundMetadata: {
+          names: {
+            'main-1-out': 'First server',
+            'main-3-out': 'Third server',
+          },
+          countries: {},
+        },
+        urltestGroups: {
+          'main-urltest-out': {
+            displayName: 'Fastest',
+            outbounds: ['main-1-out', 'main-3-out'],
+          },
+        },
+      }),
+    );
+
+    const result = await getDashboardSections();
+    const [section] = result.data;
+    const urltest = section.outbounds.find(
+      (item) => item.code === 'main-urltest-out',
+    );
+
+    expect(result.success).toBe(true);
+    expect(urltest?.selected).toBe(true);
+    expect(urltest?.urlTestInfo?.isManualSelection).toBe(true);
+    expect(urltest?.urlTestInfo?.selectedCode).toBe('main-3-out');
+    expect(urltest?.urlTestInfo?.selectedName).toBe('Third server');
+  });
+
+  it('keeps an empty configured URLTest visible when sing-box skipped the group', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      proxySection({
+        urltest_settings: urlTestSettings('urltest', {
+          display_name: 'Empty URLTest',
+          urltest_filter_mode: 'include',
+        }),
+      }),
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'main-out': proxy('Selector', {
+            name: 'main-out',
+            now: 'main-1-out',
+            all: ['main-1-out'],
+          }),
+          'main-1-out': clashProxies['main-1-out'],
+        },
+      },
+    });
+    mocks.fsRead.mockResolvedValue(
+      JSON.stringify({
+        urltestGroups: {
+          'main-urltest-out': {
+            displayName: 'Empty URLTest',
+            outbounds: [],
+            url: 'https://probe.example/204',
+            interval: '3m',
+            tolerance: 50,
+          },
+        },
+      }),
+    );
+
+    const result = await getDashboardSections();
+    const [section] = result.data;
+    const urltest = section.outbounds.find(
+      (item) => item.code === 'main-urltest-out',
+    );
+
+    expect(result.success).toBe(true);
+    expect(section.outbounds.map((item) => item.code)).toEqual([
+      'main-urltest-out',
+      'main-1-out',
+    ]);
+    expect(urltest).toMatchObject({
+      displayName: 'Empty URLTest',
+      type: 'URLTest',
+      runtimeAvailable: false,
+    });
+    expect(urltest?.urlTestInfo?.selectedName).toBeUndefined();
+    expect(urltest?.urlTestInfo?.outbounds).toEqual([]);
+  });
+
+  it('hydrates Priority dashboard details from config, cache and Clash API', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      proxySection({ urltests: [], urltest_settings: undefined }),
+      priorityGroup('pg_main'),
+      priorityLevel('pl_de', {
+        name: 'Germany',
+        order: '0',
+        detect_server_country: 'country_is',
+      }),
+      priorityLevel('pl_nl', {
+        name: 'Netherlands',
+        order: '1',
+        regex: ['Filtered'],
+      }),
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          ...clashProxies,
+          'main-out': proxy('Selector', {
+            name: 'main-out',
+            now: 'main-priority-pg_main-out',
+            all: ['main-1-out', 'main-2-out', 'main-priority-pg_main-out'],
+          }),
+          'main-priority-pg_main-out': proxy('Selector', {
+            name: 'main-priority-pg_main-out',
+            now: 'main-2-out',
+            all: ['main-2-out', 'main-1-out'],
+          }),
+        },
+      },
+    });
+    mocks.fsRead.mockResolvedValue(
+      JSON.stringify({
+        outboundMetadata: {
+          names: {
+            'main-1-out': 'First cached',
+            'main-2-out': 'Second cached',
+          },
+          countries: { 'main-2-out': 'DE' },
+        },
+        priorityGroups: {
+          'main-priority-pg_main-out': {
+            displayName: 'Codex Priority',
+            health_url: 'https://priority.example/204',
+            active_check_interval: '5s',
+            check_timeout: '2s',
+            recovery_check_interval: '15s',
+            pick_fastest: false,
+            switch_to_faster_same_priority: false,
+            interrupt_exist_connections: true,
+            outbounds: ['main-2-out', 'main-1-out'],
+            levels: [
+              {
+                id: 'pl_de',
+                displayName: 'Germany',
+                order: 0,
+                outbounds: ['main-2-out'],
+              },
+              {
+                id: 'pl_nl',
+                displayName: 'Netherlands',
+                order: 1,
+                outbounds: ['main-1-out'],
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    const result = await getDashboardSections();
+    const [section] = result.data;
+    const priority = section.outbounds.find(
+      (item) => item.code === 'main-priority-pg_main-out',
+    );
+
+    expect(result.success).toBe(true);
+    expect(priority).toMatchObject({
+      displayName: 'Codex Priority',
+      type: 'Priority',
+      selected: true,
+    });
+    expect(priority?.priorityInfo).toMatchObject({
+      selectedCode: 'main-2-out',
+      selectedName: 'Second cached',
+      healthUrl: 'https://priority.example/204',
+      activeCheckInterval: '5s',
+      checkTimeout: '2s',
+      recoveryCheckInterval: '15s',
+      pickFastest: false,
+      interruptExistConnections: true,
+    });
+    expect(
+      priority?.priorityInfo?.outbounds.map((item) => ({
+        code: item.code,
+        levelIndex: item.levelIndex,
+        levelName: item.levelName,
+        selected: item.selected,
+        country: item.country,
+      })),
+    ).toEqual([
+      {
+        code: 'main-2-out',
+        levelIndex: 0,
+        levelName: 'Germany',
+        selected: true,
+        country: 'DE',
+      },
+      {
+        code: 'main-1-out',
+        levelIndex: 1,
+        levelName: 'Netherlands',
+        selected: false,
+        country: undefined,
+      },
+    ]);
+  });
+
+  it('keeps an empty Priority group visible when sing-box skipped the selector', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      proxySection({
+        selector_proxy_links: [],
+        urltests: [],
+        urltest_settings: undefined,
+      }),
+      priorityGroup('pg_empty', { name: 'Empty Priority' }),
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: { proxies: {} },
+    });
+    mocks.fsRead.mockResolvedValue(
+      JSON.stringify({
+        priorityGroups: {
+          'main-priority-pg_empty-out': {
+            displayName: 'Empty Priority',
+            outbounds: [],
+            levels: [],
+            interrupt_exist_connections: true,
+          },
+        },
+      }),
+    );
+
+    const result = await getDashboardSections();
+    const [section] = result.data;
+    const priority = section.outbounds.find(
+      (item) => item.code === 'main-priority-pg_empty-out',
+    );
+
+    expect(result.success).toBe(true);
+    expect(section.outbounds.map((item) => item.code)).toEqual([
+      'main-priority-pg_empty-out',
+    ]);
+    expect(priority).toMatchObject({
+      displayName: 'Empty Priority',
+      type: 'Priority',
+      runtimeAvailable: false,
+      latency: 0,
+    });
+    expect(priority?.priorityInfo?.selectedName).toBeUndefined();
+    expect(priority?.priorityInfo?.outbounds).toEqual([]);
+  });
+
+  it('keeps legacy URLTest sections compatible before migration', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      proxySection({
+        urltests: undefined,
+        urltest_settings: undefined,
+        urltest_enabled: '1',
+        urltest_filter_mode: 'exclude',
+      }),
+    ]);
+
+    const result = await getDashboardSections();
+    const [section] = result.data;
+
+    expect(result.success).toBe(true);
+    expect(section.outbounds.map((item) => item.code)).toEqual([
+      'main-urltest-out',
+      'main-1-out',
+      'main-2-out',
+      'main-3-out',
+    ]);
+    expect(section.outbounds[0].displayName).toBe('Fastest');
+  });
+
+  it('supports multiple configured URLTest groups', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      proxySection({
+        urltests: undefined,
+        urltest_settings: undefined,
+      }),
+      {
+        '.name': 'cfg010001',
+        '.type': 'urltest',
+        section: 'main',
+        name: 'Fast group',
+      },
+      {
+        '.name': 'cfg010002',
+        '.type': 'urltest',
+        section: 'main',
+        name: 'Stable group',
+      },
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          ...clashProxies,
+          'main-out': proxy('Selector', {
+            name: 'main-out',
+            now: 'main-urltest-cfg010001-out',
+            all: [
+              'main-1-out',
+              'main-urltest-cfg010002-out',
+              'main-2-out',
+              'main-urltest-cfg010001-out',
+            ],
+          }),
+          'main-urltest-cfg010001-out': proxy('URLTest', {
+            name: 'main-urltest-cfg010001-out',
+            history: [{ time: '2026-05-27T00:00:00Z', delay: 10 }],
+            all: ['main-1-out'],
+          }),
+          'main-urltest-cfg010002-out': proxy('URLTest', {
+            name: 'main-urltest-cfg010002-out',
+            history: [{ time: '2026-05-27T00:00:00Z', delay: 50 }],
+            all: ['main-2-out'],
+          }),
+        },
+      },
+    });
+
+    const result = await getDashboardSections();
+    const [section] = result.data;
+
+    expect(result.success).toBe(true);
+    expect(section.outbounds.map((item) => item.code)).toEqual([
+      'main-urltest-cfg010001-out',
+      'main-urltest-cfg010002-out',
+      'main-1-out',
+      'main-2-out',
+    ]);
+    expect(section.outbounds.map((item) => item.displayName)).toEqual([
+      'Fast group',
+      'Stable group',
+      'one',
+      'Filtered 2',
+    ]);
+  });
+
+  it('keeps non-built-in URLTest groups in selector order when latency sorting is disabled', async () => {
+    mocks.getConfigSections.mockResolvedValue([proxySection()]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'main-out': proxy('Selector', {
+            name: 'main-out',
+            now: 'main-2-out',
+            all: [
+              'main-2-out',
+              'main-provider-urltest-out',
+              'main-1-out',
+              'main-urltest-out',
+            ],
+          }),
+          'main-urltest-out': proxy('URLTest', {
+            name: 'main-urltest-out',
+            history: [{ time: '2026-06-11T00:00:00Z', delay: 10 }],
+            all: ['main-2-out', 'main-1-out'],
+          }),
+          'main-provider-urltest-out': proxy('URLTest', {
+            name: 'Provider URLTest',
+            history: [{ time: '2026-06-11T00:00:00Z', delay: 150 }],
+            all: ['provider-hidden-1-out'],
+          }),
+          'main-1-out': proxy('VLESS', {
+            name: 'Fast leaf',
+            history: [{ time: '2026-06-11T00:00:00Z', delay: 100 }],
+          }),
+          'main-2-out': proxy('VLESS', {
+            name: 'Slow leaf',
+            history: [{ time: '2026-06-11T00:00:00Z', delay: 300 }],
+          }),
+        },
+      },
+    });
+
+    const result = await getDashboardSections();
+    const [section] = result.data;
+
+    expect(result.success).toBe(true);
+    expect(section.latencyTestCodes).toEqual([
+      'main-urltest-out',
+      'main-2-out',
+      'main-provider-urltest-out',
+      'main-1-out',
+    ]);
+    expect(section.outbounds.map((item) => item.code)).toEqual([
+      'main-urltest-out',
+      'main-2-out',
+      'main-provider-urltest-out',
+      'main-1-out',
+    ]);
+  });
+
+  it('sorts outbounds by latency only when enabled and does not prioritize URLTest groups except Fastest', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      proxySection({ sort_by_latency: '1' }),
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'main-out': proxy('Selector', {
+            name: 'main-out',
+            now: 'main-2-out',
+            all: [
+              'main-2-out',
+              'main-provider-urltest-out',
+              'main-1-out',
+              'main-urltest-out',
+            ],
+          }),
+          'main-urltest-out': proxy('URLTest', {
+            name: 'main-urltest-out',
+            history: [{ time: '2026-06-11T00:00:00Z', delay: 10 }],
+            all: ['main-2-out', 'main-1-out'],
+          }),
+          'main-provider-urltest-out': proxy('URLTest', {
+            name: 'Provider URLTest',
+            history: [{ time: '2026-06-11T00:00:00Z', delay: 150 }],
+            all: ['provider-hidden-1-out'],
+          }),
+          'main-1-out': proxy('VLESS', {
+            name: 'Fast leaf',
+            history: [{ time: '2026-06-11T00:00:00Z', delay: 100 }],
+          }),
+          'main-2-out': proxy('VLESS', {
+            name: 'Slow leaf',
+            history: [{ time: '2026-06-11T00:00:00Z', delay: 300 }],
+          }),
+        },
+      },
+    });
+
+    const result = await getDashboardSections();
+    const [section] = result.data;
+
+    expect(result.success).toBe(true);
+    expect(section.latencyTestCodes).toEqual([
+      'main-urltest-out',
+      'main-1-out',
+      'main-provider-urltest-out',
+      'main-2-out',
+    ]);
+    expect(section.outbounds.map((item) => item.code)).toEqual([
+      'main-urltest-out',
+      'main-1-out',
+      'main-provider-urltest-out',
+      'main-2-out',
+    ]);
+  });
+
+  it('sorts an unpinned configured URLTest group by latency', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      proxySection({
+        sort_by_latency: '1',
+        urltest_settings: urlTestSettings('urltest', {
+          display_name: 'Fastest',
+          pin_dashboard: '0',
+        }),
+      }),
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'main-out': proxy('Selector', {
+            name: 'main-out',
+            now: 'main-2-out',
+            all: ['main-2-out', 'main-1-out', 'main-urltest-out'],
+          }),
+          'main-urltest-out': proxy('URLTest', {
+            name: 'main-urltest-out',
+            history: [{ time: '2026-06-11T00:00:00Z', delay: 250 }],
+            all: ['main-2-out', 'main-1-out'],
+          }),
+          'main-1-out': proxy('VLESS', {
+            name: 'Fast leaf',
+            history: [{ time: '2026-06-11T00:00:00Z', delay: 100 }],
+          }),
+          'main-2-out': proxy('VLESS', {
+            name: 'Slow leaf',
+            history: [{ time: '2026-06-11T00:00:00Z', delay: 300 }],
+          }),
+        },
+      },
+    });
+
+    const result = await getDashboardSections();
+    const [section] = result.data;
+
+    expect(result.success).toBe(true);
+    expect(section.outbounds.map((item) => item.code)).toEqual([
+      'main-1-out',
+      'main-urltest-out',
+      'main-2-out',
+    ]);
+  });
+
+  it('does not expose flag-emoji detected countries on dashboard outbounds', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      proxySection({
+        urltest_settings: urlTestSettings('urltest', {
+          display_name: 'Fastest',
+          urltest_filter_mode: 'exclude',
+          detect_server_country: 'flag_emoji',
+        }),
+      }),
+    ]);
+    mocks.fsRead.mockResolvedValue(
+      JSON.stringify({
+        outboundMetadata: {
+          names: {},
+          countries: { 'main-1-out': 'US' },
+        },
+      }),
+    );
+
+    const result = await getDashboardSections();
+    const [section] = result.data;
+
+    expect(result.success).toBe(true);
+    expect(
+      section.outbounds.find((item) => item.code === 'main-1-out')?.country,
+    ).toBeUndefined();
+  });
+
+  it('exposes country.is detected countries on dashboard outbounds', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      proxySection({
+        urltest_settings: urlTestSettings('urltest', {
+          display_name: 'Fastest',
+          urltest_filter_mode: 'exclude',
+          detect_server_country: 'country_is',
+        }),
+      }),
+    ]);
+    mocks.fsRead.mockResolvedValue(
+      JSON.stringify({
+        outboundMetadata: {
+          names: {},
+          countries: { 'main-1-out': 'US' },
+        },
+      }),
+    );
+
+    const result = await getDashboardSections();
+    const [section] = result.data;
+
+    expect(result.success).toBe(true);
+    expect(
+      section.outbounds.find((item) => item.code === 'main-1-out')?.country,
+    ).toBe('US');
+  });
+
+  it('ignores legacy link refs without a resolved proxy link', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      proxySection({
+        subscription_urls: ['https://subscription.example/list'],
+      }),
+    ]);
+    mocks.fsRead.mockResolvedValue(
+      JSON.stringify({
+        links: {},
+        linkRefs: {
+          'main-2-out': {
+            sourceSection: 'main-subscription-1',
+            sourceIndex: 1,
+          },
+        },
+      }),
+    );
+
+    const result = await getDashboardSections();
+    const [section] = result.data;
+    const subscriptionOutbound = section.outbounds.find(
+      (item) => item.code === 'main-2-out',
+    );
+
+    expect(result.success).toBe(true);
+    expect(subscriptionOutbound?.link).toBe('');
+    expect(subscriptionOutbound?.canCopyLink).toBe(false);
+  });
+
+  it('uses cached subscription links without a click-time backend lookup', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      proxySection({
+        subscription_urls: ['https://subscription.example/list'],
+      }),
+    ]);
+    mocks.fsRead.mockResolvedValue(
+      JSON.stringify({
+        outboundMetadata: {
+          names: { 'main-2-out': 'Provider Subscription' },
+          countries: {},
+        },
+        links: {
+          'main-2-out':
+            'vless://00000000-0000-4000-8000-000000000002@example.com:443#Subscription',
+        },
+      }),
+    );
+
+    const result = await getDashboardSections();
+    const [section] = result.data;
+    const subscriptionOutbound = section.outbounds.find(
+      (item) => item.code === 'main-2-out',
+    );
+
+    expect(result.success).toBe(true);
+    expect(subscriptionOutbound?.link).toBe(
+      'vless://00000000-0000-4000-8000-000000000002@example.com:443#Subscription',
+    );
+    expect(subscriptionOutbound?.displayName).toBe('Provider Subscription');
+    expect(subscriptionOutbound?.canCopyLink).toBe(true);
+  });
+
+  it('does not expose countries when URLTest filtering is set to all servers', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      proxySection({
+        urltest_settings: urlTestSettings('urltest', {
+          display_name: 'Fastest',
+          detect_server_country: 'country_is',
+          urltest_filter_mode: 'disabled',
+        }),
+      }),
+    ]);
+    mocks.fsRead.mockResolvedValue(
+      JSON.stringify({
+        outboundMetadata: {
+          names: {},
+          countries: { 'main-1-out': 'US' },
+        },
+      }),
+    );
+
+    const result = await getDashboardSections();
+    const [section] = result.data;
+
+    expect(result.success).toBe(true);
+    expect(section.latencyTestCode).toBe('main-out');
+    expect(section.latencyTestCodes).toEqual([
+      'main-urltest-out',
+      'main-1-out',
+      'main-2-out',
+      'main-3-out',
+    ]);
+    expect(section.outbounds.map((item) => item.code)).toContain('main-2-out');
+    expect(
+      section.outbounds.find((item) => item.code === 'main-1-out')?.country,
+    ).toBeUndefined();
+  });
+
+  it('uses allocated tags for section names that collide with system tags', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      proxySection({
+        '.name': 'direct',
+        urltests: [],
+        urltest_settings: undefined,
+        urltest_enabled: '0',
+      }),
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'direct-out-1': proxy('Selector', {
+            name: 'direct-out-1',
+            now: 'direct-1-out',
+            all: ['direct-1-out'],
+          }),
+          'direct-1-out': proxy('VLESS', {
+            name: 'Direct manual',
+            history: [{ time: '2026-05-27T00:00:00Z', delay: 100 }],
+          }),
+        },
+      },
+    });
+
+    const result = await getDashboardSections();
+    const [section] = result.data;
+
+    expect(result.success).toBe(true);
+    expect(section.code).toBe('direct-out-1');
+    expect(section.outbounds.map((item) => item.code)).toEqual([
+      'direct-1-out',
+    ]);
+  });
+
+  it('shows legacy VPN interface sections as a Connection selector group', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      {
+        '.name': 'AWG',
+        '.type': 'section',
+        enabled: '1',
+        action: 'vpn',
+        interface: 'awg1',
+      },
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'AWG-out': proxy('Selector', {
+            name: 'AWG-out',
+            now: 'AWG-interface-1-out',
+            all: ['AWG-interface-1-out'],
+          }),
+          'AWG-interface-1-out': proxy('Direct', {
+            name: 'awg1',
+            history: [{ time: '2026-06-07T00:00:00Z', delay: 445 }],
+          }),
+        },
+      },
+    });
+
+    const result = await getDashboardSections();
+    const [section] = result.data;
+
+    expect(result.success).toBe(true);
+    expect(section.action).toBe('vpn');
+    expect(section.withTagSelect).toBe(true);
+    expect(section.proxyConfigType).toBe('interface');
+    expect(section.outbounds[0]).toMatchObject({
+      code: 'AWG-interface-1-out',
+      displayName: 'awg1',
+      selected: true,
+    });
+  });
+
+  it('hydrates migrated interface children into the Connection selector group', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      {
+        '.name': 'AWG',
+        '.type': 'section',
+        enabled: '1',
+        action: 'connection',
+      },
+      {
+        '.name': 'cfg01',
+        '.type': 'section_interface',
+        section: 'AWG',
+        name: 'awg1',
+      },
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'AWG-out': proxy('Selector', {
+            name: 'AWG-out',
+            now: 'AWG-interface-1-out',
+            all: ['AWG-interface-1-out'],
+          }),
+          'AWG-interface-1-out': proxy('Direct', {
+            name: 'awg1',
+            history: [{ time: '2026-07-13T00:00:00Z', delay: 445 }],
+          }),
+        },
+      },
+    });
+
+    const result = await getDashboardSections();
+    const [section] = result.data;
+
+    expect(result.success).toBe(true);
+    expect(section.code).toBe('AWG-out');
+    expect(section.withTagSelect).toBe(true);
+    expect(section.proxyConfigType).toBe('interface');
+    expect(section.outbounds[0]).toMatchObject({
+      code: 'AWG-interface-1-out',
+      displayName: 'awg1',
+      selected: true,
+    });
+  });
+
+  it('exposes ByeDPI sections on the dashboard as service cards', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      proxySection(),
+      {
+        '.name': 'dpi',
+        '.type': 'section',
+        enabled: '1',
+        action: 'byedpi',
+      },
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          ...clashProxies,
+          'dpi-out': proxy('Socks', {
+            name: 'dpi-out',
+            history: [{ time: '2026-06-10T00:00:00Z', delay: 20 }],
+          }),
+        },
+      },
+    });
+
+    const result = await getDashboardSections();
+
+    expect(result.success).toBe(true);
+    expect(result.data.map((section) => section.sectionName)).toEqual([
+      'main',
+      'dpi',
+    ]);
+  });
+
+  it('exposes single-endpoint protocol sections (Mieru, Sudoku, AnyTLS, Snell, MASQUE, OpenVPN) on the dashboard', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      {
+        '.name': 'mieru_sec',
+        '.type': 'section',
+        enabled: '1',
+        action: 'mieru',
+      },
+      {
+        '.name': 'sudoku_sec',
+        '.type': 'section',
+        enabled: '1',
+        action: 'sudoku',
+      },
+      {
+        '.name': 'anytls_sec',
+        '.type': 'section',
+        enabled: '1',
+        action: 'anytls',
+      },
+      {
+        '.name': 'snell_sec',
+        '.type': 'section',
+        enabled: '1',
+        action: 'snell',
+      },
+      {
+        '.name': 'masque_sec',
+        '.type': 'section',
+        enabled: '1',
+        action: 'masque',
+      },
+      {
+        '.name': 'openvpn_sec',
+        '.type': 'section',
+        enabled: '1',
+        action: 'openvpn',
+      },
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'mieru_sec-out': proxy('Mieru', {
+            name: 'mieru_sec-out',
+            history: [{ time: '2026-09-09T00:00:00Z', delay: 42 }],
+          }),
+          'sudoku_sec-out': proxy('Sudoku', {
+            name: 'sudoku_sec-out',
+            history: [{ time: '2026-09-09T00:00:00Z', delay: 55 }],
+          }),
+          'anytls_sec-out': proxy('AnyTLS', {
+            name: 'anytls_sec-out',
+            history: [{ time: '2026-09-09T00:00:00Z', delay: 60 }],
+          }),
+          'snell_sec-out': proxy('Snell', {
+            name: 'snell_sec-out',
+            history: [{ time: '2026-09-09T00:00:00Z', delay: 70 }],
+          }),
+          'masque_sec-out': proxy('MASQUE', {
+            name: 'masque_sec-out',
+            history: [{ time: '2026-09-09T00:00:00Z', delay: 80 }],
+          }),
+          'openvpn_sec-out': proxy('OpenVPN', {
+            name: 'openvpn_sec-out',
+            history: [{ time: '2026-09-09T00:00:00Z', delay: 90 }],
+          }),
+        },
+      },
+    });
+
+    const result = await getDashboardSections();
+
+    expect(result.success).toBe(true);
+    expect(result.data.map((s) => s.sectionName)).toEqual([
+      'mieru_sec',
+      'sudoku_sec',
+      'anytls_sec',
+      'snell_sec',
+      'masque_sec',
+      'openvpn_sec',
+    ]);
+    expect(result.data[0].outbounds[0]).toMatchObject({
+      code: 'mieru_sec-out',
+      displayName: 'Mieru',
+      type: 'Mieru',
+      latency: 42,
+      runtimeAvailable: true,
+    });
+    expect(result.data[1].outbounds[0]).toMatchObject({
+      code: 'sudoku_sec-out',
+      displayName: 'Sudoku',
+      type: 'Sudoku',
+      latency: 55,
+      runtimeAvailable: true,
+    });
+  });
+
+  it('fetches Clash API proxies directly in the browser to avoid rpcd output limits', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      { '.name': 'settings', '.type': 'settings', yacd_secret_key: 'secret' },
+      proxySection(),
+    ]);
+    mocks.canUseDirectClashApi.mockReturnValue(true);
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ proxies: clashProxies }),
+    });
+
+    vi.stubGlobal('window', { location: { hostname: 'router.example' } });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await getDashboardSections();
+
+    expect(result.success).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://router.example:9090/proxies',
+      expect.objectContaining({
+        headers: { Authorization: 'Bearer secret' },
+        signal: expect.anything(),
+      }),
+    );
+    expect(mocks.getClashApiProxies).not.toHaveBeenCalled();
+  });
+
+  it('uses rpcd fallback when direct Clash API access times out', async () => {
+    vi.useFakeTimers();
+
+    try {
+      mocks.getConfigSections.mockResolvedValue([proxySection()]);
+      mocks.canUseDirectClashApi.mockReturnValue(true);
+      const fetchMock = vi.fn(
+        (_url: string, options?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            options?.signal?.addEventListener('abort', () =>
+              reject(new Error('aborted')),
+            );
+          }),
+      );
+
+      vi.stubGlobal('fetch', fetchMock);
+
+      const resultPromise = getDashboardSections();
+      await vi.advanceTimersByTimeAsync(5000);
+      const result = await resultPromise;
+
+      expect(result.success).toBe(true);
+      expect(mocks.getClashApiProxies).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('uses rpcd fallback when direct Clash API access is unsafe', async () => {
+    mocks.getConfigSections.mockResolvedValue([proxySection()]);
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ proxies: clashProxies }),
+    });
+
+    vi.stubGlobal('window', {
+      location: { hostname: 'router.example', protocol: 'https:' },
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await getDashboardSections();
+
+    expect(result.success).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mocks.getClashApiProxies).toHaveBeenCalledTimes(1);
+  });
+
+  it('resolves outbound prefix and cleans displayName from metadata and subscription settings', async () => {
+    const sec = proxySection();
+    sec.subscription_urls = ['https://example.com/sub.txt'];
+    sec.subscription_url_settings = JSON.stringify({
+      'https://example.com/sub.txt': {
+        prefix_nodes: '1',
+        node_prefix: 'Geodema Network',
+      },
+    });
+
+    mocks.getConfigSections.mockResolvedValue([sec]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          ...clashProxies,
+          'main-3-out': proxy('VLESS', {
+            name: 'Geodema Network 🇫🇷 France',
+            history: [{ time: '2026-05-27T00:00:00Z', delay: 158 }],
+          }),
+        },
+      },
+    });
+    mocks.fsRead.mockResolvedValue(
+      JSON.stringify({
+        outboundMetadata: {
+          names: {
+            'main-3-out': 'Geodema Network 🇫🇷 France',
+          },
+          prefixes: {
+            'main-3-out': 'Geodema Network',
+          },
+        },
+      }),
+    );
+
+    const result = await getDashboardSections();
+    const [section] = result.data;
+    const outbound = section.outbounds.find(
+      (item) => item.code === 'main-3-out',
+    );
+
+    expect(result.success).toBe(true);
+    expect(outbound).toBeDefined();
+    expect(outbound?.prefix).toBe('Geodema Network');
+    expect(outbound?.displayName).toBe('🇫🇷 France');
+  });
+
+  it('returns FPTN section as a connection with servers and urltest on dashboard', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      {
+        '.name': 'fptn_sec',
+        '.type': 'section',
+        enabled: '1',
+        action: 'fptn',
+        access_token: 'test_token',
+      },
+    ]);
+    // The backend now expands the token itself: the section tag is a selector
+    // (the Clash API rejects a group switch against a urltest group with 400
+    // "Must be a Selector"), members sit under `<tag>/<name>` exactly like the
+    // core's own expansion, and the auto urltest group carries the section
+    // cache's `-urltest-out` tag.
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'fptn_sec-out': proxy('Selector', {
+            name: 'fptn_sec-out',
+            now: 'fptn_sec-urltest-out',
+            all: [
+              'fptn_sec-urltest-out',
+              'fptn_sec-out/Node-1',
+              'fptn_sec-out/Node-2',
+            ],
+          }),
+          'fptn_sec-urltest-out': proxy('URLTest', {
+            name: 'fptn_sec-urltest-out',
+            now: 'fptn_sec-out/Node-1',
+            all: ['fptn_sec-out/Node-1', 'fptn_sec-out/Node-2'],
+          }),
+          'fptn_sec-out/Node-1': proxy('FPTN', {
+            name: 'fptn_sec-out/Node-1',
+            history: [{ time: '2026-05-27T00:00:00Z', delay: 42 }],
+          }),
+          'fptn_sec-out/Node-2': proxy('FPTN', {
+            name: 'fptn_sec-out/Node-2',
+            history: [{ time: '2026-05-27T00:00:00Z', delay: 84 }],
+          }),
+        },
+      },
+    });
+
+    const result = await getDashboardSections();
+
+    expect(result.success).toBe(true);
+    expect(result.data).toHaveLength(1);
+    expect(result.data[0].sectionName).toBe('fptn_sec');
+    expect(result.data[0].action).toBe('fptn');
+    expect(result.data[0].withTagSelect).toBe(true);
+    expect(result.data[0].proxyConfigType).toBe('selector');
+    expect(result.data[0].serviceStatus).toBeUndefined();
+    expect(result.data[0].outbounds.map((item) => item.code)).toEqual([
+      'fptn_sec-urltest-out',
+      'fptn_sec-out/Node-1',
+      'fptn_sec-out/Node-2',
+    ]);
+    const firstNode = result.data[0].outbounds.find(
+      (item) => item.code === 'fptn_sec-out/Node-1',
+    );
+    expect(firstNode?.displayName).toBe('Node-1');
+    expect(firstNode?.prefix).toBe('fptn_sec-out');
+  });
+
+  it('excludes hidden outbound tags from dashboard section cards even if present in selector', async () => {
+    const sec = proxySection();
+    mocks.getConfigSections.mockResolvedValue([sec]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'main-out': proxy('Selector', {
+            all: ['main-urltest-out', 'proxy-hidden-1', 'proxy-visible-2'],
+            now: 'main-urltest-out',
+          }),
+          'main-urltest-out': proxy('URLTest', {
+            all: ['proxy-hidden-1', 'proxy-visible-2'],
+            now: 'proxy-visible-2',
+          }),
+          'proxy-hidden-1': proxy('VLESS', {
+            name: 'Hidden Member Node',
+            history: [{ time: '2026-05-27T00:00:00Z', delay: 120 }],
+          }),
+          'proxy-visible-2': proxy('VLESS', {
+            name: 'Visible Node',
+            history: [{ time: '2026-05-27T00:00:00Z', delay: 200 }],
+          }),
+        },
+      },
+    });
+    mocks.fsRead.mockResolvedValue(
+      JSON.stringify({
+        hiddenOutboundTags: {
+          'proxy-hidden-1': true,
+        },
+        links: {
+          'proxy-hidden-1': 'vless://hidden',
+          'proxy-visible-2': 'vless://visible',
+        },
+      }),
+    );
+
+    const result = await getDashboardSections();
+    expect(result.success).toBe(true);
+    const [section] = result.data;
+    const codes = section.outbounds.map((item) => item.code);
+    expect(codes).toContain('main-urltest-out');
+    expect(codes).toContain('proxy-visible-2');
+    expect(codes).not.toContain('proxy-hidden-1');
+  });
+
+  it('marks a quarantined section with configError from the runtime errors file', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      proxySection(),
+      proxySection({ '.name': 'other' }),
+    ]);
+    // The runtime writes a flat { section: reason } map when sing-box rejects a
+    // section and init-config quarantines it; a missing file means every
+    // section loaded fine.
+    mocks.fsRead.mockImplementation((path: string) =>
+      path.includes('section-errors')
+        ? Promise.resolve(
+            JSON.stringify({ main: 'outbounds[1]: missing required field' }),
+          )
+        : Promise.reject(new Error('cache miss')),
+    );
+
+    const result = await getDashboardSections();
+
+    expect(result.success).toBe(true);
+    expect(result.data[0].configError).toBe(
+      'outbounds[1]: missing required field',
+    );
+    expect(result.data[1].configError).toBeUndefined();
+  });
+
+  it('leaves configError unset when the runtime errors file is absent', async () => {
+    mocks.getConfigSections.mockResolvedValue([proxySection()]);
+
+    const result = await getDashboardSections();
+
+    expect(result.success).toBe(true);
+    expect(result.data[0].configError).toBeUndefined();
+  });
+
+  it('falls back to fs.read_direct when fs.read fails on large section-cache files (>256 KB)', async () => {
+    mocks.getConfigSections.mockResolvedValue([proxySection()]);
+    const fsReadDirect = vi.fn().mockResolvedValue(
+      JSON.stringify({
+        outboundMetadata: {
+          transports: { 'main-1-out': 'xhttp' },
+          details: { 'main-1-out': 'packet-up+xmux' },
+        },
+      }),
+    );
+    vi.stubGlobal('fs', {
+      read: mocks.fsRead,
+      read_direct: fsReadDirect,
+    });
+
+    const result = await getDashboardSections();
+
+    expect(result.success).toBe(true);
+    expect(fsReadDirect).toHaveBeenCalledWith(
+      '/var/run/tachyon/section-cache/main.json',
+      'text',
+    );
+    const node = result.data[0].outbounds.find((o) => o.code === 'main-1-out');
+    expect(node?.transport).toBe('xhttp');
+    expect(node?.details).toBe('packet-up+xmux');
+  });
+
+  it('exposes dashboardSettings and sorts outbounds by country_latency', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      {
+        '.type': 'settings',
+        '.name': 'settings',
+        dashboard_country_grouping: 'chips',
+        dashboard_sort_mode: 'country_latency',
+        dashboard_hover_freeze: '1',
+      },
+      proxySection({
+        sort_by_latency: '1',
+        selector_proxy_links: [
+          'vless://de2@1.1.1.1:443#%F0%9F%87%A9%F0%9F%87%AA%20Germany%2002',
+          'vless://de1@1.1.1.2:443#%F0%9F%87%A9%F0%9F%87%AA%20Germany%2001',
+          'vless://nl1@1.1.1.3:443#%F0%9F%87%B3%F0%9F%87%B1%20Netherlands%2001',
+        ],
+      }),
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'main-1-out': {
+            name: '🇩🇪 Germany 02',
+            type: 'Vless',
+            history: [{ time: '2026', delay: 100 }],
+            all: [],
+            now: '',
+          },
+          'main-2-out': {
+            name: '🇩🇪 Germany 01',
+            type: 'Vless',
+            history: [{ time: '2026', delay: 30 }],
+            all: [],
+            now: '',
+          },
+          'main-3-out': {
+            name: '🇳🇱 Netherlands 01',
+            type: 'Vless',
+            history: [{ time: '2026', delay: 10 }],
+            all: [],
+            now: '',
+          },
+        },
+      },
+    });
+
+    const result = await getDashboardSections();
+    expect(result.success).toBe(true);
+    const section = result.data[0];
+    expect(section.dashboardSettings).toEqual({
+      countryGrouping: 'chips',
+      chipsGrouping: 'regions',
+      countryChipsLatencyMode: 'min',
+      sortMode: 'country_latency',
+      hoverFreeze: true,
+    });
+
+    // In country_latency:
+    // Germany (Германия) comes before Netherlands (Нидерланды) alphabetically in Russian.
+    // Within Germany, Germany 01 (30ms) comes before Germany 02 (100ms).
+    // Then Netherlands 01 (10ms).
+    const codes = section.outbounds.map((o) => o.displayName);
+    expect(codes).toEqual([
+      'Fastest',
+      '🇩🇪 Germany 01',
+      '🇩🇪 Germany 02',
+      '🇳🇱 Netherlands 01',
+    ]);
+  });
+
+  it('respects dashboard_country_chips_latency_mode setting', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      {
+        '.name': 'settings',
+        '.type': 'settings',
+        dashboard_country_chips_latency_mode: 'max',
+      },
+      proxySection({
+        dashboard_country_grouping: 'chips',
+      }),
+    ]);
+
+    const result = await getDashboardSections();
+    expect(result.success).toBe(true);
+    expect(result.data[0].dashboardSettings?.countryChipsLatencyMode).toBe(
+      'max',
+    );
+  });
+
+  it('renders a modular desync outbound_source section as a Native Desync service section instead of VLESS', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      {
+        '.name': 'youtube',
+        '.type': 'section',
+        enabled: '1',
+        connection_type: 'proxy',
+        action: 'connection',
+        outbound_source_refs: ['src_desync_youtube'],
+      },
+      {
+        '.name': 'src_desync_youtube',
+        '.type': 'outbound_source',
+        source_type: 'desync',
+        enabled: '1',
+        desync_profile: 'disorder',
+      },
+    ]);
+
+    const result = await getDashboardSections();
+    expect(result.success).toBe(true);
+    expect(result.data).toHaveLength(1);
+    const [section] = result.data;
+    expect(section.action).toBe('desync');
+    expect(section.serviceStatus).toMatchObject({
+      serviceType: 'desync',
+      configured: true,
+      ready: true,
+      runningProcesses: 1,
+      expectedProcesses: 1,
+    });
+    expect(section.outbounds).toHaveLength(1);
+    expect(section.outbounds[0].type).toBe('DESYNC');
+  });
+
+  it('preserves JSON payloads with spaces in modular outbound_json sources on the Dashboard', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      {
+        '.name': 'tt_sec',
+        '.type': 'section',
+        enabled: '1',
+        connection_type: 'proxy',
+        action: 'connection',
+        outbound_source_refs: ['src_json_tt_sec'],
+      },
+      {
+        '.name': 'src_json_tt_sec',
+        '.type': 'outbound_source',
+        source_type: 'outbound_json',
+        enabled: '1',
+        outbound_jsons: [
+          '{\n  "type": "trusttunnel",\n  "tag": "tt-node-1",\n  "server": "198.51.100.10",\n  "server_port": 443\n}',
+        ],
+      },
+    ]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'tt_sec-out': proxy('Selector', {
+            name: 'tt_sec-out',
+            now: 'tt-node-1',
+            all: ['tt-node-1'],
+          }),
+          'tt-node-1': proxy('TrustTunnel', {
+            name: 'tt-node-1',
+            history: [{ time: '2026-10-28T00:00:00Z', delay: 42 }],
+          }),
+        },
+      },
+    });
+
+    const result = await getDashboardSections();
+    expect(result.success).toBe(true);
+    expect(result.data).toHaveLength(1);
+    const [section] = result.data;
+    expect(section.outbounds).toHaveLength(1);
+    expect(section.outbounds[0].code).toBe('tt-node-1');
+    expect(section.outbounds[0].selected).toBe(true);
+  });
+
+  it('includes block, bypass, dns, and distinct desync sections on the Dashboard without merging separate desync sections', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      {
+        '.name': 'block',
+        '.type': 'section',
+        enabled: '1',
+        action: 'block',
+      },
+      {
+        '.name': 'ByPass',
+        '.type': 'section',
+        enabled: '1',
+        action: 'bypass',
+      },
+      {
+        '.name': 'YandexDns',
+        '.type': 'section',
+        enabled: '1',
+        action: 'dns',
+        dns_server: ['77.88.8.8', '77.88.8.1'],
+      },
+      {
+        '.name': 'XboxDns',
+        '.type': 'section',
+        enabled: '1',
+        label: 'dns-ai',
+        action: 'dns',
+        dns_server: 'https://dns.dns-ai.ru/dns-query',
+      },
+      {
+        '.name': 'Zapret2',
+        '.type': 'section',
+        enabled: '1',
+        label: 'Youtube',
+        action: 'connection',
+        outbound_source_refs: ['Desync'],
+      },
+      {
+        '.name': 'Discord',
+        '.type': 'section',
+        enabled: '1',
+        action: 'connection',
+        outbound_source_refs: ['Desync'],
+      },
+      {
+        '.name': 'Desync',
+        '.type': 'outbound_source',
+        enabled: '1',
+        source_type: 'desync',
+      },
+      proxySection({ '.name': 'Main', label: 'Main' }),
+    ]);
+
+    const result = await getDashboardSections();
+    expect(result.success).toBe(true);
+    expect(result.data.map((s) => s.sectionName)).toEqual([
+      'block',
+      'ByPass',
+      'YandexDns',
+      'XboxDns',
+      'Zapret2',
+      'Discord',
+      'Main',
+    ]);
+  });
+
+  it('populates multiple testing URLs, multi-URL strategy, and active check interval on urlTestInfo', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      proxySection({
+        urltests: ['urltest'],
+        urltest_settings: JSON.stringify({
+          urltest: {
+            display_name: 'Multi URL Group',
+            testing_url: 'https://www.gstatic.com/generate_204',
+            testing_urls: [
+              'https://www.gstatic.com/generate_204',
+              'https://cp.cloudflare.com/generate_204',
+            ],
+            multi_url_strategy: 'best_case_target',
+            active_check_interval: '30s',
+            check_interval: '3m',
+          },
+        }),
+      }),
+    ]);
+
+    const result = await getDashboardSections();
+    expect(result.success).toBe(true);
+    const urltestOutbound = result.data[0].outbounds.find(
+      (o) => o.code === 'main-urltest-out',
+    );
+    expect(urltestOutbound?.urlTestInfo).toMatchObject({
+      url: 'https://www.gstatic.com/generate_204',
+      urls: [
+        'https://www.gstatic.com/generate_204',
+        'https://cp.cloudflare.com/generate_204',
+      ],
+      multiUrlStrategy: 'best_case_target',
+      activeCheckInterval: '30s',
+      interval: '3m',
+    });
+  });
+
+  it('does not pull detached subscription sources into a section configured only with individual VLESS links', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      {
+        '.name': 'main',
+        '.type': 'section',
+        enabled: '1',
+        action: 'connection',
+        outbound_source_refs: ['src_links_main'],
+        outbound_group_refs: ['grp_migrated_main'],
+        balancer_refs: ['bal_fastest'],
+      },
+      {
+        '.name': 'src_links_main',
+        '.type': 'outbound_source',
+        enabled: '1',
+        source_type: 'proxy_links',
+        proxy_links: [
+          'vless://11111111-1111-1111-1111-111111111111@example.com:443?security=tls&type=xhttp#Moscow',
+        ],
+      },
+      {
+        '.name': 'src_sub_1',
+        '.type': 'outbound_source',
+        enabled: '1',
+        source_type: 'subscription',
+        url: 'https://provider.example/sub',
+      },
+      {
+        '.name': 'grp_migrated_main',
+        '.type': 'outbound_group',
+        enabled: '1',
+        source_refs: ['src_sub_1', 'src_links_main'],
+      },
+      {
+        '.name': 'bal_fastest',
+        '.type': 'balancer',
+        enabled: '1',
+        balancer_type: 'urltest',
+        name: 'Fastest',
+        source_refs: ['src_sub_1'],
+      },
+      {
+        '.name': 'sub_child_stale',
+        '.type': 'subscription_url',
+        section: 'main',
+        url: 'https://provider.example/sub',
+      },
+    ]);
+
+    const result = await getDashboardSections();
+    expect(result.success).toBe(true);
+    expect(result.data[0].subscriptionSourceCount).toBe(0);
+    expect(result.data[0].subscriptionMetadata).toBeUndefined();
+  });
+
+  it('keeps an unprobed secondary subscription in a Priority balancer visible under hide_na_servers until it is probed (#357)', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      {
+        '.name': 'Proxy',
+        '.type': 'section',
+        enabled: '1',
+        action: 'connection',
+        dashboard_hide_na_servers: '1',
+        outbound_source_refs: ['Cloud_VPN', 'Vitalik_VPN'],
+        balancer_refs: ['Priority'],
+        balancer_settings: JSON.stringify({
+          Priority: {
+            outbound_group_levels: ['Cloud_VPN', 'Vitalik_VPN'],
+          },
+        }),
+      },
+      {
+        '.name': 'Cloud_VPN',
+        '.type': 'outbound_source',
+        enabled: '1',
+        source_type: 'subscription',
+        name: 'Cloud VPN',
+        url: 'https://cloud.example/sub',
+        prefix_nodes: '1',
+        node_prefix: 'Cloud',
+      },
+      {
+        '.name': 'Vitalik_VPN',
+        '.type': 'outbound_source',
+        enabled: '1',
+        source_type: 'subscription',
+        name: 'Vitalik VPN',
+        url: 'https://vitalik.example/sub',
+        prefix_nodes: '1',
+        node_prefix: 'Vitalik',
+      },
+      {
+        '.name': 'Priority',
+        '.type': 'balancer',
+        enabled: '1',
+        balancer_type: 'priority',
+        name: 'Priority',
+      },
+    ]);
+    mocks.fsRead.mockResolvedValue(
+      JSON.stringify({
+        outboundMetadata: {
+          names: {
+            'Proxy-sub-1-out': 'Cloud DE',
+            'Proxy-sub-2-out': 'Cloud Dead',
+            'Proxy-sub-3-out': 'Vitalik NL',
+            'Proxy-sub-4-out': 'Vitalik FI',
+          },
+          sources: {
+            'Proxy-sub-1-out': 'sub:1',
+            'Proxy-sub-2-out': 'sub:1',
+            'Proxy-sub-3-out': 'sub:2',
+            'Proxy-sub-4-out': 'sub:2',
+          },
+        },
+        priorityGroups: {
+          'Proxy-priority-Priority-out': {
+            displayName: 'Priority',
+            outbounds: [
+              'Proxy-sub-1-out',
+              'Proxy-sub-2-out',
+              'Proxy-sub-3-out',
+              'Proxy-sub-4-out',
+            ],
+            levels: [
+              {
+                id: 'Priority_lvl_1',
+                displayName: 'Cloud VPN',
+                order: 0,
+                outbounds: ['Proxy-sub-1-out', 'Proxy-sub-2-out'],
+              },
+              {
+                id: 'Priority_lvl_2',
+                displayName: 'Vitalik VPN',
+                order: 1,
+                outbounds: ['Proxy-sub-3-out', 'Proxy-sub-4-out'],
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    // Before Vitalik_VPN (Level 1 / sub:2) has been probed at all:
+    // Cloud Dead (in sub:1) is hidden, while Vitalik NL & FI remain visible.
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'Proxy-out': proxy('Selector', {
+            name: 'Proxy-out',
+            now: 'Proxy-priority-Priority-out',
+            all: [
+              'Proxy-priority-Priority-out',
+              'Proxy-sub-1-out',
+              'Proxy-sub-2-out',
+              'Proxy-sub-3-out',
+              'Proxy-sub-4-out',
+            ],
+          }),
+          'Proxy-priority-Priority-out': proxy('Selector', {
+            name: 'Proxy-priority-Priority-out',
+            now: 'Proxy-sub-1-out',
+            all: [
+              'Proxy-sub-1-out',
+              'Proxy-sub-2-out',
+              'Proxy-sub-3-out',
+              'Proxy-sub-4-out',
+            ],
+          }),
+          'Proxy-sub-1-out': proxy('VLESS', {
+            name: 'Cloud DE',
+            history: [{ time: '2026-11-06T00:00:00Z', delay: 80 }],
+          }),
+          'Proxy-sub-2-out': proxy('VLESS', {
+            name: 'Cloud Dead',
+            history: [],
+          }),
+          'Proxy-sub-3-out': proxy('VLESS', {
+            name: 'Vitalik NL',
+            history: [],
+          }),
+          'Proxy-sub-4-out': proxy('VLESS', {
+            name: 'Vitalik FI',
+            history: [],
+          }),
+        },
+      },
+    });
+
+    const beforeProbe = await getDashboardSections();
+    expect(beforeProbe.success).toBe(true);
+    expect(beforeProbe.data[0].outbounds.map((o) => o.code)).toEqual([
+      'Proxy-priority-Priority-out',
+      'Proxy-sub-1-out',
+      'Proxy-sub-3-out',
+      'Proxy-sub-4-out',
+    ]);
+
+    // Once Vitalik_VPN is probed in the background (Vitalik NL responds, Vitalik FI is dead):
+    // Vitalik FI is hidden by hide_na_servers while Vitalik NL stays visible.
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'Proxy-out': proxy('Selector', {
+            name: 'Proxy-out',
+            now: 'Proxy-priority-Priority-out',
+            all: [
+              'Proxy-priority-Priority-out',
+              'Proxy-sub-1-out',
+              'Proxy-sub-2-out',
+              'Proxy-sub-3-out',
+              'Proxy-sub-4-out',
+            ],
+          }),
+          'Proxy-priority-Priority-out': proxy('Selector', {
+            name: 'Proxy-priority-Priority-out',
+            now: 'Proxy-sub-1-out',
+            all: [
+              'Proxy-sub-1-out',
+              'Proxy-sub-2-out',
+              'Proxy-sub-3-out',
+              'Proxy-sub-4-out',
+            ],
+          }),
+          'Proxy-sub-1-out': proxy('VLESS', {
+            name: 'Cloud DE',
+            history: [{ time: '2026-11-06T00:00:00Z', delay: 80 }],
+          }),
+          'Proxy-sub-2-out': proxy('VLESS', {
+            name: 'Cloud Dead',
+            history: [],
+          }),
+          'Proxy-sub-3-out': proxy('VLESS', {
+            name: 'Vitalik NL',
+            history: [{ time: '2026-11-06T00:00:05Z', delay: 115 }],
+          }),
+          'Proxy-sub-4-out': proxy('VLESS', {
+            name: 'Vitalik FI',
+            history: [],
+          }),
+        },
+      },
+    });
+
+    const afterProbe = await getDashboardSections();
+    expect(afterProbe.success).toBe(true);
+    expect(afterProbe.data[0].outbounds.map((o) => o.code)).toEqual([
+      'Proxy-priority-Priority-out',
+      'Proxy-sub-1-out',
+      'Proxy-sub-3-out',
+    ]);
+  });
+
+  it('derives URLTest group and member latency from URLTest telemetry when proxy history is empty', async () => {
+    mocks.getConfigSections.mockResolvedValue([proxySection()]);
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'main-out': proxy('Selector', {
+            name: 'main-out',
+            now: 'main-urltest',
+            all: ['main-urltest', 'main-1-out', 'main-2-out'],
+          }),
+          'main-urltest': proxy('URLTest', {
+            name: 'main-urltest',
+            now: 'main-2-out',
+            all: ['main-1-out', 'main-2-out'],
+            history: [],
+            telemetry: {
+              'main-1-out': {
+                rtt_ms: 0,
+                ewma_rtt_ms: 0,
+                quarantined: true,
+              },
+              'main-2-out': {
+                rtt_ms: 34,
+                ewma_rtt_ms: 36,
+                quarantined: false,
+              },
+            },
+          }),
+          'main-1-out': proxy('AmneziaWG', {
+            name: 'AmneziaWG',
+            history: [],
+          }),
+          'main-2-out': proxy('VLESS', {
+            name: 'Panthera NL',
+            history: [],
+          }),
+        },
+      },
+    });
+
+    const result = await getDashboardSections();
+    expect(result.success).toBe(true);
+    const [section] = result.data;
+    const urltestCard = section.outbounds.find(
+      (item) => item.code === 'main-urltest',
+    );
+    const activeNodeCard = section.outbounds.find(
+      (item) => item.code === 'main-2-out',
+    );
+
+    expect(urltestCard?.latency).toBe(34);
+    expect(urltestCard?.urlTestInfo?.selectedCode).toBe('main-2-out');
+    expect(
+      urltestCard?.urlTestInfo?.outbounds.find((m) => m.code === 'main-2-out')
+        ?.latency,
+    ).toBe(34);
+    expect(activeNodeCard?.latency).toBe(34);
+  });
+});

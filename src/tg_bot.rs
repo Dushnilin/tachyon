@@ -1,57 +1,1677 @@
-//! Built-in Telegram Bot long-polling daemon and notification sender for `tachyon`
-//! (`docs/knowledge-base/09_TELEGRAM_BOT_ARCHITECTURE.md`).
+//! Built-in Telegram Bot long-polling daemon, interactive dispatcher, and
+//! diagnostic engine for `tachyon`.
 //!
-//! Supports commands: `/start`, `/status`, `/doctor`, `/ai_doctor`, `/fix`, `/server`,
-//! `/rules`, `/restart`, `/backup` and callback queries `srv:select:*`, `rule:toggle:*`, `fix:apply:*`.
+//! Public and `pub(crate)` API coordinates `menus`, `ops`, `transport`, `api`,
+//! `ubus_bridge`, and `updater`.
 
-use std::sync::Arc;
-use std::time::Duration;
+mod menus;
+mod ops;
+#[cfg(test)]
+mod tests;
+pub(crate) mod transport;
+
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
-use tokio::process::Command;
+use tokio::net::TcpStream;
+use tokio::sync::Notify;
 
 use crate::core_mgr::CoreManager;
-use crate::diagnostics;
-use crate::store::AppState;
-use crate::transaction;
+use crate::crypto_gen;
+use crate::store::{AppState, RouterStoreData, unix_now_secs};
+use crate::updater;
+
+static TG_POLL_ACTIVE: AtomicBool = AtomicBool::new(false);
+// 0 = follow store `d.telegram.enabled`, 1 = force stopped, 2 = force running
+static TG_RUNTIME_OVERRIDE: AtomicU8 = AtomicU8::new(0);
+static TG_WAKEUP_NOTIFY: Notify = Notify::const_new();
+static OUTBOX_SEQ: AtomicU64 = AtomicU64::new(0);
+static CB_TOKEN_SEQ: AtomicU64 = AtomicU64::new(1);
+static PROMPT_SEQ: AtomicU64 = AtomicU64::new(1);
+
+const TG_OUTBOX_DIR: &str = "/var/run/tachyon/telegram-outbox";
+pub(crate) const TG_OUTBOX_MAX_FILES: usize = 50;
+pub(crate) const TG_POLL_TIMEOUT_SECS: u64 = 25;
+pub(crate) const TG_HEARTBEAT_FILE: &str = "/var/run/tachyon/telegram.heartbeat";
+pub(crate) const TG_ROUTE_ALERT_STAMP_FILE: &str = "/var/run/tachyon/telegram-route-alert.stamp";
+pub(crate) const TG_ROUTE_ALERT_COOLDOWN_SECS: i64 = 21_600;
+#[allow(dead_code)]
+pub(crate) const MAX_CB_TOKENS: usize = 512;
+pub(crate) const MAX_CHAT_STATES: usize = 32;
+pub(crate) const CHAT_PROMPT_TTL_SECS: u64 = 600;
+const MAX_SEEN_FINISHED_JOBS: usize = 64;
+
+#[derive(Clone, Debug)]
+pub(crate) struct BotDocument {
+    pub filename: String,
+    pub bytes: Vec<u8>,
+    pub caption: String,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct BotReply {
+    pub text: String,
+    pub keyboard: Option<serde_json::Value>,
+    pub document: Option<BotDocument>,
+    pub prefer_new_message: bool,
+}
+
+impl BotReply {
+    pub(crate) fn text(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            keyboard: None,
+            document: None,
+            prefer_new_message: false,
+        }
+    }
+
+    pub(crate) fn with_kb(text: impl Into<String>, kb: serde_json::Value) -> Self {
+        Self {
+            text: text.into(),
+            keyboard: Some(kb),
+            document: None,
+            prefer_new_message: false,
+        }
+    }
+
+    pub(crate) fn with_doc(
+        text: impl Into<String>,
+        kb: Option<serde_json::Value>,
+        filename: impl Into<String>,
+        bytes: Vec<u8>,
+        caption: impl Into<String>,
+    ) -> Self {
+        Self {
+            text: text.into(),
+            keyboard: kb,
+            document: Some(BotDocument {
+                filename: filename.into(),
+                bytes,
+                caption: caption.into(),
+            }),
+            prefer_new_message: false,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn new_msg(mut self) -> Self {
+        self.prefer_new_message = true;
+        self
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum PendingPromptKind {
+    AddDomainToSection { sec_id: String },
+    RemoveDomainFromSection { sec_id: String },
+    AddIpToSection { sec_id: String },
+    UpdateFptnToken { sec_id: String },
+    AddSubscriptionOrUri,
+    RouteTraceInput,
+    DnsCheckInput,
+    AiDoctorQuestion,
+    FuzzerCustomTarget,
+    CreateSnapshotName,
+    ImportSnapshotPayload,
+    SetRouterName,
+    SetQuietHours,
+    AddAdminId,
+}
+
+#[derive(Default)]
+struct CallbackTokenStore {
+    map: HashMap<String, String>,
+    rev: HashMap<String, String>,
+    order: VecDeque<String>,
+}
+
+fn callback_token_store() -> &'static Mutex<CallbackTokenStore> {
+    static STORE: OnceLock<Mutex<CallbackTokenStore>> = OnceLock::new();
+    STORE.get_or_init(|| Mutex::new(CallbackTokenStore::default()))
+}
+
+struct PromptEntry {
+    kind: PendingPromptKind,
+    expires_at: Instant,
+    seq: u64,
+}
+
+fn chat_prompt_store() -> &'static Mutex<HashMap<i64, PromptEntry>> {
+    static STORE: OnceLock<Mutex<HashMap<i64, PromptEntry>>> = OnceLock::new();
+    STORE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn purge_expired_prompts(map: &mut HashMap<i64, PromptEntry>, now: Instant) {
+    map.retain(|_, v| v.expires_at > now);
+}
+
+pub(crate) fn escape_html(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+pub(crate) fn is_ru(d: &RouterStoreData) -> bool {
+    !d.telegram.language.trim().eq_ignore_ascii_case("en")
+}
+
+pub(crate) fn tr<'a>(ru: bool, ru_s: &'a str, en_s: &'a str) -> &'a str {
+    if ru { ru_s } else { en_s }
+}
+
+pub(crate) fn cb_btn(label: &str, cmd: &str) -> serde_json::Value {
+    if cmd.len() <= 60 {
+        return json!({
+            "text": label,
+            "callback_data": cmd,
+        });
+    }
+
+    let mut guard = callback_token_store()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
+    if let Some(existing) = guard.rev.get(cmd) {
+        return json!({
+            "text": label,
+            "callback_data": existing.clone(),
+        });
+    }
+
+    while guard.map.len() >= MAX_CB_TOKENS {
+        if let Some(oldest_key) = guard.order.pop_front() {
+            if let Some(old_cmd) = guard.map.remove(&oldest_key) {
+                guard.rev.remove(&old_cmd);
+            }
+        } else {
+            break;
+        }
+    }
+
+    let id = CB_TOKEN_SEQ.fetch_add(1, Ordering::Relaxed);
+    let key = format!("@t:{id:x}");
+    guard.map.insert(key.clone(), cmd.to_string());
+    guard.rev.insert(cmd.to_string(), key.clone());
+    guard.order.push_back(key.clone());
+
+    json!({
+        "text": label,
+        "callback_data": key,
+    })
+}
+
+pub(crate) fn resolve_callback_data(raw: &str) -> String {
+    if raw.starts_with("@t:") {
+        let guard = callback_token_store()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some(full) = guard.map.get(raw) {
+            return full.clone();
+        }
+    }
+    raw.to_string()
+}
+
+#[allow(dead_code)]
+pub(crate) fn url_btn(label: &str, url: &str) -> serde_json::Value {
+    json!({
+        "text": label,
+        "url": url,
+    })
+}
+
+pub(crate) fn inline_kb(rows: Vec<Vec<serde_json::Value>>) -> serde_json::Value {
+    let filtered: Vec<Vec<serde_json::Value>> =
+        rows.into_iter().filter(|r| !r.is_empty()).collect();
+    json!({
+        "inline_keyboard": filtered,
+    })
+}
+
+pub(crate) fn set_chat_prompt(chat_id: i64, kind: PendingPromptKind) {
+    let now = Instant::now();
+    let mut guard = chat_prompt_store()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    purge_expired_prompts(&mut guard, now);
+
+    if !guard.contains_key(&chat_id)
+        && guard.len() >= MAX_CHAT_STATES
+        && let Some(oldest_chat) = guard
+            .iter()
+            .min_by_key(|(_, entry)| (entry.expires_at, entry.seq))
+            .map(|(k, _)| *k)
+    {
+        guard.remove(&oldest_chat);
+    }
+
+    let seq = PROMPT_SEQ.fetch_add(1, Ordering::Relaxed);
+    guard.insert(
+        chat_id,
+        PromptEntry {
+            kind,
+            expires_at: now + Duration::from_secs(CHAT_PROMPT_TTL_SECS),
+            seq,
+        },
+    );
+}
+
+pub(crate) fn clear_chat_prompt(chat_id: i64) {
+    let mut guard = chat_prompt_store()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    guard.remove(&chat_id);
+}
+
+pub(crate) fn take_chat_prompt(chat_id: i64) -> Option<PendingPromptKind> {
+    let now = Instant::now();
+    let mut guard = chat_prompt_store()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    purge_expired_prompts(&mut guard, now);
+    guard.remove(&chat_id).map(|e| e.kind)
+}
+
+#[allow(dead_code)]
+pub(crate) fn peek_chat_prompt(chat_id: i64) -> Option<PendingPromptKind> {
+    let now = Instant::now();
+    let mut guard = chat_prompt_store()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    purge_expired_prompts(&mut guard, now);
+    guard.get(&chat_id).map(|e| e.kind.clone())
+}
+
+pub(crate) fn resolve_tg_proxy_url(d: &RouterStoreData, core_running: bool) -> Option<String> {
+    let sec_id = d.telegram.bot_proxy_section.trim();
+    if sec_id.eq_ignore_ascii_case("direct") {
+        return None;
+    }
+    if !sec_id.is_empty()
+        && let Some(sec) = d
+            .sections
+            .iter()
+            .find(|s| s.enabled && (s.id == sec_id || s.label.eq_ignore_ascii_case(sec_id)))
+    {
+        if sec.mixed_proxy_enabled && sec.mixed_proxy_port > 0 && !sec.mixed_proxy_auth_enabled {
+            return Some(format!("http://127.0.0.1:{}", sec.mixed_proxy_port));
+        }
+        if core_running {
+            return Some("http://127.0.0.1:4535".to_string());
+        }
+        return None;
+    }
+    if core_running {
+        Some("http://127.0.0.1:4534".to_string())
+    } else {
+        None
+    }
+}
+
+pub(crate) fn parse_hhmm(raw: &str) -> Option<u16> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if !trimmed.contains(':') {
+        if trimmed.len() <= 2 && trimmed.bytes().all(|b| b.is_ascii_digit()) {
+            let h = trimmed.parse::<u16>().ok()?;
+            if h < 24 {
+                return Some(h * 60);
+            }
+        }
+        return None;
+    }
+    let (h_s, m_s) = trimmed.split_once(':')?;
+    let h_trim = h_s.trim();
+    let m_trim = m_s.trim();
+    if h_trim.is_empty()
+        || m_trim.is_empty()
+        || !h_trim.bytes().all(|b| b.is_ascii_digit())
+        || !m_trim.bytes().all(|b| b.is_ascii_digit())
+    {
+        return None;
+    }
+    let h = h_trim.parse::<u16>().ok()?;
+    let m = m_trim.parse::<u16>().ok()?;
+    if h >= 24 || m >= 60 {
+        return None;
+    }
+    Some(h * 60 + m)
+}
+
+pub(crate) fn is_in_quiet_hours_at(now_secs: i64, start: &str, end: &str) -> bool {
+    let (Some(start_m), Some(end_m)) = (parse_hhmm(start), parse_hhmm(end)) else {
+        return false;
+    };
+    if start_m == end_m {
+        return false;
+    }
+    let now_m = (now_secs.rem_euclid(86400) / 60) as u16;
+    if start_m < end_m {
+        now_m >= start_m && now_m < end_m
+    } else {
+        now_m >= start_m || now_m < end_m
+    }
+}
+
+fn local_secs_for_quiet_check() -> i64 {
+    if let Ok(out) = std::process::Command::new("date").arg("+%H:%M").output()
+        && out.status.success()
+    {
+        let s = String::from_utf8_lossy(&out.stdout);
+        if let Some(mins) = parse_hhmm(&s) {
+            return i64::from(mins) * 60;
+        }
+    }
+    unix_now_secs()
+}
+
+pub(crate) fn build_message_header(d: &RouterStoreData) -> String {
+    let name = d.telegram.router_name.trim();
+    if name.is_empty() {
+        String::new()
+    } else {
+        format!("<b>[{}]</b>\n", escape_html(name))
+    }
+}
+
+pub fn set_runtime_override(active: Option<bool>) {
+    let val = match active {
+        None => 0,
+        Some(false) => 1,
+        Some(true) => 2,
+    };
+    TG_RUNTIME_OVERRIDE.store(val, Ordering::Release);
+}
+
+pub fn notify_bot_wakeup() {
+    TG_WAKEUP_NOTIFY.notify_one();
+}
+
+pub fn is_bot_effectively_running(d: &RouterStoreData) -> bool {
+    let enabled = match TG_RUNTIME_OVERRIDE.load(Ordering::Acquire) {
+        1 => false,
+        2 => true,
+        _ => d.telegram.enabled,
+    };
+    enabled && !d.telegram.bot_token.trim().is_empty() && !d.telegram.admin_ids.is_empty()
+}
+
+pub async fn probe_bot_status(token: &str) -> (bool, String, String) {
+    transport::probe_bot_status_via(token, None).await
+}
+
+pub async fn diagnose_bot_connection(state: &Arc<AppState>, core: &Arc<CoreManager>) -> Value {
+    let (
+        enabled,
+        eff_running,
+        token,
+        admins,
+        bot_proxy_section,
+        proxy_url_live,
+        proxy_url_when_core_up,
+        core_running,
+        ru,
+        header,
+    ) = {
+        let d = state.data.read().await;
+        let live_core = state.live.read().await.core_running
+            || core.has_spawned_child().await
+            || crate::sys_info::find_running_process_by_name("tachyon-core").is_some();
+        (
+            d.telegram.enabled,
+            is_bot_effectively_running(&d),
+            d.telegram.bot_token.trim().to_string(),
+            d.telegram.admin_ids.clone(),
+            d.telegram.bot_proxy_section.trim().to_string(),
+            resolve_tg_proxy_url(&d, live_core),
+            resolve_tg_proxy_url(&d, true),
+            live_core,
+            is_ru(&d),
+            build_message_header(&d),
+        )
+    };
+
+    let token_ok = !token.is_empty();
+    let admins_ok = !admins.is_empty();
+    let configured = token_ok && admins_ok;
+    let is_direct_mode = bot_proxy_section.eq_ignore_ascii_case("direct");
+
+    let target_port = proxy_url_when_core_up
+        .as_deref()
+        .and_then(|u| u.rsplit(':').next())
+        .and_then(|p| p.parse::<u16>().ok())
+        .unwrap_or(4534);
+
+    let proxy_desc = proxy_url_live.clone().unwrap_or_else(|| {
+        if is_direct_mode {
+            "direct".to_string()
+        } else {
+            "none".to_string()
+        }
+    });
+
+    let port_fut = async {
+        if is_direct_mode {
+            (
+                true,
+                "Direct WAN route configured (no local proxy port needed)".to_string(),
+            )
+        } else {
+            match tokio::time::timeout(
+                Duration::from_millis(500),
+                TcpStream::connect(("127.0.0.1", target_port)),
+            )
+            .await
+            {
+                Ok(Ok(_)) => {
+                    let msg = match target_port {
+                        4534 => "Proxy port 4534 is listening".to_string(),
+                        4535 => "Proxy port 4535 is listening".to_string(),
+                        p => format!("Proxy port {p} is listening"),
+                    };
+                    (true, msg)
+                }
+                _ => (false, "Local proxy port is not listening".to_string()),
+            }
+        }
+    };
+
+    let dns_fut = async {
+        if let Ok(Ok(mut addrs)) = tokio::time::timeout(
+            Duration::from_secs(3),
+            tokio::net::lookup_host("api.telegram.org:443"),
+        )
+        .await
+        {
+            addrs.next().is_some()
+        } else {
+            false
+        }
+    };
+
+    let direct_fut = async {
+        if token_ok {
+            probe_bot_status(&token).await
+        } else {
+            (false, String::new(), "Bot token is missing".to_string())
+        }
+    };
+
+    let proxy_fut = async {
+        if !token_ok || is_direct_mode || proxy_url_live.is_none() {
+            (false, String::new(), String::new())
+        } else {
+            transport::probe_bot_status_via(&token, proxy_url_live.as_deref()).await
+        }
+    };
+
+    let ((port_ok, port_msg), dns_ok, (direct_ok, direct_uname, _), (proxy_ok, proxy_uname, _)) =
+        tokio::join!(port_fut, dns_fut, direct_fut, proxy_fut);
+
+    let bot_username = if !proxy_uname.is_empty() {
+        proxy_uname
+    } else {
+        direct_uname
+    };
+
+    let (test_msg_ok, test_msg_text) = if !admins_ok {
+        (
+            false,
+            "No admin_ids set — cannot send test message".to_string(),
+        )
+    } else if !token_ok || !(proxy_ok || direct_ok) {
+        (
+            false,
+            "Failed to send test message — check admin_ids and bot permissions".to_string(),
+        )
+    } else {
+        let send_proxy = if proxy_ok {
+            proxy_url_live.as_deref()
+        } else {
+            None
+        };
+        let ping_body = tr(
+            ru,
+            "[OK] Диагностика Telegram-бота: связь подтверждена.",
+            "[OK] Telegram bot diagnostic check passed.",
+        );
+        let ping_msg = format!("{header}{ping_body}");
+        let mut sent = 0usize;
+        for &cid in &admins {
+            if transport::send_tg_message(&token, cid, &ping_msg, None, false, send_proxy)
+                .await
+                .is_ok()
+            {
+                sent += 1;
+            }
+        }
+        if sent > 0 {
+            (true, "Test message sent to chat".to_string())
+        } else {
+            (
+                false,
+                "Failed to send test message — check admin_ids and bot permissions".to_string(),
+            )
+        }
+    };
+
+    let proxy_check = if is_direct_mode {
+        json!({
+            "name": "proxy_api",
+            "ok": true,
+            "message": "Direct WAN route configured (no local proxy port needed)",
+        })
+    } else {
+        json!({
+            "name": "proxy_api",
+            "ok": proxy_ok,
+            "message": if proxy_ok {
+                "Proxy route to Telegram API works"
+            } else {
+                "Proxy route to Telegram API failed — check proxy outbound config"
+            },
+        })
+    };
+
+    let checks = vec![
+        json!({
+            "name": "token",
+            "ok": token_ok,
+            "message": if token_ok { "Bot token is configured" } else { "Bot token is missing" },
+        }),
+        json!({
+            "name": "admin_ids",
+            "ok": admins_ok,
+            "count": admins.len(),
+            "message": if admins_ok { "Admin Chat IDs configured" } else { "No admin_ids configured" },
+        }),
+        json!({
+            "name": "core",
+            "ok": core_running,
+            "message": if core_running {
+                "Tachyon Core is running"
+            } else {
+                "Tachyon Core is NOT running — bot cannot route through proxy"
+            },
+        }),
+        json!({
+            "name": "proxy_port",
+            "ok": port_ok,
+            "message": port_msg,
+        }),
+        json!({
+            "name": "dns",
+            "ok": dns_ok,
+            "message": if dns_ok {
+                "DNS resolves api.telegram.org"
+            } else {
+                "DNS cannot resolve api.telegram.org — check DNS settings"
+            },
+        }),
+        json!({
+            "name": "direct_api",
+            "ok": direct_ok,
+            "message": if direct_ok {
+                "Direct IPv4 to Telegram API works"
+            } else if token_ok {
+                "Cannot reach Telegram API directly (IPv4 blocked by ISP?)"
+            } else {
+                "Direct API connection failed"
+            },
+        }),
+        proxy_check,
+        json!({
+            "name": "test_message",
+            "ok": test_msg_ok,
+            "message": test_msg_text,
+        }),
+    ];
+
+    let overall_ok = token_ok && admins_ok && (proxy_ok || direct_ok) && test_msg_ok;
+
+    json!({
+        "ok": overall_ok,
+        "success": overall_ok,
+        "enabled": enabled,
+        "running": eff_running,
+        "configured": configured,
+        "bot_username": bot_username,
+        "proxy_url": proxy_desc,
+        "status": if eff_running { "running" } else { "stopped" },
+        "checks": checks,
+    })
+}
+
+pub(crate) fn parse_outbox_sort_key(name: &str) -> (u64, u64, &str) {
+    let stem = name
+        .strip_suffix(".txt")
+        .or_else(|| name.strip_suffix(".json"))
+        .unwrap_or(name);
+    if let Some((ts_str, seq_str)) = stem.split_once('_')
+        && let (Ok(ts), Ok(seq)) = (ts_str.parse::<u64>(), seq_str.parse::<u64>())
+    {
+        return (ts, seq, name);
+    }
+    (0, 0, name)
+}
+
+pub(crate) fn bot_id_from_token(token: &str) -> String {
+    token
+        .trim()
+        .split(':')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_string()
+}
+
+fn default_outbox_parse_mode() -> String {
+    "HTML".to_string()
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub(crate) struct OutboxJsonNotice {
+    pub bot_id: String,
+    pub chat_id: i64,
+    pub text: String,
+    #[serde(default = "default_outbox_parse_mode")]
+    pub parse_mode: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dedup_key: Option<String>,
+    pub created_at: i64,
+}
+
+fn set_private_dir_mode(dir: &std::path::Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700));
+    }
+    #[cfg(not(unix))]
+    let _ = dir;
+}
+
+fn list_outbox_entries(dir: &std::path::Path) -> Vec<(String, std::path::PathBuf)> {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut entries: Vec<(String, std::path::PathBuf)> = rd
+        .flatten()
+        .filter_map(|e| {
+            let path = e.path();
+            let name = path.file_name()?.to_str()?.to_string();
+            if (name.ends_with(".txt") || name.ends_with(".json")) && path.is_file() {
+                Some((name, path))
+            } else {
+                None
+            }
+        })
+        .collect();
+    entries.sort_by(|a, b| parse_outbox_sort_key(&a.0).cmp(&parse_outbox_sort_key(&b.0)));
+    entries
+}
+
+pub fn enforce_outbox_limit(dir: &std::path::Path, max_files: usize) {
+    let entries = list_outbox_entries(dir);
+    if entries.len() <= max_files {
+        return;
+    }
+    let excess = entries.len() - max_files;
+    for (_, old_path) in entries.into_iter().take(excess) {
+        let _ = std::fs::remove_file(old_path);
+    }
+}
+
+pub(crate) fn submit_outbox_notice_in(
+    dir: &std::path::Path,
+    token: &str,
+    chat_id: i64,
+    text: &str,
+    dedup_key: Option<&str>,
+) -> anyhow::Result<std::path::PathBuf> {
+    if text.trim().is_empty() {
+        anyhow::bail!("Empty outbox notice");
+    }
+    let bot_id = bot_id_from_token(token);
+    if bot_id.is_empty() || chat_id == 0 {
+        anyhow::bail!("Invalid Telegram bot ID or chat ID for outbox");
+    }
+    std::fs::create_dir_all(dir)?;
+    set_private_dir_mode(dir);
+
+    let dedup = dedup_key
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(ToOwned::to_owned);
+    let now = unix_now_secs();
+    let payload = OutboxJsonNotice {
+        bot_id: bot_id.clone(),
+        chat_id,
+        text: text.to_string(),
+        parse_mode: "HTML".to_string(),
+        dedup_key: dedup.clone(),
+        created_at: now,
+    };
+    let serialized = serde_json::to_vec(&payload)?;
+
+    let entries = list_outbox_entries(dir);
+    if let Some(ref dk) = dedup {
+        for (name, existing_path) in &entries {
+            if !name.ends_with(".json") {
+                continue;
+            }
+            if let Ok(raw) = std::fs::read(existing_path)
+                && let Ok(existing) = serde_json::from_slice::<OutboxJsonNotice>(&raw)
+                && existing.bot_id == bot_id
+                && existing.chat_id == chat_id
+                && existing.dedup_key.as_deref() == Some(dk.as_str())
+            {
+                std::fs::write(existing_path, serialized)?;
+                return Ok(existing_path.clone());
+            }
+        }
+    }
+
+    if entries.len() >= TG_OUTBOX_MAX_FILES {
+        anyhow::bail!("Telegram outbox full ({} items)", entries.len());
+    }
+
+    let seq = OUTBOX_SEQ.fetch_add(1, Ordering::Relaxed);
+    let path = dir.join(format!("{now}_{seq}.json"));
+    std::fs::write(&path, serialized)?;
+    Ok(path)
+}
+
+pub(crate) fn write_heartbeat_to(path: &std::path::Path, now_secs: i64) {
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+        set_private_dir_mode(parent);
+    }
+    let body = serde_json::json!({
+        "ts": now_secs,
+        "version": crate::store::TACHYON_VERSION,
+    })
+    .to_string();
+    let _ = std::fs::write(path, body);
+}
+
+pub(crate) async fn sleep_with_heartbeat_to(mut remaining_secs: u64, hb_path: &std::path::Path) {
+    if remaining_secs == 0 {
+        return;
+    }
+    while remaining_secs > 0 {
+        write_heartbeat_to(hb_path, unix_now_secs());
+        let chunk = remaining_secs.min(15);
+        tokio::select! {
+            _ = TG_WAKEUP_NOTIFY.notified() => {
+                return;
+            }
+            _ = tokio::time::sleep(Duration::from_secs(chunk)) => {}
+        }
+        remaining_secs -= chunk;
+    }
+    write_heartbeat_to(hb_path, unix_now_secs());
+}
+
+async fn sleep_with_heartbeat(secs: u64) {
+    sleep_with_heartbeat_to(secs, std::path::Path::new(TG_HEARTBEAT_FILE)).await;
+}
+
+pub(crate) fn route_alert_recent(
+    stamp_path: &std::path::Path,
+    now_secs: i64,
+    cooldown_secs: i64,
+) -> bool {
+    let Ok(raw) = std::fs::read_to_string(stamp_path) else {
+        return false;
+    };
+    let Ok(last_ts) = raw.trim().parse::<i64>() else {
+        return false;
+    };
+    now_secs >= last_ts && (now_secs - last_ts) < cooldown_secs.max(0)
+}
+
+pub(crate) struct RouteAlertParams<'a> {
+    pub token: &'a str,
+    pub admins: &'a [i64],
+    pub header: &'a str,
+    pub ru: bool,
+    pub failures: u32,
+    pub direct_fallback: bool,
+    pub quiet_enabled: bool,
+    pub quiet_start: &'a str,
+    pub quiet_end: &'a str,
+    pub now_utc_secs: i64,
+    pub local_now_secs: i64,
+    pub outbox_dir: &'a std::path::Path,
+    pub stamp_path: &'a std::path::Path,
+    pub cooldown_secs: i64,
+}
+
+pub(crate) fn maybe_alert_route_failure_at(params: &RouteAlertParams<'_>) -> bool {
+    if params.token.trim().is_empty() || params.admins.is_empty() {
+        return false;
+    }
+    if params.quiet_enabled
+        && is_in_quiet_hours_at(params.local_now_secs, params.quiet_start, params.quiet_end)
+    {
+        return false;
+    }
+    if route_alert_recent(params.stamp_path, params.now_utc_secs, params.cooldown_secs) {
+        return true;
+    }
+
+    let body = if params.ru {
+        format!(
+            "{}<b>Предупреждение маршрута Telegram-бота</b>\n\
+             Не удалось подключиться к Telegram API за {} попыток подряд ({}).\n\
+             Проверьте секцию прокси для бота или доступность сети.",
+            params.header,
+            params.failures,
+            if params.direct_fallback {
+                "резервный прямой маршрут активен"
+            } else {
+                "прямой резервный маршрут отключён"
+            }
+        )
+    } else {
+        format!(
+            "{}<b>Telegram bot route warning</b>\n\
+             Failed to reach Telegram API after {} consecutive poll attempts ({}).\n\
+             Check the bot proxy section or upstream network reachability.",
+            params.header,
+            params.failures,
+            if params.direct_fallback {
+                "direct fallback enabled"
+            } else {
+                "direct fallback disabled"
+            }
+        )
+    };
+
+    let mut any_queued = false;
+    for &admin_id in params.admins {
+        if submit_outbox_notice_in(
+            params.outbox_dir,
+            params.token,
+            admin_id,
+            &body,
+            Some("route_alert"),
+        )
+        .is_ok()
+        {
+            any_queued = true;
+        }
+    }
+    if any_queued {
+        if let Some(parent) = params.stamp_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+            set_private_dir_mode(parent);
+        }
+        let _ = std::fs::write(params.stamp_path, params.now_utc_secs.to_string());
+    }
+    any_queued
+}
+
+pub fn queue_or_send_notification(text: impl Into<String>) {
+    let msg = text.into();
+    if msg.trim().is_empty() {
+        return;
+    }
+    let _ = std::fs::create_dir_all(TG_OUTBOX_DIR);
+    let now = unix_now_secs();
+    let seq = OUTBOX_SEQ.fetch_add(1, Ordering::Relaxed);
+    let outbox_dir = std::path::Path::new(TG_OUTBOX_DIR);
+    let path = outbox_dir.join(format!("{now}_{seq}.txt"));
+    let _ = std::fs::write(path, msg);
+    enforce_outbox_limit(outbox_dir, TG_OUTBOX_MAX_FILES);
+    notify_bot_wakeup();
+}
+
+fn format_outbox_html(raw: &str, header: &str) -> String {
+    let trimmed = raw.trim();
+    let looks_html = trimmed.contains("<b>")
+        || trimmed.contains("<code>")
+        || trimmed.contains("<pre>")
+        || trimmed.contains("<i>");
+    let body = if looks_html {
+        trimmed.to_string()
+    } else {
+        escape_html(trimmed)
+    };
+    if header.is_empty() || body.starts_with(header) || body.starts_with("<b>[") {
+        body
+    } else {
+        format!("{header}{body}")
+    }
+}
+
+async fn drain_telegram_outbox(
+    token: &str,
+    admins: &[i64],
+    header: &str,
+    quiet_now: bool,
+    proxy_url: Option<&str>,
+) {
+    let current_bot_id = bot_id_from_token(token);
+    let entries = list_outbox_entries(std::path::Path::new(TG_OUTBOX_DIR));
+
+    for (name, path) in entries {
+        let Ok(raw_text) = std::fs::read_to_string(&path) else {
+            let _ = std::fs::remove_file(&path);
+            continue;
+        };
+        if raw_text.trim().is_empty() {
+            let _ = std::fs::remove_file(&path);
+            continue;
+        }
+        if name.ends_with(".json") {
+            let Ok(notice) = serde_json::from_str::<OutboxJsonNotice>(&raw_text) else {
+                let _ = std::fs::remove_file(&path);
+                continue;
+            };
+            if current_bot_id.is_empty() || notice.bot_id != current_bot_id || notice.chat_id == 0 {
+                continue;
+            }
+            if transport::send_tg_message(
+                token,
+                notice.chat_id,
+                &notice.text,
+                None,
+                quiet_now,
+                proxy_url,
+            )
+            .await
+            .is_ok()
+            {
+                let _ = std::fs::remove_file(&path);
+            } else {
+                break;
+            }
+            continue;
+        }
+        let html = format_outbox_html(&raw_text, header);
+        let mut any_ok = false;
+        for &chat_id in admins {
+            if transport::send_tg_message(token, chat_id, &html, None, quiet_now, proxy_url)
+                .await
+                .is_ok()
+            {
+                any_ok = true;
+            }
+        }
+        if any_ok {
+            let _ = std::fs::remove_file(&path);
+        } else {
+            break;
+        }
+    }
+}
+
+pub async fn send_test_notification(state: &Arc<AppState>) -> anyhow::Result<usize> {
+    let (token, admins, proxy_opt, header, ru) = {
+        let d = state.data.read().await;
+        let core_running = state.live.read().await.core_running;
+        (
+            d.telegram.bot_token.trim().to_string(),
+            d.telegram.admin_ids.clone(),
+            resolve_tg_proxy_url(&d, core_running),
+            build_message_header(&d),
+            is_ru(&d),
+        )
+    };
+    if token.is_empty() || admins.is_empty() {
+        anyhow::bail!(
+            "{}",
+            tr(
+                ru,
+                "Укажите Bot Token и хотя бы один Admin ID в настройках Telegram",
+                "Set Bot Token and at least one Admin ID in Telegram settings",
+            )
+        );
+    }
+
+    let body = tr(
+        ru,
+        "<b>Tachyon Router: Тестовое уведомление</b>\nСвязь с роутером установлена.",
+        "<b>Tachyon Router: Test Notification</b>\nConnection to router is working.",
+    );
+    let text = format!("{header}{body}");
+    let mut sent = 0usize;
+    let mut last_err: Option<anyhow::Error> = None;
+    for chat_id in admins {
+        match transport::send_tg_message(&token, chat_id, &text, None, false, proxy_opt.as_deref())
+            .await
+        {
+            Ok(()) => sent += 1,
+            Err(e) => last_err = Some(e),
+        }
+    }
+    if sent == 0
+        && let Some(err) = last_err
+    {
+        return Err(err);
+    }
+    Ok(sent)
+}
+
+fn split_cmd_arg(raw: &str) -> (&str, &str) {
+    let trimmed = raw.trim();
+    if let Some(pos) = trimmed.find(char::is_whitespace) {
+        (&trimmed[..pos], trimmed[pos..].trim())
+    } else {
+        (trimmed, "")
+    }
+}
+
+fn strip_bot_mention(cmd: &str) -> &str {
+    if cmd.starts_with('/') {
+        cmd.split('@').next().unwrap_or(cmd)
+    } else {
+        cmd
+    }
+}
+
+fn looks_like_transfer_payload(text: &str) -> bool {
+    let trimmed = text.trim();
+    trimmed.len() >= 12
+        && (trimmed
+            .get(..14)
+            .is_some_and(|p| p.eq_ignore_ascii_case("tachyon://rs2/"))
+            || trimmed
+                .get(..8)
+                .is_some_and(|p| p.eq_ignore_ascii_case("TACHYON-")))
+}
+
+fn looks_like_proxy_uri(text: &str) -> bool {
+    let Some(first_line) = text.lines().map(str::trim).find(|l| !l.is_empty()) else {
+        return false;
+    };
+    let lower = first_line.to_ascii_lowercase();
+    const PREFIXES: [&str; 13] = [
+        "vless://",
+        "vmess://",
+        "trojan://",
+        "ss://",
+        "hy2://",
+        "hysteria2://",
+        "tuic://",
+        "mierus://",
+        "mieru://",
+        "wg://",
+        "awg://",
+        "fptn:",
+        "https://",
+    ];
+    PREFIXES.iter().any(|p| lower.starts_with(p))
+}
+
+fn dispatch_command_or_callback<'a>(
+    cmd: &'a str,
+    arg: &'a str,
+    chat_id: i64,
+    state: &'a Arc<AppState>,
+    core: &'a Arc<CoreManager>,
+) -> Pin<Box<dyn Future<Output = BotReply> + Send + 'a>> {
+    Box::pin(async move {
+        if let Some(reply) = Box::pin(menus::try_handle_menu(cmd, arg, chat_id, state, core)).await
+        {
+            return reply;
+        }
+        if let Some(reply) = Box::pin(ops::try_handle_ops(cmd, arg, chat_id, state, core)).await {
+            return reply;
+        }
+        let ru = {
+            let d = state.data.read().await;
+            is_ru(&d)
+        };
+        let msg = tr(
+            ru,
+            "Неизвестная команда. Нажмите /start для открытия главного меню.",
+            "Unknown command. Send /start to open the main menu.",
+        );
+        let kb = inline_kb(vec![vec![cb_btn(
+            tr(ru, "Главное меню", "Main Menu"),
+            "/start",
+        )]]);
+        BotReply::with_kb(msg, kb)
+    })
+}
+
+fn dispatch_text_message<'a>(
+    chat_id: i64,
+    raw_text: &'a str,
+    state: &'a Arc<AppState>,
+    core: &'a Arc<CoreManager>,
+) -> Pin<Box<dyn Future<Output = BotReply> + Send + 'a>> {
+    Box::pin(async move {
+        let text = raw_text.trim();
+        if text.is_empty() {
+            return dispatch_command_or_callback("/start", "", chat_id, state, core).await;
+        }
+
+        let (first_tok, rest_arg) = split_cmd_arg(text);
+        let cmd_clean = strip_bot_mention(first_tok);
+        let cmd_lower = if cmd_clean.starts_with('/') {
+            cmd_clean.to_ascii_lowercase()
+        } else {
+            cmd_clean.to_string()
+        };
+
+        if cmd_lower == "/cancel" {
+            clear_chat_prompt(chat_id);
+            return dispatch_command_or_callback("/start", "", chat_id, state, core).await;
+        }
+        if matches!(cmd_lower.as_str(), "/start" | "/menu" | "/help") {
+            clear_chat_prompt(chat_id);
+            return dispatch_command_or_callback(&cmd_lower, rest_arg, chat_id, state, core).await;
+        }
+        if first_tok.starts_with('/') && first_tok.len() > 1 && !first_tok[1..].contains('/') {
+            clear_chat_prompt(chat_id);
+            return dispatch_command_or_callback(&cmd_lower, rest_arg, chat_id, state, core).await;
+        }
+
+        if let Some(prompt_kind) = take_chat_prompt(chat_id) {
+            if let Some(reply) = Box::pin(menus::handle_menu_prompt(
+                prompt_kind.clone(),
+                text,
+                chat_id,
+                state,
+                core,
+            ))
+            .await
+            {
+                return reply;
+            }
+            if let Some(reply) = Box::pin(ops::handle_ops_prompt(
+                prompt_kind,
+                text,
+                chat_id,
+                state,
+                core,
+            ))
+            .await
+            {
+                return reply;
+            }
+        }
+
+        if !text.starts_with('/') {
+            if looks_like_transfer_payload(text)
+                && let Some(reply) = Box::pin(ops::try_handle_ops(
+                    "quick_import",
+                    text,
+                    chat_id,
+                    state,
+                    core,
+                ))
+                .await
+            {
+                return reply;
+            }
+            if looks_like_proxy_uri(text)
+                && let Some(reply) = Box::pin(menus::try_handle_menu(
+                    "quick_add_uri",
+                    text,
+                    chat_id,
+                    state,
+                    core,
+                ))
+                .await
+            {
+                return reply;
+            }
+        }
+
+        dispatch_command_or_callback(&cmd_lower, rest_arg, chat_id, state, core).await
+    })
+}
+
+fn dispatch_callback_query<'a>(
+    chat_id: i64,
+    raw_data: &'a str,
+    state: &'a Arc<AppState>,
+    core: &'a Arc<CoreManager>,
+) -> Pin<Box<dyn Future<Output = BotReply> + Send + 'a>> {
+    Box::pin(async move {
+        let resolved = resolve_callback_data(raw_data);
+        let trimmed = resolved.trim();
+        if trimmed.is_empty() {
+            return dispatch_command_or_callback("/start", "", chat_id, state, core).await;
+        }
+
+        if trimmed.starts_with("srv:select:")
+            || trimmed.starts_with("rule:toggle:")
+            || trimmed.starts_with("fix:apply:")
+        {
+            return dispatch_command_or_callback(trimmed, "", chat_id, state, core).await;
+        }
+
+        let (first_tok, rest_arg) = split_cmd_arg(trimmed);
+        let cmd_clean = strip_bot_mention(first_tok);
+        let cmd_norm = if cmd_clean.starts_with('/') {
+            cmd_clean.to_ascii_lowercase()
+        } else {
+            cmd_clean.to_string()
+        };
+
+        if matches!(cmd_norm.as_str(), "/start" | "/menu" | "menu") {
+            clear_chat_prompt(chat_id);
+        }
+
+        dispatch_command_or_callback(&cmd_norm, rest_arg, chat_id, state, core).await
+    })
+}
+
+#[allow(dead_code)]
+pub(crate) async fn handle_incoming_text(
+    chat_id: i64,
+    text: &str,
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+) -> Option<BotReply> {
+    let authorized = {
+        let d = state.data.read().await;
+        d.telegram.admin_ids.contains(&chat_id)
+    };
+    if !authorized {
+        return None;
+    }
+    Some(dispatch_text_message(chat_id, text, state, core).await)
+}
+
+#[allow(dead_code)]
+pub(crate) async fn handle_incoming_callback(
+    chat_id: i64,
+    raw_data: &str,
+    state: &Arc<AppState>,
+    core: &Arc<CoreManager>,
+) -> Option<BotReply> {
+    let authorized = {
+        let d = state.data.read().await;
+        d.telegram.admin_ids.contains(&chat_id)
+    };
+    if !authorized {
+        return None;
+    }
+    Some(dispatch_callback_query(chat_id, raw_data, state, core).await)
+}
+
+fn prepend_header_if_missing(text: &str, header: &str) -> String {
+    if header.is_empty() || text.is_empty() || text.starts_with(header) || text.starts_with("<b>[")
+    {
+        text.to_string()
+    } else {
+        format!("{header}{text}")
+    }
+}
+
+async fn deliver_bot_reply(
+    token: &str,
+    chat_id: i64,
+    edit_message_id: Option<i64>,
+    reply: BotReply,
+    header: &str,
+    proxy_url: Option<&str>,
+) {
+    let final_text = prepend_header_if_missing(&reply.text, header);
+    let kb_ref = reply.keyboard.as_ref();
+
+    if let Some(doc) = reply.document {
+        let caption_src = if doc.caption.trim().is_empty() {
+            &final_text
+        } else {
+            &doc.caption
+        };
+        let caption = prepend_header_if_missing(caption_src, header);
+        let text_differs = !final_text.trim().is_empty()
+            && !doc.caption.trim().is_empty()
+            && final_text.trim() != caption.trim();
+
+        if text_differs {
+            if let Some(mid) = edit_message_id.filter(|_| !reply.prefer_new_message) {
+                let _ =
+                    transport::edit_tg_message(token, chat_id, mid, &final_text, None, proxy_url)
+                        .await;
+            } else {
+                let _ =
+                    transport::send_tg_message(token, chat_id, &final_text, None, false, proxy_url)
+                        .await;
+            }
+        }
+
+        let tg_doc = transport::TgDocument {
+            filename: &doc.filename,
+            bytes: &doc.bytes,
+            caption: &caption,
+            keyboard: kb_ref,
+            disable_notification: false,
+        };
+        if let Err(err) = transport::send_tg_document(token, chat_id, &tg_doc, proxy_url).await {
+            let fallback = format!(
+                "{final_text}\n\n[!] Upload error: {}",
+                escape_html(&err.to_string())
+            );
+            let _ = transport::send_tg_message(token, chat_id, &fallback, kb_ref, false, proxy_url)
+                .await;
+        }
+        return;
+    }
+
+    if let Some(mid) = edit_message_id.filter(|_| !reply.prefer_new_message) {
+        let _ =
+            transport::edit_tg_message(token, chat_id, mid, &final_text, kb_ref, proxy_url).await;
+    } else {
+        let _ =
+            transport::send_tg_message(token, chat_id, &final_text, kb_ref, false, proxy_url).await;
+    }
+}
+
+async fn sleep_or_wakeup(secs: u64) {
+    if secs == 0 {
+        return;
+    }
+    tokio::select! {
+        _ = TG_WAKEUP_NOTIFY.notified() => {}
+        _ = tokio::time::sleep(Duration::from_secs(secs)) => {}
+    }
+}
+
+struct JobNotifyCtx<'a> {
+    token: &'a str,
+    admins: &'a [i64],
+    header: &'a str,
+    ru: bool,
+    quiet_now: bool,
+    proxy_url: Option<&'a str>,
+}
+
+async fn check_and_notify_finished_jobs(
+    prev_active_jobs: &mut HashSet<String>,
+    seen_finished_jobs: &mut VecDeque<String>,
+    ctx: &JobNotifyCtx<'_>,
+) {
+    let current_active: HashSet<String> = updater::active_component_job_ids().into_iter().collect();
+    for finished_id in prev_active_jobs.difference(&current_active) {
+        if seen_finished_jobs.iter().any(|s| s == finished_id) {
+            continue;
+        }
+        let st = updater::read_job_status(finished_id);
+        if st.get("running").and_then(Value::as_bool) == Some(true) {
+            continue;
+        }
+        if seen_finished_jobs.len() >= MAX_SEEN_FINISHED_JOBS {
+            seen_finished_jobs.pop_front();
+        }
+        seen_finished_jobs.push_back(finished_id.clone());
+
+        let action = st.get("action").and_then(Value::as_str).unwrap_or("");
+        if action == "check" || action == "check_update" {
+            continue;
+        }
+
+        let comp = st
+            .get("component")
+            .and_then(Value::as_str)
+            .unwrap_or("component");
+        let disp = updater::component_display_name(comp);
+        let ok = st.get("success").and_then(Value::as_bool).unwrap_or(false);
+        let raw_msg = st.get("message").and_then(Value::as_str).unwrap_or(if ok {
+            "Completed"
+        } else {
+            "Failed"
+        });
+        let safe_msg = escape_html(&crypto_gen::redact_string(raw_msg));
+        let tag = if ok { "[OK]" } else { "[!]" };
+        let title = if ctx.ru {
+            format!(
+                "{tag} Задача обновления <b>{}</b> ({})",
+                escape_html(disp),
+                escape_html(action)
+            )
+        } else {
+            format!(
+                "{tag} Update job <b>{}</b> ({})",
+                escape_html(disp),
+                escape_html(action)
+            )
+        };
+        let text = format!("{}{title}\n{safe_msg}", ctx.header);
+        for &cid in ctx.admins {
+            let _ = transport::send_tg_message(
+                ctx.token,
+                cid,
+                &text,
+                None,
+                ctx.quiet_now,
+                ctx.proxy_url,
+            )
+            .await;
+        }
+    }
+    *prev_active_jobs = current_active;
+}
+
+#[allow(clippy::too_many_arguments)]
+fn record_poll_failure_alert(
+    consecutive_failures: &mut u32,
+    route_alert_sent: &mut bool,
+    token: &str,
+    admins: &[i64],
+    header: &str,
+    ru: bool,
+    direct_fallback: bool,
+    quiet_enabled: bool,
+    quiet_start: &str,
+    quiet_end: &str,
+) {
+    *consecutive_failures = consecutive_failures.saturating_add(1);
+    if *consecutive_failures >= 5 && !*route_alert_sent {
+        *route_alert_sent = maybe_alert_route_failure_at(&RouteAlertParams {
+            token,
+            admins,
+            header,
+            ru,
+            failures: *consecutive_failures,
+            direct_fallback,
+            quiet_enabled,
+            quiet_start,
+            quiet_end,
+            now_utc_secs: unix_now_secs(),
+            local_now_secs: local_secs_for_quiet_check(),
+            outbox_dir: std::path::Path::new(TG_OUTBOX_DIR),
+            stamp_path: std::path::Path::new(TG_ROUTE_ALERT_STAMP_FILE),
+            cooldown_secs: TG_ROUTE_ALERT_COOLDOWN_SECS,
+        });
+    }
+}
 
 pub fn spawn_tg_bot_loop(state: Arc<AppState>, core: Arc<CoreManager>) {
+    if TG_POLL_ACTIVE.swap(true, Ordering::AcqRel) {
+        return;
+    }
     tokio::spawn(async move {
         let mut last_update_id: i64 = 0;
-        let mut interval = tokio::time::interval(Duration::from_secs(6));
+        let mut last_commands_key: Option<(String, bool)> = None;
+        let mut prev_active_jobs: HashSet<String> = HashSet::new();
+        let mut seen_finished_jobs: VecDeque<String> =
+            VecDeque::with_capacity(MAX_SEEN_FINISHED_JOBS);
+        let mut consecutive_failures: u32 = 0;
+        let mut route_alert_sent = false;
+
         loop {
-            interval.tick().await;
-            let (enabled, token, admins) = {
+            let (
+                eff_running,
+                token,
+                admins,
+                poll_secs,
+                ru,
+                header,
+                proxy_opt,
+                direct_fallback,
+                quiet_enabled,
+                quiet_start,
+                quiet_end,
+            ) = {
                 let d = state.data.read().await;
+                let core_running = state.live.read().await.core_running;
                 (
-                    d.telegram.enabled,
+                    is_bot_effectively_running(&d),
                     d.telegram.bot_token.trim().to_string(),
                     d.telegram.admin_ids.clone(),
+                    u64::from(d.telegram.poll_interval).clamp(1, 300),
+                    is_ru(&d),
+                    build_message_header(&d),
+                    resolve_tg_proxy_url(&d, core_running),
+                    d.telegram.bot_direct_fallback,
+                    d.telegram.quiet_hours_enabled,
+                    d.telegram.quiet_hours_start.clone(),
+                    d.telegram.quiet_hours_end.clone(),
                 )
             };
-            if !enabled || token.is_empty() || admins.is_empty() {
+
+            if !eff_running {
+                consecutive_failures = 0;
+                route_alert_sent = false;
+                sleep_or_wakeup(30).await;
                 continue;
             }
-            let url = format!(
-                "https://api.telegram.org/bot{token}/getUpdates?timeout=2&offset={}",
-                last_update_id + 1
-            );
-            let Ok(out) = Command::new("curl")
-                .args(["-fsSL", "--max-time", "5", &url])
-                .output()
-                .await
-            else {
+
+            write_heartbeat_to(std::path::Path::new(TG_HEARTBEAT_FILE), unix_now_secs());
+
+            if last_commands_key.as_ref() != Some(&(token.clone(), ru))
+                && transport::register_bot_commands(&token, ru, proxy_opt.as_deref())
+                    .await
+                    .is_ok()
+            {
+                last_commands_key = Some((token.clone(), ru));
+            }
+
+            let quiet_now = quiet_enabled
+                && is_in_quiet_hours_at(local_secs_for_quiet_check(), &quiet_start, &quiet_end);
+
+            let job_ctx = JobNotifyCtx {
+                token: &token,
+                admins: &admins,
+                header: &header,
+                ru,
+                quiet_now,
+                proxy_url: proxy_opt.as_deref(),
+            };
+            Box::pin(check_and_notify_finished_jobs(
+                &mut prev_active_jobs,
+                &mut seen_finished_jobs,
+                &job_ctx,
+            ))
+            .await;
+
+            Box::pin(drain_telegram_outbox(
+                &token,
+                &admins,
+                &header,
+                quiet_now,
+                proxy_opt.as_deref(),
+            ))
+            .await;
+
+            let poll_req = transport::PollTransportRequest {
+                token: token.clone(),
+                offset: last_update_id + 1,
+                timeout_secs: TG_POLL_TIMEOUT_SECS,
+                proxy_url: proxy_opt.clone(),
+                direct_fallback,
+            };
+
+            let poll_res = tokio::select! {
+                _ = TG_WAKEUP_NOTIFY.notified() => {
+                    continue;
+                }
+                res = transport::poll_telegram_updates(&poll_req) => res,
+            };
+
+            write_heartbeat_to(std::path::Path::new(TG_HEARTBEAT_FILE), unix_now_secs());
+
+            let Ok(val) = poll_res else {
+                record_poll_failure_alert(
+                    &mut consecutive_failures,
+                    &mut route_alert_sent,
+                    &token,
+                    &admins,
+                    &header,
+                    ru,
+                    direct_fallback,
+                    quiet_enabled,
+                    &quiet_start,
+                    &quiet_end,
+                );
+                let backoff_secs =
+                    (poll_secs.max(5) * u64::from(consecutive_failures.min(6))).min(60);
+                sleep_with_heartbeat(backoff_secs).await;
                 continue;
             };
-            if !out.status.success() {
+
+            if val.get("error_code").and_then(Value::as_i64) == Some(409) {
+                consecutive_failures = 0;
+                route_alert_sent = false;
+                sleep_with_heartbeat(15).await;
                 continue;
             }
-            let Ok(val) = serde_json::from_slice::<Value>(&out.stdout) else {
+            if val.get("error_code").and_then(Value::as_i64) == Some(429) {
+                consecutive_failures = 0;
+                route_alert_sent = false;
+                let retry_after = val
+                    .pointer("/parameters/retry_after")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(10)
+                    .clamp(1, 300);
+                sleep_with_heartbeat(retry_after).await;
                 continue;
-            };
+            }
+            if val.get("ok").and_then(Value::as_bool) != Some(true) {
+                let api_err = val.get("error_code").and_then(Value::as_i64);
+                if !matches!(api_err, Some(400 | 401 | 403 | 404)) {
+                    record_poll_failure_alert(
+                        &mut consecutive_failures,
+                        &mut route_alert_sent,
+                        &token,
+                        &admins,
+                        &header,
+                        ru,
+                        direct_fallback,
+                        quiet_enabled,
+                        &quiet_start,
+                        &quiet_end,
+                    );
+                }
+                sleep_with_heartbeat(poll_secs.max(5)).await;
+                continue;
+            }
+
             let Some(arr) = val.get("result").and_then(Value::as_array) else {
+                sleep_with_heartbeat(poll_secs).await;
                 continue;
             };
+
+            consecutive_failures = 0;
+            route_alert_sent = false;
+
+            let mut processed_any = false;
             for upd in arr {
                 if let Some(uid) = upd.get("update_id").and_then(Value::as_i64)
                     && uid > last_update_id
@@ -63,9 +1683,26 @@ pub fn spawn_tg_bot_loop(state: Arc<AppState>, core: Arc<CoreManager>) {
                     if !admins.contains(&chat_id) {
                         continue;
                     }
-                    let text = msg.get("text").and_then(Value::as_str).unwrap_or("").trim();
-                    let reply = handle_bot_command(&state, &core, text).await;
-                    let _ = send_tg_message(&token, chat_id, &reply).await;
+                    let text = msg
+                        .get("text")
+                        .or_else(|| msg.get("caption"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .trim();
+                    if text.is_empty() {
+                        continue;
+                    }
+                    processed_any = true;
+                    let reply = dispatch_text_message(chat_id, text, &state, &core).await;
+                    Box::pin(deliver_bot_reply(
+                        &token,
+                        chat_id,
+                        None,
+                        reply,
+                        &header,
+                        proxy_opt.as_deref(),
+                    ))
+                    .await;
                 } else if let Some(cb) = upd.get("callback_query") {
                     let chat_id = cb
                         .pointer("/message/chat/id")
@@ -74,231 +1711,40 @@ pub fn spawn_tg_bot_loop(state: Arc<AppState>, core: Arc<CoreManager>) {
                     if !admins.contains(&chat_id) {
                         continue;
                     }
-                    let data = cb.get("data").and_then(Value::as_str).unwrap_or("");
-                    let reply = handle_bot_callback(&state, &core, data).await;
-                    let _ = send_tg_message(&token, chat_id, &reply).await;
+                    processed_any = true;
+                    let cb_id = cb
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string();
+                    let message_id = cb.pointer("/message/message_id").and_then(Value::as_i64);
+                    let raw_data = cb.get("data").and_then(Value::as_str).unwrap_or("");
+
+                    if !cb_id.is_empty() {
+                        let tok_c = token.clone();
+                        let px_c = proxy_opt.clone();
+                        tokio::spawn(async move {
+                            transport::answer_callback_query(&tok_c, &cb_id, None, px_c.as_deref())
+                                .await;
+                        });
+                    }
+
+                    let reply = dispatch_callback_query(chat_id, raw_data, &state, &core).await;
+                    Box::pin(deliver_bot_reply(
+                        &token,
+                        chat_id,
+                        message_id,
+                        reply,
+                        &header,
+                        proxy_opt.as_deref(),
+                    ))
+                    .await;
                 }
+            }
+
+            if !processed_any && poll_secs > TG_POLL_TIMEOUT_SECS {
+                sleep_with_heartbeat(poll_secs - TG_POLL_TIMEOUT_SECS).await;
             }
         }
     });
-}
-
-async fn handle_bot_command(state: &Arc<AppState>, core: &Arc<CoreManager>, text: &str) -> String {
-    let cmd = text.split_whitespace().next().unwrap_or("");
-    match cmd {
-        "/start" | "/help" => "<b>Tachyon Router Bot</b>\n\n\
-             Доступные команды:\n\
-             - /status — статус ядра и трафика\n\
-             - /doctor — проверка 14 подсистем\n\
-             - /ai_doctor — заключение AI Doctor v3.0\n\
-             - /rules — список секций маршрутизации\n\
-             - /server — список серверов и узлов\n\
-             - /devices — список клиентов LAN\n\
-             - /restart — перезапуск tachyon-core\n\
-             - /rollback — откат к снимку Last Known Good\n\
-             - /backup — выгрузка резервной копии"
-            .to_string(),
-        "/status" => {
-            let live = state.live.read().await;
-            format!(
-                "<b>Tachyon Status</b>\n\
-                 Ядро: <code>{}</code> (PID: {:?})\n\
-                 Uptime: <code>{} с</code>\n\
-                 Память RSS: <code>{:.2} МБ</code>\n\
-                 Активных сессий: <code>{}</code>\n\
-                 Трафик: TX <code>{}</code> / RX <code>{}</code> байт",
-                if live.core_running {
-                    "Работает"
-                } else {
-                    "Остановлено"
-                },
-                live.core_pid,
-                live.core_uptime_secs,
-                live.core_rss_bytes as f64 / (1024.0 * 1024.0),
-                live.active_connections,
-                live.total_up_bytes,
-                live.total_down_bytes
-            )
-        }
-        "/doctor" => {
-            let rep = diagnostics::run_local_doctor(state).await;
-            format!(
-                "<b>Диагностика Tachyon</b>\nСтатус: {}\nПроверено: {}/{}",
-                rep.summary, rep.checks_passed, rep.checks_total
-            )
-        }
-        "/ai_doctor" => {
-            let res = diagnostics::run_ai_doctor(state, None).await;
-            res.get("analysis")
-                .and_then(Value::as_str)
-                .unwrap_or("OK")
-                .to_string()
-        }
-        "/rules" | "/sections" => {
-            let d = state.data.read().await;
-            let lines: Vec<String> = d
-                .sections
-                .iter()
-                .map(|s| {
-                    format!(
-                        "[{}] <b>{}</b> (<code>{}</code>)",
-                        if s.enabled { "ON" } else { "OFF" },
-                        s.label,
-                        s.connection_type
-                    )
-                })
-                .collect();
-            format!("<b>Секции маршрутизации:</b>\n{}", lines.join("\n"))
-        }
-        "/server" | "/servers" => {
-            let d = state.data.read().await;
-            let lines: Vec<String> = d
-                .servers
-                .iter()
-                .take(15)
-                .map(|s| {
-                    format!(
-                        "[{}] <b>{}</b> — <code>{}:{}</code> ({})",
-                        if s.enabled { "ON" } else { "OFF" },
-                        s.label,
-                        s.public_host,
-                        s.listen_port,
-                        s.protocol
-                    )
-                })
-                .collect();
-            format!("<b>Входящие серверы:</b>\n{}", lines.join("\n"))
-        }
-        "/devices" => {
-            let live = state.live.read().await;
-            let lines: Vec<String> = live
-                .lan_devices
-                .iter()
-                .take(20)
-                .map(|dev| {
-                    let name = if !dev.custom_name.is_empty() {
-                        &dev.custom_name
-                    } else if !dev.hostname.is_empty() {
-                        &dev.hostname
-                    } else {
-                        "LAN Client"
-                    };
-                    format!("• <code>{}</code> — {} ({})", dev.ip, name, dev.mac)
-                })
-                .collect();
-            format!("<b>Клиенты LAN ({}):</b>\n{}", live.lan_devices.len(), lines.join("\n"))
-        }
-        "/restart" | "/reload" => match core.apply_or_reload().await {
-            Ok(()) => "[OK] Ядро tachyon-core успешно перезапущено".to_string(),
-            Err(e) => format!("[ERR] Ошибка перезапуска: {e}"),
-        },
-        "/rollback" => {
-            match diagnostics::apply_quick_fix(state, core, "rollback_known_good").await {
-                Ok(msg) => format!("[OK] {msg}"),
-                Err(e) => format!("[ERR] {e}"),
-            }
-        }
-        _ if cmd.starts_with("/fix") => {
-            let fix_id = text.split_whitespace().nth(1).unwrap_or("restart_core");
-            match diagnostics::apply_quick_fix(state, core, fix_id).await {
-                Ok(msg) => format!("[OK] {msg}"),
-                Err(e) => format!("[ERR] {e}"),
-            }
-        }
-        _ => "Используйте /start для списка команд.".to_string(),
-    }
-}
-
-async fn handle_bot_callback(state: &Arc<AppState>, core: &Arc<CoreManager>, data: &str) -> String {
-    if let Some(rest) = data.strip_prefix("srv:select:") {
-        if let Some((sec_id, tag)) = rest.split_once(':') {
-            match core.select_section_node(sec_id, tag).await {
-                Ok(()) => return format!("[OK] Узел секции {sec_id} переключён на {tag}"),
-                Err(e) => return format!("[ERR] {e}"),
-            }
-        }
-    } else if let Some(sec_id) = data.strip_prefix("rule:toggle:") {
-        let mut candidate = state.data.read().await.clone();
-        if let Some(sec) = candidate.sections.iter_mut().find(|s| s.id == sec_id) {
-            sec.enabled = !sec.enabled;
-            let st = sec.enabled;
-            let _ = transaction::commit_transaction(state, candidate).await;
-            let _ = core.apply_or_reload().await;
-            return format!(
-                "Секция {sec_id}: {}",
-                if st {
-                    "Включена"
-                } else {
-                    "Выключена"
-                }
-            );
-        }
-    } else if let Some(fix_id) = data.strip_prefix("fix:apply:")
-        && let Ok(msg) = diagnostics::apply_quick_fix(state, core, fix_id).await
-    {
-        return format!("[OK] {msg}");
-    }
-    handle_bot_command(state, core, data).await
-}
-
-pub async fn send_test_notification(state: &Arc<AppState>) -> anyhow::Result<usize> {
-    let (token, admins) = {
-        let d = state.data.read().await;
-        (
-            d.telegram.bot_token.trim().to_string(),
-            d.telegram.admin_ids.clone(),
-        )
-    };
-    if token.is_empty() || admins.is_empty() {
-        anyhow::bail!("Укажите Bot Token и хотя бы один Admin ID в настройках Telegram");
-    }
-    let mut sent = 0usize;
-    let text = "<b>Tachyon Router: Тестовое уведомление</b>\nСвязь с роутером установлена.";
-    for chat_id in admins {
-        if send_tg_message(&token, chat_id, text).await.is_ok() {
-            sent += 1;
-        }
-    }
-    Ok(sent)
-}
-
-async fn send_tg_message(token: &str, chat_id: i64, text: &str) -> anyhow::Result<()> {
-    let url = format!("https://api.telegram.org/bot{token}/sendMessage");
-    let body = json!({
-        "chat_id": chat_id,
-        "text": text,
-        "parse_mode": "HTML",
-        "reply_markup": {
-            "inline_keyboard": [
-                [
-                    {"text": "Статус", "callback_data": "/status"},
-                    {"text": "Doctor", "callback_data": "/doctor"},
-                    {"text": "Секции", "callback_data": "/rules"}
-                ],
-                [
-                    {"text": "Клиенты LAN", "callback_data": "/devices"},
-                    {"text": "Перезапуск", "callback_data": "/restart"},
-                    {"text": "Откат LKG", "callback_data": "/rollback"}
-                ]
-            ]
-        }
-    })
-    .to_string();
-    let out = Command::new("curl")
-        .args([
-            "-fsSL",
-            "--max-time",
-            "8",
-            "-H",
-            "Content-Type: application/json",
-            "-d",
-            &body,
-            &url,
-        ])
-        .output()
-        .await?;
-    if !out.status.success() {
-        anyhow::bail!("Telegram API HTTP error");
-    }
-    Ok(())
 }

@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
+
+echo "==> [pre-push] Checking Rust formatting, lints, and unit tests..."
+cargo fmt --all --check
+cargo clippy --all-targets -- -D warnings
+cargo test
+
+echo "==> [pre-push] Auditing Pure-Rust dependency tree (aarch64-unknown-linux-musl)..."
+bad_deps="$(
+  cargo tree --target aarch64-unknown-linux-musl -e normal,build --prefix none \
+    | grep -E '^(cc|cmake|bindgen|ring|aws-lc(-[A-Za-z0-9-]+)?|openssl(-src)?|libz(-sys)?|[A-Za-z0-9_-]+-sys) v' \
+    || true
+)"
+if [[ -n "$bad_deps" ]]; then
+  echo "ERROR: Non-pure-Rust / C-toolchain dependencies detected on musl target:" >&2
+  printf '%s\n' "$bad_deps" >&2
+  exit 1
+fi
+
+echo "==> [pre-push] Running frontend locales actualization and CI..."
+(
+  cd "$ROOT_DIR/fe-app-tachyon"
+  npm run locales:actualize
+  npm run ci
+)
+
+# Discard timestamp-only PO/POT header changes so working tree stays clean
+if git diff -I "POT-Creation-Date" -I "PO-Revision-Date" --quiet -- fe-app-tachyon/locales luci-app-tachyon/po; then
+  git checkout -- fe-app-tachyon/locales/*.pot fe-app-tachyon/locales/*.po luci-app-tachyon/po/ 2>/dev/null || true
+fi
+
+if ! git diff --quiet || ! git diff --cached --quiet; then
+  echo "ERROR: Uncommitted changes detected after pre-push build and checks." >&2
+  echo "Commit generated assets/locales before pushing so CI stays clean:" >&2
+  git status --short >&2
+  exit 1
+fi
+
+echo "==> [pre-push] All checks passed."

@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1200" height="176" viewBox="0 0 1200 176"
+     role="img" aria-labelledby="title desc">
+  <title id="title">Веб-панель Tachyon (:1680) и интерфейс LuCI (TypeScript)</title>
+  <desc id="desc">Веб-интерфейс Tachyon 2.0 на порту :1680 с LuCI Launcher: встроенный подбор стратегий Desync, телеметрия ОЗУ и загрузка конфигураций AmneziaWG.</desc>
+
+  <rect width="1200" height="176" rx="16" fill="#141415"/>
+  <rect x="0.5" y="0.5" width="1199" height="175" rx="15.5" fill="none" stroke="#2e2e32" stroke-width="1"/>
+
+  <!-- Header -->
+  <text x="24" y="34" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="17" font-weight="500">Веб-панель Tachyon (:1680) и интеграция с LuCI (TypeScript)</text>
+  <text x="1176" y="34" text-anchor="end" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">http://router:1680 · fe-app-tachyon</text>
+
+  <!-- Card 1 (Highlighted): Standalone Panel :1680 & LuCI (280px) -->
+  <g transform="translate(24, 52)">
+    <rect x="0" y="0" width="280" height="104" rx="12" fill="#19191b" stroke="#38bdf8" stroke-width="1" stroke-opacity="0.5"/>
+    <text x="16" y="26" fill="#38bdf8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">Standalone Panel :1680</text>
+    <text x="16" y="50" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">Автономная панель + LuCI</text>
+    <text x="16" y="72" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="400">Сессионная авторизация, ubus-мост</text>
+    <text x="16" y="90" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">и Launcher без нагрузки на uhttpd</text>
+  </g>
+
+  <!-- Card 2: Fuzzer Modal (280px) -->
+  <g transform="translate(316, 52)">
+    <rect x="0" y="0" width="280" height="104" rx="12" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
+    <text x="16" y="26" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">Desync Strategy Fuzzer UI</text>
+    <text x="16" y="50" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">Подбор стратегий в UI</text>
+    <text x="16" y="72" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="400">Живой прогресс-бар замеров,</text>
+    <text x="16" y="90" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">HTTP-коды и запись в tachyon.json</text>
+  </g>
+
+  <!-- Card 3: RAM & Step Telemetry (280px) -->
+  <g transform="translate(608, 52)">
+    <rect x="0" y="0" width="280" height="104" rx="12" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
+    <text x="16" y="26" fill="#4cc38a" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">RAM &amp; Cache Telemetry</text>
+    <text x="16" y="50" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">Телеметрия ОЗУ и списков</text>
+    <text x="16" y="72" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="400">Точный расход памяти и</text>
+    <text x="16" y="90" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">индикатор шагов обновления</text>
+  </g>
+
+  <!-- Card 4: Config Uploaders & Clone (276px) -->
+  <g transform="translate(900, 52)">
+    <rect x="0" y="0" width="276" height="104" rx="12" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
+    <text x="16" y="26" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">AWG .conf · LKG · Clone</text>
+    <text x="16" y="50" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">Импорт и клонирование</text>
+    <text x="16" y="72" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="400">Профили AmneziaWG, откат LKG</text>
+    <text x="16" y="90" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">и копирование секций в 1 клик</text>
+  </g>
+</svg>

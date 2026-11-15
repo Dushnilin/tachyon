@@ -1,0 +1,607 @@
+import {
+  renderCheckIcon24,
+  renderXIcon24,
+  renderClockIcon,
+} from '../../../../icons';
+import { renderButton } from '../../../../partials';
+import { copyToClipboard } from '../../../../helpers/copyToClipboard';
+import { TachyonShellMethods } from '../../../methods';
+import { Tachyon } from '../../../types';
+import {
+  isReloadInProgress,
+  safeReloadPage,
+  saveHandledJobToSession,
+} from '../sessionJobs';
+
+export interface UpdateProgressModalOptions {
+  component: Tachyon.ComponentName;
+  action: Tachyon.ComponentAction;
+  componentTitle: string;
+  currentVersion?: string;
+  targetVersion?: string;
+  currentSha?: string;
+  targetSha?: string;
+}
+
+export interface CompleteSuccessOptions {
+  autoCloseMs?: number;
+  reloadPage?: boolean;
+  onInstall?: () => void;
+  installText?: string;
+}
+
+export interface UpdateProgressModalController {
+  updateStep: (stepIndex: number, statusText?: string) => void;
+  updateStatus: (statusText: string) => void;
+  updatePhase: (phase: string, message?: string) => void;
+  updateVersions: (opts: {
+    currentVersion?: string;
+    targetVersion?: string;
+    currentSha?: string;
+    targetSha?: string;
+  }) => void;
+  completeSuccess: (message?: string, options?: CompleteSuccessOptions) => void;
+  completeError: (errorMessage: string) => void;
+  startLogTracking: (jobId: string) => void;
+  stopLogTracking: () => void;
+  getLogText: () => string;
+  close: () => void;
+}
+
+function formatSha(sha?: string): string {
+  if (!sha) return '';
+  const clean = sha.trim();
+  return clean.length >= 7 ? clean.slice(0, 7) : clean;
+}
+
+function renderVersionBadgeText(opts: {
+  currentVersion?: string;
+  targetVersion?: string;
+  currentSha?: string;
+  targetSha?: string;
+  action: string;
+}): string {
+  const cVer = opts.currentVersion || '';
+  const tVer = opts.targetVersion || '';
+  const cSha = formatSha(opts.currentSha);
+  const tSha = formatSha(opts.targetSha);
+
+  if (tVer) {
+    if (cVer === tVer) {
+      if (cSha && tSha && cSha !== tSha) {
+        return `${cVer} (${cSha} → ${tSha})`;
+      }
+      if (tSha) {
+        return `${cVer} (${tSha})`;
+      }
+      if (cSha) {
+        return `${cVer} (${cSha} → ${_('new build')})`;
+      }
+      return `${cVer} (${_('new build')})`;
+    }
+
+    const currentPart = cVer ? (cSha ? `${cVer} (${cSha})` : cVer) : '';
+    const targetPart = tSha ? `${tVer} (${tSha})` : tVer;
+
+    return currentPart ? `${currentPart} → ${targetPart}` : targetPart;
+  }
+
+  if (cVer) {
+    return cSha ? `${cSha}` : cVer;
+  }
+
+  return opts.action;
+}
+
+let activeModalController: UpdateProgressModalController | null = null;
+let activeModalJobId: string | null = null;
+
+export function getActiveProgressModalController() {
+  return activeModalController;
+}
+
+export function setActiveProgressModalJobId(jobId: string | null) {
+  activeModalJobId = jobId;
+}
+
+export function getActiveProgressModalJobId() {
+  return activeModalJobId;
+}
+
+export function showUpdateProgressModal(
+  options: UpdateProgressModalOptions,
+): UpdateProgressModalController {
+  if (activeModalController) {
+    activeModalController.close();
+  }
+
+  const isCheckAction = options.action === 'check_update';
+
+  let modalTitleText = _('Operation in progress...');
+  if (isCheckAction) {
+    modalTitleText = `${_('Checking for updates...')}: ${options.componentTitle}`;
+  } else if (options.action === 'remove') {
+    modalTitleText = `${_('Removing')} ${options.componentTitle}...`;
+  } else {
+    modalTitleText = `${_('Updating')} ${options.componentTitle}...`;
+  }
+
+  let elapsedSeconds = 0;
+  let timerInterval: ReturnType<typeof setInterval> | null = null;
+  let currentModalVersions = { ...options };
+
+  const timerTextEl = E('span', {}, '00:00');
+  const timerBadgeEl = E(
+    'div',
+    { class: 'tachyon-update-modal__timer-badge' },
+    [renderClockIcon(12), timerTextEl],
+  );
+
+  const phaseBadgeEl = E(
+    'div',
+    {
+      class:
+        'tachyon-update-modal__phase-badge tachyon-update-modal__phase-badge--hidden',
+    },
+    '',
+  );
+
+  const titleBadgeEl = E(
+    'span',
+    { class: 'tachyon-update-modal__version-badge' },
+    renderVersionBadgeText(options),
+  );
+
+  const headerEl = E('div', { class: 'tachyon-update-modal__header' }, [
+    E('div', { class: 'tachyon-update-modal__header-info' }, [
+      E(
+        'b',
+        { class: 'tachyon-update-modal__component-name' },
+        options.componentTitle,
+      ),
+      titleBadgeEl,
+    ]),
+    phaseBadgeEl,
+    timerBadgeEl,
+  ]);
+
+  const logPreEl = E(
+    'pre',
+    {
+      class: 'tachyon-update-modal__log',
+    },
+    _('Operation started. Waiting for log output...'),
+  ) as HTMLPreElement;
+
+  const logPanelEl = E('div', { class: 'tachyon-update-modal__log-panel' }, [
+    E('div', { class: 'tachyon-update-modal__log-header' }, [
+      E('b', {}, _('Operation log')),
+      renderButton({
+        classNames: ['cbi-button-action', 'tachyon-update-modal__log-copy'],
+        text: _('Copy log'),
+        onClick: copyLog,
+      }),
+    ]),
+    logPreEl,
+  ]);
+
+  const actionButtonContainer = E(
+    'div',
+    { class: 'tachyon-update-modal__actions' },
+    [
+      renderButton({
+        text: _('Operation in progress...'),
+        disabled: true,
+        loading: true,
+        onClick: () => {},
+      }),
+    ],
+  );
+
+  const modalBodyEl = E('div', { class: 'tachyon-update-modal__body' }, [
+    headerEl,
+    logPanelEl,
+    actionButtonContainer,
+  ]) as HTMLElement;
+
+  const updateTimerDisplay = () => {
+    const mins = Math.floor(elapsedSeconds / 60)
+      .toString()
+      .padStart(2, '0');
+    const secs = (elapsedSeconds % 60).toString().padStart(2, '0');
+    timerTextEl.textContent = `${mins}:${secs}`;
+  };
+
+  timerInterval = setInterval(() => {
+    elapsedSeconds += 1;
+    updateTimerDisplay();
+  }, 1000);
+
+  function cleanupTimers() {
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
+    clearAutoCloseTimer();
+  }
+
+  // A check modal auto-closes shortly after the check reports. The same modal
+  // is then reused for the update the user just started from it, and nothing
+  // cancelled that pending close, so the window vanished mid-update.
+  let autoCloseTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function clearAutoCloseTimer() {
+    if (autoCloseTimer) {
+      clearTimeout(autoCloseTimer);
+      autoCloseTimer = null;
+    }
+  }
+
+  let logTrackingJobId: string | null = null;
+  let logTrackingOffset = 0;
+  let logFullText = '';
+  let logPollTimer: ReturnType<typeof setTimeout> | null = null;
+  let logPollStopped = true;
+  let reloadProbeActive = false;
+
+  function appendLogText(text: string) {
+    if (!text) {
+      return;
+    }
+    logFullText += text;
+    logPreEl.textContent = logFullText;
+    logPreEl.scrollTop = logPreEl.scrollHeight;
+  }
+
+  async function pollLog() {
+    if (logPollStopped || !logTrackingJobId) {
+      return;
+    }
+
+    const jobId = logTrackingJobId;
+    const offset = logTrackingOffset;
+
+    try {
+      const response = await TachyonShellMethods.componentActionLog(
+        jobId,
+        offset,
+      );
+      if (logPollStopped || logTrackingJobId !== jobId) {
+        return;
+      }
+      if (response.success && response.data) {
+        logTrackingOffset = response.data.offset;
+        appendLogText(response.data.log);
+      }
+    } catch (_error) {
+      // A transient RPC failure must not stop the polling; the next tick retries.
+    } finally {
+      if (!logPollStopped && logTrackingJobId === jobId) {
+        logPollTimer = setTimeout(pollLog, 1500);
+      }
+    }
+  }
+
+  function stopLogTracking() {
+    logPollStopped = true;
+    if (logPollTimer) {
+      clearTimeout(logPollTimer);
+      logPollTimer = null;
+    }
+    logTrackingJobId = null;
+  }
+
+  function finishLogTracking() {
+    if (logPollStopped || !logTrackingJobId) {
+      stopLogTracking();
+      return;
+    }
+
+    const jobId = logTrackingJobId;
+    const offset = logTrackingOffset;
+    logPollStopped = true;
+    if (logPollTimer) {
+      clearTimeout(logPollTimer);
+      logPollTimer = null;
+    }
+
+    void TachyonShellMethods.componentActionLog(jobId, offset)
+      .then((response) => {
+        if (response.success && response.data) {
+          logTrackingOffset = response.data.offset;
+          appendLogText(response.data.log);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        logTrackingJobId = null;
+      });
+  }
+
+  function copyLog() {
+    if (!logFullText) {
+      return;
+    }
+
+    copyToClipboard(logFullText);
+  }
+
+  const controller: UpdateProgressModalController = {
+    updateStep: (_stepIndex: number, _statusText?: string) => {
+      // noop — step UI removed, log is the primary content
+    },
+    updateStatus: (_statusText: string) => {
+      // noop — status merged into log
+    },
+    updatePhase: (phase: string, _message?: string) => {
+      const phaseLabels: Record<string, string> = {
+        package_index: _('Refreshing package index'),
+        waiting_package_lock: _('Waiting for package manager'),
+        package_transaction: _('Installing packages'),
+        downloading: _('Downloading'),
+        extracting: _('Extracting'),
+        backup: _('Creating backup'),
+        verify: _('Verifying installation'),
+      };
+      const label = phaseLabels[phase] || phase;
+      phaseBadgeEl.textContent = label;
+      phaseBadgeEl.classList.remove(
+        'tachyon-update-modal__phase-badge--hidden',
+      );
+    },
+    updateVersions: (opts: {
+      currentVersion?: string;
+      targetVersion?: string;
+      currentSha?: string;
+      targetSha?: string;
+    }) => {
+      currentModalVersions = {
+        ...currentModalVersions,
+        ...opts,
+      };
+      titleBadgeEl.textContent = renderVersionBadgeText(currentModalVersions);
+    },
+    completeSuccess: (message?: string, opts?: CompleteSuccessOptions) => {
+      cleanupTimers();
+      finishLogTracking();
+
+      const successMsg =
+        message ||
+        (isCheckAction
+          ? _('Check completed!')
+          : options.action === 'remove'
+            ? _('Removal completed successfully!')
+            : _('Operation completed successfully!'));
+
+      const bannerEl = E(
+        'div',
+        { class: 'tachyon-update-modal__success-banner' },
+        [renderCheckIcon24(), E('span', {}, successMsg)],
+      );
+
+      if (opts?.reloadPage) {
+        reloadProbeActive = true;
+        let attempt = 0;
+        const maxAttempts = 30;
+
+        const statusEl = E(
+          'div',
+          {
+            class: 'tachyon-update-modal__reload-status',
+            style:
+              'margin: 10px 0; font-size: 0.95em; color: var(--cbi-color-neutral, #666);',
+          },
+          _('Waiting for router services to restart...'),
+        );
+
+        const reloadBtn = renderButton({
+          classNames: ['cbi-button-save'],
+          text: _('Reload now'),
+          onClick: () => {
+            reloadProbeActive = false;
+            if (activeModalJobId) {
+              saveHandledJobToSession(activeModalJobId);
+            }
+            safeReloadPage();
+          },
+        });
+
+        actionButtonContainer.replaceChildren(
+          bannerEl,
+          statusEl,
+          E('div', { class: 'tachyon-update-modal__action-buttons' }, [
+            reloadBtn,
+          ]),
+        );
+
+        const probeAndReload = async () => {
+          // Pause 1.5s initially to allow init scripts and rpcd reload to commence
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+
+          while (
+            reloadProbeActive &&
+            attempt < maxAttempts &&
+            !isReloadInProgress()
+          ) {
+            attempt += 1;
+            statusEl.textContent = `${_('Verifying router and service readiness...')} (${attempt}/${maxAttempts})`;
+
+            try {
+              const res = await TachyonShellMethods.getSystemInfo();
+              if (res && res.success) {
+                const targetVer = currentModalVersions.targetVersion
+                  ?.replace(/^v/i, '')
+                  .trim();
+                const currentVer = res.data?.tachyon_version
+                  ?.replace(/^v/i, '')
+                  .trim();
+                if (
+                  options.component === 'tachyon' &&
+                  targetVer &&
+                  currentVer &&
+                  currentVer !== targetVer &&
+                  attempt < maxAttempts - 2
+                ) {
+                  await new Promise((resolve) => setTimeout(resolve, 1500));
+                  continue;
+                }
+
+                statusEl.textContent = _(
+                  'Services are online and ready! Reloading page...',
+                );
+                reloadBtn.textContent = _('Reloading...');
+                if (activeModalJobId) {
+                  saveHandledJobToSession(activeModalJobId);
+                }
+                await new Promise((resolve) => setTimeout(resolve, 800));
+                safeReloadPage();
+                return;
+              }
+            } catch (_err) {
+              // RPC is unavailable while daemon/rpcd is reloading; keep probing
+            }
+
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+          }
+
+          if (reloadProbeActive && !isReloadInProgress()) {
+            statusEl.textContent = _(
+              'Services restarted. Click to reload page.',
+            );
+          }
+        };
+
+        void probeAndReload();
+      } else {
+        const actionButtons: HTMLElement[] = [];
+
+        if (opts?.onInstall) {
+          const installBtn = renderButton({
+            classNames: ['cbi-button-save'],
+            text: opts.installText || _('Install'),
+            onClick: () => {
+              controller.close();
+              opts.onInstall!();
+            },
+          });
+          actionButtons.push(installBtn);
+        }
+
+        const closeBtn = renderButton({
+          classNames: ['cbi-button-apply'],
+          text: _('Close'),
+          onClick: () => {
+            controller.close();
+          },
+        });
+        actionButtons.push(closeBtn);
+
+        actionButtonContainer.replaceChildren(
+          bannerEl,
+          E(
+            'div',
+            { class: 'tachyon-update-modal__action-buttons' },
+            actionButtons,
+          ),
+        );
+
+        const defaultAutoCloseMs = opts?.onInstall
+          ? 0
+          : isCheckAction
+            ? 1200
+            : 0;
+        const autoCloseMs = opts?.autoCloseMs ?? defaultAutoCloseMs;
+        if (autoCloseMs > 0) {
+          autoCloseTimer = setTimeout(() => {
+            autoCloseTimer = null;
+            if (
+              activeModalController === controller ||
+              activeModalController === null
+            ) {
+              controller.close();
+            }
+          }, autoCloseMs);
+        }
+      }
+    },
+    completeError: (errorMessage: string) => {
+      cleanupTimers();
+      finishLogTracking();
+
+      let cleanError = (errorMessage || '').trim();
+      if (
+        cleanError.includes('Near here') ||
+        /^[-=~_^]{3,}$/m.test(cleanError)
+      ) {
+        cleanError = cleanError
+          .split('\n')
+          .filter(
+            (line) =>
+              !line.includes('Near here') &&
+              !/^[\s\-_^]+$/.test(line) &&
+              line.trim() !== '',
+          )
+          .join(' ')
+          .trim();
+      }
+
+      const bannerEl = E(
+        'div',
+        { class: 'tachyon-update-modal__error-banner' },
+        [renderXIcon24(), E('span', {}, cleanError || _('Operation failed'))],
+      );
+
+      const closeBtn = renderButton({
+        classNames: ['cbi-button-remove'],
+        text: _('Close'),
+        onClick: () => {
+          controller.close();
+        },
+      });
+
+      actionButtonContainer.replaceChildren(
+        bannerEl,
+        E('div', { class: 'tachyon-update-modal__action-buttons' }, [closeBtn]),
+      );
+    },
+    startLogTracking: (jobId: string) => {
+      // A new job on this modal: whatever the previous one scheduled to close
+      // it no longer applies.
+      clearAutoCloseTimer();
+
+      if (!jobId || logTrackingJobId === jobId) {
+        return;
+      }
+
+      logTrackingJobId = jobId;
+      logTrackingOffset = 0;
+      logPollStopped = false;
+
+      if (logPollTimer) {
+        clearTimeout(logPollTimer);
+        logPollTimer = null;
+      }
+      void pollLog();
+    },
+    stopLogTracking: () => {
+      stopLogTracking();
+    },
+    getLogText: () => logFullText,
+    close: () => {
+      cleanupTimers();
+      stopLogTracking();
+      // Stop any background probe that may still be running after modal close
+      reloadProbeActive = false;
+      if (activeModalController === controller) {
+        activeModalController = null;
+        activeModalJobId = null;
+      }
+      ui.hideModal();
+    },
+  };
+
+  activeModalController = controller;
+  ui.showModal(modalTitleText, modalBodyEl);
+
+  return controller;
+}

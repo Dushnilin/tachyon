@@ -2,9 +2,38 @@
 //! and LAN neighbor / DHCP lease discovery for OpenWrt routers.
 
 use std::collections::HashMap;
+use std::net::UdpSocket;
 use std::path::Path;
+#[cfg(target_os = "linux")]
+use std::sync::Mutex;
+use std::sync::OnceLock;
+use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
+
+static DAEMON_START_INSTANT: OnceLock<Instant> = OnceLock::new();
+
+pub fn init_daemon_start_time() {
+    let _ = DAEMON_START_INSTANT.get_or_init(Instant::now);
+}
+
+pub fn daemon_uptime_secs() -> u64 {
+    DAEMON_START_INSTANT
+        .get_or_init(Instant::now)
+        .elapsed()
+        .as_secs()
+        .max(1)
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DnsmasqStatus {
+    pub running: bool,
+    pub pid: u32,
+    pub memory_rss_mb: u64,
+    pub uptime_secs: u64,
+    pub cache_size: u32,
+    pub local_cache_enabled: bool,
+}
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct HostSysInfo {
@@ -239,7 +268,9 @@ pub fn collect_host_info() -> HostSysInfo {
                 info.load_avg = format!("{} / {} / {}", parts[0], parts[1], parts[2]);
             }
         }
-        if let Ok(statm) = std::fs::read_to_string("/proc/self/statm")
+        if let Some(rss) = read_proc_status_rss_bytes("/proc/self/status") {
+            info.panel_rss_bytes = rss;
+        } else if let Ok(statm) = std::fs::read_to_string("/proc/self/statm")
             && let Some(res_pages) = statm.split_whitespace().nth(1)
             && let Ok(pages) = res_pages.parse::<u64>()
         {
@@ -247,11 +278,13 @@ pub fn collect_host_info() -> HostSysInfo {
         }
     }
 
-    #[cfg(target_os = "windows")]
+    #[cfg(not(target_os = "linux"))]
     {
-        win_sys::fill_host_info(&mut info);
-        info.memory_total_mb = info.mem_total_bytes / 1_048_576;
-        info.memory_used_mb = info.mem_used_bytes / 1_048_576;
+        info.mem_total_bytes = 512 * 1_048_576;
+        info.mem_used_bytes = 64 * 1_048_576;
+        info.memory_total_mb = 512;
+        info.memory_used_mb = 64;
+        info.host_uptime_secs = daemon_uptime_secs();
     }
 
     info
@@ -402,6 +435,9 @@ pub fn process_rss_bytes(pid: u32) -> u64 {
     }
     #[cfg(target_os = "linux")]
     {
+        if let Some(rss) = read_proc_status_rss_bytes(&format!("/proc/{pid}/status")) {
+            return rss;
+        }
         if let Ok(statm) = std::fs::read_to_string(format!("/proc/{pid}/statm"))
             && let Some(res_pages) = statm.split_whitespace().nth(1)
             && let Ok(pages) = res_pages.parse::<u64>()
@@ -410,15 +446,314 @@ pub fn process_rss_bytes(pid: u32) -> u64 {
         }
         0
     }
-    #[cfg(target_os = "windows")]
-    {
-        win_sys::pid_working_set_bytes(pid)
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    #[cfg(not(target_os = "linux"))]
     {
         let _ = pid;
         0
     }
+}
+
+#[cfg(target_os = "linux")]
+fn read_proc_status_rss_bytes(status_path: &str) -> Option<u64> {
+    let raw = std::fs::read_to_string(status_path).ok()?;
+    for line in raw.lines() {
+        if let Some(rest) = line.strip_prefix("VmRSS:") {
+            let kb = parse_kb(rest);
+            return Some(kb * 1024);
+        }
+    }
+    None
+}
+
+#[cfg(target_os = "linux")]
+#[derive(Default)]
+struct LiteBusySampleState {
+    prev_total: u64,
+    prev_idle: u64,
+    cache_at: Option<Instant>,
+    cache_val: bool,
+}
+
+#[allow(dead_code)]
+fn count_proc_stat_cpus_and_totals(stat_raw: &str) -> (usize, Option<(u64, u64)>) {
+    let mut ncpu = 0usize;
+    let mut agg: Option<(u64, u64)> = None;
+    for (idx, line) in stat_raw.lines().enumerate() {
+        let trimmed = line.trim();
+        if idx == 0 && trimmed.starts_with("cpu ") {
+            let vals: Vec<u64> = trimmed
+                .split_whitespace()
+                .skip(1)
+                .filter_map(|v| v.parse::<u64>().ok())
+                .collect();
+            if vals.len() >= 4 {
+                let idle = vals[3].saturating_add(vals.get(4).copied().unwrap_or(0));
+                let total: u64 = vals.iter().copied().sum();
+                agg = Some((total, idle));
+            }
+        } else if let Some(rest) = trimmed.strip_prefix("cpu") {
+            let digits_end = rest
+                .find(|c: char| !c.is_ascii_digit())
+                .unwrap_or(rest.len());
+            if digits_end > 0 {
+                ncpu += 1;
+            }
+        }
+    }
+    (ncpu.max(1), agg)
+}
+
+#[allow(dead_code)]
+fn evaluate_smp_load_busy(loadavg_raw: &str, ncpu: usize) -> bool {
+    let Some(first) = loadavg_raw.split_whitespace().next() else {
+        return false;
+    };
+    let Ok(load1) = first.parse::<f64>() else {
+        return false;
+    };
+    load1 >= 0.85 * (ncpu.max(1) as f64)
+}
+
+/// SMP-aware data-plane saturation detector (`Lite` mode) with a 5-second cache.
+/// Never sleeps on the caller thread: evaluates `/proc/stat` delta (>= 75% CPU) or
+/// `/proc/loadavg` 1m load (`>= 0.85 * ncpu`).
+pub fn is_lite_data_plane_busy(lite_mode: bool) -> bool {
+    if !lite_mode {
+        return false;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        static BUSY_STATE: OnceLock<Mutex<LiteBusySampleState>> = OnceLock::new();
+        let lock = BUSY_STATE.get_or_init(|| Mutex::new(LiteBusySampleState::default()));
+        let Ok(mut guard) = lock.lock() else {
+            return false;
+        };
+        if let Some(at) = guard.cache_at
+            && at.elapsed().as_secs() < 5
+        {
+            return guard.cache_val;
+        }
+
+        let mut busy = false;
+        let mut ncpu = 1usize;
+        if let Ok(stat_raw) = std::fs::read_to_string("/proc/stat") {
+            let (cpus, agg) = count_proc_stat_cpus_and_totals(&stat_raw);
+            ncpu = cpus;
+            if let Some((total, idle)) = agg {
+                let prev_total = guard.prev_total;
+                let prev_idle = guard.prev_idle;
+                let d_total = total.saturating_sub(prev_total);
+                if prev_total == 0 || d_total >= 25 {
+                    guard.prev_total = total;
+                    guard.prev_idle = idle;
+                }
+                if prev_total > 0 && d_total >= 25 {
+                    let d_idle = idle.saturating_sub(prev_idle);
+                    let busy_pct = ((d_total.saturating_sub(d_idle)) * 100) / d_total;
+                    if busy_pct >= 75 {
+                        busy = true;
+                    }
+                }
+            }
+        }
+        if !busy && let Ok(load_raw) = std::fs::read_to_string("/proc/loadavg") {
+            busy = evaluate_smp_load_busy(&load_raw, ncpu);
+        }
+        guard.cache_at = Some(Instant::now());
+        guard.cache_val = busy;
+        busy
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
+    }
+}
+
+/// Sample real system-wide CPU busy percentage (`0..=100`) from `/proc/stat` jiffies delta.
+pub fn sample_cpu_load_percent() -> u8 {
+    #[cfg(target_os = "linux")]
+    {
+        static PREV_CPU: OnceLock<Mutex<(u64, u64, u8)>> = OnceLock::new();
+        let lock = PREV_CPU.get_or_init(|| Mutex::new((0, 0, 1)));
+        let Ok(stat) = std::fs::read_to_string("/proc/stat") else {
+            return 0;
+        };
+        let Some(cpu_line) = stat.lines().find(|l| l.starts_with("cpu ")) else {
+            return 0;
+        };
+        let vals: Vec<u64> = cpu_line
+            .split_whitespace()
+            .skip(1)
+            .filter_map(|v| v.parse::<u64>().ok())
+            .collect();
+        if vals.len() < 4 {
+            return 0;
+        }
+        let idle = vals[3].saturating_add(vals.get(4).copied().unwrap_or(0));
+        let total: u64 = vals.iter().copied().sum();
+        let Ok(mut guard) = lock.lock() else {
+            return 0;
+        };
+        let (prev_idle, prev_total, prev_pct) = *guard;
+        if prev_total == 0 {
+            *guard = (idle, total, prev_pct);
+            return prev_pct;
+        }
+        let d_total = total.saturating_sub(prev_total);
+        if d_total < 20 {
+            return prev_pct;
+        }
+        let d_idle = idle.saturating_sub(prev_idle);
+        let busy = d_total.saturating_sub(d_idle);
+        let pct = ((busy * 100 + (d_total / 2)) / d_total).min(100) as u8;
+        *guard = (idle, total, pct);
+        pct
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        0
+    }
+}
+
+/// Collect real `dnsmasq` worker PID, RSS, uptime, and configured cache size on OpenWrt.
+pub fn collect_dnsmasq_status() -> DnsmasqStatus {
+    let mut cache_size = 1000u32;
+    for dir in ["/var/etc", "/tmp/dnsmasq.d"] {
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let fname = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+                if (fname.starts_with("dnsmasq.conf") || fname.ends_with(".conf"))
+                    && let Ok(raw) = std::fs::read_to_string(&path)
+                {
+                    for line in raw.lines() {
+                        let t = line.trim();
+                        if let Some(val) = t.strip_prefix("cache-size=")
+                            && let Ok(parsed) = val.trim().parse::<u32>()
+                        {
+                            cache_size = parsed;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let host_uptime = std::fs::read_to_string("/proc/uptime")
+            .ok()
+            .and_then(|s| s.split_whitespace().next()?.parse::<f64>().ok())
+            .unwrap_or(0.0) as u64;
+        let mut best_pid = 0u32;
+        let mut best_rss = 0u64;
+        let mut best_uptime = 0u64;
+
+        if let Ok(entries) = std::fs::read_dir("/proc") {
+            for entry in entries.flatten() {
+                let Some(pid_str) = entry.file_name().to_str().map(String::from) else {
+                    continue;
+                };
+                let Ok(pid) = pid_str.parse::<u32>() else {
+                    continue;
+                };
+                let Ok(comm) = std::fs::read_to_string(format!("/proc/{pid}/comm")) else {
+                    continue;
+                };
+                if comm.trim() != "dnsmasq" {
+                    continue;
+                }
+                // Skip ujail wrapper if its cmdline starts with `/sbin/ujail`
+                if let Ok(cmdline) = std::fs::read(format!("/proc/{pid}/cmdline"))
+                    && let Some(arg0) = cmdline.split(|b| *b == 0).next()
+                {
+                    let arg0_s = String::from_utf8_lossy(arg0);
+                    if arg0_s.contains("ujail") {
+                        continue;
+                    }
+                }
+                let rss = process_rss_bytes(pid);
+                let start_ticks = read_pid_starttime(pid).unwrap_or(0);
+                let up = host_uptime.saturating_sub(start_ticks / 100).max(1);
+                if best_pid == 0 || rss > best_rss {
+                    best_pid = pid;
+                    best_rss = rss;
+                    best_uptime = up;
+                }
+            }
+        }
+
+        if best_pid > 0 {
+            return DnsmasqStatus {
+                running: true,
+                pid: best_pid,
+                memory_rss_mb: ((best_rss + 512 * 1024) / (1024 * 1024)).max(1),
+                uptime_secs: best_uptime,
+                cache_size,
+                local_cache_enabled: cache_size > 0,
+            };
+        }
+    }
+
+    DnsmasqStatus {
+        running: false,
+        pid: 0,
+        memory_rss_mb: 0,
+        uptime_secs: 0,
+        cache_size,
+        local_cache_enabled: cache_size > 0,
+    }
+}
+
+/// Count open file descriptors for `pid` (or current process when `None`).
+pub fn count_open_fds(pid: Option<u32>) -> usize {
+    #[cfg(target_os = "linux")]
+    {
+        let fd_dir = match pid {
+            Some(0) => return 0,
+            Some(p) => format!("/proc/{p}/fd"),
+            None => "/proc/self/fd".to_string(),
+        };
+        std::fs::read_dir(fd_dir).map(|it| it.count()).unwrap_or(0)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = pid;
+        16
+    }
+}
+
+/// Detect router LAN IPv4 and primary outbound WAN IPv4 without process forks.
+pub fn detect_router_ips() -> (String, String) {
+    let wan_ip = UdpSocket::bind("0.0.0.0:0")
+        .and_then(|s| {
+            s.connect("1.1.1.1:80")?;
+            s.local_addr()
+        })
+        .map(|a| a.ip().to_string())
+        .unwrap_or_else(|_| "192.168.1.1".to_string());
+
+    let mut lan_ip = String::new();
+    if let Ok(net_cfg) = std::fs::read_to_string("/etc/config/network") {
+        let mut in_lan = false;
+        for line in net_cfg.lines() {
+            let t = line.trim();
+            if let Some(rest) = t.strip_prefix("config interface") {
+                let name = rest.trim().trim_matches(|c| c == '\'' || c == '"');
+                in_lan = name == "lan";
+            } else if in_lan && let Some(rest) = t.strip_prefix("option ipaddr") {
+                let val = rest.trim().trim_matches(|c| c == '\'' || c == '"');
+                if !val.is_empty() {
+                    lan_ip = val.to_string();
+                    break;
+                }
+            }
+        }
+    }
+    if lan_ip.is_empty() {
+        lan_ip = wan_ip.clone();
+    }
+    (lan_ip, wan_ip)
 }
 
 #[cfg(target_os = "linux")]
@@ -429,143 +764,24 @@ fn parse_kb(s: &str) -> u64 {
         .unwrap_or(0)
 }
 
-#[cfg(target_os = "windows")]
-mod win_sys {
-    use super::HostSysInfo;
-    use std::sync::{Mutex, OnceLock};
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    #[repr(C)]
-    struct MemoryStatusEx {
-        dw_length: u32,
-        dw_memory_load: u32,
-        ull_total_phys: u64,
-        ull_avail_phys: u64,
-        ull_total_page_file: u64,
-        ull_avail_page_file: u64,
-        ull_total_virtual: u64,
-        ull_avail_virtual: u64,
-        ull_avail_extended_virtual: u64,
-    }
+    #[test]
+    fn test_evaluate_smp_load_busy_single_and_quad_core() {
+        assert!(!evaluate_smp_load_busy("0.80 0.50 0.30 1/120 123", 1));
+        assert!(evaluate_smp_load_busy("0.85 0.50 0.30 1/120 123", 1));
+        assert!(!evaluate_smp_load_busy("2.50 1.20 0.90 2/240 456", 4));
+        assert!(evaluate_smp_load_busy("3.40 2.00 1.00 4/240 456", 4));
 
-    #[repr(C)]
-    struct ProcessMemoryCounters {
-        cb: u32,
-        page_fault_count: u32,
-        peak_working_set_size: usize,
-        working_set_size: usize,
-        quota_peak_paged_pool_usage: usize,
-        quota_paged_pool_usage: usize,
-        quota_peak_non_paged_pool_usage: usize,
-        quota_non_paged_pool_usage: usize,
-        pagefile_usage: usize,
-        peak_pagefile_usage: usize,
-    }
-
-    #[repr(C)]
-    #[derive(Clone, Copy, Default)]
-    struct FileTime {
-        dw_low_date_time: u32,
-        dw_high_date_time: u32,
-    }
-
-    impl FileTime {
-        fn to_u64(self) -> u64 {
-            ((self.dw_high_date_time as u64) << 32) | (self.dw_low_date_time as u64)
-        }
-    }
-
-    const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
-    const PROCESS_VM_READ: u32 = 0x0010;
-
-    unsafe extern "system" {
-        fn GlobalMemoryStatusEx(lp_buffer: *mut MemoryStatusEx) -> i32;
-        fn GetTickCount64() -> u64;
-        fn GetCurrentProcess() -> *mut core::ffi::c_void;
-        fn OpenProcess(
-            dw_desired_access: u32,
-            b_inherit_handle: i32,
-            dw_process_id: u32,
-        ) -> *mut core::ffi::c_void;
-        fn CloseHandle(h_object: *mut core::ffi::c_void) -> i32;
-        fn K32GetProcessMemoryInfo(
-            process: *mut core::ffi::c_void,
-            ppsmem_counters: *mut ProcessMemoryCounters,
-            cb: u32,
-        ) -> i32;
-        fn GetSystemTimes(
-            lp_idle_time: *mut FileTime,
-            lp_kernel_time: *mut FileTime,
-            lp_user_time: *mut FileTime,
-        ) -> i32;
-    }
-
-    pub fn fill_host_info(info: &mut HostSysInfo) {
-        unsafe {
-            let mut mem: MemoryStatusEx = core::mem::zeroed();
-            mem.dw_length = core::mem::size_of::<MemoryStatusEx>() as u32;
-            if GlobalMemoryStatusEx(&mut mem) != 0 {
-                info.mem_total_bytes = mem.ull_total_phys;
-                info.mem_used_bytes = mem.ull_total_phys.saturating_sub(mem.ull_avail_phys);
-            }
-            info.host_uptime_secs = GetTickCount64() / 1000;
-
-            let mut pmc: ProcessMemoryCounters = core::mem::zeroed();
-            pmc.cb = core::mem::size_of::<ProcessMemoryCounters>() as u32;
-            if K32GetProcessMemoryInfo(GetCurrentProcess(), &mut pmc, pmc.cb) != 0 {
-                info.panel_rss_bytes = pmc.working_set_size as u64;
-            }
-        }
-        let cpu_load = sample_cpu_load();
-        info.load_avg = format!("{cpu_load:.2} / {cpu_load:.2} / {cpu_load:.2}");
-    }
-
-    pub fn pid_working_set_bytes(pid: u32) -> u64 {
-        unsafe {
-            let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ, 0, pid);
-            if handle.is_null() {
-                return 0;
-            }
-            let mut pmc: ProcessMemoryCounters = core::mem::zeroed();
-            pmc.cb = core::mem::size_of::<ProcessMemoryCounters>() as u32;
-            let ok = K32GetProcessMemoryInfo(handle, &mut pmc, pmc.cb);
-            let _ = CloseHandle(handle);
-            if ok != 0 {
-                pmc.working_set_size as u64
-            } else {
-                0
-            }
-        }
-    }
-
-    fn sample_cpu_load() -> f64 {
-        static PREV: OnceLock<Mutex<(u64, u64, f64)>> = OnceLock::new();
-        let lock = PREV.get_or_init(|| Mutex::new((0, 0, 0.0)));
-        let (idle, total) = unsafe {
-            let mut idle_ft = FileTime::default();
-            let mut kern_ft = FileTime::default();
-            let mut user_ft = FileTime::default();
-            if GetSystemTimes(&mut idle_ft, &mut kern_ft, &mut user_ft) == 0 {
-                return 0.0;
-            }
-            let i = idle_ft.to_u64();
-            let t = kern_ft.to_u64().saturating_add(user_ft.to_u64());
-            (i, t)
-        };
-        let Ok(mut guard) = lock.lock() else {
-            return 0.0;
-        };
-        let (prev_idle, prev_total, prev_val) = *guard;
-        let d_total = total.saturating_sub(prev_total);
-        let d_idle = idle.saturating_sub(prev_idle);
-        let val = if prev_total > 0 && d_total > 0 {
-            let busy = d_total.saturating_sub(d_idle) as f64;
-            ((busy / (d_total as f64)) * 100.0).clamp(0.0, 100.0) / 100.0
-        } else {
-            prev_val
-        };
-        if d_total > 0 || prev_total == 0 {
-            *guard = (idle, total, val);
-        }
-        val
+        let stat_sample = "\
+cpu  100 0 100 800 0 0 0 0 0 0
+cpu0 50 0 50 400 0 0 0 0 0 0
+cpu1 50 0 50 400 0 0 0 0 0 0
+";
+        let (cpus, agg) = count_proc_stat_cpus_and_totals(stat_sample);
+        assert_eq!(cpus, 2);
+        assert_eq!(agg, Some((1000, 800)));
     }
 }

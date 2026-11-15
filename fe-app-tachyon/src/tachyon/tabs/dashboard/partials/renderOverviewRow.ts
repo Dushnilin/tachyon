@@ -1,0 +1,4431 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { svgEl } from '../../../../helpers';
+import { prettyBytes } from '../../../../helpers/prettyBytes';
+import { showToast } from '../../../../helpers/showToast';
+import {
+  renderAlertTriangleIcon,
+  renderCheckIcon,
+  renderCloudIcon,
+  renderCompassIcon,
+  renderInfoIcon24,
+  renderLoaderCircleIcon24,
+  renderLockIcon,
+  renderSettingsIcon,
+  renderShieldIcon,
+  renderSlidersIcon,
+  renderSparklesIcon,
+  renderZapIcon,
+} from '../../../../icons';
+import { tr } from '../../../helpers/i18n';
+import { Tachyon } from '../../../types';
+import { getProxyUrlTransport } from '../../../../helpers/getProxyUrlTransport';
+import { ensureOutboundDisplayFlag } from '../../../helpers/country';
+import { formatServiceStatusMessage } from '../../../helpers/formatServiceStatusMessage';
+import {
+  getDashboardSectionTypeFilter,
+  getWidgetViewMode,
+  openDashboardSectionTypesModal,
+} from '../dashboardLayout';
+import { renderFlagEmojis } from './renderFlagEmojis';
+
+export interface KpiRowMetrics {
+  activeClients: number;
+  activeConnections: number;
+  activeSections: number;
+  downloadTotal: number;
+  uploadTotal: number;
+  downSpeed: number;
+  upSpeed: number;
+  avgLatencyMs: number;
+  isLiteMode: boolean;
+  clientsHistory: number[];
+  sectionsHistory: number[];
+  trafficHistory: number[];
+  latencyHistory: number[];
+}
+
+export interface TrafficHistoryPoint {
+  ts: number;
+  down: number;
+  up: number;
+}
+
+function buildMiniSparklineSvg(
+  values: number[],
+  strokeVar: string,
+  uid: string,
+): SVGElement {
+  const pts =
+    values.length >= 2
+      ? values.slice(-20)
+      : [0, values[0] || 1, values[0] || 1];
+  const maxVal = Math.max(...pts, 1);
+  const minVal = Math.min(...pts, 0);
+  const span = Math.max(maxVal - minVal, 1);
+  const w = 54;
+  const h = 22;
+
+  const coords = pts.map((v, i) => {
+    const x = (i / Math.max(pts.length - 1, 1)) * w;
+    const y = h - 3 - ((v - minVal) / span) * (h - 6);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+
+  const linePath = `M ${coords.join(' L ')}`;
+  const areaPath = `${linePath} L ${w},${h} L 0,${h} Z`;
+
+  return svgEl(
+    'svg',
+    {
+      viewBox: `0 0 ${w} ${h}`,
+      width: String(w),
+      height: String(h),
+      class: 'tachyon-kpi-card__spark',
+      'aria-hidden': 'true',
+    },
+    [
+      svgEl('defs', {}, [
+        svgEl(
+          'linearGradient',
+          { id: `kpi-grad-${uid}`, x1: '0%', y1: '0%', x2: '0%', y2: '100%' },
+          [
+            svgEl('stop', {
+              offset: '0%',
+              'stop-color': strokeVar,
+              'stop-opacity': '0.32',
+            }),
+            svgEl('stop', {
+              offset: '100%',
+              'stop-color': strokeVar,
+              'stop-opacity': '0.0',
+            }),
+          ],
+        ),
+      ]),
+      svgEl('path', {
+        d: areaPath,
+        fill: `url(#kpi-grad-${uid})`,
+      }),
+      svgEl('path', {
+        d: linePath,
+        fill: 'none',
+        stroke: strokeVar,
+        'stroke-width': '2',
+        'stroke-linecap': 'round',
+        'stroke-linejoin': 'round',
+      }),
+    ],
+  );
+}
+
+export function renderKpiRow(
+  metrics: KpiRowMetrics,
+  viewOverride?: string,
+): HTMLElement[] {
+  const viewMode = viewOverride || getWidgetViewMode('kpi') || 'cards';
+  const totalTraffic =
+    (metrics.downloadTotal || 0) + (metrics.uploadTotal || 0);
+  const totalSpeed = (metrics.downSpeed || 0) + (metrics.upSpeed || 0);
+
+  const cards = [
+    {
+      id: 'clients',
+      title: tr('Клиенты', 'Clients'),
+      value: String(metrics.activeClients),
+      sub: `${metrics.activeConnections} ${tr('соединений', 'connections')}`,
+      color: '#0a84ff',
+      history: metrics.clientsHistory,
+      icon: [
+        svgEl('path', { d: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2' }),
+        svgEl('circle', { cx: '9', cy: '7', r: '4' }),
+        svgEl('path', { d: 'M22 21v-2a4 4 0 0 0-3-3.87' }),
+        svgEl('path', { d: 'M16 3.13a4 4 0 0 1 0 7.75' }),
+      ],
+    },
+    {
+      id: 'routes',
+      title: tr('Маршруты', 'Routes'),
+      value: String(metrics.activeSections),
+      sub: metrics.isLiteMode
+        ? tr('Эко-режим Lite', 'Lite Eco Mode')
+        : tr('— стабильно (TProxy)', '— stable (TProxy)'),
+      color: '#0a84ff',
+      history: metrics.sectionsHistory,
+      icon: [
+        svgEl('circle', { cx: '6', cy: '19', r: '3' }),
+        svgEl('path', {
+          d: 'M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15',
+        }),
+        svgEl('circle', { cx: '18', cy: '5', r: '3' }),
+      ],
+    },
+    {
+      id: 'traffic',
+      title: tr('Трафик сессии', 'Session Traffic'),
+      value: prettyBytes(totalTraffic),
+      sub:
+        totalSpeed > 0
+          ? `↓ ${prettyBytes(metrics.downSpeed)}/s • ↑ ${prettyBytes(metrics.upSpeed)}/s`
+          : `↓ ${prettyBytes(metrics.downloadTotal || 0)} • ↑ ${prettyBytes(metrics.uploadTotal || 0)}`,
+      color: '#64d2ff',
+      history: metrics.trafficHistory,
+      icon: [
+        svgEl('rect', { x: '2', y: '3', width: '20', height: '7', rx: '2' }),
+        svgEl('rect', { x: '2', y: '14', width: '20', height: '7', rx: '2' }),
+        svgEl('line', { x1: '6', y1: '6.5', x2: '6.01', y2: '6.5' }),
+        svgEl('line', { x1: '6', y1: '17.5', x2: '6.01', y2: '17.5' }),
+      ],
+    },
+    {
+      id: 'latency',
+      title: tr('Задержка', 'Latency'),
+      value: metrics.avgLatencyMs > 0 ? `${metrics.avgLatencyMs} ms` : '—',
+      sub:
+        metrics.avgLatencyMs > 0
+          ? metrics.avgLatencyMs <= 120
+            ? tr('● Отличный отклик', '● Excellent response')
+            : metrics.avgLatencyMs <= 250
+              ? tr('● Нормальный отклик', '● Good response')
+              : tr('● Высокий пинг', '● High latency')
+          : tr('Ожидание замера', 'Awaiting measurement'),
+      color:
+        metrics.avgLatencyMs > 0 && metrics.avgLatencyMs > 250
+          ? '#ff9f0a'
+          : '#30d158',
+      history: metrics.latencyHistory,
+      icon: [
+        svgEl('circle', { cx: '12', cy: '12', r: '10' }),
+        svgEl('polyline', { points: '12 6 12 12 16 14' }),
+      ],
+    },
+  ];
+
+  if (viewMode === 'compact_strip') {
+    const stripEl = E(
+      'div',
+      {
+        class: 'tachyon-kpi-strip',
+        'data-kpi-view': 'compact_strip',
+      } as Record<string, unknown>,
+      cards.map((c) =>
+        E('div', { class: 'tachyon-kpi-strip__item', 'data-kpi': c.id }, [
+          E('div', { class: 'tachyon-kpi-strip__icon' }, [
+            svgEl(
+              'svg',
+              {
+                viewBox: '0 0 24 24',
+                width: '15',
+                height: '15',
+                fill: 'none',
+                stroke: c.color,
+                'stroke-width': '2',
+                'stroke-linecap': 'round',
+                'stroke-linejoin': 'round',
+              },
+              c.icon,
+            ),
+          ]),
+          E('div', { class: 'tachyon-kpi-strip__content' }, [
+            E('div', { class: 'tachyon-kpi-strip__head' }, [
+              E('span', { class: 'tachyon-kpi-strip__label' }, c.title),
+              E('strong', { class: 'tachyon-kpi-strip__val' }, c.value),
+            ]),
+            E('div', { class: 'tachyon-kpi-strip__sub' }, c.sub),
+          ]),
+        ]),
+      ),
+    );
+    return [stripEl];
+  }
+
+  if (viewMode === 'glass_telemetry') {
+    const ratios: Record<string, number> = {
+      clients: Math.min(100, Math.max(8, metrics.activeClients * 12)),
+      routes: Math.min(100, Math.max(15, metrics.activeSections * 18)),
+      traffic: Math.min(
+        100,
+        Math.max(
+          10,
+          Math.round(
+            (((metrics.downSpeed || 0) + (metrics.upSpeed || 0)) /
+              (1024 * 1024 * 10)) *
+              100,
+          ),
+        ),
+      ),
+      latency:
+        metrics.avgLatencyMs <= 0
+          ? 20
+          : Math.min(
+              100,
+              Math.max(12, 100 - Math.round(metrics.avgLatencyMs / 5)),
+            ),
+    };
+    return cards.map((c) => {
+      const pct = ratios[c.id] ?? 50;
+      return E(
+        'div',
+        {
+          class: 'tachyon-kpi-card tachyon-kpi-card--telemetry',
+          'data-kpi': c.id,
+          'data-kpi-view': 'glass_telemetry',
+        } as Record<string, unknown>,
+        [
+          E('div', { class: 'tachyon-kpi-telemetry__top' }, [
+            E('span', { class: 'tachyon-kpi-telemetry__label' }, c.title),
+            E('span', {
+              class: 'tachyon-kpi-telemetry__pulse',
+              style: `background: ${c.color}; box-shadow: 0 0 8px ${c.color};`,
+            }),
+          ]),
+          E('div', { class: 'tachyon-kpi-telemetry__val' }, c.value),
+          E('div', { class: 'tachyon-kpi-telemetry__bar' }, [
+            E('div', {
+              class: 'tachyon-kpi-telemetry__bar-fill',
+              style: `width: ${pct}%; background: ${c.color};`,
+            }),
+          ]),
+          E('div', { class: 'tachyon-kpi-telemetry__sub' }, c.sub),
+        ],
+      );
+    });
+  }
+
+  if (viewMode === 'minimal_counters') {
+    const stripEl = E(
+      'div',
+      {
+        class: 'tachyon-kpi-minimal-counters',
+        'data-kpi-view': 'minimal_counters',
+      } as Record<string, unknown>,
+      cards.map((c) =>
+        E(
+          'div',
+          { class: 'tachyon-kpi-minimal-counters__item', 'data-kpi': c.id },
+          [
+            E(
+              'span',
+              { class: 'tachyon-kpi-minimal-counters__label' },
+              c.title,
+            ),
+            E(
+              'strong',
+              {
+                class: 'tachyon-kpi-minimal-counters__val',
+                style: `color: ${c.color};`,
+              },
+              c.value,
+            ),
+            E('span', { class: 'tachyon-kpi-minimal-counters__sub' }, c.sub),
+          ],
+        ),
+      ),
+    );
+    return [stripEl];
+  }
+
+  if (viewMode === 'stat_pills') {
+    return cards.map((c) =>
+      E(
+        'div',
+        {
+          class: 'tachyon-kpi-card tachyon-kpi-card--stat-pill',
+          'data-kpi': c.id,
+          'data-kpi-view': 'stat_pills',
+        } as Record<string, unknown>,
+        [
+          E('div', {
+            class: 'tachyon-kpi-stat-pill__accent',
+            style: `background: ${c.color};`,
+          }),
+          E('div', { class: 'tachyon-kpi-stat-pill__body' }, [
+            E('div', { class: 'tachyon-kpi-stat-pill__head' }, [
+              E('span', { class: 'tachyon-kpi-card__title' }, c.title),
+              svgEl(
+                'svg',
+                {
+                  viewBox: '0 0 24 24',
+                  width: '16',
+                  height: '16',
+                  fill: 'none',
+                  stroke: c.color,
+                  'stroke-width': '2',
+                  'stroke-linecap': 'round',
+                  'stroke-linejoin': 'round',
+                },
+                c.icon,
+              ),
+            ]),
+            E('div', { class: 'tachyon-kpi-stat-pill__value' }, c.value),
+            E('div', { class: 'tachyon-kpi-card__sub' }, c.sub),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  return cards.map((c) =>
+    E(
+      'div',
+      { class: 'tachyon-kpi-card', 'data-kpi': c.id } as Record<
+        string,
+        unknown
+      >,
+      [
+        E('div', { class: 'tachyon-kpi-card__top' }, [
+          E('div', { class: 'tachyon-kpi-card__icon-ring' }, [
+            svgEl(
+              'svg',
+              {
+                viewBox: '0 0 24 24',
+                width: '15',
+                height: '15',
+                fill: 'none',
+                stroke: c.color,
+                'stroke-width': '2',
+                'stroke-linecap': 'round',
+                'stroke-linejoin': 'round',
+              },
+              c.icon,
+            ),
+          ]),
+          E(
+            'div',
+            { class: 'tachyon-kpi-card__title', title: c.title },
+            c.title,
+          ),
+        ]),
+        E('div', { class: 'tachyon-kpi-card__mid' }, [
+          E('div', { class: 'tachyon-kpi-card__value' }, c.value),
+          buildMiniSparklineSvg(c.history, c.color, c.id),
+        ]),
+        E('div', { class: 'tachyon-kpi-card__sub', title: c.sub }, c.sub),
+      ],
+    ),
+  );
+}
+
+export function renderTrafficChartCard(
+  history: TrafficHistoryPoint[],
+  currentDown: number,
+  currentUp: number,
+  viewOverride?: string,
+): HTMLElement {
+  const viewMode = viewOverride || getWidgetViewMode('traffic_chart') || 'area';
+  const pts =
+    history.length >= 2
+      ? history.slice(-30)
+      : [
+          { ts: Date.now() - 3000, down: 0, up: 0 },
+          { ts: Date.now(), down: currentDown, up: currentUp },
+        ];
+
+  const peakDown = Math.max(...pts.map((p) => p.down), currentDown, 0);
+  const peakUp = Math.max(...pts.map((p) => p.up), currentUp, 0);
+  const maxSpeed = Math.max(peakDown, peakUp, 1024 * 64);
+
+  const headerLegend = E(
+    'div',
+    { class: 'tachyon-traffic-chart-card__header' },
+    [
+      E(
+        'span',
+        { class: 'tachyon-dual-card__title-text' },
+        tr('График трафика', 'Traffic Graph'),
+      ),
+      E('div', { class: 'tachyon-traffic-chart-card__legend' }, [
+        E('span', { class: 'tachyon-traffic-chart-card__legend-item' }, [
+          E('span', {
+            class: 'tachyon-traffic-chart-card__dot',
+            style: 'background: #0a84ff;',
+          }),
+          E(
+            'span',
+            {},
+            `${tr('Входящий', 'Downlink')}: ${prettyBytes(currentDown)}/s`,
+          ),
+        ]),
+        E('span', { class: 'tachyon-traffic-chart-card__legend-item' }, [
+          E('span', {
+            class: 'tachyon-traffic-chart-card__dot',
+            style: 'background: #64d2ff;',
+          }),
+          E(
+            'span',
+            {},
+            `${tr('Исходящий', 'Uplink')}: ${prettyBytes(currentUp)}/s`,
+          ),
+        ]),
+      ]),
+    ],
+  );
+
+  if (viewMode === 'dual_telemetry') {
+    const dlSpark = buildMiniSparklineSvg(
+      pts.map((p) => p.down),
+      '#0a84ff',
+      'dl_tele',
+    );
+    const ulSpark = buildMiniSparklineSvg(
+      pts.map((p) => p.up),
+      '#64d2ff',
+      'ul_tele',
+    );
+    return E(
+      'div',
+      {
+        class:
+          'tachyon_dashboard-page__widgets-section__item tachyon-traffic-chart-card tachyon-traffic-chart-card--dual-telemetry',
+        'data-chart-view': 'dual_telemetry',
+      },
+      [
+        headerLegend,
+        E('div', { class: 'tachyon-traffic-dual-grid' }, [
+          E('div', { class: 'tachyon-traffic-dual-box is-down' }, [
+            E('div', { class: 'tachyon-traffic-dual-box__head' }, [
+              E(
+                'span',
+                { class: 'tachyon-traffic-dual-box__tag is-down' },
+                `↓ ${tr('ПРИЁМ (RX)', 'DOWNLINK (RX)')}`,
+              ),
+              dlSpark,
+            ]),
+            E(
+              'div',
+              { class: 'tachyon-traffic-dual-box__value is-down' },
+              `${prettyBytes(currentDown)}/s`,
+            ),
+            E(
+              'div',
+              { class: 'tachyon-traffic-dual-box__sub' },
+              `${tr('Пик сессии', 'Session peak')}: ${prettyBytes(peakDown)}/s`,
+            ),
+          ]),
+          E('div', { class: 'tachyon-traffic-dual-box is-up' }, [
+            E('div', { class: 'tachyon-traffic-dual-box__head' }, [
+              E(
+                'span',
+                { class: 'tachyon-traffic-dual-box__tag is-up' },
+                `↑ ${tr('ОТДАЧА (TX)', 'UPLINK (TX)')}`,
+              ),
+              ulSpark,
+            ]),
+            E(
+              'div',
+              { class: 'tachyon-traffic-dual-box__value is-up' },
+              `${prettyBytes(currentUp)}/s`,
+            ),
+            E(
+              'div',
+              { class: 'tachyon-traffic-dual-box__sub' },
+              `${tr('Пик сессии', 'Session peak')}: ${prettyBytes(peakUp)}/s`,
+            ),
+          ]),
+        ]),
+      ],
+    );
+  }
+
+  if (viewMode === 'gauges') {
+    const dlRatio = Math.min(100, Math.round((currentDown / maxSpeed) * 100));
+    const ulRatio = Math.min(100, Math.round((currentUp / maxSpeed) * 100));
+
+    return E(
+      'div',
+      {
+        class:
+          'tachyon_dashboard-page__widgets-section__item tachyon-traffic-chart-card tachyon-traffic-chart-card--gauges',
+        'data-chart-view': 'gauges',
+      },
+      [
+        headerLegend,
+        E('div', { class: 'tachyon-traffic-gauges' }, [
+          E('div', { class: 'tachyon-traffic-gauge-box' }, [
+            E('div', { class: 'tachyon-traffic-gauge-box__top' }, [
+              E(
+                'span',
+                { class: 'tachyon-traffic-gauge-box__label' },
+                `↓ ${tr('Входящий поток (Downlink)', 'Downlink Stream')}`,
+              ),
+              E(
+                'strong',
+                { class: 'tachyon-traffic-gauge-box__val is-down' },
+                `${prettyBytes(currentDown)}/s`,
+              ),
+            ]),
+            E('div', { class: 'tachyon-traffic-gauge-bar' }, [
+              E('div', {
+                class: 'tachyon-traffic-gauge-bar__fill is-down',
+                style: `width: ${Math.max(dlRatio, currentDown > 0 ? 4 : 0)}%;`,
+              }),
+            ]),
+            E(
+              'div',
+              { class: 'tachyon-traffic-gauge-box__foot' },
+              `${tr('Пик за сессию', 'Session peak')}: ${prettyBytes(peakDown)}/s`,
+            ),
+          ]),
+          E('div', { class: 'tachyon-traffic-gauge-box' }, [
+            E('div', { class: 'tachyon-traffic-gauge-box__top' }, [
+              E(
+                'span',
+                { class: 'tachyon-traffic-gauge-box__label' },
+                `↑ ${tr('Исходящий поток (Uplink)', 'Uplink Stream')}`,
+              ),
+              E(
+                'strong',
+                { class: 'tachyon-traffic-gauge-box__val is-up' },
+                `${prettyBytes(currentUp)}/s`,
+              ),
+            ]),
+            E('div', { class: 'tachyon-traffic-gauge-bar' }, [
+              E('div', {
+                class: 'tachyon-traffic-gauge-bar__fill is-up',
+                style: `width: ${Math.max(ulRatio, currentUp > 0 ? 4 : 0)}%;`,
+              }),
+            ]),
+            E(
+              'div',
+              { class: 'tachyon-traffic-gauge-box__foot' },
+              `${tr('Пик за сессию', 'Session peak')}: ${prettyBytes(peakUp)}/s`,
+            ),
+          ]),
+        ]),
+      ],
+    );
+  }
+
+  const w = 600;
+  const h = 150;
+  const padLeft = 8;
+  const padRight = 8;
+  const padTop = 12;
+  const padBottom = 18;
+  const plotW = w - padLeft - padRight;
+  const plotH = h - padTop - padBottom;
+
+  if (viewMode === 'bars') {
+    const barSamples = pts.slice(-24);
+    const slotW = plotW / Math.max(barSamples.length, 1);
+    const barW = Math.max(4, Math.min(12, slotW * 0.38));
+
+    const barNodes: SVGElement[] = [];
+    barSamples.forEach((p, idx) => {
+      const baseX = padLeft + idx * slotW + (slotW - barW * 2 - 2) / 2;
+      const dlH = Math.max(2, Math.min(plotH, (p.down / maxSpeed) * plotH));
+      const ulH = Math.max(2, Math.min(plotH, (p.up / maxSpeed) * plotH));
+
+      barNodes.push(
+        svgEl('rect', {
+          x: baseX.toFixed(1),
+          y: (padTop + plotH - dlH).toFixed(1),
+          width: barW.toFixed(1),
+          height: dlH.toFixed(1),
+          rx: '2',
+          fill: '#0a84ff',
+          opacity: '0.92',
+        }),
+        svgEl('rect', {
+          x: (baseX + barW + 2).toFixed(1),
+          y: (padTop + plotH - ulH).toFixed(1),
+          width: barW.toFixed(1),
+          height: ulH.toFixed(1),
+          rx: '2',
+          fill: '#64d2ff',
+          opacity: '0.75',
+        }),
+      );
+    });
+
+    return E(
+      'div',
+      {
+        class:
+          'tachyon_dashboard-page__widgets-section__item tachyon-traffic-chart-card tachyon-traffic-chart-card--bars',
+        'data-chart-view': 'bars',
+      },
+      [
+        headerLegend,
+        E('div', { class: 'tachyon-traffic-chart-card__body' }, [
+          svgEl(
+            'svg',
+            {
+              viewBox: `0 0 ${w} ${h}`,
+              class: 'tachyon-traffic-chart-svg',
+              preserveAspectRatio: 'none',
+            },
+            [
+              ...[0.25, 0.5, 0.75, 1].map((frac) =>
+                svgEl('line', {
+                  x1: String(padLeft),
+                  y1: String(padTop + plotH * frac),
+                  x2: String(padLeft + plotW),
+                  y2: String(padTop + plotH * frac),
+                  stroke: 'var(--border-color-low, rgba(128,128,128,0.16))',
+                  'stroke-width': '1',
+                  'stroke-dasharray': '3,3',
+                }),
+              ),
+              ...barNodes,
+            ],
+          ),
+        ]),
+      ],
+    );
+  }
+
+  const toCoords = (selector: (p: TrafficHistoryPoint) => number) =>
+    pts.map((p, idx) => {
+      const x = padLeft + (idx / Math.max(pts.length - 1, 1)) * plotW;
+      const ratio = Math.min(1, Math.max(0, selector(p) / maxSpeed));
+      const y = padTop + plotH - ratio * plotH;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+
+  const downCoords = toCoords((p) => p.down);
+  const upCoords = toCoords((p) => p.up);
+
+  const downLine = `M ${downCoords.join(' L ')}`;
+  const downArea = `${downLine} L ${padLeft + plotW},${padTop + plotH} L ${padLeft},${padTop + plotH} Z`;
+
+  const upLine = `M ${upCoords.join(' L ')}`;
+  const upArea = `${upLine} L ${padLeft + plotW},${padTop + plotH} L ${padLeft},${padTop + plotH} Z`;
+
+  return E(
+    'div',
+    {
+      class:
+        'tachyon_dashboard-page__widgets-section__item tachyon-traffic-chart-card',
+      'data-chart-view': 'area',
+    },
+    [
+      headerLegend,
+      E('div', { class: 'tachyon-traffic-chart-card__body' }, [
+        svgEl(
+          'svg',
+          {
+            viewBox: `0 0 ${w} ${h}`,
+            class: 'tachyon-traffic-chart-svg',
+            preserveAspectRatio: 'none',
+          },
+          [
+            svgEl('defs', {}, [
+              svgEl(
+                'linearGradient',
+                {
+                  id: 'tachyon-dl-grad',
+                  x1: '0%',
+                  y1: '0%',
+                  x2: '0%',
+                  y2: '100%',
+                },
+                [
+                  svgEl('stop', {
+                    offset: '0%',
+                    'stop-color': '#0a84ff',
+                    'stop-opacity': '0.32',
+                  }),
+                  svgEl('stop', {
+                    offset: '100%',
+                    'stop-color': '#0a84ff',
+                    'stop-opacity': '0.02',
+                  }),
+                ],
+              ),
+              svgEl(
+                'linearGradient',
+                {
+                  id: 'tachyon-ul-grad',
+                  x1: '0%',
+                  y1: '0%',
+                  x2: '0%',
+                  y2: '100%',
+                },
+                [
+                  svgEl('stop', {
+                    offset: '0%',
+                    'stop-color': '#64d2ff',
+                    'stop-opacity': '0.20',
+                  }),
+                  svgEl('stop', {
+                    offset: '100%',
+                    'stop-color': '#64d2ff',
+                    'stop-opacity': '0.01',
+                  }),
+                ],
+              ),
+            ]),
+            ...[0.25, 0.5, 0.75, 1].map((frac) =>
+              svgEl('line', {
+                x1: String(padLeft),
+                y1: String(padTop + plotH * frac),
+                x2: String(padLeft + plotW),
+                y2: String(padTop + plotH * frac),
+                stroke: 'var(--border-color-low, rgba(128,128,128,0.16))',
+                'stroke-width': '1',
+                'stroke-dasharray': '3,3',
+              }),
+            ),
+            svgEl('path', { d: downArea, fill: 'url(#tachyon-dl-grad)' }),
+            svgEl('path', {
+              d: downLine,
+              fill: 'none',
+              stroke: '#0a84ff',
+              'stroke-width': '2.4',
+              'stroke-linecap': 'round',
+              'stroke-linejoin': 'round',
+            }),
+            svgEl('path', { d: upArea, fill: 'url(#tachyon-ul-grad)' }),
+            svgEl('path', {
+              d: upLine,
+              fill: 'none',
+              stroke: '#64d2ff',
+              'stroke-width': '2.2',
+              'stroke-linecap': 'round',
+              'stroke-linejoin': 'round',
+            }),
+          ],
+        ),
+      ]),
+    ],
+  );
+}
+
+/* ==========================================================================
+   Two-Block Dashboard Redesign:
+   Block 1: Секции маршрутизации (Routing Sections Row List)
+   Block 2: Узлы (Nodes Grid + Auto-Selection Modes + Filters + Subscription Info)
+   ========================================================================== */
+
+export interface SectionTrafficSummary {
+  conns: number;
+  download: number;
+  upload: number;
+  downSpeed: number;
+  upSpeed: number;
+}
+
+export interface RenderDashboardSectionsAndNodesProps {
+  sections: Tachyon.OutboundGroup[];
+  selectedSectionCode: string;
+  onSelectSection: (sectionCode: string) => void;
+  getSectionStats: (section: Tachyon.OutboundGroup) => SectionTrafficSummary;
+  isTestingAllSections: boolean;
+  onTestAllSections: () => void;
+  latencyFetchingSections: Record<string, boolean>;
+  latencyProgressSections: Record<string, Tachyon.LatencyActionProgress>;
+  subscriptionUpdatingSections: Record<string, boolean>;
+  selectorSwitchingSections: Record<string, string>;
+  testingOutboundCodes: Record<string, boolean>;
+  activeCountryFilters: Map<string, string>;
+  onFilterCountry: (sectionName: string, countryCode?: string) => void;
+  onTestSectionLatency: (section: Tachyon.OutboundGroup) => void;
+  onTestSingleOutbound: (sectionName: string, outboundCode: string) => void;
+  onChooseOutbound: (
+    sectionName: string,
+    selector: string,
+    tag: string,
+  ) => void;
+  onCopyOutbound: (
+    section: Tachyon.OutboundGroup,
+    outbound: Tachyon.Outbound,
+  ) => void;
+  onShowUrlTestInfo: (
+    section: Tachyon.OutboundGroup,
+    outbound: Tachyon.Outbound,
+  ) => void;
+  onShowPriorityInfo: (
+    section: Tachyon.OutboundGroup,
+    outbound: Tachyon.Outbound,
+  ) => void;
+  onUpdateSubscription: (section: Tachyon.OutboundGroup) => void;
+  onSectionTypesChanged?: () => void;
+  expandedSections?: Set<string>;
+  onToggleExpandSection?: (sectionCode: string) => void;
+  onOpenSectionModal?: (sectionCode: string) => void;
+  renderSectionAccordionContent?: (
+    section: Tachyon.OutboundGroup,
+  ) => HTMLElement;
+}
+
+export interface SectionEngineMeta {
+  isDpiOnly: boolean;
+  primaryEngine: string;
+  engineBadges: Array<{
+    label: string;
+    kind: 'dpi' | 'proxy' | 'transport';
+    title?: string;
+    icon?: () => SVGElement;
+  }>;
+  dpiServerLabel?: string;
+  dpiSelectorLabel?: string;
+  dpiSubtitlePrefix?: string;
+  col2Label?: string;
+  col3Label?: string;
+}
+
+export function normalizeTransportBadgeLabel(raw?: string): string {
+  const clean = String(raw || '')
+    .trim()
+    .toLowerCase();
+  if (!clean) return '';
+  switch (clean) {
+    case 'xhttp':
+    case 'splithttp':
+    case 'xhttp-reality':
+      return 'XHTTP';
+    case 'grpc':
+    case 'gun':
+      return 'GRPC';
+    case 'ws':
+    case 'websocket':
+      return 'WS';
+    case 'httpupgrade':
+      return 'HTTPUPGRADE';
+    case 'h2':
+    case 'http':
+    case 'http2':
+      return 'H2';
+    case 'quic':
+      return 'QUIC';
+    case 'kcp':
+    case 'mkcp':
+      return 'KCP';
+    case 'tcp':
+    case 'raw':
+      return 'TCP';
+    default:
+      return clean.toUpperCase();
+  }
+}
+
+function extractNodeTransportLabel(node: any): string {
+  if (!node || typeof node !== 'object') return '';
+  if (typeof node.transport === 'string' && node.transport.trim()) {
+    return normalizeTransportBadgeLabel(node.transport);
+  }
+  if (
+    typeof node.details?.transport?.type === 'string' &&
+    node.details.transport.type.trim()
+  ) {
+    return normalizeTransportBadgeLabel(node.details.transport.type);
+  }
+  if (
+    typeof node.details?.transport === 'string' &&
+    node.details.transport.trim()
+  ) {
+    return normalizeTransportBadgeLabel(node.details.transport);
+  }
+  if (typeof node.link === 'string' && node.link.trim()) {
+    const parsed = getProxyUrlTransport(node.link);
+    if (parsed) return normalizeTransportBadgeLabel(parsed);
+  }
+  return '';
+}
+
+const SECTION_ICON_PRESETS: Array<{
+  label: string;
+  domain: string;
+  keywords: string[];
+}> = [
+  {
+    label: 'YouTube',
+    domain: 'youtube.com',
+    keywords: ['youtube', 'ютуб', 'googlevideo'],
+  },
+  {
+    label: 'Discord',
+    domain: 'discord.com',
+    keywords: ['discord', 'дискорд'],
+  },
+  {
+    label: 'Telegram',
+    domain: 'telegram.org',
+    keywords: ['telegram', 'телеграм'],
+  },
+  {
+    label: 'ChatGPT / OpenAI',
+    domain: 'chatgpt.com',
+    keywords: ['openai', 'chatgpt', 'gpt'],
+  },
+  {
+    label: 'Claude',
+    domain: 'claude.ai',
+    keywords: ['claude', 'anthropic'],
+  },
+  {
+    label: 'Gemini / Google AI',
+    domain: 'gemini.google.com',
+    keywords: ['google_ai', 'gemini'],
+  },
+  {
+    label: 'Instagram / Meta',
+    domain: 'instagram.com',
+    keywords: ['instagram', 'инста', 'meta', 'facebook'],
+  },
+  {
+    label: 'X / Twitter',
+    domain: 'x.com',
+    keywords: ['twitter', 'твиттер', 'x.com'],
+  },
+  {
+    label: 'TikTok',
+    domain: 'tiktok.com',
+    keywords: ['tiktok', 'тикток'],
+  },
+  {
+    label: 'Twitch',
+    domain: 'twitch.tv',
+    keywords: ['twitch', 'твич'],
+  },
+  {
+    label: 'Steam',
+    domain: 'store.steampowered.com',
+    keywords: ['steam', 'стим'],
+  },
+  {
+    label: 'Roblox',
+    domain: 'roblox.com',
+    keywords: ['roblox', 'роблокс'],
+  },
+  {
+    label: 'Spotify',
+    domain: 'spotify.com',
+    keywords: ['spotify', 'спотифай'],
+  },
+  {
+    label: 'Netflix',
+    domain: 'netflix.com',
+    keywords: ['netflix', 'нетфликс'],
+  },
+  {
+    label: 'GitHub',
+    domain: 'github.com',
+    keywords: ['github', 'гитхаб'],
+  },
+  {
+    label: 'RuTracker',
+    domain: 'rutracker.org',
+    keywords: ['rutracker', 'рутрекер'],
+  },
+  {
+    label: 'HDRezka',
+    domain: 'hdrezka.ag',
+    keywords: ['hdrezka', 'резка'],
+  },
+  {
+    label: 'Cloudflare / WARP',
+    domain: 'cloudflare.com',
+    keywords: ['cloudflare', 'warp'],
+  },
+  {
+    label: 'FPTN Tunnel',
+    domain: 'fptn.io',
+    keywords: ['fptn'],
+  },
+  {
+    label: 'Google',
+    domain: 'google.com',
+    keywords: ['google', 'гугл'],
+  },
+  {
+    label: 'WhatsApp',
+    domain: 'whatsapp.com',
+    keywords: ['whatsapp', 'ватсап'],
+  },
+];
+
+export function renderServiceVectorSvg(
+  domainOrId: string,
+  size = 18,
+): SVGElement | null {
+  const d = String(domainOrId || '')
+    .toLowerCase()
+    .trim();
+  if (!d) return null;
+
+  const makeSvg = (color: string, children: SVGElement[]) =>
+    svgEl(
+      'svg',
+      {
+        class: 'tachyon-routing-row__svg-icon',
+        viewBox: '0 0 24 24',
+        width: String(size),
+        height: String(size),
+        fill: 'none',
+        stroke: color,
+        'stroke-width': '1.85',
+        'stroke-linecap': 'round',
+        'stroke-linejoin': 'round',
+        style: 'flex-shrink: 0; display: block;',
+      },
+      children,
+    );
+
+  if (d.includes('youtube') || d === 'yt') {
+    return makeSvg('#ff453a', [
+      svgEl('rect', { x: '2', y: '5', width: '20', height: '14', rx: '4' }),
+      svgEl('polygon', {
+        points: '10 9 15.5 12 10 15 10 9',
+        fill: '#ff453a',
+      }),
+    ]);
+  }
+  if (d.includes('discord')) {
+    return makeSvg('#5e9eff', [
+      svgEl('rect', { x: '3', y: '6', width: '18', height: '12', rx: '4' }),
+      svgEl('circle', { cx: '9', cy: '12', r: '1.3', fill: '#5e9eff' }),
+      svgEl('circle', { cx: '15', cy: '12', r: '1.3', fill: '#5e9eff' }),
+      svgEl('path', { d: 'M8 6V4m8 2V4' }),
+    ]);
+  }
+  if (d.includes('telegram') || d === 't.me' || d === 'tg') {
+    return makeSvg('#38bdf8', [
+      svgEl('path', { d: 'm22 2-7 20-4-9-9-4Z' }),
+      svgEl('path', { d: 'M22 2 11 13' }),
+    ]);
+  }
+  if (d.includes('chatgpt') || d.includes('openai') || d === 'ai') {
+    return makeSvg('#30d158', [
+      svgEl('path', {
+        d: 'M12 2a4.5 4.5 0 0 1 4.2 3 4.5 4.5 0 0 1 3.8 6.8 4.5 4.5 0 0 1-2.2 6.2 4.5 4.5 0 0 1-7.6 1 4.5 4.5 0 0 1-5.8-4 4.5 4.5 0 0 1 1.6-6.5A4.5 4.5 0 0 1 12 2Z',
+      }),
+      svgEl('circle', { cx: '12', cy: '12', r: '2.5' }),
+    ]);
+  }
+  if (d.includes('claude') || d.includes('anthropic')) {
+    return makeSvg('#ff9f0a', [
+      svgEl('path', {
+        d: 'M12 2v20M2 12h20M4.9 4.9l14.2 14.2M19.1 4.9 4.9 19.1',
+      }),
+      svgEl('circle', { cx: '12', cy: '12', r: '3', fill: '#18181b' }),
+    ]);
+  }
+  if (d.includes('gemini')) {
+    return makeSvg('#64d2ff', [
+      svgEl('path', {
+        d: 'M12 2c.6 5.2 4.8 9.4 10 10-5.2.6-9.4 4.8-10 10-.6-5.2-4.8-9.4-10-10 5.2-.6 9.4-4.8 10-10Z',
+      }),
+    ]);
+  }
+  if (d.includes('instagram') || d.includes('meta') || d.includes('facebook')) {
+    return makeSvg('#fb7185', [
+      svgEl('rect', { x: '3', y: '3', width: '18', height: '18', rx: '5' }),
+      svgEl('circle', { cx: '12', cy: '12', r: '4' }),
+      svgEl('circle', { cx: '17.5', cy: '6.5', r: '1', fill: '#fb7185' }),
+    ]);
+  }
+  if (d === 'x.com' || d.includes('twitter')) {
+    return makeSvg('#e4e4e7', [svgEl('path', { d: 'M4 4l16 16M20 4 4 20' })]);
+  }
+  if (d.includes('tiktok')) {
+    return makeSvg('#2dd4bf', [
+      svgEl('path', { d: 'M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5' }),
+    ]);
+  }
+  if (d.includes('twitch')) {
+    return makeSvg('#38bdf8', [
+      svgEl('path', {
+        d: 'M21 2H3v16h5v4l4-4h5l4-4V2zm-10 9V7m5 4V7',
+      }),
+    ]);
+  }
+  if (d.includes('steam') || d.includes('steampowered') || d === 'game') {
+    return makeSvg('#60a5fa', [
+      svgEl('rect', { x: '2', y: '6', width: '20', height: '12', rx: '4' }),
+      svgEl('path', { d: 'M6 12h4M8 10v4' }),
+      svgEl('circle', { cx: '15.5', cy: '11', r: '1', fill: '#60a5fa' }),
+      svgEl('circle', { cx: '17.5', cy: '13', r: '1', fill: '#60a5fa' }),
+    ]);
+  }
+  if (d.includes('roblox')) {
+    return makeSvg('#3b82f6', [
+      svgEl('rect', {
+        x: '4',
+        y: '4',
+        width: '16',
+        height: '16',
+        rx: '2.5',
+        transform: 'rotate(12 12 12)',
+      }),
+      svgEl('rect', {
+        x: '9.5',
+        y: '9.5',
+        width: '5',
+        height: '5',
+        rx: '0.8',
+        transform: 'rotate(12 12 12)',
+      }),
+    ]);
+  }
+  if (d.includes('spotify')) {
+    return makeSvg('#30d158', [
+      svgEl('circle', { cx: '12', cy: '12', r: '9.5' }),
+      svgEl('path', { d: 'M8 10c2.5-1 5.5-1 8 .5' }),
+      svgEl('path', { d: 'M8.5 13c2-.8 4.5-.8 6.5.4' }),
+      svgEl('path', { d: 'M9.5 15.8c1.5-.5 3-.5 4.5.3' }),
+    ]);
+  }
+  if (d.includes('netflix')) {
+    return makeSvg('#ff453a', [
+      svgEl('path', { d: 'M7 3v18M17 3v18M7 3l10 18' }),
+    ]);
+  }
+  if (d.includes('github')) {
+    return makeSvg('#e4e4e7', [
+      svgEl('circle', { cx: '6', cy: '6', r: '2.5' }),
+      svgEl('circle', { cx: '18', cy: '6', r: '2.5' }),
+      svgEl('circle', { cx: '6', cy: '18', r: '2.5' }),
+      svgEl('path', { d: 'M6 8.5v7M18 8.5a6 6 0 0 1-6 6H6' }),
+    ]);
+  }
+  if (d.includes('rutracker')) {
+    return makeSvg('#3b82f6', [
+      svgEl('path', { d: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' }),
+      svgEl('polyline', { points: '7 10 12 15 17 10' }),
+      svgEl('line', { x1: '12', y1: '15', x2: '12', y2: '3' }),
+    ]);
+  }
+  if (d.includes('hdrezka')) {
+    return makeSvg('#ff9f0a', [
+      svgEl('rect', { x: '2', y: '4', width: '20', height: '16', rx: '3' }),
+      svgEl('path', { d: 'M2 8h20M7 4v4M12 4v4M17 4v4' }),
+      svgEl('polygon', { points: '10 11 15 14 10 17 10 11' }),
+    ]);
+  }
+  if (d.includes('cloudflare') || d.includes('warp')) {
+    return makeSvg('#ff9f0a', [
+      svgEl('path', {
+        d: 'M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z',
+      }),
+    ]);
+  }
+  if (d.includes('fptn') || d === 'shield') {
+    return makeSvg('#0a84ff', [
+      svgEl('path', { d: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z' }),
+      svgEl('path', { d: 'm9 12 2 2 4-4' }),
+    ]);
+  }
+  if (d.includes('google')) {
+    return makeSvg('#3b82f6', [
+      svgEl('circle', { cx: '11', cy: '11', r: '7.5' }),
+      svgEl('path', { d: 'm20 20-3.8-3.8' }),
+    ]);
+  }
+  if (d.includes('whatsapp')) {
+    return makeSvg('#30d158', [
+      svgEl('path', {
+        d: 'M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z',
+      }),
+    ]);
+  }
+  if (d === 'globe' || d === 'main') {
+    return makeSvg('#0a84ff', [
+      svgEl('circle', { cx: '12', cy: '12', r: '10' }),
+      svgEl('line', { x1: '2', y1: '12', x2: '22', y2: '12' }),
+      svgEl('path', {
+        d: 'M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z',
+      }),
+    ]);
+  }
+  return null;
+}
+
+function getGlobalUci(): any {
+  if (typeof uci !== 'undefined' && uci) return uci;
+  const g = globalThis as any;
+  return g.uci || g.L?.uci;
+}
+
+function getGlobalUi(): any {
+  if (typeof ui !== 'undefined' && ui) return ui;
+  const g = globalThis as any;
+  return g.ui || g.L?.ui;
+}
+
+function toStringArray(val: unknown): string[] {
+  if (!val) return [];
+  const rawList = Array.isArray(val) ? val : [val];
+  const out: string[] = [];
+  for (const item of rawList) {
+    const lines = String(item || '').split(/\r?\n/);
+    for (const rawLine of lines) {
+      const cleaned = rawLine.replace(/(?:^|\s)(?:\/\/|#).*$/, '').trim();
+      if (!cleaned) continue;
+      for (const tok of cleaned.split(/[\s,]+/)) {
+        const t = tok.trim();
+        if (t && !t.startsWith('//') && !t.startsWith('#')) {
+          out.push(t);
+        }
+      }
+    }
+  }
+  return out;
+}
+
+const SAFE_FAVICON_DOMAIN_RE =
+  /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/i;
+
+function normalizeFaviconDomainInput(raw: string): string {
+  const trimmed = String(raw || '').trim();
+  if (!trimmed) return '';
+  if (trimmed.toLowerCase() === 'svg' || trimmed.toLowerCase() === 'none') {
+    return 'svg';
+  }
+  const host = trimmed
+    .replace(/^https?:\/\//i, '')
+    .split(/[/?#:]/)[0]
+    .trim()
+    .toLowerCase();
+  if (renderServiceVectorSvg(host) !== null) return host;
+  if (!SAFE_FAVICON_DOMAIN_RE.test(host)) return '';
+  return host;
+}
+
+function buildFaviconCandidateUrls(domainOrUrl: string): string[] {
+  const norm = normalizeFaviconDomainInput(domainOrUrl);
+  if (!norm || norm === 'svg' || !SAFE_FAVICON_DOMAIN_RE.test(norm)) return [];
+  if (renderServiceVectorSvg(norm) !== null) return [];
+  const encoded = encodeURIComponent(norm);
+  return [
+    `https://icons.duckduckgo.com/ip3/${encoded}.ico`,
+    `https://${encoded}/favicon.ico`,
+  ];
+}
+
+export function resolveSectionFaviconDomain(
+  section: Tachyon.OutboundGroup,
+): string | null {
+  const secName = section.sectionName || section.code || '';
+  const uciObj = getGlobalUci();
+
+  let custom = '';
+  try {
+    if (typeof localStorage !== 'undefined' && secName) {
+      custom = localStorage.getItem(`tachyon_sec_icon_${secName}`) || '';
+    }
+  } catch {
+    // ignore storage access errors
+  }
+  if (!custom && uciObj && typeof uciObj.get === 'function' && secName) {
+    try {
+      custom = String(
+        uciObj.get('tachyon', secName, 'icon_domain') ||
+          uciObj.get('tachyon', secName, 'icon') ||
+          '',
+      ).trim();
+    } catch {
+      // ignore uci read errors
+    }
+  }
+
+  if (custom) {
+    const norm = normalizeFaviconDomainInput(custom);
+    if (norm === 'svg') return null;
+    if (norm) return norm;
+  }
+
+  const nameTokens = `${secName} ${section.displayName || ''}`
+    .toLowerCase()
+    .trim();
+  for (const preset of SECTION_ICON_PRESETS) {
+    if (preset.keywords.some((kw) => nameTokens.includes(kw))) {
+      return preset.domain;
+    }
+  }
+
+  // Inspect section's community_lists and linked conditions if not a generic Main/FPTN/WARP/VPN section
+  const isGenericTunnelLike =
+    nameTokens === 'main' ||
+    nameTokens.includes('основн') ||
+    nameTokens.includes('fptn') ||
+    nameTokens.includes('warp') ||
+    nameTokens.includes('awg') ||
+    nameTokens.includes('wireguard') ||
+    nameTokens.includes('tailscale') ||
+    secName.toLowerCase() === 'main';
+  if (
+    !isGenericTunnelLike &&
+    uciObj &&
+    typeof uciObj.get === 'function' &&
+    secName
+  ) {
+    try {
+      const condRefs = toStringArray(
+        uciObj.get('tachyon', secName, 'condition_refs'),
+      ).map((r) => r.replace(/^!\s*/, '').trim());
+      const allLists: string[] = [];
+      const condDomains: string[] = [];
+
+      if (condRefs.length > 0) {
+        for (const cid of condRefs) {
+          allLists.push(
+            ...toStringArray(uciObj.get('tachyon', cid, 'community_lists')),
+            ...toStringArray(uciObj.get('tachyon', cid, 'domain_lists')),
+          );
+          condDomains.push(
+            ...toStringArray(uciObj.get('tachyon', cid, 'user_domains')),
+            ...toStringArray(uciObj.get('tachyon', cid, 'domain_suffix')),
+            ...toStringArray(uciObj.get('tachyon', cid, 'domains')),
+          );
+        }
+      } else {
+        allLists.push(
+          ...toStringArray(uciObj.get('tachyon', secName, 'community_lists')),
+        );
+      }
+
+      const listBlob = allLists.join(' ').toLowerCase();
+      for (const preset of SECTION_ICON_PRESETS) {
+        if (preset.keywords.some((kw) => listBlob.includes(kw))) {
+          return preset.domain;
+        }
+      }
+
+      for (const d of condDomains) {
+        const cleanDom = normalizeFaviconDomainInput(d.replace(/^\*\./, ''));
+        if (
+          cleanDom &&
+          cleanDom !== 'svg' &&
+          /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(cleanDom)
+        ) {
+          return cleanDom;
+        }
+      }
+    } catch {
+      // ignore uci lookup error
+    }
+  }
+
+  return null;
+}
+
+export function renderSectionCustomPrefixBadge(
+  section: Tachyon.OutboundGroup,
+): HTMLElement | null {
+  const secName = section.sectionName || section.code || '';
+  const uciObj = getGlobalUci();
+  if (!uciObj || typeof uciObj.get !== 'function' || !secName) return null;
+  try {
+    const text = String(
+      uciObj.get('tachyon', secName, 'prefix_text') || '',
+    ).trim();
+    if (!text) return null;
+    const bg =
+      String(uciObj.get('tachyon', secName, 'prefix_bg') || '').trim() ||
+      '#0a84ff';
+    const color =
+      String(uciObj.get('tachyon', secName, 'prefix_color') || '').trim() ||
+      '#ffffff';
+    return E(
+      'span',
+      {
+        class: 'tachyon-routing-row__custom-prefix-badge',
+        style: `display: inline-flex; align-items: center; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.03em; background: ${bg}; color: ${color}; line-height: 1.4;`,
+      },
+      text,
+    );
+  } catch {
+    return null;
+  }
+}
+
+function createSectionIconContent(
+  section: Tachyon.OutboundGroup,
+  visual: { iconNodes: SVGElement[] },
+  overrideDomain?: string | null,
+): HTMLElement {
+  const domain =
+    overrideDomain !== undefined
+      ? overrideDomain
+      : resolveSectionFaviconDomain(section);
+
+  const builtInVector = domain ? renderServiceVectorSvg(domain, 18) : null;
+  if (builtInVector) {
+    return E('span', { class: 'tachyon-routing-row__icon-inner' }, [
+      builtInVector,
+    ]);
+  }
+
+  const urls = domain ? buildFaviconCandidateUrls(domain) : [];
+
+  const svgFallback = svgEl(
+    'svg',
+    {
+      class: 'tachyon-routing-row__svg-icon',
+      viewBox: '0 0 24 24',
+      width: '18',
+      height: '18',
+      fill: 'none',
+      stroke: 'currentColor',
+      'stroke-width': '1.85',
+      'stroke-linecap': 'round',
+      'stroke-linejoin': 'round',
+      style: urls.length > 0 ? 'display: none;' : '',
+    },
+    visual.iconNodes.map((n) => n.cloneNode(true) as SVGElement),
+  );
+
+  if (urls.length === 0) {
+    return E('span', { class: 'tachyon-routing-row__icon-inner' }, [
+      svgFallback,
+    ]);
+  }
+
+  let urlIndex = 0;
+  const toSafeHttpsUrl = (rawUrl: string): string | null => {
+    try {
+      const parsed = new URL(rawUrl);
+      return parsed.protocol === 'https:' ? parsed.href : null;
+    } catch {
+      return null;
+    }
+  };
+  const initialSrc = toSafeHttpsUrl(urls[0]);
+  if (!initialSrc) {
+    return E('span', { class: 'tachyon-routing-row__icon-inner' }, [
+      svgFallback,
+    ]);
+  }
+  const imgEl = E('img', {
+    class: 'tachyon-routing-row__favicon',
+    src: initialSrc,
+    alt: domain || '',
+    loading: 'lazy',
+    referrerPolicy: 'no-referrer',
+  } as any) as HTMLImageElement;
+
+  imgEl.addEventListener('error', () => {
+    urlIndex += 1;
+    const nextSrc =
+      urlIndex < urls.length ? toSafeHttpsUrl(urls[urlIndex]) : null;
+    if (nextSrc) {
+      imgEl.setAttribute('src', nextSrc);
+    } else {
+      imgEl.style.display = 'none';
+      svgFallback.style.display = '';
+    }
+  });
+
+  return E('span', { class: 'tachyon-routing-row__icon-inner' }, [
+    imgEl,
+    svgFallback,
+  ]);
+}
+
+export function openSectionIconPickerModal(
+  section: Tachyon.OutboundGroup,
+  onSaved?: (newDomain: string) => void,
+): void {
+  const uiObj = getGlobalUi();
+  const uciObj = getGlobalUci();
+  if (!uiObj || typeof uiObj.showModal !== 'function') return;
+
+  const secName = section.sectionName || section.code || '';
+  const visual = getSectionVisualMeta(section);
+  let explicitSaved = '';
+  let savedPrefixText = '';
+  let savedPrefixBg = '#0a84ff';
+  let savedPrefixColor = '#ffffff';
+  try {
+    if (typeof localStorage !== 'undefined' && secName) {
+      explicitSaved = localStorage.getItem(`tachyon_sec_icon_${secName}`) || '';
+    }
+  } catch {
+    // ignore
+  }
+  if (uciObj && typeof uciObj.get === 'function' && secName) {
+    try {
+      if (!explicitSaved) {
+        explicitSaved = String(
+          uciObj.get('tachyon', secName, 'icon_domain') ||
+            uciObj.get('tachyon', secName, 'icon') ||
+            '',
+        ).trim();
+      }
+      savedPrefixText = String(
+        uciObj.get('tachyon', secName, 'prefix_text') || '',
+      ).trim();
+      savedPrefixBg =
+        String(uciObj.get('tachyon', secName, 'prefix_bg') || '').trim() ||
+        '#0a84ff';
+      savedPrefixColor =
+        String(uciObj.get('tachyon', secName, 'prefix_color') || '').trim() ||
+        '#ffffff';
+    } catch {
+      // ignore
+    }
+  }
+  let currentDomain =
+    explicitSaved === 'svg'
+      ? 'svg'
+      : explicitSaved || resolveSectionFaviconDomain(section) || '';
+
+  const previewBox = E(
+    'div',
+    {
+      class: 'tachyon-routing-row__icon tachyon-icon-picker__preview-icon',
+      style: `background: ${visual.bg}; color: ${visual.color}; width: 42px; height: 42px; border-radius: 10px;`,
+    },
+    [
+      createSectionIconContent(
+        section,
+        visual,
+        currentDomain === 'svg' || !currentDomain ? null : currentDomain,
+      ),
+    ],
+  );
+
+  const previewDomainLabel = E(
+    'div',
+    { class: 'tachyon-icon-picker__preview-domain' },
+    currentDomain && currentDomain !== 'svg'
+      ? `${tr('Профиль иконки:', 'Icon profile:')} ${currentDomain}`
+      : tr('Стандартная векторная иконка (SVG)', 'Default vector icon (SVG)'),
+  );
+
+  const updatePreview = (val: string) => {
+    currentDomain = val.trim();
+    const norm = normalizeFaviconDomainInput(currentDomain);
+    previewBox.replaceChildren(
+      createSectionIconContent(
+        section,
+        visual,
+        norm === 'svg' || !norm ? null : norm,
+      ),
+    );
+    previewDomainLabel.textContent =
+      norm && norm !== 'svg'
+        ? `${tr('Профиль иконки:', 'Icon profile:')} ${norm}`
+        : tr('Стандартная векторная иконка (SVG)', 'Default vector icon (SVG)');
+  };
+
+  const domainInput = E('input', {
+    type: 'text',
+    class: 'cbi-input-text',
+    style: 'width: 100%;',
+    placeholder: tr(
+      'youtube.com, discord.com, telegram.org, chatgpt.com, fptn.io (или пусто для авто)',
+      'youtube.com, discord.com, telegram.org, chatgpt.com, fptn.io (or empty for auto)',
+    ),
+    value: currentDomain === 'svg' ? 'svg' : currentDomain,
+    input: (ev: Event) => {
+      updatePreview((ev.target as HTMLInputElement).value);
+    },
+  } as any) as HTMLInputElement;
+
+  const prefixTextInput = E('input', {
+    type: 'text',
+    class: 'cbi-input-text',
+    style: 'width: 100%;',
+    placeholder: 'YT / PRO / AI / VIP',
+    value: savedPrefixText,
+  } as any) as HTMLInputElement;
+
+  const prefixBgInput = E('input', {
+    type: 'text',
+    class: 'cbi-input-text',
+    style: 'width: 100%; font-family: var(--tachyon-font-mono, monospace);',
+    placeholder: '#0a84ff',
+    value: savedPrefixBg,
+  } as any) as HTMLInputElement;
+
+  const prefixColorInput = E('input', {
+    type: 'text',
+    class: 'cbi-input-text',
+    style: 'width: 100%; font-family: var(--tachyon-font-mono, monospace);',
+    placeholder: '#ffffff',
+    value: savedPrefixColor,
+  } as any) as HTMLInputElement;
+
+  const presetChips = SECTION_ICON_PRESETS.map((preset) => {
+    const vecIcon =
+      renderServiceVectorSvg(preset.domain, 15) || renderCompassIcon(14);
+    return E(
+      'button',
+      {
+        type: 'button',
+        class: 'tachyon-icon-picker__chip',
+        click: () => {
+          domainInput.value = preset.domain;
+          updatePreview(preset.domain);
+        },
+      },
+      [vecIcon, E('span', {}, preset.label)],
+    );
+  });
+
+  const modalBody = E('div', { class: 'tachyon-icon-picker' }, [
+    E('div', { class: 'tachyon-icon-picker__preview-row' }, [
+      previewBox,
+      E('div', { class: 'tachyon-icon-picker__preview-text' }, [
+        E(
+          'div',
+          { style: 'font-weight: 600; font-size: 14px;' },
+          section.displayName || secName,
+        ),
+        previewDomainLabel,
+      ]),
+    ]),
+    E('div', { class: 'tachyon-icon-picker__field' }, [
+      E(
+        'label',
+        {
+          style:
+            'font-weight: 600; font-size: 12px; display: block; margin-bottom: 4px;',
+        },
+        tr(
+          'Профиль векторной иконки или домен сайта:',
+          'Vector icon profile or website domain:',
+        ),
+      ),
+      domainInput,
+    ]),
+    E('div', { class: 'tachyon-icon-picker__presets-wrap' }, [
+      E(
+        'div',
+        {
+          style:
+            'font-weight: 600; font-size: 11px; opacity: 0.72; margin-bottom: 6px;',
+        },
+        tr('Векторные иконки сервисов (0 мс):', 'Service vector icons (0 ms):'),
+      ),
+      E('div', { class: 'tachyon-icon-picker__chips-grid' }, [
+        ...presetChips,
+        E(
+          'button',
+          {
+            type: 'button',
+            class: 'tachyon-icon-picker__chip',
+            click: () => {
+              domainInput.value = '';
+              updatePreview('');
+            },
+          },
+          [
+            renderCompassIcon(13),
+            E('span', {}, tr('Авто (по правилам)', 'Auto (by rules)')),
+          ],
+        ),
+        E(
+          'button',
+          {
+            type: 'button',
+            class: 'tachyon-icon-picker__chip',
+            click: () => {
+              domainInput.value = 'svg';
+              updatePreview('svg');
+            },
+          },
+          [
+            renderSparklesIcon(13),
+            E('span', {}, tr('Стандартная SVG', 'Default SVG')),
+          ],
+        ),
+      ]),
+    ]),
+    E(
+      'div',
+      {
+        style:
+          'display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.07);',
+      },
+      [
+        E('div', {}, [
+          E(
+            'label',
+            {
+              style:
+                'font-weight: 600; font-size: 11px; opacity: 0.78; display: block; margin-bottom: 4px;',
+            },
+            tr(
+              'Текст цветного бейджа (prefix_text)',
+              'Badge text (prefix_text)',
+            ),
+          ),
+          prefixTextInput,
+        ]),
+        E('div', {}, [
+          E(
+            'label',
+            {
+              style:
+                'font-weight: 600; font-size: 11px; opacity: 0.78; display: block; margin-bottom: 4px;',
+            },
+            tr('Цвет фона бейджа', 'Badge background'),
+          ),
+          prefixBgInput,
+        ]),
+        E('div', {}, [
+          E(
+            'label',
+            {
+              style:
+                'font-weight: 600; font-size: 11px; opacity: 0.78; display: block; margin-bottom: 4px;',
+            },
+            tr('Цвет текста бейджа', 'Badge text color'),
+          ),
+          prefixColorInput,
+        ]),
+      ],
+    ),
+    E(
+      'div',
+      {
+        style:
+          'display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; padding-top: 10px; border-top: 1px solid rgba(128,128,128,0.18);',
+      },
+      [
+        E(
+          'button',
+          {
+            type: 'button',
+            class: 'btn cbi-button',
+            click: () => uiObj.hideModal(),
+          },
+          tr('Отмена', 'Cancel'),
+        ),
+        E(
+          'button',
+          {
+            type: 'button',
+            class: 'btn cbi-button cbi-button-positive important',
+            click: () => {
+              const savedNorm = normalizeFaviconDomainInput(domainInput.value);
+              const newPrefixText = prefixTextInput.value.trim();
+              const newPrefixBg = prefixBgInput.value.trim() || '#0a84ff';
+              const newPrefixColor = prefixColorInput.value.trim() || '#ffffff';
+              try {
+                if (typeof localStorage !== 'undefined' && secName) {
+                  if (savedNorm) {
+                    localStorage.setItem(
+                      `tachyon_sec_icon_${secName}`,
+                      savedNorm,
+                    );
+                  } else {
+                    localStorage.removeItem(`tachyon_sec_icon_${secName}`);
+                  }
+                }
+              } catch {
+                // ignore localStorage error
+              }
+              if (uciObj && secName) {
+                const applyUciIcon = () => {
+                  try {
+                    if (typeof uciObj.set === 'function') {
+                      uciObj.set(
+                        'tachyon',
+                        secName,
+                        'icon_domain',
+                        savedNorm || '',
+                      );
+                      uciObj.set(
+                        'tachyon',
+                        secName,
+                        'prefix_text',
+                        newPrefixText,
+                      );
+                      uciObj.set('tachyon', secName, 'prefix_bg', newPrefixBg);
+                      uciObj.set(
+                        'tachyon',
+                        secName,
+                        'prefix_color',
+                        newPrefixColor,
+                      );
+                    }
+                    if (typeof uciObj.save === 'function') {
+                      void Promise.resolve(uciObj.save()).then(() => {
+                        void fetch('/cgi-bin/luci/admin/uci/apply_unchecked', {
+                          method: 'POST',
+                        }).catch(() => {});
+                      });
+                    }
+                  } catch {
+                    // ignore uci error
+                  }
+                };
+                try {
+                  const hasLoaded =
+                    typeof uciObj.get === 'function' &&
+                    uciObj.get('tachyon', secName) != null;
+                  if (!hasLoaded && typeof uciObj.load === 'function') {
+                    void Promise.resolve(uciObj.load('tachyon')).then(
+                      applyUciIcon,
+                    );
+                  } else {
+                    applyUciIcon();
+                  }
+                } catch {
+                  applyUciIcon();
+                }
+              }
+              document
+                .querySelectorAll<HTMLElement>(
+                  `[data-section-icon-box="${secName}"]`,
+                )
+                .forEach((box) => {
+                  const effDom = resolveSectionFaviconDomain(section);
+                  box.replaceChildren(
+                    createSectionIconContent(section, visual, effDom),
+                  );
+                });
+              try {
+                window.dispatchEvent(new CustomEvent('tachyon-uci-changed'));
+              } catch {
+                // ignore
+              }
+              uiObj.hideModal();
+              onSaved?.(savedNorm);
+            },
+          },
+          tr('Сохранить', 'Save'),
+        ),
+      ],
+    ),
+  ]);
+
+  const dlg = uiObj.showModal(
+    `${tr('Иконка и бейдж секции', 'Section Icon & Badge')}: ${section.displayName || secName}`,
+    [modalBody],
+    'cbi-modal',
+  );
+  if (dlg instanceof HTMLElement) {
+    dlg.classList.add('cbi-modal');
+  }
+}
+
+function formatDesyncPresetLabel(presetRaw: string): string {
+  const p = (presetRaw || 'auto').trim().toLowerCase();
+  if (p === 'auto' || p === 'disorder') {
+    return tr('Auto (TCP/UDP)', 'Auto (TCP/UDP)');
+  }
+  if (p === 'google_youtube' || p === 'youtube') {
+    return 'YouTube / QUIC';
+  }
+  if (p === 'discord') {
+    return 'Discord (Voice/UDP)';
+  }
+  if (p === 'custom') {
+    return 'Custom CLI';
+  }
+  return presetRaw;
+}
+
+export function resolveSectionEngineMeta(
+  section: Tachyon.OutboundGroup,
+): SectionEngineMeta {
+  const secName = section.sectionName || section.code || '';
+  const uciObj = getGlobalUci();
+  const selectedOutbound = (section.outbounds || []).find((o) => o.selected);
+  const selectedTypeUpper = (selectedOutbound?.type || '').toUpperCase();
+  const rawAction = (
+    section.serviceStatus?.serviceType ||
+    section.action ||
+    ''
+  ).toLowerCase();
+
+  const dpiTypes = new Set([
+    'zapret',
+    'zapret2',
+    'byedpi',
+    'desync',
+    'wdtt',
+    'olcrtc',
+    'block',
+    'reject',
+    'bypass',
+    'direct',
+    'dns',
+  ]);
+
+  // Read UCI outbound_source_refs and condition_refs for rich DPI/Proxy engine info
+  const sourceTypes: string[] = [];
+  const uciSourceLinks: string[] = [];
+  let desyncPreset = 'auto';
+  let directNfqws = false;
+  let byedpiOpts = '';
+  let condSuggestsZapret2 = false;
+
+  if (uciObj && typeof uciObj.get === 'function' && secName) {
+    try {
+      if (uciObj.get('tachyon', secName, 'direct_nfqws') === '1') {
+        directNfqws = true;
+      }
+      const presetOnSec = uciObj.get('tachyon', secName, 'desync_preset');
+      if (presetOnSec) desyncPreset = String(presetOnSec);
+
+      const srcRefs = toStringArray(
+        uciObj.get('tachyon', secName, 'outbound_source_refs'),
+      );
+      for (const sid of srcRefs) {
+        const st = String(
+          uciObj.get('tachyon', sid, 'source_type') || '',
+        ).toLowerCase();
+        if (st) sourceTypes.push(st);
+        if (st === 'desync') {
+          const sp = uciObj.get('tachyon', sid, 'desync_preset');
+          if (sp) desyncPreset = String(sp);
+        } else if (st === 'zapret2' || st === 'zapret') {
+          if (uciObj.get('tachyon', sid, 'direct_nfqws') === '1') {
+            directNfqws = true;
+          }
+        } else if (st === 'byedpi') {
+          const bo = uciObj.get('tachyon', sid, 'byedpi_cmd_opts');
+          if (bo) byedpiOpts = String(bo);
+        }
+        const rawUrl = uciObj.get('tachyon', sid, 'url');
+        if (typeof rawUrl === 'string' && rawUrl.includes('://')) {
+          uciSourceLinks.push(rawUrl);
+        }
+        const rawLinks = toStringArray(uciObj.get('tachyon', sid, 'links'));
+        for (const lnk of rawLinks) {
+          if (lnk.includes('://')) uciSourceLinks.push(lnk);
+        }
+      }
+
+      const condRefs = toStringArray(
+        uciObj.get('tachyon', secName, 'condition_refs'),
+      );
+      for (const cid of condRefs) {
+        const cname = String(
+          uciObj.get('tachyon', cid, 'name') || cid,
+        ).toLowerCase();
+        if (cname.includes('zapret2')) {
+          condSuggestsZapret2 = true;
+        }
+      }
+    } catch {
+      // ignore uci lookup error
+    }
+  }
+
+  // Determine primary engine
+  const isInterfaceSelected =
+    selectedTypeUpper === 'INTERFACE' ||
+    selectedTypeUpper === 'TAILSCALE' ||
+    /-interface-\d+-out$/i.test(selectedOutbound?.code || '') ||
+    sourceTypes.includes('interface') ||
+    sourceTypes.includes('tailscale');
+
+  let primaryEngine = rawAction;
+  if (!dpiTypes.has(primaryEngine)) {
+    if (dpiTypes.has(selectedTypeUpper.toLowerCase()) && !isInterfaceSelected) {
+      primaryEngine = selectedTypeUpper.toLowerCase();
+    } else if (
+      sourceTypes.length > 0 &&
+      sourceTypes.every((st) => dpiTypes.has(st)) &&
+      !isInterfaceSelected
+    ) {
+      primaryEngine = sourceTypes[0];
+    } else if (
+      (!section.outbounds || section.outbounds.length === 0) &&
+      sourceTypes.length === 0 &&
+      condSuggestsZapret2
+    ) {
+      primaryEngine = 'zapret2';
+    }
+  }
+
+  const isDpiOnly = dpiTypes.has(primaryEngine);
+  const engineBadges: SectionEngineMeta['engineBadges'] = [];
+  const addedBadges = new Set<string>();
+  const pushBadge = (
+    label: string,
+    kind: 'dpi' | 'proxy' | 'transport',
+    title?: string,
+    icon?: () => SVGElement,
+  ) => {
+    if (!label || addedBadges.has(label)) return;
+    addedBadges.add(label);
+    engineBadges.push({ label, kind, title, icon });
+  };
+
+  const addDpiBadgeFor = (eng: string) => {
+    switch (eng.toLowerCase()) {
+      case 'desync':
+        pushBadge(
+          'Core Desync',
+          'dpi',
+          tr(
+            'Нативная десинхронизация пакетов в ядре Tachyon Core (без прокси)',
+            'Native packet desynchronization inside Tachyon Core',
+          ),
+          () => renderZapIcon(11),
+        );
+        break;
+      case 'zapret2':
+        pushBadge(
+          'Zapret2',
+          'dpi',
+          tr(
+            'Обход DPI через Zapret2 (nfqws2 + Lua-стратегии)',
+            'DPI bypass via Zapret2 (nfqws2 + Lua strategies)',
+          ),
+          () => renderZapIcon(11),
+        );
+        break;
+      case 'zapret':
+        pushBadge(
+          'Zapret',
+          'dpi',
+          tr('Обход DPI через Zapret (nfqws)', 'DPI bypass via Zapret (nfqws)'),
+          () => renderZapIcon(11),
+        );
+        break;
+      case 'byedpi':
+        pushBadge(
+          'ByeDPI',
+          'dpi',
+          tr(
+            'Обход DPI через ByeDPI (ciadpi SOCKS5)',
+            'DPI bypass via ByeDPI (ciadpi SOCKS5)',
+          ),
+          () => renderZapIcon(11),
+        );
+        break;
+      case 'wdtt':
+        pushBadge('WDTT', 'dpi', 'WDTT Anti-DPI', () => renderZapIcon(11));
+        break;
+      case 'olcrtc':
+        pushBadge('OLCRTC', 'dpi', 'OLCRTC WebRTC Bypass', () =>
+          renderZapIcon(11),
+        );
+        break;
+      case 'block':
+      case 'reject':
+        pushBadge(
+          tr('Блокировка', 'Block'),
+          'dpi',
+          tr('Блокировка трафика (Reject)', 'Traffic block (Reject)'),
+        );
+        break;
+      case 'bypass':
+      case 'direct':
+        pushBadge(
+          tr('Напрямую', 'Bypass'),
+          'transport',
+          tr('Прямой выход мимо прокси (WAN)', 'Direct WAN bypass'),
+        );
+        break;
+      case 'dns':
+        pushBadge(
+          'DNS',
+          'transport',
+          tr('Маршрутизация DNS-запросов', 'DNS routing rule'),
+        );
+        break;
+    }
+  };
+
+  if (isDpiOnly) {
+    addDpiBadgeFor(primaryEngine);
+  } else {
+    // Check if section has any DPI sources alongside proxy sources
+    for (const st of sourceTypes) {
+      if (dpiTypes.has(st)) {
+        addDpiBadgeFor(st);
+      }
+    }
+    for (const ob of section.outbounds || []) {
+      const oType = (ob.type || '').toLowerCase();
+      if (dpiTypes.has(oType)) {
+        addDpiBadgeFor(oType);
+      }
+    }
+  }
+
+  const groupMetaTypes = new Set([
+    'SELECTOR',
+    'URLTEST',
+    'PRIORITY',
+    'GROUP',
+    'CONNECTION',
+    'SING_BOX',
+  ]);
+
+  // Also add Proxy/Tunnel protocol badge and transport badges (e.g. VLESS + GRPC / XHTTP)
+  if (!isDpiOnly) {
+    const info =
+      selectedOutbound?.urlTestInfo || selectedOutbound?.priorityInfo;
+    const activeChild = info?.outbounds?.find(
+      (m) =>
+        m.selected ||
+        (info.selectedCode && m.code === info.selectedCode) ||
+        (info.selectedName && m.displayName === info.selectedName),
+    );
+    const matchedNode = (section.outbounds || []).find(
+      (o) =>
+        (activeChild?.code && o.code === activeChild.code) ||
+        (info?.selectedCode && o.code === info.selectedCode) ||
+        (activeChild?.displayName && o.displayName === activeChild.displayName),
+    );
+
+    let protoRaw = (
+      activeChild?.type ||
+      matchedNode?.type ||
+      selectedOutbound?.type ||
+      ''
+    ).toUpperCase();
+
+    if (!protoRaw || groupMetaTypes.has(protoRaw)) {
+      const firstRealNode =
+        (info?.outbounds || []).find(
+          (m) => m.type && !groupMetaTypes.has(m.type.toUpperCase()),
+        ) ||
+        (section.outbounds || []).find(
+          (o) => o.type && !groupMetaTypes.has(o.type.toUpperCase()),
+        );
+      if (firstRealNode?.type) {
+        protoRaw = firstRealNode.type.toUpperCase();
+      }
+    }
+
+    const singleSourceType = sourceTypes.length === 1 ? sourceTypes[0] : '';
+
+    if (
+      protoRaw.includes('FPTN') ||
+      (!protoRaw &&
+        (rawAction === 'fptn' ||
+          singleSourceType === 'fptn' ||
+          selectedTypeUpper.includes('FPTN')))
+    ) {
+      pushBadge('FPTN', 'proxy', 'FPTN VPN', () => renderShieldIcon(11));
+    } else if (
+      protoRaw.includes('WARP') ||
+      protoRaw === 'MASQUE' ||
+      (!protoRaw &&
+        (rawAction === 'warp' ||
+          singleSourceType === 'warp' ||
+          selectedTypeUpper.includes('WARP')))
+    ) {
+      pushBadge('WARP', 'proxy', 'Cloudflare WARP', () => renderCloudIcon(11));
+    } else if (
+      protoRaw.includes('AWG') ||
+      protoRaw.includes('WIREGUARD') ||
+      protoRaw.includes('AMNEZIA') ||
+      (!protoRaw &&
+        (rawAction === 'awg' ||
+          singleSourceType === 'amnezia_config' ||
+          singleSourceType === 'awg' ||
+          selectedTypeUpper.includes('AWG') ||
+          selectedTypeUpper.includes('WIREGUARD')))
+    ) {
+      pushBadge('AWG / WG', 'proxy', 'AmneziaWG / WireGuard', () =>
+        renderLockIcon(11),
+      );
+    } else if (
+      protoRaw.includes('TAILSCALE') ||
+      (!protoRaw &&
+        (singleSourceType === 'tailscale' ||
+          selectedTypeUpper.includes('TAILSCALE')))
+    ) {
+      pushBadge('Tailscale', 'proxy', 'Tailscale Mesh VPN', () =>
+        renderShieldIcon(11),
+      );
+    } else if (
+      protoRaw === 'INTERFACE' ||
+      (!protoRaw &&
+        (singleSourceType === 'interface' || selectedTypeUpper === 'INTERFACE'))
+    ) {
+      pushBadge(
+        tr('Интерфейс', 'Interface'),
+        'proxy',
+        tr('Сетевой интерфейс роутера', 'Router network interface'),
+        () => renderShieldIcon(11),
+      );
+    } else if (
+      protoRaw &&
+      !groupMetaTypes.has(protoRaw) &&
+      !dpiTypes.has(protoRaw.toLowerCase())
+    ) {
+      pushBadge(protoRaw, 'proxy');
+    }
+
+    if (selectedOutbound || (section.outbounds || []).length > 0) {
+      // Collect transport protocols (GRPC, XHTTP, WS, HTTPUPGRADE, QUIC, H2, TCP)
+      const activeTransport =
+        extractNodeTransportLabel(activeChild) ||
+        extractNodeTransportLabel(matchedNode) ||
+        extractNodeTransportLabel(selectedOutbound);
+
+      const nonTcpTransports: string[] = [];
+      let hasTcpTransport = false;
+      const recordTransport = (trLabel: string) => {
+        if (!trLabel) return;
+        if (trLabel === 'TCP') {
+          hasTcpTransport = true;
+          return;
+        }
+        if (!nonTcpTransports.includes(trLabel)) {
+          nonTcpTransports.push(trLabel);
+        }
+      };
+
+      if (activeTransport) {
+        recordTransport(activeTransport);
+      }
+      for (const m of info?.outbounds || []) {
+        recordTransport(extractNodeTransportLabel(m));
+      }
+      for (const ob of section.outbounds || []) {
+        recordTransport(extractNodeTransportLabel(ob));
+        const subInfo = ob.urlTestInfo || ob.priorityInfo;
+        for (const m of subInfo?.outbounds || []) {
+          recordTransport(extractNodeTransportLabel(m));
+        }
+      }
+      for (const lnk of uciSourceLinks) {
+        recordTransport(
+          normalizeTransportBadgeLabel(getProxyUrlTransport(lnk)),
+        );
+      }
+
+      const orderedTransports = [...nonTcpTransports];
+      if (
+        hasTcpTransport &&
+        (activeTransport === 'TCP' || orderedTransports.length === 0)
+      ) {
+        if (activeTransport === 'TCP') {
+          orderedTransports.unshift('TCP');
+        } else {
+          orderedTransports.push('TCP');
+        }
+      }
+
+      for (const trBadge of orderedTransports.slice(0, 3)) {
+        const isCurrent = trBadge === activeTransport;
+        pushBadge(
+          trBadge,
+          'transport',
+          isCurrent
+            ? `${tr('Активный транспорт узла', 'Active node transport')}: ${trBadge}`
+            : `${tr('Транспорт узлов секции', 'Section node transport')}: ${trBadge}`,
+        );
+      }
+    }
+  }
+
+  let dpiServerLabel: string | undefined;
+  let dpiSelectorLabel: string | undefined;
+  let dpiSubtitlePrefix: string | undefined;
+  let col2Label = tr('Сервер', 'Server');
+  let col3Label = tr('Селектор', 'Selector');
+
+  const conditionSummaryLabels: string[] = [];
+  if (uciObj && typeof uciObj.get === 'function' && secName) {
+    try {
+      const condRefs = toStringArray(
+        uciObj.get('tachyon', secName, 'condition_refs'),
+      );
+      for (const cid of condRefs) {
+        const cname = String(
+          uciObj.get('tachyon', cid, 'name') ||
+            uciObj.get('tachyon', cid, 'display_name') ||
+            cid,
+        ).trim();
+        if (cname && !conditionSummaryLabels.includes(cname)) {
+          conditionSummaryLabels.push(cname);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+  const conditionSummaryText =
+    conditionSummaryLabels.length > 0
+      ? conditionSummaryLabels.slice(0, 2).join(', ')
+      : '';
+
+  if (isDpiOnly) {
+    col2Label = tr('Движок', 'Engine');
+    col3Label = tr('Стратегия', 'Strategy');
+    if (primaryEngine === 'desync') {
+      const presetText = formatDesyncPresetLabel(desyncPreset);
+      dpiServerLabel = 'Tachyon Core (Desync)';
+      dpiSelectorLabel = `Desync • ${presetText}`;
+      dpiSubtitlePrefix = `Core Desync (${presetText})`;
+    } else if (primaryEngine === 'zapret2') {
+      dpiServerLabel = 'Zapret2 (nfqws2)';
+      dpiSelectorLabel = directNfqws
+        ? 'Direct NFQUEUE • Lua'
+        : 'NFQUEUE • Lua Desync';
+      dpiSubtitlePrefix = 'Zapret2 (nfqws2 Lua)';
+    } else if (primaryEngine === 'zapret') {
+      dpiServerLabel = 'Zapret (nfqws)';
+      dpiSelectorLabel = directNfqws ? 'Direct NFQUEUE' : 'NFQUEUE Desync';
+      dpiSubtitlePrefix = 'Zapret (nfqws)';
+    } else if (primaryEngine === 'byedpi') {
+      dpiServerLabel = 'ByeDPI (ciadpi)';
+      dpiSelectorLabel = byedpiOpts
+        ? `SOCKS5 • ${byedpiOpts.slice(0, 22)}`
+        : 'SOCKS5 Desync';
+      dpiSubtitlePrefix = 'ByeDPI (ciadpi)';
+    } else if (primaryEngine === 'wdtt') {
+      dpiServerLabel = 'WDTT Anti-DPI';
+      dpiSelectorLabel = 'DPI Bypass';
+      dpiSubtitlePrefix = 'WDTT Anti-DPI';
+    } else if (primaryEngine === 'olcrtc') {
+      dpiServerLabel = 'OLCRTC Bypass';
+      dpiSelectorLabel = 'WebRTC Bypass';
+      dpiSubtitlePrefix = 'OLCRTC';
+    } else if (primaryEngine === 'block' || primaryEngine === 'reject') {
+      col2Label = tr('Действие', 'Action');
+      col3Label = tr('Правило', 'Rule');
+      dpiServerLabel = tr('Блокировка (Reject)', 'Block (Reject)');
+      dpiSelectorLabel =
+        conditionSummaryText || tr('Отклонение трафика', 'Reject traffic');
+      dpiSubtitlePrefix = 'Block';
+    } else if (primaryEngine === 'bypass' || primaryEngine === 'direct') {
+      col2Label = tr('Маршрут', 'Route');
+      col3Label = tr('Режим', 'Mode');
+      dpiServerLabel = tr('Прямой выход (WAN)', 'Direct (WAN)');
+      dpiSelectorLabel =
+        conditionSummaryText || tr('Напрямую (мимо прокси)', 'Direct bypass');
+      dpiSubtitlePrefix = 'Bypass';
+    } else if (primaryEngine === 'dns') {
+      col2Label = tr('DNS-сервер', 'DNS Server');
+      col3Label = tr('Протокол', 'Protocol');
+      const dnsServers = uciObj
+        ? toStringArray(
+            uciObj.get?.('tachyon', secName, 'dns_server') ||
+              uciObj.get?.('tachyon', secName, 'routed_dns_server'),
+          )
+        : [];
+      const dnsTypeRaw = String(
+        uciObj?.get?.('tachyon', secName, 'dns_type') || '',
+      )
+        .trim()
+        .toUpperCase();
+      dpiServerLabel =
+        dnsServers.length > 0
+          ? dnsServers.join(', ')
+          : selectedOutbound?.displayName || 'DNS';
+      const inferredProto =
+        dnsTypeRaw ||
+        (dpiServerLabel.startsWith('https://')
+          ? 'DoH (HTTPS)'
+          : dpiServerLabel.startsWith('tls://')
+            ? 'DoT (TLS)'
+            : dpiServerLabel.startsWith('quic://')
+              ? 'DoQ (QUIC)'
+              : 'UDP / TCP');
+      dpiSelectorLabel =
+        inferredProto === 'DOH'
+          ? 'DoH (HTTPS)'
+          : inferredProto === 'DOT'
+            ? 'DoT (TLS)'
+            : inferredProto === 'DOQ'
+              ? 'DoQ (QUIC)'
+              : inferredProto;
+      dpiSubtitlePrefix = 'DNS';
+    }
+  }
+
+  return {
+    isDpiOnly,
+    primaryEngine,
+    engineBadges,
+    dpiServerLabel,
+    dpiSelectorLabel,
+    dpiSubtitlePrefix,
+    col2Label,
+    col3Label,
+  };
+}
+
+function getSectionVisualMeta(section: Tachyon.OutboundGroup): {
+  color: string;
+  bg: string;
+  subtitle: string;
+  iconNodes: SVGElement[];
+} {
+  const key = `${section.sectionName || ''} ${section.displayName || ''}`
+    .toLowerCase()
+    .trim();
+
+  const calmColor = '#0a84ff';
+  const calmBg = 'rgba(255, 255, 255, 0.04)';
+
+  if (key.includes('main') || key.includes('основн')) {
+    return {
+      color: calmColor,
+      bg: 'rgba(10, 132, 255, 0.12)',
+      subtitle: tr('Основной маршрут', 'Primary routing rule'),
+      iconNodes: [
+        svgEl('circle', { cx: '12', cy: '12', r: '10' }),
+        svgEl('line', { x1: '2', y1: '12', x2: '22', y2: '12' }),
+        svgEl('path', {
+          d: 'M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z',
+        }),
+      ],
+    };
+  }
+
+  if (
+    key.includes('youtube') ||
+    key.includes('ютуб') ||
+    key.includes('video')
+  ) {
+    return {
+      color: calmColor,
+      bg: calmBg,
+      subtitle: tr(
+        'Видеостриминг и сервисы Google',
+        'Video streaming & Google services',
+      ),
+      iconNodes: [
+        svgEl('rect', { x: '2', y: '5', width: '20', height: '14', rx: '4' }),
+        svgEl('polygon', { points: '10 9 15 12 10 15 10 9' }),
+      ],
+    };
+  }
+
+  if (
+    key.includes('discord') ||
+    key.includes('дискорд') ||
+    key.includes('voice')
+  ) {
+    return {
+      color: calmColor,
+      bg: calmBg,
+      subtitle: tr('Голосовой и текстовый чат', 'Voice and text chat'),
+      iconNodes: [
+        svgEl('path', {
+          d: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z',
+        }),
+      ],
+    };
+  }
+
+  if (
+    key.includes('telegram') ||
+    key.includes('телеграм') ||
+    /(?:^|[\s_-])tg(?:$|[\s_-])/i.test(key)
+  ) {
+    return {
+      color: calmColor,
+      bg: calmBg,
+      subtitle: tr('Мессенджер и медиафайлы', 'Messenger & media'),
+      iconNodes: [
+        svgEl('line', { x1: '22', y1: '2', x2: '11', y2: '13' }),
+        svgEl('polygon', { points: '22 2 15 22 11 13 2 9 22 2' }),
+      ],
+    };
+  }
+
+  if (
+    /(?:^|[\s_-])(ai|openai|claude|chatgpt|gemini|llm)(?:$|[\s_-])/i.test(key)
+  ) {
+    return {
+      color: calmColor,
+      bg: calmBg,
+      subtitle: tr('Нейросети и ИИ-платформы', 'AI platforms & APIs'),
+      iconNodes: [
+        svgEl('polygon', {
+          points: '13 2 3 14 12 14 11 22 21 10 12 10 13 2',
+        }),
+      ],
+    };
+  }
+
+  const actLower = (section.action || '').toLowerCase();
+  if (actLower === 'block' || actLower === 'reject') {
+    return {
+      color: calmColor,
+      bg: calmBg,
+      subtitle: tr(
+        'Блокировка рекламы и нежелательного трафика',
+        'Ad & unwanted traffic blocking',
+      ),
+      iconNodes: [
+        svgEl('circle', { cx: '12', cy: '12', r: '10' }),
+        svgEl('line', { x1: '4.93', y1: '4.93', x2: '19.07', y2: '19.07' }),
+      ],
+    };
+  }
+
+  if (actLower === 'bypass' || actLower === 'direct') {
+    return {
+      color: calmColor,
+      bg: calmBg,
+      subtitle: tr(
+        'Прямой выход мимо прокси (WAN)',
+        'Direct routing bypassing proxy (WAN)',
+      ),
+      iconNodes: [
+        svgEl('circle', { cx: '12', cy: '12', r: '10' }),
+        svgEl('polyline', { points: '12 16 16 12 12 8' }),
+        svgEl('line', { x1: '8', y1: '12', x2: '16', y2: '12' }),
+      ],
+    };
+  }
+
+  if (actLower === 'dns') {
+    return {
+      color: calmColor,
+      bg: calmBg,
+      subtitle: tr(
+        'Маршрутизация DNS-запросов по условиям',
+        'Conditional DNS query routing',
+      ),
+      iconNodes: [
+        svgEl('circle', { cx: '12', cy: '12', r: '10' }),
+        svgEl('polygon', {
+          points: '16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76',
+        }),
+      ],
+    };
+  }
+
+  if (
+    ['zapret', 'zapret2', 'byedpi', 'desync', 'wdtt', 'olcrtc'].includes(
+      section.action || '',
+    ) ||
+    Boolean(section.serviceStatus)
+  ) {
+    return {
+      color: calmColor,
+      bg: calmBg,
+      subtitle: tr('Обход DPI и модификация пакетов', 'DPI bypass & desync'),
+      iconNodes: [
+        svgEl('path', { d: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z' }),
+      ],
+    };
+  }
+
+  return {
+    color: calmColor,
+    bg: calmBg,
+    subtitle: tr('Маршрутизация по правилам секции', 'Section traffic rule'),
+    iconNodes: [
+      svgEl('circle', { cx: '12', cy: '12', r: '10' }),
+      svgEl('line', { x1: '2', y1: '12', x2: '22', y2: '12' }),
+      svgEl('path', {
+        d: 'M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z',
+      }),
+    ],
+  };
+}
+
+function resolveSectionActiveInfo(
+  section: Tachyon.OutboundGroup,
+  engineMeta?: SectionEngineMeta,
+): {
+  serverName: string;
+  selectorLabel: string;
+  latencyMs?: number;
+  selectedOutbound?: Tachyon.Outbound;
+  activeMemberCode?: string;
+  isInteractiveSelector: boolean;
+  hasUrlTest: boolean;
+  hasPriority: boolean;
+} {
+  const meta = engineMeta || resolveSectionEngineMeta(section);
+  const selectedOutbound = (section.outbounds || []).find((o) => o.selected);
+  const hasUrlTest = Boolean(selectedOutbound?.urlTestInfo);
+  const hasPriority = Boolean(selectedOutbound?.priorityInfo);
+  const isInteractiveSelector = hasUrlTest || hasPriority;
+
+  let serverName = tr('Ожидание', 'Standby');
+  let selectorLabel = tr('Ручной выбор', 'Manual');
+  let latencyMs = selectedOutbound?.latency;
+  let activeMemberCode: string | undefined;
+
+  if (meta.isDpiOnly && meta.dpiServerLabel) {
+    serverName = meta.dpiServerLabel;
+    selectorLabel = meta.dpiSelectorLabel || 'DPI Bypass';
+    activeMemberCode = selectedOutbound?.code;
+    return {
+      serverName,
+      selectorLabel,
+      latencyMs: undefined,
+      selectedOutbound,
+      activeMemberCode,
+      isInteractiveSelector: false,
+      hasUrlTest: false,
+      hasPriority: false,
+    };
+  }
+
+  if (selectedOutbound) {
+    if (isInteractiveSelector) {
+      const info =
+        selectedOutbound.urlTestInfo || selectedOutbound.priorityInfo;
+      const modeTag = hasUrlTest ? 'URLTest' : 'Priority';
+      selectorLabel = selectedOutbound.displayName.includes(modeTag)
+        ? selectedOutbound.displayName
+        : `${selectedOutbound.displayName} (${modeTag})`;
+
+      const fallbackMember =
+        info?.outbounds?.find(
+          (m) =>
+            m.selected || (info.selectedCode && m.code === info.selectedCode),
+        ) ||
+        info?.outbounds?.find((m) => m.latency && m.latency > 0) ||
+        info?.outbounds?.[0];
+      const rawMemberName =
+        info?.selectedName || fallbackMember?.displayName || '';
+      activeMemberCode =
+        info?.selectedCode ||
+        fallbackMember?.code ||
+        info?.outbounds?.find(
+          (m) =>
+            m.selected || (rawMemberName && m.displayName === rawMemberName),
+        )?.code;
+
+      const matchedNode = (section.outbounds || []).find(
+        (o) =>
+          (activeMemberCode && o.code === activeMemberCode) ||
+          (rawMemberName && o.displayName === rawMemberName),
+      );
+
+      if (rawMemberName) {
+        serverName = ensureOutboundDisplayFlag({
+          displayName: rawMemberName,
+          country: fallbackMember?.country || matchedNode?.country,
+          prefix: fallbackMember?.prefix || matchedNode?.prefix,
+        });
+      } else {
+        serverName = selectedOutbound.displayName;
+      }
+
+      if (!latencyMs || latencyMs <= 0) {
+        const member = info?.outbounds?.find(
+          (m) =>
+            m.selected ||
+            (info.selectedCode && m.code === info.selectedCode) ||
+            (rawMemberName && m.displayName === rawMemberName),
+        );
+        if (member?.latency) {
+          latencyMs = member.latency;
+        } else if (matchedNode?.latency) {
+          latencyMs = matchedNode.latency;
+        }
+      }
+    } else {
+      serverName = ensureOutboundDisplayFlag(selectedOutbound);
+      selectorLabel = tr('Ручной выбор', 'Manual');
+      activeMemberCode = selectedOutbound.code;
+    }
+  } else if (section.serviceStatus) {
+    const st = section.serviceStatus.serviceType || section.action || 'DPI';
+    serverName = st.toUpperCase();
+    selectorLabel = 'DPI Bypass';
+  }
+
+  return {
+    serverName,
+    selectorLabel,
+    latencyMs,
+    selectedOutbound,
+    activeMemberCode,
+    isInteractiveSelector,
+    hasUrlTest,
+    hasPriority,
+  };
+}
+
+export const DPI_ENGINES = new Set([
+  'zapret',
+  'zapret2',
+  'byedpi',
+  'desync',
+  'wdtt',
+  'olcrtc',
+]);
+
+export const SYSTEM_NON_PROXY_ENGINES = new Set([
+  'block',
+  'reject',
+  'bypass',
+  'direct',
+  'dns',
+]);
+
+export type SectionRoutingCategory =
+  | 'proxy'
+  | 'dpi'
+  | 'dns'
+  | 'direct'
+  | 'block'
+  | 'other';
+
+export function resolveSectionCategory(
+  s: Tachyon.OutboundGroup,
+  engineMeta?: SectionEngineMeta,
+): SectionRoutingCategory {
+  const meta = engineMeta || resolveSectionEngineMeta(s);
+  const action = (s.action || '').toLowerCase().trim();
+  const primaryEngine = (meta.primaryEngine || '').toLowerCase().trim();
+  const name = (s.sectionName || s.code || '').toLowerCase().trim();
+  const displayName = (s.displayName || '').toLowerCase().trim();
+
+  // A configured proxy connection takes precedence over name-based hints.
+  if (action === 'connection' && !meta.isDpiOnly) {
+    return 'proxy';
+  }
+
+  // 1. Блокировка (Block / Reject)
+  if (
+    action === 'block' ||
+    action === 'reject' ||
+    primaryEngine === 'block' ||
+    primaryEngine === 'reject' ||
+    name === 'block' ||
+    displayName === 'block' ||
+    name === 'reject' ||
+    displayName === 'reject' ||
+    name.includes('block') ||
+    displayName.includes('block')
+  ) {
+    return 'block';
+  }
+
+  // 2. Маршрутизация DNS (DNS Routing)
+  if (
+    action === 'dns' ||
+    primaryEngine === 'dns' ||
+    (!name.includes('zapret') &&
+      !displayName.includes('zapret') &&
+      (name === 'dns' ||
+        displayName === 'dns' ||
+        name.startsWith('dns-') ||
+        displayName.startsWith('dns-') ||
+        name.endsWith('-dns-server') ||
+        displayName.endsWith('-dns-server') ||
+        name.includes('dns') ||
+        displayName.includes('dns')))
+  ) {
+    return 'dns';
+  }
+
+  // 3. Обход DPI (DPI Bypass)
+  const isDpi =
+    DPI_ENGINES.has(action) ||
+    DPI_ENGINES.has(primaryEngine) ||
+    Boolean(
+      meta.isDpiOnly &&
+        DPI_ENGINES.has(meta.primaryEngine?.toLowerCase() || ''),
+    ) ||
+    name.includes('zapret') ||
+    displayName.includes('zapret') ||
+    name.includes('byedpi') ||
+    displayName.includes('byedpi') ||
+    name.includes('desync') ||
+    displayName.includes('desync') ||
+    name.includes('wdtt') ||
+    displayName.includes('wdtt') ||
+    name.includes('olcrtc') ||
+    displayName.includes('olcrtc');
+
+  if (isDpi) {
+    return 'dpi';
+  }
+
+  // 4. Прямой выход мимо прокси (Bypass / Direct / WAN)
+  if (
+    action === 'bypass' ||
+    action === 'direct' ||
+    primaryEngine === 'bypass' ||
+    primaryEngine === 'direct' ||
+    name === 'bypass' ||
+    displayName === 'bypass' ||
+    name === 'direct' ||
+    displayName === 'direct' ||
+    name.includes('bypass') ||
+    displayName.includes('bypass') ||
+    name.includes('direct') ||
+    displayName.includes('direct') ||
+    name.includes('wan') ||
+    displayName.includes('wan')
+  ) {
+    return 'direct';
+  }
+
+  // 5. Прокси
+  if (s.outbounds && s.outbounds.length > 0) {
+    return 'proxy';
+  }
+
+  return 'proxy';
+}
+
+export interface SectionPriorityOrderIssue {
+  misplacedNames: string[];
+  higherTunnelNames: string[];
+  orderedTargetNames: string[];
+}
+
+export function detectSectionPriorityOrderIssue(
+  sections?: Tachyon.OutboundGroup[],
+): SectionPriorityOrderIssue | null {
+  const g = globalThis as any;
+  const uciObj = (typeof uci !== 'undefined' && uci) || g.uci || g.L?.uci;
+
+  interface OrderedEntry {
+    id: string;
+    label: string;
+    category: SectionRoutingCategory;
+  }
+
+  const entries: OrderedEntry[] = [];
+  const uciSecs =
+    typeof uciObj?.sections === 'function'
+      ? uciObj.sections('tachyon', 'section')
+      : null;
+
+  if (Array.isArray(uciSecs) && uciSecs.length > 0) {
+    for (const raw of uciSecs) {
+      if (!raw || raw.enabled === '0' || raw.enabled === false) continue;
+      const id = String(raw['.name'] || raw.name || '').trim();
+      if (!id) continue;
+      const connType = String(raw.connection_type || raw.action || '')
+        .toLowerCase()
+        .trim();
+      let category: SectionRoutingCategory = 'proxy';
+      if (
+        connType === 'block' ||
+        connType === 'reject' ||
+        id === 'block' ||
+        id === 'reject' ||
+        id.toLowerCase().includes('block')
+      ) {
+        category = 'block';
+      } else if (
+        connType === 'bypass' ||
+        connType === 'direct' ||
+        id === 'bypass' ||
+        id === 'direct' ||
+        id.toLowerCase().includes('bypass') ||
+        id.toLowerCase().includes('direct')
+      ) {
+        category = 'direct';
+      } else if (connType === 'dns' || id === 'dns') {
+        category = 'dns';
+      } else if (DPI_ENGINES.has(connType)) {
+        category = 'dpi';
+      }
+      const matched = (sections || []).find(
+        (s) => s.sectionName === id || s.code === id,
+      );
+      entries.push({
+        id,
+        label: matched?.displayName || raw.title || id,
+        category,
+      });
+    }
+  } else if (Array.isArray(sections) && sections.length > 0) {
+    for (const s of sections) {
+      const id = String(s.sectionName || s.code || '').trim();
+      if (!id) continue;
+      const category = resolveSectionCategory(s);
+      entries.push({
+        id,
+        label: s.displayName || id,
+        category,
+      });
+    }
+  }
+
+  if (entries.length < 2) return null;
+
+  const seenTunnels: string[] = [];
+  const misplacedNames: string[] = [];
+  const higherTunnelSet = new Set<string>();
+
+  for (const entry of entries) {
+    if (entry.category === 'proxy' || entry.category === 'dpi') {
+      seenTunnels.push(entry.label);
+    } else if (
+      (entry.category === 'block' || entry.category === 'direct') &&
+      seenTunnels.length > 0
+    ) {
+      misplacedNames.push(entry.label);
+      for (const t of seenTunnels) higherTunnelSet.add(t);
+    }
+  }
+
+  if (misplacedNames.length === 0) return null;
+
+  const blockEntries = entries.filter((e) => e.category === 'block');
+  const directEntries = entries.filter((e) => e.category === 'direct');
+  const otherEntries = entries.filter(
+    (e) => e.category !== 'block' && e.category !== 'direct',
+  );
+  const orderedTargetNames = [
+    ...blockEntries,
+    ...directEntries,
+    ...otherEntries,
+  ].map((e) => e.id);
+
+  return {
+    misplacedNames,
+    higherTunnelNames: Array.from(higherTunnelSet),
+    orderedTargetNames,
+  };
+}
+
+function renderSectionPriorityOrderWarning(
+  sections: Tachyon.OutboundGroup[],
+  onReordered?: () => void,
+): HTMLElement | null {
+  const issue = detectSectionPriorityOrderIssue(sections);
+  if (!issue) return null;
+
+  const misplacedList = issue.misplacedNames.map((n) => `«${n}»`).join(', ');
+  const tunnelList = issue.higherTunnelNames
+    .slice(0, 3)
+    .map((n) => `«${n}»`)
+    .join(', ');
+
+  return E(
+    'div',
+    {
+      class: 'tachyon-priority-order-warning',
+      role: 'alert',
+      style:
+        'display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 10px; border-radius: 10px; background: rgba(255, 159, 10, 0.09); border: 1px solid rgba(255, 159, 10, 0.28); color: #f5f5f7; font-size: 12.5px; line-height: 1.45;',
+    },
+    [
+      E(
+        'div',
+        {
+          style:
+            'display: flex; align-items: flex-start; gap: 10px; flex: 1 1 320px; min-width: 0;',
+        },
+        [
+          E(
+            'span',
+            {
+              style:
+                'color: #ff9f0a; flex-shrink: 0; margin-top: 1px; display: inline-flex;',
+            },
+            [renderAlertTriangleIcon(16)],
+          ),
+          E('div', { style: 'min-width: 0;' }, [
+            E(
+              'div',
+              {
+                style: 'font-weight: 600; color: #ffb340; margin-bottom: 2px;',
+              },
+              tr(
+                'Нарушен приоритет секций Block / Bypass',
+                'Block / Bypass section priority warning',
+              ),
+            ),
+            E(
+              'div',
+              { style: 'color: #d1d1d6; font-size: 12px;' },
+              tr(
+                `Секция ${misplacedList} расположена ниже маршрутных секций (${tunnelList}). Правила проверяются сверху вниз — трафик может перехватываться туннелем до срабатывания блокировки или прямого обхода.`,
+                `Section ${misplacedList} is positioned below tunnel sections (${tunnelList}). Routing rules are evaluated top-down — traffic may be intercepted before block or direct bypass rules match.`,
+              ),
+            ),
+          ]),
+        ],
+      ),
+      E(
+        'div',
+        {
+          style:
+            'display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;',
+        },
+        [
+          E(
+            'button',
+            {
+              type: 'button',
+              class: 'btn cbi-button',
+              style:
+                'padding: 4px 10px !important; min-height: 26px !important; font-size: 11.5px !important; border-radius: 6px !important; font-weight: 600 !important; background: rgba(255, 159, 10, 0.14) !important; border: 1px solid rgba(255, 159, 10, 0.36) !important; color: #fbbf24 !important; box-shadow: inset 0 1px 0 rgba(255, 159, 10, 0.12) !important;',
+              click: async (ev: MouseEvent) => {
+                ev.preventDefault();
+                ev.stopPropagation();
+                const g = globalThis as any;
+                const uciObj =
+                  (typeof uci !== 'undefined' && uci) || g.uci || g.L?.uci;
+                if (uciObj && typeof uciObj.move === 'function') {
+                  const targetOrder = issue.orderedTargetNames;
+                  for (let i = 0; i < targetOrder.length - 1; i++) {
+                    try {
+                      uciObj.move(
+                        'tachyon',
+                        targetOrder[i],
+                        targetOrder[i + 1],
+                      );
+                    } catch {
+                      // ignore
+                    }
+                  }
+                  if (typeof uciObj.save === 'function') {
+                    await Promise.resolve(uciObj.save()).catch(() => {});
+                  }
+                  const uiObj =
+                    (typeof ui !== 'undefined' && ui) || g.ui || g.L?.ui;
+                  if (uiObj?.changes?.init) {
+                    await Promise.resolve(uiObj.changes.init()).catch(() => {});
+                  }
+                  showToast(
+                    tr(
+                      'Секции Block и Bypass подняты в начало списка',
+                      'Block & Bypass sections moved to top',
+                    ),
+                    'success',
+                  );
+                  if (onReordered) onReordered();
+                } else {
+                  const navBtn = document.querySelector<HTMLElement>(
+                    '.tachyon-sidebar__nav-item[data-nav-slot="routes"], .tachyon-sidebar__nav-item[data-nav-key="section:sections"]',
+                  );
+                  navBtn?.click();
+                }
+              },
+            } as any,
+            tr('Поднять выше', 'Move to top'),
+          ),
+          E(
+            'button',
+            {
+              type: 'button',
+              class: 'btn cbi-button',
+              style:
+                'padding: 4px 10px !important; min-height: 26px !important; font-size: 11.5px !important; border-radius: 6px !important; font-weight: 500 !important;',
+              click: (ev: MouseEvent) => {
+                ev.preventDefault();
+                ev.stopPropagation();
+                const navBtn = document.querySelector<HTMLElement>(
+                  '.tachyon-sidebar__nav-item[data-nav-slot="routes"], .tachyon-sidebar__nav-item[data-nav-key="section:sections"]',
+                );
+                if (navBtn) {
+                  navBtn.click();
+                } else {
+                  const topTab = document.querySelector<HTMLElement>(
+                    '.cbi-tabmenu > li[data-tab="cbi-tachyon-section"] a',
+                  );
+                  topTab?.click();
+                }
+              },
+            } as any,
+            tr('К секциям', 'Go to sections'),
+          ),
+        ],
+      ),
+    ],
+  );
+}
+export function renderDashboardSectionsAndNodes(
+  props: RenderDashboardSectionsAndNodesProps,
+): HTMLElement[] {
+  const {
+    sections,
+    selectedSectionCode,
+    onSelectSection,
+    getSectionStats,
+    isTestingAllSections,
+    onTestAllSections,
+    latencyFetchingSections,
+    onTestSectionLatency,
+    onShowUrlTestInfo,
+    onShowPriorityInfo,
+    onSectionTypesChanged,
+    expandedSections,
+    onToggleExpandSection,
+    renderSectionAccordionContent,
+  } = props;
+
+  if (!sections || sections.length === 0) {
+    return [];
+  }
+
+  // Фильтруем категории секций по пользовательским настройкам Дашборда
+  const typeFilter = getDashboardSectionTypeFilter();
+
+  const routingSections = sections.filter((s) => {
+    const engineMeta = resolveSectionEngineMeta(s);
+    const category = resolveSectionCategory(s, engineMeta);
+
+    switch (category) {
+      case 'proxy':
+        return typeFilter.proxy !== false;
+      case 'dpi':
+        return typeFilter.dpi !== false;
+      case 'dns':
+        return Boolean(typeFilter.dns);
+      case 'direct':
+        return Boolean(typeFilter.direct);
+      case 'block':
+        return Boolean(typeFilter.block);
+      default:
+        return true;
+    }
+  });
+
+  if (!routingSections || routingSections.length === 0) {
+    return [];
+  }
+
+  const sectionsViewMode = getWidgetViewMode('routing_sections') || 'rows';
+
+  // Separate proxy sections (which have selectable outbounds) and service-only sections
+  const nonProxyActions = new Set([
+    'zapret',
+    'zapret2',
+    'byedpi',
+    'desync',
+    'wdtt',
+    'olcrtc',
+    'block',
+    'reject',
+    'bypass',
+    'direct',
+    'dns',
+  ]);
+  const proxySections = routingSections.filter(
+    (s) =>
+      s.outbounds &&
+      s.outbounds.length > 0 &&
+      !nonProxyActions.has((s.action || '').toLowerCase()) &&
+      !s.serviceStatus &&
+      !resolveSectionEngineMeta(s).isDpiOnly,
+  );
+
+  const sectionItems = routingSections.flatMap((section) => {
+    const visual = getSectionVisualMeta(section);
+    const engineMeta = resolveSectionEngineMeta(section);
+    const stats = getSectionStats(section);
+    const activeInfo = resolveSectionActiveInfo(section, engineMeta);
+    const isExpanded = Boolean(
+      expandedSections &&
+        (expandedSections.has(section.code) ||
+          expandedSections.has(section.sectionName)),
+    );
+    const isRowSelected =
+      isExpanded ||
+      Boolean(
+        selectedSectionCode &&
+          (section.code === selectedSectionCode ||
+            section.sectionName === selectedSectionCode),
+      );
+    const handleRowToggle = () => {
+      if (onToggleExpandSection) {
+        onToggleExpandSection(section.code);
+      } else {
+        onSelectSection(section.code);
+      }
+    };
+    const wrapWithAccordion = (itemEl: HTMLElement): HTMLElement[] => {
+      if (!isExpanded || !renderSectionAccordionContent) {
+        return [itemEl];
+      }
+      const accordionEl = E(
+        'div',
+        {
+          class: 'tachyon-routing-row__accordion',
+          'data-section-accordion': section.sectionName || section.code,
+        } as any,
+        [renderSectionAccordionContent(section)],
+      );
+      return [itemEl, accordionEl];
+    };
+    const isLatencyFetching = Boolean(
+      latencyFetchingSections[section.sectionName],
+    );
+
+    const isServiceNode = Boolean(
+      engineMeta.isDpiOnly ||
+        section.serviceStatus ||
+        nonProxyActions.has((section.action || '').toLowerCase()),
+    );
+    const hideTrafficAndConns =
+      ['block', 'reject', 'bypass', 'direct', 'dns'].includes(
+        engineMeta.primaryEngine,
+      ) ||
+      ['block', 'reject', 'bypass', 'direct', 'dns'].includes(
+        (section.action || '').toLowerCase(),
+      );
+    const isHealthy = isServiceNode
+      ? section.serviceStatus
+        ? Boolean(section.serviceStatus.ready)
+        : true
+      : !section.configError;
+
+    const totalSectionTraffic = (stats.download || 0) + (stats.upload || 0);
+    const latencyMs = activeInfo.latencyMs;
+
+    const showStatusLedOnly = isServiceNode;
+
+    const latencyPillClass = showStatusLedOnly
+      ? `tachyon-routing-row__ping tachyon-routing-row__ping--led ${
+          isHealthy ? 'is-online' : 'is-offline'
+        }`
+      : latencyMs && latencyMs > 0
+        ? latencyMs <= 150
+          ? 'tachyon-routing-row__ping tachyon-routing-row__ping--fast'
+          : latencyMs <= 350
+            ? 'tachyon-routing-row__ping tachyon-routing-row__ping--medium'
+            : 'tachyon-routing-row__ping tachyon-routing-row__ping--slow'
+        : latencyMs === -1
+          ? 'tachyon-routing-row__ping tachyon-routing-row__ping--slow'
+          : 'tachyon-routing-row__ping tachyon-routing-row__ping--neutral';
+
+    const latencyContent = showStatusLedOnly
+      ? [
+          E('span', {
+            class: `tachyon-routing-row__status-dot ${
+              isHealthy ? 'is-online' : 'is-offline'
+            }`,
+          }),
+        ]
+      : [
+          isLatencyFetching
+            ? tr('Проверка...', 'Checking...')
+            : latencyMs && latencyMs > 0
+              ? `● ${latencyMs} ms`
+              : latencyMs === -1
+                ? `● ${tr('Не отвечает', 'Offline')}`
+                : '● —',
+        ];
+
+    const subtitleText = engineMeta.dpiSubtitlePrefix
+      ? `${engineMeta.dpiSubtitlePrefix} • ${visual.subtitle}`
+      : section.serviceStatus?.statusMessage &&
+          section.serviceStatus.statusMessage !== _('Running') &&
+          section.serviceStatus.statusMessage !== 'Запущен'
+        ? formatServiceStatusMessage(section.serviceStatus.statusMessage)
+        : visual.subtitle;
+
+    const statusIndicatorNode = isHealthy
+      ? E('span', {
+          class: 'tachyon-routing-row__status-dot is-online',
+          title: tr('Работает', 'Running'),
+        })
+      : E(
+          'span',
+          {
+            class: 'tachyon-routing-row__status-badge is-error',
+            title: section.configError || tr('Ошибка', 'Error'),
+          },
+          `● ${tr('Ошибка', 'Error')}`,
+        );
+
+    const customPrefixBadge = renderSectionCustomPrefixBadge(section);
+    const badgeNodes: HTMLElement[] = [
+      ...(customPrefixBadge ? [customPrefixBadge] : []),
+      ...engineMeta.engineBadges.map((b) =>
+        E(
+          'span',
+          {
+            class: `tachyon-routing-row__engine-badge tachyon-routing-row__engine-badge--${b.kind}`,
+            title: b.title || b.label,
+          },
+          b.icon ? [b.icon(), E('span', {}, b.label)] : b.label,
+        ),
+      ),
+    ];
+
+    const iconBoxNode = E(
+      'div',
+      {
+        class: 'tachyon-routing-row__icon',
+        'data-section-icon-box': section.sectionName || section.code,
+        title: tr(
+          'Нажмите, чтобы изменить иконку и бейдж секции',
+          'Click to change section icon and badge',
+        ),
+        style: `background: ${visual.bg}; color: ${visual.color}; cursor: pointer;`,
+        click: (ev: MouseEvent) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          openSectionIconPickerModal(section);
+        },
+      } as any,
+      [createSectionIconContent(section, visual)],
+    );
+
+    const latencyBtnNode = E(
+      'button',
+      {
+        type: 'button',
+        class: latencyPillClass,
+        'data-row-metric': 'latency',
+        title: showStatusLedOnly
+          ? isHealthy
+            ? tr('Работает', 'Running')
+            : tr('Остановлен', 'Stopped')
+          : tr(
+              'Нажмите для проверки задержки секции',
+              'Click to test section latency',
+            ),
+        click: (ev: MouseEvent) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          if (!isServiceNode && !isLatencyFetching) {
+            onTestSectionLatency(section);
+          } else {
+            onSelectSection(section.code);
+          }
+        },
+      } as any,
+      latencyContent,
+    );
+
+    if (sectionsViewMode === 'protocol_matrix') {
+      return wrapWithAccordion(
+        E(
+          'div',
+          {
+            class: [
+              'tachyon-routing-matrix-card',
+              isRowSelected ? 'is-selected' : '',
+              isExpanded ? 'is-expanded' : '',
+              section.configError ? 'has-error' : '',
+            ]
+              .filter(Boolean)
+              .join(' '),
+            'data-section-row-metrics': section.sectionName,
+            click: (ev: MouseEvent) => {
+              if (
+                (ev.target as HTMLElement | null)?.closest(
+                  'button, a, [data-section-icon-box]',
+                )
+              ) {
+                return;
+              }
+              handleRowToggle();
+            },
+          } as any,
+          [
+            E('div', { class: 'tachyon-routing-matrix-card__left' }, [
+              iconBoxNode,
+              E('div', { class: 'tachyon-routing-matrix-card__info' }, [
+                E('div', { class: 'tachyon-routing-row__title-line' }, [
+                  E(
+                    'span',
+                    { class: 'tachyon-routing-row__name' },
+                    section.displayName,
+                  ),
+                  statusIndicatorNode,
+                  ...badgeNodes,
+                ]),
+                E('div', { class: 'tachyon-routing-matrix-card__node' }, [
+                  ...renderFlagEmojis(activeInfo.serverName),
+                  E('span', { class: 'tachyon-routing-matrix-card__sep' }, '•'),
+                  E(
+                    'span',
+                    { class: 'tachyon-routing-matrix-card__sel' },
+                    activeInfo.selectorLabel,
+                  ),
+                ]),
+              ]),
+            ]),
+            E('div', { class: 'tachyon-routing-matrix-card__right' }, [
+              ...(hideTrafficAndConns
+                ? []
+                : [
+                    E('div', { class: 'tachyon-routing-matrix-card__stats' }, [
+                      E(
+                        'strong',
+                        {
+                          class: 'tachyon-routing-matrix-card__traffic',
+                          'data-row-metric': 'session-total',
+                        } as any,
+                        prettyBytes(totalSectionTraffic),
+                      ),
+                      E(
+                        'span',
+                        { class: 'tachyon-routing-matrix-card__conns' },
+                        [
+                          E(
+                            'span',
+                            { 'data-row-metric': 'conns' } as any,
+                            String(stats.conns),
+                          ),
+                          ` ${tr('соед.', 'conns')}`,
+                        ],
+                      ),
+                    ]),
+                  ]),
+              latencyBtnNode,
+            ]),
+          ],
+        ),
+      );
+    }
+
+    if (sectionsViewMode === 'compact_tiles') {
+      return wrapWithAccordion(
+        E(
+          'div',
+          {
+            class: [
+              'tachyon-routing-compact-tile',
+              isRowSelected ? 'is-selected' : '',
+              isExpanded ? 'is-expanded' : '',
+              section.configError ? 'has-error' : '',
+            ]
+              .filter(Boolean)
+              .join(' '),
+            'data-section-row-metrics': section.sectionName,
+            click: (ev: MouseEvent) => {
+              if (
+                (ev.target as HTMLElement | null)?.closest(
+                  'button, a, [data-section-icon-box]',
+                )
+              ) {
+                return;
+              }
+              handleRowToggle();
+            },
+          } as any,
+          [
+            E('div', { class: 'tachyon-routing-compact-tile__top' }, [
+              iconBoxNode,
+              E('div', { class: 'tachyon-routing-compact-tile__titles' }, [
+                E('div', { class: 'tachyon-routing-row__title-line' }, [
+                  E(
+                    'span',
+                    { class: 'tachyon-routing-row__name' },
+                    section.displayName,
+                  ),
+                  statusIndicatorNode,
+                ]),
+                E(
+                  'div',
+                  { class: 'tachyon-routing-compact-tile__badges' },
+                  badgeNodes,
+                ),
+              ]),
+              latencyBtnNode,
+            ]),
+            E('div', { class: 'tachyon-routing-compact-tile__bottom' }, [
+              E(
+                'span',
+                {
+                  class: 'tachyon-routing-compact-tile__server',
+                  title: activeInfo.serverName,
+                },
+                renderFlagEmojis(activeInfo.serverName),
+              ),
+              ...(hideTrafficAndConns
+                ? []
+                : [
+                    E(
+                      'span',
+                      {
+                        class: 'tachyon-routing-compact-tile__stat',
+                        'data-row-metric': 'session-total',
+                      } as any,
+                      prettyBytes(totalSectionTraffic),
+                    ),
+                  ]),
+            ]),
+          ],
+        ),
+      );
+    }
+
+    if (sectionsViewMode === 'cards_grid') {
+      return wrapWithAccordion(
+        E(
+          'div',
+          {
+            class: [
+              'tachyon-routing-bento-card',
+              isRowSelected ? 'is-selected' : '',
+              isExpanded ? 'is-expanded' : '',
+              section.configError ? 'has-error' : '',
+            ]
+              .filter(Boolean)
+              .join(' '),
+            'data-section-row-metrics': section.sectionName,
+            click: (ev: MouseEvent) => {
+              if (
+                (ev.target as HTMLElement | null)?.closest(
+                  'button, a, [data-section-icon-box]',
+                )
+              ) {
+                return;
+              }
+              handleRowToggle();
+            },
+          } as any,
+          [
+            E('div', { class: 'tachyon-routing-bento-card__head' }, [
+              iconBoxNode,
+              E('div', { class: 'tachyon-routing-bento-card__head-main' }, [
+                E('div', { class: 'tachyon-routing-row__title-line' }, [
+                  E(
+                    'span',
+                    { class: 'tachyon-routing-row__name' },
+                    section.displayName,
+                  ),
+                  statusIndicatorNode,
+                  ...badgeNodes,
+                ]),
+                E(
+                  'div',
+                  { class: 'tachyon-routing-row__subtitle' },
+                  subtitleText,
+                ),
+              ]),
+              latencyBtnNode,
+            ]),
+            E('div', { class: 'tachyon-routing-bento-card__body' }, [
+              E('div', { class: 'tachyon-routing-bento-card__field' }, [
+                E(
+                  'span',
+                  { class: 'tachyon-routing-row__col-label' },
+                  engineMeta.col2Label ||
+                    (engineMeta.isDpiOnly
+                      ? tr('Движок', 'Engine')
+                      : tr('Сервер', 'Server')),
+                ),
+                E(
+                  'span',
+                  {
+                    class: 'tachyon-routing-row__col-value',
+                    title: activeInfo.serverName,
+                  },
+                  renderFlagEmojis(activeInfo.serverName),
+                ),
+              ]),
+              E('div', { class: 'tachyon-routing-bento-card__field' }, [
+                E(
+                  'span',
+                  { class: 'tachyon-routing-row__col-label' },
+                  engineMeta.col3Label ||
+                    (engineMeta.isDpiOnly
+                      ? tr('Стратегия', 'Strategy')
+                      : tr('Селектор', 'Selector')),
+                ),
+                E(
+                  'span',
+                  {
+                    class: 'tachyon-routing-row__col-value',
+                    title: activeInfo.selectorLabel,
+                  },
+                  activeInfo.selectorLabel,
+                ),
+              ]),
+            ]),
+            ...(hideTrafficAndConns
+              ? []
+              : [
+                  E('div', { class: 'tachyon-routing-bento-card__foot' }, [
+                    E('span', { class: 'tachyon-routing-bento-card__metric' }, [
+                      E('span', { class: 'tachyon-routing-row__col-label' }, [
+                        `${tr('Трафик', 'Traffic')}: `,
+                      ]),
+                      E(
+                        'strong',
+                        { 'data-row-metric': 'session-total' } as any,
+                        prettyBytes(totalSectionTraffic),
+                      ),
+                    ]),
+                    E('span', { class: 'tachyon-routing-bento-card__metric' }, [
+                      E('span', { class: 'tachyon-routing-row__col-label' }, [
+                        `${tr('Соед.', 'Conns')}: `,
+                      ]),
+                      E(
+                        'strong',
+                        { 'data-row-metric': 'conns' } as any,
+                        String(stats.conns),
+                      ),
+                    ]),
+                  ]),
+                ]),
+          ],
+        ),
+      );
+    }
+
+    return wrapWithAccordion(
+      E(
+        'div',
+        {
+          class: [
+            'tachyon-routing-row',
+            hideTrafficAndConns ? 'tachyon-routing-row--no-traffic' : '',
+            !hideTrafficAndConns && !engineMeta.isDpiOnly
+              ? 'tachyon-routing-row--has-mobile-node'
+              : '',
+            isRowSelected ? 'is-selected' : '',
+            isExpanded ? 'is-expanded' : '',
+            section.configError ? 'has-error' : '',
+          ]
+            .filter(Boolean)
+            .join(' '),
+          'data-section-row-metrics': section.sectionName,
+          title: tr(
+            'Нажмите, чтобы развернуть узлы, балансировщики и условия секции',
+            'Click to expand section nodes, balancers and conditions',
+          ),
+          click: (ev: MouseEvent) => {
+            if (
+              (ev.target as HTMLElement | null)?.closest(
+                'button, a, [data-section-icon-box]',
+              )
+            ) {
+              return;
+            }
+            handleRowToggle();
+          },
+        } as any,
+        [
+          // Col 1: Service Icon (favicon.ico or SVG) + Name + Status Dot + Protocol/Transport Badges + Subtitle
+          E('div', { class: 'tachyon-routing-row__identity' }, [
+            iconBoxNode,
+            E('div', { class: 'tachyon-routing-row__titles' }, [
+              E('div', { class: 'tachyon-routing-row__title-line' }, [
+                E(
+                  'span',
+                  { class: 'tachyon-routing-row__name' },
+                  section.displayName,
+                ),
+                statusIndicatorNode,
+                ...badgeNodes,
+                ...(section.configError
+                  ? [
+                      E(
+                        'span',
+                        {
+                          class:
+                            'tachyon_dashboard-page__outbound-section__config-error-badge',
+                          title: section.configError,
+                        },
+                        tr('Есть ошибки', 'Has errors'),
+                      ),
+                    ]
+                  : []),
+              ]),
+              ...(!hideTrafficAndConns && !engineMeta.isDpiOnly
+                ? [
+                    E(
+                      'div',
+                      {
+                        class: 'tachyon-routing-row__mobile-node',
+                        title: `${activeInfo.serverName}${activeInfo.selectorLabel ? ` • ${activeInfo.selectorLabel}` : ''}`,
+                      },
+                      [
+                        E(
+                          'span',
+                          { class: 'tachyon-routing-row__mobile-server' },
+                          renderFlagEmojis(activeInfo.serverName),
+                        ),
+                        ...(activeInfo.selectorLabel
+                          ? [
+                              E(
+                                'span',
+                                { class: 'tachyon-routing-row__mobile-sep' },
+                                '•',
+                              ),
+                              E(
+                                'span',
+                                { class: 'tachyon-routing-row__mobile-sel' },
+                                activeInfo.selectorLabel,
+                              ),
+                            ]
+                          : []),
+                      ],
+                    ),
+                  ]
+                : []),
+              E(
+                'div',
+                { class: 'tachyon-routing-row__subtitle' },
+                subtitleText,
+              ),
+            ]),
+          ]),
+
+          // Col 2: Сервер / Движок / Действие / Маршрут / DNS-сервер
+          E('div', { class: 'tachyon-routing-row__col' }, [
+            E(
+              'span',
+              { class: 'tachyon-routing-row__col-label' },
+              engineMeta.col2Label ||
+                (engineMeta.isDpiOnly
+                  ? tr('Движок', 'Engine')
+                  : tr('Сервер', 'Server')),
+            ),
+            E(
+              'span',
+              {
+                class: 'tachyon-routing-row__col-value',
+                title: activeInfo.serverName,
+              },
+              renderFlagEmojis(activeInfo.serverName),
+            ),
+          ]),
+
+          // Col 3: Селектор / Стратегия / Правило / Режим / Протокол
+          E('div', { class: 'tachyon-routing-row__col' }, [
+            E(
+              'span',
+              { class: 'tachyon-routing-row__col-label' },
+              engineMeta.col3Label ||
+                (engineMeta.isDpiOnly
+                  ? tr('Стратегия', 'Strategy')
+                  : tr('Селектор', 'Selector')),
+            ),
+            E(
+              activeInfo.isInteractiveSelector ? 'button' : 'span',
+              {
+                ...(activeInfo.isInteractiveSelector ? { type: 'button' } : {}),
+                class: `tachyon-routing-row__selector-pill ${
+                  activeInfo.isInteractiveSelector ? 'is-interactive' : ''
+                }`,
+                title: activeInfo.isInteractiveSelector
+                  ? tr(
+                      'Нажмите для просмотра деталей автовыбора',
+                      'Click to inspect auto-selection details',
+                    )
+                  : activeInfo.selectorLabel,
+                click: activeInfo.isInteractiveSelector
+                  ? (ev: MouseEvent) => {
+                      ev.preventDefault();
+                      ev.stopPropagation();
+                      if (!activeInfo.selectedOutbound) return;
+                      if (activeInfo.hasUrlTest) {
+                        onShowUrlTestInfo(section, activeInfo.selectedOutbound);
+                      } else if (activeInfo.hasPriority) {
+                        onShowPriorityInfo(
+                          section,
+                          activeInfo.selectedOutbound,
+                        );
+                      }
+                    }
+                  : undefined,
+              } as any,
+              [
+                E('span', {}, activeInfo.selectorLabel),
+                ...(activeInfo.isInteractiveSelector
+                  ? [renderInfoIcon24()]
+                  : []),
+              ],
+            ),
+          ]),
+
+          // Col 4 & Col 5: Трафик за сессию и Соединения (скрываются для block / bypass / dns)
+          ...(hideTrafficAndConns
+            ? [
+                E('div', {
+                  class:
+                    'tachyon-routing-row__col tachyon-routing-row__col--empty',
+                }),
+                E('div', {
+                  class:
+                    'tachyon-routing-row__col tachyon-routing-row__col--empty',
+                }),
+              ]
+            : [
+                E(
+                  'div',
+                  {
+                    class:
+                      'tachyon-routing-row__col tachyon-routing-row__col--num',
+                    title: `↓ ${prettyBytes(stats.download || 0)} • ↑ ${prettyBytes(stats.upload || 0)}`,
+                  },
+                  [
+                    E(
+                      'span',
+                      { class: 'tachyon-routing-row__col-label' },
+                      tr('Трафик', 'Traffic'),
+                    ),
+                    E(
+                      'span',
+                      {
+                        class: 'tachyon-routing-row__col-value',
+                        'data-row-metric': 'session-total',
+                      } as any,
+                      prettyBytes(totalSectionTraffic),
+                    ),
+                    E(
+                      'span',
+                      {
+                        style: 'display:none;',
+                        'data-row-metric': 'session-down',
+                      } as any,
+                      `↓ ${prettyBytes(stats.download || 0)}`,
+                    ),
+                    E(
+                      'span',
+                      {
+                        style: 'display:none;',
+                        'data-row-metric': 'session-up',
+                      } as any,
+                      `↑ ${prettyBytes(stats.upload || 0)}`,
+                    ),
+                  ],
+                ),
+                E(
+                  'div',
+                  {
+                    class:
+                      'tachyon-routing-row__col tachyon-routing-row__col--num',
+                  },
+                  [
+                    E(
+                      'span',
+                      { class: 'tachyon-routing-row__col-label' },
+                      tr('Соед.', 'Conns'),
+                    ),
+                    E(
+                      'span',
+                      {
+                        class: 'tachyon-routing-row__col-value',
+                        'data-row-metric': 'conns',
+                      } as any,
+                      String(stats.conns),
+                    ),
+                  ],
+                ),
+              ]),
+
+          // Col 6: Latency Pill or Green Status Dot + Chevron
+          E('div', { class: 'tachyon-routing-row__right' }, [
+            latencyBtnNode,
+            E(
+              'span',
+              {
+                class: `tachyon-routing-row__chevron ${
+                  isRowSelected ? 'is-selected' : ''
+                } ${isExpanded ? 'is-expanded' : ''}`,
+              },
+              '›',
+            ),
+          ]),
+        ],
+      ),
+    );
+  });
+
+  const listClass =
+    sectionsViewMode === 'cards_grid'
+      ? 'tachyon-routing-sections-list tachyon-routing-sections-list--cards'
+      : sectionsViewMode === 'compact_tiles'
+        ? 'tachyon-routing-sections-list tachyon-routing-sections-list--tiles'
+        : sectionsViewMode === 'protocol_matrix'
+          ? 'tachyon-routing-sections-list tachyon-routing-sections-list--matrix'
+          : 'tachyon-routing-sections-list';
+
+  const priorityWarningEl = renderSectionPriorityOrderWarning(
+    sections,
+    onSectionTypesChanged,
+  );
+
+  const sectionsBlock = E('div', { class: 'tachyon-routing-sections-block' }, [
+    E('div', { class: 'tachyon-routing-sections-block__header' }, [
+      E(
+        'h3',
+        { class: 'tachyon-routing-sections-block__title' },
+        tr('Секции маршрутизации', 'Routing sections'),
+      ),
+      E('div', { class: 'tachyon-routing-sections-block__actions' }, [
+        E(
+          'button',
+          {
+            type: 'button',
+            id: 'dashboard-section-types-filter-button',
+            class: 'tachyon-routing-sections-block__filter-btn',
+            title: tr(
+              'Настроить отображаемые категории секций на дашборде',
+              'Configure displayed section categories on dashboard',
+            ),
+            click: () => {
+              openDashboardSectionTypesModal(() => {
+                if (onSectionTypesChanged) {
+                  onSectionTypesChanged();
+                }
+              });
+            },
+          } as any,
+          [
+            renderSlidersIcon(12),
+            E('span', {}, tr('Типы секций', 'Section Types')),
+          ],
+        ),
+        proxySections.length > 0
+          ? E(
+              'button',
+              {
+                type: 'button',
+                id: 'dashboard-test-all-sections-button',
+                class: 'tachyon-routing-sections-block__test-all-btn',
+                disabled: isTestingAllSections ? true : undefined,
+                click: () => {
+                  onTestAllSections();
+                },
+              } as any,
+              isTestingAllSections
+                ? [
+                    renderLoaderCircleIcon24(),
+                    E(
+                      'span',
+                      {},
+                      tr('Проверка всех секций...', 'Testing all sections...'),
+                    ),
+                  ]
+                : [
+                    E('span', {}, '↻'),
+                    E(
+                      'span',
+                      {},
+                      tr('Проверить все секции', 'Test all sections'),
+                    ),
+                  ],
+            )
+          : '',
+      ]),
+    ]),
+    ...(priorityWarningEl ? [priorityWarningEl] : []),
+    E('div', { class: listClass }, sectionItems),
+  ]);
+
+  return [sectionsBlock];
+}
+
+export function renderSectionConditionsAndBalancersView(
+  section: Tachyon.OutboundGroup,
+  callbacks: {
+    onShowUrlTestInfo: (
+      sec: Tachyon.OutboundGroup,
+      ob: Tachyon.Outbound,
+    ) => void;
+    onShowPriorityInfo: (
+      sec: Tachyon.OutboundGroup,
+      ob: Tachyon.Outbound,
+    ) => void;
+    onChooseOutbound: (
+      sectionName: string,
+      selector: string,
+      tag: string,
+    ) => void;
+  },
+): HTMLElement {
+  const g = globalThis as any;
+  const uciObj = (typeof uci !== 'undefined' && uci) || g.uci || g.L?.uci;
+  const secId = section.sectionName;
+
+  const uciGet = (sec: string, opt: string): any => {
+    try {
+      return uciObj?.get?.('tachyon', sec, opt);
+    } catch {
+      return undefined;
+    }
+  };
+  const uciSections = (type: string): any[] => {
+    try {
+      return uciObj?.sections?.('tachyon', type) || [];
+    } catch {
+      return [];
+    }
+  };
+
+  // 1. Balancers (from runtime outbounds + UCI balancer_refs)
+  const autoGroups = (section.outbounds || []).filter((o) =>
+    Boolean(o.urlTestInfo || o.priorityInfo),
+  );
+  const allUciBalancers = uciSections('balancer');
+  const balancerRefs = toStringArray(uciGet(secId, 'balancer_refs'));
+
+  const balancerCards: HTMLElement[] = [];
+  if (autoGroups.length > 0) {
+    for (const ag of autoGroups) {
+      const info = ag.urlTestInfo || ag.priorityInfo;
+      const isUrlTest = Boolean(ag.urlTestInfo);
+      const isSelected = Boolean(ag.selected);
+      const selectedServer =
+        info?.selectedName ||
+        info?.outbounds?.find((m) => m.selected)?.displayName ||
+        '—';
+      const membersCount = info?.outbounds?.length || 0;
+
+      balancerCards.push(
+        E(
+          'div',
+          {
+            class: `tachyon-sec-modal__card ${isSelected ? 'is-active' : ''}`,
+          },
+          [
+            E('div', { class: 'tachyon-sec-modal__card-head' }, [
+              E('div', { class: 'tachyon-sec-modal__card-title-row' }, [
+                E(
+                  'span',
+                  { class: 'tachyon-sec-modal__badge-type' },
+                  isUrlTest
+                    ? [renderZapIcon(11), E('span', {}, 'URLTest')]
+                    : [renderShieldIcon(11), E('span', {}, 'Priority')],
+                ),
+                E(
+                  'strong',
+                  { class: 'tachyon-sec-modal__card-title' },
+                  ag.displayName,
+                ),
+                ...(isSelected
+                  ? [
+                      E('span', { class: 'tachyon-sec-modal__badge-active' }, [
+                        renderCheckIcon(12),
+                        E('span', {}, tr('Активен', 'Active')),
+                      ]),
+                    ]
+                  : []),
+              ]),
+              E('div', { class: 'tachyon-sec-modal__card-actions' }, [
+                ...(!isSelected && section.withTagSelect
+                  ? [
+                      E(
+                        'button',
+                        {
+                          type: 'button',
+                          class: 'btn cbi-button cbi-button-apply',
+                          style: 'padding: 3px 10px; font-size: 12px;',
+                          click: () => {
+                            callbacks.onChooseOutbound(
+                              section.sectionName,
+                              section.code,
+                              ag.code,
+                            );
+                          },
+                        } as any,
+                        tr('Выбрать', 'Select'),
+                      ),
+                    ]
+                  : []),
+                E(
+                  'button',
+                  {
+                    type: 'button',
+                    class: 'btn cbi-button cbi-button-neutral',
+                    style: 'padding: 3px 10px; font-size: 12px;',
+                    click: () => {
+                      if (ag.urlTestInfo) {
+                        callbacks.onShowUrlTestInfo(section, ag);
+                      } else if (ag.priorityInfo) {
+                        callbacks.onShowPriorityInfo(section, ag);
+                      }
+                    },
+                  } as any,
+                  tr('Детали и узлы →', 'Details & Nodes →'),
+                ),
+              ]),
+            ]),
+            E('div', { class: 'tachyon-sec-modal__facts' }, [
+              E('span', { class: 'tachyon-sec-modal__fact' }, [
+                E('span', { class: 'tachyon-sec-modal__fact-k' }, [
+                  `${tr('Выбранный узел', 'Selected node')}: `,
+                ]),
+                E(
+                  'strong',
+                  {},
+                  renderFlagEmojis(
+                    ensureOutboundDisplayFlag({ displayName: selectedServer }),
+                  ),
+                ),
+              ]),
+              E('span', { class: 'tachyon-sec-modal__fact' }, [
+                E('span', { class: 'tachyon-sec-modal__fact-k' }, [
+                  `${tr('Узлов в группе', 'Group nodes')}: `,
+                ]),
+                E('strong', {}, String(membersCount)),
+              ]),
+              ...(ag.urlTestInfo?.interval
+                ? [
+                    E('span', { class: 'tachyon-sec-modal__fact' }, [
+                      E('span', { class: 'tachyon-sec-modal__fact-k' }, [
+                        `${tr('Интервал', 'Interval')}: `,
+                      ]),
+                      E('strong', {}, String(ag.urlTestInfo.interval)),
+                    ]),
+                  ]
+                : []),
+              ...(ag.urlTestInfo?.tolerance !== undefined
+                ? [
+                    E('span', { class: 'tachyon-sec-modal__fact' }, [
+                      E('span', { class: 'tachyon-sec-modal__fact-k' }, [
+                        `${tr('Допуск', 'Tolerance')}: `,
+                      ]),
+                      E('strong', {}, `${ag.urlTestInfo.tolerance} ms`),
+                    ]),
+                  ]
+                : []),
+            ]),
+          ],
+        ),
+      );
+    }
+  } else if (balancerRefs.length > 0) {
+    for (const bid of balancerRefs) {
+      const b = allUciBalancers.find((x) => x['.name'] === bid);
+      const bName = b?.name || bid;
+      const bType = b?.balancer_type === 'priority' ? 'Priority' : 'URLTest';
+      balancerCards.push(
+        E('div', { class: 'tachyon-sec-modal__card' }, [
+          E('div', { class: 'tachyon-sec-modal__card-head' }, [
+            E('div', { class: 'tachyon-sec-modal__card-title-row' }, [
+              E('span', { class: 'tachyon-sec-modal__badge-type' }, bType),
+              E('strong', { class: 'tachyon-sec-modal__card-title' }, bName),
+            ]),
+            E('div', { class: 'tachyon-sec-modal__card-actions' }, [
+              E(
+                'button',
+                {
+                  type: 'button',
+                  class: 'btn cbi-button cbi-button-neutral',
+                  style: 'padding: 3px 10px; font-size: 12px;',
+                  click: () => {
+                    const openEntity = (globalThis as any)
+                      .__tachyonOpenEntityModal;
+                    if (typeof openEntity === 'function') {
+                      openEntity('balancer', bid, 'balancers');
+                    }
+                  },
+                } as any,
+                [
+                  renderSettingsIcon(12),
+                  E('span', {}, `${tr('Изменить', 'Edit')} →`),
+                ],
+              ),
+            ]),
+          ]),
+        ]),
+      );
+    }
+  }
+
+  // 2. Conditions & Routing Rules (from UCI condition_refs + direct section options)
+  const allConditions = uciSections('condition');
+  const condRefs = toStringArray(uciGet(secId, 'condition_refs'));
+  const conditionCards: HTMLElement[] = [];
+
+  for (const rawRef of condRefs) {
+    const isNegated = rawRef.startsWith('!');
+    const cleanId = isNegated ? rawRef.slice(1) : rawRef;
+    const cond = allConditions.find((c) => c['.name'] === cleanId);
+    const cName = cond?.name || cond?.label || cleanId;
+    const cType = cond?.condition_type || cond?.type || 'rule';
+    const cOp = (cond?.operator || cond?.mode || 'OR').toUpperCase();
+
+    const values: string[] = Array.from(
+      new Set([
+        ...toStringArray(
+          cond?.community_lists || cond?.domain_list || cond?.domain_lists,
+        ).map((v) => `List:${v}`),
+        ...toStringArray(
+          cond?.domain_suffix ||
+            cond?.domain ||
+            cond?.domains ||
+            cond?.user_domains,
+        ),
+        ...toStringArray(cond?.geosite || cond?.geosite_categories).map(
+          (v) => `GeoSite:${v}`,
+        ),
+        ...toStringArray(
+          cond?.geoip_country || cond?.geoip || cond?.geoip_countries,
+        ).map((v) => `GeoIP:${v}`),
+        ...toStringArray(cond?.rule_set || cond?.domain_ip_lists).map(
+          (v) => `RuleSet:${v}`,
+        ),
+        ...toStringArray(cond?.ip_cidr || cond?.subnets || cond?.user_subnets),
+        ...toStringArray(
+          cond?.source_ip_cidr || cond?.local_ips || cond?.clients,
+        ).map((v) => `Client:${v}`),
+        ...toStringArray(cond?.source_macs).map((v) => `MAC:${v}`),
+        ...toStringArray(cond?.dest_ports || cond?.ports).map(
+          (v) => `Port:${v}`,
+        ),
+        ...toStringArray(cond?.members).map((v) => `Member:${v}`),
+      ]),
+    );
+
+    conditionCards.push(
+      E('div', { class: 'tachyon-sec-modal__card' }, [
+        E('div', { class: 'tachyon-sec-modal__card-head' }, [
+          E('div', { class: 'tachyon-sec-modal__card-title-row' }, [
+            ...(isNegated
+              ? [
+                  E(
+                    'span',
+                    {
+                      class:
+                        'tachyon-sec-modal__badge-type tachyon-sec-modal__badge-type--neg',
+                    },
+                    'NOT (!)',
+                  ),
+                ]
+              : []),
+            E('span', { class: 'tachyon-sec-modal__badge-type' }, cOp),
+            E('strong', { class: 'tachyon-sec-modal__card-title' }, cName),
+            E('span', { class: 'tachyon-sec-modal__fact-k' }, `(${cType})`),
+          ]),
+          E('div', { class: 'tachyon-sec-modal__card-actions' }, [
+            E(
+              'button',
+              {
+                type: 'button',
+                class: 'btn cbi-button cbi-button-neutral',
+                style: 'padding: 3px 10px; font-size: 12px;',
+                click: () => {
+                  const openEntity = (globalThis as any)
+                    .__tachyonOpenEntityModal;
+                  if (typeof openEntity === 'function') {
+                    openEntity('condition', cleanId, 'conditions');
+                  }
+                },
+              } as any,
+              [
+                renderSettingsIcon(12),
+                E('span', {}, `${tr('Открыть условие', 'Open Condition')} →`),
+              ],
+            ),
+          ]),
+        ]),
+        values.length > 0
+          ? E(
+              'div',
+              { class: 'tachyon-sec-modal__chips' },
+              values
+                .slice(0, 40)
+                .map((v) => E('span', { class: 'tachyon-sec-modal__chip' }, v))
+                .concat(
+                  values.length > 40
+                    ? [
+                        E(
+                          'span',
+                          { class: 'tachyon-sec-modal__chip' },
+                          `+${values.length - 40}`,
+                        ),
+                      ]
+                    : [],
+                ),
+            )
+          : E(
+              'div',
+              { class: 'tachyon-sec-modal__empty-hint' },
+              tr('Условие активно', 'Condition active'),
+            ),
+      ]),
+    );
+  }
+
+  // Direct rules configured on the section itself
+  const directRuleGroups: Array<{ label: string; items: string[] }> = [
+    {
+      label: tr('Сервисы и пресеты', 'Service Presets'),
+      items: toStringArray(uciGet(secId, 'domain_list')),
+    },
+    {
+      label: tr('Пользовательские домены', 'Custom Domains'),
+      items: toStringArray(uciGet(secId, 'user_domains')),
+    },
+    {
+      label: 'GeoSite',
+      items: toStringArray(uciGet(secId, 'geosite_categories')),
+    },
+    {
+      label: 'GeoIP',
+      items: toStringArray(uciGet(secId, 'geoip_countries')),
+    },
+    {
+      label: tr('Подсети / IP (CIDR)', 'Subnets / IP (CIDR)'),
+      items: toStringArray(uciGet(secId, 'user_subnets')),
+    },
+    {
+      label: tr('Локальные клиенты (LAN)', 'LAN Clients'),
+      items: toStringArray(
+        uciGet(secId, 'local_ips') || uciGet(secId, 'src_ips'),
+      ),
+    },
+    {
+      label: tr('Порты назначения', 'Destination Ports'),
+      items: toStringArray(uciGet(secId, 'dest_ports')),
+    },
+  ].filter((g) => g.items.length > 0);
+
+  for (const grp of directRuleGroups) {
+    conditionCards.push(
+      E('div', { class: 'tachyon-sec-modal__card' }, [
+        E('div', { class: 'tachyon-sec-modal__card-head' }, [
+          E('div', { class: 'tachyon-sec-modal__card-title-row' }, [
+            E(
+              'span',
+              { class: 'tachyon-sec-modal__badge-type' },
+              tr('Прямое правило', 'Direct Rule'),
+            ),
+            E('strong', { class: 'tachyon-sec-modal__card-title' }, grp.label),
+            E(
+              'span',
+              { class: 'tachyon-sec-modal__fact-k' },
+              `(${grp.items.length})`,
+            ),
+          ]),
+        ]),
+        E(
+          'div',
+          { class: 'tachyon-sec-modal__chips' },
+          grp.items
+            .slice(0, 40)
+            .map((v) => E('span', { class: 'tachyon-sec-modal__chip' }, v))
+            .concat(
+              grp.items.length > 40
+                ? [
+                    E(
+                      'span',
+                      { class: 'tachyon-sec-modal__chip' },
+                      `+${grp.items.length - 40}`,
+                    ),
+                  ]
+                : [],
+            ),
+        ),
+      ]),
+    );
+  }
+
+  return E('div', { class: 'tachyon-sec-modal__conditions-pane' }, [
+    E('div', { class: 'tachyon-sec-modal__group' }, [
+      E(
+        'h4',
+        { class: 'tachyon-sec-modal__group-title' },
+        tr(
+          'Условия маршрутизации и правила фильтрации',
+          'Routing Conditions & Traffic Rules',
+        ),
+      ),
+      ...(conditionCards.length > 0
+        ? conditionCards
+        : [
+            E(
+              'div',
+              { class: 'tachyon-sec-modal__card' },
+              tr(
+                'Для этой секции не заданы отдельные фильтры доменов — правило применяется ко всему подходящему трафику по приоритету секции.',
+                'No specific domain filters are attached to this section — matches traffic by section priority.',
+              ),
+            ),
+          ]),
+    ]),
+    E('div', { class: 'tachyon-sec-modal__group' }, [
+      E(
+        'h4',
+        { class: 'tachyon-sec-modal__group-title' },
+        tr(
+          'Балансировщики и политики отказоустойчивости',
+          'Balancers & Failover Policies',
+        ),
+      ),
+      ...(balancerCards.length > 0
+        ? balancerCards
+        : [
+            E(
+              'div',
+              { class: 'tachyon-sec-modal__card' },
+              tr(
+                'В этой секции используется прямой или ручной выбор узла (без групп URLTest / Priority).',
+                'This section uses direct or manual node selection (no URLTest / Priority balancers attached).',
+              ),
+            ),
+          ]),
+    ]),
+  ]);
+}

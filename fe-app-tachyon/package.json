@@ -1,0 +1,47 @@
+{
+  "name": "fe-app-tachyon",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "contracts:generate": "node ../tools/generate_rpc_contract.js && prettier --write src/contracts/generated/rpcContract.ts",
+    "format": "prettier --write src",
+    "format:js": "prettier --write ../luci-app-tachyon/htdocs/luci-static/resources/view/tachyon",
+    "lint": "eslint src --ext .ts,.tsx",
+    "lint:fix": "eslint src --ext .ts,.tsx --fix",
+    "build:views": "node --no-warnings build-views.js",
+    "build": "tsc --noEmit && tsup src/main.ts && npm run build:views",
+    "dev": "tsup src/main.ts --watch",
+    "test": "vitest",
+    "ci": "npm run contracts:generate && npm run format && npm run lint -- --max-warnings=0 && npm run test -- --run && npm run build",
+    "locales:extract-calls": "node extract-calls.js",
+    "locales:generate-pot": "node generate-pot.js",
+    "locales:generate-po:ru": "node generate-po.js ru",
+    "locales:distribute": "node distribute-locales.js",
+    "locales:actualize": "npm run locales:extract-calls && npm run locales:generate-pot && npm run locales:generate-po:ru && npm run locales:distribute"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.36.0",
+    "eslint": "9.36.0",
+    "eslint-config-prettier": "10.1.8",
+    "prettier": "3.6.2",
+    "tsup": "8.5.0",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.45.0",
+    "vitest": "^5.0.5"
+  },
+  "overrides": {
+    "@humanfs/node": ">=0.16.8",
+    "postcss": "8.5.23",
+    "js-yaml": "^5.4.1",
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "^11.0.5"
+    },
+    "sucrase": {
+      "glob": "^14.0.4"
+    }
+  },
+  "optionalDependencies": {
+    "@esbuild/win32-x64": "^0.28.2",
+    "@rolldown/binding-win32-x64-msvc": "^1.2.6"
+  }
+}

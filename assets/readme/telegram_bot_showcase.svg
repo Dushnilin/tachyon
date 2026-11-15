@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1200" height="176" viewBox="0 0 1200 176"
+     role="img" aria-labelledby="title desc">
+  <title id="title">Telegram-бот удалённого управления роутером</title>
+  <desc id="desc">Управление секциями и узлами через Clash API, диагностика AI Doctor и трассировка маршрутов, снапшоты LKG и контроль локальной сети из Telegram.</desc>
+
+  <rect width="1200" height="176" rx="16" fill="#141415"/>
+  <rect x="0.5" y="0.5" width="1199" height="175" rx="15.5" fill="none" stroke="#2e2e32" stroke-width="1"/>
+
+  <!-- Header -->
+  <text x="24" y="34" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="17" font-weight="500">Telegram-бот удалённого управления и телеметрии</text>
+  <text x="1176" y="34" text-anchor="end" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">src/tg_bot.rs · Clash API</text>
+
+  <!-- Card 1 (Highlighted): Clash API & Routing (280px) -->
+  <g transform="translate(24, 52)">
+    <rect x="0" y="0" width="280" height="104" rx="12" fill="#19191b" stroke="#38bdf8" stroke-width="1" stroke-opacity="0.5"/>
+    <text x="16" y="26" fill="#38bdf8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">/status · /ping · /sections</text>
+    <text x="16" y="50" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">Выбор нод и секций</text>
+    <text x="16" y="72" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="400">Авторизация Admin ID,</text>
+    <text x="16" y="90" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">переключение прокси и /fptn</text>
+  </g>
+
+  <!-- Card 2: DNS, Fuzzer & Connections (280px) -->
+  <g transform="translate(316, 52)">
+    <rect x="0" y="0" width="280" height="104" rx="12" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
+    <text x="16" y="26" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">/fuzzer · /dns · /close_conns</text>
+    <text x="16" y="50" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">DNS, Desync и сессии</text>
+    <text x="16" y="72" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="400">Проверка утечек (/leak),</text>
+    <text x="16" y="90" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">сброс сессий и /trim_ram</text>
+  </g>
+
+  <!-- Card 3: Diagnostics & Backups (280px) -->
+  <g transform="translate(608, 52)">
+    <rect x="0" y="0" width="280" height="104" rx="12" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
+    <text x="16" y="26" fill="#4cc38a" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">/doctor · /ai_doctor · /fix</text>
+    <text x="16" y="50" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">Диагностика и снапшоты</text>
+    <text x="16" y="72" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="400">Трассировка /trace, логи и откат</text>
+    <text x="16" y="90" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">/logs · /support · /lkg · /rollback</text>
+  </g>
+
+  <!-- Card 4: Worker & LAN Control (276px) -->
+  <g transform="translate(900, 52)">
+    <rect x="0" y="0" width="276" height="104" rx="12" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
+    <text x="16" y="26" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">/devices · /quiet · heartbeat</text>
+    <text x="16" y="50" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">LAN, Wake-on-LAN и алерты</text>
+    <text x="16" y="72" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="400">Wake-on-LAN (/wol), /parental</text>
+    <text x="16" y="90" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">и outbox с защитой от спама</text>
+  </g>
+</svg>

@@ -1,0 +1,340 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+'use strict';
+'require baseclass';
+'require rpc';
+'require ui';
+'require uci';
+'require view.tachyon.main as main';
+
+declare const main: any;
+
+interface HostHintEntry {
+  ipaddrs?: string | string[];
+  ipv4?: string | string[];
+  ipv6?: string | string[];
+  name?: string;
+}
+
+interface DhcpLeaseEntry {
+  ipaddr?: string;
+  hostname?: string;
+  mac?: string;
+}
+
+interface DhcpHostSection {
+  ip?: string;
+  name?: string;
+  mac?: string;
+}
+
+const callHostHints = rpc.declare({
+  object: 'luci-rpc',
+  method: 'getHostHints',
+  expect: { '': {} },
+});
+const callDHCPLeases = rpc.declare({
+  object: 'luci-rpc',
+  method: 'getDHCPLeases',
+  expect: { '': {} },
+});
+const callNetworkInterfaceDump = rpc.declare({
+  object: 'network.interface',
+  method: 'dump',
+  expect: { interface: [] },
+});
+
+let localDeviceChoicesCache: Record<string, string> | null = null;
+let localDeviceChoicesPromise: Promise<Record<string, string>> | null = null;
+
+function normalizeOptionValues(value: unknown): string[] {
+  if (!value) {
+    return [];
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .filter(Boolean)
+      .map((item) => `${item}`.trim())
+      .filter(Boolean);
+  }
+
+  return `${value}`
+    .split(/\s+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function normalizeLocalDeviceName(name: unknown): string {
+  const clean = `${name || ''}`.trim().replace(/\.lan$/i, '');
+  return clean === '*' ? '' : clean;
+}
+
+function addLocalDeviceChoice(
+  choices: Record<string, string>,
+  ip: unknown,
+  name: unknown,
+  mac: unknown,
+): void {
+  const normalizedIp = `${ip || ''}`.trim();
+  const normalizedMac = `${mac || ''}`.trim().toLowerCase();
+  const normalizedName = normalizeLocalDeviceName(name);
+
+  if (normalizedIp && main.validateIP(normalizedIp).valid) {
+    if (normalizedName) {
+      choices[normalizedIp] = `IP: ${normalizedIp} — ${normalizedName}`;
+    } else if (normalizedMac) {
+      choices[normalizedIp] = `IP: ${normalizedIp} — ${normalizedMac}`;
+    } else if (!choices[normalizedIp]) {
+      choices[normalizedIp] = `IP: ${normalizedIp}`;
+    }
+  }
+
+  if (
+    normalizedMac &&
+    /^([0-9a-f]{2}[:-]){5}[0-9a-f]{2}$/.test(normalizedMac)
+  ) {
+    const formattedMac = normalizedMac.replace(/-/g, ':');
+    if (normalizedName) {
+      choices[formattedMac] = `MAC: ${formattedMac} — ${normalizedName}`;
+    } else if (normalizedIp) {
+      choices[formattedMac] = `MAC: ${formattedMac} — ${normalizedIp}`;
+    } else if (!choices[formattedMac]) {
+      choices[formattedMac] = `MAC: ${formattedMac}`;
+    }
+  }
+}
+
+function addRouterIp(routerIps: Record<string, boolean>, ip: unknown): void {
+  const normalizedIp = `${ip || ''}`.trim();
+
+  if (!normalizedIp || !main.validateIP(normalizedIp).valid) {
+    return;
+  }
+
+  routerIps[normalizedIp] = true;
+}
+
+function buildRouterIpMap(networkInterfaces: unknown): Record<string, boolean> {
+  const routerIps: Record<string, boolean> = {};
+
+  if (!Array.isArray(networkInterfaces)) {
+    return routerIps;
+  }
+
+  networkInterfaces.forEach((networkInterface: any) => {
+    const ipAddresses: any[] = [];
+    const ipv4Addresses =
+      networkInterface &&
+      typeof networkInterface === 'object' &&
+      Array.isArray(networkInterface['ipv4-address'])
+        ? networkInterface['ipv4-address']
+        : [];
+    const ipv6Addresses =
+      networkInterface &&
+      typeof networkInterface === 'object' &&
+      Array.isArray(networkInterface['ipv6-address'])
+        ? networkInterface['ipv6-address']
+        : [];
+
+    ipAddresses.push(...ipv4Addresses, ...ipv6Addresses);
+    ipAddresses.forEach((address) => {
+      addRouterIp(
+        routerIps,
+        address && typeof address === 'object' ? address.address : address,
+      );
+    });
+  });
+
+  return routerIps;
+}
+
+function buildLocalDeviceChoices(
+  hostHints: Record<string, HostHintEntry> | null | undefined,
+  dhcpLeases: { dhcp_leases?: DhcpLeaseEntry[] } | null | undefined,
+  networkInterfaces: unknown,
+  dhcpHosts: DhcpHostSection[] | unknown,
+): Record<string, string> {
+  const choices: Record<string, string> = {};
+  const routerIps = buildRouterIpMap(networkInterfaces);
+
+  if (hostHints && typeof hostHints === 'object') {
+    Object.entries(hostHints).forEach(([mac, hint]) => {
+      if (!hint || typeof hint !== 'object') {
+        return;
+      }
+
+      [
+        ...normalizeOptionValues(hint.ipaddrs),
+        ...normalizeOptionValues(hint.ipv4),
+        ...normalizeOptionValues(hint.ipv6),
+      ].forEach((ip) => {
+        addLocalDeviceChoice(choices, ip, hint.name, mac);
+      });
+    });
+  }
+
+  if (dhcpLeases && Array.isArray(dhcpLeases.dhcp_leases)) {
+    dhcpLeases.dhcp_leases.forEach((lease) => {
+      if (!lease || typeof lease !== 'object') {
+        return;
+      }
+
+      addLocalDeviceChoice(choices, lease.ipaddr, lease.hostname, lease.mac);
+    });
+  }
+
+  if (Array.isArray(dhcpHosts)) {
+    dhcpHosts.forEach((host: DhcpHostSection) => {
+      if (host && host.ip && main.validateIP(host.ip).valid) {
+        addLocalDeviceChoice(choices, host.ip, host.name, host.mac);
+      }
+    });
+  }
+
+  Object.keys(routerIps).forEach((ip) => {
+    delete choices[ip];
+  });
+
+  return choices;
+}
+
+function loadLocalDeviceChoices(): Promise<Record<string, string>> {
+  if (localDeviceChoicesCache) {
+    return Promise.resolve(localDeviceChoicesCache);
+  }
+
+  if (localDeviceChoicesPromise) {
+    return localDeviceChoicesPromise;
+  }
+
+  localDeviceChoicesPromise = Promise.all([
+    callHostHints().catch(() => ({})),
+    callDHCPLeases().catch(() => ({})),
+    callNetworkInterfaceDump().catch(() => []),
+    uci
+      .load('dhcp')
+      .then(() => uci.sections('dhcp', 'host'))
+      .catch(() => []),
+  ])
+    .then(([hostHints, dhcpLeases, networkInterfaces, dhcpHosts]) => {
+      localDeviceChoicesCache = buildLocalDeviceChoices(
+        hostHints,
+        dhcpLeases,
+        networkInterfaces,
+        dhcpHosts,
+      );
+      return localDeviceChoicesCache;
+    })
+    .finally(() => {
+      localDeviceChoicesPromise = null;
+    });
+
+  return localDeviceChoicesPromise;
+}
+
+function sortLocalDeviceChoiceValues(
+  choices: Record<string, string>,
+): string[] {
+  return Object.keys(choices).sort((a, b) => {
+    const byName = `${choices[a]}`.localeCompare(`${choices[b]}`);
+    return byName || a.localeCompare(b);
+  });
+}
+
+function isIpOrMac(value: unknown): boolean {
+  const val = `${value || ''}`.trim();
+  return (
+    main.validateIP(val).valid ||
+    /^([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$/.test(val)
+  );
+}
+
+function hasSingleIpValue(values: unknown): boolean {
+  return normalizeOptionValues(values).some(isIpOrMac);
+}
+
+function preloadLocalDeviceChoicesForValues(
+  values: unknown,
+): Promise<Record<string, string> | null> {
+  return hasSingleIpValue(values)
+    ? loadLocalDeviceChoices()
+    : Promise.resolve(null);
+}
+
+function createLocalDeviceDynamicListWidget(
+  option: any,
+  section_id: string,
+  cfgvalue: unknown,
+): Promise<HTMLElement> {
+  const values = normalizeOptionValues(
+    cfgvalue != null ? cfgvalue : option.default,
+  );
+  const shouldResolveExistingLabels = hasSingleIpValue(values);
+
+  return (
+    shouldResolveExistingLabels
+      ? loadLocalDeviceChoices()
+      : Promise.resolve({} as Record<string, string>)
+  ).then((initialChoices) => {
+    const choices = localDeviceChoicesCache || initialChoices || {};
+    const DynamicListCtor = ui.DynamicList!;
+    const widget = new DynamicListCtor(values, choices, {
+      id: option.cbid(section_id),
+      sort: sortLocalDeviceChoiceValues(choices),
+      optional: option.optional || option.rmempty,
+      datatype: option.datatype,
+      placeholder: option.placeholder,
+      validate: option.validate.bind(option, section_id),
+      disabled: option.readonly != null ? option.readonly : option.map.readonly,
+    });
+    const node = widget.render();
+    let choicesLoaded = Boolean(localDeviceChoicesCache);
+    let choicesLoading = false;
+
+    const loadChoices = () => {
+      if (choicesLoaded || choicesLoading) {
+        return;
+      }
+
+      choicesLoading = true;
+      loadLocalDeviceChoices()
+        .then((loadedChoices) => {
+          widget.clearChoices();
+          widget.addChoices(
+            sortLocalDeviceChoiceValues(loadedChoices),
+            loadedChoices,
+          );
+          choicesLoaded = true;
+        })
+        .finally(() => {
+          choicesLoading = false;
+        });
+    };
+
+    const maybeLoadChoices = (ev: Event) => {
+      const target = ev.target as HTMLElement | null;
+      if (
+        target &&
+        typeof target.closest === 'function' &&
+        target.closest('.cbi-dropdown')
+      ) {
+        loadChoices();
+      }
+    };
+
+    node.addEventListener('mousedown', maybeLoadChoices, true);
+    node.addEventListener('focusin', maybeLoadChoices, true);
+
+    return node;
+  });
+}
+
+const EntryPoint = {
+  createLocalDeviceDynamicListWidget,
+  hasSingleIpValue,
+  loadLocalDeviceChoices,
+  normalizeOptionValues,
+  preloadLocalDeviceChoicesForValues,
+};
+
+export default baseclass.extend(EntryPoint);

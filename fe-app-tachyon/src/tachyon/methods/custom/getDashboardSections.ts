@@ -1,0 +1,3799 @@
+import { getConfigSections } from './getConfigSections';
+import { ClashAPI, Tachyon } from '../../types';
+import {
+  canUseDirectClashApi,
+  getClashHttpUrl,
+  getProxyUrlName,
+  getProxyUrlTransport,
+  isCopyableProxyLink,
+} from '../../../helpers';
+import { cleanBalancerTagId, getOutboundTagBySection } from '../../runtimeTags';
+import { TachyonShellMethods } from '../shell';
+import { detectOutboundCountry } from '../../helpers/country';
+
+interface IGetDashboardSectionsResponse {
+  success: boolean;
+  data: Tachyon.OutboundGroup[];
+}
+
+interface IGetDashboardSectionsOptions {
+  includeSubscriptionCopyState?: boolean;
+}
+
+type ClashProxyEntry = {
+  code: string;
+  value: ClashAPI.ProxyBase;
+};
+
+type DashboardSectionCache = {
+  version?: number;
+  section?: string;
+  links?: Record<string, string>;
+  outboundMetadata?: Tachyon.GetOutboundMetadata;
+  urltestGroups?: Record<string, UrlTestCacheGroup>;
+  priorityGroups?: Record<string, PriorityCacheGroup>;
+  subscriptionMetadata?:
+    | Tachyon.SubscriptionMetadata
+    | Tachyon.SubscriptionMetadata[];
+  // Tags that belong to a URLTest/selector group and should not be shown
+  // as standalone nodes in the UI (mirrors hiddenOutboundTags in sing-box).
+  hiddenOutboundTags?: Record<string, boolean>;
+};
+
+type UrlTestCacheGroup = {
+  displayName?: string;
+  outbounds?: string[];
+  url?: string;
+  testing_urls?: string[];
+  multi_url_strategy?: string;
+  active_check_interval?: string;
+  interval?: string;
+  tolerance?: string | number;
+  idle_timeout?: string;
+  interrupt_exist_connections?: boolean;
+};
+
+type PriorityCacheLevel = {
+  id?: string;
+  displayName?: string;
+  order?: number;
+  direct?: boolean;
+  filter_mode?: string;
+  detect_server_country?: string;
+  outbounds?: string[];
+};
+
+type PriorityCacheGroup = {
+  id?: string;
+  tag?: string;
+  section?: string;
+  displayName?: string;
+  health_url?: string;
+  health_urls?: string[];
+  multi_url_strategy?: string;
+  active_check_interval?: string;
+  check_timeout?: string;
+  recovery_check_interval?: string;
+  pick_fastest?: boolean;
+  switch_to_faster_same_priority?: boolean;
+  fastest_check_interval?: string;
+  interrupt_exist_connections?: boolean;
+  pin_dashboard?: boolean;
+  outbounds?: string[];
+  levels?: PriorityCacheLevel[];
+};
+
+type PriorityLevelConfig = {
+  id: string;
+  displayName: string;
+  order: number;
+  direct: boolean;
+  filterMode: string;
+  detectServerCountry: string;
+  country: string[];
+  serverName: string[];
+  regex: string[];
+  excludeCountries: string[];
+  excludeOutbounds: string[];
+  excludeRegex: string[];
+  outbounds?: string[];
+};
+
+type ItemSettingsValue = string | string[] | PriorityLevelConfig[] | undefined;
+type ItemSettings = Record<string, ItemSettingsValue>;
+
+type UrlTestConfig = {
+  id: string;
+  code: string;
+  displayName: string;
+  settings: ItemSettings;
+  pinDashboard: boolean;
+  showDetectedCountries: boolean;
+};
+
+type PriorityConfig = {
+  id: string;
+  code: string;
+  displayName: string;
+  settings: ItemSettings;
+  pinDashboard: boolean;
+  healthUrl: string;
+  activeCheckInterval: string;
+  checkTimeout: string;
+  recoveryCheckInterval: string;
+  pickFastest: boolean;
+  switchToFasterSamePriority: boolean;
+  fastestCheckInterval: string;
+  interruptExistConnections: boolean;
+  showDetectedCountries: boolean;
+  levels: PriorityLevelConfig[];
+};
+
+type ChildType =
+  | 'subscription_url'
+  | 'section_interface'
+  | 'urltest'
+  | 'priority_group'
+  | 'priority_level'
+  | 'outbound_source'
+  | 'outbound_group'
+  | 'balancer';
+
+const DASHBOARD_SECTION_CACHE_DIR = '/var/run/tachyon/section-cache';
+// Written by singbox/runtime.uc when it quarantines a section that sing-box
+// refused to load; absent (or stale-empty) when every section loaded fine.
+const SECTION_ERRORS_FILE = '/var/run/tachyon/section-errors.json';
+const CLASH_API_FETCH_TIMEOUT_MS = 2500;
+let directClashApiFailedAt = 0;
+const DIRECT_CLASH_API_COOLDOWN_MS = 10_000;
+
+export function resetDirectClashApiState() {
+  directClashApiFailedAt = 0;
+}
+
+function getDisplayName(section: Tachyon.ConfigSection) {
+  return section.label || section.name || section['.name'];
+}
+
+function getSettingsSection(configSections: Tachyon.ConfigSection[]) {
+  return configSections.find((section) => section['.type'] === 'settings');
+}
+
+function getClashApiSecret(configSections: Tachyon.ConfigSection[]) {
+  return getSettingsSection(configSections)?.yacd_secret_key || '';
+}
+
+function canFetchClashApiDirectly() {
+  if (Date.now() - directClashApiFailedAt < DIRECT_CLASH_API_COOLDOWN_MS) {
+    return false;
+  }
+  return canUseDirectClashApi() && typeof fetch === 'function';
+}
+
+async function getClashApiProxies(
+  configSections: Tachyon.ConfigSection[],
+): Promise<Tachyon.MethodResponse<ClashAPI.Proxies>> {
+  if (canFetchClashApiDirectly()) {
+    const secret = getClashApiSecret(configSections);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      CLASH_API_FETCH_TIMEOUT_MS,
+    );
+
+    try {
+      const response = await fetch(`${getClashHttpUrl()}/proxies`, {
+        headers: secret ? { Authorization: `Bearer ${secret}` } : undefined,
+        signal: controller.signal,
+      });
+
+      if (response.ok) {
+        directClashApiFailedAt = 0;
+        return {
+          success: true,
+          data: (await response.json()) as ClashAPI.Proxies,
+        };
+      }
+      directClashApiFailedAt = Date.now();
+    } catch (_error) {
+      directClashApiFailedAt = Date.now();
+      // Fall back to rpcd below for controllers unavailable from the browser.
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  const rpcRes = await TachyonShellMethods.getClashApiProxies();
+  if (rpcRes.success && rpcRes.data?.proxies) {
+    return rpcRes;
+  }
+
+  // Fallback for large /proxies payloads (>64 KB) truncated by ubus/rpcd stdout buffer
+  const clashProxiesStateFile = '/var/run/tachyon/ui-state/clash-proxies.json';
+  try {
+    const raw = await fs.read(clashProxiesStateFile).catch(async () => {
+      const directFs = fs as unknown as {
+        read_direct?: (p: string, type?: string) => Promise<string>;
+      };
+      if (typeof directFs.read_direct === 'function') {
+        return directFs.read_direct(clashProxiesStateFile, 'text');
+      }
+      return '';
+    });
+    if (raw) {
+      const parsed = JSON.parse(raw) as ClashAPI.Proxies;
+      if (parsed && typeof parsed.proxies === 'object') {
+        return {
+          success: true,
+          data: parsed,
+        };
+      }
+    }
+  } catch (_err) {
+    // ignore fallback read error
+  }
+
+  return rpcRes;
+}
+
+function getListValues(value?: string[] | string) {
+  if (!value) {
+    return [];
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => `${item}`.trim()).filter(Boolean);
+  }
+
+  return `${value}`
+    .split(/\s+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function getRawListValues(value?: string[] | string) {
+  if (!value) {
+    return [];
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => `${item}`.trim()).filter(Boolean);
+  }
+
+  const trimmed = `${value}`.trim();
+  return trimmed ? [trimmed] : [];
+}
+
+function childSections(
+  configSections: Tachyon.ConfigSection[],
+  type: ChildType,
+) {
+  return configSections.filter((section) => section['.type'] === type);
+}
+
+function ownedChildSections(
+  parent: Tachyon.ConfigSection,
+  children: Tachyon.ConfigSection[],
+) {
+  return children.filter(
+    (section): section is Tachyon.ConfigSection =>
+      section.section === parent['.name'],
+  );
+}
+
+function childSectionsByOwner(
+  children: Tachyon.ConfigSection[],
+  ownerKey: keyof Tachyon.ConfigSection,
+  ownerValue: string,
+) {
+  return children.filter((section) => section[ownerKey] === ownerValue);
+}
+
+function compactSettingsMap(settings: Record<string, ItemSettings>) {
+  return Object.keys(settings).length ? JSON.stringify(settings) : undefined;
+}
+
+const manualLinkPrefixMap = new Map<string, string>();
+let latestSourcePrefixStyles: Record<string, { bg?: string; color?: string }> =
+  {};
+
+function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
+  manualLinkPrefixMap.clear();
+  latestSourcePrefixStyles = {};
+  const subscriptionUrls = childSections(configSections, 'subscription_url');
+  const interfaces = childSections(configSections, 'section_interface');
+  const urltests = childSections(configSections, 'urltest');
+  const priorityGroups = childSections(configSections, 'priority_group');
+  const priorityLevels = childSections(configSections, 'priority_level');
+  const outboundSources = childSections(configSections, 'outbound_source');
+  const outboundGroups = childSections(configSections, 'outbound_group');
+  const balancers = childSections(configSections, 'balancer');
+
+  const sourceById = new Map(outboundSources.map((s) => [s['.name'], s]));
+  const groupById = new Map(outboundGroups.map((g) => [g['.name'], g]));
+  const balancerById = new Map(balancers.map((b) => [b['.name'], b]));
+
+  return configSections.map((section) => {
+    if (section['.type'] !== 'section') {
+      return section;
+    }
+
+    const next: Tachyon.ConfigSection = { ...section };
+    const legacySubscriptionUrlItems = ownedChildSections(
+      next,
+      subscriptionUrls,
+    );
+    const subscriptionUrlItems: Tachyon.ConfigSection[] = [];
+    const interfaceItems = [...ownedChildSections(next, interfaces)];
+    const legacyUrltestItems = ownedChildSections(next, urltests);
+    const legacyPriorityGroupItems = ownedChildSections(next, priorityGroups);
+
+    // Collect effective modular outbound_source items (mirrors connections.uc:section_effective_outbound_sources)
+    const effectiveSources: Tachyon.ConfigSection[] = [];
+    const seenSrcIds = new Set<string>();
+    const dpiSourceTypes = new Set(['zapret', 'zapret2', 'byedpi', 'desync']);
+    const hasInlineConnectionItems =
+      getListValues(next.selector_proxy_links).length > 0 ||
+      getListValues(next.proxy_links).length > 0 ||
+      getListValues(next.connection_urls).length > 0 ||
+      Boolean((next.selector_proxy_links_text || '').trim()) ||
+      Boolean((next.proxy_links_text || '').trim()) ||
+      Boolean((next.urltest_proxy_links_text || '').trim()) ||
+      getRawListValues(next.selector_amnezia_configs || next.amnezia_configs)
+        .length > 0 ||
+      Boolean((next.amnezia_conf_text || '').trim()) ||
+      getRawListValues(next.outbound_jsons || next.outbound_json).length > 0 ||
+      Boolean((next.access_token || '').trim());
+    const addSource = (src?: Tachyon.ConfigSection) => {
+      if (!src || src.enabled === '0') return;
+      const sid = src['.name'];
+      if (!sid || seenSrcIds.has(sid)) return;
+      seenSrcIds.add(sid);
+      effectiveSources.push(src);
+    };
+
+    getListValues(next.outbound_source_refs).forEach((sid) =>
+      addSource(sourceById.get(sid)),
+    );
+
+    const hasDirectNonDpiSourceRefs = getListValues(
+      next.outbound_source_refs,
+    ).some((sid) => {
+      const s = sourceById.get(sid);
+      return (
+        Boolean(s) && !dpiSourceTypes.has((s?.source_type || '').toLowerCase())
+      );
+    });
+
+    let hasExplicitNonDpiSources =
+      hasInlineConnectionItems ||
+      hasDirectNonDpiSourceRefs ||
+      effectiveSources.some(
+        (s) => !dpiSourceTypes.has((s.source_type || '').toLowerCase()),
+      );
+
+    const addGroupSources = (grpId: string) => {
+      const grp = groupById.get(grpId);
+      if (!grp || grp.enabled === '0') return;
+      const gSources = getListValues(grp.source_refs);
+      if (!gSources.length || gSources[0] === '*') {
+        if (!hasExplicitNonDpiSources) {
+          outboundSources.forEach((src) => {
+            if (!dpiSourceTypes.has((src.source_type || '').toLowerCase())) {
+              addSource(src);
+            }
+          });
+        }
+      } else if (!hasExplicitNonDpiSources) {
+        gSources.forEach((sid) => addSource(sourceById.get(sid)));
+      }
+    };
+
+    getListValues(next.outbound_group_refs).forEach(addGroupSources);
+
+    if (!hasExplicitNonDpiSources) {
+      hasExplicitNonDpiSources = effectiveSources.some(
+        (s) => !dpiSourceTypes.has((s.source_type || '').toLowerCase()),
+      );
+    }
+
+    getListValues(next.balancer_refs).forEach((bid) => {
+      const bal = balancerById.get(bid);
+      if (!bal || bal.enabled === '0') return;
+      if (!hasExplicitNonDpiSources) {
+        getListValues(bal.source_refs).forEach((sid) =>
+          addSource(sourceById.get(sid)),
+        );
+        getListValues(bal.group_refs).forEach(addGroupSources);
+      }
+      const balSettings = itemSettingsMap(next.balancer_settings)[bid];
+      const balLvls = getRawListValues(
+        balSettings?.outbound_group_levels as string[] | string,
+      );
+      const secLvls = getRawListValues(next.outbound_group_levels);
+      const itemLvls = getRawListValues(bal.outbound_group_levels);
+      const lvls =
+        balLvls.length > 0 ? balLvls : secLvls.length > 0 ? secLvls : itemLvls;
+      lvls.forEach((rawLvl) => {
+        const lvl = rawLvl.trim();
+        if (!lvl || lvl.toLowerCase() === 'direct') return;
+        const explicitSrc = sourceById.get(lvl);
+        if (explicitSrc) {
+          addSource(explicitSrc);
+          return;
+        }
+        const explicitGrp = groupById.get(lvl);
+        if (explicitGrp) {
+          const gSources = getListValues(explicitGrp.source_refs);
+          if (gSources.length > 0 && gSources[0] !== '*') {
+            gSources.forEach((sid) => addSource(sourceById.get(sid)));
+          } else {
+            addGroupSources(lvl);
+          }
+          return;
+        }
+        const explicitBal = balancerById.get(lvl);
+        if (explicitBal && explicitBal.enabled !== '0') {
+          getListValues(explicitBal.source_refs).forEach((sid) =>
+            addSource(sourceById.get(sid)),
+          );
+          getListValues(explicitBal.group_refs).forEach((gid) => {
+            const g = groupById.get(gid);
+            if (!g || g.enabled === '0') return;
+            const gSrcs = getListValues(g.source_refs);
+            if (gSrcs.length > 0 && gSrcs[0] !== '*') {
+              gSrcs.forEach((sid) => addSource(sourceById.get(sid)));
+            } else {
+              addGroupSources(gid);
+            }
+          });
+          return;
+        }
+        if (!hasExplicitNonDpiSources) {
+          addGroupSources(lvl);
+        }
+      });
+    });
+
+    const serviceSourceTypes = new Set([
+      'zapret',
+      'zapret2',
+      'byedpi',
+      'desync',
+      'wdtt',
+      'olcrtc',
+    ]);
+    const allSourcesAreService =
+      effectiveSources.length > 0 &&
+      effectiveSources.every((src) =>
+        serviceSourceTypes.has((src.source_type || '').toLowerCase()),
+      );
+
+    const seenSubUrls = new Set<string>();
+    const extraProxyLinks: string[] = [];
+    const extraAmneziaConfigs: string[] = [];
+    const extraInterfaces: string[] = [];
+    const extraOutboundJsons: string[] = [];
+    const sourcePrefixStyles: Record<string, { bg?: string; color?: string }> =
+      {};
+
+    const pushSourceLink = (src: Tachyon.ConfigSection, rawLink: string) => {
+      extraProxyLinks.push(rawLink);
+      const pfx =
+        src.prefix_nodes !== '0' && typeof src.node_prefix === 'string'
+          ? src.node_prefix.trim()
+          : '';
+      if (pfx && rawLink) {
+        manualLinkPrefixMap.set(rawLink, pfx);
+      }
+    };
+
+    effectiveSources.forEach((src) => {
+      const stype = (src.source_type || 'subscription').toLowerCase();
+      const srcPfx =
+        src.prefix_nodes !== '0' && typeof src.node_prefix === 'string'
+          ? src.node_prefix.trim()
+          : '';
+      if (srcPfx) {
+        const bg =
+          typeof src.node_prefix_bg === 'string'
+            ? src.node_prefix_bg.trim()
+            : '';
+        const color =
+          typeof src.node_prefix_color === 'string'
+            ? src.node_prefix_color.trim()
+            : '';
+        if (bg || color) {
+          sourcePrefixStyles[srcPfx] = {
+            bg: bg || undefined,
+            color: color || undefined,
+          };
+          latestSourcePrefixStyles[srcPfx] = sourcePrefixStyles[srcPfx];
+        }
+      }
+      if (stype === 'subscription' || src.url) {
+        const isSubUrl = (val: string) =>
+          /^https?:\/\//i.test(val) || /^(happ:\/\/)?crypt[2-5]?\//i.test(val);
+        const rawSubName = (src.name || '').trim();
+        const u = (
+          src.url ||
+          (stype === 'subscription' && isSubUrl(rawSubName)
+            ? rawSubName
+            : '') ||
+          ''
+        ).trim();
+        if (u) {
+          if (isSubUrl(u)) {
+            if (!seenSubUrls.has(u)) {
+              seenSubUrls.add(u);
+              subscriptionUrlItems.push({ ...src, url: u });
+            }
+          } else {
+            pushSourceLink(
+              src,
+              u.includes('#') || !src.name ? u : `${u}#${src.name}`,
+            );
+          }
+        }
+      } else if (stype === 'proxy_links' || stype === 'links') {
+        getListValues(src.proxy_links || src.selector_proxy_links).forEach(
+          (l) => pushSourceLink(src, l),
+        );
+        if (src.proxy_links_text) {
+          src.proxy_links_text
+            .split(/[\r\n]+/)
+            .map((l) => l.trim())
+            .filter((l) => l && !l.startsWith('#'))
+            .forEach((l) => pushSourceLink(src, l));
+        }
+      } else if (stype === 'amnezia_config' || stype === 'awg') {
+        const listCfgs = getRawListValues(
+          src.amnezia_configs || src.selector_amnezia_configs,
+        );
+        const seenBodies = new Set<string>();
+        const extractConfBody = (raw: string): string => {
+          const trimmed = String(raw || '')
+            .replace(/\r\n?/g, '\n')
+            .trim();
+          if (!trimmed) return '';
+          if (trimmed.startsWith('{')) {
+            try {
+              const parsed = JSON.parse(trimmed) as { config?: string };
+              if (parsed && typeof parsed.config === 'string') {
+                return parsed.config.replace(/\r\n?/g, '\n').trim();
+              }
+            } catch {
+              // ignore
+            }
+          }
+          return trimmed;
+        };
+        const awgCfgs: string[] = [];
+        listCfgs.forEach((entry) => {
+          const body = extractConfBody(entry);
+          if (body) {
+            if (seenBodies.has(body)) return;
+            seenBodies.add(body);
+          }
+          awgCfgs.push(entry);
+        });
+        const confText = (src.amnezia_conf_text || '').trim();
+        if (confText) {
+          const body = extractConfBody(confText);
+          if (!body || !seenBodies.has(body)) {
+            if (body) seenBodies.add(body);
+            awgCfgs.push(confText);
+          }
+        }
+        const aname = (
+          src.name ||
+          src.label ||
+          src['.name'] ||
+          'AmneziaWG'
+        ).trim();
+        if (awgCfgs.length) {
+          awgCfgs.forEach((c, idx) => {
+            extraAmneziaConfigs.push(c);
+            const trimmedC = String(c || '').trim();
+            if (trimmedC.startsWith('vpn://')) {
+              if (next.action !== 'awg') {
+                const withFrag = trimmedC.includes('#')
+                  ? trimmedC
+                  : `${trimmedC}#${encodeURIComponent(awgCfgs.length > 1 ? `${aname} (${idx + 1})` : aname)}`;
+                pushSourceLink(src, withFrag);
+              }
+              return;
+            }
+            let cname = aname;
+            try {
+              const parsed = JSON.parse(c) as { name?: string };
+              if (parsed?.name && parsed.name.trim()) {
+                cname = parsed.name.trim();
+              }
+            } catch {
+              // Raw .conf text uses aname
+            }
+            if (next.action !== 'awg') {
+              const hostPart =
+                awgCfgs.length > 1
+                  ? `${src['.name']}-${idx + 1}`
+                  : src['.name'];
+              pushSourceLink(src, `wireguard://${hostPart}#${cname}`);
+            }
+          });
+        } else if (
+          next.action !== 'awg' &&
+          (src.awg_private_key || src.awg_server_address || src.awg_endpoint)
+        ) {
+          pushSourceLink(src, `wireguard://${src['.name']}#${aname}`);
+        }
+      } else if (stype === 'fptn' && next.action !== 'fptn') {
+        let ftoken = (src.access_token || '').trim();
+        if (ftoken) {
+          if (!ftoken.includes('#')) {
+            const fname = (src.name || 'FPTN').trim();
+            if (fname) ftoken = `${ftoken}#${fname}`;
+          }
+          pushSourceLink(src, ftoken);
+        }
+      } else if (stype === 'tor') {
+        const port = (src.tor_socks_port || '9050').trim() || '9050';
+        const tname = (src.name || 'Tor').trim() || 'Tor';
+        pushSourceLink(src, `socks5://127.0.0.1:${port}#${tname}`);
+      } else if (stype === 'interface' || stype === 'tailscale') {
+        const iname = (
+          src.interface_name ||
+          src.interface ||
+          (stype === 'tailscale' ? 'tailscale0' : '')
+        ).trim();
+        if (iname) extraInterfaces.push(iname);
+      } else if (stype === 'outbound_json' || stype === 'json') {
+        getRawListValues(src.outbound_jsons || src.outbound_json).forEach((j) =>
+          extraOutboundJsons.push(j),
+        );
+      } else if (
+        [
+          'warp',
+          'anytls',
+          'naive',
+          'mieru',
+          'snell',
+          'sudoku',
+          'masque',
+          'openconnect',
+          'shadowtls',
+          'trusttunnel',
+          'tewfai',
+          'openvpn',
+        ].includes(stype) ||
+        (stype === 'desync' && !allSourcesAreService)
+      ) {
+        if (next.action !== stype) {
+          const sname = (src.name || src.label || src['.name'] || stype).trim();
+          extraOutboundJsons.push(JSON.stringify({ type: stype, tag: sname }));
+        }
+      }
+    });
+
+    const allModularSubUrls = new Set(
+      outboundSources
+        .map((src) => {
+          const st = (src.source_type || 'subscription').toLowerCase();
+          return (
+            src.url ||
+            (st === 'subscription' && /^https?:\/\//i.test(src.name || '')
+              ? src.name
+              : '') ||
+            ''
+          ).trim();
+        })
+        .filter(Boolean),
+    );
+    legacySubscriptionUrlItems.forEach((it) => {
+      const u = (it.url || '').trim();
+      if (!u || seenSubUrls.has(u)) return;
+      if (
+        outboundSources.length > 0 &&
+        (allModularSubUrls.has(u) ||
+          hasDirectNonDpiSourceRefs ||
+          hasInlineConnectionItems)
+      ) {
+        return;
+      }
+      seenSubUrls.add(u);
+      subscriptionUrlItems.push(it);
+    });
+
+    if (extraProxyLinks.length) {
+      next.selector_proxy_links = uniqueCodes([
+        ...getListValues(next.selector_proxy_links),
+        ...extraProxyLinks,
+      ]);
+    }
+    if (extraAmneziaConfigs.length) {
+      next.selector_amnezia_configs = uniqueCodes([
+        ...getRawListValues(next.selector_amnezia_configs),
+        ...extraAmneziaConfigs,
+      ]);
+    }
+    if (extraOutboundJsons.length) {
+      next.outbound_jsons = uniqueCodes([
+        ...getRawListValues(next.outbound_jsons),
+        ...extraOutboundJsons,
+      ]);
+    }
+
+    // Hydrate urltests from balancer_refs + legacy urltest child sections (mirrors connections.uc:urltests)
+    const urltestItems: Tachyon.ConfigSection[] = [];
+    const seenUtNames = new Set<string>();
+    const seenUtIds = new Set<string>();
+    getListValues(next.balancer_refs).forEach((bid) => {
+      const bal = balancerById.get(bid);
+      if (bal && (bal.balancer_type || 'urltest').toLowerCase() === 'urltest') {
+        const bname = bal.name || bal['.name'];
+        seenUtNames.add(bname);
+        if (bal.enabled !== '0' && !seenUtIds.has(bal['.name'])) {
+          seenUtIds.add(bal['.name']);
+          let mergedBal: Tachyon.ConfigSection = { ...bal };
+          const grefs = getListValues(bal.group_refs);
+          if (grefs.length > 0 && !bal.filter_mode) {
+            const grp = groupById.get(grefs[0]);
+            if (grp) {
+              mergedBal = { ...grp, ...bal, '.name': bal['.name'] };
+            }
+          }
+          urltestItems.push(mergedBal);
+        }
+      }
+    });
+    if (
+      balancers.length === 0 ||
+      getListValues(next.balancer_refs).length === 0
+    ) {
+      legacyUrltestItems.forEach((ut) => {
+        const utName = ut.name || ut['.name'];
+        if (!seenUtNames.has(utName) && !seenUtIds.has(ut['.name'])) {
+          seenUtNames.add(utName);
+          seenUtIds.add(ut['.name']);
+          urltestItems.push(ut);
+        }
+      });
+    }
+
+    // Hydrate priority_groups from balancer_refs + legacy priority_group child sections (mirrors connections.uc:priority_groups)
+    const priorityGroupItems: Tachyon.ConfigSection[] = [];
+    const seenPgNames = new Set<string>();
+    const seenPgIds = new Set<string>();
+    getListValues(next.balancer_refs).forEach((bid) => {
+      const bal = balancerById.get(bid);
+      if (
+        bal &&
+        (bal.balancer_type || 'urltest').toLowerCase() === 'priority'
+      ) {
+        const bname = bal.name || bal['.name'];
+        seenPgNames.add(bname);
+        if (bal.enabled !== '0' && !seenPgIds.has(bal['.name'])) {
+          seenPgIds.add(bal['.name']);
+          priorityGroupItems.push(bal);
+        }
+      }
+    });
+    if (
+      balancers.length === 0 ||
+      getListValues(next.balancer_refs).length === 0
+    ) {
+      legacyPriorityGroupItems.forEach((pg) => {
+        const pgName = pg.name || pg['.name'];
+        if (!seenPgNames.has(pgName) && !seenPgIds.has(pg['.name'])) {
+          seenPgNames.add(pgName);
+          seenPgIds.add(pg['.name']);
+          priorityGroupItems.push(pg);
+        }
+      });
+    }
+
+    const hasNonServiceItems =
+      subscriptionUrlItems.length > 0 ||
+      extraProxyLinks.length > 0 ||
+      getListValues(next.selector_proxy_links).length > 0 ||
+      extraAmneziaConfigs.length > 0 ||
+      getRawListValues(next.selector_amnezia_configs).length > 0 ||
+      interfaceItems.length > 0 ||
+      extraInterfaces.length > 0 ||
+      extraOutboundJsons.length > 0 ||
+      getRawListValues(next.outbound_jsons).length > 0 ||
+      urltestItems.length > 0 ||
+      priorityGroupItems.length > 0;
+
+    if (
+      (next.action === 'connection' || next.action === 'proxy') &&
+      !hasNonServiceItems &&
+      allSourcesAreService
+    ) {
+      next.action = (
+        effectiveSources[0].source_type || 'zapret2'
+      ).toLowerCase() as Tachyon.ConfigSection['action'];
+    }
+
+    if (subscriptionUrlItems.length) {
+      const settings: Record<string, ItemSettings> = {};
+      next.subscription_urls = subscriptionUrlItems
+        .map((item) => item.url || '')
+        .filter(Boolean);
+      subscriptionUrlItems.forEach((item) => {
+        if (!item.url) {
+          return;
+        }
+        const rawItemName = (item.name || '').trim();
+        const cleanItemName =
+          rawItemName &&
+          rawItemName !== item.url &&
+          !/^https?:\/\//i.test(rawItemName) &&
+          !/^(happ:\/\/)?crypt[2-5]?\//i.test(rawItemName)
+            ? rawItemName
+            : undefined;
+        settings[item.url] = {
+          // Carried so the dashboard can tell a disabled source from an enabled
+          // one. `enabled` is absent on sections written before the flag existed,
+          // which means enabled - the same default the backend applies.
+          name: cleanItemName,
+          enabled: item.enabled,
+          subscription_update_enabled: item.subscription_update_enabled,
+          subscription_update_interval: item.subscription_update_interval,
+          download_via_proxy_enabled: item.download_via_proxy_enabled,
+          download_via_proxy_section: item.download_via_proxy_section,
+          auto_user_agent: item.auto_user_agent,
+          user_agent: item.user_agent,
+          auto_hwid: item.auto_hwid,
+          hwid: item.hwid,
+          custom_device_headers: item.custom_device_headers,
+          device_os: item.device_os,
+          ver_os: item.ver_os,
+          device_model: item.device_model,
+          device_locale: item.device_locale,
+          app_version: item.app_version,
+          accept_language: item.accept_language,
+          show_dashboard_metadata: item.show_dashboard_metadata,
+          prefix_nodes:
+            item.prefix_nodes ?? (item.node_prefix ? '1' : undefined),
+          node_prefix: item.node_prefix,
+          node_prefix_bg: item.node_prefix_bg,
+          node_prefix_color: item.node_prefix_color,
+          include_urltest_groups: item.include_urltest_groups,
+          hide_urltest_group_outbounds: item.hide_urltest_group_outbounds,
+          urltest_idle_timeout: item.urltest_idle_timeout,
+          hide_detour_outbounds: item.hide_detour_outbounds,
+        };
+      });
+      next.subscription_url_settings = compactSettingsMap(settings);
+    } else if (
+      outboundSources.length > 0 &&
+      (hasDirectNonDpiSourceRefs ||
+        hasInlineConnectionItems ||
+        getListValues(next.subscription_urls).some((u) =>
+          allModularSubUrls.has(u.trim()),
+        ))
+    ) {
+      delete next.subscription_urls;
+      delete next.subscription_url_settings;
+    }
+
+    if (interfaceItems.length || extraInterfaces.length) {
+      next.interfaces = uniqueCodes([
+        ...interfaceItems.map((item) => item.name || '').filter(Boolean),
+        ...extraInterfaces,
+      ]);
+    }
+
+    if (urltestItems.length) {
+      const settings: Record<string, ItemSettings> = {};
+      next.urltests = urltestItems.map((item) => item['.name']);
+      urltestItems.forEach((item) => {
+        settings[item['.name']] = {
+          display_name: item.name || item.display_name,
+          urltest_check_interval: item.check_interval,
+          urltest_tolerance: item.tolerance,
+          urltest_testing_url: item.testing_url,
+          testing_urls: item.testing_urls,
+          multi_url_strategy: item.multi_url_strategy,
+          active_check_interval: item.active_check_interval,
+          idle_timeout: item.idle_timeout,
+          interrupt_exist_connections: item.interrupt_exist_connections,
+          pin_dashboard: item.pin_dashboard,
+          urltest_filter_mode: item.filter_mode,
+          detect_server_country: item.detect_server_country,
+          urltest_include_countries: item.include_countries,
+          urltest_include_outbounds: item.include_outbounds,
+          urltest_include_regex: item.include_regex,
+          urltest_exclude_countries: item.exclude_countries,
+          urltest_exclude_outbounds: item.exclude_outbounds,
+          urltest_exclude_regex: item.exclude_regex,
+        };
+      });
+      next.urltest_settings = compactSettingsMap(settings);
+    }
+
+    if (priorityGroupItems.length) {
+      const settings: Record<string, ItemSettings> = {};
+      next.priority_groups = priorityGroupItems.map((item) => item['.name']);
+      priorityGroupItems.forEach((item) => {
+        const groupId = item['.name'];
+        const legacyChildren = childSectionsByOwner(
+          priorityLevels,
+          'group',
+          groupId,
+        );
+        const balSettings = itemSettingsMap(next.balancer_settings)[groupId];
+        const balLevelRefs = getRawListValues(
+          balSettings?.outbound_group_levels as string[] | string,
+        );
+        const secLevelRefs = getRawListValues(next.outbound_group_levels);
+        const itemLevelRefs = getRawListValues(item.outbound_group_levels);
+        const secGroupRefs = getListValues(next.outbound_group_refs);
+        const secSourceRefs = getListValues(next.outbound_source_refs);
+        let coveredAll = false;
+        const coveredSources = new Set<string>();
+        secGroupRefs.forEach((gid) => {
+          const grpObj = groupById.get(gid);
+          if (grpObj && grpObj.enabled !== '0') {
+            const gSrcs = getListValues(grpObj.source_refs);
+            if (gSrcs.length === 0 || gSrcs[0] === '*') {
+              coveredAll = true;
+            } else {
+              gSrcs.forEach((s) => coveredSources.add(s));
+            }
+          }
+        });
+        const combinedPoolRefs = [
+          ...secGroupRefs,
+          ...secSourceRefs.filter(
+            (sid) => !coveredAll && !coveredSources.has(sid),
+          ),
+        ];
+        const rawGroupRefs =
+          balLevelRefs.length > 0
+            ? balLevelRefs
+            : secLevelRefs.length > 0
+              ? secLevelRefs
+              : itemLevelRefs.length > 0
+                ? itemLevelRefs
+                : legacyChildren.length === 0
+                  ? combinedPoolRefs
+                  : [];
+        const groupRefs =
+          rawGroupRefs.length > 0 &&
+          secGroupRefs.length > 0 &&
+          !rawGroupRefs.some((r) => groupById.has(r.trim()))
+            ? combinedPoolRefs
+            : rawGroupRefs;
+        const levels: PriorityLevelConfig[] = groupRefs.length
+          ? groupRefs.flatMap((rawRef, idx): PriorityLevelConfig[] => {
+              const ref = rawRef.trim();
+              if (!ref) return [];
+              const synthId = `${groupId}_lvl_${idx + 1}`;
+              if (ref.toLowerCase() === 'direct') {
+                return [
+                  {
+                    id: synthId,
+                    displayName: 'Direct',
+                    order: idx + 1,
+                    direct: true,
+                    filterMode: 'include',
+                    detectServerCountry: 'flag_emoji',
+                    country: [],
+                    serverName: [],
+                    regex: [],
+                    excludeCountries: [],
+                    excludeOutbounds: [],
+                    excludeRegex: [],
+                  },
+                ];
+              }
+              const grp = groupById.get(ref);
+              if (grp) {
+                return [
+                  {
+                    id: synthId,
+                    displayName: grp.name || ref,
+                    order: idx + 1,
+                    direct: false,
+                    filterMode: grp.filter_mode || 'include',
+                    detectServerCountry:
+                      grp.detect_server_country || 'flag_emoji',
+                    country: getListValues(grp.include_countries),
+                    serverName: getRawListValues(grp.include_outbounds),
+                    regex: getListValues(grp.include_regex),
+                    excludeCountries: getListValues(grp.exclude_countries),
+                    excludeOutbounds: getRawListValues(grp.exclude_outbounds),
+                    excludeRegex: getListValues(grp.exclude_regex),
+                  },
+                ];
+              }
+              const src = sourceById.get(ref);
+              if (src) {
+                const stype = (src.source_type || 'subscription').toLowerCase();
+                let srcMarker = `source:${ref}`;
+                if (stype === 'subscription' || src.url) {
+                  const isSubUrl = (val: string) =>
+                    /^https?:\/\//i.test(val) ||
+                    /^(happ:\/\/)?crypt[2-5]?\//i.test(val);
+                  const rawSubName = (src.name || '').trim();
+                  const u = (
+                    src.url ||
+                    (stype === 'subscription' && isSubUrl(rawSubName)
+                      ? rawSubName
+                      : '') ||
+                    ''
+                  ).trim();
+                  const subIdx = subscriptionUrlItems.findIndex(
+                    (s) => (s.url || '').trim() === u,
+                  );
+                  if (subIdx >= 0) {
+                    srcMarker = `sub:${subIdx + 1}`;
+                  }
+                }
+                return [
+                  {
+                    id: synthId,
+                    displayName: src.name || ref,
+                    order: idx + 1,
+                    direct: false,
+                    filterMode: 'include',
+                    detectServerCountry: 'flag_emoji',
+                    country: [],
+                    serverName: [srcMarker, `source:${ref}`],
+                    regex: [],
+                    excludeCountries: [],
+                    excludeOutbounds: [],
+                    excludeRegex: [],
+                  },
+                ];
+              }
+              const refBal = balancerById.get(ref);
+              if (
+                refBal &&
+                (refBal.balancer_type || 'urltest').toLowerCase() !== 'priority'
+              ) {
+                const refBalSt =
+                  itemSettingsMap(next.balancer_settings)[ref] || {};
+                const rawMode = String(
+                  refBalSt.filter_mode || refBal.filter_mode || 'disabled',
+                )
+                  .trim()
+                  .toLowerCase();
+                const filterMode =
+                  !rawMode || rawMode === 'disabled' ? 'include' : rawMode;
+                return [
+                  {
+                    id: synthId,
+                    displayName: refBal.name || refBal.label || ref,
+                    order: idx + 1,
+                    direct: false,
+                    filterMode,
+                    detectServerCountry: String(
+                      refBalSt.detect_server_country ||
+                        refBal.detect_server_country ||
+                        'flag_emoji',
+                    ),
+                    country: getListValues(
+                      (refBalSt.include_countries as string[] | string) ??
+                        refBal.include_countries,
+                    ),
+                    serverName: getRawListValues(
+                      (refBalSt.include_outbounds as string[] | string) ??
+                        refBal.include_outbounds,
+                    ),
+                    regex: getListValues(
+                      (refBalSt.include_regex as string[] | string) ??
+                        refBal.include_regex,
+                    ),
+                    excludeCountries: getListValues(
+                      (refBalSt.exclude_countries as string[] | string) ??
+                        refBal.exclude_countries,
+                    ),
+                    excludeOutbounds: getRawListValues(
+                      (refBalSt.exclude_outbounds as string[] | string) ??
+                        refBal.exclude_outbounds,
+                    ),
+                    excludeRegex: getListValues(
+                      (refBalSt.exclude_regex as string[] | string) ??
+                        refBal.exclude_regex,
+                    ),
+                  },
+                ];
+              }
+              const srvName = ref.startsWith('srv:')
+                ? ref.slice(4).trim()
+                : ref;
+              if (!srvName) return [];
+              return [
+                {
+                  id: synthId,
+                  displayName: srvName,
+                  order: idx + 1,
+                  direct: false,
+                  filterMode: 'include',
+                  detectServerCountry: 'flag_emoji',
+                  country: [],
+                  serverName: [srvName],
+                  regex: [],
+                  excludeCountries: [],
+                  excludeOutbounds: [],
+                  excludeRegex: [],
+                },
+              ];
+            })
+          : legacyChildren
+              .map(
+                (level, index): PriorityLevelConfig => ({
+                  id: level['.name'],
+                  displayName: level.name || level['.name'],
+                  order: Number.parseInt(level.order || `${index}`, 10) || 0,
+                  direct: level.direct === '1',
+                  filterMode: level.filter_mode || 'include',
+                  detectServerCountry:
+                    level.detect_server_country || 'flag_emoji',
+                  country: getListValues(level.country),
+                  serverName: getListValues(level.server_name),
+                  regex: getListValues(level.regex),
+                  excludeCountries: getListValues(level.exclude_countries),
+                  excludeOutbounds: getListValues(level.exclude_outbounds),
+                  excludeRegex: getListValues(level.exclude_regex),
+                }),
+              )
+              .sort((left, right) =>
+                left.order === right.order
+                  ? left.id.localeCompare(right.id)
+                  : left.order - right.order,
+              );
+
+        settings[groupId] = {
+          name: item.name,
+          health_url: item.health_url,
+          health_urls: item.health_urls,
+          multi_url_strategy: item.multi_url_strategy,
+          active_check_interval: item.active_check_interval,
+          check_timeout: item.check_timeout,
+          recovery_check_interval: item.recovery_check_interval,
+          pick_fastest: item.pick_fastest,
+          switch_to_faster_same_priority: item.switch_to_faster_same_priority,
+          fastest_check_interval: item.fastest_check_interval,
+          interrupt_exist_connections: item.interrupt_exist_connections,
+          pin_dashboard: item.pin_dashboard,
+          levels,
+        };
+      });
+      next.priority_group_settings = compactSettingsMap(settings);
+    }
+
+    return next;
+  });
+}
+
+function getManualProxyLinks(section: Tachyon.ConfigSection) {
+  return getListValues(section.selector_proxy_links);
+}
+
+function getConnectionInterfaces(section: Tachyon.ConfigSection) {
+  const values = getListValues(section.interfaces);
+  return values.length ? values : getListValues(section.interface);
+}
+
+function getJsonOutbounds(section: Tachyon.ConfigSection) {
+  const values = getRawListValues(section.outbound_jsons);
+  return values.length ? values : getRawListValues(section.outbound_json);
+}
+
+const SINGLE_ENDPOINT_ACTIONS = new Set([
+  'vpn',
+  'awg',
+  'warp',
+  'anytls',
+  'snell',
+  'mieru',
+  'naive',
+  'sudoku',
+  'masque',
+  'openvpn',
+  'openconnect',
+  'tewfai',
+  'trusttunnel',
+  'shadowtls',
+]);
+
+const ACTION_DISPLAY_NAMES: Record<string, string> = {
+  awg: 'AmneziaWG',
+  warp: 'WARP',
+  anytls: 'AnyTLS',
+  snell: 'Snell',
+  mieru: 'Mieru',
+  naive: 'NaiveProxy',
+  sudoku: 'Sudoku',
+  masque: 'MASQUE',
+  openvpn: 'OpenVPN',
+  openconnect: 'OpenConnect',
+  tewfai: 'TewFai',
+  trusttunnel: 'TrustTunnel',
+  shadowtls: 'ShadowTLS',
+  desync: 'Native Desync',
+  fptn: 'FPTN',
+};
+
+function isConnectionAction(action?: string) {
+  return Boolean(
+    action &&
+      (SINGLE_ENDPOINT_ACTIONS.has(action) ||
+        ['connection', 'proxy', 'outbound', 'fptn', 'group'].includes(action)),
+  );
+}
+
+function isServiceAction(action?: string) {
+  return Boolean(
+    action &&
+      ['zapret', 'zapret2', 'byedpi', 'desync', 'wdtt', 'olcrtc'].includes(
+        action,
+      ),
+  );
+}
+
+function isPolicyAction(action?: string) {
+  return Boolean(
+    action &&
+      ['block', 'reject', 'bypass', 'direct', 'dns'].includes(
+        action.toLowerCase(),
+      ),
+  );
+}
+
+function hasSubscriptionSources(section: Tachyon.ConfigSection) {
+  return getSubscriptionSourceCount(section) > 0;
+}
+
+function getSubscriptionSourceCount(section: Tachyon.ConfigSection) {
+  return getListValues(section.subscription_urls).length;
+}
+
+function shouldSortByLatency(section: Tachyon.ConfigSection) {
+  return section.sort_by_latency === '1';
+}
+
+function hasConfiguredUrlTestList(section: Tachyon.ConfigSection) {
+  return getListValues(section.urltests).length > 0;
+}
+
+function hasConfiguredPriorityList(section: Tachyon.ConfigSection) {
+  return getListValues(section.priority_groups).length > 0;
+}
+
+function getUrlTestIds(section: Tachyon.ConfigSection) {
+  const values = getListValues(section.urltests);
+  if (values.length) {
+    return values;
+  }
+  if (section.action === 'group') {
+    return ['urltest'];
+  }
+  if (
+    section.action === 'awg' &&
+    getRawListValues(section.selector_amnezia_configs).length > 0
+  ) {
+    return ['urltest'];
+  }
+  return section.urltest_enabled === '1' ? ['urltest'] : [];
+}
+
+function isUrlTestEnabled(section: Tachyon.ConfigSection) {
+  return getUrlTestIds(section).length > 0;
+}
+
+function shouldHideNaServers(section: Tachyon.ConfigSection) {
+  return (
+    section.enabled !== '0' &&
+    isConnectionAction(section.action) &&
+    section.dashboard_hide_na_servers === '1'
+  );
+}
+
+// A server is rendered as N/A when it is missing from the sing-box runtime or
+// when no latency has ever been measured for it. "Not responding" (-1) is a
+// distinct, meaningful state and stays visible.
+function isNaOutbound(outbound: Tachyon.Outbound) {
+  if (outbound.runtimeAvailable === false) return true;
+  if (outbound.urlTestInfo || outbound.priorityInfo) return false;
+  return !outbound.latency && outbound.latency !== -1;
+}
+
+function shouldUseProxyGroup(section: Tachyon.ConfigSection) {
+  return (
+    section.action === 'group' ||
+    getListValues(section.group_members).length > 0 ||
+    section.action === 'fptn' ||
+    Boolean(section.access_token) ||
+    getRawListValues(section.selector_amnezia_configs).length > 0 ||
+    getManualProxyLinks(section).length > 0 ||
+    hasSubscriptionSources(section) ||
+    getConnectionInterfaces(section).length > 0 ||
+    getJsonOutbounds(section).length > 0 ||
+    isUrlTestEnabled(section) ||
+    hasConfiguredPriorityList(section)
+  );
+}
+
+function getSectionProxyConfigType(section: Tachyon.ConfigSection) {
+  if (section.action === 'group') {
+    return 'urltest' as const;
+  }
+
+  if (hasSubscriptionSources(section)) {
+    return 'subscription' as const;
+  }
+
+  if (isUrlTestEnabled(section) && shouldUseProxyGroup(section)) {
+    return 'urltest' as const;
+  }
+
+  if (
+    getManualProxyLinks(section).length > 0 ||
+    getRawListValues(section.selector_amnezia_configs).length > 0
+  ) {
+    return 'selector' as const;
+  }
+
+  if (section.action === 'fptn') {
+    return 'selector' as const;
+  }
+
+  if (getJsonOutbounds(section).length > 0) {
+    return 'outbound' as const;
+  }
+
+  if (getConnectionInterfaces(section).length > 0) {
+    return 'interface' as const;
+  }
+
+  if (hasConfiguredPriorityList(section)) {
+    return 'selector' as const;
+  }
+
+  return undefined;
+}
+
+function getJsonOutboundDisplayName(section: Tachyon.ConfigSection) {
+  const raw = getJsonOutbounds(section)[0] || section.outbound_json || '{}';
+  try {
+    const parsedOutbound = JSON.parse(raw);
+    return parsedOutbound?.tag ? decodeURIComponent(parsedOutbound.tag) : '';
+  } catch (_error) {
+    return '';
+  }
+}
+
+function buildJsonOutboundByCode(section: Tachyon.ConfigSection) {
+  const result = new Map<string, { name: string; type: string }>();
+  getJsonOutbounds(section).forEach((raw, index) => {
+    try {
+      const parsed = JSON.parse(raw) as { tag?: string; type?: string };
+      const rawTag =
+        typeof parsed?.tag === 'string' && parsed.tag.trim()
+          ? parsed.tag.trim()
+          : getOutboundTagBySection(`${section['.name']}-json-${index + 1}`);
+      const rawType =
+        typeof parsed?.type === 'string' && parsed.type.trim()
+          ? parsed.type.trim().toLowerCase()
+          : 'outbound';
+      result.set(rawTag, {
+        name: rawTag,
+        type: ACTION_DISPLAY_NAMES[rawType] || parsed.type || 'Outbound',
+      });
+    } catch (_error) {
+      // Ignore malformed JSON here; validation reports it.
+    }
+  });
+  return result;
+}
+
+function buildInterfaceOutboundByCode(section: Tachyon.ConfigSection) {
+  const sectionName = section['.name'];
+  const result = new Map<string, { name: string; type: string }>();
+  getConnectionInterfaces(section).forEach((ifaceName, index) => {
+    const trimmed = String(ifaceName || '').trim();
+    if (!trimmed) return;
+    const rawTag = getOutboundTagBySection(
+      `${sectionName}-interface-${index + 1}`,
+    );
+    const lcName = trimmed.toLowerCase();
+    let typeLabel = 'Interface';
+    if (lcName === 'tailscale0' || lcName.startsWith('tailscale')) {
+      typeLabel = 'Tailscale';
+    } else if (lcName.startsWith('awg')) {
+      typeLabel = 'AmneziaWG';
+    } else if (lcName.startsWith('wg')) {
+      typeLabel = 'WireGuard';
+    } else if (lcName.startsWith('ovpn')) {
+      typeLabel = 'OpenVPN';
+    }
+    result.set(rawTag, {
+      name: trimmed,
+      type: typeLabel,
+    });
+  });
+  return result;
+}
+
+function buildManualLinkByCode(section: Tachyon.ConfigSection) {
+  const sectionName = section['.name'];
+
+  return new Map(
+    getManualProxyLinks(section).map((link, index) => [
+      getOutboundTagBySection(`${sectionName}-${index + 1}`),
+      link,
+    ]),
+  );
+}
+
+function findManualLink(
+  manualLinkByCode: Map<string, string>,
+  code: string,
+): string {
+  const direct = manualLinkByCode.get(code);
+  if (direct) return direct;
+  for (const [tag, link] of manualLinkByCode.entries()) {
+    if (code === tag || code.startsWith(`${tag}/`)) {
+      return link;
+    }
+  }
+  return '';
+}
+
+function getProxyEntryByCode(proxies: ClashProxyEntry[]) {
+  return new Map(proxies.map((proxy) => [proxy.code, proxy]));
+}
+
+function uniqueCodes(codes: string[]) {
+  return Array.from(new Set(codes.filter(Boolean)));
+}
+
+function isSelectorOutbound(outbound: Tachyon.Outbound) {
+  return outbound.type?.toLowerCase() === 'selector';
+}
+
+function isUrlTestProxyEntry(entry?: ClashProxyEntry) {
+  return entry?.value?.type?.toLowerCase() === 'urltest';
+}
+
+function getLatencySortValue(outbound: {
+  latency: number;
+  runtimeAvailable?: boolean;
+}) {
+  if (outbound.runtimeAvailable === false) {
+    return Number.POSITIVE_INFINITY;
+  }
+  const latency = Number(outbound.latency);
+  if (Number.isFinite(latency) && latency > 0) {
+    return latency;
+  }
+  if (Number.isFinite(latency) && latency === 0) {
+    return 888_888_888;
+  }
+  return Number.POSITIVE_INFINITY;
+}
+
+export function sortOutboundsForDashboard(
+  outbounds: Tachyon.Outbound[],
+  options: {
+    pinnedCode?: string;
+    pinnedCodes?: string[];
+    sortByLatency?: boolean;
+    sortMode?: 'latency' | 'country_latency' | 'country_alpha' | 'default';
+  } = {},
+) {
+  const pinnedCodes = [
+    ...(options.pinnedCode ? [options.pinnedCode] : []),
+    ...(options.pinnedCodes || []),
+  ].filter(Boolean);
+  const pinnedRank = new Map(
+    pinnedCodes.map((code, index) => [code, index] as const),
+  );
+  const sortMode =
+    options.sortMode ||
+    (options.sortByLatency === true ? 'latency' : 'default');
+
+  const countryInfoMap = new Map<string, { code: string; name: string }>();
+  if (sortMode === 'country_latency' || sortMode === 'country_alpha') {
+    for (const ob of outbounds) {
+      const info = detectOutboundCountry(ob);
+      countryInfoMap.set(ob.code, { code: info.code, name: info.name });
+    }
+  }
+
+  return outbounds
+    .map((outbound, index) => ({ outbound, index }))
+    .sort((left, right) => {
+      const leftPinned = pinnedRank.has(left.outbound.code);
+      const rightPinned = pinnedRank.has(right.outbound.code);
+
+      if (leftPinned !== rightPinned) {
+        return leftPinned ? -1 : 1;
+      }
+
+      if (leftPinned && rightPinned) {
+        const rankDiff =
+          (pinnedRank.get(left.outbound.code) ?? 0) -
+          (pinnedRank.get(right.outbound.code) ?? 0);
+
+        if (rankDiff !== 0) {
+          return rankDiff;
+        }
+      }
+
+      const leftDead =
+        left.outbound.runtimeAvailable === false ||
+        Number(left.outbound.latency) < 0;
+      const rightDead =
+        right.outbound.runtimeAvailable === false ||
+        Number(right.outbound.latency) < 0;
+      if (leftDead !== rightDead) {
+        return leftDead ? 1 : -1;
+      }
+
+      if (sortMode === 'country_latency') {
+        const leftCountry = countryInfoMap.get(left.outbound.code)!;
+        const rightCountry = countryInfoMap.get(right.outbound.code)!;
+
+        if (leftCountry.code === 'OTHER' && rightCountry.code !== 'OTHER')
+          return 1;
+        if (leftCountry.code !== 'OTHER' && rightCountry.code === 'OTHER')
+          return -1;
+
+        const countryDiff = leftCountry.name.localeCompare(
+          rightCountry.name,
+          'ru',
+        );
+        if (countryDiff !== 0) {
+          return countryDiff;
+        }
+
+        const latencyDiff =
+          getLatencySortValue(left.outbound) -
+          getLatencySortValue(right.outbound);
+
+        if (latencyDiff !== 0) {
+          return latencyDiff;
+        }
+      } else if (sortMode === 'country_alpha') {
+        const leftCountry = countryInfoMap.get(left.outbound.code)!;
+        const rightCountry = countryInfoMap.get(right.outbound.code)!;
+
+        if (leftCountry.code === 'OTHER' && rightCountry.code !== 'OTHER')
+          return 1;
+        if (leftCountry.code !== 'OTHER' && rightCountry.code === 'OTHER')
+          return -1;
+
+        const countryDiff = leftCountry.name.localeCompare(
+          rightCountry.name,
+          'ru',
+        );
+        if (countryDiff !== 0) {
+          return countryDiff;
+        }
+
+        const nameDiff = (
+          left.outbound.displayName || left.outbound.code
+        ).localeCompare(
+          right.outbound.displayName || right.outbound.code,
+          'ru',
+        );
+        if (nameDiff !== 0) {
+          return nameDiff;
+        }
+      } else if (sortMode === 'latency') {
+        const latencyDiff =
+          getLatencySortValue(left.outbound) -
+          getLatencySortValue(right.outbound);
+
+        if (latencyDiff !== 0) {
+          return latencyDiff;
+        }
+      }
+
+      return left.index - right.index;
+    })
+    .map((item) => item.outbound);
+}
+
+export function sortUrlTestMembers(outbounds: Tachyon.UrlTestMember[]) {
+  return outbounds
+    .map((outbound, index) => ({ outbound, index }))
+    .sort((left, right) => {
+      if (left.outbound.selected !== right.outbound.selected) {
+        return left.outbound.selected ? -1 : 1;
+      }
+
+      const latencyDiff =
+        getLatencySortValue(left.outbound) -
+        getLatencySortValue(right.outbound);
+
+      if (latencyDiff !== 0) {
+        return latencyDiff;
+      }
+
+      return left.index - right.index;
+    })
+    .map((item) => item.outbound);
+}
+
+function isSafeSectionName(sectionName: string) {
+  return /^[A-Za-z0-9_-]+$/.test(sectionName);
+}
+
+function objectMap(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([, item]) => typeof item === 'string')
+      .map(([key, item]) => [key, item as string]),
+  );
+}
+
+function itemSettingsMap(value?: string): Record<string, ItemSettings> {
+  if (!value) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return {};
+    }
+
+    return Object.fromEntries(
+      Object.entries(parsed as Record<string, unknown>).filter(
+        ([, item]) => item && typeof item === 'object' && !Array.isArray(item),
+      ),
+    ) as Record<string, ItemSettings>;
+  } catch (_error) {
+    return {};
+  }
+}
+
+function itemSettingString(
+  settings: ItemSettings | undefined,
+  key: string,
+  fallback = '',
+) {
+  const value = settings?.[key];
+  return typeof value === 'string' ? value : fallback;
+}
+
+function itemSettingBoolean(
+  settings: ItemSettings | undefined,
+  key: string,
+  fallback: boolean,
+) {
+  const value = settings?.[key];
+  if (value == null || value === '') {
+    return fallback;
+  }
+
+  return value === '1' || value === 'true';
+}
+
+function isUrlTestFilteringEnabled(settings: ItemSettings | undefined) {
+  return ['exclude', 'include', 'mixed'].includes(
+    itemSettingString(settings, 'urltest_filter_mode', 'disabled'),
+  );
+}
+
+function getUrlTestTag(sectionName: string, id: string) {
+  const cleanId = cleanBalancerTagId(sectionName, id);
+  return getOutboundTagBySection(
+    cleanId === 'urltest'
+      ? `${sectionName}-urltest`
+      : `${sectionName}-urltest-${cleanId}`,
+  );
+}
+
+function getPriorityTag(sectionName: string, id: string) {
+  const cleanId = cleanBalancerTagId(sectionName, id);
+  return getOutboundTagBySection(`${sectionName}-priority-${cleanId}`);
+}
+
+function getUrlTestDisplayName(
+  section: Tachyon.ConfigSection,
+  id: string,
+  settings: ItemSettings | undefined,
+) {
+  const fallback =
+    id === 'urltest' && !hasConfiguredUrlTestList(section)
+      ? section.action === 'group'
+        ? section.label || section.name || _('Fastest')
+        : _('Fastest')
+      : id;
+  return itemSettingString(settings, 'display_name', fallback);
+}
+
+function getUrlTestConfigs(section: Tachyon.ConfigSection): UrlTestConfig[] {
+  const settingsMap = itemSettingsMap(section.urltest_settings);
+  const sectionName = section['.name'];
+
+  return getUrlTestIds(section).map((id) => {
+    const settings = settingsMap[id] || {};
+    const filteringEnabled = isUrlTestFilteringEnabled(settings);
+
+    return {
+      id,
+      code: getUrlTestTag(sectionName, id),
+      displayName: getUrlTestDisplayName(section, id, settings),
+      settings,
+      pinDashboard: itemSettingBoolean(settings, 'pin_dashboard', true),
+      showDetectedCountries:
+        filteringEnabled &&
+        itemSettingString(settings, 'detect_server_country', 'flag_emoji') ===
+          'country_is',
+    };
+  });
+}
+
+function priorityLevelConfigsFromSettings(
+  settings: ItemSettings | undefined,
+): PriorityLevelConfig[] {
+  const value = settings?.levels;
+
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .flatMap((item, index) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) {
+        return [];
+      }
+
+      const level = item as Partial<PriorityLevelConfig> &
+        Record<string, unknown>;
+      const id = `${level.id || ''}`.trim();
+
+      if (!id) {
+        return [];
+      }
+
+      return [
+        {
+          id,
+          displayName: `${level.displayName || id}`,
+          order:
+            typeof level.order === 'number' && Number.isFinite(level.order)
+              ? level.order
+              : index,
+          direct: Boolean(level.direct),
+          filterMode: `${level.filterMode || 'include'}` || 'include',
+          detectServerCountry:
+            `${level.detectServerCountry || 'flag_emoji'}` || 'flag_emoji',
+          country: getListValues(level.country as string[] | string),
+          serverName: getListValues(level.serverName as string[] | string),
+          regex: getListValues(level.regex as string[] | string),
+          excludeCountries: getListValues(
+            level.excludeCountries as string[] | string,
+          ),
+          excludeOutbounds: getListValues(
+            level.excludeOutbounds as string[] | string,
+          ),
+          excludeRegex: getListValues(level.excludeRegex as string[] | string),
+          outbounds: getListValues(level.outbounds as string[] | string),
+        },
+      ];
+    })
+    .sort((left, right) =>
+      left.order === right.order
+        ? left.id.localeCompare(right.id)
+        : left.order - right.order,
+    );
+}
+
+function getPriorityGroupIds(section: Tachyon.ConfigSection) {
+  return getListValues(section.priority_groups);
+}
+
+function getPriorityConfigs(section: Tachyon.ConfigSection): PriorityConfig[] {
+  const settingsMap = itemSettingsMap(section.priority_group_settings);
+  const sectionName = section['.name'];
+
+  return getPriorityGroupIds(section).map((id) => {
+    const settings = settingsMap[id] || {};
+    const levels = priorityLevelConfigsFromSettings(settings);
+
+    return {
+      id,
+      code: getPriorityTag(sectionName, id),
+      displayName: itemSettingString(settings, 'name', id),
+      settings,
+      pinDashboard: itemSettingBoolean(settings, 'pin_dashboard', true),
+      healthUrl: itemSettingString(
+        settings,
+        'health_url',
+        'https://www.gstatic.com/generate_204',
+      ),
+      activeCheckInterval: itemSettingString(
+        settings,
+        'active_check_interval',
+        '5s',
+      ),
+      checkTimeout: itemSettingString(settings, 'check_timeout', '2s'),
+      recoveryCheckInterval: itemSettingString(
+        settings,
+        'recovery_check_interval',
+        '15s',
+      ),
+      pickFastest: itemSettingBoolean(settings, 'pick_fastest', false),
+      switchToFasterSamePriority: itemSettingBoolean(
+        settings,
+        'switch_to_faster_same_priority',
+        false,
+      ),
+      fastestCheckInterval: itemSettingString(
+        settings,
+        'fastest_check_interval',
+        '3m',
+      ),
+      interruptExistConnections: itemSettingBoolean(
+        settings,
+        'interrupt_exist_connections',
+        true,
+      ),
+      showDetectedCountries: levels.some(
+        (level) => level.detectServerCountry === 'country_is',
+      ),
+      levels,
+    };
+  });
+}
+
+function isFsNotFoundError(err: unknown): boolean {
+  const obj = err as { name?: string; message?: string } | null | undefined;
+  const msg = `${String(obj?.name || '')} ${String(obj?.message || err || '')}`;
+  return /NotFoundError|ENOENT|No such file or directory|Object not found|-32000/i.test(
+    msg,
+  );
+}
+
+async function readDashboardSectionCache(
+  sectionName: string,
+): Promise<DashboardSectionCache | undefined> {
+  if (!isSafeSectionName(sectionName)) {
+    return undefined;
+  }
+
+  const path = `${DASHBOARD_SECTION_CACHE_DIR}/${sectionName}.json`;
+
+  try {
+    const raw = await fs.read(path).catch(async (err: unknown) => {
+      if (isFsNotFoundError(err)) {
+        return '';
+      }
+      const directFs = fs as unknown as {
+        read_direct?: (p: string, type?: string) => Promise<string>;
+        exec_direct?: (
+          cmd: string,
+          args?: string[],
+          type?: string,
+        ) => Promise<string>;
+      };
+      if (typeof directFs.read_direct === 'function') {
+        return directFs.read_direct(path, 'text');
+      }
+      if (typeof directFs.exec_direct === 'function') {
+        return directFs.exec_direct('/bin/cat', [path], 'text');
+      }
+      const res = await fs.exec('/bin/cat', [path]);
+      return res?.stdout || '';
+    });
+    const parsed = JSON.parse(raw) as DashboardSectionCache;
+
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return undefined;
+    }
+
+    return parsed;
+  } catch (_error) {
+    return undefined;
+  }
+}
+
+// One flat map { section: reason } from the runtime's quarantine record.
+export async function readSectionErrors(): Promise<Record<string, string>> {
+  try {
+    const raw = await fs.read(SECTION_ERRORS_FILE).catch(async () => {
+      const directFs = fs as unknown as {
+        read_direct?: (p: string, type?: string) => Promise<string>;
+      };
+      if (typeof directFs.read_direct === 'function') {
+        return directFs.read_direct(SECTION_ERRORS_FILE, 'text');
+      }
+      return '';
+    });
+    const parsed = JSON.parse(raw) as unknown;
+
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      if (typeof window !== 'undefined') {
+        (
+          window as unknown as {
+            __tachyonSectionErrors?: Record<string, string>;
+          }
+        ).__tachyonSectionErrors = {};
+      }
+      return {};
+    }
+
+    const map = objectMap(parsed);
+    if (typeof window !== 'undefined') {
+      (
+        window as unknown as { __tachyonSectionErrors?: Record<string, string> }
+      ).__tachyonSectionErrors = map;
+    }
+    return map;
+  } catch (_error) {
+    if (typeof window !== 'undefined') {
+      (
+        window as unknown as { __tachyonSectionErrors?: Record<string, string> }
+      ).__tachyonSectionErrors = {};
+    }
+    return {};
+  }
+}
+
+function getUrlTestGroups(dashboardCache?: DashboardSectionCache) {
+  const groups = dashboardCache?.urltestGroups;
+
+  if (!groups || typeof groups !== 'object' || Array.isArray(groups)) {
+    return {};
+  }
+
+  return groups;
+}
+
+function getPriorityGroups(dashboardCache?: DashboardSectionCache) {
+  const groups = dashboardCache?.priorityGroups;
+
+  if (!groups || typeof groups !== 'object' || Array.isArray(groups)) {
+    return {};
+  }
+
+  return groups;
+}
+
+function getConfiguredSubscriptionPrefixes(
+  section: Tachyon.ConfigSection,
+): string[] {
+  const settings = itemSettingsMap(section.subscription_url_settings);
+  const prefixes: string[] = [];
+  for (const url of Object.keys(settings)) {
+    const item = settings[url];
+    if (item && item.prefix_nodes === '1') {
+      const p =
+        typeof item.node_prefix === 'string' ? item.node_prefix.trim() : '';
+      if (p && !prefixes.includes(p)) {
+        prefixes.push(p);
+      }
+    }
+  }
+  for (const p of manualLinkPrefixMap.values()) {
+    if (p && !prefixes.includes(p)) {
+      prefixes.push(p);
+    }
+  }
+  return prefixes;
+}
+
+function getConfiguredSubscriptionPrefixStyles(section: Tachyon.ConfigSection) {
+  const settings = itemSettingsMap(section.subscription_url_settings);
+  const styles: Record<string, { bg?: string; color?: string }> = {
+    ...latestSourcePrefixStyles,
+  };
+  for (const url of Object.keys(settings)) {
+    const item = settings[url];
+    if (item && item.prefix_nodes === '1') {
+      const p =
+        typeof item.node_prefix === 'string' ? item.node_prefix.trim() : '';
+      if (p) {
+        const bg =
+          typeof item.node_prefix_bg === 'string'
+            ? item.node_prefix_bg.trim()
+            : '';
+        const color =
+          typeof item.node_prefix_color === 'string'
+            ? item.node_prefix_color.trim()
+            : '';
+        if (bg || color) {
+          styles[p] = { bg: bg || undefined, color: color || undefined };
+        }
+      }
+    }
+  }
+  if (typeof window !== 'undefined' && Object.keys(styles).length > 0) {
+    const win = window as unknown as {
+      __tachyonUciPrefixStyles?: Record<
+        string,
+        { bg?: string; color?: string }
+      >;
+    };
+    win.__tachyonUciPrefixStyles = {
+      ...(win.__tachyonUciPrefixStyles || {}),
+      ...styles,
+    };
+  }
+  return styles;
+}
+
+function stripDedupTagSuffix(tag: string) {
+  return tag.replace(/-\d+$/, '');
+}
+
+function lookupMetadataField(
+  map: Record<string, string> | undefined,
+  code: string,
+): string | undefined {
+  if (!map) return undefined;
+  if (map[code] !== undefined) return map[code];
+  const base = stripDedupTagSuffix(code);
+  if (base !== code && map[base] !== undefined) return map[base];
+  return undefined;
+}
+
+function inferProtocolFromLink(link?: string): string {
+  if (!link) return '';
+  const m = link.trim().match(/^([a-z0-9+.-]+):\/\//i);
+  if (!m) return '';
+  const scheme = m[1].toLowerCase();
+  if (scheme === 'ss') return 'shadowsocks';
+  if (scheme === 'hy2' || scheme === 'hysteria2') return 'hysteria2';
+  if (scheme === 'socks5' || scheme === 'socks5h' || scheme === 'socks') {
+    return 'socks';
+  }
+  if (scheme === 'https') return 'http';
+  if (scheme === 'wg') return 'wireguard';
+  if (scheme === 'awg' || scheme === 'vpn') return 'amneziawg';
+  return scheme;
+}
+
+function dashboardOutboundType(
+  code: string,
+  runtimeType: string | undefined,
+  outboundMetadata?: Tachyon.GetOutboundMetadata,
+  link?: string,
+) {
+  const proto = (
+    lookupMetadataField(outboundMetadata?.protocols, code) ||
+    runtimeType ||
+    inferProtocolFromLink(link) ||
+    ''
+  ).toLowerCase();
+  if (proto === 'amneziawg') return 'AmneziaWG';
+  if (proto === 'wireguard') return 'WireGuard';
+  if (proto === 'fptn') return 'FPTN';
+  if (proto === 'shadowtls') return 'ShadowTLS';
+  if (proto === 'desync') return 'Native Desync';
+  if (proto === 'trusttunnel') return 'TrustTunnel';
+  if (proto === 'anytls') return 'AnyTLS';
+  if (proto === 'naive' || proto === 'naiveproxy') return 'NaiveProxy';
+  if (proto === 'mieru') return 'Mieru';
+  if (proto === 'snell') return 'Snell';
+  if (proto === 'sudoku') return 'Sudoku';
+  if (proto === 'masque') return 'MASQUE';
+  if (proto === 'openconnect') return 'OpenConnect';
+  if (proto === 'tewfai') return 'TewFai';
+  if (proto === 'warp') return 'WARP';
+  if (proto === 'openvpn' || proto === 'openvpn-client') return 'OpenVPN';
+  if (proto === 'tailscale') return 'Tailscale';
+  if (proto === 'interface') return 'Interface';
+  if (proto === 'vless') return 'VLESS';
+  if (proto === 'vmess') return 'VMess';
+  if (proto === 'trojan') return 'Trojan';
+  if (proto === 'shadowsocks' || proto === 'ss') return 'Shadowsocks';
+  if (proto === 'hysteria2' || proto === 'hy2') return 'Hysteria2';
+  if (proto === 'hysteria') return 'Hysteria';
+  if (proto === 'tuic') return 'TUIC';
+  if (proto === 'socks' || proto === 'socks5') return 'SOCKS5';
+  if (proto === 'http') return 'HTTP';
+  if (proto === 'ssh') return 'SSH';
+  if (proto === 'mtproto') return 'MTProto';
+  if (proto === 'urltest') return 'URLTest';
+  if (proto === 'selector') return 'Selector';
+  if ((proto === 'direct' || !proto) && /-interface-\d+-out$/i.test(code)) {
+    const rawName = (
+      lookupMetadataField(outboundMetadata?.names, code) || ''
+    ).toLowerCase();
+    if (rawName === 'tailscale0' || rawName.startsWith('tailscale')) {
+      return 'Tailscale';
+    }
+    if (rawName.startsWith('awg')) return 'AmneziaWG';
+    if (rawName.startsWith('wg')) return 'WireGuard';
+    if (rawName.startsWith('ovpn')) return 'OpenVPN';
+    return 'Interface';
+  }
+  return runtimeType || '';
+}
+
+function buildOutboundDetails(
+  code: string,
+  outboundMetadata?: Tachyon.GetOutboundMetadata,
+): string | undefined {
+  const rawDetails = lookupMetadataField(outboundMetadata?.details, code);
+  const sec = lookupMetadataField(outboundMetadata?.securities, code);
+  const hasSec =
+    sec &&
+    sec !== 'none' &&
+    (!rawDetails || !rawDetails.toLowerCase().includes(sec.toLowerCase()));
+  if (hasSec && rawDetails) {
+    return `${sec}+${rawDetails}`;
+  }
+  if (hasSec) {
+    return sec;
+  }
+  return rawDetails;
+}
+
+function resolveOutboundNameAndPrefix({
+  code,
+  entry,
+  link,
+  outboundMetadata,
+  preferMetadata = false,
+  configuredPrefixes = [],
+}: {
+  code: string;
+  entry?: ClashProxyEntry;
+  link: string;
+  outboundMetadata?: Tachyon.GetOutboundMetadata;
+  preferMetadata?: boolean;
+  configuredPrefixes?: string[];
+}): { displayName: string; prefix?: string } {
+  const isFptn =
+    link.startsWith('fptn:') ||
+    link.startsWith('fptnb:') ||
+    link.startsWith('fptn://') ||
+    link.startsWith('fptnb://');
+  const metadataName = lookupMetadataField(outboundMetadata?.names, code);
+  const proxyUrlName = isFptn ? '' : getProxyUrlName(link);
+  const fallbackServerName = code.includes('/')
+    ? code.split('/').pop()
+    : undefined;
+  const rawName =
+    (preferMetadata ? metadataName : proxyUrlName) ||
+    (preferMetadata ? proxyUrlName : metadataName) ||
+    entry?.value?.name ||
+    fallbackServerName ||
+    code;
+
+  let prefix =
+    lookupMetadataField(outboundMetadata?.prefixes, code)?.trim() ||
+    (link ? manualLinkPrefixMap.get(link) || '' : '');
+
+  if (!prefix && configuredPrefixes.length > 0) {
+    for (const p of configuredPrefixes) {
+      if (!p) continue;
+      if (
+        rawName.startsWith(p + ' ') ||
+        rawName.startsWith(p + '-') ||
+        rawName.startsWith(p + '/') ||
+        code.startsWith(p + ' ') ||
+        code.startsWith(p + '-') ||
+        code.startsWith(p + '/') ||
+        entry?.value?.name?.startsWith(p + ' ') ||
+        entry?.value?.name?.startsWith(p + '-') ||
+        entry?.value?.name?.startsWith(p + '/')
+      ) {
+        prefix = p;
+        break;
+      }
+    }
+  }
+
+  let displayName = rawName;
+  if (prefix) {
+    if (displayName.startsWith(prefix + ' ')) {
+      const stripped = displayName.slice(prefix.length + 1).trim();
+      if (stripped) {
+        displayName = stripped;
+      }
+    } else if (displayName.startsWith(prefix + '-')) {
+      const stripped = displayName.slice(prefix.length + 1).trim();
+      if (stripped) {
+        displayName = stripped;
+      }
+    } else if (displayName.startsWith(prefix + '/')) {
+      const stripped = displayName.slice(prefix.length + 1).trim();
+      if (stripped) {
+        displayName = stripped;
+      }
+    }
+  } else if (/^[A-Za-z0-9_-]+\//.test(displayName)) {
+    const parts = displayName.split('/');
+    if (parts.length > 1 && parts[parts.length - 1].trim()) {
+      prefix = parts.slice(0, -1).join('/');
+      displayName = parts[parts.length - 1].trim();
+    }
+  }
+
+  return {
+    displayName,
+    prefix: prefix || undefined,
+  };
+}
+
+function findProxyEntryForMember(
+  proxyByCode: Map<string, ClashProxyEntry>,
+  childCode: string,
+  runtimeAllCodes?: string[],
+): ClashProxyEntry | undefined {
+  const exact = proxyByCode.get(childCode);
+  if (exact) return exact;
+  const base = stripDedupTagSuffix(childCode);
+  if (Array.isArray(runtimeAllCodes)) {
+    for (const rtCode of runtimeAllCodes) {
+      if (stripDedupTagSuffix(rtCode) === base) {
+        const found = proxyByCode.get(rtCode);
+        if (found) return found;
+      }
+    }
+  }
+  if (base !== childCode) {
+    return proxyByCode.get(base);
+  }
+  return undefined;
+}
+
+function buildUrlTestInfo({
+  code,
+  displayName,
+  config,
+  entry,
+  groupCache,
+  proxyByCode,
+  manualLinkByCode,
+  cachedProxyLinks,
+  outboundMetadata,
+  showDetectedCountries,
+  selectorNow,
+  selectorCodes = [],
+  configuredPrefixes = [],
+}: {
+  code: string;
+  displayName: string;
+  config?: UrlTestConfig;
+  entry?: ClashProxyEntry;
+  groupCache?: UrlTestCacheGroup;
+  proxyByCode: Map<string, ClashProxyEntry>;
+  manualLinkByCode: Map<string, string>;
+  cachedProxyLinks: Map<string, string>;
+  outboundMetadata?: Tachyon.GetOutboundMetadata;
+  showDetectedCountries: boolean;
+  selectorNow?: string;
+  selectorCodes?: string[];
+  configuredPrefixes?: string[];
+}): Tachyon.UrlTestInfo {
+  const runtimeAllCodes = entry?.value.all || [];
+  const childCodes = uniqueCodes(
+    groupCache?.outbounds?.length ? groupCache.outbounds : runtimeAllCodes,
+  );
+  const isChildSelectedInSelector = Boolean(
+    selectorNow &&
+      selectorNow !== code &&
+      childCodes.includes(selectorNow) &&
+      !selectorCodes.includes(selectorNow),
+  );
+  const selectedCode = isChildSelectedInSelector
+    ? selectorNow!
+    : entry?.value.now || '';
+  const isManualSelection = isChildSelectedInSelector;
+
+  const outbounds = sortUrlTestMembers(
+    childCodes.flatMap((childCode) => {
+      const childEntry = findProxyEntryForMember(
+        proxyByCode,
+        childCode,
+        runtimeAllCodes,
+      );
+      const effectiveCode = childEntry?.code || childCode;
+      const link =
+        findManualLink(manualLinkByCode, childCode) ||
+        findManualLink(manualLinkByCode, effectiveCode) ||
+        cachedProxyLinks.get(childCode) ||
+        cachedProxyLinks.get(effectiveCode) ||
+        '';
+      const canCopyLink = isCopyableProxyLink(link);
+      const resolved = resolveOutboundNameAndPrefix({
+        code: childCode,
+        entry: childEntry,
+        link,
+        outboundMetadata,
+        preferMetadata:
+          cachedProxyLinks.has(childCode) ||
+          cachedProxyLinks.has(effectiveCode),
+        configuredPrefixes,
+      });
+
+      const childTelemetry =
+        entry?.value.telemetry?.[childCode] ||
+        entry?.value.telemetry?.[effectiveCode];
+      const historyDelay = Number(childEntry?.value?.history?.[0]?.delay);
+      const telemetryDelay = Number(
+        childTelemetry?.rtt_ms ?? childTelemetry?.ewma_rtt_ms,
+      );
+      const childLatency =
+        Number.isFinite(historyDelay) && historyDelay > 0
+          ? historyDelay
+          : Number.isFinite(telemetryDelay) && telemetryDelay > 0
+            ? Math.round(telemetryDelay)
+            : 0;
+
+      return [
+        {
+          code: effectiveCode,
+          displayName: resolved.displayName,
+          prefix: resolved.prefix,
+          latency: childLatency,
+          type: dashboardOutboundType(
+            childCode,
+            childEntry?.value?.type,
+            outboundMetadata,
+            link,
+          ),
+          transport:
+            lookupMetadataField(outboundMetadata?.transports, childCode) ||
+            getProxyUrlTransport(link),
+          details: buildOutboundDetails(childCode, outboundMetadata),
+          selected:
+            selectedCode === childCode || selectedCode === effectiveCode,
+          link,
+          canCopyLink,
+          country: showDetectedCountries
+            ? lookupMetadataField(outboundMetadata?.countries, childCode)
+            : undefined,
+          telemetry: childTelemetry,
+        },
+      ];
+    }),
+  );
+  const selectedName =
+    outbounds.find((outbound) => outbound.code === selectedCode)?.displayName ||
+    selectedCode;
+  const cfgSettings = config?.settings;
+  const primaryUrl =
+    groupCache?.url ||
+    itemSettingString(cfgSettings, 'urltest_testing_url', '') ||
+    itemSettingString(cfgSettings, 'testing_url', '') ||
+    undefined;
+  const extraUrls = [
+    ...(Array.isArray(groupCache?.testing_urls) ? groupCache.testing_urls : []),
+    ...getListValues(cfgSettings?.testing_urls as string[] | string),
+  ];
+  const allUrls = uniqueCodes([
+    ...(primaryUrl ? [primaryUrl] : []),
+    ...extraUrls,
+  ]);
+  const multiUrlStrategy =
+    groupCache?.multi_url_strategy ||
+    itemSettingString(cfgSettings, 'multi_url_strategy', '') ||
+    undefined;
+  const activeCheckInterval =
+    groupCache?.active_check_interval ||
+    itemSettingString(cfgSettings, 'active_check_interval', '') ||
+    undefined;
+
+  return {
+    code,
+    displayName: groupCache?.displayName || displayName,
+    selectedCode: selectedCode || undefined,
+    selectedName: selectedName || undefined,
+    isManualSelection,
+    mode:
+      entry?.value.mode ||
+      itemSettingString(cfgSettings, 'mode', '') ||
+      undefined,
+    url: primaryUrl || allUrls[0],
+    urls: allUrls.length > 0 ? allUrls : undefined,
+    multiUrlStrategy,
+    activeCheckInterval,
+    interval:
+      groupCache?.interval ||
+      itemSettingString(cfgSettings, 'urltest_check_interval', '') ||
+      itemSettingString(cfgSettings, 'check_interval', '') ||
+      undefined,
+    tolerance:
+      groupCache?.tolerance ??
+      (itemSettingString(cfgSettings, 'urltest_tolerance', '') || undefined),
+    idleTimeout:
+      groupCache?.idle_timeout ||
+      itemSettingString(cfgSettings, 'idle_timeout', '') ||
+      '30m',
+    interruptExistConnections:
+      groupCache?.interrupt_exist_connections ??
+      (cfgSettings?.interrupt_exist_connections !== undefined
+        ? itemSettingBoolean(cfgSettings, 'interrupt_exist_connections', true)
+        : undefined),
+    outbounds,
+  };
+}
+
+function buildPriorityInfo({
+  config,
+  entry,
+  groupCache,
+  proxyByCode,
+  manualLinkByCode,
+  cachedProxyLinks,
+  outboundMetadata,
+  showDetectedCountries,
+  selectorNow,
+  selectorCodes = [],
+  configuredPrefixes = [],
+}: {
+  config: PriorityConfig;
+  entry?: ClashProxyEntry;
+  groupCache?: PriorityCacheGroup;
+  proxyByCode: Map<string, ClashProxyEntry>;
+  manualLinkByCode: Map<string, string>;
+  cachedProxyLinks: Map<string, string>;
+  outboundMetadata?: Tachyon.GetOutboundMetadata;
+  showDetectedCountries: boolean;
+  selectorNow?: string;
+  selectorCodes?: string[];
+  configuredPrefixes?: string[];
+}): Tachyon.PriorityInfo {
+  const cacheLevels = Array.isArray(groupCache?.levels)
+    ? groupCache.levels
+    : [];
+  const configLevelById = new Map(
+    config.levels.map((level) => [level.id, level]),
+  );
+  const levels = (
+    cacheLevels.length
+      ? cacheLevels.map((level, index): PriorityLevelConfig => {
+          const id = `${level.id || ''}`;
+          const configLevel = id ? configLevelById.get(id) : undefined;
+
+          return {
+            id: id || configLevel?.id || `level-${index + 1}`,
+            displayName:
+              level.displayName || configLevel?.displayName || `${index + 1}`,
+            order:
+              typeof level.order === 'number' && Number.isFinite(level.order)
+                ? level.order
+                : (configLevel?.order ?? index),
+            direct: level.direct ?? configLevel?.direct ?? false,
+            filterMode:
+              level.filter_mode || configLevel?.filterMode || 'include',
+            detectServerCountry:
+              level.detect_server_country ||
+              configLevel?.detectServerCountry ||
+              'flag_emoji',
+            country: configLevel?.country || [],
+            serverName: configLevel?.serverName || [],
+            regex: configLevel?.regex || [],
+            excludeCountries: configLevel?.excludeCountries || [],
+            excludeOutbounds: configLevel?.excludeOutbounds || [],
+            excludeRegex: configLevel?.excludeRegex || [],
+            outbounds: uniqueCodes(level.outbounds || []),
+          };
+        })
+      : config.levels.map((level) => ({
+          ...level,
+          outbounds: uniqueCodes(level.outbounds || []),
+        }))
+  ).sort((left, right) =>
+    left.order === right.order
+      ? left.id.localeCompare(right.id)
+      : left.order - right.order,
+  );
+  const allChildCodes = levels.flatMap((l) => l.outbounds);
+  const isChildSelectedInSelector = Boolean(
+    selectorNow &&
+      selectorNow !== config.code &&
+      allChildCodes.includes(selectorNow) &&
+      !selectorCodes.includes(selectorNow),
+  );
+  const selectedCode = isChildSelectedInSelector
+    ? selectorNow!
+    : entry?.value.now || '';
+  const isManualSelection = isChildSelectedInSelector;
+
+  const runtimeAllCodes = entry?.value.all || [];
+  const outbounds = levels.flatMap((level, levelIndex) => {
+    const members = uniqueCodes(level.outbounds || []).map((childCode) => {
+      const childEntry = findProxyEntryForMember(
+        proxyByCode,
+        childCode,
+        runtimeAllCodes,
+      );
+      const effectiveCode = childEntry?.code || childCode;
+      const link =
+        findManualLink(manualLinkByCode, childCode) ||
+        findManualLink(manualLinkByCode, effectiveCode) ||
+        cachedProxyLinks.get(childCode) ||
+        cachedProxyLinks.get(effectiveCode) ||
+        '';
+      const canCopyLink = isCopyableProxyLink(link);
+      const resolved = resolveOutboundNameAndPrefix({
+        code: childCode,
+        entry: childEntry,
+        link,
+        outboundMetadata,
+        preferMetadata:
+          cachedProxyLinks.has(childCode) ||
+          cachedProxyLinks.has(effectiveCode),
+        configuredPrefixes,
+      });
+
+      return {
+        code: effectiveCode,
+        displayName: resolved.displayName,
+        prefix: resolved.prefix,
+        latency: childEntry?.value?.history?.[0]?.delay || 0,
+        type: dashboardOutboundType(
+          childCode,
+          childEntry?.value?.type,
+          outboundMetadata,
+          link,
+        ),
+        transport:
+          lookupMetadataField(outboundMetadata?.transports, childCode) ||
+          getProxyUrlTransport(link),
+        details: buildOutboundDetails(childCode, outboundMetadata),
+        selected: selectedCode === childCode || selectedCode === effectiveCode,
+        link,
+        canCopyLink,
+        country: showDetectedCountries
+          ? lookupMetadataField(outboundMetadata?.countries, childCode)
+          : undefined,
+        levelIndex,
+        levelName: level.displayName,
+        levelId: level.id,
+      };
+    });
+
+    if (!config.pickFastest) {
+      return members;
+    }
+
+    return members
+      .map((outbound, index) => ({ outbound, index }))
+      .sort((left, right) => {
+        const latencyDiff =
+          getLatencySortValue(left.outbound) -
+          getLatencySortValue(right.outbound);
+
+        return latencyDiff !== 0 ? latencyDiff : left.index - right.index;
+      })
+      .map((item) => item.outbound);
+  });
+  const selectedName =
+    outbounds.find((outbound) => outbound.code === selectedCode)?.displayName ||
+    selectedCode;
+  const primaryHealthUrl = groupCache?.health_url || config.healthUrl;
+  const extraHealthUrls = [
+    ...(Array.isArray(groupCache?.health_urls) ? groupCache.health_urls : []),
+    ...getListValues(config.settings?.health_urls as string[] | string),
+  ];
+  const allHealthUrls = uniqueCodes([
+    ...(primaryHealthUrl ? [primaryHealthUrl] : []),
+    ...extraHealthUrls,
+  ]);
+  const multiUrlStrategy =
+    groupCache?.multi_url_strategy ||
+    itemSettingString(config.settings, 'multi_url_strategy', '') ||
+    undefined;
+
+  return {
+    code: config.code,
+    displayName: groupCache?.displayName || config.displayName,
+    selectedCode: selectedCode || undefined,
+    selectedName: selectedName || undefined,
+    isManualSelection,
+    healthUrl: primaryHealthUrl,
+    healthUrls: allHealthUrls.length > 0 ? allHealthUrls : undefined,
+    multiUrlStrategy,
+    activeCheckInterval:
+      groupCache?.active_check_interval || config.activeCheckInterval,
+    checkTimeout: groupCache?.check_timeout || config.checkTimeout,
+    recoveryCheckInterval:
+      groupCache?.recovery_check_interval || config.recoveryCheckInterval,
+    pickFastest: groupCache?.pick_fastest ?? config.pickFastest,
+    switchToFasterSamePriority:
+      groupCache?.switch_to_faster_same_priority ??
+      config.switchToFasterSamePriority,
+    fastestCheckInterval:
+      groupCache?.fastest_check_interval || config.fastestCheckInterval,
+    interruptExistConnections:
+      groupCache?.interrupt_exist_connections ??
+      config.interruptExistConnections,
+    outbounds,
+  };
+}
+
+function buildProxyGroupOutbounds(
+  section: Tachyon.ConfigSection,
+  proxies: ClashProxyEntry[],
+  outboundMetadata?: Tachyon.GetOutboundMetadata,
+  urltestGroups: Record<string, UrlTestCacheGroup> = {},
+  priorityGroups: Record<string, PriorityCacheGroup> = {},
+  cachedProxyLinks: Map<string, string> = new Map(),
+  hiddenOutboundTags: Record<string, boolean> = {},
+  memberSections: Tachyon.ConfigSection[] = [],
+  sortMode?: 'latency' | 'country_latency' | 'country_alpha' | 'default',
+) {
+  const sectionName = section['.name'];
+  const configuredPrefixes = uniqueCodes([
+    ...getConfiguredSubscriptionPrefixes(section),
+    ...memberSections.flatMap((m) => getConfiguredSubscriptionPrefixes(m)),
+  ]);
+  getConfiguredSubscriptionPrefixStyles(section);
+  for (const m of memberSections) {
+    getConfiguredSubscriptionPrefixStyles(m);
+  }
+  const proxyByCode = getProxyEntryByCode(proxies);
+  const selectorTag = getOutboundTagBySection(sectionName);
+  const selector = proxyByCode.get(selectorTag);
+  const urlTestConfigs = getUrlTestConfigs(section);
+  const urlTestConfigByCode = new Map(
+    urlTestConfigs.map((config) => [config.code, config]),
+  );
+  const priorityConfigs = getPriorityConfigs(section);
+  const priorityConfigByCode = new Map(
+    priorityConfigs.map((config) => [config.code, config]),
+  );
+  const urlTestEntries = urlTestConfigs.map((config) => ({
+    config,
+    entry: proxyByCode.get(config.code),
+  }));
+  const priorityEntries = priorityConfigs.map((config) => ({
+    config,
+    entry: proxyByCode.get(config.code),
+  }));
+  const manualLinkByCode = buildManualLinkByCode(section);
+  const jsonOutboundByCode = buildJsonOutboundByCode(section);
+  const interfaceOutboundByCode = buildInterfaceOutboundByCode(section);
+  for (const m of memberSections) {
+    for (const [k, v] of buildManualLinkByCode(m)) {
+      if (!manualLinkByCode.has(k)) {
+        manualLinkByCode.set(k, v);
+      }
+    }
+    for (const [k, v] of buildJsonOutboundByCode(m)) {
+      if (!jsonOutboundByCode.has(k)) {
+        jsonOutboundByCode.set(k, v);
+      }
+    }
+    for (const [k, v] of buildInterfaceOutboundByCode(m)) {
+      if (!interfaceOutboundByCode.has(k)) {
+        interfaceOutboundByCode.set(k, v);
+      }
+    }
+  }
+  const rawSelectorCodes = selector?.value?.all ?? [];
+  const selectorCodes = rawSelectorCodes.filter(
+    (code) => !hiddenOutboundTags[code],
+  );
+  const urlTestCodes = urlTestConfigs.map((config) => config.code);
+  const priorityCodes = priorityConfigs.map((config) => config.code);
+  const showDetectedCountries =
+    urlTestConfigs.some((config) => config.showDetectedCountries) ||
+    priorityConfigs.some((config) => config.showDetectedCountries);
+  const builtInUrltestCode = urlTestCodes[0] || '';
+  const groupUrlTestMemberCodes = urlTestEntries.flatMap(
+    ({ config, entry }) =>
+      urltestGroups[config.code]?.outbounds || entry?.value.all || [],
+  );
+  const groupPriorityMemberCodes = priorityEntries.flatMap(
+    ({ config, entry }) =>
+      priorityGroups[config.code]?.outbounds || entry?.value.all || [],
+  );
+  const fallbackCodes =
+    section.action === 'group'
+      ? uniqueCodes([
+          ...urlTestCodes,
+          ...priorityCodes,
+          ...(groupUrlTestMemberCodes.length > 0 ||
+          groupPriorityMemberCodes.length > 0
+            ? [...groupUrlTestMemberCodes, ...groupPriorityMemberCodes]
+            : [
+                ...Array.from(cachedProxyLinks.keys()),
+                ...Array.from(manualLinkByCode.keys()),
+                ...Array.from(jsonOutboundByCode.keys()),
+                ...Array.from(interfaceOutboundByCode.keys()),
+              ]),
+        ]).filter((code) => !hiddenOutboundTags[code])
+      : uniqueCodes([
+          ...urlTestCodes,
+          ...priorityCodes,
+          ...Array.from(cachedProxyLinks.keys()),
+          ...Array.from(manualLinkByCode.keys()),
+          ...Array.from(jsonOutboundByCode.keys()),
+          ...Array.from(interfaceOutboundByCode.keys()),
+          ...urlTestEntries.flatMap(({ entry }) => entry?.value.all || []),
+          ...priorityEntries.flatMap(({ entry }) => entry?.value.all || []),
+        ]).filter((code) => !hiddenOutboundTags[code]);
+  const groupCodes = uniqueCodes([
+    ...(selectorCodes.length ? selectorCodes : fallbackCodes),
+    ...urlTestCodes,
+    ...priorityCodes,
+  ]).filter((code) => !hiddenOutboundTags[code]);
+
+  const selectorNow =
+    selector?.value?.now ||
+    urlTestCodes[0] ||
+    priorityCodes[0] ||
+    (selectorCodes.length > 0 ? selectorCodes[0] : undefined);
+
+  const outbounds = uniqueCodes(groupCodes).flatMap((code) => {
+    if (hiddenOutboundTags[code]) {
+      return [];
+    }
+    const item = proxyByCode.get(code);
+    const urlTestConfig = urlTestConfigByCode.get(code);
+    const priorityConfig = priorityConfigByCode.get(code);
+    const jsonOutbound =
+      jsonOutboundByCode.get(code) || interfaceOutboundByCode.get(code);
+    const link =
+      findManualLink(manualLinkByCode, code) ||
+      cachedProxyLinks.get(code) ||
+      '';
+
+    if (!item && !urlTestConfig && !priorityConfig && !link && !jsonOutbound) {
+      return [];
+    }
+
+    const effectiveItem =
+      item ||
+      (link || jsonOutbound
+        ? ({
+            code,
+            value: {
+              name:
+                outboundMetadata?.names?.[code] || jsonOutbound?.name || code,
+              type:
+                jsonOutbound?.type ||
+                outboundMetadata?.protocols?.[code] ||
+                outboundMetadata?.transports?.[code] ||
+                (link.startsWith('wireguard://') || link.startsWith('vpn://')
+                  ? 'AmneziaWG'
+                  : 'VLESS'),
+              udp: true,
+              history: [],
+              all: [],
+              now: '',
+            },
+          } as ClashProxyEntry)
+        : undefined);
+
+    const canCopyLink = isCopyableProxyLink(link);
+    const resolved = resolveOutboundNameAndPrefix({
+      code,
+      entry: effectiveItem,
+      link,
+      outboundMetadata,
+      preferMetadata: cachedProxyLinks.has(code),
+      configuredPrefixes,
+    });
+    const displayName =
+      priorityConfig?.displayName ||
+      urlTestConfig?.displayName ||
+      resolved.displayName;
+    const prefix =
+      priorityConfig || urlTestConfig ? undefined : resolved.prefix;
+    const isRuntimeUrlTest = isUrlTestProxyEntry(item);
+
+    const urlTestInfo =
+      urlTestConfig || isRuntimeUrlTest
+        ? buildUrlTestInfo({
+            code,
+            displayName,
+            config: urlTestConfig,
+            entry: item,
+            groupCache: urltestGroups[code],
+            proxyByCode,
+            manualLinkByCode,
+            cachedProxyLinks,
+            outboundMetadata,
+            showDetectedCountries:
+              urlTestConfig?.showDetectedCountries || showDetectedCountries,
+            selectorNow,
+            selectorCodes,
+            configuredPrefixes,
+          })
+        : undefined;
+
+    const priorityInfo = priorityConfig
+      ? buildPriorityInfo({
+          config: priorityConfig,
+          entry: item,
+          groupCache: priorityGroups[code],
+          proxyByCode,
+          manualLinkByCode,
+          cachedProxyLinks,
+          outboundMetadata,
+          showDetectedCountries: priorityConfig.showDetectedCountries,
+          selectorNow,
+          selectorCodes,
+          configuredPrefixes,
+        })
+      : undefined;
+
+    const isUrlTestChildSelected = Boolean(
+      urlTestInfo?.isManualSelection &&
+        urlTestInfo?.selectedCode &&
+        urlTestInfo.outbounds.some((m) => m.code === selectorNow),
+    );
+    const isPriorityChildSelected = Boolean(
+      priorityInfo?.isManualSelection &&
+        priorityInfo?.selectedCode &&
+        priorityInfo.outbounds.some((m) => m.code === selectorNow),
+    );
+
+    const isSelected =
+      selectorNow === code || isUrlTestChildSelected || isPriorityChildSelected;
+
+    const activeMemberLatency =
+      (isUrlTestChildSelected &&
+        urlTestInfo?.outbounds.find((m) => m.code === selectorNow)?.latency) ||
+      (isPriorityChildSelected &&
+        priorityInfo?.outbounds.find((m) => m.code === selectorNow)?.latency) ||
+      urlTestInfo?.outbounds.find(
+        (m) => m.selected || m.code === urlTestInfo.selectedCode,
+      )?.latency ||
+      priorityInfo?.outbounds.find(
+        (m) => m.selected || m.code === priorityInfo.selectedCode,
+      )?.latency ||
+      0;
+
+    const isGroupType = Boolean(
+      priorityConfig || urlTestConfig || isRuntimeUrlTest,
+    );
+
+    const itemDelay = Number(effectiveItem?.value.history?.[0]?.delay);
+    const validItemDelay =
+      Number.isFinite(itemDelay) && itemDelay > 0 ? itemDelay : 0;
+    let urlTestTelemetryDelay = 0;
+    if (!validItemDelay && !isGroupType) {
+      for (const sc of uniqueCodes([...urlTestCodes, ...selectorCodes])) {
+        const utProxy = proxyByCode.get(sc);
+        const t = utProxy?.value.telemetry?.[code];
+        const td = Number(t?.rtt_ms ?? t?.ewma_rtt_ms);
+        if (Number.isFinite(td) && td > 0) {
+          urlTestTelemetryDelay = Math.round(td);
+          break;
+        }
+      }
+    }
+    const latency =
+      validItemDelay ||
+      urlTestTelemetryDelay ||
+      (activeMemberLatency > 0 ? activeMemberLatency : 0);
+
+    let sourceGroup = isGroupType
+      ? undefined
+      : outboundMetadata?.sources?.[code];
+    if (!sourceGroup && !isGroupType) {
+      if (findManualLink(manualLinkByCode, code)) {
+        sourceGroup = 'manual';
+      } else {
+        const subUrls = getListValues(section.subscription_urls);
+        if (prefix && subUrls.length > 0) {
+          const subSettings = itemSettingsMap(
+            section.subscription_url_settings,
+          );
+          const matchedIdx = subUrls.findIndex((u) => {
+            const st = subSettings[u];
+            return (
+              st?.prefix_nodes === '1' &&
+              typeof st.node_prefix === 'string' &&
+              st.node_prefix.trim() === prefix
+            );
+          });
+          if (matchedIdx >= 0) {
+            sourceGroup = `sub:${matchedIdx + 1}`;
+          }
+        }
+        if (!sourceGroup && subUrls.length === 1) {
+          sourceGroup = 'sub:1';
+        }
+      }
+    }
+
+    return [
+      {
+        code,
+        displayName,
+        prefix,
+        latency,
+        type: priorityConfig
+          ? 'Priority'
+          : dashboardOutboundType(
+              code,
+              effectiveItem?.value.type || 'URLTest',
+              outboundMetadata,
+            ),
+        transport: isGroupType
+          ? undefined
+          : outboundMetadata?.transports?.[code] || getProxyUrlTransport(link),
+        details: isGroupType
+          ? undefined
+          : buildOutboundDetails(code, outboundMetadata),
+        selected: isSelected,
+        link,
+        canCopyLink,
+        country: showDetectedCountries
+          ? outboundMetadata?.countries?.[code]
+          : undefined,
+        runtimeAvailable: effectiveItem ? undefined : false,
+        urlTestInfo,
+        priorityInfo,
+        sourceGroup,
+      },
+    ];
+  });
+
+  const sortedOutbounds = sortOutboundsForDashboard(outbounds, {
+    pinnedCodes: [
+      ...urlTestEntries
+        .filter(({ config }) => config.pinDashboard)
+        .map(({ config }) => config.code),
+      ...priorityEntries
+        .filter(({ config }) => config.pinDashboard)
+        .map(({ config }) => config.code),
+    ],
+    sortMode,
+    sortByLatency: sortMode === 'latency' || shouldSortByLatency(section),
+  });
+  const latencyTestCodes = sortedOutbounds
+    .filter(
+      (outbound) =>
+        outbound.runtimeAvailable !== false &&
+        !isSelectorOutbound(outbound) &&
+        !outbound.priorityInfo,
+    )
+    .map((outbound) => outbound.code);
+
+  return {
+    selector,
+    latencyTestCode: selector?.code || builtInUrltestCode,
+    latencyTestCodes:
+      latencyTestCodes.length > 0 ? latencyTestCodes : undefined,
+    outbounds: sortedOutbounds,
+  };
+}
+
+function metadataMatchesCurrentSource(
+  sectionName: string,
+  sourceCount: number,
+  metadata: Tachyon.SubscriptionMetadata,
+) {
+  const legacyMetadata = metadata as Tachyon.SubscriptionMetadata & {
+    source_index?: number;
+    source_section?: string;
+  };
+  const sourceIndex = metadata.sourceIndex ?? legacyMetadata.source_index;
+  const sourceSection =
+    metadata.sourceSection || legacyMetadata.source_section || '';
+  const hasSourceIndex = typeof sourceIndex === 'number';
+  const hasSourceSection = sourceSection !== '';
+
+  if (!hasSourceIndex && !hasSourceSection) {
+    return sourceCount <= 1;
+  }
+
+  if (sourceCount > 1 && !hasSourceSection) {
+    return false;
+  }
+
+  if (hasSourceIndex && (sourceIndex < 1 || sourceIndex > sourceCount)) {
+    return false;
+  }
+
+  if (hasSourceSection) {
+    const expectedSourcePrefix = `${sectionName}-subscription-`;
+
+    if (!sourceSection.startsWith(expectedSourcePrefix)) {
+      return false;
+    }
+
+    const sourceSectionIndex = Number(
+      sourceSection.slice(expectedSourcePrefix.length),
+    );
+
+    if (
+      !Number.isInteger(sourceSectionIndex) ||
+      sourceSectionIndex < 1 ||
+      sourceSectionIndex > sourceCount
+    ) {
+      return false;
+    }
+
+    if (hasSourceIndex && sourceIndex !== sourceSectionIndex) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function getSubscriptionMetadataSourceIndex(
+  sectionName: string,
+  sourceCount: number,
+  metadata: Tachyon.SubscriptionMetadata,
+) {
+  const legacyMetadata = metadata as Tachyon.SubscriptionMetadata & {
+    source_index?: number;
+    source_section?: string;
+  };
+  const sourceIndex = metadata.sourceIndex ?? legacyMetadata.source_index;
+
+  if (typeof sourceIndex === 'number') {
+    return sourceIndex;
+  }
+
+  const sourceSection =
+    metadata.sourceSection || legacyMetadata.source_section || '';
+  const expectedSourcePrefix = `${sectionName}-subscription-`;
+
+  if (sourceSection.startsWith(expectedSourcePrefix)) {
+    const parsed = Number(sourceSection.slice(expectedSourcePrefix.length));
+    return Number.isInteger(parsed) ? parsed : undefined;
+  }
+
+  return sourceCount <= 1 ? 1 : undefined;
+}
+
+function isSubscriptionMetadataVisible(
+  section: Tachyon.ConfigSection,
+  sourceCount: number,
+  metadata: Tachyon.SubscriptionMetadata,
+) {
+  const sourceIndex = getSubscriptionMetadataSourceIndex(
+    section['.name'],
+    sourceCount,
+    metadata,
+  );
+
+  if (!sourceIndex || sourceIndex < 1 || sourceIndex > sourceCount) {
+    return true;
+  }
+
+  const sourceEntry = getListValues(section.subscription_urls)[sourceIndex - 1];
+  const settings = itemSettingsMap(section.subscription_url_settings)[
+    sourceEntry
+  ];
+
+  return settings?.show_dashboard_metadata !== '0';
+}
+
+function getSubscriptionMetadata(
+  section: Tachyon.ConfigSection,
+  sourceCount: number,
+  dashboardCache?: DashboardSectionCache,
+  globalShowMetadata = true,
+) {
+  if (!globalShowMetadata || !dashboardCache?.subscriptionMetadata) {
+    return undefined;
+  }
+
+  const metadataItems = Array.isArray(dashboardCache.subscriptionMetadata)
+    ? dashboardCache.subscriptionMetadata
+    : [dashboardCache.subscriptionMetadata];
+  const settingsMap = itemSettingsMap(section.subscription_url_settings);
+  const subUrls = getListValues(section.subscription_urls);
+  const visibleMetadataItems = metadataItems
+    .filter(
+      (metadata) =>
+        metadata &&
+        Object.keys(metadata).length > 1 &&
+        metadataMatchesCurrentSource(section['.name'], sourceCount, metadata) &&
+        isSubscriptionMetadataVisible(section, sourceCount, metadata),
+    )
+    .map((metadata) => {
+      if (metadata.title) {
+        return metadata;
+      }
+      const sourceIndex = getSubscriptionMetadataSourceIndex(
+        section['.name'],
+        sourceCount,
+        metadata,
+      );
+      const sourceEntry =
+        sourceIndex && sourceIndex >= 1 ? subUrls[sourceIndex - 1] : undefined;
+      const srcSettings = sourceEntry ? settingsMap[sourceEntry] : undefined;
+      const fallbackName =
+        (typeof srcSettings?.name === 'string' && srcSettings.name.trim()) ||
+        (typeof srcSettings?.node_prefix === 'string' &&
+          srcSettings.node_prefix.trim()) ||
+        '';
+      return fallbackName ? { ...metadata, title: fallbackName } : metadata;
+    });
+
+  if (visibleMetadataItems.length > 0) {
+    return visibleMetadataItems;
+  }
+
+  return undefined;
+}
+
+function getOutboundMetadata(dashboardCache?: DashboardSectionCache) {
+  const metadata = dashboardCache?.outboundMetadata;
+
+  if (!metadata || typeof metadata !== 'object') {
+    return undefined;
+  }
+
+  return {
+    names: objectMap(metadata.names),
+    countries: objectMap(metadata.countries),
+    transports: objectMap(metadata.transports),
+    protocols: objectMap(metadata.protocols),
+    securities: objectMap(metadata.securities),
+    ports: objectMap(metadata.ports),
+    details: objectMap(metadata.details),
+    prefixes: objectMap(metadata.prefixes),
+    sources: objectMap(metadata.sources),
+  };
+}
+
+function getCachedProxyLinks(
+  dashboardCache?: DashboardSectionCache,
+  includeHidden = false,
+) {
+  const hidden = dashboardCache?.hiddenOutboundTags ?? {};
+  return new Map(
+    Object.entries(objectMap(dashboardCache?.links)).filter(
+      ([code, link]) =>
+        isCopyableProxyLink(link) && (includeHidden || !hidden[code]),
+    ),
+  );
+}
+
+export async function getDashboardSections(
+  options: IGetDashboardSectionsOptions = {},
+): Promise<IGetDashboardSectionsResponse> {
+  const includeSubscriptionCopyState =
+    options.includeSubscriptionCopyState ?? true;
+  const configSections = hydrateConfigSections(await getConfigSections());
+  const sectionErrorsPromise = readSectionErrors();
+  const clashProxies = await getClashApiProxies(configSections);
+
+  if (
+    (!clashProxies.success || !clashProxies.data?.proxies) &&
+    configSections.length === 0
+  ) {
+    return {
+      success: false,
+      data: [],
+    };
+  }
+
+  const proxies =
+    clashProxies.success && clashProxies.data?.proxies
+      ? Object.entries(clashProxies.data.proxies).map(([key, value]) => ({
+          code: key,
+          value,
+        }))
+      : [];
+  const serviceStatusCache = new Map<
+    string,
+    Promise<Tachyon.ServiceStatus | undefined>
+  >();
+
+  const getServiceStatus = (
+    serviceType:
+      | 'zapret'
+      | 'zapret2'
+      | 'byedpi'
+      | 'desync'
+      | 'wdtt'
+      | 'olcrtc'
+      | 'fptn',
+  ) => {
+    if (!serviceStatusCache.has(serviceType)) {
+      serviceStatusCache.set(
+        serviceType,
+        (async () => {
+          try {
+            if (serviceType === 'zapret') {
+              const result = await TachyonShellMethods.getZapretStatus();
+              if (result.success && result.data) {
+                const s = result.data;
+                return {
+                  serviceType: 'zapret',
+                  configured: Boolean(s.configured),
+                  ready: Boolean(s.ready),
+                  conflict: Boolean(s.conflict),
+                  runningProcesses: s.running_process_count,
+                  expectedProcesses: s.expected_process_count,
+                  restartCount: s.restart_count,
+                  unstable: Boolean(s.runtime_unstable),
+                  statusMessage: s.status_message,
+                };
+              }
+            } else if (serviceType === 'zapret2') {
+              const result = await TachyonShellMethods.getZapret2Status();
+              if (result.success && result.data) {
+                const s = result.data;
+                return {
+                  serviceType: 'zapret2',
+                  configured: Boolean(s.configured),
+                  ready: Boolean(s.ready),
+                  conflict: Boolean(s.conflict),
+                  runningProcesses: s.running_process_count,
+                  expectedProcesses: s.expected_process_count,
+                  restartCount: 0,
+                  unstable: false,
+                  statusMessage: s.status_message,
+                };
+              }
+            } else if (serviceType === 'byedpi') {
+              const result = await TachyonShellMethods.getByedpiStatus();
+              if (result.success && result.data) {
+                const s = result.data;
+                return {
+                  serviceType: 'byedpi',
+                  configured: Boolean(s.configured),
+                  ready: Boolean(s.ready),
+                  conflict: Boolean(s.conflict),
+                  runningProcesses: s.running_process_count,
+                  expectedProcesses: s.expected_process_count,
+                  restartCount: s.restart_count,
+                  unstable: Boolean(s.runtime_unstable),
+                  statusMessage: s.status_message,
+                };
+              }
+            } else if (serviceType === 'wdtt') {
+              const result = await TachyonShellMethods.getWdttStatus();
+              if (result.success && result.data) {
+                const s = result.data;
+                return {
+                  serviceType: 'wdtt',
+                  configured: Boolean(s.configured),
+                  ready: Boolean(s.ready),
+                  conflict: Boolean(s.conflict),
+                  runningProcesses: s.running_process_count,
+                  expectedProcesses: s.expected_process_count,
+                  restartCount: s.restart_count,
+                  unstable: Boolean(s.runtime_unstable),
+                  statusMessage: s.status_message,
+                };
+              }
+            } else if (serviceType === 'olcrtc') {
+              const result = await TachyonShellMethods.getOlcrtcStatus();
+              if (result.success && result.data) {
+                const s = result.data;
+                return {
+                  serviceType: 'olcrtc',
+                  configured: Boolean(s.configured),
+                  ready: Boolean(s.ready),
+                  conflict: Boolean(s.conflict),
+                  runningProcesses: s.running_process_count,
+                  expectedProcesses: s.expected_process_count,
+                  restartCount: s.restart_count,
+                  unstable: Boolean(s.runtime_unstable),
+                  statusMessage: s.status_message,
+                };
+              }
+            } else if (serviceType === 'fptn') {
+              const result = await TachyonShellMethods.getFptnStatus();
+              if (result.success && result.data) {
+                const s = result.data;
+                return {
+                  serviceType: 'fptn',
+                  configured: Boolean(s.configured),
+                  ready: Boolean(s.ready),
+                  conflict: false,
+                  runningProcesses: s.service_running ? 1 : 0,
+                  expectedProcesses: s.configured ? 1 : 0,
+                  restartCount: 0,
+                  unstable: false,
+                  statusMessage:
+                    s.status_message || (s.ready ? _('Running') : _('Stopped')),
+                };
+              }
+            } else if (serviceType === 'desync') {
+              // desync runs inside tachyon-core — there is no separate process.
+              // Reflect readiness from the tachyon-core/sing-box engine status.
+              try {
+                const result = await TachyonShellMethods.getSingBoxStatus();
+                if (result?.success && result.data) {
+                  const s = result.data;
+                  const isRunning = Boolean(s.running);
+                  return {
+                    serviceType: 'desync' as const,
+                    configured: true,
+                    ready: isRunning,
+                    conflict: false,
+                    runningProcesses: isRunning ? 1 : 0,
+                    expectedProcesses: 1,
+                    restartCount: 0,
+                    unstable: false,
+                    statusMessage: isRunning ? _('Running') : _('Stopped'),
+                  };
+                }
+              } catch (_err) {
+                // Fall through to default running status below
+              }
+              // Fallback when the RPC call fails: report as running to avoid
+              // confusing "N/A" — desync has no standalone process to check.
+              return {
+                serviceType: 'desync' as const,
+                configured: true,
+                ready: true,
+                conflict: false,
+                runningProcesses: 1,
+                expectedProcesses: 1,
+                restartCount: 0,
+                unstable: false,
+                statusMessage: _('Running'),
+              };
+            }
+          } catch (_error) {
+            // Status fetch failed — show section without status
+          }
+          return undefined;
+        })(),
+      );
+    }
+    return serviceStatusCache.get(serviceType)!;
+  };
+
+  const sectionErrors = await sectionErrorsPromise;
+  const settingsSection = getSettingsSection(configSections);
+  const globalCountryGrouping =
+    (settingsSection?.dashboard_country_grouping as
+      | 'chips'
+      | 'accordion'
+      | 'none'
+      | undefined) || 'chips';
+  const globalChipsGrouping =
+    (settingsSection?.dashboard_chips_grouping as
+      | 'regions'
+      | 'smart_top'
+      | 'latency'
+      | 'alphabetical'
+      | undefined) || 'regions';
+  const globalChipsLatencyMode =
+    (settingsSection?.dashboard_country_chips_latency_mode as
+      | 'min'
+      | 'max'
+      | undefined) || 'min';
+  const globalSortMode =
+    (settingsSection?.dashboard_sort_mode as
+      | 'latency'
+      | 'country_latency'
+      | 'country_alpha'
+      | 'default'
+      | undefined) || 'latency';
+  const globalHoverFreeze = settingsSection?.dashboard_hover_freeze === '1';
+  const globalShowSubscriptionMetadata =
+    settingsSection?.dashboard_show_subscription_metadata !== '0';
+
+  const data = await Promise.all(
+    configSections
+      .filter(
+        (section) =>
+          section['.type'] === 'section' &&
+          section.enabled !== '0' &&
+          (isConnectionAction(section.action) ||
+            isServiceAction(section.action) ||
+            isPolicyAction(section.action)),
+      )
+      .map(async (section) => {
+        const displayName = getDisplayName(section);
+        const sectionName = section['.name'];
+        const sectionAction = section.action;
+        const proxyConfigType = getSectionProxyConfigType(section);
+        const sectionSortByLatency = shouldSortByLatency(section);
+        const effectiveSortMode =
+          section.sort_by_latency === '0' && !section.dashboard_sort_mode
+            ? 'default'
+            : !sectionSortByLatency &&
+                !section.dashboard_sort_mode &&
+                !settingsSection
+              ? 'default'
+              : (section.dashboard_sort_mode as typeof globalSortMode) ||
+                globalSortMode ||
+                'latency';
+        const effectiveCountryGrouping =
+          (section.dashboard_country_grouping as typeof globalCountryGrouping) ||
+          globalCountryGrouping;
+        const effectiveChipsGrouping =
+          (section.dashboard_chips_grouping as typeof globalChipsGrouping) ||
+          globalChipsGrouping;
+        const effectiveChipsLatencyMode =
+          (section.dashboard_country_chips_latency_mode as typeof globalChipsLatencyMode) ||
+          globalChipsLatencyMode;
+
+        if (isConnectionAction(sectionAction) && shouldUseProxyGroup(section)) {
+          const subscriptionSourceCount = getSubscriptionSourceCount(section);
+          const subscriptionEnabled = subscriptionSourceCount > 0;
+          const dashboardCache = await readDashboardSectionCache(sectionName);
+          let outboundMetadata = getOutboundMetadata(dashboardCache);
+          const subscriptionMetadata = subscriptionEnabled
+            ? getSubscriptionMetadata(
+                section,
+                subscriptionSourceCount,
+                dashboardCache,
+                globalShowSubscriptionMetadata,
+              )
+            : undefined;
+          const cachedProxyLinks = includeSubscriptionCopyState
+            ? getCachedProxyLinks(dashboardCache)
+            : new Map<string, string>();
+          const urltestGroups = getUrlTestGroups(dashboardCache);
+          const priorityGroups = getPriorityGroups(dashboardCache);
+          const hiddenOutboundTags = dashboardCache?.hiddenOutboundTags ?? {};
+          const memberNames =
+            sectionAction === 'group'
+              ? getListValues(section.group_members).map((m) => m.trim())
+              : [];
+          const memberSections =
+            memberNames.length > 0
+              ? configSections.filter((s) => memberNames.includes(s['.name']))
+              : [];
+
+          if (memberSections.length > 0) {
+            const memberCaches = await Promise.all(
+              memberSections.map((m) => readDashboardSectionCache(m['.name'])),
+            );
+            for (const mCache of memberCaches) {
+              if (!mCache) continue;
+              const mMeta = getOutboundMetadata(mCache);
+              if (mMeta) {
+                outboundMetadata = {
+                  names: { ...mMeta.names, ...outboundMetadata?.names },
+                  countries: {
+                    ...mMeta.countries,
+                    ...outboundMetadata?.countries,
+                  },
+                  transports: {
+                    ...mMeta.transports,
+                    ...outboundMetadata?.transports,
+                  },
+                  protocols: {
+                    ...mMeta.protocols,
+                    ...outboundMetadata?.protocols,
+                  },
+                  securities: {
+                    ...mMeta.securities,
+                    ...outboundMetadata?.securities,
+                  },
+                  ports: { ...mMeta.ports, ...outboundMetadata?.ports },
+                  details: {
+                    ...mMeta.details,
+                    ...outboundMetadata?.details,
+                  },
+                  prefixes: {
+                    ...mMeta.prefixes,
+                    ...outboundMetadata?.prefixes,
+                  },
+                  sources: {
+                    ...mMeta.sources,
+                    ...outboundMetadata?.sources,
+                  },
+                };
+              }
+              if (includeSubscriptionCopyState) {
+                for (const [k, v] of getCachedProxyLinks(mCache)) {
+                  if (!cachedProxyLinks.has(k)) {
+                    cachedProxyLinks.set(k, v);
+                  }
+                }
+              }
+            }
+          }
+
+          const { selector, latencyTestCode, latencyTestCodes, outbounds } =
+            buildProxyGroupOutbounds(
+              section,
+              proxies,
+              outboundMetadata,
+              urltestGroups,
+              priorityGroups,
+              cachedProxyLinks,
+              hiddenOutboundTags,
+              memberSections,
+              effectiveSortMode,
+            );
+
+          const hideNa = shouldHideNaServers(section);
+          const leafOutbounds = outbounds.filter(
+            (o) => !o.urlTestInfo && !o.priorityInfo && !isSelectorOutbound(o),
+          );
+          const hasTestedServers = leafOutbounds.some((o) => !isNaOutbound(o));
+          const filteredOutbounds = (() => {
+            if (!hideNa || !hasTestedServers) {
+              return outbounds;
+            }
+            const proxyHistoryCodes = new Set(
+              proxies
+                .filter(
+                  (p) =>
+                    Array.isArray(p.value?.history) &&
+                    p.value.history.length > 0,
+                )
+                .map((p) => p.code),
+            );
+            const distinctSourceGroups = new Set(
+              leafOutbounds
+                .map((o) => o.sourceGroup)
+                .filter((g): g is string => Boolean(g)),
+            );
+            const testedSourceGroups = new Set(
+              leafOutbounds
+                .filter(
+                  (o) =>
+                    o.sourceGroup &&
+                    (!isNaOutbound(o) || proxyHistoryCodes.has(o.code)),
+                )
+                .map((o) => o.sourceGroup as string),
+            );
+            const untestedPriorityMemberCodes = new Set<string>();
+            for (const ob of outbounds) {
+              if (!ob.priorityInfo?.outbounds?.length) continue;
+              const membersByLevel = new Map<
+                number,
+                Tachyon.PriorityMember[]
+              >();
+              for (const m of ob.priorityInfo.outbounds) {
+                const lvl = typeof m.levelIndex === 'number' ? m.levelIndex : 0;
+                const list = membersByLevel.get(lvl) || [];
+                list.push(m);
+                membersByLevel.set(lvl, list);
+              }
+              for (const members of membersByLevel.values()) {
+                const levelTested = members.some(
+                  (m) =>
+                    (typeof m.latency === 'number' && m.latency > 0) ||
+                    m.latency === -1 ||
+                    proxyHistoryCodes.has(m.code),
+                );
+                if (!levelTested) {
+                  for (const m of members) {
+                    if (m.code) {
+                      untestedPriorityMemberCodes.add(m.code);
+                    }
+                  }
+                }
+              }
+            }
+
+            return outbounds.filter((o) => {
+              if (!isNaOutbound(o)) return true;
+              if (o.runtimeAvailable === false) return false;
+              if (
+                distinctSourceGroups.size > 1 &&
+                o.sourceGroup &&
+                !testedSourceGroups.has(o.sourceGroup)
+              ) {
+                return true;
+              }
+              if (untestedPriorityMemberCodes.has(o.code)) {
+                return true;
+              }
+              return false;
+            });
+          })();
+
+          return {
+            withTagSelect: true,
+            code: selector?.code || latencyTestCode || sectionName,
+            sectionName,
+            displayName,
+            action: sectionAction,
+            latencyTestCode,
+            latencyTestCodes,
+            proxyConfigType,
+            subscriptionSourceCount,
+            subscriptionMetadata,
+            dashboardSettings: {
+              countryGrouping: effectiveCountryGrouping,
+              chipsGrouping: effectiveChipsGrouping,
+              countryChipsLatencyMode: effectiveChipsLatencyMode,
+              sortMode: effectiveSortMode,
+              hoverFreeze: globalHoverFreeze,
+            },
+            outbounds: filteredOutbounds,
+          };
+        }
+
+        if (SINGLE_ENDPOINT_ACTIONS.has(sectionAction || '')) {
+          const outboundTag = getOutboundTagBySection(sectionName);
+          const outbound = proxies.find((proxy) => proxy.code === outboundTag);
+          const defaultLabel =
+            ACTION_DISPLAY_NAMES[sectionAction || ''] ||
+            (sectionAction || '').toUpperCase();
+          const customName =
+            outbound?.value?.name && outbound.value.name !== outboundTag
+              ? outbound.value.name
+              : '';
+
+          return {
+            withTagSelect: false,
+            code: outbound?.code || sectionName,
+            sectionName,
+            displayName,
+            action: sectionAction,
+            outbounds: [
+              {
+                code: outbound?.code || sectionName,
+                displayName:
+                  section.label ||
+                  section.name ||
+                  section.interface ||
+                  customName ||
+                  defaultLabel,
+                latency: outbound?.value?.history?.length
+                  ? outbound.value.history[0].delay > 0
+                    ? outbound.value.history[0].delay
+                    : -1
+                  : 0,
+                type:
+                  ACTION_DISPLAY_NAMES[sectionAction || ''] ||
+                  outbound?.value?.type ||
+                  (sectionAction || '').toUpperCase(),
+                selected: true,
+                canCopyLink: false,
+                runtimeAvailable: Boolean(outbound),
+              },
+            ],
+          };
+        }
+
+        if (sectionAction === 'outbound') {
+          const outboundTag = getOutboundTagBySection(sectionName);
+          const outbound = proxies.find((proxy) => proxy.code === outboundTag);
+
+          return {
+            withTagSelect: false,
+            code: outbound?.code || sectionName,
+            sectionName,
+            displayName,
+            action: sectionAction,
+            outbounds: [
+              {
+                code: outbound?.code || sectionName,
+                displayName:
+                  getJsonOutboundDisplayName(section) ||
+                  outbound?.value?.name ||
+                  '',
+                latency: outbound?.value?.history?.[0]?.delay || 0,
+                type: outbound?.value?.type || '',
+                selected: true,
+                canCopyLink: false,
+              },
+            ],
+          };
+        }
+
+        if (isServiceAction(sectionAction)) {
+          const serviceType =
+            sectionAction as Tachyon.ServiceStatus['serviceType'];
+          const serviceStatus = await getServiceStatus(serviceType);
+
+          const statusLabel = serviceStatus
+            ? serviceStatus.ready
+              ? _('Running')
+              : serviceStatus.conflict
+                ? _('Conflict')
+                : serviceStatus.configured
+                  ? _('Stopped')
+                  : _('Not configured')
+            : _('Unknown');
+
+          return {
+            withTagSelect: false,
+            code: sectionName,
+            sectionName,
+            displayName,
+            action: sectionAction,
+            serviceStatus,
+            outbounds: [
+              {
+                code: sectionName,
+                displayName: statusLabel,
+                latency: 0,
+                type: serviceType.toUpperCase(),
+                selected: true,
+                canCopyLink: false,
+              },
+            ],
+          };
+        }
+
+        if (isPolicyAction(sectionAction)) {
+          const actLower = (sectionAction || '').toLowerCase();
+          if (actLower === 'block' || actLower === 'reject') {
+            return {
+              withTagSelect: false,
+              code: sectionName,
+              sectionName,
+              displayName,
+              action: sectionAction,
+              outbounds: [
+                {
+                  code: 'block-out',
+                  displayName: _('Block (Reject)'),
+                  latency: 0,
+                  type: 'BLOCK',
+                  selected: true,
+                  canCopyLink: false,
+                },
+              ],
+            };
+          }
+          if (actLower === 'bypass' || actLower === 'direct') {
+            return {
+              withTagSelect: false,
+              code: sectionName,
+              sectionName,
+              displayName,
+              action: sectionAction,
+              outbounds: [
+                {
+                  code: 'direct-out',
+                  displayName: section.interface
+                    ? `WAN (${section.interface})`
+                    : _('Direct (WAN)'),
+                  latency: 0,
+                  type: 'DIRECT',
+                  selected: true,
+                  canCopyLink: false,
+                },
+              ],
+            };
+          }
+          if (actLower === 'dns') {
+            const dnsServers = getListValues(
+              section.dns_server || section.routed_dns_server,
+            );
+            const dnsLabel =
+              dnsServers.length > 0 ? dnsServers.join(', ') : 'DNS';
+            return {
+              withTagSelect: false,
+              code: sectionName,
+              sectionName,
+              displayName,
+              action: sectionAction,
+              outbounds: [
+                {
+                  code: `${sectionName}-dns`,
+                  displayName: dnsLabel,
+                  latency: 0,
+                  type: 'DNS',
+                  selected: true,
+                  canCopyLink: false,
+                },
+              ],
+            };
+          }
+        }
+
+        return {
+          withTagSelect: false,
+          code: sectionName,
+          sectionName,
+          displayName,
+          action: sectionAction,
+          outbounds: [],
+        };
+      }),
+  );
+
+  const groupsWithErrors: Tachyon.OutboundGroup[] = data.map((group) =>
+    sectionErrors[group.sectionName]
+      ? { ...group, configError: sectionErrors[group.sectionName] }
+      : group,
+  );
+
+  return {
+    success: true,
+    data: groupsWithErrors,
+  };
+}

@@ -1,0 +1,124 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - '2.0'
+  pull_request:
+    branches:
+      - main
+      - master
+      - '2.0'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust Check, Test & Pure-Rust Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: x86_64-unknown-linux-musl, aarch64-unknown-linux-musl
+
+      - name: Cache Cargo registry and artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Run Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Run unit tests
+        run: |
+          cargo test --all-targets --locked --no-run
+          RUST_MIN_STACK=524288 cargo test --all-targets --locked
+
+      - name: Verify Pure-Rust dependency tree on musl targets
+        run: |
+          set -euo pipefail
+          for target in x86_64-unknown-linux-musl aarch64-unknown-linux-musl; do
+            echo "Checking Pure-Rust tree for ${target}..."
+            bad="$(cargo tree --target "$target" -e normal,build --prefix none \
+              | grep -E '^(cc|cmake|bindgen|ring|aws-lc(-[A-Za-z0-9-]+)?|openssl(-src)?|libz(-sys)?|[A-Za-z0-9_-]+-sys) v' \
+              || true)"
+            if [[ -n "$bad" ]]; then
+              echo "Non-pure-Rust dependencies found for ${target}:" >&2
+              printf '%s\n' "$bad" >&2
+              exit 1
+            fi
+          done
+
+      - name: Check musl cross-compilation targets
+        run: |
+          cargo check --target x86_64-unknown-linux-musl
+          cargo check --target aarch64-unknown-linux-musl
+
+  frontend:
+    name: Frontend CI & Locale Sync
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: fe-app-tachyon/package-lock.json
+
+      - name: Install dependencies
+        working-directory: fe-app-tachyon
+        run: npm ci
+
+      - name: Actualize locales and run frontend CI
+        working-directory: fe-app-tachyon
+        run: |
+          npm run locales:actualize
+          npm run ci
+
+      - name: Ensure generated frontend and locale files are committed
+        run: |
+          set -euo pipefail
+          if git diff -I "POT-Creation-Date" -I "PO-Revision-Date" --quiet -- fe-app-tachyon/locales luci-app-tachyon/po; then
+            git checkout -- fe-app-tachyon/locales/*.pot fe-app-tachyon/locales/*.po luci-app-tachyon/po/ 2>/dev/null || true
+          fi
+          if ! git diff --quiet; then
+            echo "Generated frontend or locale files are out of date:" >&2
+            git status --short >&2
+            git diff --stat >&2
+            exit 1
+          fi
+
+  shellcheck:
+    name: ShellCheck & Packager Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run ShellCheck on scripts
+        run: |
+          shellcheck --severity=error \
+            build.sh \
+            install.sh \
+            uninstall.sh \
+            openwrt/tachyon.init \
+            .githooks/pre-push
+
+      - name: Verify packager script syntax
+        run: python3 -m py_compile tools/build_openwrt_pkg.py

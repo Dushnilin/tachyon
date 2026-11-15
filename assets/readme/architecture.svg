@@ -1,0 +1,137 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1200" height="480" viewBox="0 0 1200 480"
+     role="img" aria-labelledby="title desc">
+  <title id="title">Архитектура конвейера трафика Tachyon</title>
+  <desc id="desc">Трёхступенчатая схема маршрутизации трафика в Tachyon 2.0: клиенты локальной сети LAN и политики доступа, ядро классификации и перехвата inet TachyonTable на Pure Rust, и пять выходных контуров (Direct WAN, Outbound Desync, прокси L4/L7, сетевые туннели AWG/WG/WARP/FPTN и Mesh/спецтранспорты Tailscale/WDTT).</desc>
+
+  <rect width="1200" height="480" rx="16" fill="#141415"/>
+  <rect x="0.5" y="0.5" width="1199" height="479" rx="15.5" fill="none" stroke="#2e2e32" stroke-width="1"/>
+
+  <!-- Header -->
+  <text x="32" y="40" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="20" font-weight="500">Конвейер классификации и маршрутизации трафика · inet TachyonTable + Rust</text>
+  <text x="32" y="64" fill="#85858b" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="14" font-weight="400">Прозрачный перехват соединений на уровне ядра Linux с распределением по целевым контурам без лишних переключений контекста</text>
+
+  <!-- Column 1: LAN & Clients (x=32, y=88, w=288, h=360) -->
+  <g transform="translate(32, 88)">
+    <rect x="0" y="0" width="288" height="360" rx="12" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
+    <text x="20" y="32" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">Этап 01 · Входящий контур LAN</text>
+    <text x="20" y="56" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="18" font-weight="500">Клиенты и политики</text>
+
+    <!-- Item 1 -->
+    <g transform="translate(16, 76)">
+      <rect x="0" y="0" width="256" height="60" rx="8" fill="#141415" stroke="#2e2e32" stroke-width="1"/>
+      <text x="16" y="24" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="14" font-weight="500">Устройства домашней сети</text>
+      <text x="16" y="44" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">Правила по IP, MAC и CIDR</text>
+    </g>
+
+    <!-- Item 2 -->
+    <g transform="translate(16, 144)">
+      <rect x="0" y="0" width="256" height="60" rx="8" fill="#141415" stroke="#2e2e32" stroke-width="1"/>
+      <text x="16" y="24" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="14" font-weight="500">Smart QoS и приоритеты</text>
+      <text x="16" y="44" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">DSCP для голоса, игр и RTC</text>
+    </g>
+
+    <!-- Item 3 -->
+    <g transform="translate(16, 212)">
+      <rect x="0" y="0" width="256" height="60" rx="8" fill="#141415" stroke="#2e2e32" stroke-width="1"/>
+      <text x="16" y="24" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="14" font-weight="500">Квоты и расписания</text>
+      <text x="16" y="44" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">Лимиты минут · MAC-пауза</text>
+    </g>
+
+    <!-- Item 4 -->
+    <g transform="translate(16, 280)">
+      <rect x="0" y="0" width="256" height="64" rx="8" fill="#141415" stroke="#2e2e32" stroke-width="1"/>
+      <text x="16" y="24" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="14" font-weight="500">Multi-WAN и Tailscale</text>
+      <text x="16" y="44" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">Фильтр подсети 100.64.0.0/10</text>
+    </g>
+  </g>
+
+  <!-- Connector 1 -> 2 -->
+  <line x1="320" y1="268" x2="348" y2="268" stroke="#2e2e32" stroke-width="1"/>
+
+  <!-- Column 2: Core Orchestrator (Highlighted Moment, x=348, y=88, w=344, h=360) -->
+  <g transform="translate(348, 88)">
+    <rect x="0" y="0" width="344" height="360" rx="12" fill="#19191b" stroke="#38bdf8" stroke-width="1" stroke-opacity="0.5"/>
+    <text x="20" y="32" fill="#38bdf8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">Этап 02 · Ядро оркестрации Tachyon</text>
+    <text x="20" y="56" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="18" font-weight="500">Классификатор и диспетчер</text>
+
+    <!-- Core block 1 -->
+    <g transform="translate(16, 76)">
+      <rect x="0" y="0" width="312" height="60" rx="8" fill="#141415" stroke="#2e2e32" stroke-width="1"/>
+      <text x="16" y="24" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="14" font-weight="500">Smart DNS Pipeline &amp; FakeIP</text>
+      <text x="16" y="44" fill="#a1a1a6" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="400">198.18.0.0/15 · dnsmasq → 127.0.0.42#53</text>
+    </g>
+
+    <!-- Core block 2 -->
+    <g transform="translate(16, 144)">
+      <rect x="0" y="0" width="312" height="60" rx="8" fill="#141415" stroke="#2e2e32" stroke-width="1"/>
+      <text x="16" y="24" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="14" font-weight="500">Материализация наборов правил</text>
+      <text x="16" y="44" fill="#a1a1a6" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="400">.trs · .srs · исключения Smart Detect</text>
+    </g>
+
+    <!-- Core block 3 -->
+    <g transform="translate(16, 212)">
+      <rect x="0" y="0" width="312" height="60" rx="8" fill="#141415" stroke="#2e2e32" stroke-width="1"/>
+      <text x="16" y="24" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="14" font-weight="500">Таблица inet TachyonTable</text>
+      <text x="16" y="44" fill="#a1a1a6" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">TProxy :1602 · fwmark 0x04000000</text>
+    </g>
+
+    <!-- Core block 4 -->
+    <g transform="translate(16, 280)">
+      <rect x="0" y="0" width="312" height="64" rx="8" fill="#141415" stroke="#2e2e32" stroke-width="1"/>
+      <text x="16" y="24" fill="#38bdf8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="14" font-weight="500">Watchdog и возврат чистого WAN</text>
+      <text x="16" y="44" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="400">LKG откат · restore_native_internet</text>
+    </g>
+  </g>
+
+  <!-- Connector 2 -> 3 -->
+  <line x1="692" y1="268" x2="720" y2="268" stroke="#2e2e32" stroke-width="1"/>
+
+  <!-- Column 3: 5 Outbound Contours (x=720, y=88, w=448, h=360) -->
+  <g transform="translate(720, 88)">
+    <!-- Out 1: Direct WAN -->
+    <g transform="translate(0, 0)">
+      <rect x="0" y="0" width="448" height="64" rx="12" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
+      <circle cx="20" cy="24" r="4" fill="#4cc38a"/>
+      <text x="32" y="28" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">1. Прямой маршрут (Direct WAN)</text>
+      <text x="428" y="28" text-anchor="end" fill="#4cc38a" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">0 ms overhead</text>
+      <text x="32" y="48" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="400">Банки, Госуслуги, локальные CDN и доверенные подсети</text>
+    </g>
+
+    <!-- Out 2: Outbound Desync -->
+    <g transform="translate(0, 74)">
+      <rect x="0" y="0" width="448" height="64" rx="12" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
+      <circle cx="20" cy="24" r="4" fill="#e5484d"/>
+      <text x="32" y="28" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">2. Встроенный Outbound Desync</text>
+      <text x="428" y="28" text-anchor="end" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">tachyon-core</text>
+      <text x="32" y="48" fill="#a1a1a6" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" font-weight="400">fake_disorder · fake_split · tlsrec · seqovl · syndata · oob</text>
+    </g>
+
+    <!-- Out 3: L4/L7 Proxy Protocols -->
+    <g transform="translate(0, 148)">
+      <rect x="0" y="0" width="448" height="64" rx="12" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
+      <circle cx="20" cy="24" r="4" fill="#38bdf8"/>
+      <text x="32" y="28" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">3. Прокси-протоколы L4/L7</text>
+      <text x="428" y="28" text-anchor="end" fill="#38bdf8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">Zero-C-Crypto</text>
+      <text x="32" y="48" fill="#a1a1a6" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" font-weight="400">VLESS Reality/XHTTP · Hysteria2 · TUIC · Trojan · VMess · SS2022</text>
+    </g>
+
+    <!-- Out 4: Network Tunnels -->
+    <g transform="translate(0, 222)">
+      <rect x="0" y="0" width="448" height="64" rx="12" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
+      <circle cx="20" cy="24" r="4" fill="#38bdf8"/>
+      <text x="32" y="28" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">4. Сетевые туннели: AWG, WG, WARP, FPTN</text>
+      <text x="428" y="28" text-anchor="end" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">L3 / UDP</text>
+      <text x="32" y="48" fill="#a1a1a6" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="400">AmneziaWG (.conf / CPS) · WireGuard · Cloudflare WARP · FPTN</text>
+    </g>
+
+    <!-- Out 5: Mesh & Special Transports -->
+    <g transform="translate(0, 296)">
+      <rect x="0" y="0" width="448" height="64" rx="12" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
+      <circle cx="20" cy="24" r="4" fill="#38bdf8"/>
+      <text x="32" y="28" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">5. Mesh и спецтранспорты: Tailscale, WDTT</text>
+      <text x="428" y="28" text-anchor="end" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">Mesh / L7</text>
+      <text x="32" y="48" fill="#a1a1a6" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="400">Tailscale (100.64.0.0/10, MagicDNS) · WDTT · Mieru · Naive · MASQUE</text>
+    </g>
+  </g>
+</svg>

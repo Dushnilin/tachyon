@@ -1,0 +1,10 @@
+{
+	"luci-app-tachyon-launcher": {
+		"description": "Grant access to Tachyon web panel launcher in LuCI",
+		"read": {
+			"ubus": {
+				"system": [ "board" ]
+			}
+		}
+	}
+}

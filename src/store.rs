@@ -26,6 +26,13 @@ pub const MAX_HONEYPOT_STRIKES: usize = 2048;
 pub const MAX_SESSIONS: usize = 64;
 pub const MAX_NODE_LATENCIES: usize = 2048;
 pub const MAX_JOBS: usize = 16;
+pub const LEGACY_UCI_BACKUP_PATH: &str = "/etc/tachyon/backup-pre-2.0/tachyon.uci";
+
+/// Effective Tachyon daemon version (supports prerelease SemVer via `TACHYON_BUILD_VERSION`).
+pub const TACHYON_VERSION: &str = match option_env!("TACHYON_BUILD_VERSION") {
+    Some(v) if !v.is_empty() => v,
+    _ => env!("CARGO_PKG_VERSION"),
+};
 
 pub fn unix_now_secs() -> i64 {
     SystemTime::now()
@@ -47,7 +54,7 @@ fn default_sidebar_pos() -> String {
 }
 
 fn default_accent_theme() -> String {
-    "purple".to_string()
+    "blue".to_string()
 }
 
 fn default_lang() -> String {
@@ -102,6 +109,140 @@ fn default_sub_title() -> String {
     "Tachyon Router".to_string()
 }
 
+fn default_tab_name() -> String {
+    "dashboard".to_string()
+}
+
+fn default_routing_strategy() -> String {
+    "split".to_string()
+}
+
+fn default_quiet_start() -> String {
+    "23:00".to_string()
+}
+
+fn default_quiet_end() -> String {
+    "07:00".to_string()
+}
+
+fn default_tunnel_section_name() -> String {
+    "Main".to_string()
+}
+
+fn default_tun_udp_timeout() -> String {
+    "5m".to_string()
+}
+
+fn default_tcp_profile() -> String {
+    "default".to_string()
+}
+
+fn default_threshold_3() -> u32 {
+    3
+}
+
+fn default_threshold_2() -> u32 {
+    2
+}
+
+fn default_threshold_5() -> u32 {
+    5
+}
+
+fn default_interval_60() -> u32 {
+    60
+}
+
+fn default_interval_180() -> u32 {
+    180
+}
+
+fn deserialize_string_or_number<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let v = serde_json::Value::deserialize(deserializer)?;
+    match v {
+        serde_json::Value::Null => Ok(String::new()),
+        serde_json::Value::String(s) => Ok(s),
+        serde_json::Value::Number(n) => Ok(n.to_string()),
+        serde_json::Value::Bool(b) => Ok(if b { "1" } else { "0" }.to_string()),
+        _ => Ok(String::new()),
+    }
+}
+
+fn default_retention_24() -> u32 {
+    24
+}
+
+fn default_dns_check_interval() -> String {
+    "30s".to_string()
+}
+
+fn default_dns_rec_interval() -> String {
+    "60s".to_string()
+}
+
+fn default_dns_check_timeout() -> String {
+    "5s".to_string()
+}
+
+fn default_fakeip_v4() -> String {
+    "198.18.0.0/15".to_string()
+}
+
+fn default_fakeip_v6() -> String {
+    "fc00::/18".to_string()
+}
+
+fn default_sub_engine() -> String {
+    "core".to_string()
+}
+
+fn default_comp_check_int() -> String {
+    "12h".to_string()
+}
+
+fn default_auto_upd_mode() -> String {
+    "immediate".to_string()
+}
+
+fn default_auto_upd_time() -> String {
+    "04:00".to_string()
+}
+
+fn default_latency_mode() -> String {
+    "standard".to_string()
+}
+
+fn default_engine_variant() -> String {
+    "tachyon-core".to_string()
+}
+
+fn default_qos_engine() -> String {
+    "auto".to_string()
+}
+
+fn default_off_str() -> String {
+    "off".to_string()
+}
+
+fn default_snapshot_max() -> u32 {
+    10
+}
+
+fn default_session_ttl() -> u32 {
+    86_400
+}
+
+fn default_ai_temp() -> f32 {
+    0.3
+}
+
+fn default_ai_max_tokens() -> u32 {
+    2048
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlobalSettings {
     pub config_version: String,
@@ -120,10 +261,12 @@ pub struct GlobalSettings {
     pub sidebar_pos: String,
     #[serde(default)]
     pub sidebar_collapsed: bool,
-    #[serde(default = "default_accent_theme")]
+    #[serde(default = "default_accent_theme", alias = "theme_accent")]
     pub accent_theme: String,
     #[serde(default = "default_lang")]
     pub lang: String,
+    #[serde(default = "default_tab_name")]
+    pub default_tab: String,
     #[serde(default = "default_dashboard_preset")]
     pub dashboard_preset: String,
     #[serde(default)]
@@ -134,6 +277,28 @@ pub struct GlobalSettings {
     pub tab_order: Vec<String>,
     #[serde(default)]
     pub hidden_tabs: Vec<String>,
+    #[serde(default = "default_true")]
+    pub show_tab_dashboard: bool,
+    #[serde(default = "default_true")]
+    pub show_tab_section: bool,
+    #[serde(default = "default_true")]
+    pub show_tab_server: bool,
+    #[serde(default = "default_true")]
+    pub show_tab_profile: bool,
+    #[serde(default = "default_true")]
+    pub show_tab_schedule: bool,
+    #[serde(default = "default_true")]
+    pub show_tab_guest_mode: bool,
+    #[serde(default = "default_true")]
+    pub show_tab_local_devices: bool,
+    #[serde(default = "default_true")]
+    pub show_tab_monitoring: bool,
+    #[serde(default = "default_true")]
+    pub show_tab_diagnostic: bool,
+    #[serde(default = "default_true")]
+    pub show_tab_updates: bool,
+    #[serde(default = "default_true")]
+    pub show_tab_telegram: bool,
 
     pub core_bin_path: String,
     pub core_config_path: String,
@@ -144,21 +309,63 @@ pub struct GlobalSettings {
     #[serde(default)]
     pub agent_api_token: String,
 
+    #[serde(default = "default_routing_strategy")]
+    pub routing_strategy: String,
+    #[serde(default = "default_tunnel_section_name")]
+    pub default_tunnel_section: String,
     #[serde(default = "default_proxy_mode")]
     pub proxy_mode: String,
     #[serde(default = "default_tun_iface")]
     pub tun_interface: String,
     #[serde(default = "default_tun_stack")]
     pub tun_stack: String,
+    #[serde(default = "default_true")]
+    pub tun_auto_route: bool,
     #[serde(default = "default_tun_mtu")]
     pub tun_mtu: u16,
+    #[serde(default)]
+    pub tun_gso: bool,
+    #[serde(default = "default_true")]
+    pub tun_endpoint_independent_nat: bool,
+    #[serde(default = "default_tun_udp_timeout")]
+    pub tun_udp_timeout: String,
+    #[serde(default, alias = "sqm_enabled")]
+    pub smart_queue: bool,
+    #[serde(default)]
+    pub sqm_download_kbps: u32,
+    #[serde(default)]
+    pub sqm_upload_kbps: u32,
+    #[serde(default)]
+    pub sqm_interface: String,
+    #[serde(default = "default_tcp_profile")]
+    pub tcp_profile: String,
+    #[serde(default = "default_true")]
+    pub selector_auto_failover: bool,
     pub source_network_interfaces: Vec<String>,
+    #[serde(default)]
+    pub enable_output_network_interface: bool,
+    #[serde(default)]
+    pub excluded_ips: Vec<String>,
     #[serde(default)]
     pub output_network_interface: String,
     #[serde(default)]
+    pub enable_badwan_interface_monitoring: bool,
+    #[serde(default)]
+    pub badwan_monitored_interfaces: Vec<String>,
+    #[serde(default = "default_threshold_5")]
+    pub badwan_reload_delay: u32,
+    #[serde(default)]
     pub enable_ipv6: bool,
+    #[serde(default = "default_true")]
+    pub enable_yacd: bool,
+    #[serde(default)]
+    pub enable_yacd_wan_access: bool,
+    #[serde(default)]
+    pub yacd_secret_key: String,
     #[serde(default)]
     pub disable_quic: bool,
+    #[serde(default = "default_off_str")]
+    pub disable_quic_mode: String,
     #[serde(default)]
     pub block_doh: bool,
     #[serde(default)]
@@ -166,16 +373,20 @@ pub struct GlobalSettings {
     #[serde(default)]
     pub route_router_traffic: bool,
     #[serde(default)]
-    pub wifi_calling_direct: bool,
+    pub route_router_traffic_section: String,
     #[serde(default)]
+    pub wifi_calling_direct: bool,
+    #[serde(default, alias = "torrent_isolation")]
     pub isolate_p2p: bool,
+    #[serde(default = "default_off_str")]
+    pub bittorrent_policy: String,
     #[serde(default)]
     pub p2p_ports: String,
     #[serde(default)]
     pub direct_bypass_enabled: bool,
     #[serde(default)]
     pub direct_bypass_port: u16,
-    #[serde(default)]
+    #[serde(default, alias = "console_gaming_mode")]
     pub game_console_optimizer: bool,
     #[serde(default)]
     pub game_console_ips: Vec<String>,
@@ -183,10 +394,12 @@ pub struct GlobalSettings {
     pub exclude_ntp: bool,
     #[serde(default)]
     pub dont_touch_dhcp: bool,
-    #[serde(default)]
+    #[serde(default, alias = "torrserver_direct")]
     pub torrserver_direct_enabled: bool,
     #[serde(default)]
     pub torrserver_ports: Vec<u16>,
+    #[serde(default)]
+    pub tailscale_enabled: bool,
 
     #[serde(default = "default_dns_type")]
     pub dns_type: String,
@@ -196,6 +409,20 @@ pub struct GlobalSettings {
     pub fallback_dns_server: String,
     #[serde(default)]
     pub dns_fallback_servers: Vec<String>,
+    #[serde(default)]
+    pub fallback_wan_main: bool,
+    #[serde(default)]
+    pub fallback_wan_bootstrap: bool,
+    #[serde(default = "default_dns_check_interval")]
+    pub dns_check_interval: String,
+    #[serde(default = "default_dns_rec_interval")]
+    pub dns_recovery_check_interval: String,
+    #[serde(default = "default_dns_check_timeout")]
+    pub dns_check_timeout: String,
+    #[serde(default = "default_threshold_3")]
+    pub dns_failure_threshold: u32,
+    #[serde(default = "default_threshold_2")]
+    pub dns_recovery_threshold: u32,
     #[serde(default)]
     pub dns_upstream_mode: String,
     #[serde(default = "default_dns_ttl")]
@@ -212,6 +439,14 @@ pub struct GlobalSettings {
     pub dns_turbo_cache: bool,
     #[serde(default)]
     pub dns_cache_size: u32,
+    #[serde(default)]
+    pub fakeip_enabled: bool,
+    #[serde(default = "default_fakeip_v4")]
+    pub fakeip_inet4_range: String,
+    #[serde(default = "default_fakeip_v6")]
+    pub fakeip_inet6_range: String,
+    #[serde(default)]
+    pub fakeip_exclude: Vec<String>,
 
     #[serde(default)]
     pub hosts_enabled: bool,
@@ -221,6 +456,8 @@ pub struct GlobalSettings {
     pub static_hosts: Vec<String>,
     #[serde(default)]
     pub github_mirror: String,
+    #[serde(default)]
+    pub github_token: String,
 
     #[serde(default = "default_true")]
     pub enable_watchdog: bool,
@@ -232,6 +469,10 @@ pub struct GlobalSettings {
     pub wan_failover_backup: String,
     #[serde(default)]
     pub wan_failover_probe_hosts: Vec<String>,
+    #[serde(default = "default_threshold_3")]
+    pub wan_failover_failure_threshold: u32,
+    #[serde(default = "default_threshold_3")]
+    pub wan_failover_recovery_threshold: u32,
     #[serde(default)]
     pub recovery_bypass: bool,
     #[serde(default)]
@@ -247,21 +488,57 @@ pub struct GlobalSettings {
     pub smart_detect_expand_to_root: bool,
     #[serde(default)]
     pub smart_detect_sections: Vec<String>,
+    #[serde(default)]
+    pub smart_detect_section: String,
+    #[serde(default)]
+    pub smart_detect_exclude: Vec<String>,
+    #[serde(default)]
+    pub smart_detect_exclude_lists: Vec<String>,
 
+    #[serde(default = "default_sub_engine")]
+    pub subscription_engine: String,
     #[serde(default = "default_true")]
     pub list_update_enabled: bool,
     #[serde(default)]
     pub update_interval: String,
     #[serde(default)]
+    pub download_all_presets: bool,
+    #[serde(default)]
     pub download_lists_via_proxy: bool,
     #[serde(default)]
     pub download_lists_via_proxy_section: String,
+    #[serde(default)]
+    pub download_components_via_proxy: bool,
+    #[serde(default)]
+    pub download_components_via_proxy_section: String,
     #[serde(default = "default_true")]
     pub component_update_check_enabled: bool,
+    #[serde(default = "default_comp_check_int")]
+    pub component_update_check_interval: String,
     #[serde(default)]
     pub component_auto_update_enabled: bool,
+    #[serde(default = "default_auto_upd_mode")]
+    pub component_auto_update_mode: String,
+    #[serde(default = "default_auto_upd_time")]
+    pub component_auto_update_time: String,
+    #[serde(default)]
+    pub component_auto_update_window_start: String,
+    #[serde(default)]
+    pub component_auto_update_window_end: String,
+    #[serde(default)]
+    pub component_auto_update_max_connections: u32,
+    #[serde(default)]
+    pub component_auto_update_max_clients: u32,
+    #[serde(default)]
+    pub component_auto_update_targets: Vec<String>,
+    #[serde(default = "default_true")]
+    pub component_backup_enabled: bool,
     #[serde(default = "default_latency_url")]
     pub latency_test_url: String,
+    #[serde(default = "default_latency_mode")]
+    pub latency_test_mode: String,
+    #[serde(default = "default_engine_variant")]
+    pub engine_variant: String,
 
     #[serde(default = "default_true")]
     pub server_subscription_enabled: bool,
@@ -297,6 +574,61 @@ pub struct GlobalSettings {
     pub ai_doctor_custom_url: String,
     #[serde(default)]
     pub ai_doctor_lang: String,
+    #[serde(default = "default_true")]
+    pub ai_proxy_health_enabled: bool,
+    #[serde(default = "default_interval_60")]
+    pub ai_proxy_health_interval: u32,
+    #[serde(default = "default_threshold_3")]
+    pub ai_proxy_health_fail_threshold: u32,
+    #[serde(default = "default_latency_url")]
+    pub ai_proxy_health_url: String,
+    #[serde(default = "default_true")]
+    pub ai_dns_continuous_enabled: bool,
+    #[serde(default = "default_interval_180")]
+    pub ai_dns_interval: u32,
+    #[serde(default = "default_true")]
+    pub ai_reload_dedup_enabled: bool,
+    #[serde(default = "default_true")]
+    pub ai_metrics_enabled: bool,
+    #[serde(default = "default_retention_24")]
+    pub ai_metrics_retention_hours: u32,
+    #[serde(default = "default_true")]
+    pub ai_smart_cooldowns_enabled: bool,
+    #[serde(default = "default_true")]
+    pub ai_config_validation_enabled: bool,
+    #[serde(default = "default_true")]
+    pub ai_graceful_degradation_enabled: bool,
+    #[serde(default = "default_true")]
+    pub ai_persistent_smart_detect: bool,
+    #[serde(default)]
+    pub ai_adaptive_intervals_enabled: bool,
+    #[serde(default)]
+    pub ai_anomaly_detection_enabled: bool,
+    #[serde(default = "default_threshold_5")]
+    pub ai_anomaly_reconnect_threshold: u32,
+
+    #[serde(default = "default_true")]
+    pub section_failover_enabled: bool,
+    #[serde(default = "default_threshold_3")]
+    pub section_failover_threshold: u32,
+    #[serde(default)]
+    pub dns_doq_ech: bool,
+    #[serde(default = "default_qos_engine")]
+    pub qos_priority_engine: String,
+    #[serde(default)]
+    pub warp_proxy_section: String,
+    #[serde(default = "default_true", alias = "snapshot_enable")]
+    pub snapshot_enabled: bool,
+    #[serde(default = "default_snapshot_max", alias = "snapshot_max")]
+    pub snapshot_max_count: u32,
+    #[serde(default)]
+    pub cors_origins: Vec<String>,
+    #[serde(default = "default_session_ttl")]
+    pub session_ttl_secs: u32,
+    #[serde(default = "default_ai_temp")]
+    pub ai_temperature: f32,
+    #[serde(default = "default_ai_max_tokens")]
+    pub ai_max_tokens: u32,
 }
 
 impl Default for GlobalSettings {
@@ -316,8 +648,9 @@ impl Default for GlobalSettings {
             lite_mode: false,
             sidebar_pos: "left".to_string(),
             sidebar_collapsed: false,
-            accent_theme: "purple".to_string(),
+            accent_theme: "blue".to_string(),
             lang: "ru".to_string(),
+            default_tab: "dashboard".to_string(),
             dashboard_preset: "standard".to_string(),
             dashboard_widgets_json: String::new(),
             studio_views_json: r#"{"sections":"cards","outbounds":"cards","conditions":"pipeline","balancers":"cards"}"#.to_string(),
@@ -336,26 +669,60 @@ impl Default for GlobalSettings {
                 "settings".to_string(),
             ],
             hidden_tabs: Vec::new(),
+            show_tab_dashboard: true,
+            show_tab_section: true,
+            show_tab_server: true,
+            show_tab_profile: true,
+            show_tab_schedule: true,
+            show_tab_guest_mode: true,
+            show_tab_local_devices: true,
+            show_tab_monitoring: true,
+            show_tab_diagnostic: true,
+            show_tab_updates: true,
+            show_tab_telegram: true,
             core_bin_path: "/usr/bin/tachyon-core".to_string(),
             core_config_path: "/etc/tachyon-core/config.json".to_string(),
-            cache_path: "/usr/share/tachyon-core/cache.db".to_string(),
+            cache_path: "/tmp/tachyon-core/cache.db".to_string(),
             rulesets_dir: "/etc/tachyon/rulesets".to_string(),
             clash_api_addr: "127.0.0.1:9090".to_string(),
             clash_api_secret: crypto_gen::generate_alnum(24),
             agent_api_token: crypto_gen::generate_alnum(32),
+            routing_strategy: "split".to_string(),
+            default_tunnel_section: "Main".to_string(),
             proxy_mode: "tproxy".to_string(),
             tun_interface: "tun0".to_string(),
             tun_stack: "mixed".to_string(),
+            tun_auto_route: true,
             tun_mtu: 9000,
+            tun_gso: false,
+            tun_endpoint_independent_nat: true,
+            tun_udp_timeout: "5m".to_string(),
+            smart_queue: false,
+            sqm_download_kbps: 0,
+            sqm_upload_kbps: 0,
+            sqm_interface: "wan".to_string(),
+            tcp_profile: "default".to_string(),
+            selector_auto_failover: true,
             source_network_interfaces: vec!["br-lan".to_string()],
+            enable_output_network_interface: false,
+            excluded_ips: Vec::new(),
             output_network_interface: String::new(),
+            enable_badwan_interface_monitoring: false,
+            badwan_monitored_interfaces: Vec::new(),
+            badwan_reload_delay: 5,
             enable_ipv6: false,
+            enable_yacd: true,
+            enable_yacd_wan_access: false,
+            yacd_secret_key: String::new(),
             disable_quic: false,
+            disable_quic_mode: "off".to_string(),
             block_doh: false,
             webrtc_leak_protect: false,
             route_router_traffic: false,
+            route_router_traffic_section: String::new(),
             wifi_calling_direct: false,
             isolate_p2p: false,
+            bittorrent_policy: "off".to_string(),
             p2p_ports: "tcp:6881,udp:6881-6889".to_string(),
             direct_bypass_enabled: false,
             direct_bypass_port: 2080,
@@ -365,11 +732,19 @@ impl Default for GlobalSettings {
             dont_touch_dhcp: false,
             torrserver_direct_enabled: false,
             torrserver_ports: vec![8090],
+            tailscale_enabled: false,
             dns_type: "udp".to_string(),
             dns_servers: vec!["77.88.8.8".to_string(), "77.88.8.1".to_string(), "9.9.9.9".to_string()],
             bootstrap_dns_servers: vec!["77.88.8.8".to_string(), "1.1.1.1".to_string()],
             fallback_dns_server: "1.0.0.1".to_string(),
             dns_fallback_servers: vec!["1.0.0.1".to_string(), "77.88.8.1".to_string()],
+            fallback_wan_main: false,
+            fallback_wan_bootstrap: false,
+            dns_check_interval: "30s".to_string(),
+            dns_recovery_check_interval: "60s".to_string(),
+            dns_check_timeout: "5s".to_string(),
+            dns_failure_threshold: 3,
+            dns_recovery_threshold: 2,
             dns_upstream_mode: "parallel".to_string(),
             dns_rewrite_ttl: 60,
             dns_strategy: "prefer_ipv4".to_string(),
@@ -378,15 +753,22 @@ impl Default for GlobalSettings {
             dns_local_cache: true,
             dns_turbo_cache: true,
             dns_cache_size: 10000,
+            fakeip_enabled: false,
+            fakeip_inet4_range: "198.18.0.0/15".to_string(),
+            fakeip_inet6_range: "fc00::/18".to_string(),
+            fakeip_exclude: Vec::new(),
             hosts_enabled: false,
             hosts_list_urls: Vec::new(),
             static_hosts: Vec::new(),
             github_mirror: String::new(),
+            github_token: String::new(),
             enable_watchdog: true,
             wan_failover_enabled: false,
             wan_failover_primary: "wan".to_string(),
             wan_failover_backup: "wan2".to_string(),
             wan_failover_probe_hosts: vec!["77.88.8.8".to_string(), "1.1.1.1".to_string()],
+            wan_failover_failure_threshold: 3,
+            wan_failover_recovery_threshold: 3,
             recovery_bypass: false,
             memory_limit_mb: 0,
             log_level: "warn".to_string(),
@@ -394,13 +776,31 @@ impl Default for GlobalSettings {
             smart_detect_mode: "default".to_string(),
             smart_detect_expand_to_root: true,
             smart_detect_sections: vec!["Main".to_string()],
+            smart_detect_section: "Main".to_string(),
+            smart_detect_exclude: Vec::new(),
+            smart_detect_exclude_lists: Vec::new(),
+            subscription_engine: "core".to_string(),
             list_update_enabled: true,
             update_interval: "3h".to_string(),
+            download_all_presets: false,
             download_lists_via_proxy: true,
             download_lists_via_proxy_section: "Main".to_string(),
+            download_components_via_proxy: false,
+            download_components_via_proxy_section: "Main".to_string(),
             component_update_check_enabled: true,
+            component_update_check_interval: "12h".to_string(),
             component_auto_update_enabled: false,
+            component_auto_update_mode: "immediate".to_string(),
+            component_auto_update_time: "04:00".to_string(),
+            component_auto_update_window_start: "02:00".to_string(),
+            component_auto_update_window_end: "06:00".to_string(),
+            component_auto_update_max_connections: 0,
+            component_auto_update_max_clients: 0,
+            component_auto_update_targets: Vec::new(),
+            component_backup_enabled: true,
             latency_test_url: "https://www.gstatic.com/generate_204".to_string(),
+            latency_test_mode: "standard".to_string(),
+            engine_variant: "tachyon-core".to_string(),
             server_subscription_enabled: true,
             server_subscription_token: crypto_gen::generate_hex(24),
             server_subscription_host: "192.168.1.205".to_string(),
@@ -417,6 +817,33 @@ impl Default for GlobalSettings {
             ai_doctor_api_key: String::new(),
             ai_doctor_custom_url: String::new(),
             ai_doctor_lang: "ru".to_string(),
+            ai_proxy_health_enabled: true,
+            ai_proxy_health_interval: 60,
+            ai_proxy_health_fail_threshold: 3,
+            ai_proxy_health_url: "https://www.gstatic.com/generate_204".to_string(),
+            ai_dns_continuous_enabled: true,
+            ai_dns_interval: 180,
+            ai_reload_dedup_enabled: true,
+            ai_metrics_enabled: true,
+            ai_metrics_retention_hours: 24,
+            ai_smart_cooldowns_enabled: true,
+            ai_config_validation_enabled: true,
+            ai_graceful_degradation_enabled: true,
+            ai_persistent_smart_detect: true,
+            ai_adaptive_intervals_enabled: false,
+            ai_anomaly_detection_enabled: false,
+            ai_anomaly_reconnect_threshold: 5,
+            section_failover_enabled: true,
+            section_failover_threshold: 3,
+            dns_doq_ech: false,
+            qos_priority_engine: "auto".to_string(),
+            warp_proxy_section: String::new(),
+            snapshot_enabled: true,
+            snapshot_max_count: 10,
+            cors_origins: Vec::new(),
+            session_ttl_secs: 86_400,
+            ai_temperature: 0.3,
+            ai_max_tokens: 2048,
         }
     }
 }
@@ -453,6 +880,8 @@ pub struct RoutingSection {
     pub match_all: bool,
     #[serde(default, alias = "source_refs")]
     pub outbound_source_refs: Vec<String>,
+    #[serde(default)]
+    pub section_refs: Vec<String>,
     #[serde(default)]
     pub balancer_refs: Vec<String>,
     #[serde(default)]
@@ -616,6 +1045,45 @@ pub struct RoutingSection {
     #[serde(default, alias = "selected_node_tag")]
     pub active_selected_tag: String,
 
+    #[serde(default)]
+    pub bind_interface: String,
+    #[serde(default)]
+    pub tailscale_mode: String,
+    #[serde(default)]
+    pub tailscale_auth_key: String,
+    #[serde(default)]
+    pub tailscale_control_url: String,
+    #[serde(default)]
+    pub tailscale_hostname: String,
+    #[serde(default, alias = "tailscale_exit_node")]
+    pub tailscale_use_exit_node: String,
+    #[serde(default)]
+    pub tailscale_ephemeral: bool,
+    #[serde(default)]
+    pub tailscale_exit_node_allow_lan_access: bool,
+    #[serde(default = "default_true")]
+    pub tailscale_accept_routes: bool,
+    #[serde(default)]
+    pub tailscale_advertise_routes: Vec<String>,
+    #[serde(default)]
+    pub tailscale_advertise_exit_node: bool,
+    #[serde(default = "default_true")]
+    pub tailscale_accept_dns: bool,
+    #[serde(default = "default_true")]
+    pub tailscale_accept_default_resolvers: bool,
+    #[serde(default, deserialize_with = "deserialize_string_or_number")]
+    pub tailscale_relay_server_port: String,
+    #[serde(default)]
+    pub tailscale_relay_server_static_endpoints: Vec<String>,
+    #[serde(default)]
+    pub tailscale_system_interface: bool,
+    #[serde(default)]
+    pub tailscale_system_interface_name: String,
+    #[serde(default, deserialize_with = "deserialize_string_or_number")]
+    pub tailscale_system_interface_mtu: String,
+    #[serde(default)]
+    pub tailscale_udp_timeout: String,
+
     // Provider-specific inline configuration (Desync 2.0, Zapret2, Zapret, ByeDPI, WDTT, OlcRTC, FPTN, AWG, Hosts)
     #[serde(default)]
     pub desync_preset: String,
@@ -653,6 +1121,16 @@ pub struct RoutingSection {
     pub desync_udp_fake_ttl: u8,
     #[serde(default)]
     pub desync_udplen: u16,
+    #[serde(default)]
+    pub desync_host_fake: bool,
+    #[serde(default)]
+    pub desync_wscale: Option<u8>,
+    #[serde(default)]
+    pub desync_sni_pool: Vec<String>,
+    #[serde(default)]
+    pub desync_fake_payload: String,
+    #[serde(default)]
+    pub desync_fake_tls: String,
     #[serde(default)]
     pub desync_opts: String,
     #[serde(default)]
@@ -695,6 +1173,65 @@ pub struct RoutingSection {
     pub dns_hosts: String,
     #[serde(default)]
     pub hosts_list_urls: Vec<String>,
+    /// CSQTT / WDTT v3
+    #[serde(default)]
+    pub warp_flow_device_id: String,
+    #[serde(default)]
+    pub wdtt_native: bool,
+    #[serde(default)]
+    pub wdtt_workers: u16,
+    #[serde(default)]
+    pub wdtt_mtu: u16,
+    #[serde(default)]
+    pub csqtt_server: String,
+    #[serde(default)]
+    pub csqtt_server_port: u16,
+    #[serde(default)]
+    pub csqtt_password: String,
+    #[serde(default)]
+    pub csqtt_mode: String,
+    #[serde(default)]
+    pub csqtt_obfs: String,
+    #[serde(default)]
+    pub csqtt_raw_port: u16,
+    #[serde(default)]
+    pub csqtt_wg_port: u16,
+    #[serde(default)]
+    pub csqtt_local_port: u16,
+    #[serde(default)]
+    pub csqtt_hashes: Vec<String>,
+    #[serde(default)]
+    pub csqtt_workers: u16,
+    #[serde(default)]
+    pub csqtt_turn_transport: String,
+    #[serde(default)]
+    pub csqtt_turn_server: String,
+    #[serde(default)]
+    pub csqtt_turn_urls: Vec<String>,
+    #[serde(default)]
+    pub csqtt_turn_username: String,
+    #[serde(default)]
+    pub csqtt_turn_password: String,
+    #[serde(default)]
+    pub csqtt_vk_auth_mode: String,
+    #[serde(default)]
+    pub csqtt_vk_cookie: String,
+    #[serde(default)]
+    pub csqtt_vk_client_ids: Vec<String>,
+    #[serde(default)]
+    pub csqtt_mtu: u16,
+    #[serde(default)]
+    pub csqtt_device_id: String,
+    #[serde(default)]
+    pub csqtt_uri: String,
+    #[serde(default)]
+    pub csqtt_chunk1: bool,
+    #[serde(default)]
+    pub csqtt_wg_private_key: String,
+    #[serde(default)]
+    pub csqtt_wg_peer_public_key: String,
+    #[serde(default)]
+    pub csqtt_wg_address: String,
     #[serde(default)]
     pub hosts_list_auto_update: bool,
     #[serde(default)]
@@ -758,6 +1295,22 @@ pub struct TrafficCondition {
     /// Optional `time_window` schedule (e.g. `22:00-08:00` or `mon,tue,wed,thu,fri 09:00-18:00`).
     #[serde(default)]
     pub time_window: String,
+    #[serde(default)]
+    pub expression: String,
+    #[serde(default)]
+    pub invert: bool,
+    #[serde(default)]
+    pub rule_set: Vec<String>,
+    #[serde(default)]
+    pub rule_set_with_subnets: Vec<String>,
+    #[serde(default)]
+    pub domain_ip_lists: Vec<String>,
+    #[serde(default)]
+    pub fully_routed_ips: Vec<String>,
+    #[serde(default)]
+    pub source_macs: Vec<String>,
+    #[serde(default)]
+    pub source_inbounds: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -779,12 +1332,21 @@ pub struct OutboundSource {
     #[serde(default = "default_true")]
     pub enabled: bool,
     pub name: String,
-    /// `subscription`, `proxy_links`, `custom_json`, `interface`, `desync`, `wdtt`, `fptn`, `tailscale`, `warp`, `mtproto`, `wireguard`, `awg`
+    /// `subscription`, `proxy_links`, `amnezia_config`, `awg`, `wireguard`, `warp`, `fptn`,
+    /// `openvpn`, `anytls`, `naive`, `mieru`, `snell`, `sudoku`, `masque`, `openconnect`,
+    /// `shadowtls`, `trusttunnel`, `tewfai`, `desync`, `zapret2`, `zapret`, `byedpi`,
+    /// `tor`, `tailscale`, `interface`, `custom_json`, `mtproto`
     pub source_type: String,
     #[serde(default)]
     pub subscription_urls: Vec<String>,
     #[serde(default)]
     pub subscription_update_interval: String,
+    #[serde(default)]
+    pub subscription_update_jitter: String,
+    #[serde(default)]
+    pub subscription_engine: String,
+    #[serde(default)]
+    pub subscription_insecure: bool,
     #[serde(default)]
     pub sub_title: String,
     #[serde(default)]
@@ -799,6 +1361,58 @@ pub struct OutboundSource {
     pub custom_json: String,
     #[serde(default)]
     pub interface_name: String,
+
+    /// Shared direct protocol endpoint fields
+    #[serde(default)]
+    pub server: String,
+    #[serde(default)]
+    pub server_port: u16,
+    #[serde(default)]
+    pub username: String,
+    #[serde(default)]
+    pub password: String,
+    #[serde(default)]
+    pub psk: String,
+    #[serde(default)]
+    pub uuid: String,
+    #[serde(default)]
+    pub method: String,
+    #[serde(default)]
+    pub flow: String,
+    #[serde(default)]
+    pub transport: String,
+    #[serde(default)]
+    pub transport_path: String,
+    #[serde(default)]
+    pub transport_host: String,
+    #[serde(default)]
+    pub reality_public_key: String,
+    #[serde(default)]
+    pub reality_short_id: String,
+    #[serde(default)]
+    pub tcp_fast_open: bool,
+    #[serde(default)]
+    pub multiplex_enabled: bool,
+    #[serde(default)]
+    pub multiplex_protocol: String,
+    #[serde(default)]
+    pub multiplex_max_connections: u16,
+    #[serde(default)]
+    pub multiplex_padding: bool,
+    #[serde(default)]
+    pub sni: String,
+    #[serde(default)]
+    pub tls_sni: String,
+    #[serde(default)]
+    pub insecure: bool,
+    #[serde(default)]
+    pub tls_insecure: bool,
+
+    /// Amnezia .conf
+    #[serde(default)]
+    pub amnezia_configs: Vec<String>,
+    #[serde(default)]
+    pub amnezia_conf_text: String,
 
     /// Native `tachyon-core` Desync settings (`adaptive`, `auto`, `tls_split`, `multisplit`, `disorder`, `fake_split`, `custom`).
     #[serde(default)]
@@ -818,6 +1432,38 @@ pub struct OutboundSource {
     pub desync_fooling: String,
     #[serde(default)]
     pub desync_quic_fake: bool,
+    #[serde(default)]
+    pub desync_mode: String,
+    #[serde(default)]
+    pub desync_repeats: u8,
+    #[serde(default)]
+    pub desync_split_delay_ms: u16,
+    #[serde(default)]
+    pub desync_tlsrec_first: bool,
+    #[serde(default)]
+    pub desync_seqovl: u16,
+    #[serde(default)]
+    pub desync_syndata: bool,
+    #[serde(default)]
+    pub desync_wsize: u16,
+    #[serde(default)]
+    pub desync_ipfrag: bool,
+    #[serde(default)]
+    pub desync_udplen: u16,
+    #[serde(default)]
+    pub desync_udp_repeats: u8,
+    #[serde(default)]
+    pub desync_udp_fake_ttl: u8,
+    #[serde(default)]
+    pub desync_host_fake: bool,
+    #[serde(default)]
+    pub desync_wscale: Option<u8>,
+    #[serde(default)]
+    pub desync_fake_payload: String,
+    #[serde(default)]
+    pub desync_fake_tls: String,
+    #[serde(default)]
+    pub desync_opts: String,
 
     /// WireGuard / AmneziaWG client & UDP port hopping parameters.
     #[serde(default)]
@@ -833,6 +1479,10 @@ pub struct OutboundSource {
     #[serde(default)]
     pub wg_mtu: u16,
     #[serde(default)]
+    pub awg_version: String,
+    #[serde(default)]
+    pub awg_keepalive: u16,
+    #[serde(default)]
     pub awg_jc: u16,
     #[serde(default)]
     pub awg_jmin: u16,
@@ -843,6 +1493,10 @@ pub struct OutboundSource {
     #[serde(default)]
     pub awg_s2: u16,
     #[serde(default)]
+    pub awg_s3: u16,
+    #[serde(default)]
+    pub awg_s4: u16,
+    #[serde(default)]
     pub awg_h1: u32,
     #[serde(default)]
     pub awg_h2: u32,
@@ -850,6 +1504,24 @@ pub struct OutboundSource {
     pub awg_h3: u32,
     #[serde(default)]
     pub awg_h4: u32,
+    #[serde(default)]
+    pub awg_i1: String,
+    #[serde(default)]
+    pub awg_i2: String,
+    #[serde(default)]
+    pub awg_i3: String,
+    #[serde(default)]
+    pub awg_i4: String,
+    #[serde(default)]
+    pub awg_i5: String,
+    #[serde(default)]
+    pub awg_j1: String,
+    #[serde(default)]
+    pub awg_j2: String,
+    #[serde(default)]
+    pub awg_j3: String,
+    #[serde(default)]
+    pub awg_itime: u32,
     #[serde(default)]
     pub server_ports: Vec<String>,
     #[serde(default)]
@@ -866,18 +1538,256 @@ pub struct OutboundSource {
     pub warp_ipv4: String,
     #[serde(default)]
     pub warp_ipv6: String,
+    #[serde(default)]
+    pub warp_private_key: String,
+    #[serde(default)]
+    pub warp_peer_public_key: String,
+    #[serde(default)]
+    pub warp_server: String,
+    #[serde(default)]
+    pub warp_server_port: u16,
+    #[serde(default)]
+    pub warp_reserved: String,
+    #[serde(default)]
+    pub warp_mtu: u16,
+    #[serde(default)]
+    pub warp_fake_packets: String,
+    #[serde(default)]
+    pub warp_fake_packets_size: String,
+    #[serde(default)]
+    pub warp_fake_packets_delay: String,
+    #[serde(default)]
+    pub warp_fake_packets_mode: String,
+
+    /// FPTN
+    #[serde(default)]
+    pub fptn_access_token: String,
+    #[serde(default)]
+    pub fptn_sni: String,
+    #[serde(default)]
+    pub fptn_bypass_method: String,
+    #[serde(default)]
+    pub fptn_preferred_server: String,
+
+    /// OpenVPN (15 fields)
+    #[serde(default)]
+    pub openvpn_proto: String,
+    #[serde(default)]
+    pub openvpn_cipher: String,
+    #[serde(default)]
+    pub openvpn_auth: String,
+    #[serde(default)]
+    pub openvpn_mtu: u16,
+    #[serde(default)]
+    pub openvpn_ca: String,
+    #[serde(default)]
+    pub openvpn_cert: String,
+    #[serde(default)]
+    pub openvpn_key: String,
+    #[serde(default)]
+    pub openvpn_tls_auth: String,
+    #[serde(default)]
+    pub openvpn_tls_crypt: String,
+    #[serde(default)]
+    pub openvpn_key_direction: String,
+    #[serde(default)]
+    pub openvpn_config: String,
+
+    /// AnyTLS
+    #[serde(default)]
+    pub anytls_alpn: Vec<String>,
+    #[serde(default)]
+    pub anytls_idle_session_check_interval: String,
+    #[serde(default)]
+    pub anytls_idle_session_timeout: String,
+    #[serde(default)]
+    pub anytls_min_idle_session: u32,
+
+    /// Snell
+    #[serde(default)]
+    pub snell_version: u8,
+    #[serde(default)]
+    pub snell_obfs: String,
+    #[serde(default)]
+    pub snell_obfs_host: String,
+    #[serde(default)]
+    pub snell_uot: bool,
+
+    /// Mieru
+    #[serde(default)]
+    pub mieru_transport: String,
+    #[serde(default)]
+    pub mieru_multiplexing: String,
+    #[serde(default)]
+    pub mieru_handshake_mode: String,
+
+    /// NaiveProxy
+    #[serde(default)]
+    pub naive_quic: bool,
+    #[serde(default)]
+    pub naive_quic_congestion_control: String,
+    #[serde(default)]
+    pub naive_insecure_concurrency: u32,
+    #[serde(default)]
+    pub naive_udp_over_tcp: bool,
+    #[serde(default)]
+    pub naive_extra_headers: String,
+
+    /// Sudoku
+    #[serde(default)]
+    pub sudoku_aead: String,
+    #[serde(default)]
+    pub sudoku_ascii: bool,
+    #[serde(default)]
+    pub sudoku_http_mask: bool,
+    #[serde(default)]
+    pub sudoku_http_mask_host: String,
+
+    /// MASQUE
+    #[serde(default)]
+    pub masque_vhttp: bool,
+    #[serde(default)]
+    pub masque_public_key: String,
+    #[serde(default)]
+    pub masque_local_address: String,
+    #[serde(default)]
+    pub masque_ipv6: String,
+    #[serde(default)]
+    pub masque_uri: String,
+    #[serde(default)]
+    pub masque_mtu: u16,
+
+    /// OpenConnect
+    #[serde(default)]
+    pub openconnect_protocol: String,
+    #[serde(default)]
+    pub openconnect_authgroup: String,
+    #[serde(default)]
+    pub openconnect_servercert: String,
+    #[serde(default)]
+    pub openconnect_no_dtls: bool,
+
+    /// ShadowTLS
+    #[serde(default)]
+    pub shadowtls_version: u8,
+
+    /// TrustTunnel
+    #[serde(default)]
+    pub trusttunnel_quic: bool,
+    #[serde(default)]
+    pub trusttunnel_health_check: bool,
+
+    /// TewFai
+    #[serde(default)]
+    pub tewfai_transport: String,
+    #[serde(default)]
+    pub tewfai_inner_cipher: String,
+    #[serde(default)]
+    pub tewfai_morph_profile: String,
+    #[serde(default)]
+    pub tewfai_desync_enabled: bool,
+
+    /// CSQTT / WDTT v3
+    #[serde(default)]
+    pub csqtt_server: String,
+    #[serde(default)]
+    pub csqtt_server_port: u16,
+    #[serde(default)]
+    pub csqtt_password: String,
+    #[serde(default)]
+    pub csqtt_mode: String,
+    #[serde(default)]
+    pub csqtt_obfs: String,
+    #[serde(default)]
+    pub csqtt_raw_port: u16,
+    #[serde(default)]
+    pub csqtt_wg_port: u16,
+    #[serde(default)]
+    pub csqtt_local_port: u16,
+    #[serde(default)]
+    pub csqtt_hashes: Vec<String>,
+    #[serde(default)]
+    pub csqtt_workers: u16,
+    #[serde(default)]
+    pub csqtt_turn_transport: String,
+    #[serde(default)]
+    pub csqtt_turn_server: String,
+    #[serde(default)]
+    pub csqtt_turn_urls: Vec<String>,
+    #[serde(default)]
+    pub csqtt_turn_username: String,
+    #[serde(default)]
+    pub csqtt_turn_password: String,
+    #[serde(default)]
+    pub csqtt_vk_auth_mode: String,
+    #[serde(default)]
+    pub csqtt_vk_cookie: String,
+    #[serde(default)]
+    pub csqtt_vk_client_ids: Vec<String>,
+    #[serde(default)]
+    pub csqtt_mtu: u16,
+    #[serde(default)]
+    pub csqtt_device_id: String,
+    #[serde(default)]
+    pub csqtt_uri: String,
+    #[serde(default)]
+    pub csqtt_chunk1: bool,
+    #[serde(default)]
+    pub csqtt_wg_private_key: String,
+    #[serde(default)]
+    pub csqtt_wg_peer_public_key: String,
+    #[serde(default)]
+    pub csqtt_wg_address: String,
+
+    /// Tor
+    #[serde(default)]
+    pub tor_socks_port: u16,
+    #[serde(default)]
+    pub tor_bridges: Vec<String>,
 
     /// MTProto `telegram-ws` / `kws` mode.
     #[serde(default)]
     pub mtproto_telegram_ws: bool,
 
-    /// Tailscale native outbound config.
+    /// Tailscale native or embedded outbound config.
+    #[serde(default)]
+    pub tailscale_mode: String,
     #[serde(default)]
     pub tailscale_auth_key: String,
     #[serde(default)]
     pub tailscale_control_url: String,
     #[serde(default)]
     pub tailscale_hostname: String,
+    #[serde(default, alias = "tailscale_exit_node")]
+    pub tailscale_use_exit_node: String,
+    #[serde(default)]
+    pub tailscale_ephemeral: bool,
+    #[serde(default)]
+    pub tailscale_exit_node_allow_lan_access: bool,
+    #[serde(default = "default_true")]
+    pub tailscale_accept_routes: bool,
+    #[serde(default)]
+    pub tailscale_advertise_routes: Vec<String>,
+    #[serde(default)]
+    pub tailscale_advertise_exit_node: bool,
+    #[serde(default = "default_true")]
+    pub tailscale_accept_dns: bool,
+    #[serde(default = "default_true")]
+    pub tailscale_accept_default_resolvers: bool,
+    #[serde(default, deserialize_with = "deserialize_string_or_number")]
+    pub tailscale_relay_server_port: String,
+    #[serde(default)]
+    pub tailscale_relay_server_static_endpoints: Vec<String>,
+    #[serde(default)]
+    pub tailscale_system_interface: bool,
+    #[serde(default)]
+    pub tailscale_system_interface_name: String,
+    #[serde(default, deserialize_with = "deserialize_string_or_number")]
+    pub tailscale_system_interface_mtu: String,
+    #[serde(default)]
+    pub tailscale_udp_timeout: String,
+    #[serde(default)]
+    pub fail_policy: String,
 
     #[serde(default)]
     pub filter_allow_regex: String,
@@ -910,7 +1820,37 @@ pub struct OutboundSource {
     #[serde(default)]
     pub device_model: String,
     #[serde(default)]
+    pub device_locale: String,
+    #[serde(default)]
     pub app_version: String,
+    #[serde(default)]
+    pub accept_language: String,
+    #[serde(default)]
+    pub show_dashboard_metadata: bool,
+    #[serde(default)]
+    pub include_urltest_groups: bool,
+    #[serde(default)]
+    pub hide_urltest_group_outbounds: bool,
+    #[serde(default)]
+    pub urltest_idle_timeout: String,
+    #[serde(default)]
+    pub hide_detour_outbounds: bool,
+    #[serde(default)]
+    pub tls_fingerprint: String,
+    #[serde(default)]
+    pub outbound_detour_enabled: bool,
+    #[serde(default)]
+    pub outbound_detour_section: String,
+    #[serde(default)]
+    pub bind_interface: String,
+    #[serde(default)]
+    pub server_interfaces: Vec<String>,
+    #[serde(default)]
+    pub domain_resolver_enabled: bool,
+    #[serde(default)]
+    pub domain_resolver_dns_type: String,
+    #[serde(default)]
+    pub domain_resolver_dns_server: String,
     #[serde(default)]
     pub prefix_nodes: bool,
     #[serde(default)]
@@ -977,23 +1917,41 @@ pub struct BalancerConfig {
     /// `urltest` or `priority`
     #[serde(default)]
     pub balancer_type: String,
-    /// `least_test`, `stability`, `sticky`, `round_robin`, `least_load`, `weighted`, `passive`, `priority`, `hedged`, `throughput`, `quota`
+    /// `least_test`, `stability`, `sticky`, `round_robin`, `least_load`, `weighted`, `passive`, `priority`, `hedged`, `throughput`, `quota`, `failover`
     #[serde(default)]
     pub mode: String,
     #[serde(default = "default_latency_url", alias = "probe_url")]
     pub testing_url: String,
+    #[serde(default)]
+    pub testing_urls: Vec<String>,
+    #[serde(default)]
+    pub multi_url_strategy: String,
     /// Probe interval in seconds (default 180).
     #[serde(default, alias = "interval_secs")]
     pub check_interval: u32,
+    #[serde(default)]
+    pub check_interval_jitter: u32,
+    #[serde(default)]
+    pub urltest_active_check_interval: String,
+    #[serde(default)]
+    pub idle_timeout: String,
     /// Latency tolerance in ms (default 50).
     #[serde(default, alias = "tolerance_ms")]
     pub tolerance: u32,
     #[serde(default, alias = "sticky_hash_field")]
     pub sticky_hash: String,
     #[serde(default)]
+    pub quota_mib: u64,
+    #[serde(default)]
+    pub fallback_section: String,
+    #[serde(default)]
+    pub balancer_pool: Vec<String>,
+    #[serde(default)]
     pub passive_check: bool,
     #[serde(default)]
     pub interrupt_exist_connections: bool,
+    #[serde(default)]
+    pub health_urls: Vec<String>,
     #[serde(default)]
     pub active_check_interval: String,
     #[serde(default)]
@@ -1015,13 +1973,54 @@ pub struct OutboundGroup {
     pub id: String,
     #[serde(default = "default_true")]
     pub enabled: bool,
+    #[serde(default, alias = "display_name")]
     pub name: String,
     #[serde(default)]
     pub primary_refs: Vec<String>,
     #[serde(default)]
     pub backup_refs: Vec<String>,
     /// `block`, `direct`, or `last_alive`
+    #[serde(default)]
     pub fail_policy: String,
+    /// Outbound group filter modal fields (22 fields)
+    #[serde(default)]
+    pub source_refs: Vec<String>,
+    #[serde(default)]
+    pub filter_mode: String,
+    #[serde(default = "default_true")]
+    pub detect_server_country: bool,
+    #[serde(default)]
+    pub include_prefixes: Vec<String>,
+    #[serde(default)]
+    pub include_country_flags: Vec<String>,
+    #[serde(default)]
+    pub include_servers: Vec<String>,
+    #[serde(default)]
+    pub include_name_regex: String,
+    #[serde(default)]
+    pub include_protocols: Vec<String>,
+    #[serde(default)]
+    pub include_transports: Vec<String>,
+    #[serde(default)]
+    pub include_security_types: Vec<String>,
+    #[serde(default)]
+    pub include_ports: Vec<String>,
+    #[serde(default)]
+    pub exclude_prefixes: Vec<String>,
+    #[serde(default)]
+    pub exclude_country_flags: Vec<String>,
+    #[serde(default)]
+    pub exclude_servers: Vec<String>,
+    #[serde(default)]
+    pub exclude_name_regex: String,
+    #[serde(default)]
+    pub exclude_protocols: Vec<String>,
+    #[serde(default)]
+    pub exclude_transports: Vec<String>,
+    #[serde(default)]
+    pub exclude_security_types: Vec<String>,
+    #[serde(default)]
+    pub exclude_ports: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -1065,11 +2064,11 @@ pub struct InboundServer {
     pub enabled: bool,
     #[serde(default, alias = "name")]
     pub label: String,
-    #[serde(default)]
+    #[serde(default, alias = "server_country")]
     pub country: String,
     /// `vless`, `vmess`, `shadowsocks`, `trojan`, `hysteria2`, `tuic`, `anytls`, `shadowtls`,
     /// `naive`, `mieru`, `snell`, `tewfai`, `masque`, `trusttunnel`, `mtproto`, `openconnect`,
-    /// `fptn`, `wdtt`, `wireguard`, `awg`, `tailscale`, `mixed`, `socks`, `http`, `json_inbound`
+    /// `fptn`, `wireguard`, `awg`, `tailscale`, `mixed`, `socks`, `http`, `json_inbound`
     #[serde(default)]
     pub protocol: String,
     #[serde(default)]
@@ -1093,10 +2092,14 @@ pub struct InboundServer {
     pub server_uuid: String,
     #[serde(default)]
     pub server_username: String,
-    #[serde(default)]
+    #[serde(default, alias = "server_password")]
     pub password: String,
-    #[serde(default, alias = "ss_method")]
+    #[serde(default, alias = "ss_method", alias = "shadowsocks_method")]
     pub method: String,
+    #[serde(default)]
+    pub vmess_alter_id: u16,
+    #[serde(default)]
+    pub socks_auth_enabled: bool,
     #[serde(default)]
     pub vless_flow: String,
     #[serde(default, alias = "tls_domain")]
@@ -1120,11 +2123,23 @@ pub struct InboundServer {
     #[serde(default)]
     pub reality_short_id: String,
     #[serde(default)]
+    pub reality_max_time_difference: String,
+    #[serde(default)]
     pub transport: String,
     #[serde(default)]
     pub transport_path: String,
+    #[serde(default)]
+    pub transport_host: String,
+    #[serde(default)]
+    pub transport_xhttp_mode: String,
+    #[serde(default)]
+    pub transport_hosts: Vec<String>,
+    #[serde(default)]
+    pub transport_service_name: String,
 
-    // Protocol-specific fields (TewFai, Hysteria2, TUIC, ShadowTLS, Mieru, TrustTunnel, MASQUE, OpenConnect, MTProto, AmneziaWG, Tailscale)
+    // Protocol-specific fields (TewFai, Hysteria2, TUIC, AnyTLS, ShadowTLS, Mieru, TrustTunnel, MASQUE, OpenConnect, MTProto, AmneziaWG, Tailscale)
+    #[serde(default)]
+    pub anytls_padding_scheme: String,
     #[serde(default)]
     pub tewfai_uuid: String,
     #[serde(default)]
@@ -1137,6 +2152,34 @@ pub struct InboundServer {
     pub tewfai_shaper_profile: String,
     #[serde(default)]
     pub tewfai_morph_profile: String,
+    #[serde(default)]
+    pub tewfai_pqc_enabled: bool,
+    #[serde(default)]
+    pub tewfai_handover_enabled: bool,
+    #[serde(default)]
+    pub tewfai_fec_enabled: bool,
+    #[serde(default)]
+    pub tewfai_shaper_enabled: bool,
+    #[serde(default)]
+    pub tewfai_mtu: u16,
+    #[serde(default)]
+    pub wdtt_mode: String,
+    #[serde(default)]
+    pub wdtt_obfs: String,
+    #[serde(default)]
+    pub wdtt_raw_port: u16,
+    #[serde(default)]
+    pub wdtt_network: String,
+    #[serde(default)]
+    pub wdtt_ipv4_pool: String,
+    #[serde(default)]
+    pub wdtt_raw_ipv4_pool: String,
+    #[serde(default)]
+    pub wdtt_client_dns: String,
+    #[serde(default)]
+    pub wdtt_mtu: u16,
+    #[serde(default)]
+    pub hysteria2_obfs_type: String,
     #[serde(default)]
     pub hysteria2_obfs_password: String,
     #[serde(default)]
@@ -1158,21 +2201,61 @@ pub struct InboundServer {
     #[serde(default)]
     pub masque_ipv4_pool: String,
     #[serde(default)]
+    pub masque_ipv6_pool: String,
+    #[serde(default)]
     pub masque_mtu: u16,
     #[serde(default)]
     pub openconnect_cookie: String,
     #[serde(default)]
     pub openconnect_flavor: String,
     #[serde(default)]
+    pub openconnect_user_agent: String,
+    #[serde(default)]
+    pub openconnect_local_hostname: String,
+    #[serde(default)]
+    pub openconnect_urlpath: String,
+    #[serde(default)]
     pub openconnect_address: String,
     #[serde(default)]
     pub openconnect_mtu: u16,
     #[serde(default)]
+    pub openconnect_ip: bool,
+    #[serde(default)]
+    pub openconnect_esp: bool,
+    #[serde(default)]
+    pub openconnect_dtls: bool,
+    #[serde(default)]
     pub mtproto_secret: String,
+    #[serde(default, alias = "adtag")]
+    pub mtproto_adtag: String,
     #[serde(default)]
     pub mtproto_faketls: String,
     #[serde(default)]
     pub mtproto_telegram_ws: bool,
+    #[serde(default)]
+    pub mtproto_padding: bool,
+    #[serde(default)]
+    pub mtproto_concurrency: u32,
+    #[serde(default)]
+    pub mtproto_domain_fronting_port: u16,
+    #[serde(default)]
+    pub mtproto_domain_fronting_ip: String,
+    #[serde(default)]
+    pub mtproto_domain_fronting_proxy_protocol: bool,
+    #[serde(default)]
+    pub mtproto_prefer_ip: String,
+    #[serde(default)]
+    pub mtproto_auto_update: bool,
+    #[serde(default)]
+    pub mtproto_allow_fallback_on_unknown_dc: bool,
+    #[serde(default)]
+    pub mtproto_tolerate_time_skewness: bool,
+    #[serde(default)]
+    pub mtproto_idle_timeout: String,
+    #[serde(default)]
+    pub mtproto_handshake_timeout: String,
+    #[serde(default)]
+    pub awg_version: String,
     #[serde(default)]
     pub awg_mtu: u16,
     #[serde(default)]
@@ -1192,6 +2275,10 @@ pub struct InboundServer {
     #[serde(default)]
     pub awg_s2: u16,
     #[serde(default)]
+    pub awg_s3: u16,
+    #[serde(default)]
+    pub awg_s4: u16,
+    #[serde(default)]
     pub awg_h1: u32,
     #[serde(default)]
     pub awg_h2: u32,
@@ -1199,6 +2286,24 @@ pub struct InboundServer {
     pub awg_h3: u32,
     #[serde(default)]
     pub awg_h4: u32,
+    #[serde(default)]
+    pub awg_i1: String,
+    #[serde(default)]
+    pub awg_i2: String,
+    #[serde(default)]
+    pub awg_i3: String,
+    #[serde(default)]
+    pub awg_i4: String,
+    #[serde(default)]
+    pub awg_i5: String,
+    #[serde(default)]
+    pub awg_j1: String,
+    #[serde(default)]
+    pub awg_j2: String,
+    #[serde(default)]
+    pub awg_j3: String,
+    #[serde(default)]
+    pub awg_itime: u32,
     #[serde(default)]
     pub awg_keepalive: u16,
     #[serde(default)]
@@ -1214,9 +2319,43 @@ pub struct InboundServer {
     #[serde(default)]
     pub tailscale_auth_key: String,
     #[serde(default)]
+    pub tailscale_control_url: String,
+    #[serde(default)]
     pub tailscale_hostname: String,
     #[serde(default)]
     pub tailscale_advertise_exit_node: bool,
+    #[serde(default)]
+    pub tailscale_advertise_routes: Vec<String>,
+    #[serde(default)]
+    pub tailscale_accept_routes: bool,
+    #[serde(default)]
+    pub tailscale_mode: String,
+    #[serde(default)]
+    pub tailscale_auto_firewall: bool,
+    #[serde(default)]
+    pub tailscale_masquerade: bool,
+    #[serde(default, alias = "tailscale_exit_node")]
+    pub tailscale_use_exit_node: String,
+    #[serde(default)]
+    pub tailscale_ephemeral: bool,
+    #[serde(default)]
+    pub tailscale_exit_node_allow_lan_access: bool,
+    #[serde(default = "default_true")]
+    pub tailscale_accept_dns: bool,
+    #[serde(default = "default_true")]
+    pub tailscale_accept_default_resolvers: bool,
+    #[serde(default, deserialize_with = "deserialize_string_or_number")]
+    pub tailscale_relay_server_port: String,
+    #[serde(default)]
+    pub tailscale_relay_server_static_endpoints: Vec<String>,
+    #[serde(default)]
+    pub tailscale_system_interface: bool,
+    #[serde(default)]
+    pub tailscale_system_interface_name: String,
+    #[serde(default, deserialize_with = "deserialize_string_or_number")]
+    pub tailscale_system_interface_mtu: String,
+    #[serde(default)]
+    pub tailscale_udp_timeout: String,
     #[serde(default)]
     pub isolate_lan_for_users: bool,
     #[serde(default)]
@@ -1236,7 +2375,9 @@ pub struct ParentalProfile {
     pub enabled: bool,
     #[serde(default, alias = "name")]
     pub label: String,
-    #[serde(default, alias = "device_macs")]
+    #[serde(default)]
+    pub avatar: String,
+    #[serde(default, alias = "device_macs", alias = "device_ip")]
     pub device_ips: Vec<String>,
     #[serde(default)]
     pub safe_search: bool,
@@ -1283,18 +2424,36 @@ pub struct ScheduleRule {
     pub enabled: bool,
     #[serde(default, alias = "name")]
     pub label: String,
-    #[serde(default)]
+    #[serde(default, alias = "profile")]
     pub profile_refs: Vec<String>,
+    #[serde(default, alias = "device_ip")]
+    pub device_ips: Vec<String>,
     #[serde(default, alias = "target_id")]
     pub target: String,
     #[serde(default)]
+    pub sections: Vec<String>,
+    #[serde(default)]
     pub action: String,
+    #[serde(default)]
+    pub time_mode: String,
     #[serde(default)]
     pub start_time: String,
     #[serde(default)]
     pub end_time: String,
     #[serde(default)]
     pub days: Vec<String>,
+    #[serde(default)]
+    pub daily_quota_minutes: u32,
+    #[serde(default)]
+    pub blocked_domains: Vec<String>,
+    #[serde(default)]
+    pub blocked_categories: Vec<String>,
+    #[serde(default)]
+    pub mode: String,
+    #[serde(default)]
+    pub dns_level: String,
+    #[serde(default)]
+    pub notify: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -1320,37 +2479,71 @@ pub struct GuestModeConfig {
     #[serde(default)]
     pub allowed_ports: Vec<u16>,
     #[serde(default)]
+    pub allowed_domains: Vec<String>,
+    #[serde(default)]
+    pub landing_url: String,
+    #[serde(default)]
     pub start_time: String,
     #[serde(default)]
     pub end_time: String,
     #[serde(default)]
     pub days: Vec<String>,
+    #[serde(default)]
+    pub notify: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TgBotConfig {
     #[serde(default)]
     pub enabled: bool,
     #[serde(default)]
     pub bot_token: String,
-    #[serde(default)]
+    #[serde(default, alias = "allowed_chat_ids", alias = "admin_id")]
     pub admin_ids: Vec<i64>,
     #[serde(default)]
+    pub router_name: String,
+    #[serde(default, alias = "polling_interval")]
     pub poll_interval: u32,
-    #[serde(default = "default_true", alias = "notify_on_core_restart")]
+    #[serde(
+        default = "default_true",
+        alias = "notify_on_core_restart",
+        alias = "notify_core_crash"
+    )]
     pub notify_crash: bool,
     #[serde(default = "default_true")]
     pub notify_restart: bool,
-    #[serde(default = "default_true", alias = "notify_on_wan_drop")]
+    #[serde(
+        default = "default_true",
+        alias = "notify_on_wan_drop",
+        alias = "notify_wan_failover"
+    )]
     pub notify_server_switch: bool,
     #[serde(default = "default_true")]
     pub notify_subscription: bool,
     #[serde(default = "default_true")]
     pub notify_dns_leak: bool,
     #[serde(default)]
+    pub notify_cert: bool,
+    #[serde(default)]
+    pub notify_auto_update: bool,
+    #[serde(default)]
+    pub notify_honeypot: bool,
+    #[serde(default)]
+    pub notify_parental: bool,
+    #[serde(default)]
     pub bot_proxy_section: String,
+    #[serde(default = "default_true")]
+    pub bot_direct_fallback: bool,
     #[serde(default)]
     pub language: String,
+    #[serde(default)]
+    pub quiet_hours_enabled: bool,
+    #[serde(default = "default_quiet_start")]
+    pub quiet_hours_start: String,
+    #[serde(default = "default_quiet_end")]
+    pub quiet_hours_end: String,
+    #[serde(default)]
+    pub webhook_secret: String,
 }
 
 impl Default for TgBotConfig {
@@ -1359,14 +2552,24 @@ impl Default for TgBotConfig {
             enabled: false,
             bot_token: String::new(),
             admin_ids: Vec::new(),
+            router_name: "OpenWrt Tachyon".to_string(),
             poll_interval: 5,
             notify_crash: true,
             notify_restart: true,
             notify_server_switch: true,
             notify_subscription: true,
             notify_dns_leak: true,
+            notify_cert: false,
+            notify_auto_update: true,
+            notify_honeypot: true,
+            notify_parental: true,
             bot_proxy_section: String::new(),
+            bot_direct_fallback: true,
             language: "ru".to_string(),
+            quiet_hours_enabled: false,
+            quiet_hours_start: default_quiet_start(),
+            quiet_hours_end: default_quiet_end(),
+            webhook_secret: String::new(),
         }
     }
 }
@@ -1396,6 +2599,8 @@ pub struct RouterStoreData {
     pub telegram: TgBotConfig,
     #[serde(default)]
     pub device_registry: HashMap<String, DeviceMeta>,
+    #[serde(default)]
+    pub applied_migrations: Vec<String>,
 }
 
 impl Default for RouterStoreData {
@@ -1424,14 +2629,129 @@ impl Default for RouterStoreData {
                 start_time: String::new(),
                 end_time: String::new(),
                 days: Vec::new(),
+                ..Default::default()
             },
             telegram: TgBotConfig::default(),
             device_registry: HashMap::new(),
+            applied_migrations: Vec::new(),
         };
         if s.import_legacy_router_files() == 0 {
             s.seed_defaults();
         }
+        s.apply_relax_probe_intervals_v1();
         s
+    }
+}
+
+pub fn validate_tailscale_network_options(
+    relay_port_raw: &str,
+    mtu_raw: &str,
+    label: &str,
+) -> Result<(), String> {
+    let rp = relay_port_raw.trim();
+    if !rp.is_empty() {
+        match rp.parse::<u32>() {
+            Ok(p) if (1..=65535).contains(&p) => {}
+            _ => {
+                return Err(format!(
+                    "{label} has invalid tailscale_relay_server_port '{rp}' (expected integer 1..65535). Aborted."
+                ));
+            }
+        }
+    }
+    let mtu = mtu_raw.trim();
+    if !mtu.is_empty() {
+        if !mtu.bytes().all(|b| b.is_ascii_digit()) {
+            return Err(format!(
+                "{label} has invalid tailscale_system_interface_mtu '{mtu}' (expected integer 576..65535). Aborted."
+            ));
+        }
+        match mtu.parse::<u32>() {
+            Ok(m) if (576..=65535).contains(&m) => {}
+            _ => {
+                return Err(format!(
+                    "{label} has out-of-range tailscale_system_interface_mtu '{mtu}' (expected 576..65535). Aborted."
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+impl OutboundSource {
+    pub fn is_tailscale(&self) -> bool {
+        self.source_type.trim().eq_ignore_ascii_case("tailscale")
+    }
+
+    pub fn is_native_tailscale(&self) -> bool {
+        self.is_tailscale() && !self.is_embedded_tailscale()
+    }
+
+    pub fn is_embedded_tailscale(&self) -> bool {
+        if !self.source_type.trim().eq_ignore_ascii_case("tailscale") {
+            return false;
+        }
+        let ts_mode = self.tailscale_mode.trim().to_ascii_lowercase();
+        if ts_mode == "native" {
+            return false;
+        }
+        if matches!(ts_mode.as_str(), "singbox" | "embedded" | "tachyon-core") {
+            return true;
+        }
+        let has_ts_cfg = !self.tailscale_auth_key.trim().is_empty()
+            || !self.tailscale_control_url.trim().is_empty()
+            || !self.tailscale_hostname.trim().is_empty()
+            || !self.tailscale_use_exit_node.trim().is_empty()
+            || self.tailscale_ephemeral
+            || self.tailscale_exit_node_allow_lan_access
+            || !self.tailscale_advertise_routes.is_empty()
+            || self.tailscale_advertise_exit_node
+            || !self.tailscale_relay_server_port.trim().is_empty()
+            || !self.tailscale_relay_server_static_endpoints.is_empty()
+            || self.tailscale_system_interface
+            || !self.tailscale_system_interface_name.trim().is_empty()
+            || !self.tailscale_system_interface_mtu.trim().is_empty()
+            || !self.tailscale_udp_timeout.trim().is_empty();
+        if has_ts_cfg {
+            return true;
+        }
+        self.interface_name.trim().is_empty()
+    }
+}
+
+impl RoutingSection {
+    pub fn is_tailscale(&self) -> bool {
+        self.action.trim().eq_ignore_ascii_case("tailscale")
+            || self
+                .connection_type
+                .trim()
+                .eq_ignore_ascii_case("tailscale")
+            || (self.action.trim().is_empty()
+                && (!self.tailscale_auth_key.trim().is_empty()
+                    || !self.tailscale_use_exit_node.trim().is_empty()
+                    || !self.tailscale_control_url.trim().is_empty()))
+    }
+
+    pub fn is_native_tailscale(&self) -> bool {
+        self.is_tailscale() && self.tailscale_mode.trim().eq_ignore_ascii_case("native")
+    }
+
+    pub fn is_embedded_tailscale(&self) -> bool {
+        self.is_tailscale() && !self.is_native_tailscale()
+    }
+}
+
+impl InboundServer {
+    pub fn is_tailscale(&self) -> bool {
+        self.protocol.trim().eq_ignore_ascii_case("tailscale")
+    }
+
+    pub fn is_native_tailscale(&self) -> bool {
+        self.is_tailscale() && self.tailscale_mode.trim().eq_ignore_ascii_case("native")
+    }
+
+    pub fn is_embedded_tailscale(&self) -> bool {
+        self.is_tailscale() && !self.is_native_tailscale()
     }
 }
 
@@ -1484,6 +2804,10 @@ impl RouterStoreData {
                 sticky_hash: String::new(),
                 passive_check: true,
                 interrupt_exist_connections: false,
+                active_check_interval: "15s".to_string(),
+                check_timeout: "2s".to_string(),
+                recovery_check_interval: "30s".to_string(),
+                fastest_check_interval: "10m".to_string(),
                 ..Default::default()
             });
         }
@@ -1501,14 +2825,179 @@ impl RouterStoreData {
         }
     }
 
-    /// Import existing router configuration from `/etc/config/tachyon` and `/etc/tachyon/subscription-cache/*.json`
-    /// into native `RouterStoreData` (`tachyon.json`) with zero runtime UCI dependency.
-    pub fn import_legacy_router_files(&mut self) -> usize {
-        let legacy_path = Path::new("/etc/config/tachyon");
-        let Ok(raw) = std::fs::read_to_string(legacy_path) else {
+    /// Apply one-shot probe interval relaxation (`relax_probe_intervals_v1`) idempotently.
+    /// Returns `true` when `applied_migrations` was updated so callers can persist the marker.
+    pub fn apply_relax_probe_intervals_v1(&mut self) -> bool {
+        const MIGRATION_ID: &str = "relax_probe_intervals_v1";
+        if self.applied_migrations.iter().any(|m| m == MIGRATION_ID) {
+            return false;
+        }
+        if matches!(
+            self.settings.dns_check_interval.trim(),
+            "10s" | "10" | "15s" | "15"
+        ) {
+            self.settings.dns_check_interval = "30s".to_string();
+        }
+        if self.settings.ai_proxy_health_interval == 30 {
+            self.settings.ai_proxy_health_interval = 60;
+        }
+        if self.settings.ai_dns_interval == 60 {
+            self.settings.ai_dns_interval = 180;
+        }
+        for bal in &mut self.balancers {
+            if matches!(bal.active_check_interval.trim(), "5s" | "5") {
+                bal.active_check_interval = "15s".to_string();
+            }
+            if matches!(bal.recovery_check_interval.trim(), "15s" | "15") {
+                bal.recovery_check_interval = "30s".to_string();
+            }
+            if matches!(
+                bal.urltest_active_check_interval.trim(),
+                "5s" | "5" | "10s" | "10"
+            ) {
+                bal.urltest_active_check_interval = "30s".to_string();
+            }
+            if matches!(bal.check_interval, 5 | 10) {
+                bal.check_interval = 30;
+            }
+        }
+        self.applied_migrations.push(MIGRATION_ID.to_string());
+        true
+    }
+
+    /// Import router configuration from explicit UCI paths (first readable non-empty wins)
+    /// and load subscription node caches from `sub_cache_dir`.
+    pub fn import_legacy_router_files_with_cache(
+        &mut self,
+        uci_paths: &[&Path],
+        sub_cache_dir: &Path,
+    ) -> usize {
+        let raw = uci_paths.iter().find_map(|p| {
+            std::fs::read_to_string(p)
+                .ok()
+                .filter(|s| !s.trim().is_empty())
+        });
+        let Some(raw) = raw else {
             return 0;
         };
         let blocks = parse_legacy_uci_blocks(&raw);
+        self.import_from_blocks_with_cache(&blocks, sub_cache_dir)
+    }
+
+    /// Import router configuration from `primary` (`/etc/config/tachyon`), falling back to `backup`
+    /// (`/etc/tachyon/backup-pre-2.0/tachyon.uci`) if the primary file is absent or empty.
+    pub fn import_legacy_router_files_from(&mut self, primary: &Path, backup: &Path) -> usize {
+        self.import_legacy_router_files_with_cache(
+            &[primary, backup],
+            Path::new("/etc/tachyon/subscription-cache"),
+        )
+    }
+
+    /// Import existing router configuration from `/etc/config/tachyon` (with fallback to
+    /// `/etc/tachyon/backup-pre-2.0/tachyon.uci`) and `/etc/tachyon/subscription-cache/*.json`
+    /// into native `RouterStoreData` (`tachyon.json`) with zero runtime UCI dependency.
+    pub fn import_legacy_router_files(&mut self) -> usize {
+        self.import_legacy_router_files_from(
+            Path::new("/etc/config/tachyon"),
+            Path::new(LEGACY_UCI_BACKUP_PATH),
+        )
+    }
+
+    /// Synchronize directly from the pure-Rust JSON sections map (`config_sections.json`)
+    /// into `RouterStoreData` (`tachyon.json`) with zero UCI dependency.
+    pub fn import_from_json_sections(
+        &mut self,
+        sections_map: &serde_json::Map<String, Value>,
+    ) -> usize {
+        let mut indexed: Vec<(usize, &String, &serde_json::Map<String, Value>)> = sections_map
+            .iter()
+            .filter_map(|(k, v)| {
+                let obj = v.as_object()?;
+                let idx = obj
+                    .get(".index")
+                    .and_then(Value::as_u64)
+                    .map(|n| n as usize)
+                    .unwrap_or(usize::MAX);
+                Some((idx, k, obj))
+            })
+            .collect();
+        indexed.sort_by_key(|(idx, _, _)| *idx);
+
+        let mut blocks = Vec::with_capacity(indexed.len());
+        for (_, sec_key, obj) in indexed {
+            let kind = obj
+                .get(".type")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            if kind.is_empty() {
+                continue;
+            }
+            let name = obj
+                .get(".name")
+                .and_then(Value::as_str)
+                .unwrap_or(sec_key.as_str())
+                .trim()
+                .to_string();
+            let mut options = HashMap::new();
+            let mut lists = HashMap::new();
+            for (k, v) in obj {
+                if k.starts_with('.') {
+                    continue;
+                }
+                match v {
+                    Value::String(s) => {
+                        options.insert(k.clone(), s.clone());
+                    }
+                    Value::Bool(b) => {
+                        options.insert(
+                            k.clone(),
+                            if *b { "1".to_string() } else { "0".to_string() },
+                        );
+                    }
+                    Value::Number(n) => {
+                        options.insert(k.clone(), n.to_string());
+                    }
+                    Value::Array(arr) => {
+                        let vec_str: Vec<String> = arr
+                            .iter()
+                            .filter_map(|item| match item {
+                                Value::String(s) => Some(s.clone()),
+                                Value::Number(n) => Some(n.to_string()),
+                                Value::Bool(b) => {
+                                    Some(if *b { "1".to_string() } else { "0".to_string() })
+                                }
+                                _ => None,
+                            })
+                            .collect();
+                        if let Some(first) = vec_str.first() {
+                            options.insert(k.clone(), first.clone());
+                        }
+                        lists.insert(k.clone(), vec_str);
+                    }
+                    _ => {}
+                }
+            }
+            blocks.push(LegacyUciBlock {
+                kind,
+                name,
+                options,
+                lists,
+            });
+        }
+        self.import_from_blocks(&blocks)
+    }
+
+    fn import_from_blocks(&mut self, blocks: &[LegacyUciBlock]) -> usize {
+        self.import_from_blocks_with_cache(blocks, Path::new("/etc/tachyon/subscription-cache"))
+    }
+
+    fn import_from_blocks_with_cache(
+        &mut self,
+        blocks: &[LegacyUciBlock],
+        sub_cache_dir: &Path,
+    ) -> usize {
         if blocks.is_empty() {
             return 0;
         }
@@ -1522,16 +3011,100 @@ impl RouterStoreData {
         self.sections.clear();
         self.conditions.clear();
         self.outbound_sources.clear();
+        self.outbound_groups.clear();
         self.balancers.clear();
         self.servers.clear();
+        self.profiles.clear();
+        self.schedules.clear();
+        self.applied_migrations.clear();
 
+        let parse_bool = |v: &str| v == "1" || v.eq_ignore_ascii_case("true") || v == "yes";
         let mut imported = 0usize;
 
-        for b in &blocks {
+        for b in blocks {
             match b.kind.as_str() {
                 "settings" => {
                     if let Some(v) = b.opt("proxy_mode") {
                         self.settings.proxy_mode = v.to_string();
+                    }
+                    if let Some(v) = b.opt("routing_strategy") {
+                        self.settings.routing_strategy = v.to_string();
+                    }
+                    if let Some(v) = b.opt("default_tunnel_section") {
+                        self.settings.default_tunnel_section = v.to_string();
+                    }
+                    if let Some(v) = b.opt("tun_interface") {
+                        self.settings.tun_interface = v.to_string();
+                    }
+                    if let Some(v) = b.opt("tun_stack") {
+                        self.settings.tun_stack = v.to_string();
+                    }
+                    if let Some(v) = b.opt("tun_auto_route") {
+                        self.settings.tun_auto_route = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("tun_mtu").and_then(|s| s.parse().ok()) {
+                        self.settings.tun_mtu = v;
+                    }
+                    if let Some(v) = b.opt("tun_gso") {
+                        self.settings.tun_gso = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("tun_endpoint_independent_nat") {
+                        self.settings.tun_endpoint_independent_nat = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("tun_udp_timeout") {
+                        self.settings.tun_udp_timeout = v.to_string();
+                    }
+                    if let Some(v) = b.opt("smart_queue").or_else(|| b.opt("sqm_enabled")) {
+                        self.settings.smart_queue = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("sqm_download_kbps").and_then(|s| s.parse().ok()) {
+                        self.settings.sqm_download_kbps = v;
+                    }
+                    if let Some(v) = b.opt("sqm_upload_kbps").and_then(|s| s.parse().ok()) {
+                        self.settings.sqm_upload_kbps = v;
+                    }
+                    if let Some(v) = b.opt("sqm_interface") {
+                        self.settings.sqm_interface = v.to_string();
+                    }
+                    if let Some(v) = b.opt("tcp_profile") {
+                        self.settings.tcp_profile = v.to_string();
+                    }
+                    if let Some(v) = b.opt("selector_auto_failover") {
+                        self.settings.selector_auto_failover = parse_bool(v);
+                    }
+                    let src_ifaces = b.clean_tokens(&["source_network_interfaces"]);
+                    if !src_ifaces.is_empty() {
+                        self.settings.source_network_interfaces = src_ifaces;
+                    }
+                    let excluded_ips = b.clean_tokens(&["excluded_ips"]);
+                    if !excluded_ips.is_empty() {
+                        self.settings.excluded_ips = excluded_ips;
+                    }
+                    if let Some(v) = b.opt("cache_path") {
+                        let trimmed = v.trim();
+                        if trimmed.starts_with("/tmp/") || trimmed.starts_with("/var/run/") {
+                            self.settings.cache_path = trimmed.to_string();
+                        } else {
+                            self.settings.cache_path = "/tmp/tachyon-core/cache.db".to_string();
+                        }
+                    }
+                    if let Some(v) = b.opt("enable_output_network_interface") {
+                        self.settings.enable_output_network_interface = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("output_network_interface") {
+                        self.settings.output_network_interface = v.to_string();
+                    }
+                    if let Some(v) = b.opt("enable_ipv6") {
+                        self.settings.enable_ipv6 = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("enable_yacd") {
+                        self.settings.enable_yacd = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("enable_yacd_wan_access") {
+                        self.settings.enable_yacd_wan_access = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("yacd_secret_key") {
+                        self.settings.yacd_secret_key = v.to_string();
                     }
                     if let Some(v) = b.opt("dns_type") {
                         self.settings.dns_type = v.to_string();
@@ -1548,30 +3121,272 @@ impl RouterStoreData {
                     if !fb_srvs.is_empty() {
                         self.settings.dns_fallback_servers = fb_srvs;
                     }
+                    if let Some(v) = b.opt("fallback_dns_server") {
+                        self.settings.fallback_dns_server = v.to_string();
+                    }
+                    if let Some(v) = b.opt("dns_strategy") {
+                        self.settings.dns_strategy = v.to_string();
+                    }
+                    if let Some(v) = b.opt("dns_upstream_mode") {
+                        self.settings.dns_upstream_mode = v.to_string();
+                    }
+                    if let Some(v) = b.opt("dns_rewrite_ttl").and_then(|s| s.parse().ok()) {
+                        self.settings.dns_rewrite_ttl = v;
+                    }
+                    if let Some(v) = b.opt("dns_check_interval") {
+                        self.settings.dns_check_interval = v.to_string();
+                    }
+                    if let Some(v) = b.opt("dns_recovery_check_interval") {
+                        self.settings.dns_recovery_check_interval = v.to_string();
+                    }
+                    if let Some(v) = b.opt("dns_check_timeout") {
+                        self.settings.dns_check_timeout = v.to_string();
+                    }
+                    if let Some(v) = b.opt("dns_failure_threshold").and_then(|s| s.parse().ok()) {
+                        self.settings.dns_failure_threshold = v;
+                    }
+                    if let Some(v) = b.opt("dns_recovery_threshold").and_then(|s| s.parse().ok()) {
+                        self.settings.dns_recovery_threshold = v;
+                    }
+                    if let Some(v) = b.opt("dns_detour_enabled") {
+                        self.settings.dns_detour_enabled = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("dns_detour_section") {
+                        self.settings.dns_detour_section = v.to_string();
+                    }
+                    if let Some(v) = b.opt("dns_local_cache") {
+                        self.settings.dns_local_cache = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("dns_turbo_cache") {
+                        self.settings.dns_turbo_cache = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("dns_cache_size").and_then(|s| s.parse().ok()) {
+                        self.settings.dns_cache_size = v;
+                    }
+                    if let Some(v) = b.opt("dns_doq_ech") {
+                        self.settings.dns_doq_ech = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("fakeip_enabled") {
+                        self.settings.fakeip_enabled = parse_bool(v);
+                    }
+                    if let Some(v) = b
+                        .opt("fakeip_inet4_range")
+                        .or_else(|| b.opt("fakeip_range"))
+                    {
+                        self.settings.fakeip_inet4_range = v.to_string();
+                    }
+                    if let Some(v) = b.opt("fakeip_inet6_range") {
+                        self.settings.fakeip_inet6_range = v.to_string();
+                    }
+                    let fip_ex = b.list("fakeip_exclude");
+                    if !fip_ex.is_empty() {
+                        self.settings.fakeip_exclude = fip_ex;
+                    }
+                    if let Some(v) = b.opt("dont_touch_dhcp") {
+                        self.settings.dont_touch_dhcp = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("hosts_enabled") {
+                        self.settings.hosts_enabled = parse_bool(v);
+                    }
+                    let h_urls = b.list("hosts_list_urls");
+                    if !h_urls.is_empty() {
+                        self.settings.hosts_list_urls = h_urls;
+                    }
+                    let s_hosts = b.list("static_hosts");
+                    if !s_hosts.is_empty() {
+                        self.settings.static_hosts = s_hosts;
+                    }
                     if let Some(v) = b.opt("lite_mode") {
-                        self.settings.lite_mode = v == "1" || v == "true";
+                        self.settings.lite_mode = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("ui_mode") {
+                        self.settings.ui_mode = v.to_string();
+                    }
+                    if let Some(v) = b.opt("sidebar_pos") {
+                        self.settings.sidebar_pos = v.to_string();
+                    }
+                    if let Some(v) = b.opt("accent_theme").or_else(|| b.opt("theme_accent")) {
+                        self.settings.accent_theme = v.to_string();
+                    }
+                    if let Some(v) = b.opt("lang").or_else(|| b.opt("language")) {
+                        self.settings.lang = v.to_string();
+                    }
+                    if let Some(v) = b.opt("default_tab") {
+                        self.settings.default_tab = v.to_string();
+                    }
+                    let t_order = b.list("tab_order");
+                    if !t_order.is_empty() {
+                        self.settings.tab_order = t_order;
                     }
                     if let Some(v) = b.opt("disable_quic") {
-                        self.settings.disable_quic = v == "1" || v == "true";
+                        self.settings.disable_quic = parse_bool(v);
                     }
-                    if let Some(v) = b.opt("isolate_p2p") {
-                        self.settings.isolate_p2p = v == "1" || v == "true";
+                    if let Some(v) = b.opt("disable_quic_mode") {
+                        self.settings.disable_quic_mode = v.to_string();
+                    }
+                    if let Some(v) = b.opt("block_doh") {
+                        self.settings.block_doh = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("webrtc_leak_protect") {
+                        self.settings.webrtc_leak_protect = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("route_router_traffic") {
+                        self.settings.route_router_traffic = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("route_router_traffic_section") {
+                        self.settings.route_router_traffic_section = v.to_string();
+                    }
+                    if let Some(v) = b.opt("wifi_calling_direct") {
+                        self.settings.wifi_calling_direct = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("isolate_p2p").or_else(|| b.opt("torrent_isolation")) {
+                        self.settings.isolate_p2p = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("bittorrent_policy") {
+                        self.settings.bittorrent_policy = v.to_string();
+                    }
+                    if let Some(v) = b.opt("p2p_ports") {
+                        self.settings.p2p_ports = v.to_string();
                     }
                     if let Some(v) = b.opt("direct_bypass_enabled") {
-                        self.settings.direct_bypass_enabled = v == "1" || v == "true";
+                        self.settings.direct_bypass_enabled = parse_bool(v);
                     }
                     if let Some(v) = b.opt("direct_bypass_port").and_then(|s| s.parse().ok()) {
                         self.settings.direct_bypass_port = v;
                     }
+                    if let Some(v) = b
+                        .opt("game_console_optimizer")
+                        .or_else(|| b.opt("console_gaming_mode"))
+                    {
+                        self.settings.game_console_optimizer = parse_bool(v);
+                    }
+                    let gc_ips = b.list("game_console_ips");
+                    if !gc_ips.is_empty() {
+                        self.settings.game_console_ips = gc_ips;
+                    }
+                    if let Some(v) = b.opt("exclude_ntp") {
+                        self.settings.exclude_ntp = parse_bool(v);
+                    }
+                    if let Some(v) = b
+                        .opt("torrserver_direct_enabled")
+                        .or_else(|| b.opt("torrserver_direct"))
+                    {
+                        self.settings.torrserver_direct_enabled = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("enable_watchdog") {
+                        self.settings.enable_watchdog = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("wan_failover_enabled") {
+                        self.settings.wan_failover_enabled = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("wan_failover_primary") {
+                        self.settings.wan_failover_primary = v.to_string();
+                    }
+                    if let Some(v) = b.opt("wan_failover_backup") {
+                        self.settings.wan_failover_backup = v.to_string();
+                    }
+                    let wf_hosts = b.list("wan_failover_probe_hosts");
+                    if !wf_hosts.is_empty() {
+                        self.settings.wan_failover_probe_hosts = wf_hosts;
+                    }
+                    if let Some(v) = b.opt("recovery_bypass") {
+                        self.settings.recovery_bypass = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("memory_limit_mb").and_then(|s| s.parse().ok()) {
+                        self.settings.memory_limit_mb = v;
+                    }
+                    if let Some(v) = b.opt("log_level") {
+                        self.settings.log_level = v.to_string();
+                    }
                     if let Some(v) = b.opt("smart_detect") {
-                        self.settings.smart_detect = v == "1" || v == "true";
+                        self.settings.smart_detect = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("smart_detect_mode") {
+                        self.settings.smart_detect_mode = v.to_string();
                     }
                     let sd_secs = b.list("smart_detect_sections");
                     if !sd_secs.is_empty() {
                         self.settings.smart_detect_sections = sd_secs;
                     }
+                    if let Some(v) = b.opt("list_update_enabled") {
+                        self.settings.list_update_enabled = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("update_interval") {
+                        self.settings.update_interval = v.to_string();
+                    }
+                    if let Some(v) = b.opt("github_mirror") {
+                        self.settings.github_mirror = v.to_string();
+                    }
+                    if let Some(v) = b.opt("github_token") {
+                        self.settings.github_token = v.to_string();
+                    }
+                    if let Some(v) = b.opt("download_lists_via_proxy") {
+                        self.settings.download_lists_via_proxy = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("download_lists_via_proxy_section") {
+                        self.settings.download_lists_via_proxy_section = v.to_string();
+                    }
+                    if let Some(v) = b.opt("download_components_via_proxy") {
+                        self.settings.download_components_via_proxy = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("download_components_via_proxy_section") {
+                        self.settings.download_components_via_proxy_section = v.to_string();
+                    }
+                    if let Some(v) = b.opt("component_update_check_enabled") {
+                        self.settings.component_update_check_enabled = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("component_update_check_interval") {
+                        self.settings.component_update_check_interval = v.to_string();
+                    }
+                    if let Some(v) = b.opt("component_auto_update_enabled") {
+                        self.settings.component_auto_update_enabled = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("component_auto_update_mode") {
+                        self.settings.component_auto_update_mode = v.to_string();
+                    }
+                    if let Some(v) = b.opt("component_auto_update_time") {
+                        self.settings.component_auto_update_time = v.to_string();
+                    }
+                    if let Some(v) = b.opt("component_auto_update_window_start") {
+                        self.settings.component_auto_update_window_start = v.to_string();
+                    }
+                    if let Some(v) = b.opt("component_auto_update_window_end") {
+                        self.settings.component_auto_update_window_end = v.to_string();
+                    }
+                    if let Some(v) = b.opt("component_auto_update_max_connections")
+                        && let Ok(n) = v.trim().parse::<u32>()
+                    {
+                        self.settings.component_auto_update_max_connections = n;
+                    }
+                    if let Some(v) = b.opt("component_auto_update_max_clients")
+                        && let Ok(n) = v.trim().parse::<u32>()
+                    {
+                        self.settings.component_auto_update_max_clients = n;
+                    }
+                    let auto_targets = b.list("component_auto_update_targets");
+                    if !auto_targets.is_empty() {
+                        self.settings.component_auto_update_targets = auto_targets;
+                    }
+                    if let Some(v) = b.opt("component_backup_enabled") {
+                        self.settings.component_backup_enabled = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("latency_test_url") {
+                        self.settings.latency_test_url = v.to_string();
+                    }
+                    if let Some(v) = b.opt("latency_test_mode") {
+                        self.settings.latency_test_mode = v.to_string();
+                    }
+                    if let Some(v) = b.opt("auto_heal_enabled") {
+                        self.settings.auto_heal_enabled = parse_bool(v);
+                    }
+                    if let Some(v) = b
+                        .opt("auto_heal_interval_mins")
+                        .and_then(|s| s.parse().ok())
+                    {
+                        self.settings.auto_heal_interval_mins = v;
+                    }
                     if let Some(v) = b.opt("enable_ai_doctor") {
-                        self.settings.enable_ai_doctor = v == "1" || v == "true";
+                        self.settings.enable_ai_doctor = parse_bool(v);
                     }
                     if let Some(v) = b.opt("ai_doctor_provider") {
                         self.settings.ai_doctor_provider = v.to_string();
@@ -1582,124 +3397,343 @@ impl RouterStoreData {
                     if let Some(v) = b.opt("ai_doctor_api_key") {
                         self.settings.ai_doctor_api_key = v.to_string();
                     }
+                    if let Some(v) = b
+                        .opt("ai_doctor_custom_url")
+                        .or_else(|| b.opt("ai_doctor_base_url"))
+                    {
+                        self.settings.ai_doctor_custom_url = v.to_string();
+                    }
+                    if let Some(v) = b.opt("ai_doctor_lang") {
+                        self.settings.ai_doctor_lang = v.to_string();
+                    }
+                    if let Some(v) = b.opt("ai_temperature").and_then(|s| s.parse().ok()) {
+                        self.settings.ai_temperature = v;
+                    }
+                    if let Some(v) = b.opt("ai_max_tokens").and_then(|s| s.parse().ok()) {
+                        self.settings.ai_max_tokens = v;
+                    }
+                    if let Some(v) = b
+                        .opt("ai_metrics_retention_hours")
+                        .and_then(|s| s.parse().ok())
+                    {
+                        self.settings.ai_metrics_retention_hours = v;
+                    }
+                    if let Some(v) = b.opt("server_subscription_enabled") {
+                        self.settings.server_subscription_enabled = parse_bool(v);
+                    }
                     if let Some(v) = b.opt("server_subscription_token") {
                         self.settings.server_subscription_token = v.to_string();
                     }
                     if let Some(v) = b.opt("server_subscription_host") {
                         self.settings.server_subscription_host = v.to_string();
                     }
+                    if let Some(v) = b.opt("server_subscription_format") {
+                        self.settings.server_subscription_format = v.to_string();
+                    }
+                    if let Some(v) = b.opt("server_subscription_title") {
+                        self.settings.server_subscription_title = v.to_string();
+                    }
+                    if let Some(v) = b.opt("agent_api_token") {
+                        self.settings.agent_api_token = v.to_string();
+                    }
+                    if let Some(v) = b
+                        .opt("snapshot_enabled")
+                        .or_else(|| b.opt("snapshot_enable"))
+                    {
+                        self.settings.snapshot_enabled = parse_bool(v);
+                    }
+                    if let Some(v) = b
+                        .opt("snapshot_max_count")
+                        .or_else(|| b.opt("snapshot_max"))
+                        .and_then(|s| s.parse().ok())
+                    {
+                        self.settings.snapshot_max_count = v;
+                    }
+                    let cors = b.list("cors_origins");
+                    if !cors.is_empty() {
+                        self.settings.cors_origins = cors;
+                    }
+                    if let Some(v) = b.opt("session_ttl_secs").and_then(|s| s.parse().ok()) {
+                        self.settings.session_ttl_secs = v;
+                    }
+                    self.applied_migrations = b.list("applied_migrations");
+                    imported += 1;
                 }
                 "telegram" => {
-                    self.telegram.enabled =
-                        b.opt("enabled").is_some_and(|v| v == "1" || v == "true");
-                    if let Some(v) = b.opt("bot_token") {
-                        self.telegram.bot_token = v.to_string();
+                    self.telegram.enabled = b.opt("enabled").is_some_and(parse_bool);
+                    self.telegram.bot_token = b.opt("bot_token").unwrap_or("").to_string();
+                    let mut id_tokens = b.list("admin_ids");
+                    if id_tokens.is_empty() {
+                        id_tokens = b.list("allowed_chat_ids");
                     }
-                    if let Some(v) = b.opt("admin_ids") {
-                        self.telegram.admin_ids = v
-                            .split([',', ' '])
-                            .filter_map(|s| s.trim().parse::<i64>().ok())
-                            .collect();
+                    if id_tokens.is_empty() {
+                        id_tokens = b.list("admin_id");
                     }
-                    if let Some(v) = b.opt("bot_proxy_section") {
-                        self.telegram.bot_proxy_section = v.to_string();
+                    self.telegram.admin_ids = id_tokens
+                        .iter()
+                        .flat_map(|s| s.split([',', ' ']))
+                        .filter_map(|s| s.trim().parse::<i64>().ok())
+                        .collect();
+                    self.telegram.router_name = b.opt("router_name").unwrap_or("").to_string();
+                    self.telegram.poll_interval = b
+                        .opt("poll_interval")
+                        .or_else(|| b.opt("polling_interval"))
+                        .and_then(|s| s.trim().parse().ok())
+                        .unwrap_or(5);
+                    self.telegram.bot_proxy_section =
+                        b.opt("bot_proxy_section").unwrap_or("").to_string();
+                    if let Some(v) = b.opt("language") {
+                        self.telegram.language = v.to_string();
                     }
+                    if let Some(v) = b.opt("notify_crash") {
+                        self.telegram.notify_crash = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("notify_restart") {
+                        self.telegram.notify_restart = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("notify_server_switch") {
+                        self.telegram.notify_server_switch = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("notify_subscription") {
+                        self.telegram.notify_subscription = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("notify_dns_leak") {
+                        self.telegram.notify_dns_leak = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("notify_cert") {
+                        self.telegram.notify_cert = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("notify_auto_update") {
+                        self.telegram.notify_auto_update = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("notify_honeypot") {
+                        self.telegram.notify_honeypot = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("notify_parental") {
+                        self.telegram.notify_parental = parse_bool(v);
+                    }
+                    if let Some(v) = b.opt("quiet_hours_enabled") {
+                        self.telegram.quiet_hours_enabled = parse_bool(v);
+                    }
+                    if let Some(v) = b
+                        .opt("quiet_hours_start")
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                    {
+                        self.telegram.quiet_hours_start = v.to_string();
+                    }
+                    if let Some(v) = b
+                        .opt("quiet_hours_end")
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                    {
+                        self.telegram.quiet_hours_end = v.to_string();
+                    }
+                    if let Some(v) = b.opt("webhook_secret") {
+                        self.telegram.webhook_secret = v.to_string();
+                    }
+                    if let Some(v) = b.opt("bot_direct_fallback") {
+                        self.telegram.bot_direct_fallback = parse_bool(v);
+                    }
+                    imported += 1;
                 }
                 "condition" => {
-                    let mut user_domains = b.list("user_domains");
-                    if let Some(dom_multiline) = b.opt("domain") {
-                        for line in dom_multiline.lines() {
-                            let t = line.trim();
-                            if !t.is_empty()
-                                && !t.starts_with("//")
-                                && !t.starts_with('#')
-                                && !user_domains.contains(&t.to_string())
-                            {
-                                user_domains.push(t.to_string());
-                            }
-                        }
+                    let user_domains = b.clean_tokens(&["user_domains", "domain", "domains"]);
+                    let user_subnets =
+                        b.clean_tokens(&["user_subnets", "ip_cidr", "ip_cidrs", "subnets"]);
+                    let mut children = b.list("children");
+                    if children.is_empty() {
+                        children = b.list("condition_refs");
                     }
-                    let mut user_subnets = b.list("ip_cidr");
-                    if let Some(cidr_multiline) = b.opt("ip_cidr") {
-                        for line in cidr_multiline.lines() {
-                            let t = line.trim();
-                            if !t.is_empty()
-                                && !t.starts_with("//")
-                                && !user_subnets.contains(&t.to_string())
-                            {
-                                user_subnets.push(t.to_string());
-                            }
-                        }
+                    let mut time_window = b.opt("time_window").unwrap_or("").trim().to_string();
+                    if time_window.is_empty()
+                        && let (Some(st), Some(et)) = (b.opt("start_time"), b.opt("end_time"))
+                        && !st.trim().is_empty()
+                        && !et.trim().is_empty()
+                    {
+                        let days = b.list("days");
+                        time_window = if days.is_empty() {
+                            format!("{}-{}", st.trim(), et.trim())
+                        } else {
+                            format!("{} {}-{}", days.join(","), st.trim(), et.trim())
+                        };
                     }
                     self.conditions.push(TrafficCondition {
                         id: b.name.clone(),
-                        enabled: b.opt("enabled").is_none_or(|v| v == "1" || v == "true"),
+                        enabled: b.opt("enabled").is_none_or(parse_bool),
                         name: b.opt("name").unwrap_or(&b.name).to_string(),
-                        condition_type: b.opt("condition_type").unwrap_or("atomic").to_string(),
+                        condition_type: b
+                            .opt("condition_type")
+                            .or_else(|| b.opt("operator"))
+                            .unwrap_or("atomic")
+                            .to_string(),
+                        children,
                         community_lists: b.list("community_lists"),
-                        community_subnets: b
-                            .opt("community_subnets")
-                            .is_none_or(|v| v == "1" || v == "true"),
+                        community_subnets: b.opt("community_subnets").is_none_or(parse_bool),
                         user_domains,
+                        exclude_domains: b.clean_tokens(&["exclude_domains"]),
                         user_subnets,
-                        remote_domain_lists: b.list("rule_set"),
-                        remote_subnet_lists: b.list("domain_ip_lists"),
-                        geoip_codes: b.list("geoip_country"),
+                        exclude_subnets: b.clean_tokens(&["exclude_subnets"]),
+                        asn_list: b.clean_tokens(&["asn_list"]),
+                        remote_domain_lists: b.clean_tokens(&[
+                            "rule_set",
+                            "remote_domain_lists",
+                            "rule_set_urls",
+                        ]),
+                        remote_subnet_lists: b
+                            .clean_tokens(&["domain_ip_lists", "remote_subnet_lists"]),
+                        geoip_codes: b.clean_tokens(&["geoip_country"]),
                         geoip_mode: b.opt("geoip_mode").unwrap_or("include").to_string(),
-                        client_ips: b.list("fully_routed_ips"),
-                        exclude_client_ips: b.list("excluded_ips"),
+                        geosite_codes: b.clean_tokens(&["geosite_codes"]),
+                        client_ips: b
+                            .clean_tokens(&["client_ips", "source_ip_cidr"])
+                            .into_iter()
+                            .filter(|t| !is_mac_address(t))
+                            .collect(),
+                        exclude_client_ips: b.clean_tokens(&["excluded_ips"]),
                         ports: b.list("ports"),
+                        source_ports: b.list("source_ports"),
+                        exclude_ports: b.list("exclude_ports"),
+                        l4_proto: b.opt("l4_proto").unwrap_or("").to_string(),
                         protocol: b.list("protocol"),
                         excluded_protocol: b.list("excluded_protocol"),
                         dscp: b.list("dscp"),
+                        time_window,
+                        expression: b.opt("expression").unwrap_or("").to_string(),
+                        invert: b.opt("invert").is_some_and(parse_bool),
+                        fully_routed_ips: b.clean_tokens(&["fully_routed_ips"]),
+                        source_macs: {
+                            let mut macs: Vec<String> = b
+                                .clean_tokens(&["source_macs"])
+                                .into_iter()
+                                .filter(|t| is_mac_address(t))
+                                .map(|t| t.to_ascii_lowercase())
+                                .collect();
+                            for t in b.clean_tokens(&["client_ips", "source_ip_cidr"]) {
+                                if is_mac_address(&t) {
+                                    let m = t.to_ascii_lowercase();
+                                    if !macs.contains(&m) {
+                                        macs.push(m);
+                                    }
+                                }
+                            }
+                            macs
+                        },
+                        source_inbounds: b.list("source_inbounds"),
                         ..Default::default()
                     });
                     imported += 1;
                 }
-                "balancer" => {
+                "balancer" | "urltest" | "priority_group" => {
                     let check_interval = b
                         .opt("check_interval")
+                        .or_else(|| b.opt("interval"))
                         .map(parse_duration_secs)
                         .unwrap_or(180);
+                    let default_btype = if b.kind == "priority_group" {
+                        "priority"
+                    } else {
+                        "urltest"
+                    };
+                    let balancer_type = b.opt("balancer_type").unwrap_or(default_btype).to_string();
+                    let default_mode = if balancer_type == "priority" {
+                        "priority"
+                    } else {
+                        "least_test"
+                    };
+                    let bal_name = b.opt("name").unwrap_or(&b.name).to_string();
+                    let sec_ref = b.opt("section").unwrap_or("");
+                    let bal_id = if b.kind == "urltest"
+                        && (b.name.is_empty() || b.name.starts_with("cfg"))
+                    {
+                        let expected = format!("bal_{sec_ref}_{bal_name}");
+                        let dup_in_blocks = blocks.iter().any(|other| {
+                            other.kind == "balancer"
+                                && (other.name == expected
+                                    || (other.opt("name").unwrap_or(&other.name) == bal_name
+                                        && other.opt("balancer_type").unwrap_or("urltest")
+                                            == "urltest"))
+                        });
+                        if dup_in_blocks
+                            || self.balancers.iter().any(|existing| {
+                                existing.id == expected || existing.name == bal_name
+                            })
+                        {
+                            continue;
+                        }
+                        if sec_ref.is_empty() {
+                            format!("bal_{}", bal_name.to_ascii_lowercase().replace(' ', "_"))
+                        } else {
+                            expected
+                        }
+                    } else {
+                        b.name.clone()
+                    };
                     self.balancers.push(BalancerConfig {
-                        id: b.name.clone(),
-                        enabled: b.opt("enabled").is_none_or(|v| v == "1" || v == "true"),
-                        name: b.opt("name").unwrap_or(&b.name).to_string(),
-                        balancer_type: b.opt("balancer_type").unwrap_or("urltest").to_string(),
-                        mode: b.opt("mode").unwrap_or("least_test").to_string(),
+                        id: bal_id,
+                        enabled: b.opt("enabled").is_none_or(parse_bool),
+                        name: bal_name,
+                        balancer_type,
+                        mode: b.opt("mode").unwrap_or(default_mode).to_string(),
                         testing_url: b
                             .opt("testing_url")
                             .or_else(|| b.opt("health_url"))
                             .unwrap_or("https://www.gstatic.com/generate_204")
                             .to_string(),
+                        testing_urls: b.list("testing_urls"),
+                        multi_url_strategy: b
+                            .opt("multi_url_strategy")
+                            .or_else(|| b.opt("url_aggregation"))
+                            .unwrap_or("")
+                            .to_string(),
                         check_interval,
+                        check_interval_jitter: b
+                            .opt("check_interval_jitter")
+                            .and_then(|s| s.trim().trim_end_matches('%').trim().parse().ok())
+                            .unwrap_or(0),
+                        urltest_active_check_interval: b
+                            .opt("urltest_active_check_interval")
+                            .or_else(|| {
+                                if b.kind == "urltest" {
+                                    b.opt("interval")
+                                } else {
+                                    None
+                                }
+                            })
+                            .unwrap_or("")
+                            .to_string(),
+                        idle_timeout: b.opt("idle_timeout").unwrap_or("").to_string(),
                         tolerance: b
                             .opt("tolerance")
                             .and_then(|s| s.parse().ok())
                             .unwrap_or(50),
-                        sticky_hash: String::new(),
-                        passive_check: true,
+                        sticky_hash: b
+                            .opt("sticky_hash")
+                            .or_else(|| b.opt("sticky_hash_field"))
+                            .unwrap_or("")
+                            .to_string(),
+                        quota_mib: b.opt("quota_mib").and_then(|s| s.parse().ok()).unwrap_or(0),
+                        fallback_section: b.opt("fallback_section").unwrap_or("").to_string(),
+                        passive_check: b.opt("passive_check").is_none_or(parse_bool),
                         interrupt_exist_connections: b
                             .opt("interrupt_exist_connections")
-                            .is_some_and(|v| v == "1" || v == "true"),
+                            .is_some_and(parse_bool),
                         active_check_interval: b
                             .opt("active_check_interval")
-                            .unwrap_or("5s")
+                            .unwrap_or("15s")
                             .to_string(),
                         check_timeout: b.opt("check_timeout").unwrap_or("2s").to_string(),
                         recovery_check_interval: b
                             .opt("recovery_check_interval")
-                            .unwrap_or("15s")
+                            .unwrap_or("30s")
                             .to_string(),
-                        pick_fastest: b
-                            .opt("pick_fastest")
-                            .is_some_and(|v| v == "1" || v == "true"),
+                        pick_fastest: b.opt("pick_fastest").is_some_and(parse_bool),
                         switch_to_faster_same_priority: b
                             .opt("switch_to_faster_same_priority")
-                            .is_some_and(|v| v == "1" || v == "true"),
+                            .is_some_and(parse_bool),
                         fastest_check_interval: b
                             .opt("fastest_check_interval")
-                            .unwrap_or("3m")
+                            .unwrap_or("10m")
                             .to_string(),
                         ..Default::default()
                     });
@@ -1714,46 +3748,431 @@ impl RouterStoreData {
                     {
                         urls.push(u.to_string());
                     }
+                    let mut proxy_links = b.list("proxy_links");
+                    for opt_key in ["links", "uri", "proxy_uri"] {
+                        if let Some(raw_links) = b.opt(opt_key) {
+                            for line in raw_links.lines() {
+                                let t = line.trim();
+                                if !t.is_empty()
+                                    && !t.starts_with('#')
+                                    && !proxy_links.contains(&t.to_string())
+                                {
+                                    proxy_links.push(t.to_string());
+                                }
+                            }
+                        }
+                    }
                     let preset = b.opt("desync_preset").unwrap_or("adaptive").to_string();
-                    let auto_tune = preset == "adaptive" || preset == "auto";
+                    let auto_tune = b
+                        .opt("desync_auto_tune")
+                        .map(parse_bool)
+                        .unwrap_or_else(|| preset == "adaptive" || preset == "auto");
                     let fake_sni = b.opt("desync_fake_sni").unwrap_or("").to_string();
-                    let mut sni_pool = b.list("desync_sni_pool");
+                    let mut sni_pool = b.csv_list("desync_sni_pool");
                     if !fake_sni.is_empty() && !sni_pool.contains(&fake_sni) {
                         sni_pool.push(fake_sni.clone());
                     }
 
                     let mut src = OutboundSource {
                         id: b.name.clone(),
-                        enabled: b.opt("enabled").is_none_or(|v| v == "1" || v == "true"),
+                        enabled: b.opt("enabled").is_none_or(parse_bool),
                         name: b.opt("name").unwrap_or(&b.name).to_string(),
                         source_type: stype.clone(),
                         subscription_urls: urls,
                         subscription_update_enabled: b
                             .opt("subscription_update_enabled")
-                            .is_none_or(|v| v == "1" || v == "true"),
+                            .is_none_or(parse_bool),
                         subscription_update_interval: b
                             .opt("subscription_update_interval")
                             .unwrap_or("3h")
                             .to_string(),
+                        subscription_update_jitter: b
+                            .opt("subscription_update_jitter")
+                            .unwrap_or("")
+                            .to_string(),
+                        subscription_insecure: b
+                            .opt("subscription_insecure")
+                            .is_some_and(parse_bool),
+                        proxy_links,
+                        custom_json: b.opt("custom_json").unwrap_or("").to_string(),
+                        interface_name: b
+                            .opt("interface_name")
+                            .or_else(|| b.opt("interface"))
+                            .unwrap_or("")
+                            .to_string(),
+                        server: b
+                            .opt("server")
+                            .or_else(|| b.opt("server_address"))
+                            .unwrap_or("")
+                            .to_string(),
+                        server_port: b
+                            .opt("server_port")
+                            .or_else(|| b.opt("port"))
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        username: b.opt("username").unwrap_or("").to_string(),
+                        password: b.opt("password").unwrap_or("").to_string(),
+                        psk: b.opt("psk").unwrap_or("").to_string(),
+                        uuid: b.opt("uuid").unwrap_or("").to_string(),
+                        method: b
+                            .opt("method")
+                            .or_else(|| b.opt("cipher"))
+                            .unwrap_or("")
+                            .to_string(),
+                        flow: b.opt("flow").unwrap_or("").to_string(),
+                        transport: b.opt("transport").unwrap_or("").to_string(),
+                        transport_path: b.opt("transport_path").unwrap_or("").to_string(),
+                        transport_host: b.opt("transport_host").unwrap_or("").to_string(),
+                        reality_public_key: b.opt("reality_public_key").unwrap_or("").to_string(),
+                        reality_short_id: b.opt("reality_short_id").unwrap_or("").to_string(),
+                        tcp_fast_open: b.opt("tcp_fast_open").is_some_and(parse_bool),
+                        multiplex_enabled: b.opt("multiplex_enabled").is_some_and(parse_bool),
+                        multiplex_protocol: b
+                            .opt("multiplex_protocol")
+                            .unwrap_or("h2mux")
+                            .to_string(),
+                        multiplex_max_connections: b
+                            .opt("multiplex_max_connections")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        multiplex_padding: b.opt("multiplex_padding").is_some_and(parse_bool),
+                        sni: b.opt("sni").unwrap_or("").to_string(),
+                        tls_sni: b
+                            .opt("tls_sni")
+                            .or_else(|| b.opt("tls_server_name"))
+                            .unwrap_or("")
+                            .to_string(),
+                        insecure: b.opt("insecure").is_some_and(parse_bool),
+                        tls_insecure: b.opt("tls_insecure").is_some_and(parse_bool),
+                        tls_fingerprint: b
+                            .opt("tls_fingerprint")
+                            .or_else(|| b.opt("client_fingerprint"))
+                            .unwrap_or("")
+                            .to_string(),
+                        outbound_detour_enabled: b
+                            .opt("outbound_detour_enabled")
+                            .is_some_and(parse_bool),
+                        outbound_detour_section: b
+                            .opt("outbound_detour_section")
+                            .or_else(|| b.opt("detour"))
+                            .unwrap_or("")
+                            .to_string(),
+                        bind_interface: b.opt("bind_interface").unwrap_or("").to_string(),
+                        amnezia_configs: b.list("amnezia_configs"),
+                        amnezia_conf_text: b.opt("amnezia_conf_text").unwrap_or("").to_string(),
+                        wg_endpoint: b.opt("wg_endpoint").unwrap_or("").to_string(),
+                        wg_private_key: b
+                            .opt("wg_private_key")
+                            .or_else(|| b.opt("private_key"))
+                            .unwrap_or("")
+                            .to_string(),
+                        wg_peer_public_key: b
+                            .opt("wg_peer_public_key")
+                            .or_else(|| b.opt("peer_public_key"))
+                            .unwrap_or("")
+                            .to_string(),
+                        wg_preshared_key: b
+                            .opt("wg_preshared_key")
+                            .or_else(|| b.opt("preshared_key"))
+                            .unwrap_or("")
+                            .to_string(),
+                        wg_local_address: b
+                            .opt("wg_local_address")
+                            .or_else(|| b.opt("local_address"))
+                            .unwrap_or("")
+                            .to_string(),
+                        wg_mtu: b
+                            .opt("wg_mtu")
+                            .or_else(|| b.opt("mtu"))
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        awg_version: b.opt("awg_version").unwrap_or("").to_string(),
+                        awg_keepalive: b
+                            .opt("awg_keepalive")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        awg_jc: b.opt("awg_jc").and_then(|s| s.parse().ok()).unwrap_or(0),
+                        awg_jmin: b.opt("awg_jmin").and_then(|s| s.parse().ok()).unwrap_or(0),
+                        awg_jmax: b.opt("awg_jmax").and_then(|s| s.parse().ok()).unwrap_or(0),
+                        awg_s1: b.opt("awg_s1").and_then(|s| s.parse().ok()).unwrap_or(0),
+                        awg_s2: b.opt("awg_s2").and_then(|s| s.parse().ok()).unwrap_or(0),
+                        awg_s3: b.opt("awg_s3").and_then(|s| s.parse().ok()).unwrap_or(0),
+                        awg_s4: b.opt("awg_s4").and_then(|s| s.parse().ok()).unwrap_or(0),
+                        awg_h1: b.opt("awg_h1").and_then(|s| s.parse().ok()).unwrap_or(0),
+                        awg_h2: b.opt("awg_h2").and_then(|s| s.parse().ok()).unwrap_or(0),
+                        awg_h3: b.opt("awg_h3").and_then(|s| s.parse().ok()).unwrap_or(0),
+                        awg_h4: b.opt("awg_h4").and_then(|s| s.parse().ok()).unwrap_or(0),
+                        awg_i1: b.opt("awg_i1").unwrap_or("").to_string(),
+                        awg_i2: b.opt("awg_i2").unwrap_or("").to_string(),
+                        awg_i3: b.opt("awg_i3").unwrap_or("").to_string(),
+                        awg_i4: b.opt("awg_i4").unwrap_or("").to_string(),
+                        awg_i5: b.opt("awg_i5").unwrap_or("").to_string(),
+                        awg_j1: b.opt("awg_j1").unwrap_or("").to_string(),
+                        awg_j2: b.opt("awg_j2").unwrap_or("").to_string(),
+                        awg_j3: b.opt("awg_j3").unwrap_or("").to_string(),
+                        awg_itime: b.opt("awg_itime").and_then(|s| s.parse().ok()).unwrap_or(0),
+                        server_ports: b.list("server_ports"),
+                        hop_interval: b.opt("hop_interval").unwrap_or("").to_string(),
+                        hop_interval_max: b.opt("hop_interval_max").unwrap_or("").to_string(),
+                        warp_device_id: b.opt("warp_device_id").unwrap_or("").to_string(),
+                        warp_access_token: b.opt("warp_access_token").unwrap_or("").to_string(),
+                        warp_ipv4: b.opt("warp_ipv4").unwrap_or("").to_string(),
+                        warp_ipv6: b.opt("warp_ipv6").unwrap_or("").to_string(),
+                        warp_private_key: b.opt("warp_private_key").unwrap_or("").to_string(),
+                        warp_peer_public_key: b
+                            .opt("warp_peer_public_key")
+                            .unwrap_or("")
+                            .to_string(),
+                        warp_server: b.opt("warp_server").unwrap_or("").to_string(),
+                        warp_server_port: b
+                            .opt("warp_server_port")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        warp_reserved: b.opt("warp_reserved").unwrap_or("").to_string(),
+                        warp_mtu: b.opt("warp_mtu").and_then(|s| s.parse().ok()).unwrap_or(0),
+                        warp_fake_packets: b.opt("warp_fake_packets").unwrap_or("").to_string(),
+                        warp_fake_packets_size: b
+                            .opt("warp_fake_packets_size")
+                            .unwrap_or("")
+                            .to_string(),
+                        warp_fake_packets_delay: b
+                            .opt("warp_fake_packets_delay")
+                            .unwrap_or("")
+                            .to_string(),
+                        warp_fake_packets_mode: b
+                            .opt("warp_fake_packets_mode")
+                            .unwrap_or("")
+                            .to_string(),
+                        fptn_access_token: b
+                            .opt("fptn_access_token")
+                            .or_else(|| b.opt("access_token"))
+                            .or_else(|| b.opt("service_token"))
+                            .unwrap_or("")
+                            .to_string(),
+                        fptn_sni: b
+                            .opt("fptn_sni")
+                            .or_else(|| b.opt("sni"))
+                            .unwrap_or("")
+                            .to_string(),
+                        fptn_bypass_method: b
+                            .opt("fptn_bypass_method")
+                            .or_else(|| b.opt("bypass_method"))
+                            .unwrap_or("")
+                            .to_string(),
+                        fptn_preferred_server: b
+                            .opt("fptn_preferred_server")
+                            .or_else(|| b.opt("preferred_server"))
+                            .unwrap_or("")
+                            .to_string(),
+                        openvpn_proto: b.opt("openvpn_proto").unwrap_or("").to_string(),
+                        openvpn_cipher: b.opt("openvpn_cipher").unwrap_or("").to_string(),
+                        openvpn_auth: b.opt("openvpn_auth").unwrap_or("").to_string(),
+                        openvpn_mtu: b
+                            .opt("openvpn_mtu")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        openvpn_config: b.opt("openvpn_config").unwrap_or("").to_string(),
+                        anytls_alpn: b.list("anytls_alpn"),
+                        anytls_idle_session_check_interval: b
+                            .opt("anytls_idle_session_check_interval")
+                            .unwrap_or("")
+                            .to_string(),
+                        anytls_idle_session_timeout: b
+                            .opt("anytls_idle_session_timeout")
+                            .unwrap_or("")
+                            .to_string(),
+                        anytls_min_idle_session: b
+                            .opt("anytls_min_idle_session")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        snell_version: b
+                            .opt("snell_version")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        snell_obfs: b.opt("snell_obfs").unwrap_or("").to_string(),
+                        snell_obfs_host: b.opt("snell_obfs_host").unwrap_or("").to_string(),
+                        snell_uot: b.opt("snell_uot").is_some_and(parse_bool),
+                        mieru_transport: b.opt("mieru_transport").unwrap_or("").to_string(),
+                        mieru_multiplexing: b.opt("mieru_multiplexing").unwrap_or("").to_string(),
+                        mieru_handshake_mode: b
+                            .opt("mieru_handshake_mode")
+                            .unwrap_or("")
+                            .to_string(),
+                        naive_quic: b.opt("naive_quic").is_some_and(parse_bool),
+                        naive_quic_congestion_control: b
+                            .opt("naive_quic_congestion_control")
+                            .unwrap_or("")
+                            .to_string(),
+                        naive_insecure_concurrency: b
+                            .opt("naive_insecure_concurrency")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        naive_udp_over_tcp: b.opt("naive_udp_over_tcp").is_some_and(parse_bool),
+                        naive_extra_headers: b.opt("naive_extra_headers").unwrap_or("").to_string(),
+                        sudoku_aead: b.opt("sudoku_aead").unwrap_or("").to_string(),
+                        sudoku_ascii: b.opt("sudoku_ascii").is_some_and(parse_bool),
+                        sudoku_http_mask: b.opt("sudoku_http_mask").is_some_and(parse_bool),
+                        sudoku_http_mask_host: b
+                            .opt("sudoku_http_mask_host")
+                            .unwrap_or("")
+                            .to_string(),
+                        masque_vhttp: b.opt("masque_vhttp").is_some_and(parse_bool),
+                        masque_public_key: b.opt("masque_public_key").unwrap_or("").to_string(),
+                        masque_local_address: b
+                            .opt("masque_local_address")
+                            .unwrap_or("")
+                            .to_string(),
+                        masque_ipv6: b.opt("masque_ipv6").unwrap_or("").to_string(),
+                        masque_uri: b.opt("masque_uri").unwrap_or("").to_string(),
+                        masque_mtu: b
+                            .opt("masque_mtu")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        openconnect_protocol: b
+                            .opt("openconnect_protocol")
+                            .unwrap_or("")
+                            .to_string(),
+                        openconnect_authgroup: b
+                            .opt("openconnect_authgroup")
+                            .unwrap_or("")
+                            .to_string(),
+                        openconnect_servercert: b
+                            .opt("openconnect_servercert")
+                            .unwrap_or("")
+                            .to_string(),
+                        openconnect_no_dtls: b.opt("openconnect_no_dtls").is_some_and(parse_bool),
+                        shadowtls_version: b
+                            .opt("shadowtls_version")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        trusttunnel_quic: b.opt("trusttunnel_quic").is_some_and(parse_bool),
+                        trusttunnel_health_check: b
+                            .opt("trusttunnel_health_check")
+                            .is_some_and(parse_bool),
+                        csqtt_server: b.opt_str("csqtt_server"),
+                        csqtt_server_port: b.opt_u16(&["csqtt_server_port", "csqtt_port"]),
+                        csqtt_password: b.opt_str("csqtt_password"),
+                        csqtt_mode: b.opt_str("csqtt_mode"),
+                        csqtt_obfs: b.opt_str("csqtt_obfs"),
+                        csqtt_raw_port: b.opt_u16(&["csqtt_raw_port"]),
+                        csqtt_wg_port: b.opt_u16(&["csqtt_wg_port"]),
+                        csqtt_local_port: b.opt_u16(&["csqtt_local_port"]),
+                        csqtt_hashes: {
+                            let list = b.list("csqtt_hashes");
+                            parse_csqtt_hashes_tokens(list.iter().map(String::as_str))
+                        },
+                        csqtt_workers: b.opt_u16(&["csqtt_workers"]),
+                        csqtt_turn_transport: b.opt_str("csqtt_turn_transport"),
+                        csqtt_turn_server: b.opt_str("csqtt_turn_server"),
+                        csqtt_turn_urls: b.list("csqtt_turn_urls"),
+                        csqtt_turn_username: b.opt_str("csqtt_turn_username"),
+                        csqtt_turn_password: b.opt_str("csqtt_turn_password"),
+                        csqtt_vk_auth_mode: b.opt_str("csqtt_vk_auth_mode"),
+                        csqtt_vk_cookie: b.opt_str("csqtt_vk_cookie"),
+                        csqtt_vk_client_ids: b.list("csqtt_vk_client_ids"),
+                        csqtt_mtu: b.opt_u16(&["csqtt_mtu"]),
+                        csqtt_device_id: b.opt_str("csqtt_device_id"),
+                        csqtt_uri: b.opt_str("csqtt_uri"),
+                        csqtt_chunk1: b.opt("csqtt_chunk1").is_some_and(parse_bool),
+                        csqtt_wg_private_key: b.opt_str("csqtt_wg_private_key"),
+                        csqtt_wg_peer_public_key: b.opt_str("csqtt_wg_peer_public_key"),
+                        csqtt_wg_address: b.opt_str("csqtt_wg_address"),
+                        tewfai_transport: b.opt("tewfai_transport").unwrap_or("").to_string(),
+                        tewfai_inner_cipher: b.opt("tewfai_inner_cipher").unwrap_or("").to_string(),
+                        tewfai_morph_profile: b
+                            .opt("tewfai_morph_profile")
+                            .unwrap_or("")
+                            .to_string(),
+                        tewfai_desync_enabled: b
+                            .opt("tewfai_desync_enabled")
+                            .is_some_and(parse_bool),
+                        tor_socks_port: b
+                            .opt("tor_socks_port")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        tor_bridges: b.list("tor_bridges"),
+                        mtproto_telegram_ws: b.opt("mtproto_telegram_ws").is_some_and(parse_bool),
+                        tailscale_mode: b.opt("tailscale_mode").unwrap_or("").to_string(),
+                        tailscale_auth_key: b.opt("tailscale_auth_key").unwrap_or("").to_string(),
+                        tailscale_control_url: b
+                            .opt("tailscale_control_url")
+                            .unwrap_or("")
+                            .to_string(),
+                        tailscale_hostname: b.opt("tailscale_hostname").unwrap_or("").to_string(),
+                        tailscale_use_exit_node: b
+                            .opt("tailscale_exit_node")
+                            .or_else(|| b.opt("tailscale_use_exit_node"))
+                            .unwrap_or("")
+                            .to_string(),
+                        tailscale_ephemeral: b.opt("tailscale_ephemeral").is_some_and(parse_bool),
+                        tailscale_exit_node_allow_lan_access: b
+                            .opt("tailscale_exit_node_allow_lan_access")
+                            .is_some_and(parse_bool),
+                        tailscale_accept_routes: b
+                            .opt("tailscale_accept_routes")
+                            .is_none_or(parse_bool),
+                        tailscale_advertise_routes: b.csv_list("tailscale_advertise_routes"),
+                        tailscale_advertise_exit_node: b
+                            .opt("tailscale_advertise_exit_node")
+                            .is_some_and(parse_bool),
+                        tailscale_accept_dns: b.opt("tailscale_accept_dns").is_none_or(parse_bool),
+                        tailscale_accept_default_resolvers: b
+                            .opt("tailscale_accept_default_resolvers")
+                            .is_none_or(parse_bool),
+                        tailscale_relay_server_port: b
+                            .opt("tailscale_relay_server_port")
+                            .unwrap_or("")
+                            .to_string(),
+                        tailscale_relay_server_static_endpoints: b
+                            .csv_list("tailscale_relay_server_static_endpoints"),
+                        tailscale_system_interface: b
+                            .opt("tailscale_system_interface")
+                            .is_some_and(parse_bool),
+                        tailscale_system_interface_name: b
+                            .opt("tailscale_system_interface_name")
+                            .unwrap_or("")
+                            .to_string(),
+                        tailscale_system_interface_mtu: b
+                            .opt("tailscale_system_interface_mtu")
+                            .unwrap_or("")
+                            .to_string(),
+                        tailscale_udp_timeout: b
+                            .opt("tailscale_udp_timeout")
+                            .unwrap_or("")
+                            .to_string(),
+                        fail_policy: b.opt("fail_policy").unwrap_or("").to_string(),
+                        filter_allow_regex: b.opt("filter_allow_regex").unwrap_or("").to_string(),
+                        filter_deny_regex: b.opt("filter_deny_regex").unwrap_or("").to_string(),
+                        include_countries: b.list("include_countries"),
+                        exclude_countries: b.list("exclude_countries"),
                         download_via_proxy_enabled: b
                             .opt("download_via_proxy_enabled")
-                            .is_some_and(|v| v == "1" || v == "true"),
+                            .is_some_and(parse_bool),
                         download_via_proxy_section: b
                             .opt("download_via_proxy_section")
                             .unwrap_or("")
                             .to_string(),
-                        auto_user_agent: b
-                            .opt("auto_user_agent")
-                            .is_none_or(|v| v == "1" || v == "true"),
+                        auto_user_agent: b.opt("auto_user_agent").is_none_or(parse_bool),
                         user_agent: b.opt("user_agent").unwrap_or("").to_string(),
-                        auto_hwid: b.opt("auto_hwid").is_none_or(|v| v == "1" || v == "true"),
+                        auto_hwid: b.opt("auto_hwid").is_none_or(parse_bool),
                         hwid: b.opt("hwid").unwrap_or("").to_string(),
-                        prefix_nodes: b
-                            .opt("prefix_nodes")
-                            .is_some_and(|v| v == "1" || v == "true"),
+                        urltest_idle_timeout: b
+                            .opt("urltest_idle_timeout")
+                            .unwrap_or("")
+                            .to_string(),
+                        prefix_nodes: b.opt("prefix_nodes").is_some_and(parse_bool),
                         node_prefix: b.opt("node_prefix").unwrap_or("").to_string(),
                         node_prefix_bg: b.opt("node_prefix_bg").unwrap_or("").to_string(),
                         node_prefix_color: b.opt("node_prefix_color").unwrap_or("").to_string(),
+                        include_urltest_groups: b
+                            .opt("include_urltest_groups")
+                            .is_some_and(parse_bool),
+                        hide_urltest_group_outbounds: b
+                            .opt("hide_urltest_group_outbounds")
+                            .is_some_and(parse_bool),
+                        hide_detour_outbounds: b
+                            .opt("hide_detour_outbounds")
+                            .is_some_and(parse_bool),
                         nfqws2_opt: b.opt("nfqws2_opt").unwrap_or("").to_string(),
                         nfqws_opt: b.opt("nfqws_opt").unwrap_or("").to_string(),
                         byedpi_cmd_opts: b.opt("byedpi_cmd_opts").unwrap_or("").to_string(),
@@ -1762,35 +4181,153 @@ impl RouterStoreData {
                         desync_fake_sni: fake_sni,
                         desync_sni_pool: sni_pool,
                         desync_split_pos: b.opt("desync_split_pos").unwrap_or("sni").to_string(),
+                        desync_ttl: b
+                            .opt("desync_ttl")
+                            .or_else(|| b.opt("desync_fake_ttl"))
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
                         desync_fooling: b.opt("desync_fooling").unwrap_or("autottl").to_string(),
+                        desync_quic_fake: b
+                            .opt("desync_quic_fake")
+                            .or_else(|| b.opt("desync_udp_fake"))
+                            .is_some_and(parse_bool),
+                        desync_mode: b.opt("desync_mode").unwrap_or("").to_string(),
+                        desync_repeats: b
+                            .opt("desync_repeats")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        desync_split_delay_ms: b
+                            .opt("desync_split_delay_ms")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        desync_tlsrec_first: b.opt("desync_tlsrec_first").is_some_and(parse_bool),
+                        desync_seqovl: b
+                            .opt("desync_seqovl")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        desync_syndata: b.opt("desync_syndata").is_some_and(parse_bool),
+                        desync_wsize: b
+                            .opt("desync_wsize")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        desync_ipfrag: b.opt("desync_ipfrag").is_some_and(parse_bool),
+                        desync_udplen: b
+                            .opt("desync_udplen")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        desync_udp_repeats: b
+                            .opt("desync_udp_repeats")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        desync_udp_fake_ttl: b
+                            .opt("desync_udp_fake_ttl")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        desync_host_fake: b.opt("desync_host_fake").is_some_and(parse_bool),
+                        desync_wscale: b
+                            .opt("desync_wscale")
+                            .or_else(|| b.opt("desync_scale"))
+                            .and_then(|s| s.trim().parse::<u8>().ok())
+                            .map(|v| v.min(14)),
+                        desync_fake_payload: b.opt("desync_fake_payload").unwrap_or("").to_string(),
+                        desync_fake_tls: b.opt("desync_fake_tls").unwrap_or("").to_string(),
+                        desync_opts: b.opt("desync_opts").unwrap_or("").to_string(),
                         last_updated_unix: unix_now_secs(),
                         ..Default::default()
                     };
 
                     if stype == "subscription" {
-                        load_cached_subscription_nodes(&mut src);
+                        load_cached_subscription_nodes_from(&mut src, sub_cache_dir);
                     }
                     self.outbound_sources.push(src);
+                    imported += 1;
+                }
+                "outbound_group" => {
+                    self.outbound_groups.push(OutboundGroup {
+                        id: b.name.clone(),
+                        enabled: b.opt("enabled").is_none_or(parse_bool),
+                        name: b.opt("name").unwrap_or(&b.name).to_string(),
+                        primary_refs: b.list("primary_refs"),
+                        backup_refs: b.list("backup_refs"),
+                        fail_policy: b.opt("fail_policy").unwrap_or("last_alive").to_string(),
+                        source_refs: b.list("source_refs"),
+                        filter_mode: b.opt("filter_mode").unwrap_or("include").to_string(),
+                        detect_server_country: b.opt("detect_server_country").is_none_or(|v| {
+                            !matches!(
+                                v.trim().to_ascii_lowercase().as_str(),
+                                "0" | "false" | "off" | "no" | "disabled"
+                            )
+                        }),
+                        include_prefixes: b.list("include_prefixes"),
+                        include_country_flags: b.list("include_country_flags"),
+                        include_servers: {
+                            let mut s = b.list("include_servers");
+                            for item in b.list("include_outbounds") {
+                                if !s.contains(&item) {
+                                    s.push(item);
+                                }
+                            }
+                            s
+                        },
+                        include_name_regex: b.opt("include_name_regex").unwrap_or("").to_string(),
+                        include_protocols: b.list("include_protocols"),
+                        include_transports: b.list("include_transports"),
+                        include_security_types: b.list("include_security_types"),
+                        include_ports: b.list("include_ports"),
+                        exclude_prefixes: b.list("exclude_prefixes"),
+                        exclude_country_flags: b.list("exclude_country_flags"),
+                        exclude_servers: {
+                            let mut s = b.list("exclude_servers");
+                            for item in b.list("exclude_outbounds") {
+                                if !s.contains(&item) {
+                                    s.push(item);
+                                }
+                            }
+                            s
+                        },
+                        exclude_name_regex: b.opt("exclude_name_regex").unwrap_or("").to_string(),
+                        exclude_protocols: b.list("exclude_protocols"),
+                        exclude_transports: b.list("exclude_transports"),
+                        exclude_security_types: b.list("exclude_security_types"),
+                        exclude_ports: b.list("exclude_ports"),
+                    });
                     imported += 1;
                 }
                 "section" => {
                     let raw_action = b.opt("action").unwrap_or("connection");
                     let out_refs = b.list("outbound_source_refs");
+                    let sec_refs = b.list("section_refs");
                     let conn_type = match raw_action {
-                        "block" => "block",
+                        "block" | "reject" => "block",
                         "bypass" | "direct" => "direct",
+                        "group" => "group",
                         "dns" => "dns",
                         "hosts" => "hosts",
+                        "desync" => "desync",
                         "zapret2" => "zapret2",
                         "zapret" => "zapret",
                         "byedpi" => "byedpi",
                         "wdtt" => "wdtt",
+                        "csqtt" => "csqtt",
                         "olcrtc" => "olcrtc",
                         "fptn" => "fptn",
                         "awg" => "awg",
                         "warp" => "warp",
+                        "tailscale" => "tailscale",
+                        "openvpn" => "openvpn",
+                        "openconnect" => "openconnect",
+                        "tewfai" => "tewfai",
                         _ => {
-                            if out_refs.iter().any(|r| r.contains("desync")) {
+                            if !sec_refs.is_empty() && out_refs.is_empty() {
+                                "group"
+                            } else if out_refs.iter().any(|r| {
+                                r.to_ascii_lowercase().contains("desync")
+                                    || blocks.iter().any(|blk| {
+                                        blk.kind == "outbound_source"
+                                            && blk.name == *r
+                                            && blk.opt("source_type") == Some("desync")
+                                    })
+                            }) {
                                 "desync"
                             } else if b.name.eq_ignore_ascii_case("fptn") {
                                 "fptn"
@@ -1799,31 +4336,11 @@ impl RouterStoreData {
                             }
                         }
                     };
-                    let mut user_domains = b.list("user_domains");
-                    if let Some(dom_multiline) = b.opt("domain") {
-                        for line in dom_multiline.lines() {
-                            let t = line.trim();
-                            if !t.is_empty()
-                                && !t.starts_with("//")
-                                && !t.starts_with('#')
-                                && !user_domains.contains(&t.to_string())
-                            {
-                                user_domains.push(t.to_string());
-                            }
-                        }
-                    }
-                    let mut user_subnets = b.list("ip_cidr");
-                    if let Some(cidr_multiline) = b.opt("ip_cidr") {
-                        for line in cidr_multiline.lines() {
-                            let t = line.trim();
-                            if !t.is_empty()
-                                && !t.starts_with("//")
-                                && !user_subnets.contains(&t.to_string())
-                            {
-                                user_subnets.push(t.to_string());
-                            }
-                        }
-                    }
+                    let user_domains = b.clean_tokens(&["user_domains", "domain", "domains"]);
+                    let exclude_domains = b.clean_tokens(&["exclude_domains", "excluded_domains"]);
+                    let user_subnets =
+                        b.clean_tokens(&["user_subnets", "ip_cidr", "ip_cidrs", "subnets"]);
+                    let exclude_subnets = b.clean_tokens(&["exclude_subnets", "excluded_ip_cidr"]);
                     let active_sel = selector_state
                         .get(&b.name)
                         .or_else(|| selector_state.get(&format!("{}-out", b.name)))
@@ -1832,9 +4349,9 @@ impl RouterStoreData {
 
                     self.sections.push(RoutingSection {
                         id: b.name.clone(),
-                        enabled: b.opt("enabled").is_none_or(|v| v == "1" || v == "true"),
+                        enabled: b.opt("enabled").is_none_or(parse_bool),
                         label: b.opt("label").unwrap_or(&b.name).to_string(),
-                        icon: String::new(),
+                        icon: b.opt("icon").unwrap_or("").to_string(),
                         connection_type: conn_type.to_string(),
                         action: raw_action.to_string(),
                         condition_refs: b.list("condition_refs"),
@@ -1846,9 +4363,11 @@ impl RouterStoreData {
                             .opt("condition_expression")
                             .unwrap_or("")
                             .to_string(),
-                        match_all: b.opt("match_all").is_some_and(|v| v == "1" || v == "true"),
+                        match_all: b.opt("match_all").is_some_and(parse_bool),
                         outbound_source_refs: out_refs,
+                        section_refs: sec_refs,
                         balancer_refs: b.list("balancer_refs"),
+                        outbound_group_ref: b.opt("outbound_group_ref").unwrap_or("").to_string(),
                         outbound_group_refs: b.list("outbound_group_refs"),
                         outbound_group_levels: b.list("outbound_group_levels"),
                         section_selection_mode: b
@@ -1857,57 +4376,99 @@ impl RouterStoreData {
                             .to_string(),
                         selector_auto_failover: b
                             .opt("selector_auto_failover")
-                            .is_some_and(|v| v == "1" || v == "true"),
+                            .is_some_and(parse_bool),
                         section_health_url: b.opt("section_health_url").unwrap_or("").to_string(),
                         interfaces: b.list("interfaces"),
+                        output_interface: b.opt("output_interface").unwrap_or("").to_string(),
                         server_domain_rules: b.list("server_domain_rules"),
                         section_filter_mode: b
                             .opt("section_filter_mode")
-                            .or_else(|| b.opt("dashboard_filter_mode"))
                             .unwrap_or("disabled")
                             .to_string(),
-                        include_countries: b.list("dashboard_include_countries"),
-                        exclude_countries: b.list("dashboard_exclude_countries"),
-                        node_filter_allow: b.list("dashboard_include_regex").join("|"),
-                        node_filter_deny: b.list("dashboard_exclude_regex").join("|"),
+                        include_countries: b.list("include_countries"),
+                        exclude_countries: b.list("exclude_countries"),
+                        include_prefixes: b.list("include_prefixes"),
+                        exclude_prefixes: b.list("exclude_prefixes"),
+                        node_filter_allow: b.opt("node_filter_allow").unwrap_or("").to_string(),
+                        node_filter_deny: b.opt("node_filter_deny").unwrap_or("").to_string(),
+                        include_protocols: b.list("include_protocols"),
+                        exclude_protocols: b.list("exclude_protocols"),
+                        include_transports: b.list("include_transports"),
+                        exclude_transports: b.list("exclude_transports"),
+                        include_securities: b.list("include_securities"),
+                        exclude_securities: b.list("exclude_securities"),
                         dashboard_hide_na_servers: b
                             .opt("dashboard_hide_na_servers")
-                            .is_some_and(|v| v == "1" || v == "true"),
-                        community_lists: b.list("community_lists"),
-                        community_subnets: b
-                            .opt("community_subnets")
-                            .is_none_or(|v| v == "1" || v == "true"),
-                        rule_set_urls: b.list("rule_set"),
-                        domain_ip_lists: b.list("domain_ip_lists"),
+                            .is_some_and(parse_bool),
+                        community_lists: b.clean_tokens(&["community_lists"]),
+                        community_subnets: b.opt("community_subnets").is_none_or(parse_bool),
+                        rule_set_urls: b.clean_tokens(&["rule_set"]),
+                        domain_ip_lists: b.clean_tokens(&["domain_ip_lists"]),
                         user_domains,
+                        exclude_domains,
                         user_subnets,
-                        geoip_codes: b.list("geoip_country"),
+                        exclude_subnets,
+                        asn_list: b.clean_tokens(&["asn_list"]),
+                        geoip_codes: {
+                            let l = b.clean_tokens(&["geoip_country"]);
+                            if l.is_empty() {
+                                b.clean_tokens(&["geoip_codes"])
+                            } else {
+                                l
+                            }
+                        },
                         geoip_mode: b.opt("geoip_mode").unwrap_or("exclude").to_string(),
+                        geosite_codes: {
+                            let l = b.clean_tokens(&["geosite_codes"]);
+                            if l.is_empty() {
+                                b.clean_tokens(&["geosite"])
+                            } else {
+                                l
+                            }
+                        },
                         global_rules: b.list("global_rules"),
-                        source_ip_cidr: b.list("source_ip_cidr"),
-                        fully_routed_ips: b.list("fully_routed_ips"),
-                        excluded_ips: b.list("excluded_ips"),
+                        source_ip_cidr: b
+                            .clean_tokens(&["source_ip_cidr"])
+                            .into_iter()
+                            .filter(|t| !is_mac_address(t))
+                            .collect(),
+                        fully_routed_ips: {
+                            let l = b.clean_tokens(&["fully_routed_ips"]);
+                            if l.is_empty() {
+                                b.clean_tokens(&["client_ips"])
+                            } else {
+                                l
+                            }
+                        },
+                        excluded_ips: b.clean_tokens(&["excluded_ips"]),
                         source_inbounds: b.list("source_inbounds"),
                         default_interface_address: b.list("default_interface_address"),
                         interface_address: b.list("interface_address"),
                         ports: b.list("ports"),
+                        source_ports: b.list("source_ports"),
+                        exclude_ports: {
+                            let l = b.list("exclude_ports");
+                            if l.is_empty() {
+                                b.list("excluded_ports")
+                            } else {
+                                l
+                            }
+                        },
                         protocol: b.list("protocol"),
                         excluded_protocol: b.list("excluded_protocol"),
                         dscp: b.list("dscp"),
                         outbound_detour_enabled: b
                             .opt("outbound_detour_enabled")
-                            .is_some_and(|v| v == "1" || v == "true"),
+                            .is_some_and(parse_bool),
                         outbound_detour_section: b
                             .opt("outbound_detour_section")
                             .unwrap_or("")
                             .to_string(),
-                        sort_by_latency: b
-                            .opt("sort_by_latency")
-                            .is_some_and(|v| v == "1" || v == "true"),
+                        sort_by_latency: b.opt("sort_by_latency").is_some_and(parse_bool),
                         packet_encoding: b.opt("packet_encoding").unwrap_or("").to_string(),
                         resolve_real_ip_for_routing: b
                             .opt("resolve_real_ip_for_routing")
-                            .is_some_and(|v| v == "1" || v == "true"),
+                            .is_some_and(parse_bool),
                         fail_policy: b.opt("fail_policy").unwrap_or("keep").to_string(),
                         fail_policy_urls: b.list("fail_policy_urls"),
                         fail_policy_timeout: b
@@ -1928,17 +4489,27 @@ impl RouterStoreData {
                             .unwrap_or(60),
                         fail_policy_check_direct: b
                             .opt("fail_policy_check_direct")
-                            .is_none_or(|v| v == "1" || v == "true"),
-                        mixed_proxy_enabled: b
-                            .opt("mixed_proxy_enabled")
-                            .is_some_and(|v| v == "1" || v == "true"),
+                            .is_none_or(parse_bool),
+                        fail_policy_check_interval: b
+                            .opt("fail_policy_check_interval")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        fail_policy_recover_interval: b
+                            .opt("fail_policy_recover_interval")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        fail_policy_expected_status: b
+                            .opt("fail_policy_expected_status")
+                            .unwrap_or("")
+                            .to_string(),
+                        mixed_proxy_enabled: b.opt("mixed_proxy_enabled").is_some_and(parse_bool),
                         mixed_proxy_port: b
                             .opt("mixed_proxy_port")
                             .and_then(|s| s.parse().ok())
                             .unwrap_or(0),
                         mixed_proxy_auth_enabled: b
                             .opt("mixed_proxy_auth_enabled")
-                            .is_some_and(|v| v == "1" || v == "true"),
+                            .is_some_and(parse_bool),
                         mixed_proxy_username: b
                             .opt("mixed_proxy_username")
                             .unwrap_or("")
@@ -1947,22 +4518,77 @@ impl RouterStoreData {
                             .opt("mixed_proxy_password")
                             .unwrap_or("")
                             .to_string(),
-                        routed_dns_enabled: b
-                            .opt("routed_dns_enabled")
-                            .is_some_and(|v| v == "1" || v == "true"),
+                        routed_dns_enabled: b.opt("routed_dns_enabled").is_some_and(parse_bool),
                         routed_dns_type: b.opt("routed_dns_type").unwrap_or("doh").to_string(),
-                        dns_servers: b.list("dns_server"),
-                        dns_use_wan: b
-                            .opt("dns_use_wan")
-                            .is_some_and(|v| v == "1" || v == "true"),
-                        disable_fakeip: b
-                            .opt("disable_fakeip")
-                            .is_some_and(|v| v == "1" || v == "true"),
-                        dns_detour_enabled: b
-                            .opt("dns_detour_enabled")
-                            .is_some_and(|v| v == "1" || v == "true"),
+                        dns_servers: {
+                            let l = b.list("dns_server");
+                            if l.is_empty() {
+                                b.list("dns_servers")
+                            } else {
+                                l
+                            }
+                        },
+                        dns_use_wan: b.opt("dns_use_wan").is_some_and(parse_bool),
+                        disable_fakeip: b.opt("disable_fakeip").is_some_and(parse_bool),
+                        dns_detour_enabled: b.opt("dns_detour_enabled").is_some_and(parse_bool),
                         dns_detour_section: b.opt("dns_detour_section").unwrap_or("").to_string(),
                         active_selected_tag: active_sel,
+                        desync_preset: b.opt("desync_preset").unwrap_or("").to_string(),
+                        desync_mode: b.opt("desync_mode").unwrap_or("").to_string(),
+                        desync_fooling: b.opt("desync_fooling").unwrap_or("").to_string(),
+                        desync_auto_tune: b.opt("desync_auto_tune").is_none_or(parse_bool),
+                        desync_split_pos: b.opt("desync_split_pos").unwrap_or("").to_string(),
+                        desync_fake_ttl: b
+                            .opt("desync_fake_ttl")
+                            .or_else(|| b.opt("desync_ttl"))
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        desync_fake_sni: b.opt("desync_fake_sni").unwrap_or("").to_string(),
+                        desync_repeats: b
+                            .opt("desync_repeats")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        desync_split_delay_ms: b
+                            .opt("desync_split_delay_ms")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        desync_tlsrec_first: b.opt("desync_tlsrec_first").is_some_and(parse_bool),
+                        desync_seqovl: b
+                            .opt("desync_seqovl")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        desync_syndata: b.opt("desync_syndata").is_some_and(parse_bool),
+                        desync_wsize: b
+                            .opt("desync_wsize")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        desync_ipfrag: b.opt("desync_ipfrag").is_some_and(parse_bool),
+                        desync_udp_fake: b
+                            .opt("desync_udp_fake")
+                            .or_else(|| b.opt("desync_quic_fake"))
+                            .is_none_or(parse_bool),
+                        desync_udp_repeats: b
+                            .opt("desync_udp_repeats")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        desync_udp_fake_ttl: b
+                            .opt("desync_udp_fake_ttl")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        desync_udplen: b
+                            .opt("desync_udplen")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        desync_host_fake: b.opt("desync_host_fake").is_some_and(parse_bool),
+                        desync_wscale: b
+                            .opt("desync_wscale")
+                            .or_else(|| b.opt("desync_scale"))
+                            .and_then(|s| s.trim().parse::<u8>().ok())
+                            .map(|v| v.min(14)),
+                        desync_sni_pool: b.csv_list("desync_sni_pool"),
+                        desync_fake_payload: b.opt("desync_fake_payload").unwrap_or("").to_string(),
+                        desync_fake_tls: b.opt("desync_fake_tls").unwrap_or("").to_string(),
+                        desync_opts: b.opt("desync_opts").unwrap_or("").to_string(),
                         nfqws2_opt: b.opt("nfqws2_opt").unwrap_or("").to_string(),
                         nfqws_opt: b.opt("nfqws_opt").unwrap_or("").to_string(),
                         byedpi_cmd_opts: b.opt("byedpi_cmd_opts").unwrap_or("").to_string(),
@@ -1981,32 +4607,132 @@ impl RouterStoreData {
                         fptn_sni: b.opt("sni").unwrap_or("").to_string(),
                         fptn_bypass_method: b.opt("bypass_method").unwrap_or("").to_string(),
                         fptn_preferred_server: b.opt("preferred_server").unwrap_or("").to_string(),
+                        warp_flow_device_id: b.opt_str("warp_flow_device_id"),
+                        wdtt_native: b.opt("wdtt_native").is_some_and(parse_bool),
+                        wdtt_workers: b.opt_u16(&["wdtt_workers"]),
+                        wdtt_mtu: b.opt_u16(&["wdtt_mtu"]),
+                        csqtt_server: b.opt_str("csqtt_server"),
+                        csqtt_server_port: b.opt_u16(&["csqtt_server_port", "csqtt_port"]),
+                        csqtt_password: b.opt_str("csqtt_password"),
+                        csqtt_mode: b.opt_str("csqtt_mode"),
+                        csqtt_obfs: b.opt_str("csqtt_obfs"),
+                        csqtt_raw_port: b.opt_u16(&["csqtt_raw_port"]),
+                        csqtt_wg_port: b.opt_u16(&["csqtt_wg_port"]),
+                        csqtt_local_port: b.opt_u16(&["csqtt_local_port"]),
+                        csqtt_hashes: {
+                            let list = b.list("csqtt_hashes");
+                            parse_csqtt_hashes_tokens(list.iter().map(String::as_str))
+                        },
+                        csqtt_workers: b.opt_u16(&["csqtt_workers"]),
+                        csqtt_turn_transport: b.opt_str("csqtt_turn_transport"),
+                        csqtt_turn_server: b.opt_str("csqtt_turn_server"),
+                        csqtt_turn_urls: b.list("csqtt_turn_urls"),
+                        csqtt_turn_username: b.opt_str("csqtt_turn_username"),
+                        csqtt_turn_password: b.opt_str("csqtt_turn_password"),
+                        csqtt_vk_auth_mode: b.opt_str("csqtt_vk_auth_mode"),
+                        csqtt_vk_cookie: b.opt_str("csqtt_vk_cookie"),
+                        csqtt_vk_client_ids: b.list("csqtt_vk_client_ids"),
+                        csqtt_mtu: b.opt_u16(&["csqtt_mtu"]),
+                        csqtt_device_id: b.opt_str("csqtt_device_id"),
+                        csqtt_uri: b.opt_str("csqtt_uri"),
+                        csqtt_chunk1: b.opt("csqtt_chunk1").is_some_and(parse_bool),
+                        csqtt_wg_private_key: b.opt_str("csqtt_wg_private_key"),
+                        csqtt_wg_peer_public_key: b.opt_str("csqtt_wg_peer_public_key"),
+                        csqtt_wg_address: b.opt_str("csqtt_wg_address"),
                         dns_hosts: b.opt("dns_hosts").unwrap_or("").to_string(),
                         hosts_list_urls: b.list("hosts_list_urls"),
                         hosts_list_auto_update: b
                             .opt("hosts_list_auto_update")
-                            .is_some_and(|v| v == "1" || v == "true"),
+                            .is_some_and(parse_bool),
                         hosts_list_update_interval: b
                             .opt("hosts_list_update_interval")
                             .unwrap_or("24h")
+                            .to_string(),
+                        bind_interface: b.opt("bind_interface").unwrap_or("").to_string(),
+                        tailscale_mode: b.opt("tailscale_mode").unwrap_or("").to_string(),
+                        tailscale_auth_key: b.opt("tailscale_auth_key").unwrap_or("").to_string(),
+                        tailscale_control_url: b
+                            .opt("tailscale_control_url")
+                            .unwrap_or("")
+                            .to_string(),
+                        tailscale_hostname: b.opt("tailscale_hostname").unwrap_or("").to_string(),
+                        tailscale_use_exit_node: b
+                            .opt("tailscale_exit_node")
+                            .or_else(|| b.opt("tailscale_use_exit_node"))
+                            .unwrap_or("")
+                            .to_string(),
+                        tailscale_ephemeral: b.opt("tailscale_ephemeral").is_some_and(parse_bool),
+                        tailscale_exit_node_allow_lan_access: b
+                            .opt("tailscale_exit_node_allow_lan_access")
+                            .is_some_and(parse_bool),
+                        tailscale_accept_routes: b
+                            .opt("tailscale_accept_routes")
+                            .is_none_or(parse_bool),
+                        tailscale_advertise_routes: b.csv_list("tailscale_advertise_routes"),
+                        tailscale_advertise_exit_node: b
+                            .opt("tailscale_advertise_exit_node")
+                            .is_some_and(parse_bool),
+                        tailscale_accept_dns: b.opt("tailscale_accept_dns").is_none_or(parse_bool),
+                        tailscale_accept_default_resolvers: b
+                            .opt("tailscale_accept_default_resolvers")
+                            .is_none_or(parse_bool),
+                        tailscale_relay_server_port: b
+                            .opt("tailscale_relay_server_port")
+                            .unwrap_or("")
+                            .to_string(),
+                        tailscale_relay_server_static_endpoints: b
+                            .csv_list("tailscale_relay_server_static_endpoints"),
+                        tailscale_system_interface: b
+                            .opt("tailscale_system_interface")
+                            .is_some_and(parse_bool),
+                        tailscale_system_interface_name: b
+                            .opt("tailscale_system_interface_name")
+                            .unwrap_or("")
+                            .to_string(),
+                        tailscale_system_interface_mtu: b
+                            .opt("tailscale_system_interface_mtu")
+                            .unwrap_or("")
+                            .to_string(),
+                        tailscale_udp_timeout: b
+                            .opt("tailscale_udp_timeout")
+                            .unwrap_or("")
                             .to_string(),
                         ..Default::default()
                     });
                     imported += 1;
                 }
                 "server" => {
-                    let raw_port = b.opt("listen_port").unwrap_or("443");
+                    let proto = b.opt("protocol").unwrap_or("vless").to_string();
+                    let default_port_str = if proto == "wdtt" {
+                        "46000"
+                    } else if proto == "tailscale" {
+                        "0"
+                    } else {
+                        "443"
+                    };
+                    let default_port_num: u16 = if proto == "wdtt" {
+                        46000
+                    } else if proto == "tailscale" {
+                        0
+                    } else {
+                        443
+                    };
+                    let raw_port = b.opt("listen_port").unwrap_or(default_port_str);
                     let listen_port = raw_port
                         .split('-')
                         .next()
                         .and_then(|s| s.parse::<u16>().ok())
-                        .unwrap_or(443);
-                    let listen_port_range = if raw_port.contains('-') {
-                        raw_port.to_string()
-                    } else {
-                        String::new()
-                    };
-                    let proto = b.opt("protocol").unwrap_or("vless").to_string();
+                        .unwrap_or(default_port_num);
+                    let listen_port_range = b
+                        .opt("listen_port_range")
+                        .map(String::from)
+                        .unwrap_or_else(|| {
+                            if raw_port.contains('-') {
+                                raw_port.to_string()
+                            } else {
+                                String::new()
+                            }
+                        });
                     let label = b.opt("label").unwrap_or(&b.name).to_string();
                     let srv_uuid = b
                         .opt("server_uuid")
@@ -2015,53 +4741,78 @@ impl RouterStoreData {
                         .to_string();
                     let srv_pw = b
                         .opt("server_password")
+                        .or_else(|| b.opt("password"))
                         .or_else(|| b.opt("tewfai_password"))
                         .unwrap_or("")
                         .to_string();
                     let flow = b.opt("vless_flow").unwrap_or("none").to_string();
 
-                    let default_client = InboundClient {
-                        id: format!("cli-{}", b.name),
-                        name: b.opt("server_username").unwrap_or(&label).to_string(),
-                        enabled: true,
-                        uuid: if srv_uuid.is_empty() {
-                            crypto_gen::generate_uuid_v4()
-                        } else {
-                            srv_uuid.clone()
-                        },
-                        password: srv_pw.clone(),
-                        flow: if flow == "none" {
-                            String::new()
-                        } else {
-                            flow.clone()
-                        },
-                        sub_id: "default".to_string(),
-                        up: 0,
-                        down: 0,
-                        total_limit_bytes: 0,
-                        expiry_time: 0,
-                        ip_limit: 0,
-                        wg_public_key: b.opt("awg_peer_public_key").unwrap_or("").to_string(),
-                        wg_private_key: b.opt("awg_client_private_key").unwrap_or("").to_string(),
-                        wg_client_ip: b
-                            .opt("awg_client_address")
-                            .unwrap_or("10.8.0.2/32")
-                            .to_string(),
-                    };
+                    let parsed_clients: Vec<InboundClient> = b
+                        .opt("clients_json")
+                        .and_then(|raw_c| serde_json::from_str::<Vec<InboundClient>>(raw_c).ok())
+                        .filter(|v| !v.is_empty())
+                        .unwrap_or_else(|| {
+                            vec![InboundClient {
+                                id: format!("cli-{}", b.name),
+                                name: b.opt("server_username").unwrap_or(&label).to_string(),
+                                enabled: true,
+                                uuid: if srv_uuid.is_empty() {
+                                    crypto_gen::generate_uuid_v4()
+                                } else {
+                                    srv_uuid.clone()
+                                },
+                                password: srv_pw.clone(),
+                                flow: if flow == "none" {
+                                    String::new()
+                                } else {
+                                    flow.clone()
+                                },
+                                sub_id: "default".to_string(),
+                                up: 0,
+                                down: 0,
+                                total_limit_bytes: b
+                                    .opt("client_limit_bytes")
+                                    .and_then(|s| s.parse().ok())
+                                    .unwrap_or(0),
+                                expiry_time: b
+                                    .opt("client_expiry_time")
+                                    .and_then(|s| s.parse().ok())
+                                    .unwrap_or(0),
+                                ip_limit: b
+                                    .opt("client_ip_limit")
+                                    .and_then(|s| s.parse().ok())
+                                    .unwrap_or(0),
+                                wg_public_key: b
+                                    .opt("awg_peer_public_key")
+                                    .unwrap_or("")
+                                    .to_string(),
+                                wg_private_key: b
+                                    .opt("awg_client_private_key")
+                                    .unwrap_or("")
+                                    .to_string(),
+                                wg_client_ip: b
+                                    .opt("awg_client_address")
+                                    .unwrap_or("10.8.0.2/32")
+                                    .to_string(),
+                            }]
+                        });
 
+                    let is_tailscale_proto = proto.eq_ignore_ascii_case("tailscale");
                     self.servers.push(InboundServer {
                         id: b.name.clone(),
-                        enabled: b.opt("enabled").is_none_or(|v| v == "1" || v == "true"),
+                        enabled: b.opt("enabled").is_none_or(parse_bool),
                         label,
                         country: b.opt("server_country").unwrap_or("RU").to_string(),
                         protocol: proto,
                         listen: b.opt("listen").unwrap_or("0.0.0.0").to_string(),
                         listen_port,
                         listen_port_range,
-                        public_host: b.opt("public_host").unwrap_or("192.168.1.205").to_string(),
-                        open_firewall_port: b
-                            .opt("open_firewall_port")
-                            .is_none_or(|v| v == "1" || v == "true"),
+                        public_host: b.opt("public_host").unwrap_or("").to_string(),
+                        open_firewall_port: if is_tailscale_proto {
+                            b.opt("open_firewall_port").is_some_and(parse_bool)
+                        } else {
+                            b.opt("open_firewall_port").is_none_or(parse_bool)
+                        },
                         routing_mode: b.opt("routing_mode").unwrap_or("rules").to_string(),
                         routing_section: b.opt("routing_section").unwrap_or("").to_string(),
                         security: b.opt("security").unwrap_or("none").to_string(),
@@ -2070,8 +4821,14 @@ impl RouterStoreData {
                         password: srv_pw,
                         method: b
                             .opt("shadowsocks_method")
+                            .or_else(|| b.opt("method"))
                             .unwrap_or("aes-128-gcm")
                             .to_string(),
+                        vmess_alter_id: b
+                            .opt("vmess_alter_id")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        socks_auth_enabled: b.opt("socks_auth_enabled").is_some_and(parse_bool),
                         vless_flow: flow,
                         tls_server_name: b.opt("tls_server_name").unwrap_or("").to_string(),
                         tls_certificate_path: b
@@ -2095,8 +4852,26 @@ impl RouterStoreData {
                         reality_private_key: b.opt("reality_private_key").unwrap_or("").to_string(),
                         reality_public_key: b.opt("reality_public_key").unwrap_or("").to_string(),
                         reality_short_id: b.opt("reality_short_id").unwrap_or("").to_string(),
+                        reality_max_time_difference: b
+                            .opt("reality_max_time_difference")
+                            .unwrap_or("")
+                            .to_string(),
                         transport: b.opt("transport").unwrap_or("tcp").to_string(),
                         transport_path: b.opt("transport_path").unwrap_or("").to_string(),
+                        transport_host: b.opt("transport_host").unwrap_or("").to_string(),
+                        transport_xhttp_mode: b
+                            .opt("transport_xhttp_mode")
+                            .unwrap_or("")
+                            .to_string(),
+                        transport_hosts: b.list("transport_hosts"),
+                        transport_service_name: b
+                            .opt("transport_service_name")
+                            .unwrap_or("")
+                            .to_string(),
+                        anytls_padding_scheme: b
+                            .opt("anytls_padding_scheme")
+                            .unwrap_or("")
+                            .to_string(),
                         tewfai_uuid: b.opt("tewfai_uuid").unwrap_or("").to_string(),
                         tewfai_password: b.opt("tewfai_password").unwrap_or("").to_string(),
                         tewfai_inbound_transport: b
@@ -2115,12 +4890,31 @@ impl RouterStoreData {
                             .opt("tewfai_morph_profile")
                             .unwrap_or("auto")
                             .to_string(),
+                        tewfai_pqc_enabled: b.opt("tewfai_pqc_enabled").is_some_and(parse_bool),
+                        tewfai_handover_enabled: b
+                            .opt("tewfai_handover_enabled")
+                            .is_some_and(parse_bool),
+                        tewfai_fec_enabled: b.opt("tewfai_fec_enabled").is_some_and(parse_bool),
+                        tewfai_shaper_enabled: b
+                            .opt("tewfai_shaper_enabled")
+                            .is_some_and(parse_bool),
+                        tewfai_mtu: b
+                            .opt("tewfai_mtu")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        hysteria2_obfs_type: b.opt("hysteria2_obfs_type").unwrap_or("").to_string(),
                         hysteria2_obfs_password: b
                             .opt("hysteria2_obfs_password")
                             .unwrap_or("")
                             .to_string(),
-                        hysteria2_up_mbps: 100,
-                        hysteria2_down_mbps: 100,
+                        hysteria2_up_mbps: b
+                            .opt("hysteria2_up_mbps")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(100),
+                        hysteria2_down_mbps: b
+                            .opt("hysteria2_down_mbps")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(100),
                         tuic_congestion_control: b
                             .opt("tuic_congestion_control")
                             .unwrap_or("bbr")
@@ -2138,13 +4932,12 @@ impl RouterStoreData {
                             .and_then(|s| s.parse().ok())
                             .unwrap_or(3),
                         mieru_transport: b.opt("mieru_transport").unwrap_or("TCP").to_string(),
-                        trusttunnel_quic: b
-                            .opt("trusttunnel_quic")
-                            .is_some_and(|v| v == "1" || v == "true"),
+                        trusttunnel_quic: b.opt("trusttunnel_quic").is_some_and(parse_bool),
                         masque_ipv4_pool: b
                             .opt("masque_ipv4_pool")
                             .unwrap_or("172.16.0.0/24")
                             .to_string(),
+                        masque_ipv6_pool: b.opt("masque_ipv6_pool").unwrap_or("").to_string(),
                         masque_mtu: b
                             .opt("masque_mtu")
                             .and_then(|s| s.parse().ok())
@@ -2154,6 +4947,15 @@ impl RouterStoreData {
                             .opt("openconnect_flavor")
                             .unwrap_or("anyconnect")
                             .to_string(),
+                        openconnect_user_agent: b
+                            .opt("openconnect_user_agent")
+                            .unwrap_or("")
+                            .to_string(),
+                        openconnect_local_hostname: b
+                            .opt("openconnect_local_hostname")
+                            .unwrap_or("")
+                            .to_string(),
+                        openconnect_urlpath: b.opt("openconnect_urlpath").unwrap_or("").to_string(),
                         openconnect_address: b
                             .opt("openconnect_address")
                             .unwrap_or("172.16.1.2/24")
@@ -2162,12 +4964,53 @@ impl RouterStoreData {
                             .opt("openconnect_mtu")
                             .and_then(|s| s.parse().ok())
                             .unwrap_or(1400),
+                        openconnect_ip: b.opt("openconnect_ip").is_some_and(parse_bool),
+                        openconnect_esp: b.opt("openconnect_esp").is_some_and(parse_bool),
+                        openconnect_dtls: b.opt("openconnect_dtls").is_some_and(parse_bool),
                         mtproto_secret: b.opt("mtproto_secret").unwrap_or("").to_string(),
+                        mtproto_adtag: b
+                            .opt("mtproto_adtag")
+                            .or_else(|| b.opt("adtag"))
+                            .unwrap_or("")
+                            .to_string(),
                         mtproto_faketls: b
                             .opt("mtproto_faketls")
                             .unwrap_or("google.com")
                             .to_string(),
-                        mtproto_telegram_ws: false,
+                        mtproto_telegram_ws: b.opt("mtproto_telegram_ws").is_some_and(parse_bool),
+                        mtproto_padding: b.opt("mtproto_padding").is_some_and(parse_bool),
+                        mtproto_concurrency: b
+                            .opt("mtproto_concurrency")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        mtproto_domain_fronting_port: b
+                            .opt("mtproto_domain_fronting_port")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        mtproto_domain_fronting_ip: b
+                            .opt("mtproto_domain_fronting_ip")
+                            .unwrap_or("")
+                            .to_string(),
+                        mtproto_domain_fronting_proxy_protocol: b
+                            .opt("mtproto_domain_fronting_proxy_protocol")
+                            .is_some_and(parse_bool),
+                        mtproto_prefer_ip: b.opt("mtproto_prefer_ip").unwrap_or("").to_string(),
+                        mtproto_auto_update: b.opt("mtproto_auto_update").is_some_and(parse_bool),
+                        mtproto_allow_fallback_on_unknown_dc: b
+                            .opt("mtproto_allow_fallback_on_unknown_dc")
+                            .is_some_and(parse_bool),
+                        mtproto_tolerate_time_skewness: b
+                            .opt("mtproto_tolerate_time_skewness")
+                            .is_some_and(parse_bool),
+                        mtproto_idle_timeout: b
+                            .opt("mtproto_idle_timeout")
+                            .unwrap_or("")
+                            .to_string(),
+                        mtproto_handshake_timeout: b
+                            .opt("mtproto_handshake_timeout")
+                            .unwrap_or("")
+                            .to_string(),
+                        awg_version: b.opt("awg_version").unwrap_or("1.5").to_string(),
                         awg_mtu: b
                             .opt("awg_mtu")
                             .and_then(|s| s.parse().ok())
@@ -2180,12 +5023,14 @@ impl RouterStoreData {
                             .opt("awg_client_address")
                             .unwrap_or("10.8.0.2/32")
                             .to_string(),
-                        awg_dns: b.opt("awg_dns").unwrap_or("192.168.1.205").to_string(),
+                        awg_dns: b.opt("awg_dns").unwrap_or("1.1.1.1").to_string(),
                         awg_jc: b.opt("awg_jc").and_then(|s| s.parse().ok()).unwrap_or(5),
                         awg_jmin: b.opt("awg_jmin").and_then(|s| s.parse().ok()).unwrap_or(40),
                         awg_jmax: b.opt("awg_jmax").and_then(|s| s.parse().ok()).unwrap_or(70),
                         awg_s1: b.opt("awg_s1").and_then(|s| s.parse().ok()).unwrap_or(17),
                         awg_s2: b.opt("awg_s2").and_then(|s| s.parse().ok()).unwrap_or(26),
+                        awg_s3: b.opt("awg_s3").and_then(|s| s.parse().ok()).unwrap_or(0),
+                        awg_s4: b.opt("awg_s4").and_then(|s| s.parse().ok()).unwrap_or(0),
                         awg_h1: b
                             .opt("awg_h1")
                             .and_then(|s| s.parse().ok())
@@ -2202,6 +5047,15 @@ impl RouterStoreData {
                             .opt("awg_h4")
                             .and_then(|s| s.parse().ok())
                             .unwrap_or(1965444834),
+                        awg_i1: b.opt("awg_i1").unwrap_or("").to_string(),
+                        awg_i2: b.opt("awg_i2").unwrap_or("").to_string(),
+                        awg_i3: b.opt("awg_i3").unwrap_or("").to_string(),
+                        awg_i4: b.opt("awg_i4").unwrap_or("").to_string(),
+                        awg_i5: b.opt("awg_i5").unwrap_or("").to_string(),
+                        awg_j1: b.opt("awg_j1").unwrap_or("").to_string(),
+                        awg_j2: b.opt("awg_j2").unwrap_or("").to_string(),
+                        awg_j3: b.opt("awg_j3").unwrap_or("").to_string(),
+                        awg_itime: b.opt("awg_itime").and_then(|s| s.parse().ok()).unwrap_or(0),
                         awg_keepalive: b
                             .opt("awg_keepalive")
                             .and_then(|s| s.parse().ok())
@@ -2217,20 +5071,212 @@ impl RouterStoreData {
                             .to_string(),
                         awg_peer_public_key: b.opt("awg_peer_public_key").unwrap_or("").to_string(),
                         awg_preshared_key: b.opt("awg_preshared_key").unwrap_or("").to_string(),
-                        tailscale_auth_key: String::new(),
+                        tailscale_auth_key: b.opt("tailscale_auth_key").unwrap_or("").to_string(),
+                        tailscale_control_url: b
+                            .opt("tailscale_control_url")
+                            .unwrap_or("")
+                            .to_string(),
                         tailscale_hostname: b.opt("tailscale_hostname").unwrap_or("").to_string(),
-                        tailscale_advertise_exit_node: false,
-                        isolate_lan_for_users: false,
-                        isolated_users: Vec::new(),
-                        isolated_subnets: Vec::new(),
-                        clients: vec![default_client],
-                        inbound_json: String::new(),
+                        tailscale_advertise_exit_node: b
+                            .opt("tailscale_advertise_exit_node")
+                            .is_some_and(parse_bool),
+                        tailscale_advertise_routes: b.csv_list("tailscale_advertise_routes"),
+                        tailscale_accept_routes: b
+                            .opt("tailscale_accept_routes")
+                            .is_some_and(parse_bool),
+                        tailscale_mode: b.opt("tailscale_mode").unwrap_or("").to_string(),
+                        tailscale_auto_firewall: b
+                            .opt("tailscale_auto_firewall")
+                            .is_some_and(parse_bool),
+                        tailscale_masquerade: b.opt("tailscale_masquerade").is_some_and(parse_bool),
+                        tailscale_use_exit_node: b
+                            .opt("tailscale_use_exit_node")
+                            .or_else(|| b.opt("tailscale_exit_node"))
+                            .unwrap_or("")
+                            .to_string(),
+                        tailscale_ephemeral: b.opt("tailscale_ephemeral").is_some_and(parse_bool),
+                        tailscale_exit_node_allow_lan_access: b
+                            .opt("tailscale_exit_node_allow_lan_access")
+                            .is_some_and(parse_bool),
+                        tailscale_accept_dns: b.opt("tailscale_accept_dns").is_none_or(parse_bool),
+                        tailscale_accept_default_resolvers: b
+                            .opt("tailscale_accept_default_resolvers")
+                            .is_none_or(parse_bool),
+                        tailscale_relay_server_port: b
+                            .opt("tailscale_relay_server_port")
+                            .unwrap_or("")
+                            .to_string(),
+                        tailscale_relay_server_static_endpoints: b
+                            .csv_list("tailscale_relay_server_static_endpoints"),
+                        tailscale_system_interface: b
+                            .opt("tailscale_system_interface")
+                            .is_some_and(parse_bool),
+                        tailscale_system_interface_name: b
+                            .opt("tailscale_system_interface_name")
+                            .unwrap_or("")
+                            .to_string(),
+                        tailscale_system_interface_mtu: b
+                            .opt("tailscale_system_interface_mtu")
+                            .unwrap_or("")
+                            .to_string(),
+                        tailscale_udp_timeout: b
+                            .opt("tailscale_udp_timeout")
+                            .unwrap_or("")
+                            .to_string(),
+                        isolate_lan_for_users: b
+                            .opt("isolate_lan_for_users")
+                            .is_some_and(parse_bool),
+                        isolated_users: b.list("isolated_users"),
+                        isolated_subnets: b.list("isolated_subnets"),
+                        wdtt_mode: b.opt("wdtt_mode").unwrap_or("").to_string(),
+                        wdtt_obfs: b.opt("wdtt_obfs").unwrap_or("").to_string(),
+                        wdtt_raw_port: b
+                            .opt("wdtt_raw_port")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        wdtt_network: b.opt("wdtt_network").unwrap_or("").to_string(),
+                        wdtt_ipv4_pool: b.opt("wdtt_ipv4_pool").unwrap_or("").to_string(),
+                        wdtt_raw_ipv4_pool: b.opt("wdtt_raw_ipv4_pool").unwrap_or("").to_string(),
+                        wdtt_client_dns: b.opt("wdtt_client_dns").unwrap_or("").to_string(),
+                        wdtt_mtu: b.opt("wdtt_mtu").and_then(|s| s.parse().ok()).unwrap_or(0),
+                        clients: parsed_clients,
+                        inbound_json: b.opt("inbound_json").unwrap_or("").to_string(),
                     });
+                    imported += 1;
+                }
+                "profile" | "parental_profile" => {
+                    let mut device_ips = b.list("device_ip");
+                    for extra in b.list("device_ips") {
+                        if !device_ips.contains(&extra) {
+                            device_ips.push(extra);
+                        }
+                    }
+                    for extra in b.list("devices") {
+                        if !device_ips.contains(&extra) {
+                            device_ips.push(extra);
+                        }
+                    }
+                    self.profiles.push(ParentalProfile {
+                        id: b.name.clone(),
+                        enabled: b.opt("enabled").is_none_or(parse_bool),
+                        label: b
+                            .opt("label")
+                            .or_else(|| b.opt("name"))
+                            .unwrap_or(&b.name)
+                            .to_string(),
+                        avatar: b.opt("avatar").unwrap_or("").to_string(),
+                        device_ips,
+                        safe_search: b.opt("safe_search").is_some_and(parse_bool),
+                        block_doh: b.opt("block_doh").is_some_and(parse_bool),
+                        daily_quota_minutes: b
+                            .opt("daily_quota_minutes")
+                            .or_else(|| b.opt("daily_limit_minutes"))
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        used_minutes_today: b
+                            .opt("used_minutes_today")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        paused_until_unix: b
+                            .opt("paused_until_unix")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        blocked_categories: b.list("blocked_categories"),
+                        blocked_domains: b.list("blocked_domains"),
+                        schedule_ref: b
+                            .opt("schedule_ref")
+                            .or_else(|| b.opt("schedule"))
+                            .unwrap_or("")
+                            .to_string(),
+                        notify: b.opt("notify").is_some_and(parse_bool),
+                    });
+                    imported += 1;
+                }
+                "schedule" | "parental_schedule" => {
+                    let mut profile_refs = b.list("profile");
+                    for extra in b.list("profile_refs") {
+                        if !profile_refs.contains(&extra) {
+                            profile_refs.push(extra);
+                        }
+                    }
+                    let mut device_ips = b.list("device_ip");
+                    for extra in b.list("device_ips") {
+                        if !device_ips.contains(&extra) {
+                            device_ips.push(extra);
+                        }
+                    }
+                    self.schedules.push(ScheduleRule {
+                        id: b.name.clone(),
+                        enabled: b.opt("enabled").is_none_or(parse_bool),
+                        label: b
+                            .opt("label")
+                            .or_else(|| b.opt("name"))
+                            .unwrap_or(&b.name)
+                            .to_string(),
+                        profile_refs,
+                        device_ips,
+                        target: b
+                            .opt("target")
+                            .or_else(|| b.opt("target_id"))
+                            .unwrap_or("")
+                            .to_string(),
+                        sections: b.list("sections"),
+                        action: b.opt("action").unwrap_or("block").to_string(),
+                        time_mode: b.opt("time_mode").unwrap_or("range").to_string(),
+                        start_time: b.opt("start_time").unwrap_or("").to_string(),
+                        end_time: b.opt("end_time").unwrap_or("").to_string(),
+                        days: b.list("days"),
+                        daily_quota_minutes: b
+                            .opt("daily_quota_minutes")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        blocked_domains: b.list("blocked_domains"),
+                        blocked_categories: b.list("blocked_categories"),
+                        mode: b.opt("mode").unwrap_or("").to_string(),
+                        dns_level: b.opt("dns_level").unwrap_or("").to_string(),
+                        notify: b.opt("notify").is_some_and(parse_bool),
+                    });
+                    imported += 1;
+                }
+                "guest_mode" => {
+                    self.guest_mode = GuestModeConfig {
+                        enabled: b.opt("enabled").is_some_and(parse_bool),
+                        mode: b.opt("mode").unwrap_or("selected").to_string(),
+                        guest_devices: b.list("guest_devices"),
+                        trusted_devices: b.list("trusted_devices"),
+                        isolate_lan: b.opt("isolate_lan").is_none_or(parse_bool),
+                        block_router_admin: b.opt("block_router_admin").is_none_or(parse_bool),
+                        daily_time_limit: b
+                            .opt("daily_time_limit")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        daily_traffic_limit: b
+                            .opt("daily_traffic_limit")
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        bandwidth_limit_mbps: b
+                            .opt("bandwidth_limit_mbps")
+                            .or_else(|| b.opt("bandwidth_limit"))
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0),
+                        allowed_ports: b
+                            .list("allowed_ports")
+                            .into_iter()
+                            .filter_map(|p| p.parse::<u16>().ok())
+                            .collect(),
+                        allowed_domains: b.list("allowed_domains"),
+                        landing_url: b.opt("landing_url").unwrap_or("").to_string(),
+                        start_time: b.opt("start_time").unwrap_or("").to_string(),
+                        end_time: b.opt("end_time").unwrap_or("").to_string(),
+                        days: b.list("days"),
+                        notify: b.opt("notify").is_some_and(parse_bool),
+                    };
                     imported += 1;
                 }
                 _ => {}
             }
         }
+        self.apply_relax_probe_intervals_v1();
         imported
     }
 }
@@ -2242,13 +5288,183 @@ struct LegacyUciBlock {
     lists: HashMap<String, Vec<String>>,
 }
 
+pub(crate) fn url_encode_component(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() * 2);
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char);
+            }
+            _ => {
+                out.push_str(&format!("%{b:02X}"));
+            }
+        }
+    }
+    out
+}
+
+pub fn parse_csqtt_hashes_tokens<'a, I>(items: I) -> Vec<String>
+where
+    I: IntoIterator<Item = &'a str>,
+{
+    let mut out = Vec::new();
+    for raw in items {
+        for part in raw.split([',', '|', ';', '+', '\r', '\n', '\t', ' ']) {
+            let mut item = part.trim();
+            if item.is_empty() {
+                continue;
+            }
+            if let Some(join_idx) = item.rfind("/call/join/") {
+                let tail = &item[join_idx + "/call/join/".len()..];
+                item = tail
+                    .split(['?', '#', '/'])
+                    .next()
+                    .map(str::trim)
+                    .unwrap_or("");
+            }
+            if !item.is_empty() && !out.iter().any(|existing: &String| existing == item) {
+                out.push(item.to_string());
+            }
+        }
+    }
+    out
+}
+
+pub fn is_mac_address(s: &str) -> bool {
+    let t = s.trim();
+    let mut count = 0usize;
+    for part in t.split(':') {
+        if part.len() != 2 || !part.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return false;
+        }
+        count += 1;
+    }
+    count == 6
+}
+
+fn strip_uci_inline_comment(line: &str) -> &str {
+    let mut s = line.trim();
+    if let Some(idx) = s.find('#') {
+        s = s[..idx].trim();
+    }
+    if s.starts_with("//") {
+        return "";
+    }
+    if let Some(idx) = s.find("//")
+        && s[..idx].ends_with(char::is_whitespace)
+    {
+        s = s[..idx].trim();
+    }
+    s
+}
+
 impl LegacyUciBlock {
     fn opt(&self, key: &str) -> Option<&str> {
-        self.options.get(key).map(String::as_str)
+        self.options.get(key).map(String::as_str).or_else(|| {
+            self.lists
+                .get(key)
+                .and_then(|v| v.first())
+                .map(String::as_str)
+        })
+    }
+    fn opt_u16(&self, keys: &[&str]) -> u16 {
+        keys.iter()
+            .find_map(|k| self.opt(k).and_then(|v| v.trim().parse::<u16>().ok()))
+            .unwrap_or(0)
+    }
+    fn opt_str(&self, key: &str) -> String {
+        self.opt(key).unwrap_or("").to_string()
     }
     fn list(&self, key: &str) -> Vec<String> {
-        self.lists.get(key).cloned().unwrap_or_default()
+        if let Some(l) = self.lists.get(key) {
+            return l.clone();
+        }
+        if let Some(s) = self.options.get(key) {
+            return s
+                .split_whitespace()
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(String::from)
+                .collect();
+        }
+        Vec::new()
     }
+    fn csv_list(&self, key: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        let sources: Vec<String> = if let Some(l) = self.lists.get(key) {
+            l.clone()
+        } else if let Some(s) = self.options.get(key) {
+            vec![s.clone()]
+        } else {
+            return out;
+        };
+        for raw in sources {
+            for part in raw.split([',', ' ', '\t', '\r', '\n']) {
+                let item = part.trim();
+                if !item.is_empty() && !out.iter().any(|existing: &String| existing == item) {
+                    out.push(item.to_string());
+                }
+            }
+        }
+        out
+    }
+    fn clean_tokens(&self, keys: &[&str]) -> Vec<String> {
+        let mut out = Vec::new();
+        for &key in keys {
+            for raw in self
+                .lists
+                .get(key)
+                .into_iter()
+                .flatten()
+                .chain(self.options.get(key))
+            {
+                for line in raw.lines() {
+                    let cleaned = strip_uci_inline_comment(line);
+                    if cleaned.is_empty() {
+                        continue;
+                    }
+                    for part in cleaned.split([',', ' ', '\t']) {
+                        let tok = part.trim();
+                        if !tok.is_empty() && !out.iter().any(|existing: &String| existing == tok) {
+                            out.push(tok.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        out
+    }
+}
+
+/// Parse legacy UCI configuration text into a JSON sections map (`Map<String, Value>`)
+/// preserving multiline option values (`domain`, `ip_cidr`, `nfqws2_opt`, etc.).
+pub fn parse_uci_text_to_json_sections(raw: &str) -> serde_json::Map<String, Value> {
+    let blocks = parse_legacy_uci_blocks(raw);
+    let mut out = serde_json::Map::new();
+    for (idx, b) in blocks.into_iter().enumerate() {
+        let anonymous = b.name == b.kind;
+        let sname = if anonymous && out.contains_key(&b.name) {
+            format!("cfg{:02x}{}", idx + 1, b.kind)
+        } else {
+            b.name.clone()
+        };
+        let mut sec_obj = serde_json::Map::new();
+        sec_obj.insert(".anonymous".to_string(), json!(anonymous));
+        sec_obj.insert(".type".to_string(), json!(b.kind));
+        sec_obj.insert(".name".to_string(), json!(sname.clone()));
+        sec_obj.insert(".index".to_string(), json!(idx));
+        for (k, v) in b.options {
+            sec_obj.insert(k, Value::String(v));
+        }
+        for (k, arr) in b.lists {
+            sec_obj.insert(
+                k,
+                Value::Array(arr.into_iter().map(Value::String).collect()),
+            );
+        }
+        out.insert(sname, Value::Object(sec_obj));
+    }
+    out
 }
 
 fn parse_legacy_uci_blocks(raw: &str) -> Vec<LegacyUciBlock> {
@@ -2256,9 +5472,10 @@ fn parse_legacy_uci_blocks(raw: &str) -> Vec<LegacyUciBlock> {
     let mut current: Option<LegacyUciBlock> = None;
     let mut multiline_key: Option<(bool, String, String)> = None;
 
-    for line in raw.lines() {
+    for raw_line in raw.lines() {
+        let line = raw_line.trim_end_matches('\r');
         if let Some((is_list, ref key, ref mut acc)) = multiline_key {
-            if let Some(stripped) = line.strip_suffix('\'') {
+            if let Some(stripped) = line.trim_end().strip_suffix('\'') {
                 acc.push('\n');
                 acc.push_str(stripped);
                 let val = acc.clone();
@@ -2357,16 +5574,53 @@ fn parse_duration_secs(s: &str) -> u32 {
     t.parse::<u32>().unwrap_or(180)
 }
 
-fn load_cached_subscription_nodes(src: &mut OutboundSource) {
-    let cache_dir = Path::new("/etc/tachyon/subscription-cache");
-    let Ok(entries) = std::fs::read_dir(cache_dir) else {
+fn normalize_sub_cache_url(raw: &str) -> &str {
+    raw.trim().trim_end_matches('/')
+}
+
+fn cache_stem_matches_source(
+    cache_dir: &Path,
+    stem: &str,
+    src: &OutboundSource,
+    norm_urls: &[&str],
+) -> bool {
+    let url_path = cache_dir.join(format!("{stem}.url"));
+    if let Ok(raw_url) = std::fs::read_to_string(&url_path) {
+        let u = normalize_sub_cache_url(&raw_url);
+        if !u.is_empty() {
+            return norm_urls.contains(&u);
+        }
+    }
+    stem == src.id
+        || (!src.name.is_empty() && stem == src.name)
+        || stem.starts_with(&format!("{}-", src.id))
+        || (!src.name.is_empty() && stem.starts_with(&format!("{}-", src.name)))
+}
+
+pub fn load_cached_subscription_nodes_from(src: &mut OutboundSource, cache_dir: &Path) {
+    if src.source_type != "subscription" {
+        return;
+    }
+    let Ok(rd) = std::fs::read_dir(cache_dir) else {
         return;
     };
-    for entry in entries.flatten() {
-        let path = entry.path();
+    let mut paths: Vec<std::path::PathBuf> = rd.flatten().map(|e| e.path()).collect();
+    paths.sort();
+
+    let norm_urls: Vec<&str> = src
+        .subscription_urls
+        .iter()
+        .map(|u| normalize_sub_cache_url(u))
+        .filter(|u| !u.is_empty())
+        .collect();
+    let mut seen_tags: std::collections::HashSet<String> =
+        src.cached_nodes.iter().map(|n| n.tag.clone()).collect();
+
+    for path in paths {
         let fname = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        if fname.ends_with(".metadata.json") {
-            if let Ok(raw) = std::fs::read_to_string(&path)
+        if let Some(stem) = fname.strip_suffix(".metadata.json") {
+            if cache_stem_matches_source(cache_dir, stem, src, &norm_urls)
+                && let Ok(raw) = std::fs::read_to_string(&path)
                 && let Ok(v) = serde_json::from_str::<Value>(&raw)
             {
                 if let Some(t) = v.get("title").and_then(Value::as_str) {
@@ -2384,7 +5638,13 @@ fn load_cached_subscription_nodes(src: &mut OutboundSource) {
             }
             continue;
         }
-        if !fname.ends_with(".json") {
+        if fname.ends_with(".meta.json") {
+            continue;
+        }
+        let Some(stem) = fname.strip_suffix(".json") else {
+            continue;
+        };
+        if !cache_stem_matches_source(cache_dir, stem, src, &norm_urls) {
             continue;
         }
         let Ok(raw) = std::fs::read_to_string(&path) else {
@@ -2412,11 +5672,19 @@ fn load_cached_subscription_nodes(src: &mut OutboundSource) {
                 .and_then(Value::as_str)
                 .unwrap_or("")
                 .to_string();
-            let server_port = item
-                .get("server_port")
-                .and_then(Value::as_u64)
-                .unwrap_or(443) as u16;
-            if tag.is_empty() || server.is_empty() {
+            let mut server_port =
+                item.get("server_port").and_then(Value::as_u64).unwrap_or(0) as u16;
+            if server_port == 0 {
+                server_port = item
+                    .get("server_ports")
+                    .and_then(Value::as_array)
+                    .and_then(|arr| arr.first())
+                    .and_then(Value::as_str)
+                    .and_then(|s| s.split(['-', ':']).next())
+                    .and_then(|p| p.trim().parse::<u16>().ok())
+                    .unwrap_or(443);
+            }
+            if tag.is_empty() || server.is_empty() || !seen_tags.insert(tag.clone()) {
                 continue;
             }
             let raw_uri = item
@@ -2637,16 +5905,21 @@ impl AppState {
         let data = if path.exists() {
             let raw = std::fs::read_to_string(&path)?;
             let mut parsed = serde_json::from_str::<RouterStoreData>(&raw)?;
-            // If store only has the initial demo sections/servers and `/etc/config/tachyon` exists,
-            // auto-import the router's full configuration so nothing is missing.
+            // If store only has the initial demo sections/servers and `/etc/config/tachyon`
+            // (or `/etc/tachyon/backup-pre-2.0/tachyon.uci`) exists, auto-import the router's
+            // full configuration so nothing is missing.
             if parsed.sections.len() <= 2
                 && parsed.servers.len() <= 1
-                && Path::new("/etc/config/tachyon").exists()
+                && (Path::new("/etc/config/tachyon").exists()
+                    || Path::new(LEGACY_UCI_BACKUP_PATH).exists())
             {
                 let count = parsed.import_legacy_router_files();
                 if count > 0 {
                     let _ = crypto_gen::write_json_if_changed(&path, &parsed);
                 }
+            }
+            if parsed.apply_relax_probe_intervals_v1() {
+                let _ = crypto_gen::write_json_if_changed(&path, &parsed);
             }
             parsed
         } else {
@@ -2683,5 +5956,446 @@ impl AppState {
         let written = crypto_gen::write_json_if_changed(&self.path, &*d)?;
         self.dirty.store(false, Ordering::Release);
         Ok(written)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_import_legacy_falls_back_to_backup_uci_when_primary_missing() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let tmp_dir =
+            std::env::temp_dir().join(format!("tachyon-store-test-{}-{nonce}", std::process::id()));
+        std::fs::create_dir_all(&tmp_dir).expect("create temp test dir");
+
+        let missing_primary = tmp_dir.join("missing.uci");
+        let backup_uci = tmp_dir.join("tachyon.uci");
+        let uci_content = r#"
+config settings 'settings'
+	option proxy_mode 'tun'
+	option dns_type 'dot'
+
+config outbound_source 'sub_main'
+	option name 'MainSub'
+	option source_type 'subscription'
+	list subscription_urls 'https://example.org/sub.txt'
+
+config section 'Main'
+	option label 'Main Section'
+	option enabled '1'
+	option action 'proxy'
+	list outbound_source_refs 'sub_main'
+
+config server 'srv_vless'
+	option label 'Router VLESS'
+	option protocol 'vless'
+	option listen_port '8443'
+
+config telegram 'telegram'
+	option enabled '1'
+	option bot_token '123456:TESTTOKEN'
+	option admin_ids '1001,1002'
+	option router_name 'BackupRouter'
+	option poll_interval '7'
+"#;
+        std::fs::write(&backup_uci, uci_content).expect("write backup uci");
+
+        let mut store = RouterStoreData {
+            settings: GlobalSettings::default(),
+            sections: Vec::new(),
+            conditions: Vec::new(),
+            outbound_sources: Vec::new(),
+            balancers: Vec::new(),
+            outbound_groups: Vec::new(),
+            servers: Vec::new(),
+            profiles: Vec::new(),
+            schedules: Vec::new(),
+            guest_mode: GuestModeConfig::default(),
+            telegram: TgBotConfig::default(),
+            device_registry: HashMap::new(),
+            applied_migrations: Vec::new(),
+        };
+
+        let imported = store.import_legacy_router_files_from(&missing_primary, &backup_uci);
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+
+        assert!(imported >= 5);
+        assert_eq!(store.settings.proxy_mode, "tun");
+        assert_eq!(store.settings.dns_type, "dot");
+        assert_eq!(store.outbound_sources.len(), 1);
+        assert_eq!(store.outbound_sources[0].id, "sub_main");
+        assert_eq!(store.sections.len(), 1);
+        assert_eq!(store.sections[0].id, "Main");
+        assert_eq!(store.sections[0].label, "Main Section");
+        assert_eq!(store.servers.len(), 1);
+        assert_eq!(store.servers[0].id, "srv_vless");
+        assert_eq!(store.servers[0].listen_port, 8443);
+        assert!(store.telegram.enabled);
+        assert_eq!(store.telegram.bot_token, "123456:TESTTOKEN");
+        assert_eq!(store.telegram.admin_ids, vec![1001, 1002]);
+        assert_eq!(store.telegram.router_name, "BackupRouter");
+        assert_eq!(store.telegram.poll_interval, 7);
+    }
+
+    #[test]
+    fn test_legacy_migration_comments_subscriptions_and_balancers() {
+        let tmp_dir = std::env::temp_dir().join(format!(
+            "tachyon-mig-full-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        let sub_dir = tmp_dir.join("subscription-cache");
+        let _ = std::fs::create_dir_all(&sub_dir);
+        let uci_path = tmp_dir.join("tachyon");
+
+        std::fs::write(
+            sub_dir.join("aaa111.url"),
+            "https://sub.example.test/clouds\n",
+        )
+        .expect("write url 1");
+        std::fs::write(
+            sub_dir.join("aaa111.json"),
+            serde_json::json!({
+                "outbounds": [
+                    {
+                        "tag": "DE One",
+                        "type": "vless",
+                        "server": "198.51.100.10",
+                        "server_port": 443,
+                        "uuid": "11111111-1111-1111-1111-111111111111"
+                    },
+                    {
+                        "tag": "DE One",
+                        "type": "vless",
+                        "server": "198.51.100.11",
+                        "server_port": 443,
+                        "uuid": "11111111-1111-1111-1111-111111111112"
+                    }
+                ]
+            })
+            .to_string(),
+        )
+        .expect("write cache 1");
+        std::fs::write(
+            sub_dir.join("bbb222.url"),
+            "https://sub.example.test/soft\n",
+        )
+        .expect("write url 2");
+        std::fs::write(
+            sub_dir.join("bbb222.json"),
+            serde_json::json!({
+                "outbounds": [
+                    {
+                        "tag": "DE DOUBLE HOPE #10",
+                        "type": "vless",
+                        "server": "198.51.100.20",
+                        "server_port": 443,
+                        "uuid": "22222222-2222-2222-2222-222222222222"
+                    }
+                ]
+            })
+            .to_string(),
+        )
+        .expect("write cache 2");
+
+        let uci_content = r#"config settings 'settings'
+	option proxy_mode 'tproxy'
+	option cache_path '/etc/tachyon-core/cache.db'
+	list excluded_ips '192.168.1.99 # livingroom TV'
+
+config outbound_source 'Clouds'
+	option type 'subscription'
+	option enabled '1'
+	option name 'Clouds'
+	option url 'https://sub.example.test/clouds'
+
+config outbound_source 'SoftPortal'
+	option type 'subscription'
+	option enabled '1'
+	option name 'SoftPortal'
+	option url 'https://sub.example.test/soft'
+
+config urltest
+	option tag 'anon_skip'
+	option interval '3m'
+
+config balancer 'Stability'
+	option type 'urltest'
+	option check_interval_jitter '15%'
+	option tolerance '80'
+
+config priority_group 'Priority'
+	option label 'Priority'
+
+config outbound_group 'Germany'
+	option flag_emoji '0'
+	list include_outbounds '[Clouds] DE One'
+	list include_outbounds 'DE DOUBLE HOPE #10'
+
+config condition 'cond_ByPass'
+	option enabled '1'
+	option type 'atomic'
+	list community_lists 'russia_outside'
+	list client_ips '192.168.1.0/24 # LAN net'
+	list user_domains 'kimi.ai # AI portal'
+	list user_domains 'multiline.example
+	'
+	list user_subnets '192.168.2.0/24 # secondary subnet'
+
+config section 'ByPass'
+	option enabled '1'
+	option action 'direct'
+	list condition_refs 'cond_ByPass'
+	list fully_routed_ips '3e:83:67:22:fe:65'
+	list excluded_ips '192.168.1.10 # phone'
+
+config section 'Zapret2'
+	option enabled '1'
+	option action 'desync'
+	option source_type 'desync'
+	list dashboard_include_countries 'US'
+
+config schedule 'Nahui'
+	option enabled '1'
+	option name 'Nahui'
+	option action 'block'
+	option daily_quota_minutes '60'
+"#;
+        std::fs::write(&uci_path, uci_content).expect("write uci");
+
+        let mut store = RouterStoreData::default();
+        let imported = store.import_legacy_router_files_with_cache(&[uci_path.as_path()], &sub_dir);
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+
+        assert!(imported >= 8);
+        assert_eq!(store.settings.cache_path, "/tmp/tachyon-core/cache.db");
+        assert_eq!(store.settings.excluded_ips, vec!["192.168.1.99"]);
+
+        let clouds = store
+            .outbound_sources
+            .iter()
+            .find(|s| s.id == "Clouds")
+            .expect("Clouds source");
+        assert_eq!(clouds.cached_nodes.len(), 1, "tag dedup + url matching");
+        assert_eq!(clouds.cached_nodes[0].server, "198.51.100.10");
+
+        let soft = store
+            .outbound_sources
+            .iter()
+            .find(|s| s.id == "SoftPortal")
+            .expect("SoftPortal source");
+        assert_eq!(soft.cached_nodes.len(), 1);
+        assert_eq!(soft.cached_nodes[0].server, "198.51.100.20");
+
+        assert!(
+            !store.balancers.iter().any(|b| b.id == "anon_skip"),
+            "anonymous urltest block must not create duplicate balancer"
+        );
+        let stability = store
+            .balancers
+            .iter()
+            .find(|b| b.id == "Stability")
+            .expect("Stability balancer");
+        assert_eq!(stability.check_interval_jitter, 15);
+        let priority = store
+            .balancers
+            .iter()
+            .find(|b| b.id == "Priority")
+            .expect("Priority balancer");
+        assert_eq!(priority.mode, "priority");
+
+        let germany = store
+            .outbound_groups
+            .iter()
+            .find(|g| g.id == "Germany")
+            .expect("Germany group");
+        assert_eq!(
+            germany.include_servers,
+            vec!["[Clouds] DE One", "DE DOUBLE HOPE #10"]
+        );
+
+        let cond_bp = store
+            .conditions
+            .iter()
+            .find(|c| c.id == "cond_ByPass")
+            .expect("cond_ByPass");
+        assert_eq!(cond_bp.client_ips, vec!["192.168.1.0/24"]);
+        assert_eq!(cond_bp.user_domains, vec!["kimi.ai", "multiline.example"]);
+        assert_eq!(cond_bp.user_subnets, vec!["192.168.2.0/24"]);
+
+        let sec_bp = store
+            .sections
+            .iter()
+            .find(|s| s.id == "ByPass")
+            .expect("ByPass section");
+        assert_eq!(sec_bp.fully_routed_ips, vec!["3e:83:67:22:fe:65"]);
+        assert_eq!(sec_bp.excluded_ips, vec!["192.168.1.10"]);
+
+        let zapret2 = store
+            .sections
+            .iter()
+            .find(|s| s.id == "Zapret2")
+            .expect("Zapret2 section");
+        assert_eq!(zapret2.connection_type, "desync");
+        assert!(zapret2.include_countries.is_empty());
+
+        assert!(store.schedules.iter().any(|s| s.id == "Nahui"));
+    }
+
+    #[test]
+    fn test_nftables_excluded_ips_mac_bypass_and_paused_profile() {
+        let mut store = RouterStoreData::default();
+        store.settings.excluded_ips =
+            vec!["192.168.1.99".to_string(), "aa:bb:cc:dd:ee:01".to_string()];
+        store.sections.clear();
+        store.sections.push(RoutingSection {
+            id: "ByPass".to_string(),
+            enabled: true,
+            label: "ByPass".to_string(),
+            action: "direct".to_string(),
+            fully_routed_ips: vec!["3e:83:67:22:fe:65".to_string()],
+            ..Default::default()
+        });
+        store.profiles.push(ParentalProfile {
+            id: "kid_paused".to_string(),
+            enabled: true,
+            label: "Paused Kid".to_string(),
+            device_ips: vec!["aa:bb:cc:dd:ee:02".to_string()],
+            paused_until_unix: i64::MAX,
+            ..Default::default()
+        });
+
+        let nft = crate::net_stack::compile_nftables_ruleset(&store);
+        assert!(nft.contains("ip saddr 192.168.1.99 return"));
+        assert!(nft.contains("ether saddr aa:bb:cc:dd:ee:01 return"));
+        assert!(nft.contains("ether saddr aa:bb:cc:dd:ee:02 drop"));
+
+        let localv4_pos = nft
+            .find("ip daddr @localv4 return")
+            .expect("@localv4 return must exist");
+        let mac_bypass_pos = nft
+            .find("ether saddr 3e:83:67:22:fe:65 return")
+            .expect("MAC bypass rule must exist");
+        assert!(
+            mac_bypass_pos > localv4_pos,
+            "direct section MAC bypass must appear after @localv4 return"
+        );
+    }
+
+    #[test]
+    fn test_tailscale_validation_predicates_and_probe_relax_migration() {
+        assert!(validate_tailscale_network_options("", "", "ts").is_ok());
+        assert!(validate_tailscale_network_options("41641", "1280", "ts").is_ok());
+        for bad_port in ["0", "70000", "abc"] {
+            assert!(
+                validate_tailscale_network_options(bad_port, "", "ts").is_err(),
+                "port {bad_port} must be rejected"
+            );
+        }
+        for bad_mtu in ["400", "70000", "abc"] {
+            assert!(
+                validate_tailscale_network_options("", bad_mtu, "ts").is_err(),
+                "mtu {bad_mtu} must be rejected"
+            );
+        }
+
+        let src_default = OutboundSource {
+            source_type: "tailscale".to_string(),
+            ..Default::default()
+        };
+        assert!(src_default.is_tailscale());
+        assert!(src_default.is_embedded_tailscale());
+        assert!(!src_default.is_native_tailscale());
+
+        let src_singbox = OutboundSource {
+            source_type: "tailscale".to_string(),
+            tailscale_mode: "singbox".to_string(),
+            ..Default::default()
+        };
+        assert!(src_singbox.is_tailscale());
+        assert!(src_singbox.is_embedded_tailscale());
+        assert!(!src_singbox.is_native_tailscale());
+
+        let src_native = OutboundSource {
+            source_type: "tailscale".to_string(),
+            tailscale_mode: "native".to_string(),
+            ..Default::default()
+        };
+        assert!(src_native.is_tailscale());
+        assert!(!src_native.is_embedded_tailscale());
+        assert!(src_native.is_native_tailscale());
+
+        let srv_singbox = InboundServer {
+            protocol: "tailscale".to_string(),
+            tailscale_mode: "singbox".to_string(),
+            ..Default::default()
+        };
+        assert!(srv_singbox.is_tailscale());
+        assert!(srv_singbox.is_embedded_tailscale());
+        assert!(!srv_singbox.is_native_tailscale());
+
+        let srv_native = InboundServer {
+            protocol: "tailscale".to_string(),
+            tailscale_mode: "native".to_string(),
+            ..Default::default()
+        };
+        assert!(srv_native.is_tailscale());
+        assert!(!srv_native.is_embedded_tailscale());
+        assert!(srv_native.is_native_tailscale());
+
+        let sec_singbox = RoutingSection {
+            action: "tailscale".to_string(),
+            tailscale_mode: "singbox".to_string(),
+            ..Default::default()
+        };
+        assert!(sec_singbox.is_tailscale());
+        assert!(sec_singbox.is_embedded_tailscale());
+        assert!(!sec_singbox.is_native_tailscale());
+
+        let sec_native = RoutingSection {
+            action: "tailscale".to_string(),
+            tailscale_mode: "native".to_string(),
+            ..Default::default()
+        };
+        assert!(sec_native.is_tailscale());
+        assert!(!sec_native.is_embedded_tailscale());
+        assert!(sec_native.is_native_tailscale());
+
+        let mut store = RouterStoreData::default();
+        store.applied_migrations.clear();
+        store.balancers.clear();
+        store.settings.dns_check_interval = "10s".to_string();
+        store.settings.ai_proxy_health_interval = 30;
+        store.settings.ai_dns_interval = 60;
+        store.balancers.push(BalancerConfig {
+            id: "bal_1".to_string(),
+            name: "Bal 1".to_string(),
+            active_check_interval: "5s".to_string(),
+            recovery_check_interval: "15s".to_string(),
+            urltest_active_check_interval: "10s".to_string(),
+            check_interval: 10,
+            ..Default::default()
+        });
+
+        assert!(store.apply_relax_probe_intervals_v1());
+        assert_eq!(store.settings.dns_check_interval, "30s");
+        assert_eq!(store.settings.ai_proxy_health_interval, 60);
+        assert_eq!(store.settings.ai_dns_interval, 180);
+        assert_eq!(store.balancers[0].active_check_interval, "15s");
+        assert_eq!(store.balancers[0].recovery_check_interval, "30s");
+        assert_eq!(store.balancers[0].urltest_active_check_interval, "30s");
+        assert_eq!(store.balancers[0].check_interval, 30);
+
+        // Repeat call must be idempotent and leave manual overrides untouched.
+        store.settings.dns_check_interval = "15s".to_string();
+        assert!(!store.apply_relax_probe_intervals_v1());
+        assert_eq!(store.settings.dns_check_interval, "15s");
     }
 }

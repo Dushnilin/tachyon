@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1200" height="176" viewBox="0 0 1200 176"
+     role="img" aria-labelledby="title desc">
+  <title id="title">Консольный интерфейс CLI, HTTP REST Agent API и MCP</title>
+  <desc id="desc">Сводка возможностей CLI-инструмента tachyon: трассировка маршрутов, запуск фаззера и бенчмарков DNS, офлайн и LLM-диагностика, управление снапшотами и сервер MCP.</desc>
+
+  <rect width="1200" height="176" rx="16" fill="#141415"/>
+  <rect x="0.5" y="0.5" width="1199" height="175" rx="15.5" fill="none" stroke="#2e2e32" stroke-width="1"/>
+
+  <!-- Header -->
+  <text x="24" y="34" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="17" font-weight="500">Контуры управления CLI, HTTP REST Agent API и Model Context Protocol</text>
+  <text x="1176" y="34" text-anchor="end" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">/usr/bin/tachyon · /api/agent/v1</text>
+
+  <!-- Card 1 (Highlighted): Config & Routing (280px) -->
+  <g transform="translate(24, 52)">
+    <rect x="0" y="0" width="280" height="104" rx="12" fill="#19191b" stroke="#38bdf8" stroke-width="1" stroke-opacity="0.5"/>
+    <text x="16" y="26" fill="#38bdf8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">explain · compile_config</text>
+    <text x="16" y="50" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">Трассировка и компиляция</text>
+    <text x="16" y="72" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="400">Проверка маршрута домена/IP</text>
+    <text x="16" y="90" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">и генерация конфигов ядра</text>
+  </g>
+
+  <!-- Card 2: Fuzzer & DNS Benchmark (280px) -->
+  <g transform="translate(316, 52)">
+    <rect x="0" y="0" width="280" height="104" rx="12" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
+    <text x="16" y="26" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">fuzzer_* · dns_benchmark</text>
+    <text x="16" y="50" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">Бенчмарки сети и DNS</text>
+    <text x="16" y="72" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="400">Подбор профилей десинхронизации</text>
+    <text x="16" y="90" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">и замер задержки DNS-апстримов</text>
+  </g>
+
+  <!-- Card 3: Doctor & Emergency Restore (280px) -->
+  <g transform="translate(608, 52)">
+    <rect x="0" y="0" width="280" height="104" rx="12" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
+    <text x="16" y="26" fill="#4cc38a" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">status · quick_fix · rollback</text>
+    <text x="16" y="50" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">Диагностика и откат LKG</text>
+    <text x="16" y="72" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="400">Полный JSON-слепок состояния</text>
+    <text x="16" y="90" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">и отключение перехвата WAN</text>
+  </g>
+
+  <!-- Card 4: Snapshots, API & MCP (276px) -->
+  <g transform="translate(900, 52)">
+    <rect x="0" y="0" width="276" height="104" rx="12" fill="#19191b" stroke="#2e2e32" stroke-width="1"/>
+    <text x="16" y="26" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="500">snapshot_* · mcp · openapi.json</text>
+    <text x="16" y="50" fill="#ededed" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="15" font-weight="500">Снапшоты и автоматизация</text>
+    <text x="16" y="72" fill="#a1a1a6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="400">Именованные копии конфигов,</text>
+    <text x="16" y="90" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="400">REST API (:1680) и stdio MCP</text>
+  </g>
+</svg>

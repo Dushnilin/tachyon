@@ -1,0 +1,227 @@
+import {
+  isTachyonCoreVersion,
+  normalizeSingBoxVariantFields,
+} from '../../helpers/singBoxVariant';
+import type { StoreType } from '../../services/store.service';
+import { Tachyon } from '../../types';
+
+export interface PatchSystemInfoResult {
+  nextSystemInfo: StoreType['diagnosticsSystemInfo'];
+  notifyActionProviders: boolean;
+}
+
+export type ComponentMutationInput = Pick<
+  Tachyon.ComponentActionResult,
+  'component' | 'action'
+> &
+  Partial<Tachyon.ComponentActionResult>;
+
+export function computeSystemInfoMutation(
+  currentSystemInfo: StoreType['diagnosticsSystemInfo'],
+  result: ComponentMutationInput,
+): PatchSystemInfoResult {
+  const nextSystemInfo = { ...currentSystemInfo, loading: false, loaded: true };
+  const version =
+    result.current_version || result.latest_version || _('unknown');
+
+  if (
+    result.component === 'tachyon' &&
+    (result.action === 'install' || result.action === 'reinstall')
+  ) {
+    nextSystemInfo.tachyon_version = version;
+  }
+
+  if (result.component === 'sing_box') {
+    nextSystemInfo.sing_box_version = version;
+
+    // Explicit non-tachyon-core variant installs replace the binary, so a
+    // tachyon-core flag left from the previous state must be cleared.
+    if (
+      result.action === 'install_stable' ||
+      result.action === 'install_tiny' ||
+      result.action === 'install_extended' ||
+      result.action === 'install_extended_compressed' ||
+      result.action === 'install_lx'
+    ) {
+      nextSystemInfo.sing_box_tachyon_core = 0;
+      nextSystemInfo.sing_box_fptn = 0;
+    } else if (
+      result.action === 'install' ||
+      result.action === 'install_version' ||
+      result.action === 'reinstall'
+    ) {
+      const isCore =
+        isTachyonCoreVersion(version) ||
+        Boolean(result.release_url?.includes('tachyon-core')) ||
+        Boolean(result.message?.includes('tachyon-core')) ||
+        (Boolean(currentSystemInfo.sing_box_tachyon_core) &&
+          !version.includes('-lx') &&
+          !version.includes('extended'));
+      nextSystemInfo.sing_box_tachyon_core = isCore ? 1 : 0;
+      nextSystemInfo.sing_box_fptn = isCore ? 1 : 0;
+      if (isCore) {
+        nextSystemInfo.sing_box_tailscale = 1;
+        nextSystemInfo.sing_box_cert_pin = 1;
+      }
+    }
+
+    if (result.action === 'install_tachyon_core') {
+      nextSystemInfo.sing_box_tachyon_core = 1;
+      nextSystemInfo.sing_box_fptn = 1;
+      nextSystemInfo.sing_box_extended = 0;
+      nextSystemInfo.sing_box_tiny = 0;
+      nextSystemInfo.sing_box_compressed = 0;
+      nextSystemInfo.sing_box_lx = 0;
+      nextSystemInfo.sing_box_tailscale = 1;
+      nextSystemInfo.sing_box_cert_pin = 1;
+    }
+
+    if (result.action === 'install_extended') {
+      nextSystemInfo.sing_box_extended = 1;
+      nextSystemInfo.sing_box_tiny = 0;
+      nextSystemInfo.sing_box_compressed = 0;
+      nextSystemInfo.sing_box_lx = 0;
+      nextSystemInfo.sing_box_tailscale = 1;
+      nextSystemInfo.sing_box_cert_pin = 1;
+    }
+
+    if (result.action === 'install_extended_compressed') {
+      nextSystemInfo.sing_box_extended = 1;
+      nextSystemInfo.sing_box_tiny = 0;
+      nextSystemInfo.sing_box_compressed = 1;
+      nextSystemInfo.sing_box_lx = 0;
+      nextSystemInfo.sing_box_tailscale = 1;
+      nextSystemInfo.sing_box_cert_pin = 1;
+    }
+
+    if (result.action === 'install_lx') {
+      nextSystemInfo.sing_box_extended = 1;
+      nextSystemInfo.sing_box_tiny = 0;
+      nextSystemInfo.sing_box_compressed = 0;
+      nextSystemInfo.sing_box_lx = 1;
+      nextSystemInfo.sing_box_tailscale = 1;
+      nextSystemInfo.sing_box_cert_pin = 1;
+    }
+
+    if (result.action === 'install_stable') {
+      nextSystemInfo.sing_box_extended = 0;
+      nextSystemInfo.sing_box_tiny = 0;
+      nextSystemInfo.sing_box_compressed = 0;
+      nextSystemInfo.sing_box_lx = 0;
+      nextSystemInfo.sing_box_tailscale = 1;
+      nextSystemInfo.sing_box_cert_pin = 0;
+    }
+
+    if (result.action === 'install_tiny') {
+      nextSystemInfo.sing_box_extended = 0;
+      nextSystemInfo.sing_box_tiny = 1;
+      nextSystemInfo.sing_box_compressed = 0;
+      nextSystemInfo.sing_box_lx = 0;
+      nextSystemInfo.sing_box_tailscale = 0;
+      nextSystemInfo.sing_box_cert_pin = 0;
+    }
+  }
+
+  if (result.component === 'zapret') {
+    nextSystemInfo.providerInfoLoaded = true;
+
+    if (result.action === 'remove') {
+      nextSystemInfo.zapret_installed = 0;
+      nextSystemInfo.zapret_version = 'not installed';
+    } else {
+      nextSystemInfo.zapret_installed = 1;
+      nextSystemInfo.zapret_version = version;
+    }
+  }
+
+  if (result.component === 'zapret2') {
+    nextSystemInfo.providerInfoLoaded = true;
+
+    if (result.action === 'remove') {
+      nextSystemInfo.zapret2_installed = 0;
+      nextSystemInfo.zapret2_version = 'not installed';
+    } else {
+      nextSystemInfo.zapret2_installed = 1;
+      nextSystemInfo.zapret2_version = version;
+    }
+  }
+
+  if (result.component === 'byedpi') {
+    nextSystemInfo.providerInfoLoaded = true;
+
+    if (result.action === 'remove') {
+      nextSystemInfo.byedpi_installed = 0;
+      nextSystemInfo.byedpi_version = 'not installed';
+    } else {
+      nextSystemInfo.byedpi_installed = 1;
+      nextSystemInfo.byedpi_version = version;
+    }
+  }
+
+  if (result.component === 'wdtt') {
+    nextSystemInfo.providerInfoLoaded = true;
+
+    if (result.action === 'remove') {
+      nextSystemInfo.wdtt_installed = 0;
+      nextSystemInfo.wdtt_version = 'not installed';
+    } else {
+      nextSystemInfo.wdtt_installed = 1;
+      nextSystemInfo.wdtt_version = version;
+    }
+  }
+
+  if (result.component === 'olcrtc') {
+    nextSystemInfo.providerInfoLoaded = true;
+
+    if (result.action === 'remove') {
+      nextSystemInfo.olcrtc_installed = 0;
+      nextSystemInfo.olcrtc_version = 'not installed';
+    } else {
+      nextSystemInfo.olcrtc_installed = 1;
+      nextSystemInfo.olcrtc_version = version;
+    }
+  }
+
+  if (result.component === 'direct_bypass') {
+    nextSystemInfo.direct_bypass_enabled = result.action === 'enable' ? 1 : 0;
+  }
+  if (result.component === 'torrserver_direct') {
+    if (result.action === 'remove') {
+      nextSystemInfo.torrserver_installed = 0;
+      nextSystemInfo.torrserver_version = 'not installed';
+      nextSystemInfo.torrserver_running = 0;
+      nextSystemInfo.torrserver_direct_available = 0;
+      nextSystemInfo.torrserver_direct_enabled = 0;
+      nextSystemInfo.torrserver_direct_active = 0;
+    } else if (
+      result.action === 'install' ||
+      result.action === 'install_version'
+    ) {
+      nextSystemInfo.torrserver_installed = 1;
+      nextSystemInfo.torrserver_version = version;
+      nextSystemInfo.torrserver_running = 1;
+      nextSystemInfo.torrserver_direct_available = 1;
+      nextSystemInfo.torrserver_direct_enabled = 1;
+      nextSystemInfo.torrserver_direct_active = 1;
+    } else {
+      nextSystemInfo.torrserver_direct_enabled =
+        result.action === 'enable' ? 1 : 0;
+      nextSystemInfo.torrserver_direct_active =
+        result.action === 'enable' ? 1 : 0;
+    }
+  }
+
+  const normalizedSystemInfo = normalizeSingBoxVariantFields(nextSystemInfo);
+
+  const notifyActionProviders =
+    result.component === 'zapret' ||
+    result.component === 'zapret2' ||
+    result.component === 'byedpi' ||
+    result.component === 'wdtt' ||
+    result.component === 'olcrtc';
+
+  return {
+    nextSystemInfo: normalizedSystemInfo,
+    notifyActionProviders,
+  };
+}

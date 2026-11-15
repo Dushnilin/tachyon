@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="56" viewBox="0 0 1200 56" role="img" aria-label="Tachyon">
+  <rect width="1200" height="56" rx="12" fill="#141415"/>
+  <rect x="0.5" y="0.5" width="1199" height="55" rx="11.5" fill="none" stroke="#2e2e32" stroke-width="1"/>
+  <text x="600" y="33" text-anchor="middle" fill="#85858b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="400">tachyon 2.0 · pure-rust openwrt routing, proxy orchestration &amp; packet desync</text>
+</svg>

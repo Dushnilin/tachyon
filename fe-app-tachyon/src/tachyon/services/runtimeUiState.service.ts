@@ -1,0 +1,190 @@
+import { TachyonShellMethods } from '../methods';
+import { Tachyon } from '../types';
+import { logger } from './logger.service';
+import { applyUiStateToStore } from './uiState.service';
+
+const RUNTIME_UI_STATE_REFRESH_MIN_INTERVAL_MS = 500;
+const RUNTIME_UI_STATE_IDLE_POLL_INTERVAL_MS = 10_000;
+const RUNTIME_UI_STATE_ACTIVE_INITIAL_POLL_INTERVAL_MS = 1_000;
+const RUNTIME_UI_STATE_ACTIVE_SLOW_POLL_INTERVAL_MS = 2_000;
+const RUNTIME_UI_STATE_ACTIVE_SLOW_THRESHOLD_MS = 4_000;
+// A hidden tab must not keep spawning shell commands on the router:
+// back off to one request per 60s while hidden (a force refresh on
+// visibilitychange covers the moment the tab comes back).
+const RUNTIME_UI_STATE_HIDDEN_POLL_INTERVAL_MS = 60_000;
+export type RuntimeUiStateListener = (uiState: Tachyon.UiState) => void;
+
+let runtimeUiStateRefreshPromise: Promise<Tachyon.UiState | undefined> | null =
+  null;
+let lastRuntimeUiStateRefreshAt = 0;
+let lastRuntimeUiState: Tachyon.UiState | undefined;
+let runtimeStateResumeRefreshRegistered = false;
+let runtimeStatePollTimer: ReturnType<typeof setTimeout> | null = null;
+let runtimeStatePollingStarted = false;
+let runtimeStateHasRunningAction = false;
+let runningActionStartedAt = 0;
+const runtimeUiStateListeners = new Set<RuntimeUiStateListener>();
+
+function isDocumentVisible() {
+  return (
+    typeof document === 'undefined' ||
+    !document.visibilityState ||
+    document.visibilityState === 'visible'
+  );
+}
+
+function hasRunningAction(uiState: Tachyon.UiState) {
+  return Object.values(uiState.actions).some((actions) =>
+    actions.some((action) => action.running),
+  );
+}
+
+function getNextPollDelay() {
+  if (!isDocumentVisible()) {
+    return RUNTIME_UI_STATE_HIDDEN_POLL_INTERVAL_MS;
+  }
+  if (!runtimeStateHasRunningAction) {
+    runningActionStartedAt = 0;
+    return RUNTIME_UI_STATE_IDLE_POLL_INTERVAL_MS;
+  }
+  if (runningActionStartedAt === 0) {
+    runningActionStartedAt = Date.now();
+  }
+  const elapsed = Date.now() - runningActionStartedAt;
+  return elapsed < RUNTIME_UI_STATE_ACTIVE_SLOW_THRESHOLD_MS
+    ? RUNTIME_UI_STATE_ACTIVE_INITIAL_POLL_INTERVAL_MS
+    : RUNTIME_UI_STATE_ACTIVE_SLOW_POLL_INTERVAL_MS;
+}
+
+function scheduleRuntimeUiStatePoll(delay = getNextPollDelay()) {
+  if (
+    !runtimeStatePollingStarted ||
+    runtimeStatePollTimer ||
+    typeof window === 'undefined'
+  ) {
+    return;
+  }
+
+  runtimeStatePollTimer = window.setTimeout(() => {
+    runtimeStatePollTimer = null;
+    void refreshRuntimeUiState()
+      .catch(() => undefined)
+      .finally(() => {
+        scheduleRuntimeUiStatePoll();
+      });
+  }, delay);
+}
+
+function notifyRuntimeUiStateListeners(uiState: Tachyon.UiState) {
+  for (const listener of runtimeUiStateListeners) {
+    try {
+      listener(uiState);
+    } catch (error) {
+      logger.error('[RUNTIME_UI_STATE]', 'listener failed', error);
+    }
+  }
+}
+
+export async function refreshRuntimeUiState({
+  force = false,
+}: { force?: boolean } = {}): Promise<Tachyon.UiState | undefined> {
+  if (!isDocumentVisible()) {
+    return undefined;
+  }
+
+  if (runtimeUiStateRefreshPromise) {
+    return runtimeUiStateRefreshPromise;
+  }
+
+  const now = Date.now();
+  if (
+    !force &&
+    now - lastRuntimeUiStateRefreshAt < RUNTIME_UI_STATE_REFRESH_MIN_INTERVAL_MS
+  ) {
+    return lastRuntimeUiState;
+  }
+
+  lastRuntimeUiStateRefreshAt = now;
+  if (force) {
+    runningActionStartedAt = now;
+  }
+
+  const promise = TachyonShellMethods.getUiState()
+    .then((response) => {
+      if (!response.success) {
+        return undefined;
+      }
+
+      applyUiStateToStore(response.data);
+      lastRuntimeUiState = response.data;
+      runtimeStateHasRunningAction = hasRunningAction(response.data);
+      if (!runtimeStateHasRunningAction) {
+        runningActionStartedAt = 0;
+      }
+      notifyRuntimeUiStateListeners(response.data);
+      return response.data;
+    })
+    .catch((error) => {
+      logger.error('[RUNTIME_UI_STATE]', 'refresh failed', error);
+      return undefined;
+    })
+    .finally(() => {
+      if (runtimeUiStateRefreshPromise === promise) {
+        runtimeUiStateRefreshPromise = null;
+      }
+    });
+
+  runtimeUiStateRefreshPromise = promise;
+  return runtimeUiStateRefreshPromise;
+}
+
+export function subscribeRuntimeUiState(listener: RuntimeUiStateListener) {
+  runtimeUiStateListeners.add(listener);
+
+  if (lastRuntimeUiState) {
+    try {
+      listener(lastRuntimeUiState);
+    } catch (error) {
+      logger.error('[RUNTIME_UI_STATE]', 'listener failed', error);
+    }
+  }
+
+  return () => {
+    runtimeUiStateListeners.delete(listener);
+  };
+}
+
+export function getCachedRuntimeUiState() {
+  return lastRuntimeUiState;
+}
+
+export function registerRuntimeStateResumeRefresh() {
+  if (runtimeStateResumeRefreshRegistered || typeof window === 'undefined') {
+    return;
+  }
+
+  runtimeStateResumeRefreshRegistered = true;
+
+  const refreshOnResume = () => {
+    if (!isDocumentVisible()) {
+      return;
+    }
+
+    void refreshRuntimeUiState({ force: true });
+  };
+
+  document.addEventListener('visibilitychange', refreshOnResume);
+  window.addEventListener('pageshow', refreshOnResume);
+  window.addEventListener('focus', refreshOnResume);
+}
+
+export function startRuntimeUiStatePolling() {
+  if (runtimeStatePollingStarted || typeof window === 'undefined') {
+    return;
+  }
+
+  runtimeStatePollingStarted = true;
+  void refreshRuntimeUiState({ force: true }).finally(() => {
+    scheduleRuntimeUiStatePoll();
+  });
+}

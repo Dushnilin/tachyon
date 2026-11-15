@@ -1,0 +1,92 @@
+import { describe, expect, it } from 'vitest';
+import {
+  formatSingBoxVersion,
+  normalizeSingBoxVariantFields,
+  renderSingBoxVariantBadge,
+  type SingBoxVariantFields,
+} from '../singBoxVariant';
+
+describe('normalizeSingBoxVariantFields', () => {
+  it('detects tachyon-core from the version suffix or 0.0.x semver', () => {
+    const normalized = normalizeSingBoxVariantFields<SingBoxVariantFields>({
+      sing_box_version: 'v0.0.1-tachyon.0',
+    });
+
+    expect(normalized.sing_box_tachyon_core).toBe(1);
+    expect(normalized.sing_box_fptn).toBe(1);
+    expect(normalized.sing_box_extended).toBe(0);
+    expect(normalized.sing_box_tiny).toBe(0);
+    expect(normalized.sing_box_cert_pin).toBe(1);
+    expect(normalized.sing_box_tailscale).toBe(1);
+
+    const semverNormalized =
+      normalizeSingBoxVariantFields<SingBoxVariantFields>({
+        sing_box_version: '0.0.3',
+      });
+    expect(semverNormalized.sing_box_tachyon_core).toBe(1);
+    expect(semverNormalized.sing_box_fptn).toBe(1);
+    expect(semverNormalized.sing_box_extended).toBe(0);
+
+    const v01Normalized = normalizeSingBoxVariantFields<SingBoxVariantFields>({
+      sing_box_version: '0.1.4',
+    });
+    expect(v01Normalized.sing_box_tachyon_core).toBe(1);
+    expect(v01Normalized.sing_box_fptn).toBe(1);
+    expect(v01Normalized.sing_box_extended).toBe(0);
+    expect(v01Normalized.sing_box_tiny).toBe(0);
+    expect(v01Normalized.sing_box_cert_pin).toBe(1);
+    expect(v01Normalized.sing_box_tailscale).toBe(1);
+  });
+
+  it('lets the tachyon_core flag win over stale fork flags', () => {
+    const normalized = normalizeSingBoxVariantFields<SingBoxVariantFields>({
+      sing_box_version: 'v0.0.1-tachyon.0',
+      sing_box_tiny: 1,
+      sing_box_extended: 1,
+    });
+
+    expect(normalized.sing_box_tachyon_core).toBe(1);
+    expect(normalized.sing_box_tiny).toBe(0);
+    expect(normalized.sing_box_extended).toBe(0);
+    expect(normalized.sing_box_lx).toBe(0);
+  });
+
+  it('keeps a stock build out of the tachyon-core flags', () => {
+    const normalized = normalizeSingBoxVariantFields<SingBoxVariantFields>({
+      sing_box_version: '1.13.21',
+    });
+
+    expect(normalized.sing_box_tachyon_core).toBe(0);
+    expect(normalized.sing_box_fptn).toBe(0);
+    expect(normalized.sing_box_cert_pin).toBe(0);
+  });
+});
+
+describe('formatSingBoxVersion', () => {
+  it('names the full tachyon-core build without a suffix', () => {
+    const formatted = formatSingBoxVersion({
+      sing_box_version: 'v0.0.1-tachyon.0',
+    });
+
+    expect(formatted).toBe('v0.0.1-tachyon.0');
+  });
+});
+
+describe('renderSingBoxVariantBadge', () => {
+  it('renders Tachyon Core badge text for tachyon-core variant', () => {
+    const prevDoc = (globalThis as unknown as { document?: unknown }).document;
+    (globalThis as unknown as { document?: unknown }).document = {
+      createElement: () => ({ style: {}, className: '', textContent: '' }),
+    };
+    try {
+      const badge = renderSingBoxVariantBadge({
+        sing_box_version: '0.0.3',
+        sing_box_tachyon_core: 1,
+      });
+      expect(badge).not.toBeNull();
+      expect(badge?.textContent).toBe('Tachyon Core');
+    } finally {
+      (globalThis as unknown as { document?: unknown }).document = prevDoc;
+    }
+  });
+});

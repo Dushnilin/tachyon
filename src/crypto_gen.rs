@@ -172,6 +172,8 @@ pub fn redact_string(input: &str) -> String {
         "hysteria2://",
         "hy2://",
         "tuic://",
+        "mierus://",
+        "mieru://",
         "wg://",
         "awg://",
         "fptn://",
@@ -251,7 +253,11 @@ pub fn write_file_if_changed(path: impl AsRef<Path>, new_bytes: &[u8]) -> anyhow
     {
         std::fs::create_dir_all(parent)?;
     }
-    let tmp_path = path.with_extension("tmp");
+    let base_name = path
+        .file_name()
+        .map(|s| s.to_string_lossy())
+        .unwrap_or_else(|| "file".into());
+    let tmp_path = path.with_file_name(format!(".{base_name}.tmp.{}", std::process::id()));
     std::fs::write(&tmp_path, new_bytes)?;
     #[cfg(unix)]
     {
@@ -262,6 +268,185 @@ pub fn write_file_if_changed(path: impl AsRef<Path>, new_bytes: &[u8]) -> anyhow
     Ok(true)
 }
 
+/// Compute lowercase SHA-256 hex digest of a byte slice.
+pub fn sha256_bytes_hex(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    bytes_to_hex(&hasher.finalize())
+}
+
+/// Auto-generate cryptographic keys, ports, SNI, and obfuscation defaults for any of the 22 inbound server protocols.
+pub fn auto_configure_server(protocol: &str) -> Value {
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+    let proto = protocol.trim().to_ascii_lowercase();
+    let random_port: u16 = rng.gen_range(20000..=55000);
+    let uuid = generate_uuid_v4();
+    let password = generate_alnum(22);
+
+    match proto.as_str() {
+        "vless" => {
+            let kp = generate_reality_keypair();
+            let sid = generate_short_id(4);
+            serde_json::json!({
+                "protocol": "vless",
+                "listen_port": 443,
+                "security": "reality",
+                "vless_flow": "xtls-rprx-vision",
+                "server_uuid": uuid,
+                "reality_handshake_server": "www.microsoft.com",
+                "reality_handshake_server_port": 443,
+                "reality_private_key": kp.private_key,
+                "reality_public_key": kp.public_key,
+                "reality_short_id": sid,
+                "client_fingerprint": "chrome",
+                "transport": "tcp"
+            })
+        }
+        "shadowsocks" | "ss" => {
+            let method = "2022-blake3-aes-128-gcm";
+            let psk = generate_ss2022_key(method);
+            serde_json::json!({
+                "protocol": "shadowsocks",
+                "listen_port": random_port,
+                "method": method,
+                "shadowsocks_method": method,
+                "password": psk,
+                "server_password": psk
+            })
+        }
+        "awg" | "wireguard" => {
+            let srv_kp = generate_wg_keypair();
+            let cli_kp = generate_wg_keypair();
+            let psk = generate_wg_keypair().private_key;
+            let jc: u16 = rng.gen_range(4..=8);
+            let jmin: u16 = rng.gen_range(35..=55);
+            let jmax: u16 = jmin + rng.gen_range(30..=60);
+            let s1: u16 = rng.gen_range(15..=45);
+            let s2: u16 = rng.gen_range(46..=95);
+            let h1: u32 = rng.gen_range(100_000_000..=500_000_000);
+            let h2: u32 = rng.gen_range(500_000_001..=1_000_000_000);
+            let h3: u32 = rng.gen_range(1_000_000_001..=1_500_000_000);
+            let h4: u32 = rng.gen_range(1_500_000_001..=2_000_000_000);
+            serde_json::json!({
+                "protocol": proto,
+                "listen_port": random_port,
+                "awg_version": "2.0",
+                "awg_mtu": 1280,
+                "awg_local_address": "10.8.0.1/24",
+                "awg_client_address": "10.8.0.2/32",
+                "awg_dns": "1.1.1.1",
+                "awg_private_key": srv_kp.private_key,
+                "awg_server_public_key": srv_kp.public_key,
+                "awg_client_private_key": cli_kp.private_key,
+                "awg_peer_public_key": cli_kp.public_key,
+                "awg_preshared_key": psk,
+                "awg_jc": jc,
+                "awg_jmin": jmin,
+                "awg_jmax": jmax,
+                "awg_s1": s1,
+                "awg_s2": s2,
+                "awg_h1": h1,
+                "awg_h2": h2,
+                "awg_h3": h3,
+                "awg_h4": h4,
+                "awg_keepalive": 25
+            })
+        }
+        "mtproto" => {
+            let faketls_host = "www.google.com";
+            let secret = format!(
+                "ee{}{}",
+                generate_hex(16),
+                bytes_to_hex(faketls_host.as_bytes())
+            );
+            serde_json::json!({
+                "protocol": "mtproto",
+                "listen_port": 443,
+                "mtproto_secret": secret,
+                "mtproto_faketls": faketls_host,
+                "mtproto_padding": true,
+                "mtproto_tolerate_time_skewness": true
+            })
+        }
+        "hysteria2" | "hy2" => {
+            let obfs_pw = generate_alnum(18);
+            serde_json::json!({
+                "protocol": "hysteria2",
+                "listen_port": random_port,
+                "security": "tls",
+                "password": password,
+                "server_password": password,
+                "hysteria2_obfs_type": "salamander",
+                "hysteria2_obfs_password": obfs_pw,
+                "hysteria2_up_mbps": 100,
+                "hysteria2_down_mbps": 100
+            })
+        }
+        "tuic" => serde_json::json!({
+            "protocol": "tuic",
+            "listen_port": random_port,
+            "security": "tls",
+            "server_uuid": uuid,
+            "password": password,
+            "server_password": password,
+            "tuic_congestion_control": "bbr"
+        }),
+        "tewfai" => serde_json::json!({
+            "protocol": "tewfai",
+            "listen_port": random_port,
+            "tewfai_uuid": uuid,
+            "tewfai_password": password,
+            "tewfai_inbound_transport": "quic",
+            "tewfai_inner_cipher": "aes-256-gcm",
+            "tewfai_shaper_profile": "adaptive",
+            "tewfai_morph_profile": "auto",
+            "tewfai_pqc_enabled": true
+        }),
+        "wdtt" => serde_json::json!({
+            "protocol": "wdtt",
+            "listen_port": 46000,
+            "password": password,
+            "server_password": password,
+            "wdtt_mode": "csqtt",
+            "wdtt_obfs": "audio",
+            "wdtt_network": "10.66.0.1/16",
+            "wdtt_mtu": 1350
+        }),
+        "shadowtls" => serde_json::json!({
+            "protocol": "shadowtls",
+            "listen_port": 443,
+            "password": password,
+            "server_password": password,
+            "shadowtls_version": 3,
+            "shadowtls_handshake_server": "www.microsoft.com",
+            "shadowtls_handshake_server_port": 443
+        }),
+        "tailscale" => serde_json::json!({
+            "protocol": "tailscale",
+            "listen_port": 0,
+            "open_firewall_port": false,
+            "tailscale_mode": "singbox",
+            "tailscale_control_url": "https://controlplane.tailscale.com",
+            "tailscale_hostname": "tachyon-router",
+            "tailscale_advertise_exit_node": true,
+            "tailscale_accept_dns": true,
+            "tailscale_accept_default_resolvers": true,
+            "tailscale_ephemeral": false,
+            "tailscale_exit_node_allow_lan_access": false,
+            "tailscale_auto_firewall": true
+        }),
+        _ => serde_json::json!({
+            "protocol": proto,
+            "listen_port": random_port,
+            "server_uuid": uuid,
+            "server_username": "tachyon",
+            "password": password,
+            "server_password": password
+        }),
+    }
+}
+
 /// Serialize a value to pretty JSON and write it atomically only if content changed.
 pub fn write_json_if_changed<T: Serialize>(
     path: impl AsRef<Path>,
@@ -269,6 +454,103 @@ pub fn write_json_if_changed<T: Serialize>(
 ) -> anyhow::Result<bool> {
     let raw = serde_json::to_vec_pretty(value)?;
     write_file_if_changed(path, &raw)
+}
+
+/// Extract and Base64-decode the first X.509 certificate block from PEM bytes into DER.
+pub fn pem_certificate_to_der(pem: &[u8]) -> Option<Vec<u8>> {
+    let text = std::str::from_utf8(pem).ok()?;
+    const BEGIN: &str = "-----BEGIN CERTIFICATE-----";
+    const END: &str = "-----END CERTIFICATE-----";
+    let start = text.find(BEGIN)? + BEGIN.len();
+    let end = text[start..].find(END)?;
+    let b64: String = text[start..start + end]
+        .chars()
+        .filter(|c| !c.is_ascii_whitespace())
+        .collect();
+    if b64.is_empty() {
+        return None;
+    }
+    B64_STD.decode(b64.as_bytes()).ok()
+}
+
+/// Pure-Rust RFC 1321 MD5 message digest (used only for TLS certificate pin compatibility).
+pub fn md5_hex(data: &[u8]) -> String {
+    const S: [u32; 64] = [
+        7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 5, 9, 14, 20, 5, 9, 14, 20, 5,
+        9, 14, 20, 5, 9, 14, 20, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 6, 10,
+        15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21,
+    ];
+    const K: [u32; 64] = [
+        0xd76aa478, 0xe8c7b756, 0x242070db, 0xc1bdceee, 0xf57c0faf, 0x4787c62a, 0xa8304613,
+        0xfd469501, 0x698098d8, 0x8b44f7af, 0xffff5bb1, 0x895cd7be, 0x6b901122, 0xfd987193,
+        0xa679438e, 0x49b40821, 0xf61e2562, 0xc040b340, 0x265e5a51, 0xe9b6c7aa, 0xd62f105d,
+        0x02441453, 0xd8a1e681, 0xe7d3fbc8, 0x21e1cde6, 0xc33707d6, 0xf4d50d87, 0x455a14ed,
+        0xa9e3e905, 0xfcefa3f8, 0x676f02d9, 0x8d2a4c8a, 0xfffa3942, 0x8771f681, 0x6d9d6122,
+        0xfde5380c, 0xa4beea44, 0x4bdecfa9, 0xf6bb4b60, 0xbebfbc70, 0x289b7ec6, 0xeaa127fa,
+        0xd4ef3085, 0x04881d05, 0xd9d4d039, 0xe6db99e5, 0x1fa27cf8, 0xc4ac5665, 0xf4292244,
+        0x432aff97, 0xab9423a7, 0xfc93a039, 0x655b59c3, 0x8f0ccc92, 0xffeff47d, 0x85845dd1,
+        0x6fa87e4f, 0xfe2ce6e0, 0xa3014314, 0x4e0811a1, 0xf7537e82, 0xbd3af235, 0x2ad7d2bb,
+        0xeb86d391,
+    ];
+
+    let mut msg = Vec::with_capacity(((data.len() + 8) / 64 + 1) * 64);
+    msg.extend_from_slice(data);
+    msg.push(0x80);
+    while (msg.len() % 64) != 56 {
+        msg.push(0);
+    }
+    let bit_len = (data.len() as u64).wrapping_mul(8);
+    msg.extend_from_slice(&bit_len.to_le_bytes());
+
+    let mut a0: u32 = 0x67452301;
+    let mut b0: u32 = 0xefcdab89;
+    let mut c0: u32 = 0x98badcfe;
+    let mut d0: u32 = 0x10325476;
+
+    for chunk in msg.as_chunks::<64>().0 {
+        let mut m = [0u32; 16];
+        for (i, w) in chunk.as_chunks::<4>().0.iter().enumerate() {
+            m[i] = u32::from_le_bytes(*w);
+        }
+        let (mut a, mut b, mut c, mut d) = (a0, b0, c0, d0);
+        for i in 0..64 {
+            let (f, g) = if i < 16 {
+                ((b & c) | ((!b) & d), i)
+            } else if i < 32 {
+                ((d & b) | ((!d) & c), (5 * i + 1) % 16)
+            } else if i < 48 {
+                (b ^ c ^ d, (3 * i + 5) % 16)
+            } else {
+                (c ^ (b | (!d)), (7 * i) % 16)
+            };
+            let temp = d;
+            d = c;
+            c = b;
+            let sum = a.wrapping_add(f).wrapping_add(K[i]).wrapping_add(m[g]);
+            b = b.wrapping_add(sum.rotate_left(S[i]));
+            a = temp;
+        }
+        a0 = a0.wrapping_add(a);
+        b0 = b0.wrapping_add(b);
+        c0 = c0.wrapping_add(c);
+        d0 = d0.wrapping_add(d);
+    }
+
+    let mut out = [0u8; 16];
+    out[0..4].copy_from_slice(&a0.to_le_bytes());
+    out[4..8].copy_from_slice(&b0.to_le_bytes());
+    out[8..12].copy_from_slice(&c0.to_le_bytes());
+    out[12..16].copy_from_slice(&d0.to_le_bytes());
+    bytes_to_hex(&out)
+}
+
+/// Compute SHA-256 and MD5 fingerprints over X.509 DER bytes (decoding PEM if present).
+pub fn cert_fingerprints_sha256_md5(pem_or_der: &[u8]) -> (String, String) {
+    let der = pem_certificate_to_der(pem_or_der);
+    let target = der.as_deref().unwrap_or(pem_or_der);
+    let mut sha = Sha256::new();
+    sha.update(target);
+    (bytes_to_hex(&sha.finalize()), md5_hex(target))
 }
 
 #[cfg(test)]
@@ -296,12 +578,18 @@ mod tests {
         let j = serde_json::json!({
             "ai_doctor_api_key": "sk-secret123",
             "label": "My Section",
-            "proxy": "trojan://my_pass@example.com:443"
+            "proxy": "trojan://my_pass@example.com:443",
+            "mieru_proxy": "mierus://testuser:supersecret@198.51.100.10?port=20100#Mieru"
         });
         let rj = redact_json_value(&j);
         assert_eq!(rj["ai_doctor_api_key"], "[REDACTED]");
         assert_eq!(rj["label"], "My Section");
         assert_eq!(rj["proxy"], "trojan://[REDACTED]@example.com:443");
+        assert_eq!(
+            rj["mieru_proxy"],
+            "mierus://[REDACTED]@198.51.100.10?port=20100#Mieru"
+        );
+        assert!(!rj["mieru_proxy"].as_str().unwrap().contains("supersecret"));
     }
 
     #[test]
@@ -315,5 +603,55 @@ mod tests {
         let modified3 = write_file_if_changed(&file, b"{\"a\":2}").unwrap();
         assert!(modified3);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_auto_configure_server_protocols() {
+        let vless = auto_configure_server("vless");
+        assert_eq!(vless["security"], "reality");
+        assert!(!vless["reality_private_key"].as_str().unwrap().is_empty());
+
+        let ss = auto_configure_server("shadowsocks");
+        assert_eq!(ss["method"], "2022-blake3-aes-128-gcm");
+        assert!(!ss["password"].as_str().unwrap().is_empty());
+
+        let awg = auto_configure_server("awg");
+        assert_eq!(awg["awg_version"], "2.0");
+        assert!(!awg["awg_private_key"].as_str().unwrap().is_empty());
+
+        let mtp = auto_configure_server("mtproto");
+        assert!(mtp["mtproto_secret"].as_str().unwrap().starts_with("ee"));
+    }
+
+    #[test]
+    fn test_md5_and_pem_der_fingerprints() {
+        assert_eq!(md5_hex(b""), "d41d8cd98f00b204e9800998ecf8427e");
+        assert_eq!(md5_hex(b"abc"), "900150983cd24fb0d6963f7d28e17f72");
+
+        let pem = format!(
+            "-----BEGIN CERTIFICATE-----\n{}\n-----END CERTIFICATE-----\n",
+            B64_STD.encode(b"abc")
+        );
+        let der = pem_certificate_to_der(pem.as_bytes()).expect("PEM should decode");
+        assert_eq!(der, b"abc");
+        let (sha256, md5) = cert_fingerprints_sha256_md5(pem.as_bytes());
+        assert_eq!(
+            sha256,
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        assert_eq!(md5, "900150983cd24fb0d6963f7d28e17f72");
+    }
+
+    #[test]
+    fn test_auto_configure_server_tailscale() {
+        let ts = auto_configure_server("tailscale");
+        assert_eq!(ts["listen_port"], 0);
+        assert_eq!(ts["open_firewall_port"], false);
+        assert_eq!(ts["tailscale_mode"], "singbox");
+        assert_eq!(ts["tailscale_hostname"], "tachyon-router");
+        assert_eq!(
+            ts["tailscale_control_url"],
+            "https://controlplane.tailscale.com"
+        );
     }
 }

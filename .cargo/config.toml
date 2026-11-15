@@ -1,5 +1,82 @@
 [target.aarch64-unknown-linux-musl]
 linker = "rust-lld"
+rustflags = [
+    "--cfg", "aes_armv8",
+    "--cfg", "polyval_armv8",
+    "--cfg", "chacha20_force_neon",
+    "-C", "force-unwind-tables=no",
+    "-C", "link-self-contained=yes",
+    "-C", "link-arg=--icf=safe",
+    "-C", "link-arg=-z",
+    "-C", "link-arg=noseparate-code",
+    "-C", "link-arg=-z",
+    "-C", "link-arg=norelro",
+]
 
 [target.x86_64-unknown-linux-musl]
 linker = "rust-lld"
+rustflags = [
+    "-C", "target-feature=+crt-static",
+    "-C", "relocation-model=static",
+    "-C", "force-unwind-tables=no",
+    "-C", "link-self-contained=yes",
+    "-C", "target-cpu=x86-64",
+    "-C", "link-arg=--icf=safe",
+    "-C", "link-arg=-z",
+    "-C", "link-arg=noseparate-code",
+    "-C", "link-arg=-z",
+    "-C", "link-arg=norelro",
+]
+
+[target.i686-unknown-linux-musl]
+linker = "rust-lld"
+rustflags = [
+    "-C", "target-feature=+crt-static",
+    "-C", "relocation-model=static",
+    "-C", "force-unwind-tables=no",
+    "-C", "link-self-contained=yes",
+    "-C", "target-cpu=pentium4",
+    "-C", "link-arg=--icf=safe",
+    "-C", "link-arg=-z",
+    "-C", "link-arg=noseparate-code",
+    "-C", "link-arg=-z",
+    "-C", "link-arg=norelro",
+]
+
+[target.armv7-unknown-linux-musleabihf]
+linker = "rust-lld"
+rustflags = [
+    "-C", "force-unwind-tables=no",
+    "-C", "link-self-contained=yes",
+    "-C", "link-arg=--icf=safe",
+    "-C", "link-arg=-z",
+    "-C", "link-arg=noseparate-code",
+    "-C", "link-arg=-z",
+    "-C", "link-arg=norelro",
+]
+
+[target.arm-unknown-linux-musleabi]
+linker = "rust-lld"
+rustflags = [
+    "-C", "force-unwind-tables=no",
+    "-C", "link-self-contained=yes",
+    "-C", "link-arg=--icf=safe",
+    "-C", "link-arg=-z",
+    "-C", "link-arg=noseparate-code",
+    "-C", "link-arg=-z",
+    "-C", "link-arg=norelro",
+]
+
+[target.riscv64gc-unknown-linux-musl]
+linker = "rust-lld"
+rustflags = [
+    "-C", "target-feature=+crt-static",
+    "-C", "relocation-model=static",
+    "-C", "force-unwind-tables=no",
+    "-C", "link-self-contained=yes",
+    "-C", "link-arg=--icf=safe",
+    "-C", "link-arg=-z",
+    "-C", "link-arg=noseparate-code",
+    "-C", "link-arg=-z",
+    "-C", "link-arg=norelro",
+]

@@ -1,0 +1,282 @@
+import { getComponentActionKey } from '../helpers/getComponentActionKey';
+import { normalizeSingBoxVariantFields } from '../helpers/singBoxVariant';
+import type { Tachyon } from '../types';
+import { getLocalActionOverlay } from './localActionOverlay.service';
+import { store } from './store.service';
+import type { StoreType } from './store.service';
+
+type UiActionMap = Partial<Tachyon.UiState['actions']>;
+
+function isRunningAction(state: { running?: boolean }) {
+  return state.running === true;
+}
+
+function getEmptyUpdatesActions(): StoreType['updatesActions'] {
+  return {
+    tachyonCheck: { loading: false },
+    tachyonInstall: { loading: false },
+    tachyonReinstall: { loading: false },
+    tachyonRollback: { loading: false },
+    singBoxCheck: { loading: false },
+    singBoxInstall: { loading: false },
+    singBoxRollback: { loading: false },
+    singBoxInstallExtended: { loading: false },
+    singBoxInstallExtendedCompressed: { loading: false },
+    singBoxInstallLx: { loading: false },
+    singBoxInstallTachyonCore: { loading: false },
+    singBoxInstallTiny: { loading: false },
+    singBoxInstallStable: { loading: false },
+    zapretCheck: { loading: false },
+    zapretInstall: { loading: false },
+    zapretRemove: { loading: false },
+    zapretRollback: { loading: false },
+    zapret2Check: { loading: false },
+    zapret2Install: { loading: false },
+    zapret2Remove: { loading: false },
+    zapret2Rollback: { loading: false },
+    byedpiCheck: { loading: false },
+    byedpiInstall: { loading: false },
+    byedpiRemove: { loading: false },
+    byedpiRollback: { loading: false },
+    wdttCheck: { loading: false },
+    wdttInstall: { loading: false },
+    wdttRemove: { loading: false },
+    wdttRollback: { loading: false },
+    olcrtcCheck: { loading: false },
+    olcrtcInstall: { loading: false },
+    olcrtcRemove: { loading: false },
+    olcrtcRollback: { loading: false },
+    tailscaleCheck: { loading: false },
+    tailscaleInstall: { loading: false },
+    tailscaleRemove: { loading: false },
+    tailscaleRollback: { loading: false },
+    directBypassEnable: { loading: false },
+    directBypassDisable: { loading: false },
+    torrserverDirectCheck: { loading: false },
+    torrserverDirectInstall: { loading: false },
+    torrserverDirectRemove: { loading: false },
+    torrserverDirectEnable: { loading: false },
+    torrserverDirectDisable: { loading: false },
+    engineSwitch: { loading: false },
+  };
+}
+
+function getEmptyDiagnosticsActions(): StoreType['diagnosticsActions'] {
+  return {
+    ...store.get().diagnosticsActions,
+    restart: { loading: false },
+    start: { loading: false },
+    stop: { loading: false },
+  };
+}
+
+function normalizeLatencyProgress(
+  progress?: Tachyon.LatencyActionProgress,
+): Tachyon.LatencyActionProgress | undefined {
+  const total = Math.trunc(Number(progress?.total ?? 0));
+
+  if (!Number.isFinite(total) || total <= 0) {
+    return undefined;
+  }
+
+  const completedValue = Number(progress?.completed ?? 0);
+  const failedValue = Number(progress?.failed ?? 0);
+  const completed = Number.isFinite(completedValue)
+    ? Math.trunc(completedValue)
+    : 0;
+  const failed = Number.isFinite(failedValue) ? Math.trunc(failedValue) : 0;
+
+  return {
+    completed: Math.min(Math.max(0, completed), total),
+    total,
+    failed: Math.max(0, failed),
+  };
+}
+
+function applyServiceState(uiState: Tachyon.UiState) {
+  const currentSystemInfo = store.get().diagnosticsSystemInfo;
+  const nextSystemInfo = {
+    ...currentSystemInfo,
+    providerInfoLoaded: true,
+    zapret_installed: uiState.capabilities.zapret_installed,
+    zapret2_installed: uiState.capabilities.zapret2_installed,
+    byedpi_installed: uiState.capabilities.byedpi_installed,
+    wdtt_installed: uiState.capabilities.wdtt_installed,
+    olcrtc_installed: uiState.capabilities.olcrtc_installed,
+    server_inbounds_enabled_count:
+      uiState.capabilities.server_inbounds_enabled_count,
+  };
+
+  nextSystemInfo.sing_box_extended = uiState.capabilities.sing_box_extended;
+  nextSystemInfo.sing_box_tiny = uiState.capabilities.sing_box_tiny;
+  nextSystemInfo.sing_box_compressed = uiState.capabilities.sing_box_compressed;
+  nextSystemInfo.sing_box_lx = uiState.capabilities.sing_box_lx;
+  nextSystemInfo.sing_box_tachyon_core =
+    uiState.capabilities.sing_box_tachyon_core;
+  nextSystemInfo.sing_box_fptn = uiState.capabilities.sing_box_fptn;
+  nextSystemInfo.sing_box_tailscale = uiState.capabilities.sing_box_tailscale;
+  nextSystemInfo.sing_box_cert_pin =
+    uiState.capabilities.sing_box_cert_pin ?? 0;
+
+  store.set({
+    servicesInfoWidget: {
+      loading: false,
+      failed: false,
+      data: {
+        singbox: uiState.service.sing_box.running,
+        singboxMemoryMb: uiState.service.sing_box.memory_rss_mb,
+        singboxPid: uiState.service.sing_box.pid,
+        singboxUptimeSeconds: uiState.service.sing_box.uptime_seconds,
+        singboxUptimePretty: uiState.service.sing_box.uptime_pretty,
+        engineVariant: uiState.service.sing_box.engine_variant,
+        engineVersion: uiState.service.sing_box.engine_version,
+        tachyonRunning: uiState.service.tachyon.running,
+        tachyonEnabled: uiState.service.tachyon.enabled,
+        tachyonStatus: uiState.service.tachyon.status,
+        liteMode: uiState.service.tachyon.lite_mode,
+        tachyonMemoryMb: uiState.service.tachyon.memory_rss_mb,
+        tachyonPid: uiState.service.tachyon.pid,
+        tachyonUptimeSeconds: uiState.service.tachyon.uptime_seconds,
+        tachyonUptimePretty: uiState.service.tachyon.uptime_pretty,
+        cpuLoadPercent: uiState.service.tachyon.cpu_load_percent,
+        cpuTempC: uiState.service.tachyon.cpu_temp_c,
+        watchdogRunning:
+          uiState.service.watchdog?.running ??
+          store.get().servicesInfoWidget.data.watchdogRunning,
+        zapret2Running: uiState.service.zapret2
+          ? uiState.service.zapret2.running
+          : undefined,
+        zapret2MemoryMb: uiState.service.zapret2
+          ? uiState.service.zapret2.memory_rss_mb
+          : undefined,
+        zapret2Pid: uiState.service.zapret2?.pid,
+        zapret2UptimeSeconds: uiState.service.zapret2?.uptime_seconds,
+        zapret2UptimePretty: uiState.service.zapret2?.uptime_pretty,
+        dnsmasqRunning: uiState.service.dnsmasq
+          ? uiState.service.dnsmasq.running
+          : undefined,
+        dnsmasqMemoryMb: uiState.service.dnsmasq
+          ? uiState.service.dnsmasq.memory_rss_mb
+          : undefined,
+        dnsmasqLocalCacheEnabled: uiState.service.dnsmasq
+          ? uiState.service.dnsmasq.local_cache_enabled
+          : undefined,
+        dnsmasqCacheSize: uiState.service.dnsmasq
+          ? uiState.service.dnsmasq.cache_size
+          : undefined,
+        dnsmasqPid: uiState.service.dnsmasq?.pid,
+        dnsmasqUptimeSeconds: uiState.service.dnsmasq?.uptime_seconds,
+        dnsmasqUptimePretty: uiState.service.dnsmasq?.uptime_pretty,
+      },
+    },
+    diagnosticsSystemInfo: normalizeSingBoxVariantFields(nextSystemInfo),
+    ...(uiState.active_engine ? { activeEngine: uiState.active_engine } : {}),
+  });
+}
+
+function applyActionState(actions: UiActionMap = {}) {
+  const current = store.get();
+  const localOverlay = getLocalActionOverlay();
+  const currentLatencyProgressSections =
+    current.sectionsWidget.latencyProgressSections;
+  const subscriptionUpdatingSections: Record<string, boolean> = {};
+  const latencyFetchingSections: Record<string, boolean> = {};
+  const latencyProgressSections: Record<string, Tachyon.LatencyActionProgress> =
+    {};
+  const updatesActions = getEmptyUpdatesActions();
+  const diagnosticsActions = getEmptyDiagnosticsActions();
+
+  for (const state of actions.subscription || []) {
+    if (isRunningAction(state) && state.section) {
+      subscriptionUpdatingSections[state.section] = true;
+    }
+  }
+
+  for (const state of actions.latency || []) {
+    if (isRunningAction(state) && state.section) {
+      latencyFetchingSections[state.section] = true;
+      const progress = normalizeLatencyProgress(state.progress);
+      if (progress) {
+        latencyProgressSections[state.section] = progress;
+      } else if (currentLatencyProgressSections[state.section]) {
+        latencyProgressSections[state.section] =
+          currentLatencyProgressSections[state.section];
+      }
+    }
+  }
+
+  for (const state of actions.component || []) {
+    if (!isRunningAction(state)) {
+      continue;
+    }
+
+    const key = getComponentActionKey(state.component, state.action);
+    if (key) {
+      updatesActions[key] = { loading: true };
+    }
+  }
+
+  for (const state of actions.service || []) {
+    if (!isRunningAction(state)) {
+      continue;
+    }
+
+    if (state.action === 'start') {
+      diagnosticsActions.start = { loading: true };
+    } else if (state.action === 'stop') {
+      diagnosticsActions.stop = { loading: true };
+    } else if (state.action === 'restart' || state.action === 'reload') {
+      diagnosticsActions.restart = { loading: true };
+    }
+  }
+
+  for (const section of localOverlay.subscriptionSections) {
+    subscriptionUpdatingSections[section] = true;
+  }
+
+  for (const section of localOverlay.latencySections) {
+    latencyFetchingSections[section] = true;
+    if (
+      !latencyProgressSections[section] &&
+      currentLatencyProgressSections[section]
+    ) {
+      latencyProgressSections[section] =
+        currentLatencyProgressSections[section];
+    }
+  }
+
+  for (const key of localOverlay.componentActions) {
+    updatesActions[key] = { loading: true };
+  }
+
+  for (const action of localOverlay.serviceActions) {
+    diagnosticsActions[action] = { loading: true };
+  }
+
+  const prevSw = current.sectionsWidget;
+  const sectionsWidgetChanged =
+    JSON.stringify(prevSw.subscriptionUpdatingSections) !==
+      JSON.stringify(subscriptionUpdatingSections) ||
+    JSON.stringify(prevSw.latencyFetchingSections) !==
+      JSON.stringify(latencyFetchingSections) ||
+    JSON.stringify(prevSw.latencyProgressSections) !==
+      JSON.stringify(latencyProgressSections);
+
+  store.set({
+    sectionsWidget: sectionsWidgetChanged
+      ? {
+          ...prevSw,
+          subscriptionUpdatingSections,
+          latencyFetchingSections,
+          latencyProgressSections,
+        }
+      : prevSw,
+    updatesActions,
+    diagnosticsActions,
+  });
+}
+
+export function applyUiStateToStore(uiState: Tachyon.UiState) {
+  applyServiceState(uiState);
+  applyActionState(uiState.actions);
+}

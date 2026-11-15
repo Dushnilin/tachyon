@@ -1,0 +1,417 @@
+import { Tachyon } from '../types';
+import { initialDiagnosticStore } from '../tabs/diagnostic/diagnostic.store';
+
+function jsonStableStringify<T, V>(obj: T): string {
+  return JSON.stringify(obj, (_, value) => {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      return Object.keys(value)
+        .sort()
+        .reduce(
+          (acc, key) => {
+            acc[key] = value[key];
+            return acc;
+          },
+          {} as Record<string, V>,
+        );
+    }
+    return value;
+  });
+}
+
+function jsonEqual<A, B>(a: A, b: B): boolean {
+  try {
+    return jsonStableStringify(a) === jsonStableStringify(b);
+  } catch {
+    return false;
+  }
+}
+
+type Listener<T> = (next: T, prev: T, diff: Partial<T>) => void;
+
+// eslint-disable-next-line
+export class StoreService<T extends Record<string, any>> {
+  private value: T;
+  private readonly initial: T;
+  private listeners = new Set<Listener<T>>();
+
+  constructor(initial: T) {
+    this.value = initial;
+    this.initial = structuredClone(initial);
+  }
+
+  get(): T {
+    return this.value;
+  }
+
+  set(next: Partial<T>): void {
+    const prev = this.value;
+    const diff: Partial<T> = {};
+
+    for (const key in next) {
+      // Reference equality fast path: most poll ticks pass the same object
+      // identity or genuinely new objects; the sorted stringify below runs
+      // on every key of a multi-hundred-KB payload twice per second
+      // otherwise.
+      if (next[key] === prev[key]) continue;
+      if (!jsonEqual(next[key], prev[key])) diff[key] = next[key];
+    }
+
+    if (Object.keys(diff).length === 0) {
+      return;
+    }
+
+    const merged = { ...prev, ...next };
+    this.value = merged;
+    this.listeners.forEach((cb) => cb(this.value, prev, diff));
+  }
+
+  reset<K extends keyof T>(keys?: K[]): void {
+    const prev = this.value;
+    const next = structuredClone(this.value);
+
+    if (keys && keys.length > 0) {
+      keys.forEach((key) => {
+        next[key] = structuredClone(this.initial[key]);
+      });
+    } else {
+      Object.assign(next, structuredClone(this.initial));
+    }
+
+    if (jsonEqual(prev, next)) return;
+
+    this.value = next;
+
+    const diff: Partial<T> = {};
+    for (const key in next) {
+      if (!jsonEqual(next[key], prev[key])) diff[key] = next[key];
+    }
+
+    this.listeners.forEach((cb) => cb(this.value, prev, diff));
+  }
+
+  subscribe(cb: Listener<T>): () => void {
+    this.listeners.add(cb);
+    cb(this.value, this.value, {});
+    return () => this.listeners.delete(cb);
+  }
+
+  unsubscribe(cb: Listener<T>): void {
+    this.listeners.delete(cb);
+  }
+
+  patch<K extends keyof T>(key: K, value: T[K]): void {
+    this.set({ [key]: value } as unknown as Partial<T>);
+  }
+
+  getKey<K extends keyof T>(key: K): T[K] {
+    return this.value[key];
+  }
+
+  subscribeKey<K extends keyof T>(
+    key: K,
+    cb: (value: T[K]) => void,
+  ): () => void {
+    let prev = this.value[key];
+    const wrapper: Listener<T> = (val) => {
+      if (!jsonEqual(val[key], prev)) {
+        prev = val[key];
+        cb(val[key]);
+      }
+    };
+    this.listeners.add(wrapper);
+    return () => this.listeners.delete(wrapper);
+  }
+}
+
+export interface IDiagnosticsChecksItem {
+  state: 'error' | 'warning' | 'success';
+  key: string;
+  value: string;
+}
+
+export interface IDiagnosticsChecksStoreItem {
+  order: number;
+  code: string;
+  title: string;
+  description: string;
+  state: 'loading' | 'warning' | 'success' | 'error' | 'skipped';
+  items: Array<IDiagnosticsChecksItem>;
+}
+
+export interface StoreType {
+  tabService: {
+    current: string;
+    all: string[];
+  };
+  activeEngine: string;
+  bandwidthWidget: {
+    loading: boolean;
+    failed: boolean;
+    data: { up: number; down: number };
+  };
+  trafficTotalWidget: {
+    loading: boolean;
+    failed: boolean;
+    data: { downloadTotal: number; uploadTotal: number };
+  };
+  systemInfoWidget: {
+    loading: boolean;
+    failed: boolean;
+    data: { connections: number; memory: number };
+  };
+  servicesInfoWidget: {
+    loading: boolean;
+    failed: boolean;
+    data: {
+      singbox: number;
+      tachyonRunning: number;
+      tachyonEnabled: number;
+      tachyonStatus: string;
+      liteMode?: number;
+      tachyonMemoryMb?: number;
+      tachyonPid?: number;
+      tachyonUptimeSeconds?: number;
+      tachyonUptimePretty?: string;
+      cpuLoadPercent?: number | null;
+      cpuTempC?: number | null;
+      watchdogRunning: number;
+      singboxMemoryMb?: number;
+      singboxPid?: number;
+      singboxUptimeSeconds?: number;
+      singboxUptimePretty?: string;
+      engineVariant?: string;
+      engineVersion?: string;
+      zapret2Running?: number;
+      zapret2MemoryMb?: number;
+      zapret2Pid?: number;
+      zapret2UptimeSeconds?: number;
+      zapret2UptimePretty?: string;
+      dnsmasqRunning?: number;
+      dnsmasqMemoryMb?: number;
+      dnsmasqLocalCacheEnabled?: number;
+      dnsmasqCacheSize?: number;
+      dnsmasqPid?: number;
+      dnsmasqUptimeSeconds?: number;
+      dnsmasqUptimePretty?: string;
+    };
+  };
+  tailscaleWidget: {
+    loading: boolean;
+    failed: boolean;
+    data: Tachyon.GetTailscalePeers | null;
+  };
+  sectionsWidget: {
+    loading: boolean;
+    failed: boolean;
+    data: Tachyon.OutboundGroup[];
+    latencyFetchingSections: Record<string, boolean>;
+    latencyProgressSections: Record<string, Tachyon.LatencyActionProgress>;
+    selectorSwitchingSections: Record<string, string>;
+    subscriptionUpdatingSections: Record<string, boolean>;
+  };
+  diagnosticsRunAction: {
+    loading: boolean;
+  };
+  diagnosticsChecks: Array<IDiagnosticsChecksStoreItem>;
+  diagnosticsActions: {
+    restart: { loading: boolean };
+    start: { loading: boolean };
+    stop: { loading: boolean };
+    enable: { loading: boolean };
+    disable: { loading: boolean };
+    globalCheck: { loading: boolean };
+    doctor: { loading: boolean };
+    aiDoctor: { loading: boolean };
+    viewLogs: { loading: boolean };
+    showSingBoxConfig: { loading: boolean };
+    generateBugReport: { loading: boolean };
+    checkServices: { loading: boolean };
+  };
+  diagnosticsSystemInfo: {
+    loading: boolean;
+    loaded: boolean;
+    providerInfoLoaded: boolean;
+    tachyon_version: string;
+    tachyon_commit_sha: string;
+    tachyon_latest_version: string;
+    tachyon_backup_version?: string;
+    tachyon_backup_time?: number;
+    luci_app_version: string;
+    sing_box_version: string;
+    sing_box_extended: number;
+    sing_box_tiny: number;
+    sing_box_compressed: number;
+    sing_box_lx: number;
+    sing_box_tachyon_core?: number;
+    sing_box_fptn?: number;
+    sing_box_tailscale: number;
+    sing_box_cert_pin?: number;
+    sing_box_repo_url?: string;
+    sing_box_backup_version?: string;
+    sing_box_backup_time?: number;
+    active_engine?: string;
+    zapret_version: string;
+    zapret_installed: number;
+    zapret_backup_version?: string;
+    zapret_backup_time?: number;
+    zapret2_version: string;
+    zapret2_installed: number;
+    zapret2_backup_version?: string;
+    zapret2_backup_time?: number;
+    byedpi_version: string;
+    byedpi_installed: number;
+    byedpi_backup_version?: string;
+    byedpi_backup_time?: number;
+    wdtt_version: string;
+    wdtt_installed: number;
+    wdtt_backup_version?: string;
+    wdtt_backup_time?: number;
+    olcrtc_version: string;
+    olcrtc_installed: number;
+    olcrtc_backup_version?: string;
+    olcrtc_backup_time?: number;
+    tailscale_version: string;
+    tailscale_installed: number;
+    tailscale_backup_version?: string;
+    tailscale_backup_time?: number;
+    server_inbounds_enabled_count: number;
+    direct_bypass_enabled?: number;
+    direct_bypass_address?: string;
+    direct_bypass_port?: string;
+    torrserver_installed?: number;
+    torrserver_version?: string;
+    torrserver_running?: number;
+    torrserver_direct_available?: number;
+    torrserver_direct_enabled?: number;
+    torrserver_direct_active?: number;
+    openwrt_version: string;
+    device_model: string;
+    kernel_version?: string;
+    cpu_arch?: string;
+    uptime_seconds?: number;
+    load_avg?: string;
+    mem_total_mb?: number;
+    mem_used_mb?: number;
+    mem_free_mb?: number;
+    mem_used_pct?: number;
+    conntrack_count?: number;
+    conntrack_max?: number;
+    dns_type?: string;
+    fakeip_enabled?: number;
+    inbound_mode?: string;
+    active_sections_count?: number;
+    total_sections_count?: number;
+    quarantined_sections_count?: number;
+    deferred_sections_count?: number;
+  };
+  updatesActions: {
+    tachyonCheck: { loading: boolean };
+    tachyonInstall: { loading: boolean };
+    tachyonReinstall: { loading: boolean };
+    tachyonRollback: { loading: boolean };
+    singBoxCheck: { loading: boolean };
+    singBoxInstall: { loading: boolean };
+    singBoxRollback: { loading: boolean };
+    singBoxInstallExtended: { loading: boolean };
+    singBoxInstallExtendedCompressed: { loading: boolean };
+    singBoxInstallLx: { loading: boolean };
+    singBoxInstallTachyonCore: { loading: boolean };
+    singBoxInstallTiny: { loading: boolean };
+    singBoxInstallStable: { loading: boolean };
+    zapretCheck: { loading: boolean };
+    zapretInstall: { loading: boolean };
+    zapretRemove: { loading: boolean };
+    zapretRollback: { loading: boolean };
+    zapret2Check: { loading: boolean };
+    zapret2Install: { loading: boolean };
+    zapret2Remove: { loading: boolean };
+    zapret2Rollback: { loading: boolean };
+    byedpiCheck: { loading: boolean };
+    byedpiInstall: { loading: boolean };
+    byedpiRemove: { loading: boolean };
+    byedpiRollback: { loading: boolean };
+    wdttCheck: { loading: boolean };
+    wdttInstall: { loading: boolean };
+    wdttRemove: { loading: boolean };
+    wdttRollback: { loading: boolean };
+    olcrtcCheck: { loading: boolean };
+    olcrtcInstall: { loading: boolean };
+    olcrtcRemove: { loading: boolean };
+    olcrtcRollback: { loading: boolean };
+    tailscaleCheck: { loading: boolean };
+    tailscaleInstall: { loading: boolean };
+    tailscaleRemove: { loading: boolean };
+    tailscaleRollback: { loading: boolean };
+    directBypassEnable: { loading: boolean };
+    directBypassDisable: { loading: boolean };
+    torrserverDirectCheck: { loading: boolean };
+    torrserverDirectInstall: { loading: boolean };
+    torrserverDirectRemove: { loading: boolean };
+    torrserverDirectEnable: { loading: boolean };
+    torrserverDirectDisable: { loading: boolean };
+    engineSwitch: { loading: boolean };
+  };
+  updatesChecks: Record<
+    Tachyon.ComponentName,
+    {
+      status: 'latest' | 'outdated' | 'dev' | 'outdated_same_release' | null;
+      latest_version: string;
+      current_version?: string;
+      release_url: string;
+      release_notes?: string;
+      current_sha?: string;
+      latest_sha?: string;
+    }
+  >;
+}
+
+const initialStore: StoreType = {
+  tabService: {
+    current: '',
+    all: [],
+  },
+  activeEngine: 'sing-box',
+  bandwidthWidget: {
+    loading: true,
+    failed: false,
+    data: { up: 0, down: 0 },
+  },
+  trafficTotalWidget: {
+    loading: true,
+    failed: false,
+    data: { downloadTotal: 0, uploadTotal: 0 },
+  },
+  systemInfoWidget: {
+    loading: true,
+    failed: false,
+    data: { connections: 0, memory: 0 },
+  },
+  servicesInfoWidget: {
+    loading: true,
+    failed: false,
+    data: {
+      singbox: 0,
+      tachyonRunning: 0,
+      tachyonEnabled: 0,
+      tachyonStatus: '',
+      watchdogRunning: 0,
+    },
+  },
+  tailscaleWidget: {
+    loading: true,
+    failed: false,
+    data: null,
+  },
+  sectionsWidget: {
+    loading: true,
+    failed: false,
+    latencyFetchingSections: {},
+    latencyProgressSections: {},
+    selectorSwitchingSections: {},
+    subscriptionUpdatingSections: {},
+    data: [],
+  },
+  ...initialDiagnosticStore,
+};
+
+export const store = new StoreService<StoreType>(initialStore);

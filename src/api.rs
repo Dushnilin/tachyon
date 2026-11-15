@@ -16,6 +16,7 @@ use crate::crypto_gen;
 use crate::diagnostics;
 use crate::mcp;
 use crate::net_stack;
+use crate::snapshots;
 use crate::store::{
     AppState, BalancerConfig, GuestModeConfig, InboundServer, MAX_SESSIONS, OutboundGroup,
     OutboundSource, ParentalProfile, RouterStoreData, RoutingSection, ScheduleRule, TgBotConfig,
@@ -24,19 +25,21 @@ use crate::store::{
 use crate::sys_info;
 use crate::tg_bot;
 use crate::transaction;
+use crate::ubus_bridge;
 
-const MAX_REQ_BYTES: usize = 512 * 1024;
+const MAX_REQ_BYTES: usize = 2 * 1024 * 1024;
 const SESSION_TTL_SECS: i64 = 86400;
-const UI_HTML: &str = include_str!("ui.html");
 
 pub async fn run_server(state: Arc<AppState>, core: Arc<CoreManager>) -> anyhow::Result<()> {
-    let (addr, base_path) = {
+    let (addr, port, base_path) = {
         let d = state.data.read().await;
         (
             format!("{}:{}", d.settings.listen_addr, d.settings.listen_port),
+            d.settings.listen_port,
             d.settings.web_base_path.clone(),
         )
     };
+    ubus_bridge::sync_router_luci_launcher(port, &base_path).await;
     let listener = TcpListener::bind(&addr).await?;
     eprintln!("[tachyon] Router Panel listening on http://{addr}{base_path}");
     let conn_sem = Arc::new(tokio::sync::Semaphore::new(256));
@@ -115,7 +118,16 @@ async fn handle_conn(
     let body = &buf[header_end..total.min(header_end + content_len)];
 
     if method == "OPTIONS" {
-        return send_empty_cors(&mut stream).await;
+        let origin = {
+            let d = state.data.read().await;
+            d.settings
+                .cors_origins
+                .first()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "*".to_string())
+        };
+        return send_empty_cors(&mut stream, &origin).await;
     }
 
     // Normalize `/cgi-bin/tachyon-agent/*` alias to `/api/agent/v1/*`
@@ -125,10 +137,161 @@ async fn handle_conn(
         raw_path
     };
 
-    // Serve SPA UI
-    if method == "GET" && (path == "/" || path == "/index.html") {
-        let dynamic_ui = std::fs::read_to_string("src/ui.html").ok();
-        return send_html(&mut stream, dynamic_ui.as_deref().unwrap_or(UI_HTML)).await;
+    // Serve 1:1 TypeScript LuCI SPA (`fe-app-tachyon`) at `/` and `/cgi-bin/luci/admin/services/tachyon*`
+    if method == "GET" {
+        if path == "/" || path == "/index.html" || path == "/cgi-bin/luci" {
+            let ui_lang = state.data.read().await.settings.lang.clone();
+            let html = ubus_bridge::serve_luci_shell(None, &ui_lang);
+            return send_html(&mut stream, &html).await;
+        }
+        if path == "/cgi-bin/luci/admin/services/tachyon"
+            || path == "/admin/services/tachyon"
+            || path.starts_with("/cgi-bin/luci/admin/services/tachyon/")
+            || path.starts_with("/admin/services/tachyon/")
+        {
+            let sub = path
+                .strip_prefix("/cgi-bin/luci/admin/services/tachyon")
+                .or_else(|| path.strip_prefix("/admin/services/tachyon"));
+            let ui_lang = state.data.read().await.settings.lang.clone();
+            let html = ubus_bridge::serve_luci_shell(sub, &ui_lang);
+            return send_html(&mut stream, &html).await;
+        }
+        if path == "/lite" || path == "/ui.html" {
+            let ui_lang = state.data.read().await.settings.lang.clone();
+            let html = ubus_bridge::serve_luci_shell(None, &ui_lang);
+            return send_html(&mut stream, &html).await;
+        }
+        if let Some(lang) = path
+            .strip_prefix("/cgi-bin/luci/admin/translations/")
+            .or_else(|| path.strip_prefix("/admin/translations/"))
+        {
+            if lang.starts_with("ru")
+                && let Some((file_path, mime, size, etag)) =
+                    ubus_bridge::resolve_static_asset("resources/view/tachyon/i18n_ru.js")
+            {
+                let inm = parse_header(&head_str, "if-none-match");
+                if inm.as_deref() == Some(etag.as_str()) {
+                    return send_not_modified(&mut stream, &etag).await;
+                }
+                let cache_ctrl = if query.contains("v=") {
+                    "public, max-age=31536000, immutable"
+                } else {
+                    "public, max-age=300"
+                };
+                return stream_static_file(&mut stream, &file_path, mime, size, &etag, cache_ctrl)
+                    .await;
+            }
+            let etag = ubus_bridge::translations_etag(lang);
+            let inm = parse_header(&head_str, "if-none-match");
+            if inm.as_deref() == Some(etag) {
+                return send_not_modified(&mut stream, etag).await;
+            }
+            let js = ubus_bridge::serve_translations_js(lang);
+            let cache_ctrl = if query.contains("v=") {
+                "public, max-age=31536000, immutable"
+            } else {
+                "public, max-age=300"
+            };
+            return send_cached_bytes(
+                &mut stream,
+                "application/javascript; charset=utf-8",
+                js.as_bytes(),
+                etag,
+                cache_ctrl,
+            )
+            .await;
+        }
+        if path == "/yacd" || path.starts_with("/yacd/") {
+            let rel_raw = path
+                .strip_prefix("/yacd")
+                .unwrap_or("")
+                .trim_start_matches('/');
+            let rel = if rel_raw.is_empty() {
+                "index.html"
+            } else {
+                rel_raw
+            };
+            if !rel.contains("..") {
+                for root in [
+                    "/etc/tachyon-core/ui",
+                    "/www/yacd",
+                    "/usr/share/tachyon-core/ui",
+                ] {
+                    let candidate = std::path::Path::new(root).join(rel);
+                    let target = if candidate.is_file() {
+                        candidate
+                    } else {
+                        std::path::Path::new(root).join("index.html")
+                    };
+                    if target.is_file()
+                        && let Ok(meta) = std::fs::metadata(&target)
+                    {
+                        let size = meta.len();
+                        let ext = target
+                            .extension()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or("")
+                            .to_ascii_lowercase();
+                        let mime = match ext.as_str() {
+                            "html" | "htm" => "text/html; charset=utf-8",
+                            "js" | "mjs" => "application/javascript; charset=utf-8",
+                            "css" => "text/css; charset=utf-8",
+                            "json" | "map" => "application/json; charset=utf-8",
+                            "svg" => "image/svg+xml",
+                            "png" => "image/png",
+                            "jpg" | "jpeg" => "image/jpeg",
+                            "ico" => "image/x-icon",
+                            "woff2" => "font/woff2",
+                            "woff" => "font/woff",
+                            "wasm" => "application/wasm",
+                            _ => "application/octet-stream",
+                        };
+                        let mtime = meta
+                            .modified()
+                            .ok()
+                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                            .map(|d| d.as_secs())
+                            .unwrap_or(0);
+                        let etag = format!("\"yacd-{size}-{mtime}\"");
+                        let inm = parse_header(&head_str, "if-none-match");
+                        if inm.as_deref() == Some(etag.as_str()) {
+                            return send_not_modified(&mut stream, &etag).await;
+                        }
+                        return stream_static_file(
+                            &mut stream,
+                            &target,
+                            mime,
+                            size,
+                            &etag,
+                            "public, max-age=300",
+                        )
+                        .await;
+                    }
+                }
+            }
+            return send_json(
+                &mut stream,
+                404,
+                &json!({"error": "yacd UI assets not found"}),
+            )
+            .await;
+        }
+        if let Some(rel) = path.strip_prefix("/luci-static/") {
+            if let Some((file_path, mime, size, etag)) = ubus_bridge::resolve_static_asset(rel) {
+                let inm = parse_header(&head_str, "if-none-match");
+                if inm.as_deref() == Some(etag.as_str()) {
+                    return send_not_modified(&mut stream, &etag).await;
+                }
+                let cache_ctrl = if query.contains("v=") {
+                    "public, max-age=31536000, immutable"
+                } else {
+                    "public, max-age=60"
+                };
+                return stream_static_file(&mut stream, &file_path, mime, size, &etag, cache_ctrl)
+                    .await;
+            }
+            return send_json(&mut stream, 404, &json!({"error": "asset not found"})).await;
+        }
     }
 
     // Public Router Subscription Endpoint (`/sub/:token` or `/sub/:token/:client_id`)
@@ -183,6 +346,37 @@ async fn handle_conn(
         };
         let resp = mcp::handle_mcp_rpc(state, core, &req_val).await;
         return send_json(&mut stream, 200, &resp).await;
+    }
+
+    // LuCI / ubus JSON-RPC 2.0 endpoint (single or batch)
+    if method == "POST"
+        && (path == "/ubus"
+            || path.starts_with("/ubus/")
+            || path == "/cgi-bin/luci/admin/ubus"
+            || path.starts_with("/cgi-bin/luci/admin/ubus/"))
+    {
+        let resp = ubus_bridge::handle_ubus_post(body, state, core).await;
+        return send_json(&mut stream, 200, &resp).await;
+    }
+
+    // LuCI HTTP UCI apply/confirm/revert endpoints
+    if method == "POST"
+        && let Some(action) = path
+            .strip_prefix("/cgi-bin/luci/admin/uci/")
+            .or_else(|| path.strip_prefix("/admin/uci/"))
+    {
+        let (status, payload) = ubus_bridge::handle_uci_http_action(action, state, core).await;
+        if let Some(val) = payload {
+            return send_json(&mut stream, status, &val).await;
+        }
+        return send_bytes(&mut stream, status, "text/plain; charset=utf-8", b"").await;
+    }
+
+    // Direct CGI helpers (`fs.exec_direct` / `fs.read_direct`)
+    if method == "POST" && (path == "/cgi-bin/cgi-exec" || path == "/cgi-bin/cgi-download") {
+        let (status, mime, out_bytes) =
+            ubus_bridge::handle_cgi_direct(&path, body, state, core).await;
+        return send_bytes(&mut stream, status, mime, &out_bytes).await;
     }
 
     dispatch_api(
@@ -263,7 +457,9 @@ async fn dispatch_api(
                 .await;
             send_json(stream, 200, &json!({"ok": true})).await
         }
-        ("GET", "/api/core/connections") | ("GET", "/api/diagnostics/connections") => {
+        ("GET", "/api/core/connections")
+        | ("GET", "/api/diagnostics/connections")
+        | ("GET", "/api/conntrack") => {
             let clash_conns = core
                 .clash_request("GET", "/connections", None)
                 .await
@@ -433,8 +629,11 @@ async fn dispatch_api(
                     candidate.settings = updated_settings;
                 }
             }
+            let new_port = candidate.settings.listen_port;
+            let new_base = candidate.settings.web_base_path.clone();
             match transaction::commit_transaction(state, candidate).await {
                 Ok(plan) => {
+                    ubus_bridge::sync_router_luci_launcher(new_port, &new_base).await;
                     let _ = core.apply_or_reload().await;
                     send_json(stream, 200, &json!({"ok": true, "plan": plan})).await
                 }
@@ -819,6 +1018,15 @@ async fn dispatch_api(
             )
             .await
         }
+        ("POST", "/api/servers/auto-configure") => {
+            let val = serde_json::from_slice::<Value>(body).unwrap_or_else(|_| json!({}));
+            let proto = val
+                .get("protocol")
+                .and_then(Value::as_str)
+                .unwrap_or("vless");
+            let res = crypto_gen::auto_configure_server(proto);
+            send_json(stream, 200, &res).await
+        }
         ("POST", "/api/profiles/save") => {
             let Ok(prof) = serde_json::from_slice::<ParentalProfile>(body) else {
                 return send_json(stream, 400, &json!({"error": "invalid profile"})).await;
@@ -910,14 +1118,44 @@ async fn dispatch_api(
                 }
             }
         }
+        ("GET", "/api/telegram/status") => {
+            let d = state.data.read().await.clone();
+            let running = tg_bot::is_bot_effectively_running(&d);
+            let configured =
+                !d.telegram.bot_token.trim().is_empty() && !d.telegram.admin_ids.is_empty();
+            send_json(
+                stream,
+                200,
+                &json!({
+                    "ok": true,
+                    "enabled": d.telegram.enabled,
+                    "running": running,
+                    "configured": configured,
+                    "router_name": d.telegram.router_name,
+                    "bot_proxy_section": d.telegram.bot_proxy_section,
+                }),
+            )
+            .await
+        }
         ("POST", "/api/telegram/save") => {
             let Ok(tg) = serde_json::from_slice::<TgBotConfig>(body) else {
                 return send_json(stream, 400, &json!({"error": "invalid telegram config"})).await;
             };
             let mut candidate = state.data.read().await.clone();
+            let proxy_changed =
+                candidate.telegram.bot_proxy_section.trim() != tg.bot_proxy_section.trim();
             candidate.telegram = tg;
+            let saved_tg = candidate.telegram.clone();
             match transaction::commit_transaction(state, candidate).await {
-                Ok(plan) => send_json(stream, 200, &json!({"ok": true, "plan": plan})).await,
+                Ok(plan) => {
+                    ubus_bridge::sync_telegram_section_to_json(&saved_tg);
+                    if proxy_changed {
+                        let _ = core.apply_or_reload().await;
+                    }
+                    tg_bot::set_runtime_override(None);
+                    tg_bot::notify_bot_wakeup();
+                    send_json(stream, 200, &json!({"ok": true, "plan": plan})).await
+                }
                 Err(e) => {
                     send_json(stream, 400, &json!({"ok": false, "error": e.to_string()})).await
                 }
@@ -927,6 +1165,18 @@ async fn dispatch_api(
             Ok(sent) => send_json(stream, 200, &json!({"ok": true, "sent": sent})).await,
             Err(e) => send_json(stream, 400, &json!({"ok": false, "error": e.to_string()})).await,
         },
+        ("POST", "/api/telegram/diagnose") | ("GET", "/api/telegram/diagnose") => {
+            let report = tg_bot::diagnose_bot_connection(state, core).await;
+            send_json(stream, 200, &report).await
+        }
+        ("GET", "/api/diagnostics/fakeip-check") => {
+            let res = diagnostics::run_fakeip_probe(state, true).await;
+            send_json(stream, 200, &res).await
+        }
+        ("GET", "/api/diagnostics/ip-check") => {
+            let res = diagnostics::run_fakeip_probe(state, false).await;
+            send_json(stream, 200, &res).await
+        }
         ("POST", "/api/diagnostics/doctor")
         | ("GET", "/api/diagnostics/doctor")
         | ("GET", "/api/agent/v1/diagnose") => {
@@ -973,7 +1223,9 @@ async fn dispatch_api(
                     .await;
             send_json(stream, 200, &res).await
         }
-        ("POST", "/api/diagnostics/dns-speed-test") | ("POST", "/api/diagnostics/dns-bench") => {
+        ("POST", "/api/diagnostics/dns-speed-test")
+        | ("POST", "/api/diagnostics/dns-bench")
+        | ("POST", "/api/dns/benchmark") => {
             let res = diagnostics::run_dns_speed_test().await;
             let best = res
                 .first()
@@ -1048,7 +1300,12 @@ async fn dispatch_api(
             let val = serde_json::from_slice::<Value>(body).unwrap_or_else(|_| json!({}));
             let tag = val.get("tag").and_then(Value::as_str).unwrap_or("");
             let ms = core.probe_single_node_rtt(tag).await;
-            send_json(stream, 200, &json!({"ok": ms > 0, "tag": tag, "delay_ms": ms})).await
+            send_json(
+                stream,
+                200,
+                &json!({"ok": ms > 0, "tag": tag, "delay_ms": ms}),
+            )
+            .await
         }
         ("POST", "/api/nodes/exit") => {
             let val = serde_json::from_slice::<Value>(body).unwrap_or_else(|_| json!({}));
@@ -1192,7 +1449,9 @@ async fn dispatch_api(
                 }
             }
         }
-        ("GET", "/api/updates/check") | ("GET", "/api/components/status") => {
+        ("GET", "/api/updates/check")
+        | ("GET", "/api/components/status")
+        | ("GET", "/api/releases") => {
             let info = core.check_updates().await;
             send_json(stream, 200, &info).await
         }
@@ -1248,10 +1507,44 @@ async fn dispatch_api(
             }
         }
         ("GET", "/api/backup") => {
-            let d = state.data.read().await.clone();
-            send_json(stream, 200, &json!(d)).await
+            let cur_secs = ubus_bridge::get_json_sections_snapshot();
+            let scope = if query.contains("scope=routes") {
+                "routes"
+            } else {
+                "full"
+            };
+            let prof = snapshots::build_active_profile(state, &cur_secs, "backup", scope).await;
+            send_json(stream, 200, &json!(prof)).await
         }
         ("POST", "/api/restore") => {
+            let cur_secs = ubus_bridge::get_json_sections_snapshot();
+            let _ = snapshots::snapshot_save(state, &cur_secs, "pre-restore").await;
+
+            if let Ok(prof) = serde_json::from_slice::<snapshots::TachyonProfileV1>(body)
+                && prof.format == snapshots::PROFILE_FORMAT
+            {
+                let mut candidate = prof.store_data;
+                if !prof.config_sections.is_empty() {
+                    candidate.import_from_json_sections(&prof.config_sections);
+                    ubus_bridge::set_json_sections_snapshot(prof.config_sections);
+                }
+                let _ = snapshots::restore_certs(state, &prof.certs);
+                return match transaction::commit_transaction(state, candidate).await {
+                    Ok(plan) => {
+                        let _ = core.apply_or_reload().await;
+                        send_json(
+                            stream,
+                            200,
+                            &json!({"ok": true, "format": prof.format, "counts": prof.counts, "plan": plan}),
+                        )
+                        .await
+                    }
+                    Err(e) => {
+                        send_json(stream, 400, &json!({"ok": false, "error": e.to_string()})).await
+                    }
+                };
+            }
+
             let Ok(candidate) = serde_json::from_slice::<RouterStoreData>(body) else {
                 return send_json(stream, 400, &json!({"error": "invalid backup JSON"})).await;
             };
@@ -1262,6 +1555,112 @@ async fn dispatch_api(
                 }
                 Err(e) => {
                     send_json(stream, 400, &json!({"ok": false, "error": e.to_string()})).await
+                }
+            }
+        }
+        ("GET", "/api/snapshots") => {
+            let res = snapshots::snapshot_list(state);
+            send_json(stream, 200, &res).await
+        }
+        ("POST", "/api/snapshots/save") => {
+            let val = serde_json::from_slice::<Value>(body).unwrap_or_else(|_| json!({}));
+            let name = val
+                .get("name")
+                .and_then(Value::as_str)
+                .filter(|s| !s.trim().is_empty())
+                .unwrap_or("manual");
+            let cur_secs = ubus_bridge::get_json_sections_snapshot();
+            let res = snapshots::snapshot_save(state, &cur_secs, name).await;
+            send_json(stream, 200, &res).await
+        }
+        ("POST", "/api/snapshots/diff") => {
+            let val = serde_json::from_slice::<Value>(body).unwrap_or_else(|_| json!({}));
+            let file_arg = val.get("file").and_then(Value::as_str).unwrap_or("");
+            let cur_secs = ubus_bridge::get_json_sections_snapshot();
+            let res = snapshots::snapshot_diff(state, &cur_secs, file_arg).await;
+            send_json(stream, 200, &res).await
+        }
+        ("POST", "/api/snapshots/restore") => {
+            let val = serde_json::from_slice::<Value>(body).unwrap_or_else(|_| json!({}));
+            let file_arg = val.get("file").and_then(Value::as_str).unwrap_or("");
+            match snapshots::snapshot_restore(state, file_arg).await {
+                Ok((prof, restored_secs)) => {
+                    ubus_bridge::set_json_sections_snapshot(restored_secs);
+                    let _ = core.apply_or_reload().await;
+                    send_json(
+                        stream,
+                        200,
+                        &json!({
+                            "ok": true,
+                            "success": true,
+                            "name": prof.name,
+                            "stamp": prof.stamp,
+                            "counts": prof.counts
+                        }),
+                    )
+                    .await
+                }
+                Err(e) => {
+                    send_json(
+                        stream,
+                        400,
+                        &json!({"ok": false, "success": false, "error": e.to_string()}),
+                    )
+                    .await
+                }
+            }
+        }
+        ("POST", "/api/snapshots/delete") => {
+            let val = serde_json::from_slice::<Value>(body).unwrap_or_else(|_| json!({}));
+            let file_arg = val.get("file").and_then(Value::as_str).unwrap_or("");
+            let res = snapshots::snapshot_delete(state, file_arg);
+            send_json(stream, 200, &res).await
+        }
+        ("POST", "/api/snapshots/export") => {
+            let val = serde_json::from_slice::<Value>(body).unwrap_or_else(|_| json!({}));
+            let target = val
+                .get("target")
+                .or_else(|| val.get("mode"))
+                .or_else(|| val.get("file"))
+                .and_then(Value::as_str);
+            let cur_secs = ubus_bridge::get_json_sections_snapshot();
+            let res = snapshots::snapshot_export(state, &cur_secs, target).await;
+            send_json(stream, 200, &res).await
+        }
+        ("POST", "/api/snapshots/import") => {
+            let val = serde_json::from_slice::<Value>(body).unwrap_or_else(|_| json!({}));
+            let spec = val
+                .get("spec")
+                .or_else(|| val.get("code"))
+                .and_then(Value::as_str);
+            let cur_secs = ubus_bridge::get_json_sections_snapshot();
+            match snapshots::snapshot_import(state, &cur_secs, spec).await {
+                snapshots::ImportOutcome::ResponseOnly(v) => send_json(stream, 200, &v).await,
+                snapshots::ImportOutcome::AppliedState {
+                    response,
+                    new_sections,
+                } => {
+                    ubus_bridge::set_json_sections_snapshot(new_sections);
+                    let _ = core.apply_or_reload().await;
+                    send_json(stream, 200, &response).await
+                }
+            }
+        }
+        ("POST", "/api/settings/reset") => {
+            let cur_secs = ubus_bridge::get_json_sections_snapshot();
+            match snapshots::reset_settings_to_defaults(state, &cur_secs).await {
+                Ok((resp, default_secs)) => {
+                    ubus_bridge::set_json_sections_snapshot(default_secs);
+                    let _ = core.apply_or_reload().await;
+                    send_json(stream, 200, &resp).await
+                }
+                Err(e) => {
+                    send_json(
+                        stream,
+                        400,
+                        &json!({"ok": false, "success": false, "error": e.to_string()}),
+                    )
+                    .await
                 }
             }
         }
@@ -1290,10 +1689,7 @@ async fn dispatch_api(
                 .get("limit_up_bps")
                 .and_then(Value::as_u64)
                 .unwrap_or_else(|| {
-                    val.get("upload_mbps")
-                        .and_then(Value::as_u64)
-                        .unwrap_or(0)
-                        * 125_000
+                    val.get("upload_mbps").and_then(Value::as_u64).unwrap_or(0) * 125_000
                 });
             let down_bps = val
                 .get("limit_down_bps")
@@ -1554,12 +1950,18 @@ async fn handle_login(
     let user = val.get("username").and_then(Value::as_str).unwrap_or("");
     let pass = val.get("password").and_then(Value::as_str).unwrap_or("");
 
-    let (expected_user, pass_hash, pass_salt) = {
+    let (expected_user, pass_hash, pass_salt, session_ttl) = {
         let d = state.data.read().await;
+        let ttl = if d.settings.session_ttl_secs > 0 {
+            d.settings.session_ttl_secs as i64
+        } else {
+            SESSION_TTL_SECS
+        };
         (
             d.settings.admin_user.clone(),
             d.settings.admin_pass_hash.clone(),
             d.settings.admin_pass_salt.clone(),
+            ttl,
         )
     };
 
@@ -1587,12 +1989,12 @@ async fn handle_login(
         {
             sessions.remove(&oldest);
         }
-        sessions.insert(token.clone(), now + SESSION_TTL_SECS);
+        sessions.insert(token.clone(), now + session_ttl);
     }
 
     let body_bytes = serde_json::to_vec(&json!({"ok": true, "token": token}))?;
     let head = format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: {}\r\nSet-Cookie: tachyon_session={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={SESSION_TTL_SECS}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: {}\r\nSet-Cookie: tachyon_session={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={session_ttl}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
         body_bytes.len()
     );
     stream.write_all(head.as_bytes()).await?;
@@ -1697,7 +2099,7 @@ async fn send_json(stream: &mut TcpStream, status: u16, val: &Value) -> anyhow::
 async fn send_html(stream: &mut TcpStream, html: &str) -> anyhow::Result<()> {
     let bytes = html.as_bytes();
     let head = format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n",
+        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nCache-Control: no-store, no-cache, must-revalidate\r\nConnection: close\r\n\r\n",
         bytes.len()
     );
     stream.write_all(head.as_bytes()).await?;
@@ -1716,8 +2118,94 @@ async fn send_plain(stream: &mut TcpStream, text: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn send_empty_cors(stream: &mut TcpStream) -> anyhow::Result<()> {
-    let head = "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type, Authorization\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+async fn send_empty_cors(stream: &mut TcpStream, cors_origin: &str) -> anyhow::Result<()> {
+    let safe_origin: String = cors_origin
+        .chars()
+        .filter(|c| *c != '\r' && *c != '\n')
+        .collect();
+    let origin = if safe_origin.is_empty() {
+        "*"
+    } else {
+        &safe_origin
+    };
+    let head = format!(
+        "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: {origin}\r\nAccess-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type, Authorization\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+    );
     stream.write_all(head.as_bytes()).await?;
+    Ok(())
+}
+
+async fn send_bytes(
+    stream: &mut TcpStream,
+    status: u16,
+    content_type: &str,
+    bytes: &[u8],
+) -> anyhow::Result<()> {
+    let reason = match status {
+        200 => "OK",
+        204 => "No Content",
+        400 => "Bad Request",
+        401 => "Unauthorized",
+        404 => "Not Found",
+        _ => "Internal Server Error",
+    };
+    let head = format!(
+        "HTTP/1.1 {status} {reason}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nCache-Control: no-store, no-cache, must-revalidate\r\nConnection: close\r\n\r\n",
+        bytes.len()
+    );
+    stream.write_all(head.as_bytes()).await?;
+    if !bytes.is_empty() {
+        stream.write_all(bytes).await?;
+    }
+    Ok(())
+}
+
+async fn send_not_modified(stream: &mut TcpStream, etag: &str) -> anyhow::Result<()> {
+    let head = format!(
+        "HTTP/1.1 304 Not Modified\r\nETag: {etag}\r\nCache-Control: public, max-age=31536000, immutable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+    );
+    stream.write_all(head.as_bytes()).await?;
+    Ok(())
+}
+
+async fn send_cached_bytes(
+    stream: &mut TcpStream,
+    content_type: &str,
+    bytes: &[u8],
+    etag: &str,
+    cache_control: &str,
+) -> anyhow::Result<()> {
+    let head = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nETag: {etag}\r\nCache-Control: {cache_control}\r\nConnection: close\r\n\r\n",
+        bytes.len()
+    );
+    stream.write_all(head.as_bytes()).await?;
+    if !bytes.is_empty() {
+        stream.write_all(bytes).await?;
+    }
+    Ok(())
+}
+
+async fn stream_static_file(
+    stream: &mut TcpStream,
+    path: &std::path::Path,
+    content_type: &str,
+    size: u64,
+    etag: &str,
+    cache_control: &str,
+) -> anyhow::Result<()> {
+    let mut file = tokio::fs::File::open(path).await?;
+    let head = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\nContent-Length: {size}\r\nETag: {etag}\r\nCache-Control: {cache_control}\r\nConnection: close\r\n\r\n"
+    );
+    stream.write_all(head.as_bytes()).await?;
+    let mut chunk = [0u8; 8192];
+    loop {
+        let n = file.read(&mut chunk).await?;
+        if n == 0 {
+            break;
+        }
+        stream.write_all(&chunk[..n]).await?;
+    }
     Ok(())
 }

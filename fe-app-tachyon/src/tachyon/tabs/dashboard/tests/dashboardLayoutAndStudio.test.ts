@@ -1,0 +1,810 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const storage = new Map<string, string>();
+
+function createDummyElement(tag: string): any {
+  const children: any[] = [];
+  const attrs: Record<string, string> = {};
+  const listeners: Record<string, Array<(ev: any) => void>> = {};
+  const el: any = {
+    tagName: tag.toUpperCase(),
+    children,
+    childNodes: children,
+    style: {} as Record<string, string>,
+    className: '',
+    dataset: {} as Record<string, string>,
+    classList: {
+      add(c: string) {
+        const set = new Set(
+          (el.className || el.class || '').split(/\s+/).filter(Boolean),
+        );
+        set.add(c);
+        el.className = Array.from(set).join(' ');
+        el.class = el.className;
+      },
+      remove(c: string) {
+        const set = new Set(
+          (el.className || el.class || '').split(/\s+/).filter(Boolean),
+        );
+        set.delete(c);
+        el.className = Array.from(set).join(' ');
+        el.class = el.className;
+      },
+      contains(c: string) {
+        const list = (el.class || el.className || '').split(/\s+/);
+        return list.includes(c);
+      },
+    },
+    get textContent(): string {
+      let text = '';
+      for (const c of children) {
+        if (typeof c === 'string' || typeof c === 'number') {
+          text += c;
+        } else if (c && typeof c.textContent === 'string') {
+          text += c.textContent;
+        }
+      }
+      return text;
+    },
+    set textContent(val: string) {
+      children.length = 0;
+      if (val) children.push(val);
+    },
+    set innerHTML(val: string) {
+      children.length = 0;
+      if (val) children.push(val);
+    },
+    get innerHTML(): string {
+      return el.textContent;
+    },
+    setAttribute(name: string, val: string) {
+      attrs[name] = String(val);
+      (el as any)[name] = val;
+      if (name === 'class') el.className = String(val);
+    },
+    getAttribute(name: string) {
+      return attrs[name] ?? (el as any)[name] ?? null;
+    },
+    removeAttribute(name: string) {
+      delete attrs[name];
+      delete (el as any)[name];
+    },
+    addEventListener(type: string, cb: (ev: any) => void) {
+      if (!listeners[type]) listeners[type] = [];
+      listeners[type].push(cb);
+    },
+    click() {
+      const cbs = listeners.click || [];
+      cbs.forEach((fn) => fn({ preventDefault() {}, stopPropagation() {} }));
+    },
+    appendChild(node: any) {
+      if (node !== null && node !== undefined && node !== '') {
+        if (typeof node === 'object') {
+          node.parentNode = el;
+        }
+        children.push(node);
+      }
+      return node;
+    },
+    prepend(node: any) {
+      if (node !== null && node !== undefined && node !== '') {
+        if (typeof node === 'object') {
+          node.parentNode = el;
+        }
+        children.unshift(node);
+      }
+    },
+    insertBefore(newNode: any, refNode: any) {
+      if (newNode && typeof newNode === 'object') {
+        newNode.parentNode = el;
+      }
+      const idx = children.indexOf(refNode);
+      if (idx >= 0) children.splice(idx, 0, newNode);
+      else children.push(newNode);
+      return newNode;
+    },
+    remove() {
+      if (el.parentNode && Array.isArray(el.parentNode.children)) {
+        const i = el.parentNode.children.indexOf(el);
+        if (i >= 0) el.parentNode.children.splice(i, 1);
+      }
+    },
+    get firstChild() {
+      return children[0] || null;
+    },
+    cloneNode() {
+      return createDummyElement(tag);
+    },
+    querySelectorAll(selector: string): any[] {
+      const results: any[] = [];
+      function traverse(node: any) {
+        if (!node || typeof node !== 'object') return;
+        if (selector.startsWith('.')) {
+          const targetClasses = selector.split('.').filter(Boolean);
+          const classes = (node.class || node.className || '').split(/\s+/);
+          if (targetClasses.every((tc: string) => classes.includes(tc))) {
+            results.push(node);
+          }
+        }
+        if (Array.isArray(node.children)) {
+          for (const child of node.children) {
+            traverse(child);
+          }
+        }
+      }
+      traverse(el);
+      return results;
+    },
+    querySelector(selector: string): any {
+      return el.querySelectorAll(selector)[0] || null;
+    },
+  };
+  return el;
+}
+
+globalThis.document = {
+  body: createDummyElement('body'),
+  createElement: (tag: string) => createDummyElement(tag),
+  createElementNS: (_ns: string, tag: string) => createDummyElement(tag),
+  querySelectorAll: () => [],
+  querySelector: () => null,
+  getElementById: () => null,
+} as any;
+
+(globalThis as any).localStorage = {
+  getItem: (k: string) => storage.get(k) ?? null,
+  setItem: (k: string, v: string) => storage.set(k, String(v)),
+};
+
+const uciState: Record<string, Record<string, any>> = {
+  settings: { '.type': 'settings', '.name': 'settings' },
+  Main: {
+    '.type': 'section',
+    '.name': 'Main',
+    enabled: '1',
+    action: 'connection',
+    outbound_source_refs: ['src_vitalik', 'src_links'],
+  },
+  src_vitalik: {
+    '.type': 'outbound_source',
+    '.name': 'src_vitalik',
+    enabled: '1',
+    name: 'Vitalik',
+    source_type: 'subscription',
+    url: 'https://vitalik.one/sub/token',
+  },
+  src_links: {
+    '.type': 'outbound_source',
+    '.name': 'src_links',
+    enabled: '1',
+    name: 'DirectLinks',
+    source_type: 'proxy_links',
+    proxy_links: [
+      'vless://uuid@example.com:443?type=grpc&security=reality#Node1',
+      'vless://uuid@example.com:443?type=xhttp&security=reality#Node2',
+    ],
+  },
+};
+
+(globalThis as any).uci = {
+  get: vi.fn((_pkg: string, sid: string, opt?: string) => {
+    const sec = uciState[sid];
+    if (!sec) return null;
+    if (!opt) return sec;
+    return sec[opt] ?? null;
+  }),
+  set: vi.fn((_pkg: string, sid: string, opt: string, val: any) => {
+    if (!uciState[sid]) uciState[sid] = { '.name': sid };
+    uciState[sid][opt] = val;
+  }),
+  sections: vi.fn((_pkg: string, type: string) =>
+    Object.values(uciState).filter((s) => s['.type'] === type),
+  ),
+  save: vi.fn().mockResolvedValue(undefined),
+};
+
+(globalThis as any).E = (tag: string, attrs?: any, children?: any) => {
+  const el = createDummyElement(tag);
+  if (attrs && typeof attrs === 'object' && !Array.isArray(attrs)) {
+    Object.entries(attrs).forEach(([k, v]) => {
+      if (k === 'click' && typeof v === 'function') {
+        el.addEventListener('click', v);
+      } else {
+        el.setAttribute(k, String(v));
+      }
+    });
+  }
+  const childList =
+    attrs && (Array.isArray(attrs) || typeof attrs === 'string')
+      ? attrs
+      : children;
+  if (childList !== undefined && childList !== null) {
+    const arr = Array.isArray(childList) ? childList : [childList];
+    for (const c of arr) {
+      if (c !== null && c !== undefined && c !== '') {
+        el.appendChild(c);
+      }
+    }
+  }
+  return el;
+};
+
+let dashboardLayoutMod: any;
+let renderOverviewMod: any;
+let studioDeckMod: any;
+
+describe('Dashboard Widgets, Presets, Transport Badges & Studio Deck', () => {
+  beforeAll(async () => {
+    dashboardLayoutMod = await import('../dashboardLayout');
+    renderOverviewMod = await import('../partials/renderOverviewRow');
+    studioDeckMod = await import('../../../studioDeck');
+  });
+
+  beforeEach(() => {
+    storage.clear();
+    delete uciState.settings.dashboard_layout_json;
+  });
+
+  it('defines 5 distinct dashboard presets and 7 widgets with 4-5 views each', () => {
+    expect(dashboardLayoutMod.DASHBOARD_PRESETS).toHaveLength(5);
+    expect(dashboardLayoutMod.DASHBOARD_WIDGET_CATALOG).toHaveLength(7);
+    for (const widget of dashboardLayoutMod.DASHBOARD_WIDGET_CATALOG) {
+      expect(widget.views.length).toBeGreaterThanOrEqual(4);
+    }
+
+    const stdCfg = dashboardLayoutMod.applyDashboardPreset('standard');
+    expect(stdCfg.widgets.map((w: any) => w.id)).toEqual([
+      'kpi',
+      'traffic_chart',
+      'system_status',
+      'router_services',
+      'inbounds',
+      'active_clients',
+      'routing_sections',
+    ]);
+
+    const commandCfg =
+      dashboardLayoutMod.applyDashboardPreset('command_center');
+    expect(commandCfg.preset).toBe('command_center');
+    expect(dashboardLayoutMod.getWidgetViewMode('kpi', commandCfg)).toBe(
+      'compact_strip',
+    );
+
+    const bentoCfg = dashboardLayoutMod.applyDashboardPreset('bento_cards');
+    expect(bentoCfg.preset).toBe('bento_cards');
+    expect(
+      dashboardLayoutMod.getWidgetViewMode('routing_sections', bentoCfg),
+    ).toBe('cards_grid');
+  });
+
+  it('shows VLESS + GRPC + XHTTP transport badges, green LED status dot, and fixes Main subtitle', () => {
+    const blocks = renderOverviewMod.renderDashboardSectionsAndNodes({
+      sections: [
+        {
+          code: 'Discord',
+          sectionName: 'Discord',
+          displayName: 'Discord',
+          action: 'desync',
+          outbounds: [],
+          serviceStatus: { ready: true, label: 'Работает' },
+          configError: false,
+        },
+        {
+          code: 'Main',
+          sectionName: 'Main',
+          displayName: 'Main',
+          action: 'connection',
+          outbounds: [
+            {
+              code: 'vless-grpc-1',
+              displayName: 'NL Amsterdam 1',
+              type: 'vless',
+              transport: 'grpc',
+              selected: true,
+              latency: 42,
+              group: 'sub',
+            },
+            {
+              code: 'vless-xhttp-2',
+              displayName: 'DE Frankfurt 2',
+              type: 'vless',
+              link: 'vless://id@host:443?type=xhttp#DE',
+              selected: false,
+              latency: 55,
+              group: 'sub',
+            },
+          ],
+          configError: false,
+        },
+      ],
+      selectedSectionCode: 'Main',
+      onSelectSection: vi.fn(),
+      getSectionStats: () => ({
+        download: 0,
+        upload: 0,
+        downloadSpeed: 0,
+        uploadSpeed: 0,
+      }),
+      isTestingAllSections: false,
+      onTestAllSections: vi.fn(),
+      latencyFetchingSections: {},
+      onTestSectionLatency: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+    });
+
+    const wrap = createDummyElement('div');
+    blocks.forEach((b: any) => wrap.appendChild(b));
+
+    const allText = wrap.textContent;
+    // Main should NOT be misclassified as AI ("Нейросети и ИИ-платформы")
+    expect(allText).not.toContain('Нейросети и ИИ-платформы');
+    // Transport badges GRPC and XHTTP should appear alongside VLESS
+    const transportBadges = wrap
+      .querySelectorAll('.tachyon-routing-row__engine-badge--transport')
+      .map((b: any) => b.textContent);
+    expect(transportBadges).toContain('GRPC');
+    expect(transportBadges).toContain('XHTTP');
+
+    // Green glowing LED dot should be rendered instead of "● Работает" text
+    expect(allText).not.toContain('● Работает');
+    const onlineDots = wrap.querySelectorAll(
+      '.tachyon-routing-row__status-dot.is-online',
+    );
+    expect(onlineDots.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('excludes block, bypass, and dns sections from routing sections block on dashboard', () => {
+    const onSelectSection = vi.fn();
+    const blocks = renderOverviewMod.renderDashboardSectionsAndNodes({
+      sections: [
+        {
+          code: 'block',
+          sectionName: 'block',
+          displayName: 'block',
+          action: 'block',
+          serviceStatus: { serviceType: 'block', enabled: true },
+          outbounds: [],
+          configError: false,
+        },
+        {
+          code: 'ByPass',
+          sectionName: 'ByPass',
+          displayName: 'ByPass',
+          action: 'bypass',
+          serviceStatus: { serviceType: 'bypass', enabled: true },
+          outbounds: [],
+          configError: false,
+        },
+        {
+          code: 'YandexDns',
+          sectionName: 'YandexDns',
+          displayName: 'YandexDns',
+          action: 'dns',
+          serviceStatus: { serviceType: 'dns', enabled: true },
+          outbounds: [],
+          configError: false,
+        },
+        {
+          code: 'dns-ai',
+          sectionName: 'dns-ai',
+          displayName: 'dns-ai',
+          action: 'dns',
+          serviceStatus: { serviceType: 'dns', enabled: true },
+          outbounds: [],
+          configError: false,
+        },
+        {
+          code: 'Youtube',
+          sectionName: 'Youtube',
+          displayName: 'Youtube',
+          action: 'desync',
+          outbounds: [],
+          configError: false,
+        },
+        {
+          code: 'Discord',
+          sectionName: 'Discord',
+          displayName: 'Discord',
+          action: 'desync',
+          outbounds: [],
+          configError: false,
+        },
+        {
+          code: 'media_dpi',
+          sectionName: 'media_dpi',
+          displayName: 'Zapret2 (Direct DPI Bypass)',
+          action: 'zapret2',
+          outbounds: [],
+          configError: false,
+        },
+        {
+          code: 'Geo_block',
+          sectionName: 'Geo_block',
+          displayName: 'Geo Block',
+          action: 'connection',
+          outbounds: [
+            {
+              code: 'geo-vless',
+              displayName: 'NL Rotterdam',
+              type: 'vless',
+              selected: true,
+              latency: 40,
+            },
+          ],
+        },
+      ],
+      selectedSectionCode: 'Youtube',
+      onSelectSection,
+      getSectionStats: () => ({
+        download: 0,
+        upload: 0,
+        downloadSpeed: 0,
+        uploadSpeed: 0,
+      }),
+      isTestingAllSections: false,
+      onTestAllSections: vi.fn(),
+      latencyFetchingSections: {},
+      onTestSectionLatency: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+    });
+
+    const wrap = createDummyElement('div');
+    blocks.forEach((b: any) => wrap.appendChild(b));
+
+    const sectionNames = wrap
+      .querySelectorAll('.tachyon-routing-row__name')
+      .map((el: any) => el.textContent);
+
+    expect(sectionNames).toEqual([
+      'Youtube',
+      'Discord',
+      'Zapret2 (Direct DPI Bypass)',
+      'Geo Block',
+    ]);
+    expect(sectionNames).toContain('Zapret2 (Direct DPI Bypass)');
+    expect(sectionNames).not.toContain('block');
+    expect(sectionNames).not.toContain('ByPass');
+    expect(sectionNames).not.toContain('YandexDns');
+    expect(sectionNames).not.toContain('dns-ai');
+    expect(wrap.textContent).toContain('NL Rotterdam');
+    let geoRow = wrap
+      .querySelectorAll('.tachyon-routing-row__name')
+      .find((node: any) => node.textContent === 'Geo Block');
+    while (
+      geoRow &&
+      geoRow.getAttribute('data-section-row-metrics') !== 'Geo_block'
+    ) {
+      geoRow = geoRow.parentNode;
+    }
+    expect(geoRow).toBeDefined();
+    geoRow.click();
+    expect(onSelectSection).toHaveBeenCalledWith('Geo_block');
+  });
+
+  it.each([
+    ['Geo_block', 'Geo Block'],
+    ['proxy', 'Geo Block'],
+    ['block', 'Proxy'],
+    ['reject', 'Proxy'],
+    ['dns_proxy', 'Proxy'],
+    ['direct', 'Proxy'],
+    ['zapret_proxy', 'Proxy'],
+  ])(
+    'classifies connection section %s (%s) by its action',
+    (sectionName, displayName) => {
+      expect(
+        renderOverviewMod.resolveSectionCategory({
+          code: sectionName,
+          sectionName,
+          displayName,
+          action: 'connection',
+          outbounds: [{ code: 'vless-node', type: 'vless', selected: true }],
+        }),
+      ).toBe('proxy');
+    },
+  );
+
+  it.each([
+    ['ZAPRET2', 'dpi'],
+    ['DESYNC', 'dpi'],
+    ['BLOCK', 'block'],
+    ['DNS', 'dns'],
+    ['DIRECT', 'direct'],
+  ])(
+    'keeps connection sections with a %s engine in the %s category',
+    (type, category) => {
+      expect(
+        renderOverviewMod.resolveSectionCategory({
+          code: 'service',
+          sectionName: 'service',
+          displayName: 'Service',
+          action: 'connection',
+          outbounds: [{ code: 'service-node', type, selected: true }],
+        }),
+      ).toBe(category);
+    },
+  );
+
+  it('mounts Tachyon Studio Deck on GridSection containers and hides default GridSection tables', () => {
+    const containerEl = createDummyElement('div');
+    const mockSectionRef = {
+      sectiontype: 'section',
+      cfgsections: () => ['Main'],
+      renderMoreOptionsModal: vi.fn(),
+      remove: vi.fn(),
+    };
+
+    studioDeckMod.mountTachyonStudioDeck({
+      type: 'section',
+      sectionRef: mockSectionRef,
+      containerEl,
+    });
+
+    expect(containerEl.classList.contains('tachyon-has-studio-deck')).toBe(
+      true,
+    );
+    const deck = containerEl.querySelector('.tachyon-studio-deck');
+    expect(deck).not.toBeNull();
+    expect(deck.textContent).toContain('Main');
+    expect(deck.textContent).toContain('VLESS');
+    expect(deck.textContent).toContain('GRPC');
+    expect(deck.textContent).toContain('XHTTP');
+  });
+
+  it('triggers showServerInfoModal when clicking QR / Client Link on server Studio Deck card', async () => {
+    const inboundServersMod = await import('../inboundServers');
+    const showServerInfoModalMock = vi.fn();
+    const containerEl = createDummyElement('div');
+    const mockServerSectionRef = {
+      sectiontype: 'server',
+      cfgsections: () => ['TewFai'],
+      renderMoreOptionsModal: vi.fn(),
+      remove: vi.fn(),
+    };
+
+    inboundServersMod.registerServerSectionController(mockServerSectionRef, {
+      showServerInfoModal: showServerInfoModalMock,
+    });
+
+    (globalThis as any).uci.get = (
+      _pkg: string,
+      sec: string,
+      opt?: string,
+    ): any => {
+      const serverData: Record<string, any> = {
+        '.name': 'TewFai',
+        '.type': 'server',
+        enabled: '1',
+        name: 'TewFai',
+        protocol: 'tewfai',
+        listen_port: '8443',
+      };
+      if (sec === 'TewFai') {
+        return opt ? serverData[opt] : serverData;
+      }
+      return undefined;
+    };
+
+    studioDeckMod.mountTachyonStudioDeck({
+      type: 'server',
+      sectionRef: mockServerSectionRef,
+      containerEl,
+    });
+
+    const actionBtns = containerEl.querySelectorAll(
+      '.tachyon-studio-action-btn',
+    );
+    expect(actionBtns.length).toBeGreaterThanOrEqual(2);
+    const qrBtn = actionBtns[0];
+    qrBtn.click();
+
+    expect(showServerInfoModalMock).toHaveBeenCalledWith('TewFai');
+    expect(mockServerSectionRef.renderMoreOptionsModal).not.toHaveBeenCalled();
+  });
+
+  it('correctly filters dashboard routing section types and updates upon config change', async () => {
+    const layoutMod = await import('../dashboardLayout');
+    const { resolveSectionCategory } = await import(
+      '../partials/renderOverviewRow'
+    );
+
+    // Default filters
+    const filter = layoutMod.getDashboardSectionTypeFilter();
+    expect(filter.proxy).toBe(true);
+    expect(filter.dpi).toBe(true);
+    expect(filter.dns).toBe(false);
+    expect(filter.direct).toBe(false);
+    expect(filter.block).toBe(false);
+
+    // Classification
+    expect(
+      resolveSectionCategory({ action: 'block', '.name': 'block' } as any),
+    ).toBe('block');
+    expect(
+      resolveSectionCategory({ action: 'bypass', '.name': 'ByPass' } as any),
+    ).toBe('direct');
+    expect(
+      resolveSectionCategory({ action: 'dns', '.name': 'YandexDns' } as any),
+    ).toBe('dns');
+    expect(
+      resolveSectionCategory({ action: 'zapret2', '.name': 'yt' } as any),
+    ).toBe('dpi');
+    expect(
+      resolveSectionCategory({
+        action: 'proxy',
+        protocol: 'vless',
+        '.name': 'main',
+      } as any),
+    ).toBe('proxy');
+
+    // Update filter
+    layoutMod.saveDashboardSectionTypeFilter({
+      ...filter,
+      dns: true,
+      block: true,
+    });
+
+    const updated = layoutMod.getDashboardSectionTypeFilter();
+    expect(updated.dns).toBe(true);
+    expect(updated.block).toBe(true);
+    expect(updated.direct).toBe(false);
+  });
+
+  it('does not render comment lines as domain chips on condition Studio Deck card', async () => {
+    const containerEl = createDummyElement('div');
+    const mockCondSectionRef = {
+      sectiontype: 'condition',
+      cfgsections: () => ['main_cond'],
+      renderMoreOptionsModal: vi.fn(),
+      remove: vi.fn(),
+    };
+
+    (globalThis as any).uci.sections = (_pkg: string, type: string) => {
+      if (type === 'section') {
+        return [
+          {
+            '.name': 'main_sec',
+            name: 'Main',
+            condition_refs: ['main_cond'],
+          },
+        ];
+      }
+      return [];
+    };
+
+    (globalThis as any).uci.get = (
+      _pkg: string,
+      sec: string,
+      opt?: string,
+    ): any => {
+      const condData: Record<string, any> = {
+        '.name': 'main_cond',
+        '.type': 'condition',
+        name: 'Main',
+        enabled: '1',
+        condition_type: 'atomic',
+        community_lists: ['ru_blocked_all'],
+        domain: `// ====== Xiaomi ======
+Xiaomi
+Mi
+xiaomi.com`,
+      };
+      if (sec === 'main_cond') {
+        return opt ? condData[opt] : condData;
+      }
+      return undefined;
+    };
+
+    studioDeckMod.mountTachyonStudioDeck({
+      type: 'condition',
+      sectionRef: mockCondSectionRef,
+      containerEl,
+    });
+
+    const chips = containerEl.querySelectorAll('.tachyon-studio-chip');
+    const chipTexts = chips.map((c: any) => c.textContent.trim());
+
+    // Should NOT contain comments or separator symbols
+    expect(chipTexts.some((t: string) => t.includes('//'))).toBe(false);
+    expect(chipTexts.some((t: string) => t.includes('======'))).toBe(false);
+
+    // Should contain valid domain entries and service list
+    expect(chipTexts.some((t: string) => t.includes('ru_blocked_all'))).toBe(
+      true,
+    );
+    expect(chipTexts.some((t: string) => t.includes('Xiaomi'))).toBe(true);
+    expect(chipTexts.some((t: string) => t.includes('Mi'))).toBe(true);
+  });
+
+  it('does not trigger fs.read_direct CGI requests for missing section-cache files with many sections (#351)', async () => {
+    const containerEl = createDummyElement('div');
+    const mockOutboundRef = {
+      sectiontype: 'outbound_source',
+      cfgsections: () => ['sub1'],
+      renderMoreOptionsModal: vi.fn(),
+      remove: vi.fn(),
+    };
+
+    const manySections = Array.from({ length: 18 }, (_, idx) => ({
+      '.name': `sec_${idx + 1}`,
+      '.type': 'section',
+      name: `Section_${idx + 1}`,
+      enabled: '1',
+      action: idx < 2 ? 'proxy' : 'direct',
+    }));
+
+    (globalThis as any).uci.sections = (_pkg: string, type: string) => {
+      if (type === 'section') return manySections;
+      if (type === 'outbound_source') {
+        return [
+          {
+            '.name': 'sub1',
+            '.type': 'outbound_source',
+            name: 'Sub One',
+            source_type: 'subscription',
+            url: 'https://sub.example/list',
+          },
+        ];
+      }
+      return [];
+    };
+
+    const fsReadMock = vi.fn((path: string) => {
+      if (
+        path === '/var/run/tachyon/section-cache/Main.json' ||
+        path === '/var/run/tachyon/section-cache/Section_1.json'
+      ) {
+        return Promise.resolve(
+          JSON.stringify({
+            outboundMetadata: {
+              names: { 'sub1-node-1': 'DE Frankfurt' },
+              protocols: { 'sub1-node-1': 'vless' },
+              source_ids: { 'sub1-node-1': 'sub1' },
+            },
+          }),
+        );
+      }
+      const err: any = new Error('No such file or directory');
+      err.name = 'NotFoundError';
+      return Promise.reject(err);
+    });
+    const fsReadDirectMock = vi.fn(() => Promise.resolve(''));
+    const fsListMock = vi.fn((dir: string) => {
+      if (dir === '/var/run/tachyon/section-cache') {
+        return Promise.resolve([
+          { name: 'Main.json', type: 'file' },
+          { name: 'Section_1.json', type: 'file' },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    (globalThis as any).fs = {
+      ...(globalThis as any).fs,
+      read: fsReadMock,
+      read_direct: fsReadDirectMock,
+      list: fsListMock,
+    };
+
+    studioDeckMod.mountTachyonStudioDeck({
+      type: 'outbound_source',
+      sectionRef: mockOutboundRef,
+      containerEl,
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(fsListMock).toHaveBeenCalledWith('/var/run/tachyon/section-cache');
+    expect(fsReadDirectMock).not.toHaveBeenCalled();
+    const sectionCacheReads = fsReadMock.mock.calls
+      .map((c) => String(c[0]))
+      .filter((p) => p.startsWith('/var/run/tachyon/section-cache/'));
+    expect(sectionCacheReads).toEqual([
+      '/var/run/tachyon/section-cache/Main.json',
+      '/var/run/tachyon/section-cache/Section_1.json',
+    ]);
+  });
+});

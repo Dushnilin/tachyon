@@ -1,0 +1,160 @@
+import { TachyonShellMethods } from '../methods';
+import { normalizeSingBoxVariantFields } from '../helpers/singBoxVariant';
+import { logger } from './logger.service';
+import { store, StoreType } from './store.service';
+
+const UNKNOWN_SYSTEM_INFO: StoreType['diagnosticsSystemInfo'] = {
+  loading: false,
+  loaded: false,
+  providerInfoLoaded: false,
+  tachyon_version: _('unknown'),
+  tachyon_commit_sha: '',
+  tachyon_latest_version: _('unknown'),
+  luci_app_version: _('unknown'),
+  sing_box_version: _('unknown'),
+  sing_box_extended: 0,
+  sing_box_tiny: 0,
+  sing_box_compressed: 0,
+  sing_box_lx: 0,
+  sing_box_tachyon_core: 0,
+  sing_box_fptn: 0,
+  sing_box_tailscale: 1,
+  sing_box_cert_pin: 0,
+  sing_box_repo_url: '',
+  zapret_version: _('unknown'),
+  zapret_installed: 0,
+  zapret2_version: _('unknown'),
+  zapret2_installed: 0,
+  byedpi_version: _('unknown'),
+  byedpi_installed: 0,
+  wdtt_version: _('unknown'),
+  wdtt_installed: 0,
+  olcrtc_version: _('unknown'),
+  olcrtc_installed: 0,
+  tailscale_version: _('unknown'),
+  tailscale_installed: 0,
+  server_inbounds_enabled_count: -1,
+  openwrt_version: _('unknown'),
+  device_model: _('unknown'),
+};
+
+let systemInfoPromise: Promise<StoreType['diagnosticsSystemInfo']> | null =
+  null;
+let latestSystemInfoRequestId = 0;
+
+function hasLoadedSystemInfo() {
+  const systemInfo = store.get().diagnosticsSystemInfo;
+
+  return Boolean(systemInfo.loaded) && !systemInfo.loading;
+}
+
+export async function ensureSystemInfo({
+  force = false,
+  silent = false,
+}: {
+  force?: boolean;
+  silent?: boolean;
+} = {}) {
+  if (!force && hasLoadedSystemInfo()) {
+    return store.get().diagnosticsSystemInfo;
+  }
+
+  if (systemInfoPromise && !force) {
+    return systemInfoPromise;
+  }
+
+  const requestId = ++latestSystemInfoRequestId;
+  const currentSystemInfo = store.get().diagnosticsSystemInfo;
+
+  if (!silent) {
+    store.set({
+      diagnosticsSystemInfo: {
+        ...currentSystemInfo,
+        loading: true,
+      },
+    });
+  }
+
+  const promise = (async () => {
+    try {
+      const systemInfo = await TachyonShellMethods.getSystemInfo();
+
+      if (requestId !== latestSystemInfoRequestId) {
+        return store.get().diagnosticsSystemInfo;
+      }
+
+      if (systemInfo.success) {
+        const nextSystemInfo: StoreType['diagnosticsSystemInfo'] =
+          normalizeSingBoxVariantFields({
+            ...UNKNOWN_SYSTEM_INFO,
+            loading: false,
+            loaded: true,
+            providerInfoLoaded: true,
+            server_inbounds_enabled_count:
+              currentSystemInfo.server_inbounds_enabled_count,
+            ...systemInfo.data,
+          });
+
+        store.set({
+          diagnosticsSystemInfo: nextSystemInfo,
+        });
+
+        return nextSystemInfo;
+      }
+    } catch (error) {
+      logger.error('[SYSTEM_INFO]', 'ensureSystemInfo failed', error);
+    }
+
+    if (requestId === latestSystemInfoRequestId) {
+      const latestSystemInfo = store.get().diagnosticsSystemInfo;
+
+      if (latestSystemInfo.loaded) {
+        if (latestSystemInfo.loading) {
+          const nextSystemInfo = { ...latestSystemInfo, loading: false };
+          store.set({ diagnosticsSystemInfo: nextSystemInfo });
+          return nextSystemInfo;
+        }
+        return latestSystemInfo;
+      }
+
+      if (silent) {
+        if (latestSystemInfo.loading) {
+          const nextSystemInfo = { ...latestSystemInfo, loading: false };
+
+          store.set({
+            diagnosticsSystemInfo: nextSystemInfo,
+          });
+
+          return nextSystemInfo;
+        }
+
+        return latestSystemInfo;
+      }
+
+      const nextSystemInfo = {
+        ...UNKNOWN_SYSTEM_INFO,
+        ...latestSystemInfo,
+        loading: false,
+        loaded: false,
+      };
+
+      store.set({
+        diagnosticsSystemInfo: nextSystemInfo,
+      });
+
+      return nextSystemInfo;
+    }
+
+    return store.get().diagnosticsSystemInfo;
+  })();
+
+  systemInfoPromise = promise;
+
+  try {
+    return await promise;
+  } finally {
+    if (systemInfoPromise === promise) {
+      systemInfoPromise = null;
+    }
+  }
+}

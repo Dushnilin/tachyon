@@ -89,11 +89,21 @@ pub fn analyze_config_plan(candidate: &RouterStoreData) -> ConfigPlanReport {
         }
     }
 
-    // Check inbound server port collisions
+    // Check inbound server port collisions and Tailscale network options
     let mut used_ports: HashSet<u16> = HashSet::new();
     used_ports.insert(candidate.settings.listen_port);
     used_ports.insert(1602);
     for srv in candidate.servers.iter().filter(|s| s.enabled) {
+        if srv.is_tailscale() {
+            if let Err(msg) = crate::store::validate_tailscale_network_options(
+                &srv.tailscale_relay_server_port,
+                &srv.tailscale_system_interface_mtu,
+                &format!("Server '{}'", srv.id),
+            ) {
+                errors.push(msg);
+            }
+            continue;
+        }
         if srv.listen_port == 0 {
             errors.push(format!("Inbound server '{}' has invalid port 0", srv.id));
         } else if !used_ports.insert(srv.listen_port) {
@@ -101,6 +111,30 @@ pub fn analyze_config_plan(candidate: &RouterStoreData) -> ConfigPlanReport {
                 "Port collision detected on port {} (inbound server '{}')",
                 srv.listen_port, srv.label
             ));
+        }
+    }
+
+    for sec in candidate.sections.iter().filter(|s| s.enabled) {
+        if sec.is_tailscale()
+            && let Err(msg) = crate::store::validate_tailscale_network_options(
+                &sec.tailscale_relay_server_port,
+                &sec.tailscale_system_interface_mtu,
+                &format!("Section '{}'", sec.id),
+            )
+        {
+            errors.push(msg);
+        }
+    }
+
+    for src in candidate.outbound_sources.iter().filter(|s| s.enabled) {
+        if src.source_type.trim().eq_ignore_ascii_case("tailscale")
+            && let Err(msg) = crate::store::validate_tailscale_network_options(
+                &src.tailscale_relay_server_port,
+                &src.tailscale_system_interface_mtu,
+                &format!("Tailscale source '{}'", src.id),
+            )
+        {
+            errors.push(msg);
         }
     }
 

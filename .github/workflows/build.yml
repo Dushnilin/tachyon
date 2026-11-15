@@ -1,0 +1,331 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+      - '[0-9]*.[0-9]*.[0-9]*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release version tag (e.g. v2.0.0 or v2.0.0-beta.1)'
+        required: false
+        type: string
+      prerelease:
+        description: 'Mark manual release as prerelease (auto-detected if tag contains -)'
+        required: false
+        type: boolean
+        default: true
+      publish:
+        description: 'Create or update GitHub Release on workflow_dispatch'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    name: Resolve Release Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+      make_latest: ${{ steps.meta.outputs.make_latest }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate Cargo version and tag
+        id: meta
+        run: |
+          set -euo pipefail
+          cargo_ver="$(grep -m1 '^version =' Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')"
+          if [[ -z "$cargo_ver" ]]; then
+            echo "Failed to parse version from Cargo.toml" >&2
+            exit 1
+          fi
+          cargo_base="${cargo_ver%%-*}"
+
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            tag="${GITHUB_REF_NAME}"
+            ver="${tag#v}"
+          elif [[ -n "${{ inputs.tag }}" ]]; then
+            tag="${{ inputs.tag }}"
+            [[ "$tag" == v* ]] || tag="v${tag}"
+            ver="${tag#v}"
+          else
+            ver="$cargo_ver"
+            tag="v${ver}"
+          fi
+
+          if [[ ! "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid SemVer version in tag ${tag}: ${ver}" >&2
+            exit 1
+          fi
+
+          ver_base="${ver%%-*}"
+          if [[ "$ver_base" != "$cargo_base" ]]; then
+            echo "Base version of ${tag} (${ver_base}) does not match Cargo.toml (${cargo_base})" >&2
+            exit 1
+          fi
+
+          is_pre="false"
+          if [[ "$ver" == *-* ]]; then
+            is_pre="true"
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]] && [[ "${{ inputs.prerelease }}" == "true" ]]; then
+            is_pre="true"
+          fi
+
+          make_latest="legacy"
+          if [[ "$is_pre" == "true" ]]; then
+            make_latest="false"
+          fi
+
+          echo "version=${ver}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "prerelease=${is_pre}" >> "$GITHUB_OUTPUT"
+          echo "make_latest=${make_latest}" >> "$GITHUB_OUTPUT"
+          echo "Resolved release version: ${ver} (${tag}, prerelease=${is_pre}, make_latest=${make_latest})"
+
+  frontend:
+    name: Build LuCI Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: fe-app-tachyon/package-lock.json
+
+      - name: Install and build frontend
+        working-directory: fe-app-tachyon
+        run: |
+          npm ci
+          npm run ci
+
+      - name: Upload frontend assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: fe-assets
+          path: |
+            luci-app-tachyon/htdocs/luci-static/resources/view/tachyon/
+            fe-app-tachyon/locales/tachyon.ru.po
+          if-no-files-found: error
+
+  build:
+    name: Build (${{ matrix.arch }})
+    needs: [prepare, frontend]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            arch: x86_64
+            build-std: false
+          - target: i686-unknown-linux-musl
+            arch: i386_pentium4
+            build-std: false
+          - target: aarch64-unknown-linux-musl
+            arch: aarch64
+            build-std: false
+          - target: armv7-unknown-linux-musleabihf
+            arch: armv7
+            build-std: false
+          - target: arm-unknown-linux-musleabi
+            arch: armv6
+            build-std: false
+          - target: riscv64gc-unknown-linux-musl
+            arch: riscv64
+            build-std: false
+          - target: mipsel-unknown-linux-musl
+            arch: mipsel
+            build-std: true
+          - target: mips-unknown-linux-musl
+            arch: mips
+            build-std: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download built frontend assets
+        uses: actions/download-artifact@v4
+        with:
+          name: fe-assets
+
+      - name: Prepare MIPS musl cache directory
+        if: startsWith(matrix.target, 'mips')
+        run: |
+          sudo mkdir -p /opt/mipsel-musl /opt/mips-musl
+          sudo chown -R "$(id -u):$(id -g)" /opt/mipsel-musl /opt/mips-musl
+
+      - name: Cache MIPS musl sysroot
+        if: startsWith(matrix.target, 'mips')
+        uses: actions/cache@v4
+        with:
+          path: |
+            /opt/mipsel-musl
+            /opt/mips-musl
+          key: mips-musl-1.2.5-softfloat-${{ matrix.target }}-v1
+
+      - name: Setup MIPS musl toolchain (mipsel)
+        if: matrix.target == 'mipsel-unknown-linux-musl'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-mipsel-linux-gnu binutils-mipsel-linux-gnu
+          if [ ! -f /opt/mipsel-musl/lib/libunwind.a ]; then
+            curl -fsSL --retry 3 -o /tmp/musl.tar.gz \
+              https://musl.libc.org/releases/musl-1.2.5.tar.gz
+            tar -xzf /tmp/musl.tar.gz -C /tmp
+            (cd /tmp/musl-1.2.5 && \
+              CROSS_COMPILE=mipsel-linux-gnu- CFLAGS="-mips32r2 -msoft-float" ./configure --prefix=/opt/mipsel-musl && \
+              make -j"$(nproc)" && make install)
+            echo 'int _dl_find_object(void *pc, void *dlfo) { return -1; }' > /tmp/dlfo.c
+            mipsel-linux-gnu-gcc -mips32r2 -msoft-float -c /tmp/dlfo.c -o /tmp/dlfo.o
+            rm -rf /tmp/eh-mipsel && mkdir -p /tmp/eh-mipsel
+            (cd /tmp/eh-mipsel && mipsel-linux-gnu-ar x "$(mipsel-linux-gnu-gcc -mips32r2 -msoft-float -print-file-name=libgcc_eh.a)")
+            mipsel-linux-gnu-ar crs /opt/mipsel-musl/lib/libunwind.a /tmp/eh-mipsel/*.o /tmp/dlfo.o
+          fi
+          {
+            echo "CC_mipsel_unknown_linux_musl=mipsel-linux-gnu-gcc"
+            echo "CARGO_TARGET_MIPSEL_UNKNOWN_LINUX_MUSL_LINKER=mipsel-linux-gnu-gcc"
+            echo "RUSTFLAGS=-C target-cpu=mips32r2 -C target-feature=+crt-static,+soft-float -C opt-level=z -C lto=fat -C codegen-units=1 -C link-self-contained=no -C force-unwind-tables=no -C panic=abort -C strip=symbols -C link-arg=-mips32r2 -C link-arg=-msoft-float -C link-arg=-B/opt/mipsel-musl/lib -C link-arg=-L/opt/mipsel-musl/lib -C link-arg=-static -C link-arg=-z -C link-arg=noseparate-code -C link-arg=-z -C link-arg=norelro"
+          } >> "$GITHUB_ENV"
+
+      - name: Setup MIPS musl toolchain (mips)
+        if: matrix.target == 'mips-unknown-linux-musl'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-mips-linux-gnu binutils-mips-linux-gnu
+          if [ ! -f /opt/mips-musl/lib/libunwind.a ]; then
+            curl -fsSL --retry 3 -o /tmp/musl.tar.gz \
+              https://musl.libc.org/releases/musl-1.2.5.tar.gz
+            tar -xzf /tmp/musl.tar.gz -C /tmp
+            (cd /tmp/musl-1.2.5 && \
+              CROSS_COMPILE=mips-linux-gnu- CFLAGS="-mips32r2 -msoft-float" ./configure --prefix=/opt/mips-musl && \
+              make -j"$(nproc)" && make install)
+            echo 'int _dl_find_object(void *pc, void *dlfo) { return -1; }' > /tmp/dlfo.c
+            mips-linux-gnu-gcc -mips32r2 -msoft-float -c /tmp/dlfo.c -o /tmp/dlfo.o
+            rm -rf /tmp/eh-mips && mkdir -p /tmp/eh-mips
+            (cd /tmp/eh-mips && mips-linux-gnu-ar x "$(mips-linux-gnu-gcc -mips32r2 -msoft-float -print-file-name=libgcc_eh.a)")
+            mips-linux-gnu-ar crs /opt/mips-musl/lib/libunwind.a /tmp/eh-mips/*.o /tmp/dlfo.o
+          fi
+          {
+            echo "CC_mips_unknown_linux_musl=mips-linux-gnu-gcc"
+            echo "CARGO_TARGET_MIPS_UNKNOWN_LINUX_MUSL_LINKER=mips-linux-gnu-gcc"
+            echo "RUSTFLAGS=-C target-cpu=mips32r2 -C target-feature=+crt-static,+soft-float -C opt-level=z -C lto=fat -C codegen-units=1 -C link-self-contained=no -C force-unwind-tables=no -C panic=abort -C strip=symbols -C link-arg=-mips32r2 -C link-arg=-msoft-float -C link-arg=-B/opt/mips-musl/lib -C link-arg=-L/opt/mips-musl/lib -C link-arg=-static -C link-arg=-z -C link-arg=noseparate-code -C link-arg=-z -C link-arg=norelro"
+          } >> "$GITHUB_ENV"
+
+      - name: Setup Rust toolchain (prebuilt std)
+        if: ${{ !matrix.build-std }}
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Setup Rust toolchain (build-std)
+        if: ${{ matrix.build-std }}
+        uses: dtolnay/rust-toolchain@nightly-2026-10-30
+        with:
+          components: rust-src
+
+      - name: Cache Cargo registry and target
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build binary and OpenWrt packages
+        env:
+          SKIP_FE_BUILD: '1'
+          TACHYON_BUILD_VERSION: '${{ needs.prepare.outputs.version }}'
+          TACHYON_TARGETS: '${{ matrix.target }}:${{ matrix.arch }}'
+          TACHYON_CARGO_EXTRA_ARGS: "${{ matrix.build-std && '-Z build-std=std,panic_abort' || '' }}"
+        run: bash build.sh "${{ needs.prepare.outputs.version }}" dist/release-final
+
+      - name: Upload architecture packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: pkg-${{ matrix.arch }}
+          path: |
+            dist/release-final/tachyon-*.tar.gz
+            dist/release-final/tachyon-*.ipk
+            dist/release-final/tachyon-*.apk
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: [prepare, build]
+    if: startsWith(github.ref, 'refs/tags/') || inputs.publish == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all architecture packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pkg-*
+          merge-multiple: true
+          path: release-assets
+
+      - name: Bundle installer scripts and generate SHA256SUMS
+        run: |
+          set -euo pipefail
+          cp -f install.sh uninstall.sh release-assets/
+          cd release-assets
+          rm -f SHA256SUMS
+          sha256sum tachyon-*.tar.gz tachyon-*.ipk tachyon-*.apk install.sh uninstall.sh > SHA256SUMS
+          ls -lh
+
+      - name: Check existing GitHub release notes
+        id: existing_release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${{ needs.prepare.outputs.tag }}"
+          if gh release view "$tag" --json body --jq '.body' > /tmp/existing_body.txt 2>/dev/null; then
+            if grep -q '^Commit: ' /tmp/existing_body.txt || [ ! -s /tmp/existing_body.txt ]; then
+              echo "preserve=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "preserve=true" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "preserve=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Write default release notes
+        if: steps.existing_release.outputs.preserve != 'true'
+        run: |
+          cat > /tmp/release_notes.md <<'EOF'
+          Commit: ${{ github.sha }}
+          EOF
+
+      - name: Publish Release (create or update notes)
+        if: steps.existing_release.outputs.preserve != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: ${{ needs.prepare.outputs.tag }}
+          prerelease: ${{ needs.prepare.outputs.prerelease == 'true' }}
+          make_latest: ${{ needs.prepare.outputs.make_latest }}
+          body_path: /tmp/release_notes.md
+          files: |
+            release-assets/*
+
+      - name: Publish Release (preserve existing notes)
+        if: steps.existing_release.outputs.preserve == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: ${{ needs.prepare.outputs.tag }}
+          prerelease: ${{ needs.prepare.outputs.prerelease == 'true' }}
+          make_latest: ${{ needs.prepare.outputs.make_latest }}
+          files: |
+            release-assets/*

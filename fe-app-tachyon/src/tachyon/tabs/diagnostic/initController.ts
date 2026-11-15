@@ -1,0 +1,2392 @@
+import {
+  onMount,
+  preserveScrollForPage,
+  executeShellCommand,
+} from '../../../helpers';
+import { showToast } from '../../../helpers/showToast';
+import { notifyActionFailure } from '../../helpers/notifyActionFailure';
+import { capSetSize } from '../../helpers/capCollectionSize';
+import { runDnsCheck } from './checks/runDnsCheck';
+import { runSingBoxCheck } from './checks/runSingBoxCheck';
+import { runInboundsCheck } from './checks/runInboundsCheck';
+import { runNftCheck } from './checks/runNftCheck';
+import { runFakeIPCheck } from './checks/runFakeIPCheck';
+import { runZapretCheck } from './checks/runZapretCheck';
+import { runZapret2Check } from './checks/runZapret2Check';
+import { runByedpiCheck } from './checks/runByedpiCheck';
+import { DIAGNOSTICS_CHECKS, DIAGNOSTICS_CHECKS_MAP } from './checks/constants';
+import {
+  DiagnosticsProviderOptions,
+  getDiagnosticsChecks,
+  getLoadingDiagnosticsChecks,
+} from './diagnostic.store';
+import {
+  logger,
+  getCachedRuntimeUiState,
+  refreshRuntimeUiState,
+  setLocalServiceAction,
+  store,
+  StoreType,
+  subscribeRuntimeUiState,
+} from '../../services';
+import { ensureSystemInfo } from '../../services/systemInfo.service';
+import {
+  clearExpandedCheckCards,
+  ICoreTelemetrySnapshot,
+  IRenderSystemInfoRow,
+  renderAvailableActions,
+  renderCheckSection,
+  renderCoreTelemetry,
+  renderDiagnosticsModal,
+  renderRunAction,
+  renderSystemInfo,
+  renderServiceCheckModal,
+  renderAiChatModal,
+  renderStrategyFuzzerModal,
+  renderLeakCheckModal,
+  renderRouteExplainModal,
+  renderStabilityModal,
+  renderAiDoctorModal,
+  saveAiDoctorHistory,
+  updateDiagnosticsModalIfOpen,
+} from './partials';
+import { TachyonShellMethods } from '../../methods';
+import { callBaseMethod } from '../../methods/shell/callBaseMethod';
+import { getConfigSections } from '../../methods/custom/getConfigSections';
+import { fetchServicesInfo } from '../../fetchers/fetchServicesInfo';
+import { normalizeCompiledVersion } from '../../../helpers/normalizeCompiledVersion';
+import { renderModal, renderButton } from '../../../partials';
+import { renderRotateCcwIcon24 } from '../../../icons';
+import { TACHYON_LUCI_APP_VERSION } from '../../../constants';
+import { renderWikiDisclaimer } from './partials/renderWikiDisclaimer';
+import { runSectionsCheck } from './checks/runSectionsCheck';
+import { Tachyon } from '../../types';
+import {
+  getAvailableActionsDisabledState,
+  getServiceTransition,
+  hasComponentActionLoading,
+  hasLocalMutatingServiceActionLoading,
+  isServiceTransitionStatus,
+  shouldResetDiagnosticsChecks,
+  shouldDisableDiagnosticRunAction,
+  shouldSkipServicesInfoAutoRefresh,
+  shouldShowRestartAction,
+  shouldShowStartAction,
+  shouldShowStopAction,
+} from './serviceTransition';
+import { isActiveLuciTab } from '../../helpers/isActiveLuciTab';
+import { tr } from '../../helpers/i18n';
+import {
+  formatSingBoxVersion,
+  normalizeSingBoxVariantFields,
+} from '../../helpers/singBoxVariant';
+import {
+  clearPersistedDiagnosticRun,
+  PersistedDiagnosticRun,
+  readPersistedDiagnosticRun,
+  savePersistedDiagnosticRun,
+} from './diagnosticRunPersistence';
+import {
+  formatMaskedSingBoxConfig,
+  maskGlobalCheckText,
+  maskLogText,
+  stringifySingBoxConfig,
+} from './helpers/maskDiagnostics';
+
+const SERVICE_STATUS_REFRESH_INTERVAL_MS = 2000;
+const SERVICE_ACTION_STATUS_TIMEOUT_MS = 45000;
+
+let latestProviderInfoRequestId = 0;
+let diagnosticLifecycleRegistered = false;
+let diagnosticControllerInitialized = false;
+let diagnosticMounted = false;
+let diagnosticMountId = 0;
+let diagnosticCompletedWhileHidden = false;
+let servicesInfoStateUnsubscribe: (() => void) | null = null;
+let servicesInfoRefreshPromise: Promise<void> | null = null;
+let coreTelemetryTimer: ReturnType<typeof setInterval> | null = null;
+let cachedCoreTelemetry: ICoreTelemetrySnapshot | null = null;
+let coreTelemetryLoading = false;
+const followedServiceActionJobs = new Set<string>();
+const handledServiceActionJobs = new Set<string>();
+
+type ServiceRuntimeAction = 'restart' | 'start' | 'stop';
+type DiagnosticRunner = {
+  code: DIAGNOSTICS_CHECKS;
+  run: () => Promise<void>;
+};
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
+function getDiagnosticsProviderOptions(
+  systemInfo: Pick<
+    StoreType['diagnosticsSystemInfo'],
+    | 'zapret_installed'
+    | 'zapret2_installed'
+    | 'byedpi_installed'
+    | 'server_inbounds_enabled_count'
+  > = store.get().diagnosticsSystemInfo,
+): DiagnosticsProviderOptions {
+  // activeEngine comes from store.activeEngine (set by fetchServicesInfo via getEngineStatus).
+  // diagnosticsSystemInfo has no engine field — it only tracks component versions.
+  const activeEngine = store.get().activeEngine || 'sing-box';
+  return {
+    activeEngine,
+    includeZapret: Boolean(systemInfo.zapret_installed),
+    includeZapret2: Boolean(systemInfo.zapret2_installed),
+    includeByedpi: Boolean(systemInfo.byedpi_installed),
+    includeInbounds: systemInfo.server_inbounds_enabled_count > 0,
+  };
+}
+
+function getNotRunningDiagnosticsChecks() {
+  return getDiagnosticsChecks(
+    _('Not running'),
+    getDiagnosticsProviderOptions(),
+  );
+}
+
+function resetDiagnosticsChecks() {
+  // A run in flight owns this list. The service-action follower resets it when
+  // its job finishes, which can happen while diagnostics are still running:
+  // that wiped the results the loop had already produced, and the loop never
+  // revisits a finished index, so the early checks stayed "not checked".
+  if (
+    !shouldResetDiagnosticsChecks({
+      resetChecks: true,
+      diagnosticsRunLoading: store.get().diagnosticsRunAction.loading,
+    })
+  ) {
+    return;
+  }
+
+  clearExpandedCheckCards();
+  store.set({
+    diagnosticsChecks: getNotRunningDiagnosticsChecks(),
+  });
+}
+
+function setDiagnosticActionLoading(
+  action: keyof StoreType['diagnosticsActions'],
+  loading: boolean,
+  local = false,
+) {
+  if (local || !loading) {
+    setLocalServiceAction(action, loading && local);
+  }
+
+  const diagnosticsActions = store.get().diagnosticsActions;
+
+  store.set({
+    diagnosticsActions: {
+      ...diagnosticsActions,
+      [action]: { loading },
+    },
+  });
+}
+
+function isDiagnosticMountActive(mountId = diagnosticMountId) {
+  return diagnosticMounted && diagnosticMountId === mountId;
+}
+
+function isLocalMutatingServiceActionLoading() {
+  const actions = store.get().diagnosticsActions;
+
+  return hasLocalMutatingServiceActionLoading(actions);
+}
+
+function isMutatingServiceActionLoading() {
+  return (
+    isLocalMutatingServiceActionLoading() ||
+    isServiceTransitionStatus(store.get().servicesInfoWidget.data.tachyonStatus)
+  );
+}
+
+function getTachyonStatusText(running: boolean, enabled: boolean) {
+  if (running) {
+    return enabled ? 'running & enabled' : 'running but disabled';
+  }
+
+  return enabled ? 'stopped but enabled' : 'stopped & disabled';
+}
+
+function setDisplayedTachyonRunning(running: boolean) {
+  const servicesInfoWidget = store.get().servicesInfoWidget;
+  const enabled = Boolean(servicesInfoWidget.data.tachyonEnabled);
+
+  store.set({
+    servicesInfoWidget: {
+      ...servicesInfoWidget,
+      loading: false,
+      data: {
+        ...servicesInfoWidget.data,
+        tachyonRunning: running ? 1 : 0,
+        tachyonStatus: getTachyonStatusText(running, enabled),
+      },
+    },
+  });
+}
+
+async function refreshDiagnosticServicesInfo({
+  force = false,
+  mountId = diagnosticMountId,
+  allowInactive = false,
+}: {
+  force?: boolean;
+  mountId?: number;
+  allowInactive?: boolean;
+} = {}) {
+  if (!allowInactive && !isDiagnosticMountActive(mountId)) {
+    return;
+  }
+
+  if (
+    shouldSkipServicesInfoAutoRefresh({
+      force,
+      localMutatingActionLoading: isLocalMutatingServiceActionLoading(),
+    })
+  ) {
+    return;
+  }
+
+  if (servicesInfoRefreshPromise) {
+    return servicesInfoRefreshPromise;
+  }
+
+  const promise = fetchServicesInfo()
+    .then((uiState) => {
+      followServiceActionsFromUiState(uiState);
+    })
+    .catch((error) => {
+      logger.error(
+        '[DIAGNOSTIC]',
+        'refreshDiagnosticServicesInfo failed',
+        error,
+      );
+    })
+    .finally(() => {
+      if (servicesInfoRefreshPromise === promise) {
+        servicesInfoRefreshPromise = null;
+      }
+    });
+
+  servicesInfoRefreshPromise = promise;
+  return promise;
+}
+
+async function waitForTachyonRunningState(expectedRunning: boolean) {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < SERVICE_ACTION_STATUS_TIMEOUT_MS) {
+    await refreshDiagnosticServicesInfo({ force: true, allowInactive: true });
+
+    const tachyonRunning = Boolean(
+      store.get().servicesInfoWidget.data.tachyonRunning,
+    );
+
+    if (tachyonRunning === expectedRunning) {
+      return true;
+    }
+
+    await sleep(SERVICE_STATUS_REFRESH_INTERVAL_MS);
+  }
+
+  return false;
+}
+
+function startServiceActionStateWatcher() {
+  if (servicesInfoStateUnsubscribe) {
+    return;
+  }
+
+  servicesInfoStateUnsubscribe = subscribeRuntimeUiState((uiState) => {
+    if (diagnosticMounted) {
+      followServiceActionsFromUiState(uiState);
+    }
+  });
+}
+
+function stopServiceActionStateWatcher() {
+  if (!servicesInfoStateUnsubscribe) {
+    return;
+  }
+
+  servicesInfoStateUnsubscribe();
+  servicesInfoStateUnsubscribe = null;
+}
+
+function isVisibleServiceRuntimeAction(
+  action: Tachyon.ServiceActionState['action'],
+): action is ServiceRuntimeAction {
+  return action === 'restart' || action === 'start' || action === 'stop';
+}
+
+function setServiceActionStateLoading(
+  state: Tachyon.ServiceActionState,
+  loading: boolean,
+) {
+  if (!isVisibleServiceRuntimeAction(state.action)) {
+    return;
+  }
+
+  setDiagnosticActionLoading(state.action, loading);
+}
+
+async function followServiceActionState(state: Tachyon.ServiceActionState) {
+  const jobId = state.job_id;
+
+  if (!jobId || followedServiceActionJobs.has(jobId)) {
+    return;
+  }
+
+  if (!state.running && handledServiceActionJobs.has(jobId)) {
+    return;
+  }
+
+  followedServiceActionJobs.add(jobId);
+  if (state.running) {
+    setServiceActionStateLoading(state, true);
+  }
+
+  try {
+    if (state.running) {
+      await TachyonShellMethods.waitServiceActionJob(jobId);
+    }
+  } catch (error) {
+    logger.error('[DIAGNOSTIC]', 'followServiceActionState failed', error);
+  } finally {
+    handledServiceActionJobs.add(jobId);
+    capSetSize(handledServiceActionJobs);
+    setServiceActionStateLoading(state, false);
+    await refreshDiagnosticServicesInfo({ force: true, allowInactive: true });
+    void TachyonShellMethods.uiActionAck('service', jobId);
+    followedServiceActionJobs.delete(jobId);
+    resetDiagnosticsChecks();
+  }
+}
+
+function followServiceActionsFromUiState(uiState?: Tachyon.UiState) {
+  if (!uiState) {
+    return;
+  }
+
+  for (const action of uiState.actions.service || []) {
+    if (action.job_id) {
+      void followServiceActionState(action);
+    }
+  }
+}
+
+async function fetchSystemInfo() {
+  const systemInfo = await ensureSystemInfo();
+
+  if (store.get().diagnosticsRunAction.loading) {
+    return;
+  }
+
+  store.set({
+    diagnosticsChecks: getDiagnosticsChecks(
+      _('Not running'),
+      getDiagnosticsProviderOptions(systemInfo),
+    ),
+  });
+}
+
+async function fetchDiagnosticsProviderInfo({
+  resetChecks = true,
+}: { resetChecks?: boolean } = {}) {
+  const requestId = ++latestProviderInfoRequestId;
+
+  try {
+    const uiState = await refreshRuntimeUiState({ force: true });
+
+    if (requestId !== latestProviderInfoRequestId) {
+      return;
+    }
+
+    if (uiState) {
+      const currentSystemInfo = store.get().diagnosticsSystemInfo;
+      const nextSystemInfo = normalizeSingBoxVariantFields({
+        ...currentSystemInfo,
+        providerInfoLoaded: true,
+        sing_box_extended: uiState.capabilities.sing_box_extended,
+        sing_box_tiny: uiState.capabilities.sing_box_tiny,
+        sing_box_compressed: uiState.capabilities.sing_box_compressed,
+        sing_box_lx: uiState.capabilities.sing_box_lx,
+        sing_box_tachyon_core: uiState.capabilities.sing_box_tachyon_core,
+        sing_box_fptn: uiState.capabilities.sing_box_fptn,
+        sing_box_tailscale: uiState.capabilities.sing_box_tailscale,
+        sing_box_cert_pin: uiState.capabilities.sing_box_cert_pin,
+        zapret_installed: uiState.capabilities.zapret_installed,
+        zapret2_installed: uiState.capabilities.zapret2_installed,
+        byedpi_installed: uiState.capabilities.byedpi_installed,
+        server_inbounds_enabled_count:
+          uiState.capabilities.server_inbounds_enabled_count,
+      });
+
+      if (!nextSystemInfo.zapret_installed) {
+        nextSystemInfo.zapret_version = 'not installed';
+      }
+
+      if (!nextSystemInfo.zapret2_installed) {
+        nextSystemInfo.zapret2_version = 'not installed';
+      }
+
+      if (!nextSystemInfo.byedpi_installed) {
+        nextSystemInfo.byedpi_version = 'not installed';
+      }
+
+      const nextState: Partial<StoreType> = {
+        diagnosticsSystemInfo: nextSystemInfo,
+      };
+
+      if (
+        shouldResetDiagnosticsChecks({
+          resetChecks,
+          diagnosticsRunLoading: store.get().diagnosticsRunAction.loading,
+        })
+      ) {
+        nextState.diagnosticsChecks = getDiagnosticsChecks(
+          _('Not running'),
+          getDiagnosticsProviderOptions(nextSystemInfo),
+        );
+      }
+
+      store.set(nextState);
+      return;
+    }
+
+    const [zapretRuntime, zapret2Runtime, byedpiRuntime, inboundsConfig] =
+      await Promise.all([
+        TachyonShellMethods.checkZapretRuntime(),
+        TachyonShellMethods.checkZapret2Runtime(),
+        TachyonShellMethods.checkByedpiRuntime(),
+        TachyonShellMethods.checkInboundsConfig(),
+      ]);
+
+    if (requestId !== latestProviderInfoRequestId) {
+      return;
+    }
+
+    const currentSystemInfo = store.get().diagnosticsSystemInfo;
+    const nextSystemInfo = {
+      ...currentSystemInfo,
+      providerInfoLoaded: true,
+      zapret_installed: zapretRuntime.success
+        ? zapretRuntime.data.zapret_installed
+        : currentSystemInfo.zapret_installed,
+      zapret2_installed: zapret2Runtime.success
+        ? zapret2Runtime.data.zapret2_installed
+        : currentSystemInfo.zapret2_installed,
+      byedpi_installed: byedpiRuntime.success
+        ? byedpiRuntime.data.byedpi_installed
+        : currentSystemInfo.byedpi_installed,
+      server_inbounds_enabled_count: inboundsConfig.success
+        ? inboundsConfig.data.enabled_count
+        : -1,
+    };
+
+    if (!zapretRuntime.success) {
+      logger.error('[DIAGNOSTIC]', 'fetchZapretRuntime failed', zapretRuntime);
+    }
+
+    if (!zapret2Runtime.success) {
+      logger.error(
+        '[DIAGNOSTIC]',
+        'fetchZapret2Runtime failed',
+        zapret2Runtime,
+      );
+    }
+
+    if (!byedpiRuntime.success) {
+      logger.error('[DIAGNOSTIC]', 'fetchByedpiRuntime failed', byedpiRuntime);
+    }
+
+    if (!inboundsConfig.success) {
+      logger.error(
+        '[DIAGNOSTIC]',
+        'fetchInboundsConfig failed',
+        inboundsConfig,
+      );
+    }
+
+    if (!nextSystemInfo.zapret_installed) {
+      nextSystemInfo.zapret_version = 'not installed';
+    }
+
+    if (!nextSystemInfo.zapret2_installed) {
+      nextSystemInfo.zapret2_version = 'not installed';
+    }
+
+    if (!nextSystemInfo.byedpi_installed) {
+      nextSystemInfo.byedpi_version = 'not installed';
+    }
+
+    const nextState: Partial<StoreType> = {
+      diagnosticsSystemInfo: nextSystemInfo,
+    };
+
+    if (
+      shouldResetDiagnosticsChecks({
+        resetChecks,
+        diagnosticsRunLoading: store.get().diagnosticsRunAction.loading,
+      })
+    ) {
+      nextState.diagnosticsChecks = getDiagnosticsChecks(
+        _('Not running'),
+        getDiagnosticsProviderOptions(nextSystemInfo),
+      );
+    }
+
+    store.set(nextState);
+  } catch (error) {
+    logger.error('[DIAGNOSTIC]', 'fetchDiagnosticsProviderInfo failed', error);
+
+    if (requestId === latestProviderInfoRequestId) {
+      const currentSystemInfo = store.get().diagnosticsSystemInfo;
+
+      store.set({
+        diagnosticsSystemInfo: {
+          ...currentSystemInfo,
+          providerInfoLoaded: true,
+          server_inbounds_enabled_count: -1,
+        },
+      });
+    }
+  }
+}
+
+function openDiagnosticsModalView() {
+  renderDiagnosticsModal({
+    onRunChecks: () => {
+      void runChecks({ openModal: true });
+    },
+    onRunDoctor: (fix) => {
+      void handleRunDoctor(fix);
+    },
+    onRunAiDoctor: () => {
+      void handleRunAiDoctor();
+    },
+  });
+}
+
+function renderDiagnosticsChecks() {
+  logger.debug('[DIAGNOSTIC]', 'renderDiagnosticsChecks');
+  updateDiagnosticsModalIfOpen();
+
+  const container = document.getElementById('tachyon_diagnostic-page-checks');
+  if (!container) {
+    return;
+  }
+
+  const checks = [...store.get().diagnosticsChecks].sort(
+    (a, b) => a.order - b.order,
+  );
+
+  return preserveScrollForPage(() => {
+    container.style.display = '';
+    const grid = E(
+      'div',
+      { class: 'tachyon_diagnostic-page__checks-grid' },
+      checks.map((check) => renderCheckSection(check)),
+    );
+    container.replaceChildren(grid);
+  });
+}
+
+async function handleTrimCoreMemory() {
+  try {
+    const res = await callBaseMethod<Record<string, unknown>>(
+      'core_memory_trim' as unknown as Tachyon.AvailableMethods,
+    );
+    if (res.success && res.data && res.data.success !== false) {
+      showToast(
+        tr(
+          'Кэши памяти и неактивные буферы tachyon-core очищены',
+          'tachyon-core memory caches trimmed',
+        ),
+        'success',
+      );
+      void refreshCoreTelemetryWidget();
+    } else {
+      showToast(
+        tr('Не удалось очистить кэши RAM', 'Memory trim failed'),
+        'error',
+      );
+    }
+  } catch {
+    showToast(
+      tr('Не удалось очистить кэши RAM', 'Memory trim failed'),
+      'error',
+    );
+  }
+}
+
+async function handleRecheckCoreRoutes() {
+  try {
+    const res = await callBaseMethod<Record<string, unknown>>(
+      'core_route_recheck' as unknown as Tachyon.AvailableMethods,
+    );
+    if (res.success && res.data && res.data.success !== false) {
+      showToast(
+        tr(
+          'Активные сессии перепроверены по текущим правилам маршрутизации',
+          'Active sessions re-evaluated against routing rules',
+        ),
+        'success',
+      );
+      void refreshCoreTelemetryWidget();
+    } else {
+      showToast(
+        tr('Не удалось перепроверить маршруты', 'Route recheck failed'),
+        'error',
+      );
+    }
+  } catch {
+    showToast(
+      tr('Не удалось перепроверить маршруты', 'Route recheck failed'),
+      'error',
+    );
+  }
+}
+
+async function handleRestoreCoreFailover() {
+  try {
+    const res = await callBaseMethod<Record<string, unknown>>(
+      'core_failover_restore' as unknown as Tachyon.AvailableMethods,
+    );
+    if (res.success && res.data && res.data.success !== false) {
+      showToast(
+        tr(
+          'Проверка и восстановление основных узлов выполнены',
+          'Primary failover nodes probed and restored',
+        ),
+        'success',
+      );
+      void refreshCoreTelemetryWidget();
+    } else {
+      showToast(
+        tr('Не удалось восстановить основные узлы', 'Failover restore failed'),
+        'error',
+      );
+    }
+  } catch {
+    showToast(
+      tr('Не удалось восстановить основные узлы', 'Failover restore failed'),
+      'error',
+    );
+  }
+}
+
+async function handleClearCoreFlight() {
+  try {
+    const res = await callBaseMethod<Record<string, unknown>>(
+      'core_flight_clear' as unknown as Tachyon.AvailableMethods,
+    );
+    if (res.success) {
+      showToast(
+        tr('Журнал бортового самописца очищен', 'Flight recorder cleared'),
+        'success',
+      );
+      void refreshCoreTelemetryWidget();
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function renderCoreTelemetryWidget() {
+  const container = document.getElementById(
+    'tachyon_diagnostic-page-core-telemetry',
+  );
+  if (!container) {
+    return;
+  }
+
+  const node = renderCoreTelemetry(cachedCoreTelemetry, {
+    onRefresh: () => void refreshCoreTelemetryWidget(),
+    onTrimMemory: () => void handleTrimCoreMemory(),
+    onRecheckRoutes: () => void handleRecheckCoreRoutes(),
+    onRestoreFailover: () => void handleRestoreCoreFailover(),
+    onClearFlight: () => void handleClearCoreFlight(),
+  });
+
+  preserveScrollForPage(() => {
+    container.replaceChildren(node);
+  });
+}
+
+async function refreshCoreTelemetryWidget() {
+  if (!diagnosticMounted || coreTelemetryLoading) {
+    return;
+  }
+  coreTelemetryLoading = true;
+  try {
+    const res = await callBaseMethod<ICoreTelemetrySnapshot>(
+      'core_telemetry_snapshot' as unknown as Tachyon.AvailableMethods,
+    );
+    if (res.success && res.data && typeof res.data === 'object') {
+      cachedCoreTelemetry = res.data;
+      if (diagnosticMounted) {
+        renderCoreTelemetryWidget();
+      }
+    }
+  } catch (e) {
+    logger.debug('[DIAGNOSTIC]', 'refreshCoreTelemetryWidget error', e);
+  } finally {
+    coreTelemetryLoading = false;
+  }
+}
+
+function startCoreTelemetryWatcher() {
+  if (coreTelemetryTimer) {
+    clearInterval(coreTelemetryTimer);
+  }
+  renderCoreTelemetryWidget();
+  void refreshCoreTelemetryWidget();
+  coreTelemetryTimer = setInterval(() => {
+    if (diagnosticMounted) {
+      void refreshCoreTelemetryWidget();
+    }
+  }, 3000);
+}
+
+function stopCoreTelemetryWatcher() {
+  if (coreTelemetryTimer) {
+    clearInterval(coreTelemetryTimer);
+    coreTelemetryTimer = null;
+  }
+}
+
+function renderDiagnosticRunActionWidget() {
+  logger.debug('[DIAGNOSTIC]', 'renderDiagnosticRunActionWidget');
+
+  const { loading } = store.get().diagnosticsRunAction;
+  const providerInfoLoaded =
+    store.get().diagnosticsSystemInfo.providerInfoLoaded;
+  const servicesInfoWidget = store.get().servicesInfoWidget;
+  const tachyonRunning = Boolean(servicesInfoWidget.data.tachyonRunning);
+  const container = document.getElementById(
+    'tachyon_diagnostic-page-run-check',
+  );
+
+  const renderedAction = renderRunAction({
+    loading,
+    disabled: shouldDisableDiagnosticRunAction({
+      providerInfoLoaded,
+      servicesInfoLoading: servicesInfoWidget.loading,
+      tachyonRunning,
+      mutatingServiceActionLoading: isMutatingServiceActionLoading(),
+    }),
+    click: () => runChecks({ openModal: true }),
+  });
+
+  return preserveScrollForPage(() => {
+    container!.replaceChildren(renderedAction);
+  });
+}
+
+async function handleServiceRuntimeAction({
+  action,
+  expectedRunning,
+  optimisticRunning,
+}: {
+  action: ServiceRuntimeAction;
+  expectedRunning: boolean;
+  optimisticRunning?: boolean;
+}) {
+  setDiagnosticActionLoading(action, true, true);
+  let jobId = '';
+  let ownsJobFollow = false;
+  let delegatedToWatcher = false;
+
+  if (optimisticRunning !== undefined) {
+    setDisplayedTachyonRunning(optimisticRunning);
+  }
+
+  try {
+    const startResponse = await TachyonShellMethods.serviceActionStart(action);
+
+    if (!startResponse.success) {
+      throw new Error(startResponse.error);
+    }
+
+    jobId = startResponse.data.job_id;
+    if (followedServiceActionJobs.has(jobId)) {
+      delegatedToWatcher = true;
+      return;
+    }
+
+    followedServiceActionJobs.add(jobId);
+    ownsJobFollow = true;
+    const result = await TachyonShellMethods.waitServiceActionJob(jobId);
+
+    if (!result.success) {
+      throw new Error(result.error);
+    }
+
+    if (!result.data.success) {
+      throw new Error(result.data.message || _('Service action failed'));
+    }
+
+    await waitForTachyonRunningState(expectedRunning);
+  } catch (e) {
+    logger.error('[DIAGNOSTIC]', `handleServiceRuntimeAction(${action})`, e);
+  } finally {
+    if (!delegatedToWatcher) {
+      if (ownsJobFollow) {
+        followedServiceActionJobs.delete(jobId);
+      }
+
+      setDiagnosticActionLoading(action, false);
+      await refreshDiagnosticServicesInfo({ force: true, allowInactive: true });
+      if (jobId) {
+        handledServiceActionJobs.add(jobId);
+        capSetSize(handledServiceActionJobs);
+        capSetSize(handledServiceActionJobs);
+        void TachyonShellMethods.uiActionAck('service', jobId);
+      }
+      resetDiagnosticsChecks();
+    }
+  }
+}
+
+function handleCheckServicesAction() {
+  renderServiceCheckModal();
+}
+
+async function handleRestart() {
+  await handleServiceRuntimeAction({
+    action: 'restart',
+    expectedRunning: true,
+    optimisticRunning: false,
+  });
+}
+
+async function handleStart() {
+  await handleServiceRuntimeAction({
+    action: 'start',
+    expectedRunning: true,
+  });
+}
+
+async function handleStop() {
+  await handleServiceRuntimeAction({
+    action: 'stop',
+    expectedRunning: false,
+  });
+}
+
+async function handleEnable() {
+  setDiagnosticActionLoading('enable', true);
+
+  try {
+    const response = await TachyonShellMethods.enable();
+    if (!response.success) {
+      notifyActionFailure('handleEnable', response);
+    }
+  } catch (e) {
+    notifyActionFailure('handleEnable', e);
+  } finally {
+    await refreshDiagnosticServicesInfo({
+      force: true,
+      allowInactive: true,
+    });
+    setDiagnosticActionLoading('enable', false);
+  }
+}
+
+async function handleDisable() {
+  setDiagnosticActionLoading('disable', true);
+
+  try {
+    const response = await TachyonShellMethods.disable();
+    if (!response.success) {
+      notifyActionFailure('handleDisable', response);
+    }
+  } catch (e) {
+    notifyActionFailure('handleDisable', e);
+  } finally {
+    await refreshDiagnosticServicesInfo({
+      force: true,
+      allowInactive: true,
+    });
+    setDiagnosticActionLoading('disable', false);
+  }
+}
+
+async function handleShowGlobalCheck() {
+  setDiagnosticActionLoading('globalCheck', true);
+
+  try {
+    const globalCheck = await TachyonShellMethods.globalCheck(false);
+
+    if (globalCheck.success) {
+      const rawGlobalCheckText = (globalCheck.data as string) ?? '';
+      const maskedGlobalCheckText = maskGlobalCheckText(rawGlobalCheckText);
+
+      ui.showModal(
+        _('Global check'),
+        renderModal(rawGlobalCheckText, 'global_check', {
+          maskText: () => maskedGlobalCheckText,
+          initialAutoRefresh: false,
+          showMaskValuesToggle: true,
+        }),
+      );
+    } else {
+      notifyActionFailure(
+        'handleShowGlobalCheck',
+        globalCheck,
+        _('Global check failed'),
+      );
+    }
+  } catch (e) {
+    notifyActionFailure('handleShowGlobalCheck', e, _('Global check failed'));
+  } finally {
+    setDiagnosticActionLoading('globalCheck', false);
+  }
+}
+
+function getDoctorModalTitle(issues: number, fixed: number, report: string) {
+  if (issues > 0 || fixed > 0) {
+    return (
+      _('Doctor repair') +
+      ' \u2014 ' +
+      _('Issues') +
+      ': ' +
+      issues +
+      ', ' +
+      _('Fixed') +
+      ': ' +
+      fixed
+    );
+  }
+
+  if (
+    /safe bypass|аварийного обхода|bypassed|стоковом состоянии|stock (state|internet)/i.test(
+      report,
+    )
+  ) {
+    return _('Doctor repair') + ' \u2014 Safe Bypass';
+  }
+
+  return _('Doctor repair') + ' \u2014 ' + _('No issues found');
+}
+
+function showDoctorModal(report: string, issues: number, fixed: number) {
+  const title = getDoctorModalTitle(issues, fixed, report);
+
+  let isFixing = false;
+  const fixBtn = renderButton({
+    classNames: ['cbi-button-action'],
+    text: _('Fix'),
+    onClick: async () => {
+      if (isFixing) {
+        return;
+      }
+      isFixing = true;
+      (fixBtn as HTMLButtonElement).disabled = true;
+      fixBtn.classList.add('tachyon-partial-button--loading');
+
+      try {
+        await handleRunDoctor(true);
+      } finally {
+        isFixing = false;
+        (fixBtn as HTMLButtonElement).disabled = false;
+        fixBtn.classList.remove('tachyon-partial-button--loading');
+      }
+    },
+  });
+
+  ui.showModal(
+    title,
+    renderModal(report, 'doctor_repair', {
+      initialAutoRefresh: false,
+      extraButtons: [fixBtn],
+    }),
+  );
+}
+
+async function handleRunDoctor(fixParam: boolean | unknown = false) {
+  const fix = fixParam === true;
+  setDiagnosticActionLoading('doctor', true);
+
+  try {
+    const doctorRes = await TachyonShellMethods.doctor(fix);
+
+    if (!doctorRes || typeof doctorRes !== 'object') {
+      showToast(_('Doctor failed') + ': ' + _('Unknown error'), 'error');
+      return;
+    }
+
+    if (doctorRes.success) {
+      const rawData = (doctorRes as { data?: unknown }).data;
+      const data =
+        typeof rawData === 'object' && rawData !== null
+          ? (rawData as Record<string, unknown>)
+          : null;
+      const report = data ? String(data.report ?? '') : String(rawData ?? '');
+      const issues = data ? Number(data.issues ?? 0) : 0;
+      const fixed = data ? Number(data.fixed ?? 0) : 0;
+
+      showDoctorModal(report, issues, fixed);
+
+      if (fix) {
+        showToast(
+          fixed > 0
+            ? _('Doctor fixes applied') + `: ${fixed}`
+            : _('Doctor repair completed'),
+          'success',
+        );
+        await refreshDiagnosticServicesInfo({
+          force: true,
+          allowInactive: true,
+        });
+      }
+    } else {
+      const errorMsg =
+        typeof doctorRes.error === 'string'
+          ? doctorRes.error
+          : _('Unknown error');
+      showToast(_('Doctor failed') + ': ' + errorMsg, 'error');
+    }
+  } catch (e) {
+    logger.error(
+      '[DIAGNOSTIC]',
+      'handleRunDoctor - e',
+      e instanceof Error ? e.message : String(e),
+    );
+    showToast(_('Doctor failed'), 'error');
+  } finally {
+    setDiagnosticActionLoading('doctor', false);
+    runChecks();
+  }
+}
+
+async function handleViewLogs() {
+  setDiagnosticActionLoading('viewLogs', true);
+
+  try {
+    const viewLogs = await TachyonShellMethods.checkLogs();
+
+    if (viewLogs.success) {
+      const getLatestLogs = async () => {
+        const latestLogs = await TachyonShellMethods.checkLogs();
+
+        if (!latestLogs.success) {
+          throw latestLogs;
+        }
+
+        return (latestLogs.data as string) ?? '';
+      };
+
+      ui.showModal(
+        _('View logs'),
+        renderModal(viewLogs.data as string, 'view_logs', {
+          getText: getLatestLogs,
+          refreshMs: 2000,
+          initialAutoRefresh: true,
+          showAutoRefreshToggle: true,
+          startAtEnd: true,
+        }),
+      );
+    } else {
+      notifyActionFailure('handleViewLogs', viewLogs, _('View logs failed'));
+    }
+  } finally {
+    setDiagnosticActionLoading('viewLogs', false);
+  }
+}
+
+async function handleRunAiDoctor() {
+  setDiagnosticActionLoading('aiDoctor', true);
+
+  try {
+    const aiRes = await TachyonShellMethods.aiDoctor();
+
+    if (!aiRes || typeof aiRes !== 'object') {
+      showToast(_('AI Doctor failed') + ': ' + _('Unknown error'), 'error');
+      return;
+    }
+
+    const rawData = (aiRes as { data?: unknown }).data;
+    const data =
+      typeof rawData === 'object' && rawData !== null
+        ? (rawData as Record<string, unknown>)
+        : null;
+
+    if (
+      (aiRes as { success?: boolean }).success ||
+      (data && data.success !== false)
+    ) {
+      const report = data
+        ? String(data.report ?? data.summary ?? rawData ?? '')
+        : String(rawData ?? '');
+      const quickFixes: string[] = Array.isArray(data?.quick_fixes)
+        ? (data!.quick_fixes as string[])
+        : String(data?.quick_fix ?? '')
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean);
+
+      const nowStr = new Date().toLocaleTimeString();
+      saveAiDoctorHistory({ timestamp: nowStr, report, quickFixes });
+
+      const backendNodes =
+        Array.isArray(data?.nodes) && (data!.nodes as unknown[]).length === 4
+          ? (data!.nodes as Array<{
+              name: string;
+              status: 'OK' | 'WARN' | 'FAIL';
+            }>)
+          : null;
+
+      renderAiDoctorModal({
+        report,
+        quickFixes,
+        backendNodes,
+        isTachyonCore: Boolean(
+          store.get().diagnosticsSystemInfo?.sing_box_tachyon_core,
+        ),
+        onRefreshServices: () =>
+          refreshDiagnosticServicesInfo({
+            force: true,
+            allowInactive: true,
+          }),
+      });
+    } else {
+      const errorMsg =
+        typeof (aiRes as { error?: string }).error === 'string'
+          ? (aiRes as { error?: string }).error
+          : _('Unknown error');
+      showToast(_('AI Doctor failed') + ': ' + errorMsg, 'error');
+    }
+  } catch (e) {
+    logger.error(
+      '[DIAGNOSTIC]',
+      'handleRunAiDoctor - e',
+      e instanceof Error ? e.message : String(e),
+    );
+    showToast(_('AI Doctor failed'), 'error');
+  } finally {
+    setDiagnosticActionLoading('aiDoctor', false);
+  }
+}
+
+function handleOpenAiChat() {
+  renderAiChatModal();
+}
+
+function handleOpenLeakCheck() {
+  renderLeakCheckModal();
+}
+
+const FUZZER_DPI_ENGINES: Tachyon.FuzzerEngine[] = [
+  'zapret2',
+  'zapret',
+  'byedpi',
+  'desync',
+];
+
+function getInstalledFuzzerEngines(): {
+  loaded: boolean;
+  engines: Record<Tachyon.FuzzerEngine, boolean>;
+} {
+  const sysInfo = store.get().diagnosticsSystemInfo;
+  const loaded = Boolean(sysInfo.providerInfoLoaded || sysInfo.loaded);
+  return {
+    loaded,
+    engines: {
+      zapret2: Boolean(sysInfo.zapret2_installed),
+      zapret: Boolean(sysInfo.zapret_installed),
+      byedpi: Boolean(sysInfo.byedpi_installed),
+      desync: Boolean(sysInfo.sing_box_tachyon_core),
+    },
+  };
+}
+
+function collectDomainsFromField(val: unknown, out: Set<string>): void {
+  const items = Array.isArray(val)
+    ? val
+    : typeof val === 'string'
+      ? val.split(/[\r\n,;\t ]+/)
+      : [];
+  for (const raw of items) {
+    const cleaned = String(raw || '')
+      .trim()
+      .replace(/^\*\./, '')
+      .replace(/^\.+/, '');
+    if (cleaned && cleaned.includes('.') && !cleaned.startsWith('!')) {
+      out.add(cleaned);
+    }
+  }
+}
+
+function extractSectionDomainsForFuzzer(
+  sec: Tachyon.ConfigSection,
+  sectionByName: Map<string, Tachyon.ConfigSection>,
+): string[] {
+  const out = new Set<string>();
+  const raw = sec as unknown as Record<string, unknown>;
+  for (const key of [
+    'domains',
+    'domain_suffix',
+    'domain_suffix_text',
+    'user_domains',
+    'user_domains_text',
+  ]) {
+    collectDomainsFromField(raw[key], out);
+  }
+  const condRefs = Array.isArray(sec.condition_refs)
+    ? sec.condition_refs
+    : sec.condition_refs
+      ? [sec.condition_refs]
+      : [];
+  for (const ref of condRefs) {
+    const cond = sectionByName.get(String(ref || '').trim());
+    if (!cond) continue;
+    const condRaw = cond as unknown as Record<string, unknown>;
+    for (const key of [
+      'domains',
+      'domain_suffix',
+      'domain_suffix_text',
+      'user_domains',
+      'user_domains_text',
+    ]) {
+      collectDomainsFromField(condRaw[key], out);
+    }
+  }
+  return Array.from(out);
+}
+
+function handleOpenStrategyFuzzer() {
+  const installedInfo = getInstalledFuzzerEngines();
+  const modalOptsBase = installedInfo.loaded
+    ? { availableEngines: installedInfo.engines }
+    : {};
+
+  getConfigSections()
+    .then((sections) => {
+      const sectionByName = new Map<string, Tachyon.ConfigSection>();
+      sections.forEach((s) => {
+        if (s['.name']) sectionByName.set(s['.name'], s);
+      });
+
+      const dpiSourceEngineMap = new Map<string, Tachyon.FuzzerEngine>();
+      const dpiSources = sections
+        .filter((s) => {
+          const st = String(s.source_type || '').toLowerCase();
+          return (
+            s['.type'] === 'outbound_source' &&
+            FUZZER_DPI_ENGINES.includes(st as Tachyon.FuzzerEngine)
+          );
+        })
+        .map((s) => {
+          const st = String(
+            s.source_type || '',
+          ).toLowerCase() as Tachyon.FuzzerEngine;
+          if (s['.name']) dpiSourceEngineMap.set(s['.name'], st);
+          const label =
+            (typeof s.label === 'string' && s.label.trim()) ||
+            (typeof s.name === 'string' && s.name.trim()) ||
+            s['.name'];
+          return {
+            id: s['.name'],
+            label: `${label} (${_('Connection')})`,
+            action: st,
+          };
+        })
+        .filter(
+          (r) =>
+            Boolean(r.id) &&
+            (!installedInfo.loaded || installedInfo.engines[r.action]),
+        );
+
+      const ruleSections = sections
+        .filter((s) => s['.type'] === 'section' || s['.type'] === 'rule')
+        .map((s) => {
+          const sid = s['.name'];
+          const raw = s as unknown as Record<string, unknown>;
+          const isGlobal =
+            sid === 'global' ||
+            sid === 'default' ||
+            String(raw.match_all || '') === '1' ||
+            raw.match_all === true ||
+            String(raw.is_global || '') === '1';
+          if (!sid || isGlobal) return null;
+
+          const rawAction = String(s.action || '').toLowerCase();
+          let resolvedEngine: Tachyon.FuzzerEngine | null = null;
+          if (FUZZER_DPI_ENGINES.includes(rawAction as Tachyon.FuzzerEngine)) {
+            resolvedEngine = rawAction as Tachyon.FuzzerEngine;
+          } else if (rawAction === 'connection') {
+            const refs = Array.isArray(s.outbound_source_refs)
+              ? s.outbound_source_refs
+              : s.outbound_source_refs
+                ? [s.outbound_source_refs]
+                : [];
+            for (const ref of refs) {
+              const linkedEng = dpiSourceEngineMap.get(
+                String(ref || '').trim(),
+              );
+              if (linkedEng) {
+                resolvedEngine = linkedEng;
+                break;
+              }
+            }
+          }
+          if (!resolvedEngine) return null;
+
+          const domains = extractSectionDomainsForFuzzer(s, sectionByName);
+          return {
+            id: sid,
+            label:
+              (typeof s.label === 'string' && s.label.trim()) ||
+              (typeof s.name === 'string' && s.name.trim()) ||
+              sid,
+            action: resolvedEngine,
+            ...(domains.length > 0 ? { domains } : {}),
+          };
+        })
+        .filter((r): r is NonNullable<typeof r> => r !== null);
+
+      renderStrategyFuzzerModal(
+        [...dpiSources, ...ruleSections],
+        modalOptsBase,
+      );
+    })
+    .catch(() => {
+      renderStrategyFuzzerModal([], modalOptsBase);
+    });
+}
+
+function handleRestoreNativeInternet() {
+  ui.showModal(
+    _('Restore Native Internet'),
+    E('div', {}, [
+      E(
+        'p',
+        {},
+        _(
+          'This action will stop Tachyon, restore standard dnsmasq/DNS, clear TPROXY/TUN routing rules, and switch traffic to direct ISP routing.',
+        ),
+      ),
+      E(
+        'div',
+        {
+          class: 'right',
+          style:
+            'display: flex; justify-content: flex-end; gap: 8px; margin-top: 15px;',
+        },
+        [
+          renderButton({
+            classNames: ['cbi-button-neutral'],
+            text: _('Cancel'),
+            onClick: () => ui.hideModal(),
+          }),
+          renderButton({
+            classNames: ['cbi-button-reset'],
+            icon: renderRotateCcwIcon24,
+            text: _('Restore Native Internet'),
+            onClick: async () => {
+              ui.hideModal();
+              showToast(
+                _('Restoring native direct internet (stopping Tachyon)...'),
+                'success',
+              );
+              const res = await TachyonShellMethods.applyQuickFix(
+                'restore_native_internet',
+              );
+              if (
+                res &&
+                typeof res === 'object' &&
+                (res as { success?: boolean }).success
+              ) {
+                showToast(
+                  _('Native internet restored. Tachyon stopped.'),
+                  'success',
+                );
+                await refreshDiagnosticServicesInfo({
+                  force: true,
+                  allowInactive: true,
+                });
+              } else {
+                showToast(_('Failed to restore native internet'), 'error');
+              }
+            },
+          }),
+        ],
+      ),
+    ]),
+  );
+}
+
+async function handleShowSingBoxConfig() {
+  setDiagnosticActionLoading('showSingBoxConfig', true);
+  const isTachyonCore = Boolean(
+    store.get().diagnosticsSystemInfo?.sing_box_tachyon_core,
+  );
+
+  try {
+    const showSingBoxConfig =
+      await TachyonShellMethods.showSingBoxConfig(false);
+
+    if (showSingBoxConfig.success) {
+      const rawSingBoxConfigText = stringifySingBoxConfig(
+        showSingBoxConfig.data,
+      );
+      const maskedSingBoxConfigText = formatMaskedSingBoxConfig(
+        showSingBoxConfig.data,
+      );
+
+      ui.showModal(
+        isTachyonCore
+          ? _('Show Tachyon Core config')
+          : _('Show sing-box config'),
+        renderModal(rawSingBoxConfigText, 'show_sing_box_config', {
+          maskText: () => maskedSingBoxConfigText,
+          initialAutoRefresh: false,
+          showMaskValuesToggle: true,
+        }),
+      );
+    } else {
+      notifyActionFailure(
+        'handleShowSingBoxConfig',
+        showSingBoxConfig,
+        isTachyonCore
+          ? _('Show Tachyon Core config failed')
+          : _('Show sing-box config failed'),
+      );
+    }
+  } catch (e) {
+    notifyActionFailure(
+      'handleShowSingBoxConfig',
+      e,
+      isTachyonCore
+        ? _('Show Tachyon Core config failed')
+        : _('Show sing-box config failed'),
+    );
+  } finally {
+    setDiagnosticActionLoading('showSingBoxConfig', false);
+  }
+}
+
+async function handleGenerateBugReport() {
+  setDiagnosticActionLoading('generateBugReport', true);
+  try {
+    const isTachyonCore = Boolean(
+      store.get().diagnosticsSystemInfo?.sing_box_tachyon_core,
+    );
+    const configResult = await fs.read('/etc/config/tachyon').catch(() => '');
+    const logsResult = await executeShellCommand({
+      command: '/sbin/logread',
+      args: ['-e', 'tachyon', '-l', '1000'],
+    });
+    const singboxLogsResult = await executeShellCommand({
+      command: '/sbin/logread',
+      args: ['-e', isTachyonCore ? 'tachyon-core' : 'sing-box', '-l', '1000'],
+    });
+
+    const coreLabel = isTachyonCore ? 'tachyon-core' : 'sing-box';
+    const filterUdpErrors = (text: string) => {
+      if (!text || !text.includes('UDP is not supported by outbound:'))
+        return text;
+      const lines = text.split('\n');
+      const filtered: string[] = [];
+      let noticeEmitted = false;
+      for (const line of lines) {
+        if (line.includes('UDP is not supported by outbound:')) {
+          if (!noticeEmitted) {
+            filtered.push(
+              `UDP traffic through HTTP outbounds is not supported by ${coreLabel}; repeated UDP warnings for HTTP outbounds are hidden by Tachyon.`,
+            );
+            noticeEmitted = true;
+          }
+          continue;
+        }
+        filtered.push(line);
+      }
+      return filtered.join('\n');
+    };
+
+    const rawReport = [
+      '--- TACHYON CONFIG ---',
+      configResult || 'Failed to fetch config',
+      '',
+      '--- TACHYON LOGS ---',
+      logsResult.code === 0
+        ? filterUdpErrors(logsResult.stdout)
+        : 'Failed to fetch tachyon logs',
+      '',
+      isTachyonCore ? '--- TACHYON-CORE LOGS ---' : '--- SING-BOX LOGS ---',
+      singboxLogsResult.code === 0
+        ? filterUdpErrors(singboxLogsResult.stdout)
+        : `Failed to fetch ${isTachyonCore ? 'tachyon-core' : 'sing-box'} logs`,
+    ].join('\n');
+
+    const maskedReport = maskLogText(maskGlobalCheckText(rawReport));
+
+    // Download as a text file instead of using clipboard, because navigator.clipboard
+    // is undefined in insecure contexts (HTTP) which is common for router web interfaces.
+    const blob = new Blob([maskedReport], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `tachyon-bugreport-${new Date().toISOString().replace(/[:.]/g, '-')}.txt`;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    showToast(_('Bug report downloaded'), 'success');
+  } catch (e) {
+    logger.error('[DIAGNOSTIC]', 'handleGenerateBugReport - e', e);
+    showToast(_('Failed to generate bug report'), 'error');
+  } finally {
+    setDiagnosticActionLoading('generateBugReport', false);
+  }
+}
+
+function renderWikiDisclaimerWidget() {
+  const diagnosticsChecks = store.get().diagnosticsChecks;
+
+  function getWikiKind() {
+    const allResults = diagnosticsChecks.map((check) => check.state);
+
+    if (allResults.includes('error')) {
+      return 'error';
+    }
+
+    if (allResults.includes('warning')) {
+      return 'warning';
+    }
+
+    return 'default';
+  }
+
+  const container = document.getElementById('tachyon_diagnostic-page-wiki');
+
+  return preserveScrollForPage(() => {
+    container!.replaceChildren(renderWikiDisclaimer(getWikiKind()));
+  });
+}
+
+function renderDiagnosticAvailableActionsWidget() {
+  const diagnosticsActions = store.get().diagnosticsActions;
+  const updatesActions = store.get().updatesActions;
+  const servicesInfoWidget = store.get().servicesInfoWidget;
+  logger.debug('[DIAGNOSTIC]', 'renderDiagnosticAvailableActionsWidget');
+
+  const tachyonEnabled = Boolean(servicesInfoWidget.data.tachyonEnabled);
+  const tachyonRunning = Boolean(servicesInfoWidget.data.tachyonRunning);
+  const serviceTransition = getServiceTransition(
+    servicesInfoWidget.data.tachyonStatus,
+  );
+  const restartLoading =
+    diagnosticsActions.restart.loading || serviceTransition.restarting;
+  const startLoading =
+    diagnosticsActions.start.loading || serviceTransition.starting;
+  const stopLoading =
+    diagnosticsActions.stop.loading || serviceTransition.stopping;
+  const atLeastOneMutatingActionLoading =
+    restartLoading ||
+    startLoading ||
+    stopLoading ||
+    diagnosticsActions.enable.loading ||
+    diagnosticsActions.disable.loading;
+  const componentActionLoading = hasComponentActionLoading(updatesActions);
+  const { serviceControlsDisabled, utilityActionsDisabled, viewLogsDisabled } =
+    getAvailableActionsDisabledState({
+      servicesInfoLoading: servicesInfoWidget.loading,
+      mutatingServiceActionLoading: atLeastOneMutatingActionLoading,
+      componentActionLoading,
+    });
+  const startVisible = shouldShowStartAction({
+    tachyonRunning,
+    restartLoading,
+    startLoading,
+    stopLoading,
+  });
+  const stopVisible = shouldShowStopAction({
+    tachyonRunning,
+    restartLoading,
+    startLoading,
+    stopLoading,
+  });
+
+  const container = document.getElementById('tachyon_diagnostic-page-actions');
+
+  const renderedActions = renderAvailableActions({
+    restart: {
+      loading: restartLoading,
+      visible: shouldShowRestartAction({
+        tachyonRunning,
+        restartLoading,
+        startLoading,
+        stopLoading,
+      }),
+      onClick: handleRestart,
+      disabled: serviceControlsDisabled,
+    },
+    start: {
+      loading: startLoading,
+      visible: startVisible,
+      onClick: handleStart,
+      disabled: serviceControlsDisabled,
+    },
+    stop: {
+      loading: stopLoading,
+      visible: stopVisible,
+      onClick: handleStop,
+      disabled: serviceControlsDisabled,
+    },
+    enable: {
+      loading: diagnosticsActions.enable.loading,
+      visible: !tachyonEnabled,
+      onClick: handleEnable,
+      disabled: serviceControlsDisabled,
+    },
+    disable: {
+      loading: diagnosticsActions.disable.loading,
+      visible: tachyonEnabled,
+      onClick: handleDisable,
+      disabled: serviceControlsDisabled,
+    },
+    globalCheck: {
+      loading: diagnosticsActions.globalCheck.loading,
+      visible: true,
+      onClick: handleShowGlobalCheck,
+      disabled: utilityActionsDisabled,
+    },
+    doctor: {
+      loading: diagnosticsActions.doctor.loading,
+      visible: true,
+      onClick: () => handleRunDoctor(false),
+      disabled: utilityActionsDisabled,
+    },
+    aiDoctor: {
+      loading: diagnosticsActions.aiDoctor.loading,
+      visible: true,
+      onClick: handleRunAiDoctor,
+      disabled: diagnosticsActions.aiDoctor.loading,
+    },
+    restoreNativeInternet: {
+      loading: false,
+      visible: true,
+      onClick: handleRestoreNativeInternet,
+      disabled: false,
+    },
+    aiChat: {
+      loading: false,
+      visible: true,
+      onClick: handleOpenAiChat,
+      disabled: false,
+    },
+    strategyFuzzer: {
+      loading: false,
+      visible: (() => {
+        const fuzzerEngines = getInstalledFuzzerEngines();
+        return (
+          !fuzzerEngines.loaded ||
+          Object.values(fuzzerEngines.engines).some(Boolean)
+        );
+      })(),
+      onClick: handleOpenStrategyFuzzer,
+      disabled: false,
+    },
+    checkServices: {
+      visible: true,
+      loading: diagnosticsActions.checkServices.loading,
+      disabled: utilityActionsDisabled,
+      onClick: handleCheckServicesAction,
+    },
+    testLeaks: {
+      visible: true,
+      loading: false,
+      disabled: false,
+      onClick: handleOpenLeakCheck,
+    },
+    routeExplain: {
+      visible: true,
+      loading: false,
+      disabled: false,
+      onClick: () => renderRouteExplainModal(),
+    },
+    stabilityReport: {
+      visible: true,
+      loading: false,
+      disabled: false,
+      onClick: () => {
+        void renderStabilityModal();
+      },
+    },
+    viewLogs: {
+      loading: diagnosticsActions.viewLogs.loading,
+      visible: true,
+      onClick: handleViewLogs,
+      disabled: viewLogsDisabled,
+    },
+    showSingBoxConfig: {
+      loading: diagnosticsActions.showSingBoxConfig.loading,
+      visible: true,
+      text: _('Show Tachyon Core config'),
+      onClick: handleShowSingBoxConfig,
+      disabled: utilityActionsDisabled,
+    },
+    generateBugReport: {
+      loading: diagnosticsActions.generateBugReport.loading,
+      visible: true,
+      onClick: handleGenerateBugReport,
+      disabled: utilityActionsDisabled,
+    },
+  });
+
+  return preserveScrollForPage(() => {
+    container!.replaceChildren(renderedActions);
+  });
+}
+
+function formatUptimePretty(seconds: number | undefined): string {
+  if (typeof seconds !== 'number' || seconds <= 0) {
+    return '';
+  }
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (days > 0) {
+    return `${days}${tr('д', 'd')} ${hours}${tr('ч', 'h')}`;
+  }
+  if (hours > 0) {
+    return `${hours}${tr('ч', 'h')} ${minutes}${tr('м', 'm')}`;
+  }
+  return `${Math.max(1, minutes)}${tr('м', 'm')}`;
+}
+
+function renderDiagnosticSystemInfoWidget() {
+  logger.debug('[DIAGNOSTIC]', 'renderDiagnosticSystemInfoWidget');
+  const diagnosticsSystemInfo = store.get().diagnosticsSystemInfo;
+  const svcData = store.get().servicesInfoWidget.data;
+
+  const container = document.getElementById(
+    'tachyon_diagnostic-page-system-info',
+  );
+  if (!container) {
+    return;
+  }
+
+  const tachyonRunning = Boolean(svcData.tachyonRunning);
+  const tachyonEnabled = Boolean(svcData.tachyonEnabled);
+  const tachyonSubParts: string[] = [];
+  if (svcData.tachyonPid) {
+    tachyonSubParts.push(`PID ${svcData.tachyonPid}`);
+  }
+  if (
+    typeof svcData.tachyonMemoryMb === 'number' &&
+    svcData.tachyonMemoryMb > 0
+  ) {
+    tachyonSubParts.push(`${svcData.tachyonMemoryMb.toFixed(1)} MB`);
+  }
+  if (svcData.tachyonUptimePretty) {
+    tachyonSubParts.push(svcData.tachyonUptimePretty);
+  } else {
+    tachyonSubParts.push(
+      tachyonEnabled
+        ? tr('Автостарт: вкл', 'Autostart: on')
+        : tr('Автостарт: выкл', 'Autostart: off'),
+    );
+  }
+
+  const items: Array<IRenderSystemInfoRow> = [
+    {
+      key: 'Tachyon',
+      value: normalizeCompiledVersion(
+        diagnosticsSystemInfo.tachyon_version,
+        diagnosticsSystemInfo.tachyon_commit_sha,
+      ),
+      tag: {
+        label: tachyonRunning ? _('active') : tr('остановлен', 'stopped'),
+        kind: tachyonRunning ? 'success' : 'warning',
+      },
+      subvalue: tachyonSubParts.join(' · '),
+    },
+    {
+      key: 'Luci App',
+      value: normalizeCompiledVersion(TACHYON_LUCI_APP_VERSION),
+      subvalue: svcData.watchdogRunning
+        ? tr('Watchdog: активен', 'Watchdog: active')
+        : tr('Watchdog: выкл', 'Watchdog: off'),
+    },
+  ];
+
+  const singBoxRowLabel = 'Tachyon Core';
+  const coreRunning = Boolean(svcData.singbox || svcData.tachyonRunning);
+  const coreSubParts: string[] = [];
+  if (svcData.singboxPid) {
+    coreSubParts.push(`PID ${svcData.singboxPid}`);
+  }
+  if (
+    typeof svcData.singboxMemoryMb === 'number' &&
+    svcData.singboxMemoryMb > 0
+  ) {
+    coreSubParts.push(`${svcData.singboxMemoryMb.toFixed(1)} MB`);
+  }
+  if (svcData.singboxUptimePretty) {
+    coreSubParts.push(svcData.singboxUptimePretty);
+  }
+
+  items.push({
+    key: singBoxRowLabel,
+    value: formatSingBoxVersion(diagnosticsSystemInfo),
+    tag: {
+      label: coreRunning ? _('active') : tr('остановлен', 'stopped'),
+      kind: coreRunning ? 'success' : 'warning',
+    },
+    subvalue: coreSubParts.length ? coreSubParts.join(' · ') : undefined,
+  });
+
+  if (diagnosticsSystemInfo.zapret_installed) {
+    items.push({
+      key: 'Zapret',
+      value: diagnosticsSystemInfo.zapret_version,
+    });
+  }
+
+  if (diagnosticsSystemInfo.zapret2_installed) {
+    items.push({
+      key: 'Zapret2',
+      value: diagnosticsSystemInfo.zapret2_version,
+      tag: svcData.zapret2Running
+        ? { label: _('active'), kind: 'success' }
+        : undefined,
+      subvalue:
+        svcData.zapret2Pid && svcData.zapret2MemoryMb
+          ? `PID ${svcData.zapret2Pid} · ${svcData.zapret2MemoryMb.toFixed(1)} MB`
+          : undefined,
+    });
+  }
+
+  if (diagnosticsSystemInfo.byedpi_installed) {
+    items.push({
+      key: 'ByeDPI',
+      value: diagnosticsSystemInfo.byedpi_version,
+    });
+  }
+
+  items.push(
+    {
+      key: _('OS'),
+      value: diagnosticsSystemInfo.openwrt_version,
+      subvalue: diagnosticsSystemInfo.kernel_version
+        ? `Linux ${diagnosticsSystemInfo.kernel_version}`
+        : undefined,
+    },
+    {
+      key: _('Device'),
+      value: diagnosticsSystemInfo.device_model,
+      subvalue: diagnosticsSystemInfo.cpu_arch || undefined,
+    },
+  );
+
+  if (
+    typeof diagnosticsSystemInfo.mem_total_mb === 'number' &&
+    diagnosticsSystemInfo.mem_total_mb > 0
+  ) {
+    const usedMb = diagnosticsSystemInfo.mem_used_mb ?? 0;
+    const totalMb = diagnosticsSystemInfo.mem_total_mb;
+    const freeMb = diagnosticsSystemInfo.mem_free_mb ?? totalMb - usedMb;
+    const pct =
+      diagnosticsSystemInfo.mem_used_pct ??
+      Math.round((usedMb * 100) / totalMb);
+
+    items.push({
+      key: tr('Память (RAM)', 'Memory (RAM)'),
+      value: `${usedMb} / ${totalMb} MB`,
+      progressPct: pct,
+      progressTone: pct >= 85 ? 'danger' : pct >= 70 ? 'warning' : 'success',
+      tag: {
+        label: `${pct}%`,
+        kind: pct >= 85 ? 'warning' : 'success',
+      },
+      subvalue: `${tr('Доступно', 'Avail')}: ${freeMb} MB`,
+    });
+  }
+
+  if (
+    diagnosticsSystemInfo.load_avg ||
+    diagnosticsSystemInfo.uptime_seconds ||
+    svcData.cpuLoadPercent != null
+  ) {
+    const uptimeLabel = formatUptimePretty(
+      diagnosticsSystemInfo.uptime_seconds,
+    );
+    const loadMain = diagnosticsSystemInfo.load_avg
+      ? `LA ${diagnosticsSystemInfo.load_avg}`
+      : svcData.cpuLoadPercent != null
+        ? `CPU ${svcData.cpuLoadPercent}%`
+        : uptimeLabel || '—';
+
+    const cpuSubParts: string[] = [];
+    if (svcData.cpuLoadPercent != null && diagnosticsSystemInfo.load_avg) {
+      cpuSubParts.push(`CPU ${svcData.cpuLoadPercent}%`);
+    }
+    if (svcData.cpuTempC != null && svcData.cpuTempC > 0) {
+      cpuSubParts.push(`${svcData.cpuTempC}°C`);
+    }
+    if (uptimeLabel) {
+      cpuSubParts.push(`${tr('Аптайм', 'Uptime')}: ${uptimeLabel}`);
+    }
+
+    const cpuPct =
+      typeof svcData.cpuLoadPercent === 'number'
+        ? svcData.cpuLoadPercent
+        : undefined;
+
+    items.push({
+      key: tr('Нагрузка и аптайм', 'Load & Uptime'),
+      value: loadMain,
+      progressPct: cpuPct,
+      progressTone:
+        cpuPct != null
+          ? cpuPct >= 85
+            ? 'danger'
+            : cpuPct >= 65
+              ? 'warning'
+              : 'accent'
+          : undefined,
+      tag: uptimeLabel ? { label: uptimeLabel, kind: 'neutral' } : undefined,
+      subvalue: cpuSubParts.join(' · ') || undefined,
+    });
+  }
+
+  if (diagnosticsSystemInfo.dns_type || diagnosticsSystemInfo.inbound_mode) {
+    const dnsMode = (diagnosticsSystemInfo.dns_type || 'udp').toUpperCase();
+    const inboundMode = (
+      diagnosticsSystemInfo.inbound_mode || 'tproxy'
+    ).toUpperCase();
+    const fakeIpOn = diagnosticsSystemInfo.fakeip_enabled !== 0;
+
+    items.push({
+      key: tr('DNS и перехват', 'DNS & Intercept'),
+      value: `${dnsMode} · ${inboundMode}`,
+      tag: {
+        label: fakeIpOn ? 'FakeIP' : tr('Без FakeIP', 'No FakeIP'),
+        kind: fakeIpOn ? 'success' : 'neutral',
+      },
+      subvalue:
+        typeof svcData.dnsmasqCacheSize === 'number' &&
+        svcData.dnsmasqCacheSize > 0
+          ? `dnsmasq: ${svcData.dnsmasqCacheSize} ${tr('записей', 'entries')}`
+          : '127.0.0.42:53 · :1602',
+    });
+  }
+
+  if (typeof diagnosticsSystemInfo.total_sections_count === 'number') {
+    const activeSec = diagnosticsSystemInfo.active_sections_count ?? 0;
+    const totalSec = diagnosticsSystemInfo.total_sections_count;
+    const quarantinedSec =
+      diagnosticsSystemInfo.quarantined_sections_count ?? 0;
+    const deferredSec = diagnosticsSystemInfo.deferred_sections_count ?? 0;
+
+    const conntrackSub =
+      typeof diagnosticsSystemInfo.conntrack_count === 'number' &&
+      typeof diagnosticsSystemInfo.conntrack_max === 'number' &&
+      diagnosticsSystemInfo.conntrack_max > 0
+        ? `Conntrack: ${diagnosticsSystemInfo.conntrack_count} / ${diagnosticsSystemInfo.conntrack_max}`
+        : undefined;
+
+    items.push({
+      key: tr('Секции и сессии', 'Sections & Sessions'),
+      value: `${activeSec} / ${totalSec}`,
+      tag:
+        quarantinedSec > 0
+          ? {
+              label: `${tr('карантин', 'quarantine')}: ${quarantinedSec}`,
+              kind: 'warning',
+            }
+          : deferredSec > 0
+            ? {
+                label: `${tr('отложено', 'deferred')}: ${deferredSec}`,
+                kind: 'warning',
+              }
+            : {
+                label: tr('активны', 'active'),
+                kind: 'success',
+              },
+      subvalue: conntrackSub,
+    });
+  }
+
+  const renderedSystemInfo = renderSystemInfo({
+    items,
+  });
+
+  return preserveScrollForPage(() => {
+    container.replaceChildren(renderedSystemInfo);
+  });
+}
+
+async function onStoreUpdate(
+  _next: StoreType,
+  _prev: StoreType,
+  diff: Partial<StoreType>,
+) {
+  if (diff.diagnosticsChecks) {
+    renderDiagnosticsChecks();
+    renderWikiDisclaimerWidget();
+  }
+
+  if (diff.diagnosticsRunAction) {
+    renderDiagnosticRunActionWidget();
+    renderDiagnosticsChecks();
+  }
+
+  if (
+    diff.diagnosticsActions ||
+    diff.servicesInfoWidget ||
+    diff.updatesActions ||
+    diff.diagnosticsSystemInfo
+  ) {
+    renderDiagnosticAvailableActionsWidget();
+  }
+
+  if (diff.diagnosticsActions || diff.servicesInfoWidget) {
+    renderDiagnosticRunActionWidget();
+  }
+
+  if (diff.diagnosticsSystemInfo || diff.servicesInfoWidget) {
+    renderDiagnosticSystemInfoWidget();
+    renderDiagnosticRunActionWidget();
+  }
+}
+
+function persistDiagnosticRunProgress({
+  providerOptions,
+  nextRunnerIndex,
+}: {
+  providerOptions: DiagnosticsProviderOptions;
+  nextRunnerIndex: number;
+}) {
+  savePersistedDiagnosticRun({
+    providerOptions,
+    nextRunnerIndex,
+    diagnosticsChecks: store.get().diagnosticsChecks,
+  });
+}
+
+function setDiagnosticCheckLoading(code: DIAGNOSTICS_CHECKS) {
+  const meta = DIAGNOSTICS_CHECKS_MAP[code];
+  const diagnosticsChecks = store.get().diagnosticsChecks;
+  const other = diagnosticsChecks.filter((item) => item.code !== code);
+
+  store.set({
+    diagnosticsChecks: [
+      ...other,
+      {
+        order: meta.order,
+        code: meta.code,
+        title: meta.title,
+        description: _('Checking, please wait'),
+        state: 'loading',
+        items: [],
+      },
+    ],
+  });
+}
+
+function getDiagnosticRunners(
+  providerOptions: DiagnosticsProviderOptions,
+): DiagnosticRunner[] {
+  const engineRunner = {
+    code: DIAGNOSTICS_CHECKS.SINGBOX,
+    run: runSingBoxCheck,
+  };
+
+  return [
+    { code: DIAGNOSTICS_CHECKS.DNS, run: runDnsCheck },
+    engineRunner,
+    ...(providerOptions.includeInbounds
+      ? [{ code: DIAGNOSTICS_CHECKS.INBOUNDS, run: runInboundsCheck }]
+      : []),
+    { code: DIAGNOSTICS_CHECKS.NFT, run: runNftCheck },
+    ...(providerOptions.includeZapret
+      ? [{ code: DIAGNOSTICS_CHECKS.ZAPRET, run: runZapretCheck }]
+      : []),
+    ...(providerOptions.includeZapret2
+      ? [{ code: DIAGNOSTICS_CHECKS.ZAPRET2, run: runZapret2Check }]
+      : []),
+    ...(providerOptions.includeByedpi
+      ? [{ code: DIAGNOSTICS_CHECKS.BYEDPI, run: runByedpiCheck }]
+      : []),
+    { code: DIAGNOSTICS_CHECKS.OUTBOUNDS, run: runSectionsCheck },
+    { code: DIAGNOSTICS_CHECKS.FAKEIP, run: runFakeIPCheck },
+  ];
+}
+
+async function runChecks({
+  resume,
+  openModal = false,
+}: {
+  resume?: PersistedDiagnosticRun;
+  openModal?: boolean;
+} = {}) {
+  if (store.get().diagnosticsRunAction.loading && !resume) {
+    if (openModal) {
+      openDiagnosticsModalView();
+    }
+    return;
+  }
+
+  if (!resume) {
+    clearExpandedCheckCards();
+  }
+
+  let providerOptions =
+    resume?.providerOptions ?? getDiagnosticsProviderOptions();
+  let nextRunnerIndex = resume?.nextRunnerIndex ?? 0;
+
+  store.set({
+    diagnosticsRunAction: { loading: true },
+    diagnosticsChecks:
+      resume?.diagnosticsChecks ??
+      getLoadingDiagnosticsChecks(providerOptions).diagnosticsChecks,
+  });
+  if (openModal) {
+    openDiagnosticsModalView();
+  }
+  persistDiagnosticRunProgress({
+    providerOptions,
+    nextRunnerIndex,
+  });
+
+  try {
+    if (!resume) {
+      await fetchDiagnosticsProviderInfo({ resetChecks: false });
+
+      providerOptions = getDiagnosticsProviderOptions();
+      nextRunnerIndex = 0;
+
+      store.set({
+        diagnosticsChecks:
+          getLoadingDiagnosticsChecks(providerOptions).diagnosticsChecks,
+      });
+      persistDiagnosticRunProgress({
+        providerOptions,
+        nextRunnerIndex,
+      });
+    }
+
+    const runners = getDiagnosticRunners(providerOptions);
+
+    for (let index = nextRunnerIndex; index < runners.length; index += 1) {
+      const runner = runners[index];
+
+      setDiagnosticCheckLoading(runner.code);
+      persistDiagnosticRunProgress({
+        providerOptions,
+        nextRunnerIndex: index,
+      });
+
+      try {
+        await runner.run();
+      } catch (e) {
+        logger.error(
+          '[DIAGNOSTIC]',
+          `runChecks - ${runner.run.name} failed`,
+          e,
+        );
+      }
+
+      persistDiagnosticRunProgress({
+        providerOptions,
+        nextRunnerIndex: index + 1,
+      });
+    }
+  } catch (e) {
+    logger.error('[DIAGNOSTIC]', 'runChecks - e', e);
+  } finally {
+    clearPersistedDiagnosticRun();
+    store.set({ diagnosticsRunAction: { loading: false } });
+    if (!diagnosticMounted) {
+      diagnosticCompletedWhileHidden = true;
+    }
+  }
+}
+
+async function loadInitialDiagnosticData() {
+  const diagnosticStatus = document.getElementById('diagnostic-status');
+
+  if (diagnosticStatus?.isConnected && diagnosticStatus.offsetParent !== null) {
+    if (store.get().diagnosticsRunAction.loading) {
+      return;
+    }
+
+    await fetchSystemInfo();
+    await fetchDiagnosticsProviderInfo();
+  }
+}
+
+function restorePersistedDiagnosticRun() {
+  // A run in flight has already persisted its progress, so this snapshot is
+  // always present while `runChecks` is running. Resuming it would bypass the
+  // loading guard in runChecks and start a second loop over the same checks,
+  // and the stale `nextRunnerIndex` would reset the cards the live loop has
+  // already finished.
+  if (store.get().diagnosticsRunAction.loading) {
+    return false;
+  }
+
+  const persistedRun = readPersistedDiagnosticRun();
+
+  if (!persistedRun) {
+    return false;
+  }
+
+  store.set({
+    diagnosticsRunAction: { loading: true },
+    diagnosticsChecks: persistedRun.diagnosticsChecks,
+  });
+  void runChecks({ resume: persistedRun });
+  return true;
+}
+
+async function onPageMount() {
+  const preserveHiddenResult = diagnosticCompletedWhileHidden;
+
+  onPageUnmount({
+    preserveCompletedResult: preserveHiddenResult,
+    preservePersistedRun: true,
+  });
+
+  diagnosticMounted = true;
+  diagnosticMountId += 1;
+  const mountId = diagnosticMountId;
+  const hasRuntimeSnapshot = Boolean(getCachedRuntimeUiState());
+
+  if (!hasRuntimeSnapshot) {
+    const uiState = await refreshRuntimeUiState({ force: true });
+
+    if (!diagnosticMounted || mountId !== diagnosticMountId) {
+      return;
+    }
+
+    if (!uiState) {
+      void refreshDiagnosticServicesInfo({ force: true });
+    }
+  }
+
+  const restoredPersistedRun =
+    !preserveHiddenResult && restorePersistedDiagnosticRun();
+
+  if (preserveHiddenResult) {
+    diagnosticCompletedWhileHidden = false;
+  } else if (
+    !restoredPersistedRun &&
+    !store.get().diagnosticsRunAction.loading
+  ) {
+    store.reset(['diagnosticsRunAction']);
+    resetDiagnosticsChecks();
+  }
+
+  store.subscribe(onStoreUpdate);
+  startServiceActionStateWatcher();
+  startCoreTelemetryWatcher();
+
+  renderDiagnosticsChecks();
+  renderDiagnosticRunActionWidget();
+  renderDiagnosticAvailableActionsWidget();
+  renderDiagnosticSystemInfoWidget();
+  renderWikiDisclaimerWidget();
+
+  if (hasRuntimeSnapshot) {
+    void refreshRuntimeUiState({ force: true });
+  }
+  if (!preserveHiddenResult && !restoredPersistedRun) {
+    void loadInitialDiagnosticData();
+  }
+}
+
+function onPageUnmount({
+  preserveCompletedResult = false,
+  preservePersistedRun = false,
+}: {
+  preserveCompletedResult?: boolean;
+  preservePersistedRun?: boolean;
+} = {}) {
+  diagnosticMounted = false;
+  diagnosticMountId += 1;
+  stopServiceActionStateWatcher();
+  stopCoreTelemetryWatcher();
+  servicesInfoRefreshPromise = null;
+
+  store.unsubscribe(onStoreUpdate);
+
+  if (!preserveCompletedResult && !store.get().diagnosticsRunAction.loading) {
+    if (!preservePersistedRun) {
+      clearPersistedDiagnosticRun();
+    }
+    store.reset(['diagnosticsRunAction']);
+    resetDiagnosticsChecks();
+    diagnosticCompletedWhileHidden = false;
+  }
+}
+
+function registerLifecycleListeners() {
+  if (diagnosticLifecycleRegistered) {
+    return;
+  }
+
+  diagnosticLifecycleRegistered = true;
+
+  store.subscribe((next, prev, diff) => {
+    if (
+      diff.tabService &&
+      next.tabService.current !== prev.tabService.current
+    ) {
+      logger.debug(
+        '[DIAGNOSTIC]',
+        'active tab diff event, active tab:',
+        diff.tabService.current,
+      );
+      const isDIAGNOSTICVisible = next.tabService.current === 'diagnostic';
+
+      if (isDIAGNOSTICVisible) {
+        logger.debug(
+          '[DIAGNOSTIC]',
+          'registerLifecycleListeners',
+          'onPageMount',
+        );
+        return onPageMount();
+      }
+
+      if (!isDIAGNOSTICVisible) {
+        logger.debug(
+          '[DIAGNOSTIC]',
+          'registerLifecycleListeners',
+          'onPageUnmount',
+        );
+        return onPageUnmount();
+      }
+    }
+  });
+}
+
+export async function initController(): Promise<void> {
+  if (diagnosticControllerInitialized) {
+    return;
+  }
+
+  diagnosticControllerInitialized = true;
+
+  onMount('diagnostic-status').then(() => {
+    logger.debug('[DIAGNOSTIC]', 'initController', 'onMount');
+    registerLifecycleListeners();
+    if (
+      store.get().tabService.current === 'diagnostic' ||
+      isActiveLuciTab('diagnostic')
+    ) {
+      onPageMount();
+    }
+  });
+}
