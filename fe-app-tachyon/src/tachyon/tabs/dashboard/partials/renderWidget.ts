@@ -29,7 +29,7 @@ function renderLoadingState() {
     'div',
     {
       id: '',
-      style: 'height: 78px',
+      style: 'min-height: 78px; height: 78px',
       class: 'tachyon_dashboard-page__widgets-section__item skeleton',
     },
     '',

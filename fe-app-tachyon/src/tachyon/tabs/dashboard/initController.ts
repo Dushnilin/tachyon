@@ -6848,15 +6848,17 @@ function peerRow(name: string, online: boolean) {
   };
 }
 
-async function renderTailscaleWidget() {
+export async function renderTailscaleWidget() {
   const widgetState = store.get().tailscaleWidget;
   const container = document.getElementById('dashboard-widget-tailscale');
   if (!container) return;
 
+  // Keep optional Tailscale slot hidden unless Tailscale is actually configured
+  // or a native Tailscale server exists to drive the initial fetch.
   if (
-    !widgetState.loading &&
-    !widgetState.failed &&
-    (!widgetState.data || !widgetState.data.configured)
+    !widgetState.data?.configured &&
+    (!hasEnabledNativeTailscaleServer() ||
+      (!widgetState.loading && !widgetState.failed))
   ) {
     container.style.display = 'none';
     container.replaceChildren();

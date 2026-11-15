@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-15 14:37+0300\n"
-"PO-Revision-Date: 2026-11-15 14:37+0300\n"
+"POT-Creation-Date: 2026-11-15 17:39+0300\n"
+"PO-Revision-Date: 2026-11-15 17:39+0300\n"
 "Last-Translator: Dushnilin <dushnilin@gmail.com>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "Language: \n"
@@ -10394,7 +10394,7 @@ msgstr ""
 msgid "Other"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6907
+#: src/tachyon/tabs/dashboard/initController.ts:6909
 msgid "Other peers"
 msgstr ""
 
@@ -12540,7 +12540,7 @@ msgstr ""
 #: src/tachyon/tabs/dashboard/inboundServers.ts:1522
 #: src/tachyon/tabs/dashboard/initController.ts:6115
 #: src/tachyon/tabs/dashboard/initController.ts:6218
-#: src/tachyon/tabs/dashboard/initController.ts:6883
+#: src/tachyon/tabs/dashboard/initController.ts:6885
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2775
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2783
 #: src/tachyon/tabs/dashboard/partials/renderOverviewRow.ts:2822
@@ -14120,7 +14120,7 @@ msgstr ""
 msgid "Starting…"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6880
+#: src/tachyon/tabs/dashboard/initController.ts:6882
 #: src/tachyon/tabs/diagnostic/partials/renderRouteExplainModal.ts:430
 #: src/tachyon/tabs/diagnostic/partials/renderStabilityModal.ts:517
 msgid "State"
@@ -15384,7 +15384,7 @@ msgstr ""
 msgid "This protocol is not implemented in tachyon-core yet"
 msgstr ""
 
-#: src/tachyon/tabs/dashboard/initController.ts:6895
+#: src/tachyon/tabs/dashboard/initController.ts:6897
 msgid "This router"
 msgstr ""
 
