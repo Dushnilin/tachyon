@@ -320,6 +320,51 @@ helpers.readOutboundMetadataFromSectionCache("VPN").then((vpnMeta) => {
     assert(Array.isArray(refreshedChoices) && refreshedChoices.length === 3, "refresher must see 3 populated choices instead of an invalidated empty cache");
     const fptnDraftNames = helpers.currentDraftOutboundNames("FptnSec");
     assert(!fptnDraftNames.includes("FPTN"), "currentDraftOutboundNames must not inject the FPTN source name as a server choice");
+
+    // 9. Verify exclude/include matching across subscription telemetry updates without false collisions
+    const telemetryMeta = helpers.filteredOutboundMetadataFromCache({
+      outboundMetadata: {
+        names: {
+          e1: "🇪🇺 [LTE] Europe 1 [151.02 GiB]",
+          e11: "🇪🇺 [LTE] Europe 1.1 [151.02 GiB]",
+          e12: "🇪🇺 [LTE] Europe 1.2 | 151.02 GiB | 27d",
+          g10: "🇩🇪 Germany 1 [10 Gbps]",
+          g1: "🇩🇪 Germany 1 [1 Gbps]",
+          s1: "Server (1) (98,5 ГБ)",
+          s2: "Server (2) (98,5 ГБ)",
+        },
+        countries: { e1: "EU", e11: "EU", e12: "EU", g10: "DE", g1: "DE", s1: "NL", s2: "NL" },
+        protocols: { e1: "vless", e11: "vless", e12: "vless", g10: "vless", g1: "vless", s1: "vless", s2: "vless" },
+        transports: { e1: "tcp", e11: "tcp", e12: "tcp", g10: "tcp", g1: "tcp", s1: "tcp", s2: "tcp" },
+        securities: { e1: "reality", e11: "reality", e12: "reality", g10: "reality", g1: "reality", s1: "reality", s2: "reality" },
+        ports: { e1: 443, e11: 443, e12: 443, g10: 443, g1: 443, s1: 443, s2: 443 },
+      },
+    });
+    const resDynExclude = helpers.evaluateLiveServerFilterPreview(telemetryMeta, {
+      filterMode: "exclude",
+      excludeOutbounds: [
+        "🇪🇺 [LTE] Europe 1 [154.77 GiB]",
+        "🇩🇪 Germany 1 [10 Gbps]",
+        "Server (1) (154,77 ГБ)",
+      ],
+    });
+    const matchedDynTags = resDynExclude.matchedServers.map((s) => s.tag);
+    assert(!matchedDynTags.includes("e1"), "Europe 1 must stay excluded when quota telemetry changes");
+    assert(matchedDynTags.includes("e11"), "Europe 1.1 must not match Europe 1 exclusion");
+    assert(matchedDynTags.includes("e12"), "Europe 1.2 must remain matched");
+    assert(!matchedDynTags.includes("g10"), "Germany 1 [10 Gbps] must be excluded");
+    assert(matchedDynTags.includes("g1"), "Germany 1 [1 Gbps] must not be matched by [10 Gbps]");
+    assert(!matchedDynTags.includes("s1"), "Server (1) must stay excluded when quota changes");
+    assert(matchedDynTags.includes("s2"), "Server (2) must not be matched by Server (1)");
+
+    const resDynInclude = helpers.evaluateLiveServerFilterPreview(telemetryMeta, {
+      filterMode: "include",
+      includeOutbounds: [
+        "🇪🇺 [LTE] Europe 1.2 | 12.4 / 200 GB | 28d",
+      ],
+    });
+    assert.strictEqual(resDynInclude.matchedCount, 1);
+    assert.strictEqual(resDynInclude.matchedServers[0].tag, "e12");
   });
 }).catch((err) => {
   console.error(err);
