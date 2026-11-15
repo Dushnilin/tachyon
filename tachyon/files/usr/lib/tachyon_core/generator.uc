@@ -24,6 +24,7 @@ let subscription_share_link = require("subscription.share_link");
 let uci = null;
 let fixture_uci_data = null;
 let runtime_settings_cache = null;
+let runtime_ipv6_state_cache = null;
 let runtime_ruleset_folder = runtime_constants.TMP_RULESET_FOLDER;
 let runtime_supports_xhttp = true;
 const TACHYON_RUNTIME_STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon";
@@ -197,6 +198,7 @@ function fixture_cursor(path) {
 function use_fixture_cursor(path) {
     uci = fixture_cursor(path);
     runtime_settings_cache = null;
+    runtime_ipv6_state_cache = null;
 }
 
 let runtime_uci_all_cache = null;
@@ -298,6 +300,96 @@ function runtime_settings() {
     if (runtime_settings_cache == null)
         runtime_settings_cache = object_or_empty(uci_cursor().get_all(CONFIG_NAME, "settings"));
     return runtime_settings_cache;
+}
+
+function effective_ipv6_state(settings) {
+    if (settings != null && runtime_ipv6_state_cache != null && settings == runtime_settings_cache)
+        return runtime_ipv6_state_cache;
+    let s = settings || runtime_settings();
+    let wan6_override = null;
+    if (fixture_uci_data != null && getenv("TACHYON_MOCK_WAN6_STATUS") == null &&
+        type(fixture_uci_data.__wan6_status) == "object")
+        wan6_override = fixture_uci_data.__wan6_status;
+    let computed = common.resolve_effective_ipv6_state(s, wan6_override);
+    if (settings == null || settings == runtime_settings_cache)
+        runtime_ipv6_state_cache = computed;
+    return computed;
+}
+
+function build_fakeip_exclude_rules(settings, eff_state, rewrite_ttl) {
+    if (eff_state && !eff_state.fakeip_enabled)
+        return [];
+    let raw_entries = list_option(settings, "fakeip_exclude");
+    if (length(raw_entries) == 0)
+        return [];
+
+    let exact_domains = [];
+    let suffix_domains = [];
+    let keyword_domains = [];
+    let regex_domains = [];
+    let seen = {};
+    let push_unique = function(arr, kind, val) {
+        val = lc(trim(as_string(val)));
+        if (val == "")
+            return;
+        let k = kind + ":" + val;
+        if (!seen[k]) {
+            seen[k] = true;
+            push(arr, val);
+        }
+    };
+
+    for (let entry in raw_entries) {
+        let entry_s = trim(as_string(entry));
+        if (entry_s == "" || substr(entry_s, 0, 1) == "#")
+            continue;
+        for (let token in rule_config.text_list_values(entry_s, "comma-space")) {
+            let tok = trim(as_string(token));
+            if (tok == "" || substr(tok, 0, 1) == "#")
+                continue;
+            if (core_ip.valid_ip(tok) || core_ip.valid_ip_cidr(tok))
+                continue;
+            if (substr(tok, 0, 5) == "full:")
+                push_unique(exact_domains, "domain", substr(tok, 5));
+            else if (substr(tok, 0, 7) == "domain:")
+                push_unique(exact_domains, "domain", substr(tok, 7));
+            else if (substr(tok, 0, 14) == "domain_suffix:")
+                push_unique(suffix_domains, "domain_suffix", substr(tok, 14));
+            else if (substr(tok, 0, 15) == "domain_keyword:")
+                push_unique(keyword_domains, "domain_keyword", substr(tok, 15));
+            else if (substr(tok, 0, 8) == "keyword:")
+                push_unique(keyword_domains, "domain_keyword", substr(tok, 8));
+            else if (substr(tok, 0, 13) == "domain_regex:")
+                push_unique(regex_domains, "domain_regex", substr(tok, 13));
+            else if (substr(tok, 0, 6) == "regex:")
+                push_unique(regex_domains, "domain_regex", substr(tok, 6));
+            else if (substr(tok, 0, 2) == "*.")
+                push_unique(suffix_domains, "domain_suffix", substr(tok, 2));
+            else if (substr(tok, 0, 1) == ".")
+                push_unique(suffix_domains, "domain_suffix", substr(tok, 1));
+            else
+                push_unique(suffix_domains, "domain_suffix", tok);
+        }
+    }
+
+    let rules = [];
+    for (let pair in [
+        [ "domain", exact_domains ],
+        [ "domain_suffix", suffix_domains ],
+        [ "domain_keyword", keyword_domains ],
+        [ "domain_regex", regex_domains ]
+    ]) {
+        if (length(pair[1]) == 0)
+            continue;
+        let r = {
+            action: "route",
+            server: runtime_constants.DNS_SERVER_TAG,
+            rewrite_ttl: rewrite_ttl
+        };
+        r[pair[0]] = pair[1];
+        push(rules, r);
+    }
+    return rules;
 }
 
 function settings_update_interval() {
@@ -558,11 +650,15 @@ function add_proxy_endpoint_dns_rule(config, sections) {
     // Prepended, not appended: a section's FakeIP rule must never win for the
     // hostname sing-box is about to dial. Built with an explicit loop because
     // `+` coerces two arrays into a string in ucode.
-    let merged = [{
+    let eff_state = effective_ipv6_state(runtime_settings());
+    let bootstrap_rule = {
         domain: domains,
         action: "route",
         server: runtime_constants.BOOTSTRAP_DNS_SERVER_TAG
-    }];
+    };
+    if (!eff_state.ipv6_active)
+        bootstrap_rule.query_type = [ "A" ];
+    let merged = [ bootstrap_rule ];
     for (let rule in array_or_empty(config.dns.rules))
         push(merged, rule);
     config.dns.rules = merged;
@@ -785,7 +881,64 @@ function proxy_mode(settings) {
 // keys, so a config generated here survives a binary swap. Anything specific -
 // the route table 2022, the fwmark - belongs to the core's own auto_route and is
 // never written into the file.
-function tun_inbound(settings) {
+function primary_lan_interface(settings) {
+    let raw = trim(option(settings, "source_network_interfaces", ""));
+    if (raw != "") {
+        for (let p in split(raw, /[\s,]+/)) {
+            if (p != "" && (fixture_uci_data != null || fs.stat("/sys/class/net/" + p) != null))
+                return p;
+        }
+    }
+    if (fs.stat("/sys/class/net/br-lan") != null)
+        return "br-lan";
+    return "";
+}
+
+function lan_interface_cidrs(lan_iface, service_address) {
+    let cidrs = [];
+    let seen = {};
+    let add_cidr = function(c) {
+        c = trim(as_string(c));
+        if (c == "")
+            return;
+        let masked = core_ip.mask_cidr(c);
+        if (masked != "")
+            c = masked;
+        if (c != "" && !seen[c]) {
+            seen[c] = true;
+            push(cidrs, c);
+        }
+    };
+    if (fixture_uci_data != null && type(fixture_uci_data.__lan_cidrs) == "array") {
+        for (let c in fixture_uci_data.__lan_cidrs)
+            add_cidr(c);
+    }
+    if (lan_iface != "" && fixture_uci_data == null) {
+        let out = common.command_output_from_args([ "ip", "-o", "addr", "show", "dev", lan_iface ]);
+        for (let line in split(as_string(out), "\n")) {
+            let m = match(line, /inet6?\s+([0-9a-fA-F:.]+\/[0-9]+)/);
+            if (m && m[1]) {
+                let addr_cidr = m[1];
+                if (index(lc(addr_cidr), "fe80:") == 0)
+                    continue;
+                add_cidr(addr_cidr);
+            }
+        }
+        for (let p6 in core_ip.lan_ipv6_prefixes([ lan_iface ]))
+            add_cidr(p6);
+    }
+    if (length(cidrs) == 0) {
+        let sa = trim(as_string(service_address || ""));
+        let m4 = match(sa, /^([0-9]+\.[0-9]+\.[0-9]+)\.[0-9]+$/);
+        if (m4 && m4[1] && index(m4[1], "127.") != 0)
+            add_cidr(m4[1] + ".0/24");
+        else
+            add_cidr("192.168.1.0/24");
+    }
+    return cidrs;
+}
+
+function tun_inbound(settings, service_address, eff_state) {
     if (proxy_mode(settings) != "tun")
         return null;
 
@@ -806,10 +959,19 @@ function tun_inbound(settings) {
     if (mtu < 576 || mtu > 65535)
         mtu = runtime_constants.TUN_MTU;
 
+    let state = eff_state || effective_ipv6_state(settings);
     let addresses = [ inet4 ];
-    let inet6 = trim(option(settings, "tun_inet6", runtime_constants.TUN_INET6_ADDRESS));
-    if (inet6 != "")
+    let fakeip6 = trim(option(settings, "fakeip_inet6_range", runtime_constants.FAKEIP_INET6_RANGE)) || runtime_constants.FAKEIP_INET6_RANGE;
+    if (state.ipv6_active) {
+        let inet6 = trim(option(settings, "tun_inet6", ""));
+        if (inet6 == "")
+            inet6 = "fdfe:dcba:9876::1/126";
+        else if (state.fakeip_enabled && core_ip.cidrs_overlap(inet6, fakeip6)) {
+            generator_log("tun_inet6 '" + inet6 + "' overlaps fakeip_inet6_range '" + fakeip6 + "', falling back to fdfe:dcba:9876::1/126", "warn");
+            inet6 = "fdfe:dcba:9876::1/126";
+        }
         push(addresses, inet6);
+    }
 
     let inbound = {
         type: "tun",
@@ -828,6 +990,29 @@ function tun_inbound(settings) {
         stack: trim(option(settings, "tun_stack", "mixed")) || "mixed",
         gso: bool_option(settings, "tun_gso", true)
     };
+    if (inbound.auto_route) {
+        let lan_cidrs = lan_interface_cidrs(primary_lan_interface(settings), service_address);
+        let exclude_addrs = [];
+        let exclude_seen = {};
+        let fakeip4 = trim(option(settings, "fakeip_inet4_range", runtime_constants.FAKEIP_INET4_RANGE)) || runtime_constants.FAKEIP_INET4_RANGE;
+        for (let raw_cidr in lan_cidrs) {
+            let cidr = core_ip.mask_cidr(raw_cidr) || trim(as_string(raw_cidr));
+            if (cidr == "" || exclude_seen[cidr])
+                continue;
+            if (index(cidr, ":") >= 0) {
+                if (!state.ipv6_active)
+                    continue;
+                if (state.fakeip_enabled && core_ip.cidrs_overlap(cidr, fakeip6))
+                    continue;
+            } else if (state.fakeip_enabled && core_ip.cidrs_overlap(cidr, fakeip4)) {
+                continue;
+            }
+            exclude_seen[cidr] = true;
+            push(exclude_addrs, cidr);
+        }
+        if (length(exclude_addrs) > 0)
+            inbound.route_exclude_address = exclude_addrs;
+    }
     let udp_timeout = trim(option(settings, "tun_udp_timeout", ""));
     if (udp_timeout != "")
         inbound.udp_timeout = udp_timeout;
@@ -842,7 +1027,7 @@ function tproxy_inbound_matcher() {
         return [ runtime_constants.TUN_INBOUND_TAG ];
     if (mode == "socks")
         return [ runtime_constants.CLIENT_MIXED_INBOUND_TAG ];
-    if (!core_ip.ipv6_supported())
+    if (!effective_ipv6_state(settings).ipv6_active)
         return [ runtime_constants.TPROXY_INBOUND_TAG ];
     return [ runtime_constants.TPROXY_INBOUND_TAG, runtime_constants.TPROXY_INBOUND6_TAG ];
 }
@@ -1057,7 +1242,9 @@ function base_config(settings, service_address, runtime_context) {
             try { fs.unlink(db_cand); } catch (e) {}
         }
     }
-    let dns_config = runtime_dns.config(settings);
+    let eff_state = effective_ipv6_state(settings);
+    ctx.ipv6_effective_state = function() { return eff_state; };
+    let dns_config = runtime_dns.config(settings, null);
     if (dns_config.unsupported)
         runtime_generate_unsupported(dns_config.unsupported);
 
@@ -1082,6 +1269,8 @@ function base_config(settings, service_address, runtime_context) {
             if (core_ip.valid_ip(p1)) {
                 let ip = p1;
                 let rr_type = index(ip, ":") != -1 ? "AAAA" : "A";
+                if (rr_type == "AAAA" && !eff_state.ipv6_active)
+                    continue;
                 for (let i = 1; i < length(parts); i++) {
                     let d = parts[i];
                     if (d != "" && substr(d, 0, 1) != "#") {
@@ -1096,6 +1285,8 @@ function base_config(settings, service_address, runtime_context) {
                 let domain = p1;
                 let ip = p2;
                 let rr_type = index(ip, ":") != -1 ? "AAAA" : "A";
+                if (rr_type == "AAAA" && !eff_state.ipv6_active)
+                    continue;
                 push(dns_hosts_predefined, {
                     action: "predefined",
                     domain: [domain],
@@ -1107,6 +1298,18 @@ function base_config(settings, service_address, runtime_context) {
 
     for (let rule in dns_config.rules)
         push(dns_rules, rule);
+    let diag_fakeip_rule = {
+        action: "route",
+        server: eff_state.fakeip_enabled ? runtime_constants.FAKEIP_DNS_SERVER_TAG : runtime_constants.DNS_SERVER_TAG,
+        rewrite_ttl,
+        domain: [ runtime_constants.FAKEIP_TEST_DOMAIN, runtime_constants.CHECK_PROXY_IP_DOMAIN ],
+        // fakeip answers A and AAAA only; see add_fakeip_query_type().
+        query_type: [ "A", "AAAA" ]
+    };
+    if (!eff_state.fakeip_enabled)
+        delete diag_fakeip_rule.query_type;
+    else if (!eff_state.ipv6_active)
+        diag_fakeip_rule.query_type = [ "A" ];
     for (let rule in [
         // HTTPS/SVCB records are how a client discovers DoH servers, so they
         // must not be answered - but with NODATA, not REFUSED. sing-box's
@@ -1117,41 +1320,38 @@ function base_config(settings, service_address, runtime_context) {
         // is the same block, answered as "this name has no such record".
         { action: "predefined", query_type: [ "HTTPS", "SVCB" ], rcode: "NOERROR" },
         { action: "reject", domain_suffix: "use-application-dns.net" },
-        {
-            action: "route",
-            server: runtime_constants.FAKEIP_DNS_SERVER_TAG,
-            rewrite_ttl,
-            domain: [ runtime_constants.FAKEIP_TEST_DOMAIN, runtime_constants.CHECK_PROXY_IP_DOMAIN ],
-            // fakeip answers A and AAAA only; see add_fakeip_query_type().
-            query_type: [ "A", "AAAA" ]
-        }
+        diag_fakeip_rule
     ])
         push(dns_rules, rule);
 
     let dns_servers = [];
     for (let server in dns_config.servers)
         push(dns_servers, server);
-    let fakeip_server = {
-        type: "fakeip",
-        tag: runtime_constants.FAKEIP_DNS_SERVER_TAG,
-        inet4_range: runtime_constants.FAKEIP_INET4_RANGE
-    };
-    let strategy = option(settings, "dns_strategy", "");
-    if (bool_option(settings, "ipv6_enabled", false) || strategy == "prefer_ipv6" || strategy == "ipv6_only")
-        fakeip_server.inet6_range = runtime_constants.FAKEIP_INET6_RANGE;
-    push(dns_servers, fakeip_server);
+    if (eff_state.fakeip_enabled) {
+        let fakeip4 = trim(option(settings, "fakeip_inet4_range", runtime_constants.FAKEIP_INET4_RANGE)) || runtime_constants.FAKEIP_INET4_RANGE;
+        let fakeip_server = {
+            type: "fakeip",
+            tag: runtime_constants.FAKEIP_DNS_SERVER_TAG,
+            inet4_range: fakeip4
+        };
+        if (eff_state.ipv6_active) {
+            let fakeip6 = trim(option(settings, "fakeip_inet6_range", runtime_constants.FAKEIP_INET6_RANGE)) || runtime_constants.FAKEIP_INET6_RANGE;
+            fakeip_server.inet6_range = fakeip6;
+        }
+        push(dns_servers, fakeip_server);
+    }
 
 // The transparent inbound exists only in tproxy mode. In socks mode there is
     // a client-facing listener instead, and in tun mode the core owns the routes
     // and a tproxy socket would only sit there unused.
-    let tun = tun_inbound(settings);
+    let tun = tun_inbound(settings, service_address, eff_state);
     let mode = proxy_mode(settings);
     if (mode == "tun" && tun == null)
         mode = "tproxy";
     let inbounds = [];
     if (mode == "tproxy") {
         push(inbounds, { type: "tproxy", tag: runtime_constants.TPROXY_INBOUND_TAG, listen: runtime_constants.TPROXY_INBOUND_ADDRESS, listen_port: runtime_constants.TPROXY_INBOUND_PORT, tcp_fast_open: true, udp_fragment: true });
-        if (core_ip.ipv6_supported())
+        if (eff_state.ipv6_active)
             push(inbounds, { type: "tproxy", tag: runtime_constants.TPROXY_INBOUND6_TAG, listen: runtime_constants.TPROXY_INBOUND6_ADDRESS, listen_port: runtime_constants.TPROXY_INBOUND_PORT, tcp_fast_open: true, udp_fragment: true });
     }
     if (mode == "socks") {
@@ -1169,7 +1369,7 @@ function base_config(settings, service_address, runtime_context) {
         push(inbounds, {
             type: "direct",
             tag: runtime_constants.SOURCE_DNS_INBOUND_TAG,
-            listen: core_ip.ipv6_supported() ? runtime_constants.SOURCE_DNS_INBOUND_ADDRESS : "0.0.0.0",
+            listen: eff_state.ipv6_active ? runtime_constants.SOURCE_DNS_INBOUND_ADDRESS : "0.0.0.0",
             listen_port: runtime_constants.SOURCE_DNS_INBOUND_PORT
         });
     }
@@ -1191,11 +1391,7 @@ for (let inbound in dns_config.inbounds)
     runtime_context.default_domain_resolver = runtime_dns.default_domain_resolver(settings);
     runtime_context.client_inbounds = tproxy_inbound_matcher();
 
-    let raw_ipv6_opt = lc(trim(option(settings, "ipv6_enabled", "")));
-    let eff_dns_strategy = option(settings, "dns_strategy", "prefer_ipv4");
-    if ((raw_ipv6_opt == "0" || raw_ipv6_opt == "false") &&
-        eff_dns_strategy != "prefer_ipv6" && eff_dns_strategy != "ipv6_only")
-        eff_dns_strategy = "ipv4_only";
+    let eff_dns_strategy = eff_state.runtime_dns_strategy;
 
     let dns_section = {
         servers: dns_servers,
@@ -1215,6 +1411,7 @@ for (let inbound in dns_config.inbounds)
 
     let use_legacy_rdrc = !is_sb_1_14_plus;
 
+    runtime_context.ipv6_active = eff_state.ipv6_active;
     let route_section = runtime_route.config(settings, runtime_context);
     if (is_sb_1_14_plus)
         route_section.default_http_client = "ruleset-http";
@@ -1232,7 +1429,7 @@ for (let inbound in dns_config.inbounds)
     let cache_file_section = {
         enabled: true,
         path: cache_path,
-        store_fakeip: true
+        store_fakeip: eff_state.fakeip_enabled
     };
     if (use_legacy_rdrc)
         cache_file_section.store_rdrc = true;
@@ -1822,10 +2019,11 @@ function add_safesearch_dns_rules(target, profiles) {
 }
 
 function add_content_block_dns_inbound(config) {
+    let eff_state = effective_ipv6_state(null);
     push(config.inbounds, {
         type: "direct",
         tag: runtime_constants.DNS_BLOCK_INBOUND_TAG,
-        listen: core_ip.ipv6_supported() ? runtime_constants.DNS_BLOCK_INBOUND_ADDRESS : "0.0.0.0",
+        listen: eff_state.ipv6_active ? runtime_constants.DNS_BLOCK_INBOUND_ADDRESS : "0.0.0.0",
         listen_port: runtime_constants.DNS_BLOCK_INBOUND_PORT
     });
 }
@@ -2016,55 +2214,6 @@ function source_aware_dns_sources(sections, settings) {
     return sources;
 }
 
-function primary_lan_interface(settings) {
-    let raw = trim(option(settings, "source_network_interfaces", ""));
-    if (raw != "") {
-        for (let p in split(raw, /[\s,]+/)) {
-            if (p != "" && (fixture_uci_data != null || fs.stat("/sys/class/net/" + p) != null))
-                return p;
-        }
-    }
-    if (fs.stat("/sys/class/net/br-lan") != null)
-        return "br-lan";
-    return "";
-}
-
-function lan_interface_cidrs(lan_iface, service_address) {
-    let cidrs = [];
-    let seen = {};
-    let add_cidr = function(c) {
-        c = trim(as_string(c));
-        if (c != "" && !seen[c]) {
-            seen[c] = true;
-            push(cidrs, c);
-        }
-    };
-    if (lan_iface != "" && fixture_uci_data == null) {
-        let out = common.command_output_from_args([ "ip", "-o", "addr", "show", "dev", lan_iface ]);
-        for (let line in split(as_string(out), "\n")) {
-            let m = match(line, /inet6?\s+([0-9a-fA-F:.]+\/[0-9]+)/);
-            if (m && m[1]) {
-                let addr_cidr = m[1];
-                if (index(lc(addr_cidr), "fe80:") == 0)
-                    continue;
-                let m24 = match(addr_cidr, /^([0-9]+\.[0-9]+\.[0-9]+)\.[0-9]+\/24$/);
-                if (m24 && m24[1])
-                    addr_cidr = m24[1] + ".0/24";
-                add_cidr(addr_cidr);
-            }
-        }
-    }
-    if (length(cidrs) == 0) {
-        let sa = trim(as_string(service_address || ""));
-        let m4 = match(sa, /^([0-9]+\.[0-9]+\.[0-9]+)\.[0-9]+$/);
-        if (m4 && m4[1] && index(m4[1], "127.") != 0)
-            add_cidr(m4[1] + ".0/24");
-        else
-            add_cidr("192.168.1.0/24");
-    }
-    return cidrs;
-}
-
 function add_source_aware_dns_support(config, source_aware_dns) {
     if (length(source_aware_dns) == 0)
         return;
@@ -2161,20 +2310,48 @@ function strip_certificate_pins_if_unsupported(config) {
             "; those certificate pins were removed to keep the config loadable\n");
 }
 
-function normalize_wireguard_addresses(config) {
+function filter_cidrs_ipv4_only(cidrs) {
+    let out = [];
+    for (let c in array_or_empty(cidrs)) {
+        if (index(as_string(c), ":") < 0)
+            push(out, c);
+    }
+    return out;
+}
+
+function normalize_wireguard_addresses(config, eff_state) {
+    let strip_all_v6 = (eff_state != null && !eff_state.ipv6_active);
     for (let list in [ config.outbounds, config.endpoints, config.inbounds ]) {
         if (type(list) != "array")
             continue;
         for (let item in list) {
             if (type(item) == "object" && (item.type == "wireguard" || item.type == "awg")) {
-                if (item.address != null)
+                if (item.address != null) {
                     item.address = core_ip.normalize_to_cidrs(item.address);
-                if (item.local_address != null)
+                    if (strip_all_v6)
+                        item.address = filter_cidrs_ipv4_only(item.address);
+                }
+                if (item.local_address != null) {
                     item.local_address = core_ip.normalize_to_cidrs(item.local_address);
+                    if (strip_all_v6)
+                        item.local_address = filter_cidrs_ipv4_only(item.local_address);
+                }
+                let has_v4_local = false;
+                let has_v6_local = false;
+                for (let addr in array_or_empty(item.address != null ? item.address : item.local_address)) {
+                    if (index(as_string(addr), ":") >= 0)
+                        has_v6_local = true;
+                    else
+                        has_v4_local = true;
+                }
+                let strip_peer_v6 = strip_all_v6 || (has_v4_local && !has_v6_local);
                 if (type(item.peers) == "array") {
                     for (let peer in item.peers) {
-                        if (type(peer) == "object" && peer.allowed_ips != null)
+                        if (type(peer) == "object" && peer.allowed_ips != null) {
                             peer.allowed_ips = core_ip.normalize_to_cidrs(peer.allowed_ips);
+                            if (strip_peer_v6)
+                                peer.allowed_ips = filter_cidrs_ipv4_only(peer.allowed_ips);
+                        }
                     }
                 }
             }
@@ -2347,6 +2524,10 @@ function generate_config_once(output_path, service_address, mwan3_active, suppor
     cursor.load(CONFIG_NAME);
     runtime_settings_cache = object_or_empty(cursor.get_all(CONFIG_NAME, "settings"));
     let settings = runtime_settings_cache;
+    runtime_ipv6_state_cache = null;
+    let eff_state = effective_ipv6_state(settings);
+    if (fixture_uci_data == null)
+        common.cache_ipv6_runtime_state(eff_state);
 
     let sections = enabled_sections();
     let servers = enabled_servers();
@@ -2426,7 +2607,23 @@ function generate_config_once(output_path, service_address, mwan3_active, suppor
     }
     for (let section in sections) {
         let act = option(section, "action", "");
-        if (act == "block" || act == "bypass") {
+        if (act == "block") {
+            ctx.current_section = section[".name"];
+            let snap = snapshot_config_counts(config);
+            add_route_for_section(config, section);
+            record_owner_delta(config, owners, section[".name"], snap);
+        }
+    }
+    if (!eff_state.ipv6_active && type(config.dns) == "object" && type(config.dns.rules) == "array") {
+        push(config.dns.rules, {
+            action: "predefined",
+            query_type: [ "AAAA" ],
+            rcode: "NOERROR"
+        });
+    }
+    for (let section in sections) {
+        let act = option(section, "action", "");
+        if (act == "bypass") {
             ctx.current_section = section[".name"];
             let snap = snapshot_config_counts(config);
             add_route_for_section(config, section);
@@ -2435,6 +2632,11 @@ function generate_config_once(output_path, service_address, mwan3_active, suppor
     }
     for (let r in deferred_base_policy_rules)
         push(config.route.rules, r);
+    if (type(config.dns) == "object" && type(config.dns.rules) == "array") {
+        let fakeip_ex_ttl = int_option(settings, "dns_rewrite_ttl", "15");
+        for (let ex_rule in build_fakeip_exclude_rules(settings, eff_state, fakeip_ex_ttl))
+            push(config.dns.rules, ex_rule);
+    }
     for (let section in sections) {
         let act = option(section, "action", "");
         if (act == "dns") {
@@ -2525,7 +2727,7 @@ function generate_config_once(output_path, service_address, mwan3_active, suppor
     generator_routes.finalize_remote_custom_rulesets_state();
     strip_internal_fields(config);
     strip_certificate_pins_if_unsupported(config);
-    normalize_wireguard_addresses(config);
+    normalize_wireguard_addresses(config, eff_state);
     normalize_hysteria2_server_ports(config);
     finalize_config_owners(config, owners, output_path);
     if (!atomic_write_json_file(output_path, config)) {
@@ -2716,6 +2918,7 @@ ctx.is_sing_box_lx = is_sing_box_lx_detected;
 ctx.is_tachyon_core = is_tachyon_core_detected;
 ctx.detect_sing_box_version = detect_sing_box_version;
 ctx.is_certificate_sha256_supported = is_certificate_sha256_supported;
+ctx.ipv6_effective_state = function() { return effective_ipv6_state(runtime_settings()); };
 
 generator_outbounds.init(ctx);
 generator_routes.init(ctx);

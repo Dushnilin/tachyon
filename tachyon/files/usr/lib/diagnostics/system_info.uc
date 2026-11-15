@@ -602,7 +602,8 @@ function collect_system_telemetry() {
 
     let cfg = settings();
     let dns_type = option(cfg, "dns_type", "doh");
-    let fakeip_enabled = bool_option(cfg, "fakeip", true) ? 1 : 0;
+    let v6_info = network_mod().get_ipv6_runtime_telemetry(cfg);
+    let fakeip_enabled = v6_info.fakeip_enabled;
     let inbound_mode = option(cfg, "inbound_mode", "tproxy");
 
     let sections_total_count = 0;
@@ -634,6 +635,18 @@ function collect_system_telemetry() {
         dns_type,
         fakeip_enabled,
         inbound_mode,
+        router_hostname: v6_info.router_hostname,
+        wan_ipv6: v6_info.wan_ipv6,
+        lan_ipv6: v6_info.lan_ipv6,
+        wan6_available: v6_info.wan6_available,
+        wan6_iface: v6_info.wan6_iface,
+        wan6_prefix: v6_info.wan6_prefix,
+        wan6_pd: v6_info.wan6_pd,
+        ipv6_effective_state: v6_info.ipv6_effective_state,
+        ipv6_mode: v6_info.ipv6_mode,
+        ipv6_leak_guard: v6_info.ipv6_leak_guard,
+        dns_strategy: v6_info.dns_strategy,
+        runtime_dns_strategy: v6_info.runtime_dns_strategy,
         sections_total_count,
         sections_enabled_count,
         total_sections_count: sections_total_count,

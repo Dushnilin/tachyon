@@ -490,32 +490,38 @@ function tag_prefixed_name_with_type(tag, names, metadata) {
     return label != "" ? (base + " [" + label + "]") : base;
 }
 
+function server_name_filter_contains(name_filter, candidate) {
+    if (array_contains(name_filter, candidate))
+        return true;
+    return runtime_urltest.name_filter_contains(name_filter, candidate);
+}
+
 function tag_name_filter_matches(tag, names, name_filter, regex_set, metadata, name_with_type_indexed, prefixed_with_type_indexed, is_first_for_type, is_first_for_prefixed_type) {
     if (regex_set && regex_set[tag])
         return true;
     if (type(name_filter) != "array" || length(name_filter) == 0)
         return false;
     let name = tag_display_name(tag, names);
-    if (array_contains(name_filter, name) || array_contains(name_filter, tag))
+    if (server_name_filter_contains(name_filter, name) || array_contains(name_filter, tag))
         return true;
     let name_with_type = tag_display_name_with_type(tag, names, metadata);
-    if (name_with_type != name && (is_first_for_type != false) && array_contains(name_filter, name_with_type))
+    if (name_with_type != name && (is_first_for_type != false) && server_name_filter_contains(name_filter, name_with_type))
         return true;
     let badge = tag_source_badge(tag, name, metadata);
     if (badge != "") {
         let b_name = "[" + badge + "] " + name;
         let b_with_type = tag_prefixed_name_with_type(tag, names, metadata);
-        if (array_contains(name_filter, b_name) ||
-            ((is_first_for_prefixed_type != false) && array_contains(name_filter, b_with_type)) ||
-            array_contains(name_filter, badge + ": " + name) ||
-            array_contains(name_filter, badge + " " + name))
+        if (server_name_filter_contains(name_filter, b_name) ||
+            ((is_first_for_prefixed_type != false) && server_name_filter_contains(name_filter, b_with_type)) ||
+            server_name_filter_contains(name_filter, badge + ": " + name) ||
+            server_name_filter_contains(name_filter, badge + " " + name))
             return true;
     }
     let stored_prefix = trim(as_string(object_or_empty(object_or_empty(metadata).prefixes)[tag] || ""));
     if (stored_prefix != "") {
-        if (array_contains(name_filter, stored_prefix + ": " + name) ||
-            array_contains(name_filter, stored_prefix + " " + name) ||
-            array_contains(name_filter, "[" + stored_prefix + "] " + name))
+        if (server_name_filter_contains(name_filter, stored_prefix + ": " + name) ||
+            server_name_filter_contains(name_filter, stored_prefix + " " + name) ||
+            server_name_filter_contains(name_filter, "[" + stored_prefix + "] " + name))
             return true;
         let unprefixed = "";
         if (index(name, stored_prefix + ": ") == 0)
@@ -524,37 +530,37 @@ function tag_name_filter_matches(tag, names, name_filter, regex_set, metadata, n
             unprefixed = trim(substr(name, length(stored_prefix) + 1));
         if (unprefixed != "") {
             let bracketed = "[" + stored_prefix + "] " + unprefixed;
-            if (array_contains(name_filter, unprefixed) ||
-                array_contains(name_filter, bracketed) ||
-                array_contains(name_filter, stored_prefix + ": " + unprefixed) ||
-                array_contains(name_filter, stored_prefix + " " + unprefixed))
+            if (server_name_filter_contains(name_filter, unprefixed) ||
+                server_name_filter_contains(name_filter, bracketed) ||
+                server_name_filter_contains(name_filter, stored_prefix + ": " + unprefixed) ||
+                server_name_filter_contains(name_filter, stored_prefix + " " + unprefixed))
                 return true;
             let proto = object_or_empty(object_or_empty(metadata).protocols)[tag];
             let trans = object_or_empty(object_or_empty(metadata).transports)[tag];
             let label = format_outbound_type_label(proto, trans);
             if (label != "" &&
-                (array_contains(name_filter, unprefixed + " [" + label + "]") ||
-                 array_contains(name_filter, bracketed + " [" + label + "]")))
+                (server_name_filter_contains(name_filter, unprefixed + " [" + label + "]") ||
+                 server_name_filter_contains(name_filter, bracketed + " [" + label + "]")))
                 return true;
         }
     }
-    if (name_with_type_indexed != null && array_contains(name_filter, name_with_type_indexed))
+    if (name_with_type_indexed != null && server_name_filter_contains(name_filter, name_with_type_indexed))
         return true;
-    if (prefixed_with_type_indexed != null && array_contains(name_filter, prefixed_with_type_indexed))
+    if (prefixed_with_type_indexed != null && server_name_filter_contains(name_filter, prefixed_with_type_indexed))
         return true;
     let source_name = trim(as_string(object_or_empty(object_or_empty(metadata).source_names)[tag] || ""));
     if (source_name != "" && source_name != name) {
-        if (array_contains(name_filter, source_name))
+        if (server_name_filter_contains(name_filter, source_name))
             return true;
         let proto = object_or_empty(object_or_empty(metadata).protocols)[tag];
         let trans = object_or_empty(object_or_empty(metadata).transports)[tag];
         let label = format_outbound_type_label(proto, trans);
-        if (label != "" && array_contains(name_filter, source_name + " [" + label + "]"))
+        if (label != "" && server_name_filter_contains(name_filter, source_name + " [" + label + "]"))
             return true;
         if (stored_prefix != "") {
             let b_src = "[" + stored_prefix + "] " + source_name;
-            if (array_contains(name_filter, b_src) ||
-                (label != "" && array_contains(name_filter, b_src + " [" + label + "]")))
+            if (server_name_filter_contains(name_filter, b_src) ||
+                (label != "" && server_name_filter_contains(name_filter, b_src + " [" + label + "]")))
                 return true;
         }
     }
@@ -665,14 +671,16 @@ function urltest_matching_candidate_outbounds(urltest_candidate_tags, names, cou
         let is_first_pref_type = false;
         if (has_name_filter) {
             let name_with_type = tag_display_name_with_type(tag, names, metadata);
-            seen_type_counts[name_with_type] = (seen_type_counts[name_with_type] || 0) + 1;
-            let count = seen_type_counts[name_with_type];
+            let name_with_type_key = runtime_urltest.strip_dynamic_server_telemetry(name_with_type);
+            seen_type_counts[name_with_type_key] = (seen_type_counts[name_with_type_key] || 0) + 1;
+            let count = seen_type_counts[name_with_type_key];
             name_with_type_indexed = count > 1 ? (name_with_type + " (#" + count + ")") : name_with_type;
             is_first_type = (count == 1);
 
             let prefixed_with_type = tag_prefixed_name_with_type(tag, names, metadata);
-            seen_prefixed_type_counts[prefixed_with_type] = (seen_prefixed_type_counts[prefixed_with_type] || 0) + 1;
-            let p_count = seen_prefixed_type_counts[prefixed_with_type];
+            let prefixed_with_type_key = runtime_urltest.strip_dynamic_server_telemetry(prefixed_with_type);
+            seen_prefixed_type_counts[prefixed_with_type_key] = (seen_prefixed_type_counts[prefixed_with_type_key] || 0) + 1;
+            let p_count = seen_prefixed_type_counts[prefixed_with_type_key];
             prefixed_with_type_indexed = p_count > 1 ? (prefixed_with_type + " (#" + p_count + ")") : prefixed_with_type;
             is_first_pref_type = (p_count == 1);
         }
@@ -940,13 +948,15 @@ function filter_tags_by_group_spec(candidate_tags, spec, state) {
             let pc_first = false;
             if (has_inc_names_only) {
                 let nwt = tag_display_name_with_type(t, names, metadata);
-                pre_type_counts[nwt] = (pre_type_counts[nwt] || 0) + 1;
-                let c_idx = pre_type_counts[nwt];
+                let nwt_key = runtime_urltest.strip_dynamic_server_telemetry(nwt);
+                pre_type_counts[nwt_key] = (pre_type_counts[nwt_key] || 0) + 1;
+                let c_idx = pre_type_counts[nwt_key];
                 nwt_idx = c_idx > 1 ? (nwt + " (#" + c_idx + ")") : nwt;
                 c_first = (c_idx == 1);
                 let pwt = tag_prefixed_name_with_type(t, names, metadata);
-                pre_prefixed_counts[pwt] = (pre_prefixed_counts[pwt] || 0) + 1;
-                let pc_idx = pre_prefixed_counts[pwt];
+                let pwt_key = runtime_urltest.strip_dynamic_server_telemetry(pwt);
+                pre_prefixed_counts[pwt_key] = (pre_prefixed_counts[pwt_key] || 0) + 1;
+                let pc_idx = pre_prefixed_counts[pwt_key];
                 pwt_idx = pc_idx > 1 ? (pwt + " (#" + pc_idx + ")") : pwt;
                 pc_first = (pc_idx == 1);
             }
@@ -964,14 +974,16 @@ function filter_tags_by_group_spec(candidate_tags, spec, state) {
         let is_first_pref_type = false;
         if (need_indexed_type_names) {
             let name_with_type = tag_display_name_with_type(t, names, metadata);
-            seen_type_counts[name_with_type] = (seen_type_counts[name_with_type] || 0) + 1;
-            let count = seen_type_counts[name_with_type];
+            let name_with_type_key = runtime_urltest.strip_dynamic_server_telemetry(name_with_type);
+            seen_type_counts[name_with_type_key] = (seen_type_counts[name_with_type_key] || 0) + 1;
+            let count = seen_type_counts[name_with_type_key];
             name_with_type_indexed = count > 1 ? (name_with_type + " (#" + count + ")") : name_with_type;
             is_first_type = (count == 1);
 
             let prefixed_with_type = tag_prefixed_name_with_type(t, names, metadata);
-            seen_prefixed_type_counts[prefixed_with_type] = (seen_prefixed_type_counts[prefixed_with_type] || 0) + 1;
-            let p_count = seen_prefixed_type_counts[prefixed_with_type];
+            let prefixed_with_type_key = runtime_urltest.strip_dynamic_server_telemetry(prefixed_with_type);
+            seen_prefixed_type_counts[prefixed_with_type_key] = (seen_prefixed_type_counts[prefixed_with_type_key] || 0) + 1;
+            let p_count = seen_prefixed_type_counts[prefixed_with_type_key];
             prefixed_with_type_indexed = p_count > 1 ? (prefixed_with_type + " (#" + p_count + ")") : prefixed_with_type;
             is_first_pref_type = (p_count == 1);
         }
@@ -3256,17 +3268,21 @@ function section_fail_policy_override_target(section) {
 }
 
 function section_dns_server(section) {
+    let eff_state = ctx.ipv6_effective_state ? ctx.ipv6_effective_state() : null;
+    let fakeip_or_real = (!eff_state || eff_state.fakeip_enabled)
+        ? runtime_constants.FAKEIP_DNS_SERVER_TAG
+        : runtime_constants.DNS_SERVER_TAG;
     let override = section_fail_policy_override_target(section);
     if (override != null) {
         if (override.fail_policy == "direct")
             return runtime_constants.DNS_SERVER_TAG;
-        return runtime_constants.FAKEIP_DNS_SERVER_TAG;
+        return fakeip_or_real;
     }
     if (connections.routed_dns_enabled(section))
         return runtime_constants.tag(section[".name"], "routed-dns-server");
     if (option(section, "action", "") == "bypass")
         return runtime_constants.DNS_SERVER_TAG;
-    return runtime_constants.FAKEIP_DNS_SERVER_TAG;
+    return fakeip_or_real;
 }
 
 function section_is_ipv4_only_dpi(section) {
@@ -3283,6 +3299,67 @@ function section_is_ipv4_only_dpi(section) {
     if (raw == "" || index(raw, "--filter-l3=ipv4") < 0)
         return false;
     return match(raw, /--filter-l3=[^[:space:]]*ipv6/) == null;
+}
+
+function section_awg_has_ipv6(section) {
+    let amz = connections.amnezia_configs ? connections.amnezia_configs(section) : [];
+    if (length(amz) > 0) {
+        for (let item in amz) {
+            let body = type(item) == "object"
+                ? as_string(item.body || item.conf || item.content || item.text || "")
+                : as_string(item);
+            if (type(item) == "object" && type(item.address) == "array") {
+                for (let addr in item.address)
+                    if (index(as_string(addr), ":") >= 0)
+                        return true;
+            }
+            for (let line in split(body, /\r?\n/)) {
+                let m = match(trim(line), /^Address[ \t]*=[ \t]*(.+)$/i);
+                if (m && index(m[1], ":") >= 0)
+                    return true;
+            }
+        }
+        return false;
+    }
+    let addrs = list_option(section, "awg_local_address");
+    if (length(addrs) == 0)
+        return true;
+    for (let addr in addrs) {
+        if (index(as_string(addr), ":") >= 0)
+            return true;
+    }
+    return false;
+}
+
+function section_ipv6_supported(section) {
+    let eff_state = ctx.ipv6_effective_state ? ctx.ipv6_effective_state() : null;
+    if (eff_state && !eff_state.ipv6_active)
+        return false;
+    let raw_v6 = lc(trim(option(section, "ipv6_support", "1")));
+    if (raw_v6 == "0" || raw_v6 == "false" || raw_v6 == "off")
+        return false;
+    if (section_is_ipv4_only_dpi(section))
+        return false;
+    let action = option(section, "action", "");
+    if (eff_state && eff_state.effective == "tunnel_over_v4" &&
+        (action == "bypass" || action == "hosts" || action == "dns"))
+        return false;
+    if (action == "awg" && !section_awg_has_ipv6(section))
+        return false;
+    return true;
+}
+
+function build_section_aaaa_noerror_rule(template_rule) {
+    let aaaa_rule = {
+        action: "predefined",
+        query_type: [ "AAAA" ],
+        rcode: "NOERROR"
+    };
+    for (let key in [ "inbound", "domain", "domain_suffix", "domain_keyword", "domain_regex", "rule_set", "source_ip_cidr", "invert" ]) {
+        if (template_rule[key] != null)
+            aaaa_rule[key] = template_rule[key];
+    }
+    return aaaa_rule;
 }
 
 // The fakeip server synthesises addresses and answers A and AAAA only. Without
@@ -3607,7 +3684,9 @@ function add_port_matchers(rule, section) {
 function tproxy_inbound_matcher() {
     if (type(ctx.tproxy_inbound_matcher) == "function")
         return ctx.tproxy_inbound_matcher();
-    if (!core_ip.ipv6_supported())
+    let eff_state = ctx.ipv6_effective_state ? ctx.ipv6_effective_state() : null;
+    let ipv6_ok = eff_state ? eff_state.ipv6_active : core_ip.ipv6_supported();
+    if (!ipv6_ok)
         return [ runtime_constants.TPROXY_INBOUND_TAG ];
     return [ runtime_constants.TPROXY_INBOUND_TAG, runtime_constants.TPROXY_INBOUND6_TAG ];
 }
@@ -3925,7 +4004,8 @@ function push_section_dns_matcher_rule(config, section, rule, excluded_cidrs, do
     let routed_tag = runtime_constants.tag(section[".name"], "routed-dns-server");
     let is_dpi_sec = action == "zapret" || action == "zapret2" || action == "byedpi" ||
         connections.is_dpi_or_desync_only_section(section);
-    if (is_dpi_sec &&
+    let eff_state = ctx.ipv6_effective_state ? ctx.ipv6_effective_state() : null;
+    if ((!eff_state || eff_state.fakeip_enabled) && is_dpi_sec &&
         connections.routed_dns_enabled(section) && rule.server == routed_tag &&
         !connections.geoip_country_mode_is_closed(section) &&
         !rule.match_response && (rule.rule_set == null || length(domain_rule_set_tags) > 0)) {
@@ -3943,7 +4023,7 @@ function push_section_dns_matcher_rule(config, section, rule, excluded_cidrs, do
         if (rule.rule_set != null)
             fakeip_rule.rule_set = single_or_array(domain_rule_set_tags);
         fakeip_rule.server = runtime_constants.FAKEIP_DNS_SERVER_TAG;
-        add_fakeip_query_type(fakeip_rule, fakeip_rule.server, section_is_ipv4_only_dpi(section));
+        add_fakeip_query_type(fakeip_rule, fakeip_rule.server, !section_ipv6_supported(section));
         push_dns_matcher_rule(config, apply_excluded_source_ips(fakeip_rule, dns_excluded_cidrs));
     }
     // Retain routed DNS for other query types and non-domain rulesets.
@@ -4144,8 +4224,12 @@ function add_server_domain_rules_for_section(config, section) {
 
     let section_name = as_string(section[".name"]);
     let excluded_cidrs = core_ip.normalize_to_cidrs(section_leaf_list_option(section, "excluded_ips"));
+    let dns_excluded_cidrs = core_ip.expand_ipv4_mapped_cidrs(excluded_cidrs);
     let dns_server_tag = section_dns_server(section);
-    let ipv4_only_dpi = section_is_ipv4_only_dpi(section);
+    let eff_state = ctx.ipv6_effective_state ? ctx.ipv6_effective_state() : null;
+    let ipv4_only_sec = !section_ipv6_supported(section);
+    let ipv4_only_dpi = ipv4_only_sec && dns_server_tag == runtime_constants.FAKEIP_DNS_SERVER_TAG;
+    let emit_sec_aaaa_noerror = eff_state != null && eff_state.ipv6_active && ipv4_only_sec;
     let rewrite_ttl = int_option(ctx.runtime_settings ? ctx.runtime_settings() : {}, "dns_rewrite_ttl", "15");
 
     for (let entry in raw_entries) {
@@ -4193,9 +4277,15 @@ function add_server_domain_rules_for_section(config, section) {
                 let slash = index(rest, "/");
                 if (slash >= 0)
                     rest = substr(rest, 0, slash);
-                let colon = index(rest, ":");
-                if (colon >= 0)
-                    rest = substr(rest, 0, colon);
+                if (substr(rest, 0, 1) == "[") {
+                    let rbr = index(rest, "]");
+                    if (rbr > 0)
+                        rest = substr(rest, 1, rbr - 1);
+                } else {
+                    let colon = index(rest, ":");
+                    if (colon >= 0 && colon == rindex(rest, ":"))
+                        rest = substr(rest, 0, colon);
+                }
                 tok = trim(rest);
             }
             if (tok == "")
@@ -4258,6 +4348,8 @@ function add_server_domain_rules_for_section(config, section) {
             add_domain_array(dns_rule, "domain_keyword", dom_keyword);
             add_domain_array(dns_rule, "domain_regex", dom_regex);
             push_section_dns_matcher_rule(config, section, dns_rule, excluded_cidrs, []);
+            if (emit_sec_aaaa_noerror)
+                push_dns_matcher_rule(config, apply_excluded_source_ips(build_section_aaaa_noerror_rule(dns_rule), dns_excluded_cidrs));
         }
 
         if (length(pin_rule_sets) > 0) {
@@ -4279,6 +4371,8 @@ function add_server_domain_rules_for_section(config, section) {
             };
             add_fakeip_query_type(rs_dns_rule, dns_server_tag, ipv4_only_dpi);
             push_section_dns_matcher_rule(config, section, rs_dns_rule, excluded_cidrs, pin_dns_rule_sets);
+            if (emit_sec_aaaa_noerror)
+                push_dns_matcher_rule(config, apply_excluded_source_ips(build_section_aaaa_noerror_rule(rs_dns_rule), dns_excluded_cidrs));
         }
 
         if (length(pin_cidrs) > 0) {
@@ -4821,8 +4915,12 @@ function add_combined_route_for_clause(config, section) {
     let rewrite_ttl = int_option(r_settings, "dns_rewrite_ttl", "15");
     let dns_server_tag = section_dns_server(section);
     let use_rewrite_ttl = dns_server_tag != runtime_constants.DNS_SERVER_TAG || explicit_rewrite_ttl;
-    let ipv4_only_dpi = section_is_ipv4_only_dpi(section) &&
+    let eff_state = ctx.ipv6_effective_state ? ctx.ipv6_effective_state() : null;
+    let ipv4_only_sec = !section_ipv6_supported(section);
+    let ipv4_only_dpi = ipv4_only_sec &&
         dns_server_tag == runtime_constants.FAKEIP_DNS_SERVER_TAG;
+    let emit_sec_aaaa_noerror = eff_state != null && eff_state.ipv6_active && ipv4_only_sec &&
+        !section_is_dns_block_eligible(section);
     if (length(domain) > 0 || length(domain_suffix) > 0 || length(domain_keyword) > 0 || length(domain_regex) > 0) {
         let domain_matchers = [
             [ "domain", domain ],
@@ -4841,11 +4939,13 @@ function add_combined_route_for_clause(config, section) {
             };
             if (use_rewrite_ttl)
                 dns_rule.rewrite_ttl = rewrite_ttl;
-            add_fakeip_query_type(dns_rule, dns_server_tag, ipv4_only_dpi);
+            add_fakeip_query_type(dns_rule, dns_server_tag, ipv4_only_sec);
             add_domain_array(dns_rule, key, values);
             add_source_dns_matchers(dns_rule, source_ip_cidr);
+            if (emit_sec_aaaa_noerror)
+                push_dns_matcher_rule(config, apply_excluded_source_ips(build_section_aaaa_noerror_rule(dns_rule), dns_excluded_cidrs));
             push_section_dns_matcher_rule(config, section, dns_rule, excluded_cidrs);
-            if (ipv4_only_dpi) {
+            if (!emit_sec_aaaa_noerror && eff_state == null && ipv4_only_dpi) {
                 let aaaa_rule = {
                     action: "route",
                     server: runtime_constants.DNS_SERVER_TAG,
@@ -4875,10 +4975,12 @@ function add_combined_route_for_clause(config, section) {
             };
             if (use_rewrite_ttl)
                 dns_rule.rewrite_ttl = rewrite_ttl;
-            add_fakeip_query_type(dns_rule, dns_server_tag, ipv4_only_dpi);
+            add_fakeip_query_type(dns_rule, dns_server_tag, ipv4_only_sec);
             add_source_dns_matchers(dns_rule, source_ip_cidr);
+            if (emit_sec_aaaa_noerror)
+                push_dns_matcher_rule(config, apply_excluded_source_ips(build_section_aaaa_noerror_rule(dns_rule), dns_excluded_cidrs));
             push_section_dns_matcher_rule(config, section, dns_rule, excluded_cidrs, domain_only_dns_tags);
-            if (ipv4_only_dpi) {
+            if (!emit_sec_aaaa_noerror && eff_state == null && ipv4_only_dpi) {
                 let aaaa_rule = {
                     action: "route",
                     server: runtime_constants.DNS_SERVER_TAG,
@@ -4937,10 +5039,12 @@ function add_combined_route_for_clause(config, section) {
             };
             if (use_rewrite_ttl)
                 dns_rule.rewrite_ttl = rewrite_ttl;
-            add_fakeip_query_type(dns_rule, dns_server_tag, ipv4_only_dpi);
+            add_fakeip_query_type(dns_rule, dns_server_tag, ipv4_only_sec);
             add_source_dns_matchers(dns_rule, source_ip_cidr);
+            if (emit_sec_aaaa_noerror)
+                push_dns_matcher_rule(config, apply_excluded_source_ips(build_section_aaaa_noerror_rule(dns_rule), dns_excluded_cidrs));
             push_section_dns_matcher_rule(config, section, dns_rule, excluded_cidrs, domain_only_dns_tags);
-            if (ipv4_only_dpi) {
+            if (!emit_sec_aaaa_noerror && eff_state == null && ipv4_only_dpi) {
                 let aaaa_rule = {
                     action: "route",
                     server: runtime_constants.DNS_SERVER_TAG,
@@ -4962,8 +5066,10 @@ function add_combined_route_for_clause(config, section) {
         };
         if (use_rewrite_ttl)
             dns_rule.rewrite_ttl = rewrite_ttl;
-        add_fakeip_query_type(dns_rule, dns_server_tag, ipv4_only_dpi);
+        add_fakeip_query_type(dns_rule, dns_server_tag, ipv4_only_sec);
         add_source_dns_matchers(dns_rule, source_ip_cidr);
+        if (emit_sec_aaaa_noerror)
+            push_dns_matcher_rule(config, apply_excluded_source_ips(build_section_aaaa_noerror_rule(dns_rule), dns_excluded_cidrs));
         push_section_dns_matcher_rule(config, section, dns_rule, excluded_cidrs);
     }
 }
@@ -5502,10 +5608,12 @@ function add_server_routes(config, servers, sections) {
                 });
             }
             if (has_lo_direct) {
+                let eff_v6_state = ctx.ipv6_effective_state ? ctx.ipv6_effective_state() : null;
+                let allow_lo_v6 = eff_v6_state != null ? eff_v6_state.ipv6_active : core_ip.ipv6_supported();
                 push(config.route.rules, {
                     action: "route",
                     inbound: inbound,
-                    ip_cidr: core_ip.ipv6_supported() ? [ "127.0.0.0/8", "::1/128" ] : [ "127.0.0.0/8" ],
+                    ip_cidr: allow_lo_v6 ? [ "127.0.0.0/8", "::1/128" ] : [ "127.0.0.0/8" ],
                     outbound: runtime_constants.LO_DIRECT_OUTBOUND_TAG
                 });
             }

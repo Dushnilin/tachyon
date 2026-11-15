@@ -5,6 +5,7 @@ let core_ip = require("core.ip");
 let core_url = require("core.url");
 let uci = require("core.uci");
 let common = require("core.common");
+let network_mod = require("diagnostics.network");
 let as_string = common.as_string;
 let shell_quote = common.shell_quote;
 let read_json_file = common.read_json_file;
@@ -956,6 +957,16 @@ function get_router_wan_ips() {
                             }
                         }
                     }
+                    let addrs6 = item["ipv6-address"];
+                    if (type(addrs6) == "array") {
+                        for (let addr_obj in addrs6) {
+                            let addr = network_mod.strip_cidr_suffix(addr_obj.address || "");
+                            if (network_mod.is_non_local_ipv6(addr) && !network_mod.is_ula_ipv6(addr) && !seen[addr]) {
+                                seen[addr] = true;
+                                push(result, addr);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -978,6 +989,16 @@ function get_router_wan_ips() {
                     }
                 }
             }
+            let addrs6 = parsed["ipv6-address"];
+            if (type(addrs6) == "array") {
+                for (let item in addrs6) {
+                    let addr = network_mod.strip_cidr_suffix(item.address || "");
+                    if (network_mod.is_non_local_ipv6(addr) && !network_mod.is_ula_ipv6(addr) && !seen[addr]) {
+                        seen[addr] = true;
+                        push(result, addr);
+                    }
+                }
+            }
         }
         catch (e) {}
     }
@@ -995,6 +1016,25 @@ function get_router_wan_ips() {
                     if (!seen[ip]) {
                         seen[ip] = true;
                         unshift(result, ip);
+                    }
+                }
+            }
+        }
+    }
+
+    let route6 = output("ip -6 route show default 2>/dev/null");
+    if (route6 != "") {
+        let m6 = match(route6, /dev[ \t]+([a-zA-Z0-9_.-]+)/);
+        if (m6 && m6[1]) {
+            let ifdev6 = m6[1];
+            let addr6_out = output("ip -6 -o addr show dev " + shell_quote(ifdev6) + " scope global 2>/dev/null");
+            for (let line in split(addr6_out, "\n")) {
+                let matched = match(trim(line), /(^|[ \t])inet6[ \t]+([0-9a-fA-F:]+)(\/[0-9]+)?/);
+                if (matched && network_mod.is_non_local_ipv6(matched[2]) && !network_mod.is_ula_ipv6(matched[2])) {
+                    let ip6 = matched[2];
+                    if (!seen[ip6]) {
+                        seen[ip6] = true;
+                        push(result, ip6);
                     }
                 }
             }
@@ -1044,6 +1084,13 @@ function get_router_network_env() {
     let ddns_domain = get_router_ddns_domain();
     let has_ddns = ddns_domain != "";
     let wan_ips = get_router_wan_ips();
+    let settings_cfg = uci.get_all(CONFIG_NAME, "settings") || {};
+    let v6_info = network_mod.get_ipv6_runtime_telemetry(settings_cfg);
+    let wan_ipv6 = network_mod.first_ipv6_from_list(wan_ips);
+    if (wan_ipv6 == "" && v6_info.wan_ipv6 != "") {
+        wan_ipv6 = v6_info.wan_ipv6;
+        push(wan_ips, wan_ipv6);
+    }
     let cached_external_ip = get_cached_external_wan_ip();
     let lan_ip = as_string(uci.get("network.lan.ipaddr") || "192.168.1.1");
     let country_code = detect_router_country();
@@ -1062,6 +1109,15 @@ function get_router_network_env() {
                 public_host = ip;
                 is_public_ip = true;
                 break;
+            }
+        }
+        if (public_host == "") {
+            for (let ip in wan_ips) {
+                if (network_mod.valid_public_ipv6(ip)) {
+                    public_host = ip;
+                    is_public_ip = true;
+                    break;
+                }
             }
         }
         if (public_host == "" && length(wan_ips) > 0) {
@@ -1090,6 +1146,12 @@ function get_router_network_env() {
         has_ddns: has_ddns,
         ddns_domain: ddns_domain,
         wan_ips: wan_ips,
+        wan_ipv6: wan_ipv6,
+        lan_ipv6: v6_info.lan_ipv6,
+        wan6_prefix: v6_info.wan6_prefix,
+        wan6_pd: v6_info.wan6_pd,
+        ipv6_effective_state: v6_info.ipv6_effective_state,
+        router_hostname: v6_info.router_hostname,
         cached_external_ip: cached_external_ip,
         lan_ip: lan_ip,
         tcp_443_busy: tcp_443_busy,

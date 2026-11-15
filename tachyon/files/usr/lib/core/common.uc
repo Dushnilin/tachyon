@@ -897,6 +897,357 @@ function contains(arr, val) {
     return index(arr, val) >= 0;
 }
 
+function normalize_ipv6_mode(value) {
+    let raw = lc(trim(as_string(value)));
+    if (raw == "" || raw == "auto" || raw == "1" || raw == "true")
+        return "auto";
+    if (raw == "off" || raw == "ipv4_only" || raw == "ipv4-only" || raw == "ipv4" || raw == "0" || raw == "false" || raw == "disabled" || raw == "none")
+        return "off";
+    if (raw == "dual_stack" || raw == "dual-stack" || raw == "ipv4_ipv6" || raw == "ipv4-ipv6" || raw == "on" || raw == "full" || raw == "always")
+        return "dual_stack";
+    if (raw == "tunnel_over_v4" || raw == "tunnel-over-v4" || raw == "v6_over_v4" || raw == "v6-over-v4" || raw == "tunnel")
+        return "tunnel_over_v4";
+    return "auto";
+}
+
+function is_fakeip_enabled(settings) {
+    settings = object_or_empty(settings);
+    if (trim(option(settings, "fakeip_enabled", "")) != "")
+        return bool_option(settings, "fakeip_enabled", true);
+    if (trim(option(settings, "fakeip", "")) != "")
+        return bool_option(settings, "fakeip", true);
+    return true;
+}
+
+function ipv6_state_cache_path() {
+    return getenv("TACHYON_IPV6_STATE_CACHE") || "/var/run/tachyon/ipv6-state.json";
+}
+
+function is_tmpfs_runtime_path(path) {
+    path = as_string(path);
+    return substr(path, 0, 9) == "/var/run/" || substr(path, 0, 5) == "/run/" || substr(path, 0, 5) == "/tmp/";
+}
+
+function is_local_or_ula_v6(addr) {
+    addr = lc(trim(as_string(addr)));
+    let slash = index(addr, "/");
+    if (slash >= 0)
+        addr = substr(addr, 0, slash);
+    if (addr == "" || addr == "::" || addr == "::1")
+        return true;
+    if (match(addr, /^fe[89ab][0-9a-f]?:/))
+        return true;
+    if (match(addr, /^f[cd][0-9a-f]{0,2}:/))
+        return true;
+    return false;
+}
+
+function is_non_wan_iface_name(name) {
+    name = lc(trim(as_string(name)));
+    if (name == "" || name == "lo" || name == "loopback" || name == "lan" || name == "br-lan")
+        return true;
+    if (substr(name, 0, 3) == "lan" || substr(name, 0, 3) == "tun" || substr(name, 0, 3) == "tap")
+        return true;
+    if (substr(name, 0, 9) == "tailscale" || substr(name, 0, 6) == "wg_tap")
+        return true;
+    return false;
+}
+
+function parse_mock_cidr_list(raw) {
+    let out = [];
+    let seen = {};
+    let items = type(raw) == "array" ? raw : split(trim(as_string(raw)), /[ \t\r\n,;]+/);
+    for (let item in items) {
+        item = trim(as_string(item));
+        if (item != "" && index(item, ":") >= 0 && !seen[item]) {
+            seen[item] = true;
+            push(out, item);
+        }
+    }
+    return out;
+}
+
+function wan6_live_status() {
+    let kernel_v6 = ipv6_supported();
+    let mock_pd = parse_mock_cidr_list(getenv("TACHYON_MOCK_WAN6_PD") || "");
+    let mock_raw = trim(as_string(getenv("TACHYON_MOCK_WAN6_STATUS") || ""));
+
+    if (mock_raw != "") {
+        let lower = lc(mock_raw);
+        if (substr(mock_raw, 0, 1) == "{") {
+            let parsed = null;
+            try { parsed = json(mock_raw); } catch (e) { parsed = null; }
+            if (type(parsed) == "object") {
+                let pd = parse_mock_cidr_list(parsed.wan6_pd != null ? parsed.wan6_pd : (parsed.pd || mock_pd));
+                let gua = parse_mock_cidr_list(parsed.wan6_gua != null ? parsed.wan6_gua : (parsed.gua || []));
+                let avail = kernel_v6 && !!(parsed.available || length(pd) > 0 || length(gua) > 0 || parsed.default_route6);
+                return {
+                    available: avail,
+                    kernel_v6: kernel_v6,
+                    wan6_iface: as_string(parsed.wan6_iface || (avail ? "wan6" : "")),
+                    wan6_pd: pd,
+                    wan6_gua: gua,
+                    default_route6: !!(parsed.default_route6 != null ? parsed.default_route6 : avail),
+                    source: "mock"
+                };
+            }
+        }
+        let mock_up = (lower == "1" || lower == "true" || lower == "yes" || lower == "up");
+        let avail = kernel_v6 && mock_up;
+        return {
+            available: avail,
+            kernel_v6: kernel_v6,
+            wan6_iface: avail ? "wan6" : "",
+            wan6_pd: avail ? mock_pd : [],
+            wan6_gua: [],
+            default_route6: avail,
+            source: "mock"
+        };
+    }
+
+    if (length(mock_pd) > 0) {
+        return {
+            available: kernel_v6,
+            kernel_v6: kernel_v6,
+            wan6_iface: kernel_v6 ? "wan6" : "",
+            wan6_pd: kernel_v6 ? mock_pd : [],
+            wan6_gua: [],
+            default_route6: kernel_v6,
+            source: "mock"
+        };
+    }
+
+    if (!kernel_v6) {
+        return {
+            available: false,
+            kernel_v6: false,
+            wan6_iface: "",
+            wan6_pd: [],
+            wan6_gua: [],
+            default_route6: false,
+            source: "kernel"
+        };
+    }
+
+    if (getenv("TACHYON_NO_LIVE_NET_PROBE") == "1") {
+        return {
+            available: false,
+            kernel_v6: true,
+            wan6_iface: "",
+            wan6_pd: [],
+            wan6_gua: [],
+            default_route6: false,
+            source: "probe_disabled"
+        };
+    }
+
+    let wan6_iface = "";
+    let wan6_pd = [];
+    let wan6_gua = [];
+    let seen_pd = {};
+    let seen_gua = {};
+    let default_route6 = false;
+    let default_dev = "";
+
+    let route_out = command_output_from_args([ "ip", "-6", "-o", "route", "show", "default" ]);
+    for (let line in split(as_string(route_out), "\n")) {
+        line = trim(line);
+        if (line == "")
+            continue;
+        let m = match(line, /(^|[ \t])dev[ \t]+([^ \t]+)/);
+        let dev = m ? as_string(m[2]) : "";
+        if (is_non_wan_iface_name(dev))
+            continue;
+        default_route6 = true;
+        if (default_dev == "" && dev != "")
+            default_dev = dev;
+    }
+
+    let ubus_raw = command_output(bounded_command(command_from_args([ "ubus", "call", "network.interface", "dump" ]), 3) + " 2>/dev/null");
+    if (trim(ubus_raw) != "") {
+        let parsed = null;
+        try { parsed = json(ubus_raw); } catch (e) { parsed = null; }
+        let ifaces = type(parsed) == "object" ? array_or_empty(parsed["interface"]) : [];
+        for (let iface in ifaces) {
+            if (type(iface) != "object" || !iface.up)
+                continue;
+            let iname = as_string(iface.interface || "");
+            let l3dev = as_string(iface.l3_device || iface.device || "");
+            if (is_non_wan_iface_name(iname) || is_non_wan_iface_name(l3dev))
+                continue;
+
+            let had_v6 = false;
+            for (let p in array_or_empty(iface["ipv6-prefix"])) {
+                if (type(p) != "object" || as_string(p.address || "") == "")
+                    continue;
+                let cidr = as_string(p.address) + "/" + as_string(p.mask != null ? p.mask : 64);
+                if (!seen_pd[cidr]) {
+                    seen_pd[cidr] = true;
+                    push(wan6_pd, cidr);
+                }
+                had_v6 = true;
+            }
+            for (let a in array_or_empty(iface["ipv6-address"])) {
+                if (type(a) != "object" || as_string(a.address || "") == "")
+                    continue;
+                if (is_local_or_ula_v6(a.address))
+                    continue;
+                let cidr = as_string(a.address) + "/" + as_string(a.mask != null ? a.mask : 128);
+                if (!seen_gua[cidr]) {
+                    seen_gua[cidr] = true;
+                    push(wan6_gua, cidr);
+                }
+                had_v6 = true;
+            }
+            if (had_v6 && (wan6_iface == "" || iname == "wan6" || l3dev == default_dev))
+                wan6_iface = iname != "" ? iname : l3dev;
+        }
+    }
+
+    if (length(wan6_pd) == 0 && length(wan6_gua) == 0) {
+        let addr_out = command_output_from_args([ "ip", "-6", "-o", "addr", "show", "scope", "global" ]);
+        for (let line in split(as_string(addr_out), "\n")) {
+            line = trim(line);
+            if (line == "")
+                continue;
+            let m = match(line, /^[0-9]+:[ \t]+([^ \t]+)[ \t]+inet6[ \t]+([^ \t]+)/);
+            if (!m)
+                continue;
+            let dev = as_string(m[1]);
+            let cidr = as_string(m[2]);
+            if (is_non_wan_iface_name(dev) || is_local_or_ula_v6(cidr))
+                continue;
+            if (!seen_gua[cidr]) {
+                seen_gua[cidr] = true;
+                push(wan6_gua, cidr);
+            }
+            if (wan6_iface == "" || dev == default_dev)
+                wan6_iface = dev;
+        }
+    }
+
+    if (wan6_iface == "" && default_dev != "")
+        wan6_iface = default_dev;
+
+    return {
+        available: default_route6 || length(wan6_pd) > 0 || length(wan6_gua) > 0,
+        kernel_v6: true,
+        wan6_iface: wan6_iface,
+        wan6_pd: wan6_pd,
+        wan6_gua: wan6_gua,
+        default_route6: default_route6,
+        source: "live"
+    };
+}
+
+function cache_ipv6_runtime_state(state_obj) {
+    let path = ipv6_state_cache_path();
+    if (!is_tmpfs_runtime_path(path))
+        return false;
+    let dir = parent_dir(path);
+    if (dir != "")
+        ensure_dir(dir);
+    return write_json_file(path, object_or_empty(state_obj), 2);
+}
+
+function read_cached_ipv6_state() {
+    return read_json_file(ipv6_state_cache_path());
+}
+
+function resolve_effective_ipv6_state(settings, wan6_info) {
+    settings = object_or_empty(settings);
+
+    let raw_mode = trim(option(settings, "ipv6_mode", ""));
+    let mode = "";
+    if (raw_mode != "") {
+        mode = normalize_ipv6_mode(raw_mode);
+    } else if (trim(option(settings, "ipv6_enabled", "")) != "") {
+        mode = bool_option(settings, "ipv6_enabled", false) ? "auto" : "off";
+    } else if (trim(option(settings, "enable_ipv6", "")) != "") {
+        mode = bool_option(settings, "enable_ipv6", false) ? "auto" : "off";
+    } else {
+        mode = "auto";
+    }
+
+    let leak_guard = bool_option(settings, "ipv6_leak_guard", true);
+    let kernel_v6 = (type(wan6_info) == "object" && wan6_info.kernel_v6 != null) ? !!(wan6_info.kernel_v6) : ipv6_supported();
+
+    if (wan6_info == null && mode == "auto" && kernel_v6)
+        wan6_info = wan6_live_status();
+
+    let wan6_available = type(wan6_info) == "object" ? !!(wan6_info.available) : false;
+    let effective = "disabled";
+    if (!kernel_v6) {
+        effective = "disabled";
+    } else if (mode == "off") {
+        effective = leak_guard ? "leak_guard" : "disabled";
+    } else if (mode == "tunnel_over_v4") {
+        effective = "tunnel_over_v4";
+    } else if (mode == "dual_stack") {
+        effective = "full";
+    } else {
+        effective = wan6_available ? "full" : (leak_guard ? "leak_guard" : "disabled");
+    }
+
+    let ipv6_active = (effective == "full" || effective == "tunnel_over_v4");
+    let configured_dns_strategy = lc(trim(option(settings, "dns_strategy", "prefer_ipv4")));
+    if (!contains([ "prefer_ipv4", "ipv4_only", "prefer_ipv6", "ipv6_only" ], configured_dns_strategy))
+        configured_dns_strategy = "prefer_ipv4";
+
+    let runtime_dns_strategy = ipv6_active ? configured_dns_strategy : "ipv4_only";
+
+    return {
+        ipv6_mode: mode,
+        ipv6_leak_guard: leak_guard,
+        kernel_v6: kernel_v6,
+        wan6_available: wan6_available,
+        wan6_iface: type(wan6_info) == "object" ? as_string(wan6_info.wan6_iface || "") : "",
+        wan6_pd: type(wan6_info) == "object" ? array_or_empty(wan6_info.wan6_pd) : [],
+        wan6_gua: type(wan6_info) == "object" ? array_or_empty(wan6_info.wan6_gua) : [],
+        default_route6: type(wan6_info) == "object" ? !!(wan6_info.default_route6) : false,
+        effective: effective,
+        ipv6_active: ipv6_active,
+        leak_guard_active: effective == "leak_guard",
+        configured_dns_strategy: configured_dns_strategy,
+        runtime_dns_strategy: runtime_dns_strategy,
+        fakeip_enabled: is_fakeip_enabled(settings)
+    };
+}
+
+function effective_dns_strategy(settings, effective_state) {
+    if (type(effective_state) == "object" && effective_state.runtime_dns_strategy != null)
+        return effective_state.runtime_dns_strategy;
+    return resolve_effective_ipv6_state(settings, null).runtime_dns_strategy;
+}
+
+function ipv6_signature_pairs(settings, include_fakeip_detail) {
+    settings = object_or_empty(settings);
+    let pairs = [];
+    let eff = resolve_effective_ipv6_state(settings, null);
+    if (eff.ipv6_mode != "auto")
+        push(pairs, [ "settings.ipv6_mode", eff.ipv6_mode ]);
+    if (!eff.ipv6_leak_guard)
+        push(pairs, [ "settings.ipv6_leak_guard", "0" ]);
+    if (!eff.fakeip_enabled)
+        push(pairs, [ "settings.fakeip_enabled", "0" ]);
+    if (eff.effective != "leak_guard" && !(eff.ipv6_mode == "off" && !eff.ipv6_leak_guard))
+        push(pairs, [ "runtime.ipv6_effective_state", eff.effective ]);
+    if (eff.ipv6_active && length(eff.wan6_pd) > 0)
+        push(pairs, [ "runtime.wan6_pd", join(",", eff.wan6_pd) ]);
+    let f4 = trim(option(settings, "fakeip_inet4_range", "198.18.0.0/15"));
+    if (f4 != "" && f4 != "198.18.0.0/15")
+        push(pairs, [ "settings.fakeip_inet4_range", f4 ]);
+    let f6 = trim(option(settings, "fakeip_inet6_range", "fc00::/18"));
+    if (f6 != "" && f6 != "fc00::/18")
+        push(pairs, [ "settings.fakeip_inet6_range", f6 ]);
+    if (include_fakeip_detail) {
+        let ex = list_option(settings, "fakeip_exclude");
+        if (length(ex) > 0)
+            push(pairs, [ "settings.fakeip_exclude", join("\n", ex) ]);
+    }
+    return pairs;
+}
+
 function log_message(message, level, tag) {
     // Delegate to unified structured logging module.
     // Maintains backward-compatible signature: log_message(message, level, tag)
@@ -981,5 +1332,16 @@ return {
     bounded_command,
     kill_matching_command,
     kill_orphaned_logread,
-    ipv6_supported
+    ipv6_supported,
+    normalize_ipv6_mode,
+    is_fakeip_enabled,
+    ipv6_state_cache_path,
+    is_tmpfs_runtime_path,
+    is_local_or_ula_v6,
+    wan6_live_status,
+    cache_ipv6_runtime_state,
+    read_cached_ipv6_state,
+    resolve_effective_ipv6_state,
+    effective_dns_strategy,
+    ipv6_signature_pairs
 };

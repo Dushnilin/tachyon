@@ -1482,6 +1482,13 @@ function dnsmasq_signature_body(settings, dnsmasq, legacy_dnsmasq_present) {
     body = signature_add_value(body, "dhcp.@dnsmasq[0].tachyon_noresolv", option(dnsmasq, "tachyon_noresolv", ""));
     body = signature_add_value(body, "dhcp.@dnsmasq[0].tachyon_cachesize", option(dnsmasq, "tachyon_cachesize", ""));
     body = signature_add_value(body, "dhcp.tachyon.present", arg_bool(legacy_dnsmasq_present) ? "1" : "0");
+    let eff = common.resolve_effective_ipv6_state(settings, null);
+    if (eff.ipv6_mode != "auto")
+        body = signature_add_value(body, "settings.ipv6_mode", eff.ipv6_mode);
+    if (!eff.ipv6_leak_guard)
+        body = signature_add_value(body, "settings.ipv6_leak_guard", "0");
+    if (eff.effective != "leak_guard" && !(eff.ipv6_mode == "off" && !eff.ipv6_leak_guard))
+        body = signature_add_value(body, "runtime.ipv6_effective_state", eff.effective);
 
     return body;
 }
@@ -1641,6 +1648,7 @@ function nft_guest_mode_signature_body(body, guest_mode) {
     body = signature_add_value(body, "guest_mode." + name + ".trusted_devices", join(",", list_option(guest_mode, "trusted_devices")));
     body = signature_add_value(body, "guest_mode." + name + ".isolate_lan", bool_option(guest_mode, "isolate_lan", true) ? "1" : "0");
     body = signature_add_value(body, "guest_mode." + name + ".block_router_admin", bool_option(guest_mode, "block_router_admin", true) ? "1" : "0");
+    body = signature_add_value(body, "guest_mode." + name + ".allow_proxy", bool_option(guest_mode, "allow_proxy", true) ? "1" : "0");
     body = signature_add_value(body, "guest_mode." + name + ".start_time", option(guest_mode, "start_time", ""));
     body = signature_add_value(body, "guest_mode." + name + ".end_time", option(guest_mode, "end_time", ""));
     body = signature_add_value(body, "guest_mode." + name + ".days", join(",", list_option(guest_mode, "days")));
@@ -1759,6 +1767,8 @@ function nft_runtime_signature_body(settings, sections, schedules, profiles, gue
         body = signature_add_value(body, "settings.wifi_calling_direct", "1");
     if (bool_option(settings, "lite_mode", false))
         body = signature_add_value(body, "settings.lite_mode", "1");
+    for (let pair in common.ipv6_signature_pairs(settings, false))
+        body = signature_add_value(body, pair[0], pair[1]);
 
     let chunks = [ body ];
 
@@ -2407,6 +2417,9 @@ function append_sing_box_rule_signature_body(body, section, sections) {
         if (section_runtime_failed(name))
             body = signature_add_value(body, prefix + ".runtime_failed", "1");
     }
+    let ipv6_sup = lc(trim(option(section, "ipv6_support", "")));
+    if (ipv6_sup != "" && ipv6_sup != "auto")
+        body = signature_add_value(body, prefix + ".ipv6_support", ipv6_sup);
 
     return body;
 }
@@ -2683,6 +2696,8 @@ function sing_box_signature_body(settings, sections, servers, mwan3_active, sche
         body = signature_add_value(body, "settings.bittorrent_policy", bt_policy);
         body = signature_add_value(body, "settings.p2p_ports", option(settings, "p2p_ports", ""));
     }
+    for (let pair in common.ipv6_signature_pairs(settings, true))
+        body = signature_add_value(body, pair[0], pair[1]);
 
     let chunks = [ body ];
 

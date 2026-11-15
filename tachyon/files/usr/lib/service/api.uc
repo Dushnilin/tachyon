@@ -2,6 +2,7 @@ let fs = require("fs");
 let uci_core = require("core.uci");
 let common = require("core.common");
 let constants = require("core.constants");
+let network_mod = require("diagnostics.network");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
 const PAUSE_FILE = "/tmp/tachyon_paused_until";
@@ -425,6 +426,29 @@ function get_system_status() {
     // IPs
     status_obj.lan_ip = as_string(common.command_output("uci -q get network.lan.ipaddr"));
     status_obj.wan_ip = as_string(common.command_output("ip route get 8.8.8.8 2>/dev/null | grep -Eo 'src [0-9.]+' | awk '{print $2}'"));
+
+    let settings_cfg = uci_core.get_all(CONFIG_NAME, "settings") || {};
+    let v6_info = network_mod.get_ipv6_runtime_telemetry(settings_cfg);
+    let wan_ipv6 = as_string(v6_info.wan_ipv6 || "");
+    if (wan_ipv6 == "") {
+        let route6_src = as_string(common.command_output("ip -6 route get 2001:4860:4860::8888 2>/dev/null"));
+        let m6 = match(route6_src, /\bsrc[ \t]+([0-9a-fA-F:]+)/);
+        if (m6 && m6[1] && network_mod.is_non_local_ipv6(m6[1]) && !network_mod.is_ula_ipv6(m6[1]))
+            wan_ipv6 = m6[1];
+    }
+    status_obj.router_hostname = v6_info.router_hostname;
+    status_obj.wan_ipv6 = wan_ipv6;
+    status_obj.lan_ipv6 = v6_info.lan_ipv6;
+    status_obj.wan6_available = v6_info.wan6_available;
+    status_obj.wan6_iface = v6_info.wan6_iface;
+    status_obj.wan6_prefix = v6_info.wan6_prefix;
+    status_obj.wan6_pd = v6_info.wan6_pd;
+    status_obj.ipv6_effective_state = v6_info.ipv6_effective_state;
+    status_obj.ipv6_mode = v6_info.ipv6_mode;
+    status_obj.ipv6_leak_guard = v6_info.ipv6_leak_guard;
+    status_obj.dns_strategy = v6_info.dns_strategy;
+    status_obj.runtime_dns_strategy = v6_info.runtime_dns_strategy;
+    status_obj.fakeip_enabled = v6_info.fakeip_enabled;
     
     // Tachyon Version
     let ver = "unknown";

@@ -294,6 +294,7 @@ cat >"$WORK_DIR/runtime-matchers-fixture.json" <<'JSON'
     "config_path": "/tmp/tachyon-core/config.json",
     "dns_server": "1.1.1.1",
     "dns_strategy": "prefer_ipv6",
+    "ipv6_mode": "dual_stack",
     "service_listen_address": "127.0.0.1"
   },
   "section": [
@@ -577,6 +578,7 @@ cat >"$WORK_DIR/fully-routed-fixture.json" <<'JSON'
     ".type": "settings",
     "config_path": "/tmp/tachyon-core/config.json",
     "dns_server": "1.1.1.1",
+    "ipv6_mode": "dual_stack",
     "service_listen_address": "127.0.0.1"
   },
   "section": [
@@ -1044,6 +1046,7 @@ cat >"$WORK_DIR/block-doh-fixture.json" <<'JSON'
     "config_path": "/tmp/tachyon-core/config.json",
     "dns_server": "1.1.1.1",
     "service_listen_address": "127.0.0.1",
+    "ipv6_mode": "dual_stack",
     "block_doh": "1"
   },
   "section": [
@@ -1298,7 +1301,8 @@ assert(route_rule(disabled, r => r.action == "resolve" && r.server == "dns-serve
 
 let defaults = cfg("default");
 assert(first_remote_ruleset(defaults).update_interval == "1d", "default list update interval");
-assert(defaults.dns.strategy == "prefer_ipv4", "missing DNS strategy keeps the prefer_ipv4 default");
+assert(defaults.dns.strategy == "ipv4_only", "auto IPv6 without WAN6 PD clamps missing DNS strategy to ipv4_only");
+assert(cfg("fully-routed").dns.strategy == "prefer_ipv4", "dual_stack without DNS strategy defaults to prefer_ipv4");
 
 let server = cfg("server");
 let socks = inbound(server, "server-edge-in");

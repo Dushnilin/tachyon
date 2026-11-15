@@ -2,29 +2,90 @@
 # Hotplug handler for WAN retry on boot and interface state monitoring
 
 case "$INTERFACE" in
-    wan*|wwan*|secondwan*|tethering*|lte*|modem*|pppoe*|usb*)
+    wan*|wwan*|secondwan*|tethering*|lte*|modem*|pppoe*|usb*|*_6|6in4*|6to4*|he*|dslite*|v6*|ipv6*)
         mkdir -p /var/run/tachyon 2>/dev/null
         case "$ACTION" in
             ifup)
-                echo "up" > "/var/run/tachyon/wan_transport_${INTERFACE}" 2>/dev/null
-                date +%s > /var/run/tachyon/wan-event.timestamp 2>/dev/null
-                /etc/init.d/tachyon retry_start_on_wan_up >/dev/null 2>&1 &
-                (
-                    sleep 1
-                    for p in $(pidof tachyon-core sing-box 2>/dev/null); do
-                        kill -HUP "$p" 2>/dev/null
-                    done
-                ) >/dev/null 2>&1 &
+                case "$INTERFACE" in
+                    wan*|wwan*|secondwan*|tethering*|lte*|modem*|pppoe*|usb*)
+                        echo "up" > "/var/run/tachyon/wan_transport_${INTERFACE}" 2>/dev/null
+                        date +%s > /var/run/tachyon/wan-event.timestamp 2>/dev/null
+                        /etc/init.d/tachyon retry_start_on_wan_up >/dev/null 2>&1 &
+                        (
+                            sleep 1
+                            for p in $(pidof tachyon-core sing-box 2>/dev/null); do
+                                kill -HUP "$p" 2>/dev/null
+                            done
+                        ) >/dev/null 2>&1 &
+                        ;;
+                esac
                 ;;
             ifdown)
-                echo "down" > "/var/run/tachyon/wan_transport_${INTERFACE}" 2>/dev/null
-                date +%s > /var/run/tachyon/wan-event.timestamp 2>/dev/null
-                (
-                    sleep 1
-                    for p in $(pidof tachyon-core sing-box 2>/dev/null); do
-                        kill -HUP "$p" 2>/dev/null
-                    done
-                ) >/dev/null 2>&1 &
+                case "$INTERFACE" in
+                    wan*|wwan*|secondwan*|tethering*|lte*|modem*|pppoe*|usb*)
+                        echo "down" > "/var/run/tachyon/wan_transport_${INTERFACE}" 2>/dev/null
+                        date +%s > /var/run/tachyon/wan-event.timestamp 2>/dev/null
+                        (
+                            sleep 1
+                            for p in $(pidof tachyon-core sing-box 2>/dev/null); do
+                                kill -HUP "$p" 2>/dev/null
+                            done
+                        ) >/dev/null 2>&1 &
+                        ;;
+                esac
+                ;;
+        esac
+
+        case "$ACTION" in
+            ifup|ifdown|ifupdate)
+                TACHYON_LIB="${TACHYON_LIB:-/usr/lib/tachyon}"
+                if [ -r "${TACHYON_LIB}/core/common.uc" ] && command -v ucode >/dev/null 2>&1; then
+                    run_wan6_hotplug_sync() {
+                        STATE_DIR="${TACHYON_RUNTIME_STATE_DIR:-/var/run/tachyon}"
+                        mkdir -p "$STATE_DIR" 2>/dev/null
+                        V6_LOCK="${STATE_DIR}/wan6_hotplug.lock"
+                        if mkdir "$V6_LOCK" 2>/dev/null; then
+                            trap 'rm -rf "$V6_LOCK" 2>/dev/null' EXIT INT TERM
+                            DELAY_SEC="${TACHYON_WAN6_HOTPLUG_DELAY:-1}"
+                            [ "$DELAY_SEC" = "0" ] || sleep "$DELAY_SEC"
+                            V6_STATE_FILE="${STATE_DIR}/wan6_hotplug_state"
+                            PREV_FILE_SIG=""
+                            [ -f "$V6_STATE_FILE" ] && PREV_FILE_SIG="$(cat "$V6_STATE_FILE" 2>/dev/null)"
+                            OUT_LINE="$(TACHYON_LIB="$TACHYON_LIB" ucode -L "$TACHYON_LIB" -e '
+                                let common = require("core.common");
+                                let uci_core = require("core.uci");
+                                let prev = common.read_cached_ipv6_state();
+                                let prev_sig = type(prev) == "object" ? (common.as_string(prev.effective || "") + "|" + join(",", common.array_or_empty(prev.wan6_pd)) + "|" + common.as_string(prev.ipv6_mode || "")) : "";
+                                let settings = uci_core.get_all(getenv("TACHYON_CONFIG_NAME") || "tachyon", "settings") || {};
+                                let wan6 = common.wan6_live_status();
+                                let eff = common.resolve_effective_ipv6_state(settings, wan6);
+                                common.cache_ipv6_runtime_state(eff);
+                                let cur_sig = eff.effective + "|" + join(",", eff.wan6_pd) + "|" + eff.ipv6_mode;
+                                print(prev_sig, "\t", cur_sig);
+                            ' 2>/dev/null)"
+                            PREV_CACHE_SIG="$(printf '%s' "$OUT_LINE" | awk -F'\t' '{print $1}')"
+                            CUR_SIG="$(printf '%s' "$OUT_LINE" | awk -F'\t' '{print $2}')"
+                            if [ -n "$CUR_SIG" ]; then
+                                PREV_SIG="$PREV_FILE_SIG"
+                                [ -n "$PREV_SIG" ] || PREV_SIG="$PREV_CACHE_SIG"
+                                if [ "$CUR_SIG" != "$PREV_SIG" ]; then
+                                    printf '%s\n' "$CUR_SIG" > "$V6_STATE_FILE" 2>/dev/null
+                                    INIT_SCRIPT="${TACHYON_SERVICE_INIT:-/etc/init.d/tachyon}"
+                                    if [ -x "$INIT_SCRIPT" ] && "$INIT_SCRIPT" status >/dev/null 2>&1; then
+                                        "$INIT_SCRIPT" reload ipv6_state_change >/dev/null 2>&1
+                                    fi
+                                elif [ ! -f "$V6_STATE_FILE" ]; then
+                                    printf '%s\n' "$CUR_SIG" > "$V6_STATE_FILE" 2>/dev/null
+                                fi
+                            fi
+                        fi
+                    }
+                    if [ "${TACHYON_WAN6_HOTPLUG_SYNC:-0}" = "1" ]; then
+                        run_wan6_hotplug_sync >/dev/null 2>&1
+                    else
+                        run_wan6_hotplug_sync >/dev/null 2>&1 &
+                    fi
+                fi
                 ;;
         esac
         ;;

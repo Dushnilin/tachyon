@@ -14,6 +14,7 @@ let sysinfo_mod = require("diagnostics.system_info");
 let status_bridge = require("diagnostics.status_bridge");
 let repairs_mod = require("diagnostics.repairs");
 let connections = require("config.connections");
+let firewall_health = require("service.firewall_health");
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || constants.TACHYON_CONFIG_NAME || "tachyon";
 const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
@@ -50,6 +51,7 @@ const ZAPRET2_VALIDATOR_UC = LIB_DIR + "/providers/zapret2/validator.uc";
 const BYEDPI_VALIDATOR_UC = LIB_DIR + "/providers/byedpi/validator.uc";
 const STATUS_UC = LIB_DIR + "/diagnostics/status.uc";
 const DNS_APPLY_UC = LIB_DIR + "/dns/apply.uc";
+const NFT_APPLY_UC = LIB_DIR + "/nft/apply.uc";
 
 let as_string = common.as_string;
 let shell_quote = common.shell_quote;
@@ -1602,6 +1604,98 @@ function run_doctor_checks_impl(repair) {
         }
     }
 
+    // 5b2. IPv6 DNS / FakeIPv6 / AAAA NOERROR check
+    let eff_v6_dns = common.resolve_effective_ipv6_state(cfg, null);
+    if (has_sections && pid != "" && command_success("command -v dig >/dev/null 2>&1")) {
+        if (eff_v6_dns.ipv6_active && eff_v6_dns.fakeip_enabled) {
+            let fake6_ans = "";
+            let d6 = command_capture(command_from_args([
+                "dig", "+short", "@" + SB_DNS_INBOUND_ADDRESS, FAKEIP_TEST_DOMAIN, "AAAA", "+timeout=2", "+tries=1"
+            ]));
+            for (let ln in split(as_string(d6.output), "\n")) {
+                ln = lc(trim(as_string(ln)));
+                if (core_ip.valid_ipv6(ln) && match(ln, /^fc[0-3][0-9a-f]:/) != null) {
+                    fake6_ans = ln;
+                    break;
+                }
+            }
+            if (fake6_ans != "") {
+                doc_check("✅", binary_name + " FakeIPv6", "active (" + fake6_ans + ")", "");
+            } else {
+                issues++;
+                if (!DOCTOR_REPAIR_MODE) {
+                    doc_plan("ucode -L " + LIB_DIR + " " + SINGBOX_RUNTIME_UC + " configure-service; /etc/init.d/" + TACHYON_SERVICE_NAME + " reload ipv6_state_change");
+                    doc_check("⚠️", binary_name + " FakeIPv6", "AAAA query did not return FakeIPv6 in fc00::/18",
+                        "→ WILL FIX (doctor --fix): перегенерировать конфиг и применить IPv6 правила");
+                } else {
+                    command_status("ucode -L " + LIB_DIR + " " + SINGBOX_RUNTIME_UC + " configure-service >/dev/null 2>&1");
+                    command_status("/etc/init.d/" + TACHYON_SERVICE_NAME + " reload ipv6_state_change >/dev/null 2>&1");
+                    command_status("sleep 1");
+                    let d6b = command_capture(command_from_args([
+                        "dig", "+short", "@" + SB_DNS_INBOUND_ADDRESS, FAKEIP_TEST_DOMAIN, "AAAA", "+timeout=2", "+tries=1"
+                    ]));
+                    let fixed_v6 = "";
+                    for (let ln in split(as_string(d6b.output), "\n")) {
+                        ln = lc(trim(as_string(ln)));
+                        if (core_ip.valid_ipv6(ln) && match(ln, /^fc[0-3][0-9a-f]:/) != null) {
+                            fixed_v6 = ln;
+                            break;
+                        }
+                    }
+                    if (fixed_v6 != "") {
+                        doc_check("❌", binary_name + " FakeIPv6", "not returning FakeIPv6", "→ FIXED: " + fixed_v6);
+                        fixed++;
+                    } else {
+                        doc_check("❌", binary_name + " FakeIPv6", "not returning FakeIPv6 in fc00::/18", "→ проверьте секцию FakeIPv6 и перезапустите сервис");
+                    }
+                }
+            }
+        } else if (!eff_v6_dns.ipv6_active && dns_check_through_singbox("google.com")) {
+            let aaaa_leak = "";
+            let d6n = command_capture(command_from_args([
+                "dig", "+short", "@" + SB_DNS_INBOUND_ADDRESS, "google.com", "AAAA", "+timeout=2", "+tries=1"
+            ]));
+            for (let ln in split(as_string(d6n.output), "\n")) {
+                ln = trim(as_string(ln));
+                if (core_ip.valid_ipv6(ln)) {
+                    aaaa_leak = ln;
+                    break;
+                }
+            }
+            if (aaaa_leak == "") {
+                doc_check("✅", "IPv6 AAAA suppression", "NOERROR empty (" + eff_v6_dns.effective + ")", "");
+            } else {
+                issues++;
+                if (!DOCTOR_REPAIR_MODE) {
+                    doc_plan("ucode -L " + LIB_DIR + " " + SINGBOX_RUNTIME_UC + " configure-service; " + init_script + " restart");
+                    doc_check("⚠️", "IPv6 AAAA suppression", "unexpected AAAA response (" + aaaa_leak + ") in " + eff_v6_dns.effective,
+                        "→ WILL FIX (doctor --fix): перегенерировать DNS-правила NOERROR для AAAA");
+                } else {
+                    command_status("ucode -L " + LIB_DIR + " " + SINGBOX_RUNTIME_UC + " configure-service >/dev/null 2>&1");
+                    command_status(init_script + " restart >/dev/null 2>&1");
+                    command_status("sleep 2");
+                    let d6n2 = command_capture(command_from_args([
+                        "dig", "+short", "@" + SB_DNS_INBOUND_ADDRESS, "google.com", "AAAA", "+timeout=2", "+tries=1"
+                    ]));
+                    let still_leak = "";
+                    for (let ln in split(as_string(d6n2.output), "\n")) {
+                        ln = trim(as_string(ln));
+                        if (core_ip.valid_ipv6(ln)) {
+                            still_leak = ln;
+                            break;
+                        }
+                    }
+                    if (still_leak == "") {
+                        doc_check("❌", "IPv6 AAAA suppression", "unexpected AAAA", "→ FIXED: AAAA NOERROR");
+                        fixed++;
+                    } else {
+                        doc_check("❌", "IPv6 AAAA suppression", "unexpected AAAA (" + still_leak + ")", "→ перегенерируйте конфигурацию");
+                    }
+                }
+            }
+        }
+    }
+
     // 5c. Multi-DNS validation
     let all_bootstrap = get_all_dns_servers(cfg, "bootstrap_dns_server");
     if (length(all_bootstrap) == 0) all_bootstrap = ["77.88.8.8"];
@@ -2302,6 +2396,125 @@ function run_doctor_checks_impl(repair) {
             doc_check("⚠️", "TLS certificate pinning", "ignored (installed " + binary_name + " predates 1.15)",
                 "→ обновите " + binary_name + " до версии с поддержкой pin сертификата");
             push(DOCTOR_PLANNED_FIXES, "upgrade_to_singbox_extended");
+        }
+    }
+
+    // 23. IPv6, WAN6 PD, br_netfilter, Leak-Guard & odhcpd Check
+    let eff_v6 = common.resolve_effective_ipv6_state(cfg, null);
+    let pd_summary = length(eff_v6.wan6_pd) > 0
+        ? join(", ", eff_v6.wan6_pd)
+        : (length(eff_v6.wan6_gua) > 0 ? join(", ", eff_v6.wan6_gua) : "none");
+    doc_check("ℹ️", "IPv6 effective state",
+        sprintf("%s (mode=%s, dns=%s, wan6=%s)", eff_v6.effective, eff_v6.ipv6_mode, eff_v6.runtime_dns_strategy, pd_summary),
+        "");
+
+    let fw_v6 = firewall_health.inspect(cfg);
+    let br_nf6_raw = fs.readfile("/proc/sys/net/bridge/bridge-nf-call-ip6tables");
+    if (br_nf6_raw != null && trim(as_string(br_nf6_raw)) != "0") {
+        issues++;
+        if (!DOCTOR_REPAIR_MODE) {
+            doc_plan("sysctl -w net.bridge.bridge-nf-call-ip6tables=0");
+            doc_check("⚠️", "br_netfilter IPv6", "enabled (" + trim(as_string(br_nf6_raw)) + ")",
+                "→ WILL FIX (doctor --fix): отключить bridge-nf-call-ip6tables");
+        } else {
+            command_status("sysctl -w net.bridge.bridge-nf-call-ip6tables=0 >/dev/null 2>&1");
+            let br_nf6_after = trim(as_string(fs.readfile("/proc/sys/net/bridge/bridge-nf-call-ip6tables") || ""));
+            if (br_nf6_after == "0") {
+                doc_check("❌", "br_netfilter IPv6", "enabled", "→ FIXED: bridge-nf-call-ip6tables=0");
+                fixed++;
+            } else {
+                doc_check("❌", "br_netfilter IPv6", "enabled (" + br_nf6_after + ")", "→ не удалось сбросить sysctl");
+            }
+        }
+    }
+
+    if (has_sections && eff_v6.leak_guard_active) {
+        if (fw_v6.ipv6_leak_guard_ok) {
+            doc_check("✅", "IPv6 leak-guard", "active (tachyon-ipv6-leak-guard in inet " + NFT_TABLE_NAME + ")", "");
+        } else {
+            issues++;
+            if (!DOCTOR_REPAIR_MODE) {
+                doc_plan("ucode -L " + LIB_DIR + " " + NFT_APPLY_UC + " nft-apply");
+                doc_check("⚠️", "IPv6 leak-guard", "missing in nftables inet " + NFT_TABLE_NAME,
+                    "→ WILL FIX (doctor --fix): применить правила IPv6 leak-guard");
+            } else {
+                command_status("ucode -L " + LIB_DIR + " " + NFT_APPLY_UC + " nft-apply >/dev/null 2>&1");
+                let fw_v6_after = firewall_health.inspect(cfg);
+                if (fw_v6_after.ipv6_leak_guard_ok) {
+                    doc_check("❌", "IPv6 leak-guard", "missing", "→ FIXED: tachyon-ipv6-leak-guard применён");
+                    fixed++;
+                } else {
+                    doc_check("❌", "IPv6 leak-guard", "missing", "→ не удалось применить правила IPv6 leak-guard");
+                }
+            }
+        }
+    }
+
+    if (has_sections && eff_v6.ipv6_active) {
+        if (fw_v6.ipv6_route_ok) {
+            doc_check("✅", "IPv6 policy routing", "active (ip -6 rule & table " + RT_TABLE_NAME + ")", "");
+        } else {
+            issues++;
+            if (!DOCTOR_REPAIR_MODE) {
+                doc_plan("ucode -L " + LIB_DIR + " " + NFT_APPLY_UC + " nft-apply");
+                doc_check("⚠️", "IPv6 policy routing", "missing ip -6 rule or route table " + RT_TABLE_NAME,
+                    "→ WILL FIX (doctor --fix): восстановить IPv6 policy routing");
+            } else {
+                command_status("ucode -L " + LIB_DIR + " " + NFT_APPLY_UC + " nft-apply >/dev/null 2>&1");
+                let fw_v6_after = firewall_health.inspect(cfg);
+                if (fw_v6_after.ipv6_route_ok) {
+                    doc_check("❌", "IPv6 policy routing", "missing", "→ FIXED: ip -6 rule и таблица " + RT_TABLE_NAME + " восстановлены");
+                    fixed++;
+                } else {
+                    doc_check("❌", "IPv6 policy routing", "missing", "→ не удалось восстановить IPv6 маршрутизацию");
+                }
+            }
+        }
+
+        if (eff_v6.fakeip_enabled) {
+            let fake6_pool = as_string(cfg.fakeip_inet6_range || "fc00::/18");
+            if (fw_v6.fakeip6_ok) {
+                doc_check("✅", "nftables FakeIPv6", "active (" + fake6_pool + ")", "");
+            } else {
+                issues++;
+                if (!DOCTOR_REPAIR_MODE) {
+                    doc_plan("ucode -L " + LIB_DIR + " " + NFT_APPLY_UC + " nft-apply");
+                    doc_check("⚠️", "nftables FakeIPv6", "missing rule for " + fake6_pool + " in inet " + NFT_TABLE_NAME,
+                        "→ WILL FIX (doctor --fix): восстановить правило FakeIPv6 в nftables");
+                } else {
+                    command_status("ucode -L " + LIB_DIR + " " + NFT_APPLY_UC + " nft-apply >/dev/null 2>&1");
+                    let fw_v6_after = firewall_health.inspect(cfg);
+                    if (fw_v6_after.fakeip6_ok) {
+                        doc_check("❌", "nftables FakeIPv6", "missing", "→ FIXED: правило FakeIPv6 добавлено");
+                        fixed++;
+                    } else {
+                        doc_check("❌", "nftables FakeIPv6", "missing", "→ не удалось восстановить правило FakeIPv6");
+                    }
+                }
+            }
+        }
+
+        if (file_executable("/etc/init.d/odhcpd") && as_string(uci_core.get("dhcp.lan.dhcpv6") || "") == "server") {
+            let lan_dns_list = list_option(uci_core.get_all("dhcp", "lan"), "dns");
+            if (length(lan_dns_list) > 0) {
+                doc_check("✅", "odhcpd IPv6 DNS", "configured (" + join(", ", lan_dns_list) + ")", "");
+            } else {
+                issues++;
+                if (!DOCTOR_REPAIR_MODE) {
+                    doc_plan("ucode -L " + LIB_DIR + " " + DNS_APPLY_UC + " configure");
+                    doc_check("⚠️", "odhcpd IPv6 DNS", "dhcp.lan.dns is empty while DHCPv6 server is active",
+                        "→ WILL FIX (doctor --fix): настроить IPv6 DNS в odhcpd");
+                } else {
+                    command_status("ucode -L " + LIB_DIR + " " + DNS_APPLY_UC + " configure >/dev/null 2>&1");
+                    let lan_dns_after = list_option(uci_core.get_all("dhcp", "lan"), "dns");
+                    if (length(lan_dns_after) > 0) {
+                        doc_check("❌", "odhcpd IPv6 DNS", "missing", "→ FIXED: " + join(", ", lan_dns_after));
+                        fixed++;
+                    } else {
+                        doc_check("❌", "odhcpd IPv6 DNS", "missing", "→ не удалось настроить dhcp.lan.dns");
+                    }
+                }
+            }
         }
     }
 

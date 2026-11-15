@@ -478,4 +478,51 @@ if grep -q "add.*tachyon_quota_block_ip.*192\.168\.1\.249" "$NFT_LOG"; then
   fail "192.168.1.249 should not be added to block set when rules removed"
 fi
 
+# ─── Allow schedule must return from child chains rather than accept base chain
+cat >"$WORK_DIR/allow_schedule_fixture.json" <<'JSON'
+{
+  "section": [
+    {
+      ".name": "sec_youtube",
+      "enabled": "1",
+      "action": "connection",
+      "ip_cidr": [ "142.250.0.0/15" ]
+    }
+  ],
+  "schedule": [
+    {
+      ".name": "allow_all_window",
+      "enabled": "1",
+      "device_ip": "192.168.1.170",
+      "target": "all",
+      "action": "allow",
+      "start_time": "09:00",
+      "end_time": "18:00"
+    },
+    {
+      ".name": "allow_section_window",
+      "enabled": "1",
+      "device_ip": "192.168.1.171",
+      "target": "sections",
+      "sections": [ "sec_youtube" ],
+      "action": "allow",
+      "start_time": "09:00",
+      "end_time": "18:00"
+    }
+  ]
+}
+JSON
+
+rm -f "$NFT_LOG"
+touch "$NFT_LOG"
+nft_ucode nft-add-schedule-rules-fixture "$WORK_DIR/allow_schedule_fixture.json" "tachyon"
+
+assert_contains "$NFT_LOG" $'parental_forward\tip\tsaddr\t192.168.1.170\tmeta\thour\t"09:00:00"-"18:00:00"\tcounter\treturn' "allow schedule target=all uses return in parental_forward"
+assert_contains "$NFT_LOG" $'parental_control\tip\tsaddr\t192.168.1.170\tmeta\thour\t"09:00:00"-"18:00:00"\tcounter\treturn' "allow schedule target=all uses return in parental_control"
+assert_contains "$NFT_LOG" $'parental_forward\tip\tsaddr\t192.168.1.171\tmeta\thour\t"09:00:00"-"18:00:00"\tip\tdaddr\t@tachyon_rule_sec_youtube_subnets\tcounter\treturn' "allow schedule target=sections uses return in parental_forward"
+assert_contains "$NFT_LOG" $'parental_control\tip\tsaddr\t192.168.1.171\tmeta\thour\t"09:00:00"-"18:00:00"\tip\tdaddr\t@tachyon_rule_sec_youtube_subnets\tcounter\treturn' "allow schedule target=sections uses return in parental_control"
+if grep -Eq $'parental_(forward|control).*counter\taccept' "$NFT_LOG"; then
+  fail "action=allow schedule must emit counter return, not counter accept"
+fi
+
 printf 'Parental control, profiles and schedule tests passed\n'

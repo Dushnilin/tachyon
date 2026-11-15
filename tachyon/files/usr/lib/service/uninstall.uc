@@ -90,6 +90,8 @@ function restore_dhcp_dns() {
     // Hand back the dhcp options Tailscale MagicDNS set (servers file, localservice).
     if (fs.stat("/usr/lib/tachyon/providers/tailscale/runtime.uc") != null)
         run_cmd([ "ucode", "-L", "/usr/lib/tachyon", "/usr/lib/tachyon/providers/tailscale/runtime.uc", "release-dns" ]);
+    if (fs.stat("/usr/lib/tachyon/dns/apply.uc") != null)
+        run_cmd([ "ucode", "-L", "/usr/lib/tachyon", "/usr/lib/tachyon/dns/apply.uc", "odhcpd-restore" ]);
 
     let uci_core = null;
     try {
@@ -139,6 +141,29 @@ function restore_dhcp_dns() {
             if (uci_core.get("dhcp", "@dnsmasq[0]", "cachesize") == "0")
                 uci_core.set("dhcp", "@dnsmasq[0]", "cachesize", "150");
 
+            // Restore backed up odhcpd LAN options if dns/apply.uc did not already clean them up
+            for (let opt in [ "ra", "dhcpv6", "ndp", "ra_dns", "ra_default" ]) {
+                let val = uci_core.get("dhcp", "lan", "tachyon_lan_" + opt);
+                if (val == "__absent__") {
+                    uci_core.delete("dhcp", "lan", opt);
+                } else if (val != null && val != "") {
+                    uci_core.set("dhcp", "lan", opt, val);
+                }
+                uci_core.delete("dhcp", "lan", "tachyon_lan_" + opt);
+            }
+            let lan_dns = uci_core.get("dhcp", "lan", "tachyon_lan_dns");
+            if (lan_dns != null) {
+                uci_core.delete("dhcp", "lan", "dns");
+                if (lan_dns != "__absent__") {
+                    let list = type(lan_dns) == "array" ? lan_dns : split(trim(lan_dns), /[ \t\r\n]+/);
+                    for (let d in list)
+                        if (d != "")
+                            uci_core.add_list("dhcp", "lan", "dns", d);
+                }
+                uci_core.delete("dhcp", "lan", "tachyon_lan_dns");
+            }
+            uci_core.delete("dhcp", "lan", "tachyon_lan_managed");
+
             uci_core.delete("dhcp", "tachyon");
             uci_core.commit("dhcp");
         } catch (e) {}
@@ -156,6 +181,8 @@ function restore_dhcp_dns() {
 
     if (fs.stat("/etc/init.d/dnsmasq") != null)
         run_cmd(["/etc/init.d/dnsmasq", "restart"]);
+    if (fs.stat("/etc/init.d/odhcpd") != null)
+        run_cmd(["/etc/init.d/odhcpd", "restart"]);
 }
 
 function clean_firewall_and_routing() {
@@ -173,11 +200,15 @@ function clean_firewall_and_routing() {
     run_cmd(["ip", "-4", "rule", "del", "fwmark", "0x04000000/0x04000000", "table", "tachyon", "priority", "105"]);
     run_cmd(["ip", "-6", "rule", "del", "fwmark", "0x04000000/0x04000000", "table", "tachyon", "priority", "105"]);
     run_cmd(["ip", "-4", "rule", "del", "fwmark", "0x10000000/0x10000000", "lookup", "100"]);
+    run_cmd(["ip", "-6", "rule", "del", "fwmark", "0x10000000/0x10000000", "lookup", "100"]);
     run_cmd(["ip", "-4", "rule", "del", "fwmark", "0x1/0x1", "lookup", "100"]);
     run_cmd(["ip", "-4", "rule", "del", "fwmark", "0x2/0x2", "lookup", "100"]);
     run_cmd(["ip", "route", "flush", "table", "tachyon"]);
     run_cmd(["ip", "route", "flush", "table", "105"]);
     run_cmd(["ip", "route", "flush", "table", "100"]);
+    run_cmd(["ip", "-6", "route", "flush", "table", "tachyon"]);
+    run_cmd(["ip", "-6", "route", "flush", "table", "105"]);
+    run_cmd(["ip", "-6", "route", "flush", "table", "100"]);
     clean_rt_tables();
 
     // Clean network namespaces

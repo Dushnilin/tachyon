@@ -490,6 +490,7 @@ run_nft_base() {
 cat >"$WORK_DIR/nft_emb_srv.state" <<'EOF_STATE'
 tachyon.settings=settings
 tachyon.settings.source_network_interfaces=br-lan
+tachyon.settings.ipv6_mode=dual_stack
 tachyon.ts_srv=server
 tachyon.ts_srv.enabled=1
 tachyon.ts_srv.protocol=tailscale
@@ -510,7 +511,7 @@ assert_line_before "$NFT_LOG" \
 
 assert_line_before "$NFT_LOG" \
   $'add\trule\tinet\tTachyonTable\tmangle\tiifname\t@tachyon_interfaces\tip6\tdaddr\tfd7a:115c:a1e0::/48' \
-  $'add\trule\tinet\tTachyonTable\tmangle\tiifname\t@tachyon_interfaces\tip6\tdaddr\t@localv6\treturn' \
+  $'add\trule\tinet\tTachyonTable\tmangle\tiifname\t@tachyon_interfaces\tip6\tdaddr\t@localv6\tmeta\tmark\t&\t0x00100000\t==\t0\treturn' \
   "mangle fd7a:115c:a1e0::/48 must run before @localv6 return"
 
 assert_line_before "$NFT_LOG" \
@@ -530,13 +531,14 @@ assert_line_before "$NFT_LOG" \
 
 assert_line_before "$NFT_LOG" \
   $'add\trule\tinet\tTachyonTable\tmangle_output\tmeta\tl4proto\t{ tcp, udp }\tip6\tdaddr\tfd7a:115c:a1e0::/48' \
-  $'add\trule\tinet\tTachyonTable\tmangle_output\tip6\tdaddr\t@localv6\treturn' \
+  $'add\trule\tinet\tTachyonTable\tmangle_output\tip6\tdaddr\t!=\tfc00::/18\tip6\tdaddr\t@localv6\treturn' \
   "mangle_output fd7a:115c:a1e0::/48 must run before @localv6 return"
 
 # c2: Embedded client section active + native off
 cat >"$WORK_DIR/nft_emb_sec.state" <<'EOF_STATE'
 tachyon.settings=settings
 tachyon.settings.source_network_interfaces=br-lan
+tachyon.settings.ipv6_mode=dual_stack
 tachyon.ts_sec=section
 tachyon.ts_sec.enabled=1
 tachyon.ts_sec.action=tailscale
@@ -556,6 +558,7 @@ assert_line_before "$NFT_LOG" \
 cat >"$WORK_DIR/nft_disabled.state" <<'EOF_STATE'
 tachyon.settings=settings
 tachyon.settings.source_network_interfaces=br-lan
+tachyon.settings.ipv6_mode=dual_stack
 tachyon.ts_srv=server
 tachyon.ts_srv.enabled=0
 tachyon.ts_srv.protocol=tailscale

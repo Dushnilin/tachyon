@@ -812,7 +812,12 @@ function reload_firewall() {
     if (status != 0)
         return status;
 
-    return nft_populate_runtime_sets();
+    status = nft_populate_runtime_sets();
+    if (status != 0)
+        return status;
+
+    module_status(NFT_UC, [ "nft-sync-router-output-intercept", NFT_TABLE_NAME, NFT_LOCALV4_SET_NAME, NFT_OUTBOUND_MARK ]);
+    return 0;
 }
 
 function singbox_init_config() {
@@ -1706,6 +1711,7 @@ function reload(reason) {
     // Applies to user-triggered reloads as well as on_config_change; saves ~4
     // ucode forks (3 validate + 1 plan) when nothing actually changed.
     if (reason != "force" &&
+        reason != "ipv6_state_change" &&
         as_string(getenv("TACHYON_RUNTIME_CACHE_INVALIDATED") || "0") != "1" &&
         current_config_hash() == last_completed_reload_hash() &&
         !module_success(SUBSCRIPTION_CACHE_UC, [ "runtime-cache-needs-rebuild", SECTION_CACHE_DIR ])) {

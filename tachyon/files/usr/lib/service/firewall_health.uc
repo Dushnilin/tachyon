@@ -36,7 +36,24 @@ function tproxy_policy_route_ok() {
     return rule_res.status == 0 && index(rule_out, "lookup tachyon") >= 0 && index(rule_out, "fwmark") >= 0;
 }
 
+function tproxy_policy_route6_ok() {
+    let route_res = common.command_capture(common.command_from_args([
+        "ip", "-6", "route", "list", "table", "tachyon"
+    ]) + " 2>/dev/null");
+    let route_out = route_res.output || "";
+    if (index(route_out, "table inet ") >= 0)
+        return true;
+    if (route_res.status != 0 || index(route_out, "local") < 0)
+        return false;
+    let rule_res = common.command_capture(common.command_from_args([
+        "ip", "-6", "rule", "list"
+    ]) + " 2>/dev/null");
+    let rule_out = rule_res.output || "";
+    return rule_res.status == 0 && index(rule_out, "lookup tachyon") >= 0 && index(rule_out, "fwmark") >= 0;
+}
+
 function inspect(settings) {
+    settings = common.object_or_empty(settings);
     let table = getenv("NFT_TABLE_NAME") || "TachyonTable";
     let result = common.command_capture(common.command_from_args([
         "nft", "list", "table", "inet", table
@@ -46,15 +63,35 @@ function inspect(settings) {
 
     let mode = lc(trim(common.as_string(settings.proxy_mode || "tproxy")));
     let need_tproxy = mode != "tun" && mode != "socks";
+    let nftables_mode = (settings.routing_mode || "nftables") == "nftables";
     let nft_ok = table_present && index(data, "priority_rules") >= 0 &&
         (!need_tproxy || (index(data, "tproxy") >= 0 && tproxy_policy_route_ok()));
-    if ((settings.routing_mode || "nftables") != "nftables")
+    if (!nftables_mode)
         nft_ok = true;
     let qos_ok = settings.qos_priority_engine == "0" ||
         (table_present &&
          (index(data, "dscp set 0x2e") >= 0 || index(data, "dscp set ef") >= 0) &&
          (index(data, "dscp set 0x22") >= 0 || index(data, "dscp set af41") >= 0));
-    return { nft_ok: nft_ok, qos_ok: qos_ok };
+    let eff = common.resolve_effective_ipv6_state(settings, null);
+    let f6_range = trim(common.as_string(settings.fakeip_inet6_range || "fc00::/18"));
+    if (f6_range == "")
+        f6_range = "fc00::/18";
+    let ipv6_leak_guard_ok = !nftables_mode || !eff.leak_guard_active ||
+        (table_present && index(data, "tachyon-ipv6-leak-guard") >= 0);
+    let ipv6_route_ok = !nftables_mode || !eff.ipv6_active || !need_tproxy ||
+        tproxy_policy_route6_ok();
+    let fakeip6_ok = !nftables_mode || !eff.ipv6_active || !eff.fakeip_enabled ||
+        (table_present && (index(data, f6_range) >= 0 || index(data, "fc00::/18") >= 0));
+    return {
+        nft_ok: nft_ok,
+        qos_ok: qos_ok,
+        eff_ipv6_state: eff.effective,
+        ipv6_active: eff.ipv6_active,
+        leak_guard_active: eff.leak_guard_active,
+        ipv6_leak_guard_ok: ipv6_leak_guard_ok,
+        ipv6_route_ok: ipv6_route_ok,
+        fakeip6_ok: fakeip6_ok
+    };
 }
 
 function tproxy_listening(port) {

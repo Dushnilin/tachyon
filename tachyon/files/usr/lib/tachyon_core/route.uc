@@ -135,13 +135,16 @@ function config(settings, runtime) {
     let badwan_monitoring = bool_option(settings, "enable_badwan_interface_monitoring", false);
     let wan_failover_enabled = bool_option(settings, "wan_failover_enabled", false);
     let mode = lc(trim(as_string(option(settings, "proxy_mode", "tproxy"))));
+    let ipv6_active = (type(runtime) == "object" && runtime.ipv6_active != null)
+        ? bool_value(runtime.ipv6_active)
+        : common.resolve_effective_ipv6_state(settings, null).ipv6_active;
     let client_inbounds = (type(runtime) == "object" && type(runtime.client_inbounds) == "array" && length(runtime.client_inbounds) > 0)
         ? runtime.client_inbounds
         : (mode == "tun"
             ? [ runtime_constants.TUN_INBOUND_TAG ]
             : (mode == "socks"
                 ? [ runtime_constants.CLIENT_MIXED_INBOUND_TAG ]
-                : (common.ipv6_supported()
+                : (ipv6_active
                     ? [ runtime_constants.TPROXY_INBOUND_TAG, runtime_constants.TPROXY_INBOUND6_TAG ]
                     : [ runtime_constants.TPROXY_INBOUND_TAG ])));
     let sniff_inbounds = [];
@@ -214,11 +217,13 @@ function config(settings, runtime) {
         let doh_cidrs = [];
         for (let cidr in runtime_constants.DOH_BLOCK_IPV4_CIDRS)
             push(doh_cidrs, cidr);
-        for (let cidr in runtime_constants.DOH_BLOCK_IPV6_CIDRS)
-            push(doh_cidrs, cidr);
+        if (ipv6_active) {
+            for (let cidr in runtime_constants.DOH_BLOCK_IPV6_CIDRS)
+                push(doh_cidrs, cidr);
+        }
         for (let ib in client_inbounds)
             push(result.rules, { action: "reject", inbound: ib, ip_cidr: doh_cidrs });
-        if (length(client_inbounds) == 1 && client_inbounds[0] == runtime_constants.TPROXY_INBOUND_TAG)
+        if (ipv6_active && length(client_inbounds) == 1 && client_inbounds[0] == runtime_constants.TPROXY_INBOUND_TAG)
             push(result.rules, { action: "reject", inbound: runtime_constants.TPROXY_INBOUND6_TAG, ip_cidr: doh_cidrs });
     }
 

@@ -87,14 +87,14 @@ function count_prefix(values, prefix) { let count = 0; for (let value in values 
 
 let single = cfg(ARGV[0]);
 assert(length(single.dns.servers) == 3, "singleton keeps the legacy three-server shape");
-assert(length(single.inbounds) == 3, "singleton adds no health inbounds");
+assert(length(single.inbounds) == 2, "singleton without IPv6 adds no health inbounds");
 assert(count_prefix(single.dns.servers, "dns-health-") == 0, "singleton adds no health servers");
 assert(find_tag(single.dns.servers, "dns-server").server == "77.88.8.8", "singleton main DNS preserved");
 assert(single.route.default_domain_resolver == "dns-server", "singleton keeps main default resolver");
 
 let multi = cfg(ARGV[1]);
 assert(length(multi.dns.servers) == 7, "two main and two bootstrap candidates are generated");
-assert(length(multi.inbounds) == 8, "candidate and active health inbounds are generated");
+assert(length(multi.inbounds) == 7, "candidate and active health inbounds are generated");
 assert(count_prefix(multi.dns.servers, "dns-health-main-") == 2, "main health servers generated");
 assert(count_prefix(multi.dns.servers, "dns-health-bootstrap-") == 2, "bootstrap health servers generated");
 let main = find_tag(multi.dns.servers, "dns-server");

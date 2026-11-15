@@ -10,6 +10,7 @@
 
 let fs = require("fs");
 let common = require("core.common");
+let core_ip = require("core.ip");
 let uci_core = require("core.uci");
 let connections = require("config.connections");
 
@@ -406,6 +407,117 @@ function fakeip_ranges() {
     return ranges;
 }
 
+function fakeip6_ranges() {
+    let ranges = [];
+    let config = read_json_file(sing_box_config_path());
+    let dns = object_or_empty(object_or_empty(config).dns);
+
+    for (let server in array_or_empty(dns.servers)) {
+        server = object_or_empty(server);
+        if (as_string(server.type) == "fakeip") {
+            if (as_string(server.inet6_range) != "")
+                push(ranges, as_string(server.inet6_range));
+        }
+    }
+
+    let legacy = object_or_empty(dns.fakeip);
+    if (as_string(legacy.inet6_range) != "")
+        push(ranges, as_string(legacy.inet6_range));
+
+    if (length(ranges) == 0)
+        push(ranges, "fc00::/18");
+
+    return ranges;
+}
+
+function expand_ipv6_groups(ip_str) {
+    let clean = lc(trim(as_string(ip_str)));
+    let zone = index(clean, "%");
+    if (zone >= 0)
+        clean = substr(clean, 0, zone);
+    if (!core_ip.valid_ipv6(clean))
+        return null;
+
+    let halves = split(clean, "::");
+    if (length(halves) > 2)
+        return null;
+
+    let parse_side = function(part) {
+        let out = [];
+        if (part == "")
+            return out;
+        for (let seg in split(part, ":")) {
+            if (seg == "" || !match(seg, /^[0-9a-f]{1,4}$/))
+                return null;
+            push(out, int(seg, 16));
+        }
+        return out;
+    };
+
+    let left = parse_side(halves[0]);
+    if (left == null)
+        return null;
+    if (length(halves) == 1)
+        return length(left) == 8 ? left : null;
+
+    let right = parse_side(halves[1]);
+    if (right == null)
+        return null;
+    let missing = 8 - length(left) - length(right);
+    if (missing < 0)
+        return null;
+
+    let groups = [];
+    for (let v in left)
+        push(groups, v);
+    for (let i = 0; i < missing; i++)
+        push(groups, 0);
+    for (let v in right)
+        push(groups, v);
+    return length(groups) == 8 ? groups : null;
+}
+
+function ipv6_in_cidr(ip_str, cidr_str) {
+    cidr_str = trim(as_string(cidr_str));
+    let slash = index(cidr_str, "/");
+    let net_ip = slash >= 0 ? substr(cidr_str, 0, slash) : cidr_str;
+    let mask_bits = slash >= 0 ? int(substr(cidr_str, slash + 1)) : 128;
+    if (mask_bits < 0 || mask_bits > 128)
+        return false;
+
+    let ip_groups = expand_ipv6_groups(ip_str);
+    let net_groups = expand_ipv6_groups(net_ip);
+    if (ip_groups == null || net_groups == null)
+        return false;
+    if (mask_bits == 0)
+        return true;
+
+    let full_groups = int(mask_bits / 16);
+    for (let i = 0; i < full_groups; i++) {
+        if (ip_groups[i] != net_groups[i])
+            return false;
+    }
+
+    let rem = mask_bits % 16;
+    if (rem > 0) {
+        let shift = 16 - rem;
+        let div = 1;
+        for (let i = 0; i < shift; i++)
+            div = div * 2;
+        if (int(ip_groups[full_groups] / div) != int(net_groups[full_groups] / div))
+            return false;
+    }
+    return true;
+}
+
+function ipv6_in_any_cidr(ip_str, cidrs) {
+    for (let cidr in (type(cidrs) == "array" ? cidrs : [ "fc00::/18" ])) {
+        if (ipv6_in_cidr(ip_str, cidr))
+            return true;
+    }
+    return false;
+}
+
 function forkop_running() {
     let backend = backend_id();
     if (backend != "tachyon")
@@ -461,6 +573,7 @@ function capabilities() {
         lan_address: address == null ? "" : address.address,
         lan_prefix: address == null ? 0 : address.prefix,
         fakeip_ranges: fakeip_ranges(),
+        fakeip6_ranges: fakeip6_ranges(),
         backend,
         backend_name: backend_name(backend),
         backend_installed: backend != "none",
@@ -618,11 +731,12 @@ function prefixed_args(ctx, args) {
 }
 
 function probe_dns(ctx, host) {
-    if (valid_ipv4(host))
+    if (valid_ipv4(host) || core_ip.valid_ipv6(host))
         return { ok: true, ip: host, fakeip: false, ms: 0, error: "", skipped: true };
 
     let started = now_ms();
     let addresses = [];
+    let addresses6 = [];
 
     if (ctx.tools.dig) {
         let result = capture_args(prefixed_args(ctx, [
@@ -647,10 +761,46 @@ function probe_dns(ctx, host) {
         }
     }
 
+    if (length(addresses) == 0) {
+        let eff_v6 = common.resolve_effective_ipv6_state(uci_core.get_all("tachyon", "settings") || {}, null);
+        if (eff_v6.ipv6_active) {
+            if (ctx.tools.dig) {
+                let res6 = capture_args(prefixed_args(ctx, [
+                    "dig", "@" + ctx.resolver, as_string(host), "AAAA", "+short",
+                    "+timeout=" + as_string(DNS_TIMEOUT), "+tries=1"
+                ]), false);
+                for (let line in split(res6.output, "\n")) {
+                    line = trim(as_string(line));
+                    if (core_ip.valid_ipv6(line))
+                        push(addresses6, line);
+                }
+            }
+            else if (ctx.tools.nslookup) {
+                let res6 = capture_args(prefixed_args(ctx, [ "nslookup", "-type=aaaa", as_string(host), ctx.resolver ]), true);
+                for (let line in split(res6.output, "\n")) {
+                    let matched6 = match(trim(as_string(line)), /^Address[ \t0-9]*:[ \t]+([0-9a-fA-F:]+)/);
+                    if (matched6 != null && core_ip.valid_ipv6(matched6[1]) && matched6[1] != ctx.resolver)
+                        push(addresses6, matched6[1]);
+                }
+            }
+        }
+    }
+
     let elapsed = now_ms() - started;
 
-    if (length(addresses) == 0)
+    if (length(addresses) == 0) {
+        if (length(addresses6) > 0) {
+            return {
+                ok: true,
+                ip: addresses6[0],
+                all: addresses6,
+                fakeip: ipv6_in_any_cidr(addresses6[0], ctx.fakeip6_ranges || [ "fc00::/18" ]),
+                ms: elapsed,
+                error: ""
+            };
+        }
         return { ok: false, ip: "", fakeip: false, ms: elapsed, error: "нет A-записи" };
+    }
 
     return {
         ok: true,
@@ -672,11 +822,11 @@ function curl_failure_verdict(status, output) {
     if (status == 28)
         return { verdict: "timeout", message: "таймаут соединения" };
     // Три "ошибки TLS" у curl имеют совершенно разные причины, и валить их в одну
-    // строку - значит прятать диагноз. 35 - хендшейк оборвали (типовая подпись DPI),
+    // строку - значит прятать диагноз. 35 - хендшейк оборвали (сетевой сброс на маршруте),
     // 51 - сертификат отклонён, 60 - сертификат не удалось проверить, а это почти
     // всегда сбитые часы роутера (нет RTC) или отсутствующий ca-bundle.
     if (status == 35)
-        return { verdict: "tls_handshake", message: "TLS-хендшейк оборван — похоже на DPI или несовместимый TLS" };
+        return { verdict: "tls_handshake", message: "TLS-хендшейк оборван на транзитном узле или из-за несовместимого TLS" };
     if (status == 51)
         return { verdict: "tls_cert_rejected", message: "сертификат сервера отклонён" };
     if (status == 60)

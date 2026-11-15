@@ -89,7 +89,7 @@ assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\toutput_redirect
 assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\toutput_redirect\ttcp\tdport\t53\treturn' "enable: port 53 bypass"
 assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\toutput_redirect\tudp\tdport\t123\treturn' "enable: exclude_ntp bypass"
 assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\toutput_redirect\tmeta\tmark\t0x00100000\treturn' "enable: outbound_mark bypass"
-assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\toutput_redirect\tmeta\tl4proto\ttcp\tcounter\tredirect\tto\t:1604' "enable: tcp redirect to 1604"
+assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\toutput_redirect\tmeta\tnfproto\tipv4\tmeta\tl4proto\ttcp\tcounter\tredirect\tto\t:1604' "enable: tcp redirect to 1604"
 
 # A DPI section claims router-originated traffic in mangle_output (route output,
 # priority -150) and hands it to the provider queue there. This chain is nat
@@ -125,7 +125,7 @@ STATE
 rm -f "$WORK_DIR/chain_exists"
 TACHYON_UCI_STATE_FILE="$STATE_ENABLED" nft_ucode nft-sync-router-output-intercept TachyonTable localv4 0x00100000
 assert_contains "$NFT_LOG" $'nft\tadd\tchain\tinet\tTachyonTable\toutput_redirect\t{ type nat hook output priority -100; policy accept; }' "sync(enabled): creates chain"
-assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\toutput_redirect\tmeta\tl4proto\ttcp\tcounter\tredirect\tto\t:1604' "sync(enabled): redirects to port"
+assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\toutput_redirect\tmeta\tnfproto\tipv4\tmeta\tl4proto\ttcp\tcounter\tredirect\tto\t:1604' "sync(enabled): redirects to port"
 
 # Test 4: Sync from UCI - when disabled
 STATE_DISABLED="$WORK_DIR/disabled.state"
@@ -152,5 +152,12 @@ CHECK_SETTINGS=$(TACHYON_UCI_STATE_FILE="$STATE_DISABLED" ucode -S -L "$TACHYON_
 if [ "$CHECK_SETTINGS" != "val=0" ]; then
   fail "UCI route_router_traffic expected val=0, got '$CHECK_SETTINGS'"
 fi
+
+# Test 6: Active IPv6 adds output_tproxy6 rules
+: > "$NFT_LOG"
+TACHYON_MOCK_WAN6_PD="2001:db8::/56" TACHYON_UCI_STATE_FILE="$STATE_ENABLED" \
+  nft_ucode nft-sync-router-output-intercept TachyonTable localv4 0x00100000
+assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\toutput_redirect\tmeta\tnfproto\tipv4\tmeta\tl4proto\ttcp\tcounter\tredirect\tto\t:1604' "dual-stack sync: keeps ipv4 tcp redirect"
+assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\toutput_tproxy6\tmeta\tl4proto\ttcp\tmeta\tmark\tset\tmeta\tmark\t|\t0x04000000\tcounter' "dual-stack sync: marks router ipv6 tcp in output_tproxy6"
 
 printf 'ALL TESTS PASSED for route_router_traffic\n'

@@ -93,6 +93,94 @@ function is_fakeip_ipv4(ip_str) {
     return ipv4_in_cidr(ip_str, "198.18.0.0/15");
 }
 
+function expand_ipv6_groups(ip_str) {
+    let clean = lc(trim(as_string(ip_str)));
+    let zone = index(clean, "%");
+    if (zone >= 0)
+        clean = substr(clean, 0, zone);
+    if (!core_ip.valid_ipv6(clean))
+        return null;
+
+    let halves = split(clean, "::");
+    if (length(halves) > 2)
+        return null;
+
+    let parse_side = function(part) {
+        let out = [];
+        if (part == "")
+            return out;
+        for (let seg in split(part, ":")) {
+            if (seg == "" || !match(seg, /^[0-9a-f]{1,4}$/))
+                return null;
+            push(out, int(seg, 16));
+        }
+        return out;
+    };
+
+    let left = parse_side(halves[0]);
+    if (left == null)
+        return null;
+
+    if (length(halves) == 1)
+        return length(left) == 8 ? left : null;
+
+    let right = parse_side(halves[1]);
+    if (right == null)
+        return null;
+    let missing = 8 - length(left) - length(right);
+    if (missing < 0)
+        return null;
+
+    let groups = [];
+    for (let v in left)
+        push(groups, v);
+    for (let i = 0; i < missing; i++)
+        push(groups, 0);
+    for (let v in right)
+        push(groups, v);
+    return length(groups) == 8 ? groups : null;
+}
+
+function ipv6_in_cidr(ip_str, cidr_str) {
+    cidr_str = trim(as_string(cidr_str));
+    let slash = index(cidr_str, "/");
+    let net_ip = slash >= 0 ? substr(cidr_str, 0, slash) : cidr_str;
+    let mask_bits = slash >= 0 ? int(substr(cidr_str, slash + 1)) : 128;
+    if (mask_bits < 0 || mask_bits > 128)
+        return false;
+
+    let ip_groups = expand_ipv6_groups(ip_str);
+    let net_groups = expand_ipv6_groups(net_ip);
+    if (ip_groups == null || net_groups == null)
+        return false;
+    if (mask_bits == 0)
+        return true;
+
+    let full_groups = int(mask_bits / 16);
+    for (let i = 0; i < full_groups; i++) {
+        if (ip_groups[i] != net_groups[i])
+            return false;
+    }
+
+    let rem = mask_bits % 16;
+    if (rem > 0) {
+        let shift = 16 - rem;
+        let div = 1;
+        for (let i = 0; i < shift; i++)
+            div = div * 2;
+        if (int(ip_groups[full_groups] / div) != int(net_groups[full_groups] / div))
+            return false;
+    }
+    return true;
+}
+
+function is_fakeip_ipv6(ip_str, cidr_str) {
+    let range = trim(as_string(cidr_str || ""));
+    if (range == "")
+        range = "fc00::/18";
+    return ipv6_in_cidr(ip_str, range);
+}
+
 function is_private_ipv6(ip_str) {
     ip_str = lc(trim(as_string(ip_str)));
     if (!core_ip.valid_ipv6(ip_str)) return false;
@@ -1699,11 +1787,21 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
 
     let uci_cfg = load_uci_tachyon_config();
     let settings = uci_cfg.settings || {};
+    let eff_v6 = common.resolve_effective_ipv6_state(settings, null);
+    let fakeip4_range = as_string(settings.fakeip_inet4_range || "198.18.0.0/15");
+    let fakeip6_range = as_string(settings.fakeip_inet6_range || "fc00::/18");
+    if (target_info.type == "ipv4" && ipv4_in_cidr(target_host, fakeip4_range)) {
+        target_info.is_fakeip = true;
+        target_info.is_private = false;
+    } else if (target_info.type == "ipv6" && is_fakeip_ipv6(target_host, fakeip6_range)) {
+        target_info.is_fakeip = true;
+        target_info.is_private = false;
+    }
     let core_marker = trim(fs.readfile("/etc/tachyon/tachyon-core-variant") || fs.readfile("/etc/tachyon/sing-box-variant") || "");
     let is_tachyon_core_bin = core_marker == "tachyon-core" ||
         (core_marker != "extended" && core_marker != "extended-compressed" && core_marker != "lx" && core_marker != "tiny" && core_marker != "stable" && fs.stat("/usr/bin/tachyon-core") != null);
     let active_engine = is_tachyon_core_bin ? "tachyon-core" : ((settings.engine && settings.engine != "sing-box") ? settings.engine : "tachyon-core");
-    let fakeip_enabled = settings.fakeip == "1";
+    let fakeip_enabled = common.is_fakeip_enabled(settings);
 
     let client_info = classify_client(client_in, uci_cfg);
 
@@ -1734,9 +1832,9 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
         is_private_ip: target_info.is_private,
         is_fakeip: target_info.is_fakeip,
         details: target_info.is_private
-            ? "Target is a private/local RFC1918 address (in localv4 / localv6 set)."
+            ? "Target is a private/local RFC1918 or ULA/link-local address (in localv4 / localv6 set)."
             : (target_info.is_fakeip
-                ? "Target is an active synthetic FakeIP in pool 198.18.0.0/15."
+                ? "Target is an active synthetic FakeIP in pool " + (target_info.type == "ipv6" ? fakeip6_range : fakeip4_range) + "."
                 : "Target is a public " + target_info.type + ".")
     };
 
@@ -1956,13 +2054,17 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
         } else if (fakeip_enabled) {
             let core_dns_label = is_tachyon_core_bin ? "tachyon-core" : "sing-box";
             dns_mode = "fakeip";
-            dns_resolver = core_dns_label + " FakeIP (127.0.0.1:5353)";
-            dns_details = "Domain resolved by " + core_dns_label + " FakeIP resolver. Synthetic IPv4 allocated in pool 198.18.0.0/15.";
+            dns_resolver = core_dns_label + " FakeIP (127.0.0.42:53)";
+            dns_details = eff_v6.ipv6_active
+                ? "Domain resolved by " + core_dns_label + " FakeIP resolver. Synthetic IPv4 allocated in " + fakeip4_range + " and synthetic IPv6 in " + fakeip6_range + " (IPv6 state: " + eff_v6.effective + ")."
+                : "Domain resolved by " + core_dns_label + " FakeIP resolver. Synthetic IPv4 allocated in " + fakeip4_range + "; AAAA queries receive NOERROR empty response (IPv6 state: " + eff_v6.effective + ").";
         } else {
             let core_dns_label = is_tachyon_core_bin ? "tachyon-core" : "sing-box";
             dns_mode = "tachyon_dns";
-            dns_resolver = "dnsmasq -> " + core_dns_label + " (127.0.0.1:5353)";
-            dns_details = "Domain resolved via secure proxy DNS. dnsmasq automatically populates nftables set 'tachyon_target_v4' with resolved IP.";
+            dns_resolver = "dnsmasq -> " + core_dns_label + " (127.0.0.42:53)";
+            dns_details = eff_v6.ipv6_active
+                ? "Domain resolved via proxy DNS (strategy: " + eff_v6.runtime_dns_strategy + "). Resolved IPs populate nftables sets."
+                : "Domain resolved via proxy DNS (strategy: " + eff_v6.runtime_dns_strategy + "; AAAA suppressed with NOERROR). Resolved IPs populate nftables set 'tachyon_target_v4'.";
         }
     } else {
         dns_mode = "none";
@@ -1976,6 +2078,8 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
         mode: dns_mode,
         resolver: dns_resolver,
         fakeip_active: (action == "dns" || action == "hosts" || action == "bypass" || action == "direct") ? false : fakeip_enabled,
+        ipv6_effective_state: eff_v6.effective,
+        runtime_dns_strategy: eff_v6.runtime_dns_strategy,
         details: dns_details
     };
 
@@ -1984,8 +2088,14 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
     let nft_mark = "none";
     let nft_action = "accept";
     let nft_details = "";
+    let ip_ver_match = target_info.type == "ipv6" ? "ip6" : "ip";
 
-    if (action == "bypass" || action == "direct") {
+    if (target_info.type == "ipv6" && !target_info.is_private && eff_v6.leak_guard_active && !target_info.is_fakeip) {
+        nft_intercepted = true;
+        nft_mark = "drop";
+        nft_action = "drop (tachyon-ipv6-leak-guard)";
+        nft_details = "Blocked by IPv6 leak-guard rule (tachyon-ipv6-leak-guard) because effective IPv6 state is leak_guard.";
+    } else if (action == "bypass" || action == "direct") {
         nft_intercepted = false;
         nft_mark = "none";
         if (section_name && (matched_rule.rule_type == "port" || matched_rule.rule_type == "protocol_port")) {
@@ -1995,11 +2105,11 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
             nft_details = "Accepted directly in priority_rules (" + l4_p + " dport " + set_label + " counter accept) and forwarded to WAN without TProxy interception.";
         } else if (section_name && (matched_rule.rule_type == "source_ip" || matched_rule.rule_type == "fully_routed_ips")) {
             let set_label = "@tachyon_rule_" + section_name + "_sources";
-            nft_action = "ip saddr " + set_label + " counter accept";
-            nft_details = "Accepted directly in priority_rules (ip saddr " + set_label + " counter accept) and forwarded to WAN without TProxy interception.";
+            nft_action = ip_ver_match + " saddr " + set_label + " counter accept";
+            nft_details = "Accepted directly in priority_rules (" + ip_ver_match + " saddr " + set_label + " counter accept) and forwarded to WAN without TProxy interception.";
         } else {
             let set_label = section_name ? ("@tachyon_rule_" + section_name + "_subnets") : "default direct";
-            nft_action = section_name ? ("ip daddr " + set_label + " counter accept") : "accept (no mark)";
+            nft_action = section_name ? (ip_ver_match + " daddr " + set_label + " counter accept") : "accept (no mark)";
             nft_details = section_name
                 ? "Accepted directly in priority_rules (" + set_label + " counter accept) and forwarded to WAN without TProxy interception."
                 : "Unmarked packet passes through mangle chain and is forwarded directly to WAN.";
@@ -2054,9 +2164,19 @@ function explain_route(client_in, target_in, port_in, proto_in, options) {
 
     if (nft_intercepted && (nft_mark == NFT_FAKEIP_MARK || nft_mark == "0x10000000")) {
         rt_table = RT_TABLE_NAME + " (100)";
-        rt_rule = "from all fwmark " + NFT_FAKEIP_MARK + "/" + NFT_FAKEIP_MARK + " lookup " + RT_TABLE_NAME + " priority 10000";
-        rt_route = "local default dev lo table " + RT_TABLE_NAME;
-        rt_details = "Fwmark matches policy rule; packet diverted to loopback (dev lo) so local TProxy socket can accept it.";
+        let ip_cmd = (target_info.type == "ipv6" && eff_v6.ipv6_active) ? "ip -6 rule" : "ip rule";
+        rt_rule = ip_cmd + ": from all fwmark " + NFT_FAKEIP_MARK + "/" + NFT_FAKEIP_MARK + " lookup " + RT_TABLE_NAME + " priority 10000";
+        rt_route = (target_info.type == "ipv6" && eff_v6.ipv6_active)
+            ? ("local ::/0 dev lo table " + RT_TABLE_NAME)
+            : ("local default dev lo table " + RT_TABLE_NAME);
+        rt_details = (target_info.type == "ipv6" && eff_v6.effective == "tunnel_over_v4" && target_info.is_fakeip)
+            ? "FakeIPv6 packet marked before @localv6 return, diverted to loopback via ip -6 rule, and carried by tachyon-core over IPv4 transport."
+            : "Fwmark matches policy rule; packet diverted to loopback (dev lo) so local TProxy socket can accept it.";
+    } else if (nft_mark == "drop") {
+        rt_table = "none";
+        rt_rule = "dropped in nftables";
+        rt_route = "none (IPv6 leak-guard)";
+        rt_details = "Packet terminated before routing by tachyon-ipv6-leak-guard.";
     } else {
         rt_table = "main";
         rt_rule = "from all lookup main priority 32766";

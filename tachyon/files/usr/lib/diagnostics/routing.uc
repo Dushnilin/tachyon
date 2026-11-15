@@ -700,6 +700,7 @@ function check_inbounds() {
         enabled_count,
         config_path: sing_box_config_path,
         wan_ip,
+        wan_ipv6: network_mod.first_ipv6_from_list(wan_ip),
         wan_public,
         requires_public_wan,
         items

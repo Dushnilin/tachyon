@@ -165,6 +165,11 @@ if [ "$#" -eq 2 ] && [ "$1" = "-n" ] && [ "$2" = "net.bridge.bridge-nf-call-ipta
   exit 0
 fi
 
+if [ "$#" -eq 2 ] && [ "$1" = "-n" ] && [ "$2" = "net.bridge.bridge-nf-call-ip6tables" ]; then
+  printf '%s\n' "${SYSCTL_BRIDGE_NF_CALL_IP6TABLES:-0}"
+  exit 0
+fi
+
 exit 0
 SYSCTL
 chmod 0755 "$WORK_DIR/bin/sysctl"
@@ -276,7 +281,7 @@ assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\tmangle\tiifname
 assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\tmangle\tiifname\t@tachyon_interfaces\tip6\tdaddr\t2606:4700:4700::1111/128\tmeta\tmark\tset\t0x00100000\tcounter' "runtime doh6 block marking rule"
 
 : > "$NFT_LOG"
-nft_ucode nft-create-runtime-output-rules TachyonTable localv4 tachyon_subnets tachyon_ports tachyon_ip_ports 0x00100000 198.18.0.0/15
+TACHYON_MOCK_WAN6_PD="2001:db8::/56" nft_ucode nft-create-runtime-output-rules TachyonTable localv4 tachyon_subnets tachyon_ports tachyon_ip_ports 0x00100000 198.18.0.0/15
 assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\tmangle_output\tip\tdaddr\t@tachyon_subnets\tmeta\tl4proto\ttcp\tmeta\tmark\tset\t0x00100000\tcounter' "runtime output common tcp"
 assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\tmangle_output\tip6\tdaddr\t@tachyon_subnets6\tmeta\tl4proto\ttcp\tmeta\tmark\tset\t0x00100000\tcounter' "runtime output common6 tcp"
 assert_contains "$NFT_LOG" $'nft\tadd\trule\tinet\tTachyonTable\tmangle_output\tip\tdaddr\t.\ttcp\tdport\t@tachyon_ip_ports\tmeta\tmark\tset\t0x00100000\tcounter' "runtime output ip-port tcp"
@@ -393,7 +398,7 @@ assert_line_before "$NFT_LOG" \
 : > "$IP_LOG"
 : > "$LOGGER_LOG"
 rt_tables="$WORK_DIR/rt_tables"
-IP_ROUTE_LIST_FAIL=1 IP_ROUTE6_LIST_FAIL=1 IP_RULE_OUTPUT='' IP_RULE6_OUTPUT='' \
+TACHYON_MOCK_WAN6_PD="2001:db8::/56" IP_ROUTE_LIST_FAIL=1 IP_ROUTE6_LIST_FAIL=1 IP_RULE_OUTPUT='' IP_RULE6_OUTPUT='' \
   nft_ucode ensure-tproxy-route-rule tachyon 0x00100000 "$rt_tables" 2>"$WORK_DIR/tproxy-route-check.err"
 [ ! -s "$WORK_DIR/tproxy-route-check.err" ] ||
   fail "missing tproxy route table predicates must suppress ip stderr"
@@ -410,7 +415,7 @@ assert_contains "$LOGGER_LOG" "[debug] Creating IPv6 TPROXY marking rule" "tprox
 : > "$IP_LOG"
 : > "$LOGGER_LOG"
 printf '%s\n' '105 tachyon' >"$rt_tables"
-IP_ROUTE_OUTPUT='local default dev lo scope host' \
+TACHYON_MOCK_WAN6_PD="2001:db8::/56" IP_ROUTE_OUTPUT='local default dev lo scope host' \
   IP_ROUTE6_OUTPUT='local default dev lo metric 1024 pref medium' \
   IP_RULE_OUTPUT='105: from all fwmark 0x100000/0x100000 lookup tachyon' \
   IP_RULE6_OUTPUT='105: from all fwmark 0x100000/0x100000 lookup tachyon' \
@@ -422,12 +427,12 @@ assert_contains "$LOGGER_LOG" "[debug] IPv4 TPROXY route already exists" "existi
 assert_contains "$LOGGER_LOG" "[debug] IPv6 TPROXY route already exists" "existing tproxy route6 log"
 assert_contains "$LOGGER_LOG" "[debug] IPv4 TPROXY marking rule already exists" "existing tproxy marking rule log"
 assert_contains "$LOGGER_LOG" "[debug] IPv6 TPROXY marking rule already exists" "existing tproxy marking rule6 log"
-IP_ROUTE_OUTPUT='local default dev lo scope host' \
+TACHYON_MOCK_WAN6_PD="2001:db8::/56" IP_ROUTE_OUTPUT='local default dev lo scope host' \
   IP_ROUTE6_OUTPUT='local default dev lo metric 1024 pref medium' \
   IP_RULE_OUTPUT='105: from all fwmark 0x100000/0x100000 lookup tachyon' \
   IP_RULE6_OUTPUT='105: from all fwmark 0x100000/0x100000 lookup tachyon' \
   nft_ucode tproxy-route-rule-present tachyon 0x00100000
-if IP_ROUTE_OUTPUT='local default dev lo scope host' \
+if TACHYON_MOCK_WAN6_PD="2001:db8::/56" IP_ROUTE_OUTPUT='local default dev lo scope host' \
   IP_ROUTE6_OUTPUT='local default dev lo metric 1024 pref medium' \
   IP_RULE_OUTPUT='105: from all fwmark 0x100000/0x100000 lookup other' \
   IP_RULE6_OUTPUT='105: from all fwmark 0x100000/0x100000 lookup tachyon' \
@@ -456,6 +461,14 @@ LSMOD_OUTPUT='' SYSCTL_BRIDGE_NF_CALL_IPTABLES=1 nft_ucode ensure-bridge-netfilt
 if [ -s "$SYSCTL_LOG" ]; then
   fail "bridge netfilter absent should not call sysctl"
 fi
+
+: > "$SYSCTL_LOG"
+: > "$LOGGER_LOG"
+LSMOD_OUTPUT='br_netfilter 32768 0' SYSCTL_BRIDGE_NF_CALL_IPTABLES=0 SYSCTL_BRIDGE_NF_CALL_IP6TABLES=1 nft_ucode ensure-bridge-netfilter-disabled
+assert_contains "$SYSCTL_LOG" $'sysctl\t-n\tnet.bridge.bridge-nf-call-ip6tables' "bridge netfilter ipv6 sysctl check"
+assert_contains "$SYSCTL_LOG" $'sysctl\t-w\tnet.bridge.bridge-nf-call-iptables=0' "bridge netfilter ipv6-only trigger still resets iptables=0"
+assert_contains "$SYSCTL_LOG" $'sysctl\t-w\tnet.bridge.bridge-nf-call-ip6tables=0' "bridge netfilter ipv6-only trigger resets ip6tables=0"
+assert_contains "$LOGGER_LOG" "[debug] br_netfilter is enabled; disabling it for transparent proxy routing" "bridge netfilter ipv6-only disable log"
 
 input="$WORK_DIR/ips.txt"
 cat >"$input" <<'EOF_INPUT'

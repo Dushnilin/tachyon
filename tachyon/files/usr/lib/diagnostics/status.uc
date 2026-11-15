@@ -1512,9 +1512,12 @@ function render_global_system_info() {
 function render_global_fakeip_check() {
     let value = object_or_empty(read_stdin_json());
     let fakeip_address = object_value(value, "IP");
+    let fakeip_v4 = object_value(value, "IPv4");
+    let fakeip_v6 = object_value(value, "IPv6");
+    let summary_ip = (fakeip_v4 != "" && fakeip_v6 != "") ? (fakeip_v4 + " / " + fakeip_v6) : fakeip_address;
 
     if (flag_is_true(value.fakeip))
-        print_line("\u2705 FakeIP DNS works: " + fakeip_address);
+        print_line("\u2705 FakeIP DNS works: " + summary_ip);
     else
         print_line("\u274c FakeIP DNS does NOT work");
 }

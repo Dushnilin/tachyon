@@ -51,7 +51,10 @@ function server_list(settings, key, fallback) {
     }
     let fallback_key = (key == "dns_server") ? "fallback_wan_main" : "fallback_wan_bootstrap";
     if (bool_option(settings, fallback_key, false)) {
+        let ipv6_ok = common.resolve_effective_ipv6_state(settings, null).ipv6_active;
         for (let wan_ip in get_wan_dns_servers()) {
+            if (!ipv6_ok && index(wan_ip, ":") >= 0)
+                continue;
             push(result, wan_ip);
         }
     }
@@ -155,38 +158,72 @@ function active_values(settings, override_state) {
 const KNOWN_DNS_SERVER_NAMES = {
     "8.8.8.8": "dns.google",
     "8.8.4.4": "dns.google",
+    "2001:4860:4860::8888": "dns.google",
+    "2001:4860:4860::8844": "dns.google",
     "1.1.1.1": "cloudflare-dns.com",
     "1.0.0.1": "cloudflare-dns.com",
+    "2606:4700:4700::1111": "cloudflare-dns.com",
+    "2606:4700:4700::1001": "cloudflare-dns.com",
+    "2606:4700:4700::1112": "security.cloudflare-dns.com",
+    "2606:4700:4700::1113": "family.cloudflare-dns.com",
     "77.88.8.8": "common.dot.dns.yandex.net",
     "77.88.8.1": "common.dot.dns.yandex.net",
+    "2a02:6b8::feed:0ff": "common.dot.dns.yandex.net",
+    "2a02:6b8:0:1::feed:0ff": "common.dot.dns.yandex.net",
     "77.88.8.88": "safe.dot.dns.yandex.net",
     "77.88.8.2": "safe.dot.dns.yandex.net",
+    "2a02:6b8::feed:bad": "safe.dot.dns.yandex.net",
+    "2a02:6b8:0:1::feed:bad": "safe.dot.dns.yandex.net",
     "77.88.8.7": "family.dot.dns.yandex.net",
     "77.88.8.3": "family.dot.dns.yandex.net",
+    "2a02:6b8::feed:a11": "family.dot.dns.yandex.net",
+    "2a02:6b8:0:1::feed:a11": "family.dot.dns.yandex.net",
     "9.9.9.9": "dns.quad9.net",
     "149.112.112.112": "dns.quad9.net",
+    "2620:fe::fe": "dns.quad9.net",
+    "2620:fe::9": "dns.quad9.net",
     "9.9.9.10": "dns10.quad9.net",
     "149.112.112.10": "dns10.quad9.net",
+    "2620:fe::10": "dns10.quad9.net",
+    "2620:fe::fe:10": "dns10.quad9.net",
     "94.140.14.14": "dns.adguard-dns.com",
     "94.140.15.15": "dns.adguard-dns.com",
+    "2a10:50c0::ad1:ff": "dns.adguard-dns.com",
+    "2a10:50c0::ad2:ff": "dns.adguard-dns.com",
     "94.140.14.140": "unfiltered.adguard-dns.com",
     "94.140.14.141": "unfiltered.adguard-dns.com",
+    "2a10:50c0::1:ff": "unfiltered.adguard-dns.com",
+    "2a10:50c0::2:ff": "unfiltered.adguard-dns.com",
     "94.140.14.15": "family.adguard-dns.com",
     "94.140.15.16": "family.adguard-dns.com",
+    "2a10:50c0::bad1:ff": "family.adguard-dns.com",
+    "2a10:50c0::bad2:ff": "family.adguard-dns.com",
     "194.242.2.2": "dns.mullvad.net",
     "194.242.2.3": "dns.mullvad.net",
     "194.242.2.4": "dns.mullvad.net",
     "194.242.2.5": "dns.mullvad.net",
+    "2a07:e340::2": "dns.mullvad.net",
+    "2a07:e340::3": "dns.mullvad.net",
     "76.76.2.0": "freedns.controld.com",
     "76.76.10.0": "freedns.controld.com",
+    "2606:1a40::": "freedns.controld.com",
+    "2606:1a40:1::": "freedns.controld.com",
     "223.5.5.5": "dns.alidns.com",
     "223.6.6.6": "dns.alidns.com",
+    "2400:3200::1": "dns.alidns.com",
+    "2400:3200:baba::1": "dns.alidns.com",
     "208.67.222.222": "doh.opendns.com",
     "208.67.220.220": "doh.opendns.com",
+    "2620:119:35::35": "doh.opendns.com",
+    "2620:119:53::53": "doh.opendns.com",
     "185.222.222.222": "doh.dns.sb",
     "45.11.45.11": "doh.dns.sb",
+    "2a09::": "doh.dns.sb",
+    "2a11::": "doh.dns.sb",
     "185.228.168.9": "doh.cleanbrowsing.org",
-    "185.228.169.9": "doh.cleanbrowsing.org"
+    "185.228.169.9": "doh.cleanbrowsing.org",
+    "2a0d:2a00:1::": "doh.cleanbrowsing.org",
+    "2a0d:2a00:2::": "doh.cleanbrowsing.org"
 };
 
 function apply_mtls_options(result, server, mtls_settings) {
@@ -209,9 +246,17 @@ function apply_mtls_options(result, server, mtls_settings) {
     }
 }
 
+function dns_server_lookup_key(host) {
+    host = as_string(host);
+    let pct = index(host, "%");
+    return lc(pct >= 0 ? substr(host, 0, pct) : host);
+}
+
 function server_from_options(tag_name, dns_type, dns_server, detour, mtls_settings) {
     let server = runtime_url.host(dns_server);
     let port = runtime_url.port(dns_server);
+    let is_ip = core_ip.valid_ip_with_zone(server);
+    let known_name = KNOWN_DNS_SERVER_NAMES[dns_server_lookup_key(server)];
     let result = {
         type: "udp",
         tag: tag_name,
@@ -227,9 +272,9 @@ function server_from_options(tag_name, dns_type, dns_server, detour, mtls_settin
         result.type = "tls";
         result.server_port = port != "" ? int(port) : 853;
         result.tls = { enabled: true };
-        if (core_ip.valid_ip(server) && KNOWN_DNS_SERVER_NAMES[server])
-            result.tls.server_name = KNOWN_DNS_SERVER_NAMES[server];
-        else if (!core_ip.valid_ip(server))
+        if (is_ip && known_name)
+            result.tls.server_name = known_name;
+        else if (!is_ip)
             result.tls.server_name = server;
         apply_mtls_options(result, server, mtls_settings);
     }
@@ -239,9 +284,9 @@ function server_from_options(tag_name, dns_type, dns_server, detour, mtls_settin
         let path = runtime_url.path(dns_server);
         result.path = (path != "" && path != "/") ? path : "/dns-query";
         result.tls = { enabled: true };
-        if (core_ip.valid_ip(server) && KNOWN_DNS_SERVER_NAMES[server])
-            result.tls.server_name = KNOWN_DNS_SERVER_NAMES[server];
-        else if (!core_ip.valid_ip(server))
+        if (is_ip && known_name)
+            result.tls.server_name = known_name;
+        else if (!is_ip)
             result.tls.server_name = server;
         apply_mtls_options(result, server, mtls_settings);
     }
@@ -249,9 +294,9 @@ function server_from_options(tag_name, dns_type, dns_server, detour, mtls_settin
         result.type = "quic";
         result.server_port = port != "" ? int(port) : 784;
         result.tls = { enabled: true };
-        if (core_ip.valid_ip(server) && KNOWN_DNS_SERVER_NAMES[server])
-            result.tls.server_name = KNOWN_DNS_SERVER_NAMES[server];
-        else if (!core_ip.valid_ip(server))
+        if (is_ip && known_name)
+            result.tls.server_name = known_name;
+        else if (!is_ip)
             result.tls.server_name = server;
         apply_mtls_options(result, server, mtls_settings);
     }
@@ -259,7 +304,7 @@ function server_from_options(tag_name, dns_type, dns_server, detour, mtls_settin
         return { unsupported: "unsupported dns_type " + dns_type };
     }
 
-    if (!core_ip.valid_ip(server))
+    if (!is_ip)
         result.domain_resolver = runtime_constants.BOOTSTRAP_DNS_SERVER_TAG;
     if (as_string(detour) != "")
         result.detour = as_string(detour);
@@ -274,7 +319,7 @@ function bootstrap_server(tag_name, value) {
     let port = runtime_url.port(raw);
     let host = server != "" ? server : raw;
     if (url_scheme == "tls" || url_scheme == "dot") {
-        let dot_name = core_ip.valid_ip(host) ? KNOWN_DNS_SERVER_NAMES[host] : host;
+        let dot_name = core_ip.valid_ip_with_zone(host) ? KNOWN_DNS_SERVER_NAMES[dns_server_lookup_key(host)] : host;
         let result = {
             type: "tls",
             tag: tag_name,

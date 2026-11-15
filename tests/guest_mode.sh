@@ -35,6 +35,21 @@ assert_not_contains() {
   fi
 }
 
+assert_line_before() {
+  local file="$1"
+  local first="$2"
+  local second="$3"
+  local label="$4"
+  local first_line
+  local second_line
+
+  first_line="$(awk -v pat="$first" 'index($0, pat) { print NR; exit }' "$file")"
+  second_line="$(awk -v pat="$second" 'index($0, pat) { print NR; exit }' "$file")"
+  [ -n "$first_line" ] || fail "$label: missing first line '$first'"
+  [ -n "$second_line" ] || fail "$label: missing second line '$second'"
+  [ "$first_line" -lt "$second_line" ] || fail "$label: expected '$first' (line $first_line) before '$second' (line $second_line)"
+}
+
 mkdir -p "$WORK_DIR/bin"
 cat >"$WORK_DIR/bin/nft" <<NFT
 #!/usr/bin/env bash
@@ -83,6 +98,11 @@ assert_contains "$NFT_LOG" "guest_input	udp	dport	53	accept" "DNS UDP accepted"
 assert_contains "$NFT_LOG" "guest_input	tcp	dport	53	accept" "DNS TCP accepted"
 assert_contains "$NFT_LOG" "guest_input	icmp	type	echo-request	accept" "ICMP echo accepted"
 
+# TPROXY marked packets return in guest_input after essential services and before admin drops
+assert_contains "$NFT_LOG" $'guest_input\tmeta\tmark\t&\t0x04000000\t==\t0x04000000\treturn' "selected tproxy mark return"
+assert_line_before "$NFT_LOG" $'guest_input\ticmpv6\t' $'guest_input\tmeta\tmark\t&\t0x04000000\t==\t0x04000000\treturn' "selected tproxy return after icmpv6"
+assert_line_before "$NFT_LOG" $'guest_input\tmeta\tmark\t&\t0x04000000\t==\t0x04000000\treturn' $'tachyon-guest-admin-drop' "selected tproxy return before admin drop"
+
 # LAN isolation in guest_forward
 assert_contains "$NFT_LOG" "guest_forward	ether	saddr	@tachyon_guest_mac	ip	daddr	@localv4	counter	drop	comment	\"tachyon-guest-lan-drop\"" "mac lan drop"
 assert_contains "$NFT_LOG" "guest_forward	ip	saddr	@tachyon_guest_ip	ip	daddr	@localv4	counter	drop	comment	\"tachyon-guest-lan-drop\"" "ip lan drop"
@@ -127,6 +147,46 @@ assert_contains "$NFT_LOG" "guest_input	iifname	@tachyon_ifaces	counter	drop	com
 assert_contains "$NFT_LOG" "guest_forward	iifname	@tachyon_ifaces	ip	daddr	@localv4	counter	drop	comment	\"tachyon-guest-lan-drop\"" "inverted lan drop"
 assert_contains "$NFT_LOG" "guest_forward	iifname	@tachyon_ifaces	counter	comment	\"tachyon-guest-traffic\"" "inverted traffic counter"
 assert_contains "$NFT_LOG" "guest_forward	iifname	@tachyon_ifaces	counter	drop	comment	\"guest-time-window-closed\"" "inverted time window drop"
+
+# TPROXY marked packets return in guest_input after essential services and before admin drops
+assert_contains "$NFT_LOG" $'guest_input\tmeta\tmark\t&\t0x04000000\t==\t0x04000000\treturn' "inverted tproxy mark return"
+assert_line_before "$NFT_LOG" $'guest_input\ticmpv6\t' $'guest_input\tmeta\tmark\t&\t0x04000000\t==\t0x04000000\treturn' "inverted tproxy return after icmpv6"
+assert_line_before "$NFT_LOG" $'guest_input\tmeta\tmark\t&\t0x04000000\t==\t0x04000000\treturn' $'tachyon-guest-admin-drop' "inverted tproxy return before admin drop"
+
+# Custom fakeip_mark override via 6th fixture argument
+rm -f "$NFT_LOG"
+nft_ucode nft-add-guest-mode-rules-fixture "$WORK_DIR/guest_selected.json" "tachyon" "tachyon_ifaces" "localv4" "localv6" "0x02000000"
+assert_contains "$NFT_LOG" $'guest_input\tmeta\tmark\t&\t0x02000000\t==\t0x02000000\treturn' "custom tproxy mark return"
+assert_not_contains "$NFT_LOG" "0x04000000" "custom mark replaces default fakeip mark"
+
+# allow_proxy=0 disables meta mark return rule and changes runtime signature
+cat >"$WORK_DIR/guest_allow_proxy_0.json" <<'JSON'
+{
+  "guest_mode": [
+    {
+      ".name": "guest_mode",
+      "enabled": "1",
+      "mode": "selected",
+      "guest_devices": [ "192.168.1.150", "aa:bb:cc:dd:ee:ff" ],
+      "isolate_lan": "1",
+      "block_router_admin": "1",
+      "allow_proxy": "0",
+      "start_time": "08:00",
+      "end_time": "22:00",
+      "days": [ "mon", "tue", "wed", "thu", "fri" ]
+    }
+  ]
+}
+JSON
+
+rm -f "$NFT_LOG"
+nft_ucode nft-add-guest-mode-rules-fixture "$WORK_DIR/guest_allow_proxy_0.json" "tachyon" "tachyon_ifaces" "localv4" "localv6"
+assert_not_contains "$NFT_LOG" $'guest_input\tmeta\tmark' "allow_proxy=0 omits meta mark return rule"
+assert_contains "$NFT_LOG" "guest_input	ip	saddr	@tachyon_guest_ip	counter	drop	comment	\"tachyon-guest-admin-drop\"" "allow_proxy=0 keeps admin drop"
+
+SIG_PROXY_DEFAULT="$(nft_ucode nft-runtime-signature-fixture "$WORK_DIR/guest_selected.json")"
+SIG_PROXY_DISABLED="$(nft_ucode nft-runtime-signature-fixture "$WORK_DIR/guest_allow_proxy_0.json")"
+[ "$SIG_PROXY_DEFAULT" != "$SIG_PROXY_DISABLED" ] || fail "Runtime signature must change when guest_mode.allow_proxy changes"
 
 # ─── 3. Validator Tests ──────────────────────────────────────────────────────
 cat >"$WORK_DIR/valid_config.json" <<'JSON'
@@ -201,6 +261,40 @@ JSON
 
 if ucode -L "$TACHYON_LIB" "$VALIDATOR_RUNTIME" validate-runtime-fixture "$WORK_DIR/invalid_quota.json" "{}" >/dev/null 2>&1; then
   fail "Validator must reject out-of-range daily_time_limit"
+fi
+
+cat >"$WORK_DIR/valid_allow_proxy_false.json" <<'JSON'
+{
+  "settings": { ".name": "settings", ".type": "settings", "dns_server": ["77.88.8.8"], "bootstrap_dns_server": ["77.88.8.8"] },
+  "guest_mode": [
+    {
+      ".name": "guest_mode",
+      "enabled": "1",
+      "allow_proxy": "false"
+    }
+  ]
+}
+JSON
+
+if ! ucode -L "$TACHYON_LIB" "$VALIDATOR_RUNTIME" validate-runtime-fixture "$WORK_DIR/valid_allow_proxy_false.json" "{}" >/dev/null 2>&1; then
+  fail "Validator should accept allow_proxy=false"
+fi
+
+cat >"$WORK_DIR/invalid_allow_proxy.json" <<'JSON'
+{
+  "settings": { ".name": "settings", ".type": "settings", "dns_server": ["77.88.8.8"], "bootstrap_dns_server": ["77.88.8.8"] },
+  "guest_mode": [
+    {
+      ".name": "guest_mode",
+      "enabled": "1",
+      "allow_proxy": "maybe"
+    }
+  ]
+}
+JSON
+
+if ucode -L "$TACHYON_LIB" "$VALIDATOR_RUNTIME" validate-runtime-fixture "$WORK_DIR/invalid_allow_proxy.json" "{}" >/dev/null 2>&1; then
+  fail "Validator must reject invalid allow_proxy"
 fi
 
 # ─── 4. Parental Quota Daemon Guest Integration ──────────────────────────────

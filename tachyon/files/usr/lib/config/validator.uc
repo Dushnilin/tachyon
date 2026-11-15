@@ -1153,7 +1153,7 @@ function dns_server_value_valid(value) {
     if (port != "" && (match(port, /^[0-9]+$/) == null || int(port) < 1 || int(port) > 65535))
         return false;
 
-    if (core_ip.valid_ip(host))
+    if (core_ip.valid_ip_with_zone(host))
         return true;
 
     return length(host) <= 253 &&
@@ -1244,6 +1244,69 @@ function validate_dns_settings(settings, sections, context) {
         fail_validation("DNS through a section references disabled rule '" + target_name + "'. Aborted.");
     if (!download_section_action_available(target.action, context.byedpi_installed, context.zapret_installed, context.zapret2_installed))
         fail_validation("DNS through a section references rule '" + target_name + "' with unsupported action '" + target.action + "'. Select an enabled Connection, VPN, Zapret, Zapret2, or ByeDPI section. Aborted.");
+}
+
+function valid_bool_setting_text(value) {
+    let v = lc(trim(as_string(value)));
+    return v == "0" || v == "1" || v == "true" || v == "false" || v == "yes" || v == "no" || v == "on" || v == "off";
+}
+
+function validate_ipv6_and_fakeip_settings(settings, sections) {
+    let raw_ipv6_mode = lc(trim(option(settings, "ipv6_mode", "")));
+    if (raw_ipv6_mode != "" && !contains([
+        "off", "ipv4_only", "ipv4-only", "ipv4", "disabled", "none",
+        "auto",
+        "dual_stack", "dual-stack", "ipv4_ipv6", "ipv4-ipv6", "on", "full", "always",
+        "tunnel_over_v4", "tunnel-over-v4", "v6_over_v4", "v6-over-v4", "tunnel"
+    ], raw_ipv6_mode))
+        fail_validation("Unsupported IPv6 mode '" + raw_ipv6_mode + "'. Use off, auto, dual_stack, or tunnel_over_v4. Aborted.");
+
+    for (let bool_key in [ "ipv6_leak_guard", "fakeip_enabled", "webrtc_leak_protect" ]) {
+        let raw_bool = trim(option(settings, bool_key, ""));
+        if (raw_bool != "" && !valid_bool_setting_text(raw_bool))
+            fail_validation("Invalid boolean value '" + raw_bool + "' for settings." + bool_key + " (expected 0 or 1). Aborted.");
+    }
+
+    let raw_ui_mode = lc(trim(option(settings, "ui_mode", "")));
+    if (raw_ui_mode != "" && !contains([ "simple", "advanced", "basic" ], raw_ui_mode))
+        fail_validation("Unsupported UI mode '" + raw_ui_mode + "'. Use simple or advanced. Aborted.");
+
+    let fakeip4 = trim(option(settings, "fakeip_inet4_range", ""));
+    if (fakeip4 != "" && !core_ip.valid_ipv4_cidr(fakeip4, false))
+        fail_validation("Invalid FakeIPv4 CIDR range '" + fakeip4 + "'. Aborted.");
+
+    let fakeip6 = trim(option(settings, "fakeip_inet6_range", ""));
+    if (fakeip6 != "" && !core_ip.valid_ipv6_cidr(fakeip6))
+        fail_validation("Invalid FakeIPv6 CIDR range '" + fakeip6 + "'. Aborted.");
+
+    let tun4 = trim(option(settings, "tun_inet4", ""));
+    if (tun4 != "" && !core_ip.valid_ipv4_cidr(tun4, false))
+        fail_validation("Invalid TUN IPv4 CIDR '" + tun4 + "'. Aborted.");
+
+    let tun6 = trim(option(settings, "tun_inet6", ""));
+    if (tun6 != "" && !core_ip.valid_ipv6_cidr(tun6))
+        fail_validation("Invalid TUN IPv6 CIDR '" + tun6 + "'. Aborted.");
+
+    let eff_fakeip4 = fakeip4 != "" ? fakeip4 : "198.18.0.0/15";
+    let eff_fakeip6 = fakeip6 != "" ? fakeip6 : "fc00::/18";
+    if (tun4 != "" && core_ip.cidrs_overlap(tun4, eff_fakeip4))
+        fail_validation("TUN IPv4 CIDR '" + tun4 + "' overlaps FakeIPv4 range '" + eff_fakeip4 + "'. Aborted.");
+    if (tun6 != "" && core_ip.cidrs_overlap(tun6, eff_fakeip6))
+        fail_validation("TUN IPv6 CIDR '" + tun6 + "' overlaps FakeIPv6 range '" + eff_fakeip6 + "'. Aborted.");
+
+    for (let raw_ex in option_list_values(settings, "fakeip_exclude")) {
+        let ex = trim(as_string(raw_ex));
+        if (ex == "" || substr(ex, 0, 1) == "#")
+            continue;
+        if (!combined_domain_valid(ex))
+            fail_validation("Invalid settings.fakeip_exclude entry '" + ex + "'. Aborted.");
+    }
+
+    for (let sec in (sections || [])) {
+        let raw_v6_sup = lc(trim(option(sec, "ipv6_support", "")));
+        if (raw_v6_sup != "" && raw_v6_sup != "auto" && !valid_bool_setting_text(raw_v6_sup))
+            fail_validation("Invalid section." + section_name(sec) + ".ipv6_support '" + raw_v6_sup + "' (expected auto, 0, or 1). Aborted.");
+    }
 }
 
 function normalize_port_number_value(value) {
@@ -2515,6 +2578,10 @@ function validate_guest_mode(guest_mode) {
     let end_time = option(guest_mode, "end_time", "");
     validate_time_format(start_time, "guest_mode." + name + ".start_time");
     validate_time_format(end_time, "guest_mode." + name + ".end_time");
+
+    let allow_proxy = lc(trim(as_string(option(guest_mode, "allow_proxy", ""))));
+    if (allow_proxy != "" && allow_proxy != "0" && allow_proxy != "1" && allow_proxy != "true" && allow_proxy != "false")
+        fail_validation("Guest mode '" + name + "' has invalid allow_proxy '" + allow_proxy + "'. Expected 0 or 1. Aborted.");
 }
 
 // A section may claim one of its own condition values as global: the value is
@@ -2857,6 +2924,7 @@ function validate_runtime_config(context) {
     }
 
     validate_dns_settings(settings, sections, context);
+    validate_ipv6_and_fakeip_settings(settings, sections);
     validate_list_update_settings(settings);
     validate_wan_failover_settings(settings);
     validate_http_url_option(option(settings, "latency_test_url", DEFAULT_LATENCY_TEST_URL) || DEFAULT_LATENCY_TEST_URL, "settings.latency_test_url");

@@ -111,8 +111,24 @@ function valid_ipv6_cidr(value) {
     return valid_ipv6(substr(value, 0, slash)) && prefix_number >= 0 && prefix_number <= 128;
 }
 
+function valid_ipv6_zone(value) {
+    value = as_string(value);
+    let pct = index(value, "%");
+    if (pct <= 0 || index(substr(value, pct + 1), "%") >= 0)
+        return false;
+    let addr = substr(value, 0, pct);
+    let zone = substr(value, pct + 1);
+    if (zone == "" || length(zone) > 32 || match(zone, /^[A-Za-z0-9_.:-]+$/) == null)
+        return false;
+    return valid_ipv6(addr);
+}
+
 function valid_ip(value) {
     return valid_ipv4(value, false, false) || valid_ipv6(value);
+}
+
+function valid_ip_with_zone(value) {
+    return valid_ip(value) || valid_ipv6_zone(value);
 }
 
 function valid_ip_cidr(value) {
@@ -298,7 +314,318 @@ function resolve_mac_to_ips(mac) {
         }
     } catch (e) {}
 
+    // IPv6 SLAAC / NDP neighbor cache lookup (global & ULA, skip link-local fe80::/10 and FAILED).
+    let neigh_text = "";
+    let mock_neigh = getenv("TACHYON_MOCK_IP6_NEIGH");
+    if (mock_neigh != null && mock_neigh != "") {
+        if (index(mock_neigh, "/") == 0)
+            neigh_text = as_string(fs.readfile(mock_neigh) || "");
+        else
+            neigh_text = as_string(mock_neigh);
+    } else if (getenv("TACHYON_NO_LIVE_NET_PROBE") != "1") {
+        neigh_text = common.command_output_from_args([ "ip", "-6", "neigh", "show" ]);
+    }
+    for (let line in split(neigh_text, "\n")) {
+        line = trim(line);
+        if (line == "" || index(line, "FAILED") >= 0)
+            continue;
+        let fields = split(line, /[ \t]+/);
+        if (length(fields) < 4)
+            continue;
+        let ip = fields[0];
+        if (!valid_ipv6(ip) || match(lc(ip), /^fe[89ab][0-9a-f]?:/) != null)
+            continue;
+        let ll_idx = index(fields, "lladdr");
+        if (ll_idx < 0 || ll_idx + 1 >= length(fields))
+            continue;
+        let m = lc(replace(trim(fields[ll_idx + 1]), "-", ":"));
+        if (m == mac && !seen[ip]) {
+            seen[ip] = true;
+            push(matched, ip);
+        }
+    }
+
+    // DHCPv6 leases via ubus (or test mock), when lease entry exposes mac.
+    let leases_raw = "";
+    let mock_v6_leases = getenv("TACHYON_MOCK_UBUS_IPV6LEASES");
+    if (mock_v6_leases != null && mock_v6_leases != "") {
+        leases_raw = substr(mock_v6_leases, 0, 1) == "{" ? mock_v6_leases : as_string(fs.readfile(mock_v6_leases) || "");
+    } else if (getenv("TACHYON_NO_LIVE_NET_PROBE") != "1") {
+        leases_raw = common.command_output(common.bounded_command(common.command_from_args([ "ubus", "call", "dhcp", "ipv6leases" ]), 2) + " 2>/dev/null");
+    }
+    if (trim(leases_raw) != "") {
+        let parsed_leases = null;
+        try { parsed_leases = json(leases_raw); } catch (e) { parsed_leases = null; }
+        let devs = type(parsed_leases) == "object" ? common.object_or_empty(parsed_leases.device) : {};
+        for (let dev_name in keys(devs)) {
+            let dev_obj = common.object_or_empty(devs[dev_name]);
+            for (let lease in common.array_or_empty(dev_obj.leases)) {
+                if (type(lease) != "object")
+                    continue;
+                let lm = lc(replace(trim(as_string(lease.mac || "")), "-", ":"));
+                if (lm != mac)
+                    continue;
+                for (let a in common.array_or_empty(lease["ipv6-addr"])) {
+                    let ip = type(a) == "object" ? trim(as_string(a.address || "")) : trim(as_string(a));
+                    if (ip != "" && valid_ipv6(ip) && match(lc(ip), /^fe[89ab][0-9a-f]?:/) == null && !seen[ip]) {
+                        seen[ip] = true;
+                        push(matched, ip);
+                    }
+                }
+            }
+        }
+    }
+
     return matched;
+}
+
+function parse_ipv4_bytes_pure(addr) {
+    let parts = split(addr, ".");
+    if (length(parts) != 4)
+        return null;
+    let out = [];
+    for (let p in parts) {
+        if (!decimal_text(p, false))
+            return null;
+        let v = int(p);
+        if (v < 0 || v > 255)
+            return null;
+        push(out, v);
+    }
+    return out;
+}
+
+function expand_ipv6_hextets(addr) {
+    if (!valid_ipv6(addr))
+        return null;
+    let marker = index(addr, "::");
+    let left_parts = [];
+    let right_parts = [];
+    if (marker >= 0) {
+        let l = substr(addr, 0, marker);
+        let r = substr(addr, marker + 2);
+        if (l != "")
+            left_parts = split(l, ":");
+        if (r != "")
+            right_parts = split(r, ":");
+    } else {
+        left_parts = split(addr, ":");
+    }
+
+    let normalize_side = function(parts) {
+        let words = [];
+        for (let i = 0; i < length(parts); i++) {
+            let p = parts[i];
+            if (index(p, ".") >= 0) {
+                let v4 = parse_ipv4_bytes_pure(p);
+                if (!v4)
+                    return null;
+                push(words, (v4[0] * 256) + v4[1]);
+                push(words, (v4[2] * 256) + v4[3]);
+            } else {
+                push(words, hex(p));
+            }
+        }
+        return words;
+    };
+
+    let left_words = normalize_side(left_parts);
+    let right_words = normalize_side(right_parts);
+    if (!left_words || !right_words)
+        return null;
+
+    let zeros = 8 - length(left_words) - length(right_words);
+    if (zeros < 0)
+        return null;
+    let all = [];
+    for (let w in left_words) push(all, w);
+    for (let i = 0; i < zeros; i++) push(all, 0);
+    for (let w in right_words) push(all, w);
+    return length(all) == 8 ? all : null;
+}
+
+function parse_ip_bytes(addr) {
+    addr = trim(as_string(addr));
+    if (addr == "")
+        return null;
+    if (type(global.iptoarr) == "function" && index(addr, "\u0000") < 0) {
+        let arr = iptoarr(addr);
+        if (type(arr) == "array" && (length(arr) == 4 || length(arr) == 16))
+            return arr;
+    }
+    if (valid_ipv4(addr, false, false))
+        return parse_ipv4_bytes_pure(addr);
+    let words = expand_ipv6_hextets(addr);
+    if (!words)
+        return null;
+    let out = [];
+    for (let w in words) {
+        push(out, (w >> 8) & 255);
+        push(out, w & 255);
+    }
+    return out;
+}
+
+function format_ip_bytes(bytes) {
+    if (type(bytes) != "array")
+        return "";
+    if (type(global.arrtoip) == "function")
+        return as_string(arrtoip(bytes));
+    if (length(bytes) == 4)
+        return sprintf("%d.%d.%d.%d", bytes[0], bytes[1], bytes[2], bytes[3]);
+    if (length(bytes) != 16)
+        return "";
+
+    let words = [];
+    for (let i = 0; i < 16; i += 2)
+        push(words, ((bytes[i] & 255) << 8) | (bytes[i + 1] & 255));
+
+    let best_start = -1;
+    let best_len = 0;
+    let cur_start = -1;
+    let cur_len = 0;
+    for (let i = 0; i < 8; i++) {
+        if (words[i] == 0) {
+            if (cur_start < 0) {
+                cur_start = i;
+                cur_len = 1;
+            } else {
+                cur_len++;
+            }
+            if (cur_len > best_len) {
+                best_start = cur_start;
+                best_len = cur_len;
+            }
+        } else {
+            cur_start = -1;
+            cur_len = 0;
+        }
+    }
+    if (best_len < 2) {
+        best_start = -1;
+        best_len = 0;
+    }
+
+    let parts = [];
+    for (let i = 0; i < 8; i++) {
+        if (i == best_start) {
+            if (length(parts) == 0)
+                push(parts, "");
+            push(parts, "");
+            i += best_len - 1;
+            continue;
+        }
+        push(parts, sprintf("%x", words[i]));
+    }
+    let joined = join(":", parts);
+    if (best_start >= 0 && best_start + best_len == 8 && substr(joined, length(joined) - 2) != "::")
+        joined += ":";
+    return joined;
+}
+
+function parse_cidr_parts(value) {
+    value = trim(as_string(value));
+    if (value == "")
+        return null;
+    let slash = index(value, "/");
+    let addr = slash < 0 ? value : substr(value, 0, slash);
+    let bytes = parse_ip_bytes(addr);
+    if (!bytes)
+        return null;
+    let max_bits = length(bytes) * 8;
+    let prefix = max_bits;
+    if (slash >= 0) {
+        let ptxt = substr(value, slash + 1);
+        if (!decimal_text(ptxt, false))
+            return null;
+        prefix = int(ptxt);
+        if (prefix < 0 || prefix > max_bits)
+            return null;
+    }
+    return { bytes: bytes, prefix: prefix, family: length(bytes) == 4 ? 4 : 6 };
+}
+
+function mask_cidr(value) {
+    let parsed = parse_cidr_parts(value);
+    if (!parsed)
+        return "";
+    let out = [];
+    let rem = parsed.prefix;
+    for (let b in parsed.bytes) {
+        if (rem >= 8) {
+            push(out, b & 255);
+            rem -= 8;
+        } else if (rem > 0) {
+            let mask = (255 << (8 - rem)) & 255;
+            push(out, b & mask);
+            rem = 0;
+        } else {
+            push(out, 0);
+        }
+    }
+    return format_ip_bytes(out) + "/" + as_string(parsed.prefix);
+}
+
+function cidrs_overlap(a, b) {
+    let pa = parse_cidr_parts(a);
+    let pb = parse_cidr_parts(b);
+    if (!pa || !pb || pa.family != pb.family)
+        return false;
+    let common_bits = pa.prefix < pb.prefix ? pa.prefix : pb.prefix;
+    for (let i = 0; i < length(pa.bytes) && common_bits > 0; i++) {
+        let bits = common_bits >= 8 ? 8 : common_bits;
+        let mask = bits == 8 ? 255 : ((255 << (8 - bits)) & 255);
+        if ((pa.bytes[i] & mask) != (pb.bytes[i] & mask))
+            return false;
+        common_bits -= bits;
+    }
+    return true;
+}
+
+function lan_ipv6_prefixes(interfaces) {
+    let out = [];
+    let seen = {};
+    let add_cidr = function(raw) {
+        let masked = mask_cidr(raw);
+        if (masked == "" || index(masked, ":") < 0)
+            return;
+        if (match(lc(masked), /^fe[89ab][0-9a-f]?:/) != null || masked == "::1/128")
+            return;
+        if (!seen[masked]) {
+            seen[masked] = true;
+            push(out, masked);
+        }
+    };
+
+    let mock = trim(as_string(getenv("TACHYON_MOCK_LAN_PREFIX6") || ""));
+    if (mock != "") {
+        for (let item in split(mock, /[ \t\r\n,;]+/))
+            add_cidr(item);
+        return out;
+    }
+
+    if (getenv("TACHYON_NO_LIVE_NET_PROBE") == "1")
+        return out;
+
+    let ifaces = type(interfaces) == "array" ? interfaces : [];
+    if (length(ifaces) == 0)
+        ifaces = [ "br-lan" ];
+
+    for (let dev in ifaces) {
+        dev = trim(as_string(dev));
+        if (dev == "")
+            continue;
+        let text = common.command_output_from_args([ "ip", "-6", "-o", "addr", "show", "dev", dev, "scope", "global" ]);
+        for (let line in split(as_string(text), "\n")) {
+            line = trim(line);
+            if (line == "")
+                continue;
+            let m = match(line, /inet6[ \t]+([^ \t]+)/);
+            if (m)
+                add_cidr(m[1]);
+        }
+    }
+    return out;
 }
 
 function normalize_to_cidrs(items) {
@@ -455,8 +782,10 @@ return {
     valid_ipv4_cidr,
     valid_ipv6,
     valid_ipv6_cidr,
+    valid_ipv6_zone,
     valid_ip,
     valid_ip_cidr,
+    valid_ip_with_zone,
     valid_ip_or_cidr,
     valid_mac,
     nft_ip_or_cidr,
@@ -466,6 +795,10 @@ return {
     resolve_mac_to_ips,
     normalize_to_cidrs,
     expand_ipv4_mapped_cidrs,
+    parse_ip_bytes,
+    mask_cidr,
+    cidrs_overlap,
+    lan_ipv6_prefixes,
     CLOUDFLARE_SHARED_CIDRS,
     is_cloudflare_shared_cidr,
     DISCORD_VOICE_PORTS_NFT,

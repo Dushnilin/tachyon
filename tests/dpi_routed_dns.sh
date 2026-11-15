@@ -15,7 +15,7 @@ for version in 1.13.5 1.14.1; do
     ucode -e '
       let action = ARGV[0];
       print(sprintf("%J\n", {
-        settings: { ".name": "settings", ".type": "settings", enabled: "1", dns_type: "udp", dns_server: "1.1.1.1", service_listen_address: "127.0.0.1" },
+        settings: { ".name": "settings", ".type": "settings", enabled: "1", dns_type: "udp", dns_server: "1.1.1.1", service_listen_address: "127.0.0.1", ipv6_mode: "dual_stack" },
         section: [
           { ".name": "dpi", ".type": "section", enabled: "1", action,
             domain_suffix: [ "dpi.example" ], community_lists: [ "youtube" ],

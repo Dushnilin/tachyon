@@ -283,14 +283,21 @@ function build_desired_nftables(opts) {
         return {
             table_needed: false,
             table_name: NFT_TABLE_SINGBOX,
-            sets_needed: []
+            sets_needed: [],
+            leak_guard_needed: false,
+            ipv6_active: false,
+            effective_ipv6_state: "disabled"
         };
     }
 
+    let eff = common.resolve_effective_ipv6_state(get_settings(), null);
     return {
         table_needed: true,
         table_name: NFT_TABLE_SINGBOX,
-        sets_needed: CORE_NFT_SETS
+        sets_needed: CORE_NFT_SETS,
+        leak_guard_needed: eff.leak_guard_active,
+        ipv6_active: eff.ipv6_active,
+        effective_ipv6_state: eff.effective
     };
 }
 
@@ -299,9 +306,11 @@ function build_desired_routing(opts) {
     let settings = get_settings();
     let proxy_mode = lc(trim(as_string(settings.proxy_mode || "tproxy")));
     let need_tproxy_routing = proxy_mode != "tun" && proxy_mode != "socks";
+    let eff = common.resolve_effective_ipv6_state(settings, null);
 
     return {
         needed: enabled && need_tproxy_routing, // tun/socks do not use tproxy policy routing
+        ipv6_needed: enabled && need_tproxy_routing && eff.ipv6_active,
         table_name: RT_TABLE_NAME,
         table_id: RT_TABLE_ID,
         rule_mark: "0x04000000"
@@ -451,7 +460,9 @@ function inspect_actual_dns(desired_dns) {
 
 function inspect_actual_nftables(desired_nft) {
     let table_name = desired_nft.table_name;
-    let table_present = command_status(sprintf("nft list table inet %s >/dev/null 2>&1", shell_quote(table_name))) == 0;
+    let table_res = command_capture(sprintf("nft list table inet %s 2>/dev/null", shell_quote(table_name)));
+    let table_present = table_res.status == 0 && index(table_res.output || "", "table inet " + table_name) >= 0;
+    let leak_guard_present = table_present && index(table_res.output || "", "tachyon-ipv6-leak-guard") >= 0;
 
     let sets_present = [];
     let sets_missing = [];
@@ -478,6 +489,7 @@ function inspect_actual_nftables(desired_nft) {
     return {
         table_present: table_present,
         table_name: table_name,
+        leak_guard_present: leak_guard_present,
         sets_present: sets_present,
         sets_missing: sets_missing,
         sets_empty: sets_empty
@@ -488,6 +500,7 @@ function inspect_actual_routing(desired_routing) {
     let rule4_present = false;
     let rule6_present = false;
     let route_present = false;
+    let route6_present = false;
 
     if (desired_routing.needed) {
         let r4 = command_output_from_args([ "ip", "rule", "show" ]);
@@ -503,12 +516,19 @@ function inspect_actual_routing(desired_routing) {
             routes = command_output_from_args([ "ip", "route", "show", "table", desired_routing.table_id ]);
         if (routes != "")
             route_present = true;
+
+        let routes6 = command_output_from_args([ "ip", "-6", "route", "show", "table", desired_routing.table_name ]);
+        if (routes6 == "" && desired_routing.table_id)
+            routes6 = command_output_from_args([ "ip", "-6", "route", "show", "table", desired_routing.table_id ]);
+        if (routes6 != "")
+            route6_present = true;
     }
 
     return {
         rule4_present: rule4_present,
         rule6_present: rule6_present,
-        route_present: route_present
+        route_present: route_present,
+        route6_present: route6_present
     };
 }
 
@@ -675,6 +695,18 @@ function diff_nftables(desired_nft, actual_nft) {
         });
     }
 
+    if (desired_nft.table_needed && desired_nft.leak_guard_needed && actual_nft.leak_guard_present === false) {
+        push(drifts, {
+            subsystem: SUBSYSTEM_NFTABLES,
+            item: "leak_guard_missing",
+            expected: "tachyon-ipv6-leak-guard",
+            actual: "missing",
+            severity: SEVERITY_HIGH,
+            action: ACTION_REPAIR_NFT_TABLE,
+            reason: "IPv6 leak-guard rule is missing in nftables"
+        });
+    }
+
     return drifts;
 }
 
@@ -704,6 +736,32 @@ function diff_routing(desired_rt, actual_rt) {
                 action: ACTION_REPAIR_ROUTING,
                 reason: "Routing table 'tachyon' has no active routes"
             });
+        }
+
+        if (desired_rt.ipv6_needed) {
+            if (!actual_rt.rule6_present) {
+                push(drifts, {
+                    subsystem: SUBSYSTEM_ROUTING,
+                    item: "rule6_missing",
+                    expected: "rule6_present",
+                    actual: "missing",
+                    severity: SEVERITY_HIGH,
+                    action: ACTION_REPAIR_ROUTING,
+                    reason: "IPv6 policy routing rule to table tachyon is missing"
+                });
+            }
+
+            if (actual_rt.route6_present === false) {
+                push(drifts, {
+                    subsystem: SUBSYSTEM_ROUTING,
+                    item: "route6_missing",
+                    expected: "route6_present",
+                    actual: "missing",
+                    severity: SEVERITY_HIGH,
+                    action: ACTION_REPAIR_ROUTING,
+                    reason: "IPv6 routing table 'tachyon' has no active routes"
+                });
+            }
         }
     }
 
@@ -855,10 +913,10 @@ function repair_dns_subsystem(drift_items, opts) {
 function repair_nftables_subsystem(drift_items, opts) {
     log("Reconciler: repairing nftables subsystem...", "info");
 
-    // Determine whether table is missing or only sets need repopulating
+    // Determine whether table or rule structure is missing or only sets need repopulating
     let table_missing = false;
     for (let item in drift_items) {
-        if (item.item == "table_missing") {
+        if (item.item == "table_missing" || item.item == "leak_guard_missing") {
             table_missing = true;
             break;
         }
@@ -881,7 +939,7 @@ function repair_nftables_subsystem(drift_items, opts) {
 function repair_routing_subsystem(drift_items, opts) {
     log("Reconciler: repairing routing subsystem...", "info");
 
-    // Ensure policy routing table and rules exist
+    // Ensure policy routing table and rules exist (handles IPv4 and IPv6 cleanup/sync)
     let cmd = sprintf("ucode -L %s %s/nft/apply.uc ensure-tproxy-route-rule %s 0x04000000 >/dev/null 2>&1",
         LIB_DIR, LIB_DIR, RT_TABLE_NAME);
     let code = command_status(cmd);

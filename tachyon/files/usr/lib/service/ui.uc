@@ -1110,6 +1110,13 @@ function read_ui_prefs() {
         if (type(dl_parsed) == "object")
             prefs.dashboard_layout = dl_parsed;
     }
+    let cfg_mode = lc(trim(as_string(uci_core.get(CONFIG_NAME + ".settings.ui_mode") || "")));
+    let raw_mode = lc(trim(as_string(prefs.ui_mode || cfg_mode || "simple")));
+    if (raw_mode == "basic")
+        raw_mode = "simple";
+    if (raw_mode != "simple" && raw_mode != "advanced")
+        raw_mode = "simple";
+    prefs.ui_mode = raw_mode;
     return prefs;
 }
 
@@ -1143,9 +1150,17 @@ function set_ui_prefs(raw_json) {
         }
     }
 
+    if (prefs.ui_mode != null) {
+        let nm = lc(trim(as_string(prefs.ui_mode)));
+        if (nm == "basic")
+            nm = "simple";
+        prefs.ui_mode = (nm == "advanced") ? "advanced" : "simple";
+    }
+
     common.write_json_file(UI_PREFS_FILE, prefs);
 
     let serialized = sprintf("%J", prefs);
+    let uci_changed = false;
     if (uci_core.get(CONFIG_NAME + ".settings.ui_prefs_json") != serialized) {
         uci_core.set(CONFIG_NAME, "settings", "ui_prefs_json", serialized);
         if (type(prefs.dashboard_layout) == "object") {
@@ -1153,6 +1168,14 @@ function set_ui_prefs(raw_json) {
             if (type(prefs.dashboard_layout.preset) == "string" && prefs.dashboard_layout.preset != "")
                 uci_core.set(CONFIG_NAME, "settings", "dashboard_preset", prefs.dashboard_layout.preset);
         }
+        uci_changed = true;
+    }
+    if (type(prefs.ui_mode) == "string" && prefs.ui_mode != "" &&
+        uci_core.get(CONFIG_NAME + ".settings.ui_mode") != prefs.ui_mode) {
+        uci_core.set(CONFIG_NAME, "settings", "ui_mode", prefs.ui_mode);
+        uci_changed = true;
+    }
+    if (uci_changed) {
         uci_core.commit(CONFIG_NAME);
         module_success(LIB_DIR + "/service/state.uc", [ "mark-internal-config-guard" ]);
     }
@@ -1164,6 +1187,9 @@ function set_ui_prefs(raw_json) {
 }
 
 function capability_flags() {
+    let prefs = read_ui_prefs();
+    let settings_cfg = uci_core.get_all(CONFIG_NAME, "settings") || {};
+    let v6_eff = common.resolve_effective_ipv6_state(settings_cfg, null);
     let result = {
         sing_box_extended: 0,
         sing_box_tiny: 0,
@@ -1184,7 +1210,10 @@ function capability_flags() {
         olcrtc_installed: file_executable("/usr/bin/olcrtc") ? 1 : 0,
         i18n_ru_installed: fs.stat("/usr/lib/lua/luci/i18n/tachyon.ru.lmo") != null ? 1 : 0,
         luci_lang: trim(as_string(uci_core.get("luci.main.lang") || "auto")) || "auto",
-        ui_prefs: read_ui_prefs(),
+        ui_mode: prefs.ui_mode || "simple",
+        ipv6_effective_state: v6_eff.effective,
+        ipv6_mode: v6_eff.ipv6_mode,
+        ui_prefs: prefs,
         server_inbounds_enabled_count: 0
     };
 

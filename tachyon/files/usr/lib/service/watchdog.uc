@@ -983,6 +983,8 @@ function ai_export_status() {
     // clock alone, so it can no longer read "healthy" while a signal is
     // failing and has simply not been repaired in the last 300s.
     let health_state = health_problem_state();
+    let v6_cache = common.read_cached_ipv6_state();
+    let v6_obj = type(v6_cache) == "object" ? v6_cache : {};
     let status_obj = {
         timestamp: now,
         status: hysteresis.status_label(health_state,
@@ -999,7 +1001,9 @@ function ai_export_status() {
         proxy_fail_streak: int(st.proxy_consecutive_fails || 0),
         dns_fail_streak: int(st.dns_fail_streak || 0),
         healthy_streak: int(st.healthy_streak || 0),
-        active_repairs: (time() < wan_repair_until || time() < singbox_repair_until) ? "active" : "none"
+        active_repairs: (time() < wan_repair_until || time() < singbox_repair_until) ? "active" : "none",
+        ipv6_effective_state: common.as_string(v6_obj.effective || ""),
+        wan6_pd: common.array_or_empty(v6_obj.wan6_pd)
     };
     fs.writefile(AI_STATUS_FILE, sprintf("%J\n", status_obj));
 }
@@ -1067,7 +1071,7 @@ function restore_emergency_runtime() {
     }
 
     // 2. Bypass broken proxy interception: flush and delete TachyonTable so traffic is not redirected to a dead proxy
-    system("nft delete table inet TachyonTable >/dev/null 2>&1; ip -4 rule del fwmark 0x04000000/0x04000000 table tachyon >/dev/null 2>&1; ip -6 rule del fwmark 0x04000000/0x04000000 table tachyon >/dev/null 2>&1; ip route flush table tachyon >/dev/null 2>&1; ip route flush cache >/dev/null 2>&1");
+    system("nft delete table inet TachyonTable >/dev/null 2>&1; ip -4 rule del fwmark 0x04000000/0x04000000 table tachyon >/dev/null 2>&1; ip -6 rule del fwmark 0x04000000/0x04000000 table tachyon >/dev/null 2>&1; ip route flush table tachyon >/dev/null 2>&1; ip -6 route flush table tachyon >/dev/null 2>&1; ip route flush cache >/dev/null 2>&1");
 
 }
 
@@ -3664,6 +3668,24 @@ function check_watchdog_outdated() {
     bg_system("/etc/init.d/tachyon restart >/dev/null 2>&1");
 }
 
+function check_ipv6_invariants() {
+    let ctx = current_ctx || (controller.create_tick_context ? controller.create_tick_context() : null);
+    let cfg = (ctx && ctx.settings) ? ctx.settings : settings();
+    let eff = common.resolve_effective_ipv6_state(cfg, null);
+    common.cache_ipv6_runtime_state(eff);
+
+    if (!ctx || !ctx.singbox_running || firewall_health.interception_suppressed(cfg) || is_reload_in_progress())
+        return;
+
+    let health = firewall_health.inspect(cfg);
+    if ((eff.leak_guard_active && !health.ipv6_leak_guard_ok) ||
+        (eff.ipv6_active && (!health.ipv6_route_ok || !health.fakeip6_ok))) {
+        log_message(sprintf("Watchdog: IPv6 runtime invariant drift detected (state=%s, leak_guard=%s, route6=%s, fakeip6=%s); scheduling firewall repair",
+            eff.effective, as_string(health.ipv6_leak_guard_ok), as_string(health.ipv6_route_ok), as_string(health.fakeip6_ok)), "warn");
+        safe_reload_firewall();
+    }
+}
+
 function perform_slow_checks() {
     let cfg = (current_ctx && current_ctx.settings) ? current_ctx.settings : settings();
     if (is_lite_data_plane_busy(cfg)) {
@@ -3677,6 +3699,7 @@ function perform_slow_checks() {
     }
     lite_hibernating_slow = false;
     controller.probe_slow(current_ctx);
+    safe_call(check_ipv6_invariants, "check_ipv6_invariants");
     safe_call(ai_heal_dns_loop, "ai_heal_dns_loop");
     safe_call(check_mixed_proxy_port, "check_mixed_proxy_port");
     safe_call(check_telegram_worker, "check_telegram_worker");
