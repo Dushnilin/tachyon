@@ -1936,6 +1936,179 @@ function priority_level_list_option(section, key) {
     return list_option(section, key);
 }
 
+function normalize_condition_sig_values(val) {
+    let items = [];
+    if (type(val) == "array") {
+        for (let item in val) {
+            let text = trim(as_string(item));
+            if (text != "")
+                push(items, text);
+        }
+    } else if (type(val) == "bool") {
+        push(items, val ? "1" : "0");
+    } else if (type(val) == "int" || type(val) == "double") {
+        push(items, "" + val);
+    } else {
+        let raw = as_string(val);
+        if (raw != "") {
+            for (let part in split(raw, /\r?\n/)) {
+                let text = trim(part);
+                if (text != "")
+                    push(items, text);
+            }
+        }
+    }
+    if (length(items) <= 1)
+        return items;
+    let sorted = sort(items);
+    let out = [];
+    let prev = null;
+    for (let item in sorted) {
+        if (prev == null || item != prev) {
+            push(out, item);
+            prev = item;
+        }
+    }
+    return out;
+}
+
+function condition_rule_signature(cond) {
+    if (type(cond) != "object")
+        return "";
+    let ctype = lc(trim(option(cond, "condition_type", option(cond, "type", "atomic"))));
+    if (ctype == "")
+        ctype = "atomic";
+    if (ctype == "composite" ||
+        length(whitespace_list_values(cond, "members")) > 0 ||
+        length(whitespace_list_values(cond, "conditions")) > 0 ||
+        trim(option(cond, "expression", "")) != "")
+        return "";
+
+    let enabled_sig = bool_option(cond, "enabled", true) ? "1" : "0";
+    let rule_keys = [];
+    for (let k in keys(cond)) {
+        if (substr(k, 0, 1) == ".")
+            continue;
+        if (k == "name" || k == "label" || k == "enabled" ||
+            k == "condition_type" || k == "type" ||
+            k == "members" || k == "conditions" || k == "expression" || k == "operator")
+            continue;
+        push(rule_keys, k);
+    }
+    rule_keys = sort(rule_keys);
+
+    let field_entries = [];
+    let has_rule_content = false;
+    for (let k in rule_keys) {
+        let vals = normalize_condition_sig_values(cond[k]);
+        if (length(vals) == 0)
+            continue;
+        if (k == "invert" || k == "match_all" || k == "community_subnets" || k == "rule_set_with_subnets") {
+            let bv = lc(vals[0]);
+            let norm_b = (bv == "1" || bv == "true" || bv == "yes" || bv == "on") ? "1" : "0";
+            if (norm_b == "0")
+                continue;
+            vals = [norm_b];
+        }
+        has_rule_content = true;
+        push(field_entries, [k, vals]);
+    }
+
+    if (!has_rule_content)
+        return "";
+
+    return "enabled=" + enabled_sig + "|type=" + ctype + "|" + sprintf("%J", field_entries);
+}
+
+function condition_clone_base_id(cid) {
+    let base = trim(as_string(cid));
+    if (substr(base, 0, 5) != "cond_")
+        return base;
+    while (true) {
+        let m = match(base, /^(cond_.+)(_copy[0-9]*|_[2-9][0-9]*)$/);
+        if (!m)
+            break;
+        base = m[1];
+    }
+    return base;
+}
+
+function is_cond_expr_ident_char(ch) {
+    return (ch >= "a" && ch <= "z") ||
+        (ch >= "A" && ch <= "Z") ||
+        (ch >= "0" && ch <= "9") ||
+        ch == "_" ||
+        ch == "-";
+}
+
+function replace_condition_expression_ids(expr, replace_map) {
+    let raw = as_string(expr);
+    if (raw == "" || type(replace_map) != "object")
+        return raw;
+    let n = length(raw);
+    let out = "";
+    let i = 0;
+    while (i < n) {
+        let ch = substr(raw, i, 1);
+        if (is_cond_expr_ident_char(ch)) {
+            let start = i;
+            i++;
+            while (i < n && is_cond_expr_ident_char(substr(raw, i, 1)))
+                i++;
+            let tok = substr(raw, start, i - start);
+            out += (replace_map[tok] != null ? replace_map[tok] : tok);
+        } else {
+            let start = i;
+            i++;
+            while (i < n && !is_cond_expr_ident_char(substr(raw, i, 1)))
+                i++;
+            out += substr(raw, start, i - start);
+        }
+    }
+    return out;
+}
+
+function cond_uf_find(parent, idx) {
+    while (parent[idx] != idx) {
+        parent[idx] = parent[parent[idx]];
+        idx = parent[idx];
+    }
+    return idx;
+}
+
+function cond_uf_union(parent, a, b) {
+    let ra = cond_uf_find(parent, a);
+    let rb = cond_uf_find(parent, b);
+    if (ra == rb)
+        return;
+    if (ra < rb)
+        parent[rb] = ra;
+    else
+        parent[ra] = rb;
+}
+
+function remap_cond_ref_list(ctx, obj, key, replace_map) {
+    let refs = whitespace_list_values(obj, key);
+    if (length(refs) == 0)
+        return false;
+    let new_refs = [];
+    let seen_refs = {};
+    let touched = false;
+    for (let r in refs) {
+        let mapped = replace_map[r] != null ? replace_map[r] : r;
+        if (mapped != r)
+            touched = true;
+        if (seen_refs[mapped])
+            continue;
+        seen_refs[mapped] = true;
+        push(new_refs, mapped);
+    }
+    if (!touched)
+        return false;
+    set_list_option(ctx, obj, key, new_refs);
+    return true;
+}
+
 function cleanup_modular_entities_v1(ctx) {
     let awg_scalar_keys = [
         "awg_private_key", "awg_server_address", "awg_server_port",
@@ -2232,6 +2405,113 @@ function cleanup_modular_entities_v1(ctx) {
             }
             if (changed || length(new_refs) != length(refs))
                 set_list_option(ctx, grp, "outbound_sources", new_refs);
+        }
+    }
+
+    // 2b. Deduplicate identical cloned atomic condition sections
+    let cond_list = ctx.model.condition || [];
+    let cond_count = length(cond_list);
+    if (cond_count > 1) {
+        let uf_parent = [];
+        let cond_ids = [];
+        let cond_sigs = [];
+        let base_buckets = {};
+        let rules_buckets = {};
+        for (let i = 0; i < cond_count; i++) {
+            push(uf_parent, i);
+            let cond = cond_list[i];
+            push(cond_ids, section_name(cond));
+            push(cond_sigs, condition_rule_signature(cond));
+        }
+
+        for (let i = 0; i < cond_count; i++) {
+            let cid = cond_ids[i];
+            let sig = cond_sigs[i];
+            if (cid == "" || sig == "")
+                continue;
+
+            let base_id = condition_clone_base_id(cid);
+            let base_key = base_id + "\n" + sig;
+            if (base_buckets[base_key] != null)
+                cond_uf_union(uf_parent, base_buckets[base_key], i);
+            else
+                base_buckets[base_key] = i;
+
+            let cname = trim(option(cond_list[i], "name", ""));
+            if (length(cname) >= 6 && substr(cname, length(cname) - 6) == " Rules") {
+                let rules_key = cname + "\n" + sig;
+                if (rules_buckets[rules_key] != null)
+                    cond_uf_union(uf_parent, rules_buckets[rules_key], i);
+                else
+                    rules_buckets[rules_key] = i;
+            }
+        }
+
+        let groups = {};
+        for (let i = 0; i < cond_count; i++) {
+            if (cond_ids[i] == "" || cond_sigs[i] == "")
+                continue;
+            let root = "" + cond_uf_find(uf_parent, i);
+            if (groups[root] == null)
+                groups[root] = [];
+            push(groups[root], i);
+        }
+
+        let cond_replace_map = {};
+        let deleted_cond_ids = {};
+        for (let root in keys(groups)) {
+            let members = groups[root];
+            if (length(members) <= 1)
+                continue;
+            let canon_idx = members[0];
+            for (let idx in members) {
+                let mid = cond_ids[idx];
+                if (mid == condition_clone_base_id(mid)) {
+                    canon_idx = idx;
+                    break;
+                }
+            }
+            let canon_id = cond_ids[canon_idx];
+            for (let idx in members) {
+                if (idx == canon_idx)
+                    continue;
+                let dup_id = cond_ids[idx];
+                if (dup_id != "" && dup_id != canon_id) {
+                    cond_replace_map[dup_id] = canon_id;
+                    deleted_cond_ids[dup_id] = true;
+                }
+            }
+        }
+
+        if (length(keys(cond_replace_map)) > 0) {
+            ctx.model.condition = filter(cond_list, function(c) {
+                return !deleted_cond_ids[section_name(c)];
+            });
+            for (let dup_id in sort(keys(deleted_cond_ids)))
+                record_operation(ctx, { op: "delete_section", section: dup_id });
+
+            for (let sec in (ctx.model.sections || [])) {
+                remap_cond_ref_list(ctx, sec, "condition_refs", cond_replace_map);
+                let raw_expr = option(sec, "condition_expression", "");
+                if (raw_expr != "") {
+                    let new_expr = replace_condition_expression_ids(raw_expr, cond_replace_map);
+                    if (new_expr != raw_expr)
+                        set_option(ctx, sec, "condition_expression", new_expr);
+                }
+            }
+
+            for (let cond in (ctx.model.condition || [])) {
+                remap_cond_ref_list(ctx, cond, "members", cond_replace_map);
+                remap_cond_ref_list(ctx, cond, "conditions", cond_replace_map);
+                let raw_expr = option(cond, "expression", "");
+                if (raw_expr != "") {
+                    let new_expr = replace_condition_expression_ids(raw_expr, cond_replace_map);
+                    if (new_expr != raw_expr)
+                        set_option(ctx, cond, "expression", new_expr);
+                }
+            }
+
+            ctx.changed = true;
         }
     }
 
@@ -3131,6 +3411,52 @@ function apply_migrations(ctx) {
         set_option(ctx, ctx.model.settings, CONFIG_VERSION_OPTION, "1.0.5");
 }
 
+function migrate_ipv6_and_fakeip_settings(ctx) {
+    let settings = ctx && ctx.model ? ctx.model.settings : null;
+    if (!settings)
+        return;
+
+    let has_ipv6_enabled = option_exists(settings, "ipv6_enabled");
+    let has_enable_ipv6 = option_exists(settings, "enable_ipv6");
+    let has_legacy_fakeip = option_exists(settings, "fakeip");
+    if (has_ipv6_enabled || has_enable_ipv6) {
+        let cur_mode = trim(option(settings, "ipv6_mode", ""));
+        if (cur_mode == "") {
+            let legacy_key = has_ipv6_enabled ? "ipv6_enabled" : "enable_ipv6";
+            let legacy_on = bool_option(settings, legacy_key, false);
+            set_option(ctx, settings, "ipv6_mode", legacy_on ? "auto" : "off");
+            if (!legacy_on)
+                set_option_if_missing(ctx, settings, "ipv6_leak_guard", "1");
+        }
+        delete_option(ctx, settings, "ipv6_enabled");
+        delete_option(ctx, settings, "enable_ipv6");
+    }
+
+    if (has_legacy_fakeip) {
+        if (!option_exists(settings, "fakeip_enabled") || trim(option(settings, "fakeip_enabled", "")) == "")
+            set_option(ctx, settings, "fakeip_enabled", bool_option(settings, "fakeip", true) ? "1" : "0");
+        delete_option(ctx, settings, "fakeip");
+    }
+
+    if (lc(trim(option(settings, "ui_mode", ""))) == "basic")
+        set_option(ctx, settings, "ui_mode", "simple");
+
+    // Populate missing schema defaults only when migrating a legacy configuration
+    // that actually carried deprecated IPv6 or FakeIP options; modern configs keep
+    // absent options implicit until explicitly set.
+    if (has_ipv6_enabled || has_enable_ipv6 || has_legacy_fakeip) {
+        set_option_if_missing(ctx, settings, "ipv6_mode", "auto");
+        set_option_if_missing(ctx, settings, "ipv6_leak_guard", "1");
+        set_option_if_missing(ctx, settings, "dns_strategy", "prefer_ipv4");
+        set_option_if_missing(ctx, settings, "fakeip_enabled", "1");
+        set_option_if_missing(ctx, settings, "fakeip_inet4_range", "198.18.0.0/15");
+        set_option_if_missing(ctx, settings, "fakeip_inet6_range", "fc00::/18");
+        set_option_if_missing(ctx, settings, "webrtc_leak_protect", "0");
+        set_option_if_missing(ctx, settings, "tun_inet4", "172.19.0.1/30");
+        set_option_if_missing(ctx, settings, "ui_mode", "simple");
+    }
+}
+
 function migrate_podkop_model(model, constants) {
     let ctx = migration_context(model);
     ctx.combined_domain_conditions = compare_versions(option(model.settings, CONFIG_VERSION_OPTION, ""), "1.0.5") >= 0;
@@ -3148,7 +3474,7 @@ function migrate_podkop_model(model, constants) {
     delete_option(ctx, model.settings, "dns_via_outbound");
     delete_option(ctx, model.settings, "dns_outbound_section");
     delete_option(ctx, model.settings, "block_doh");
-    delete_option(ctx, model.settings, "enable_ipv6");
+    migrate_ipv6_and_fakeip_settings(ctx);
 
     migrate_dns_server_lists(ctx);
     migrate_list_update_enabled(ctx);
@@ -3351,6 +3677,7 @@ function migrate_tachyon_model(model) {
     set_option_if_missing(ctx, ctx.model.settings, "tun_interface", "tun0");
     set_option_if_missing(ctx, ctx.model.settings, "tun_inet4", "172.19.0.1/30");
     set_option_if_missing(ctx, ctx.model.settings, "tun_mtu", "9000");
+    migrate_ipv6_and_fakeip_settings(ctx);
     if (option(ctx.model.settings, "cache_flush_interval", "") == "10s")
         set_option(ctx, ctx.model.settings, "cache_flush_interval", "60s");
     return ctx;

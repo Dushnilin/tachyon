@@ -15,20 +15,47 @@ if (typeof ui !== 'undefined' && !_g.ui) _g.ui = ui;
 if (typeof fs !== 'undefined' && !_g.fs) _g.fs = fs;
 if (typeof rpc !== 'undefined' && !_g.rpc) _g.rpc = rpc;
 
-export { validateIP } from './validators/validateIp';
+export {
+  isIPv4,
+  isIPv6,
+  isIPv6WithZone,
+  validateIP,
+  validateIPWithZone,
+} from './validators/validateIp';
 export { validateDomain } from './validators/validateDomain';
 export { validateDNS } from './validators/validateDns';
 export { validateUrl } from './validators/validateUrl';
 export { validatePath } from './validators/validatePath';
-export { validateSubnet } from './validators/validateSubnet';
+export {
+  cidrsOverlap,
+  parseCidrRange,
+  validateCidr,
+  validateSubnet,
+} from './validators/validateSubnet';
+export {
+  formatHostForUri,
+  parseHostPort,
+  splitHostPort,
+  unbracketHost,
+} from './validators/hostPort';
 export { bulkValidate } from './validators/bulkValidate';
 export { validateOutboundJson } from './validators/validateOutboundJson';
 export { validateProxyUrl } from './validators/validateProxyUrl';
-export { supportsVpnUrl } from './validators/validateVpnUrl';
+export {
+  compactVpnUri,
+  splitAmneziaTextEntries,
+  supportsVpnUrl,
+  validateVpnUrl,
+} from './validators/validateVpnUrl';
 export { parseValueList } from './helpers/parseValueList';
 export { getProxyUrlName } from './helpers/getProxyUrlName';
 export { formatOutboundType } from './helpers/formatOutboundType';
 export { getProxyUrlTransport } from './helpers/getProxyUrlTransport';
+export {
+  isDynamicTelemetrySegment,
+  stripDynamicServerTelemetry,
+  serverFilterNameMatches,
+} from './helpers/serverFilterName';
 export { injectGlobalStyles } from './helpers/injectGlobalStyles';
 export { applyAutofillProtection } from './helpers/applyAutofillProtection';
 export { showToast } from './helpers/showToast';

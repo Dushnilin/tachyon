@@ -900,15 +900,41 @@ function isPrivateOrReservedIp(value) {
     return true;
   }
 
-  return (
-    normalized === "::" ||
-    normalized === "::1" ||
-    normalized.startsWith("fe80") ||
-    normalized.startsWith("fc") ||
-    normalized.startsWith("fd") ||
-    normalized.startsWith("ff") ||
-    normalized.startsWith("2001:db8")
-  );
+  const cidr = `${normalized}/128`;
+  const range = main.parseCidrRange(cidr);
+  if (!range) {
+    return true;
+  }
+
+  const mappedPrefix = main.parseCidrRange("::ffff:0:0/96");
+  if (
+    mappedPrefix &&
+    range.start >= mappedPrefix.start &&
+    range.start <= mappedPrefix.end
+  ) {
+    const v4 = range.start & 0xffffffffn;
+    const mappedIpv4 = [
+      Number((v4 >> 24n) & 0xffn),
+      Number((v4 >> 16n) & 0xffn),
+      Number((v4 >> 8n) & 0xffn),
+      Number(v4 & 0xffn),
+    ].join(".");
+    return isPrivateOrReservedIpv4(mappedIpv4);
+  }
+
+  const reservedIpv6Prefixes = [
+    "::/128",
+    "::1/128",
+    "64:ff9b::/96",
+    "64:ff9b:1::/48",
+    "100::/64",
+    "2001:db8::/32",
+    "3fff::/20",
+    "fc00::/7",
+    "fe80::/10",
+    "ff00::/8",
+  ];
+  return reservedIpv6Prefixes.some((prefix) => main.cidrsOverlap(cidr, prefix));
 }
 
 function getInterfaceIpAddresses(networkInterface) {
@@ -1836,7 +1862,7 @@ function buildVmessLink(sectionId, identity, options = {}) {
   const payload = {
     v: "2",
     ps: identity.name || sectionId,
-    add: host,
+    add: normalizeHost(host),
     port,
     id: identity.uuid,
     aid: uci.get(UCI_PACKAGE, sectionId, "vmess_alter_id") || "0",
@@ -2496,7 +2522,8 @@ function buildAwgClientConfig(sectionId, targetVersion, options = {}) {
     }
   }
 
-  conf += `\n[Peer]\nPublicKey = ${serverPublicKey}\nEndpoint = ${host}:${port}\nAllowedIPs = 0.0.0.0/0, ::/0\nPersistentKeepalive = ${keepalive}\n`;
+  const endpointHost = formatHostForUri(host);
+  conf += `\n[Peer]\nPublicKey = ${serverPublicKey}\nEndpoint = ${endpointHost}:${port}\nAllowedIPs = 0.0.0.0/0, ::/0\nPersistentKeepalive = ${keepalive}\n`;
   if (presharedKey) conf += `PresharedKey = ${presharedKey}\n`;
 
   return conf;
@@ -3888,20 +3915,31 @@ function populateListenAddressChoices(option, env) {
     addOptionValue(option, lanIp, `${_("Local (LAN)")} — ${lanIp}`);
   }
 
+  const lanIpv6 = normalizeHost(env?.lan_ipv6);
+  if (lanIpv6) {
+    addOptionValue(option, lanIpv6, `${_("Local (LAN IPv6)")} — ${lanIpv6}`);
+  }
+
+  const wanIps = [];
   if (Array.isArray(env?.wan_ips)) {
-    for (const rawIp of env.wan_ips) {
-      const wanIp = normalizeHost(rawIp);
-      if (wanIp) {
-        addOptionValue(
-          option,
-          wanIp,
-          `${_("External (WAN interface)")} — ${wanIp}`,
-        );
-      }
+    wanIps.push(...env.wan_ips);
+  }
+  if (env?.wan_ipv6) {
+    wanIps.push(env.wan_ipv6);
+  }
+  for (const rawIp of wanIps) {
+    const wanIp = normalizeHost(rawIp);
+    if (wanIp) {
+      addOptionValue(
+        option,
+        wanIp,
+        `${_("External (WAN interface)")} — ${wanIp}`,
+      );
     }
   }
 
   addOptionValue(option, "127.0.0.1", `${_("Localhost")} (127.0.0.1)`);
+  addOptionValue(option, "::1", `${_("Localhost (IPv6)")} (::1)`);
 }
 
 function populatePublicHostChoices(option, env) {

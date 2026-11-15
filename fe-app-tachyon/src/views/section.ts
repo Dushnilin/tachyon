@@ -1754,6 +1754,353 @@ function portMatchesFilterCondition(portNum, condition) {
   return portNum >= start && portNum <= end;
 }
 
+const SECTION_TELEMETRY_BYTE_UNITS = new Set([
+  'b',
+  'kb',
+  'kib',
+  'mb',
+  'mib',
+  'gb',
+  'gib',
+  'tb',
+  'tib',
+  'pb',
+  'pib',
+  'б',
+  'кб',
+  'мб',
+  'гб',
+  'тб',
+  'пб',
+  'байт',
+  'киб',
+  'миб',
+  'гиб',
+  'тиб',
+  'пиб',
+]);
+
+const SECTION_TELEMETRY_DURATION_UNITS = new Set([
+  'd',
+  'day',
+  'days',
+  'h',
+  'hr',
+  'hrs',
+  'hour',
+  'hours',
+  'm',
+  'min',
+  'mins',
+  'minute',
+  'minutes',
+  'mo',
+  'mon',
+  'month',
+  'months',
+  'w',
+  'wk',
+  'wks',
+  'week',
+  'weeks',
+  'y',
+  'yr',
+  'yrs',
+  'year',
+  'years',
+  'д',
+  'дн',
+  'дня',
+  'дней',
+  'день',
+  'ч',
+  'час',
+  'часа',
+  'часов',
+  'мин',
+  'мес',
+  'нед',
+  'г',
+  'год',
+  'года',
+  'лет',
+]);
+
+const SECTION_TELEMETRY_WORDS = new Set([
+  'traffic',
+  'quota',
+  'left',
+  'remain',
+  'remaining',
+  'expire',
+  'expires',
+  'exp',
+  'reset',
+  'usage',
+  'used',
+  'limit',
+  'total',
+  'balance',
+  'valid',
+  'until',
+  'renew',
+  'due',
+  'days',
+  'leftover',
+  'subscription',
+  'sub',
+  'bandwidth',
+  'transfer',
+  'трафик',
+  'остаток',
+  'осталось',
+  'лимит',
+  'срок',
+  'истекает',
+  'до',
+  'сброс',
+  'исчерпан',
+  'доступно',
+  'подписка',
+  'годен',
+  'обновление',
+  'обновл',
+]);
+
+const SECTION_TELEMETRY_PROTECTED_SUBSTRINGS = [
+  'bps',
+  'bit',
+  'бит',
+  '/s',
+  '/c',
+  '/с',
+  '/сек',
+];
+
+const SECTION_TELEMETRY_PROTECTED_TOKENS = new Set([
+  'vless',
+  'vmess',
+  'trojan',
+  'hysteria',
+  'hysteria2',
+  'hy2',
+  'tuic',
+  'shadowsocks',
+  'shadowtls',
+  'anytls',
+  'ss',
+  'ssr',
+  'wireguard',
+  'wg',
+  'amnezia',
+  'awg',
+  'mieru',
+  'naive',
+  'xray',
+  'sing-box',
+  'reality',
+  'xtls',
+  'grpc',
+  'xhttp',
+  'ws',
+  'quic',
+  'tcp',
+  'udp',
+  'tls',
+  'lte',
+  'wifi',
+  '4g',
+  '5g',
+  'ipv4',
+  'ipv6',
+  'direct',
+  'warp',
+  'tor',
+]);
+
+function isSectionTelemetrySegment(rawSegment) {
+  let s = `${rawSegment || ''}`.trim();
+  while (s.length >= 2) {
+    const first = s[0];
+    const last = s[s.length - 1];
+    if (
+      (first === '[' && last === ']') ||
+      (first === '(' && last === ')') ||
+      (first === '{' && last === '}')
+    ) {
+      s = s.slice(1, -1).trim();
+    } else {
+      break;
+    }
+  }
+  const norm = s
+    .replace(/[\u00a0\u202f]/g, ' ')
+    .replace(/[\u200b-\u200d\ufeff]/g, '')
+    .toLowerCase()
+    .replace(/(\d),(\d)/g, '$1.$2')
+    .trim();
+  if (!norm) return false;
+  if (norm.indexOf('#') >= 0 || norm.indexOf('№') >= 0) return false;
+  for (let i = 0; i < SECTION_TELEMETRY_PROTECTED_SUBSTRINGS.length; i += 1) {
+    if (norm.indexOf(SECTION_TELEMETRY_PROTECTED_SUBSTRINGS[i]) >= 0) {
+      return false;
+    }
+  }
+  if (norm === '2d' || norm === '3d') return false;
+
+  let hasDate = false;
+  let hasTelemetryWord = false;
+  let work = norm.replace(
+    /(?:^|[\s|,;/])(exp|expire|expires|until|reset|valid|renew|due|до|истекает|сброс|годен)[\s:=-]*(\d{1,4}[./-]\d{1,2}(?:[./-]\d{1,4})?)(?=$|[\s|,;])/g,
+    () => {
+      hasDate = true;
+      hasTelemetryWord = true;
+      return ' ';
+    },
+  );
+  work = work.replace(
+    /(?:^|[\s|,;:/-])(?:(?:19|20)\d{2}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[./-]\d{1,2}[./-](?:19|20)\d{2})(?=$|[\s|,;])/g,
+    () => {
+      hasDate = true;
+      return ' ';
+    },
+  );
+  let hasTime = false;
+  work = work.replace(
+    /(?:^|[\s|,;])(?:\d{1,2}:\d{2}(?::\d{2})?)(?=$|[\s|,;])/g,
+    () => {
+      hasTime = true;
+      return ' ';
+    },
+  );
+
+  const rawTokens = work
+    .replace(/[/|:;+,•·—–=~↑↓()[\]{}]+/g, ' ')
+    .replace(/(?:^|\s)-+(?=\s|$)/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!rawTokens.length && !hasDate && !hasTelemetryWord && !hasTime) {
+    return false;
+  }
+
+  const tokens = [];
+  for (let i = 0; i < rawTokens.length; i += 1) {
+    const cleaned = rawTokens[i].replace(/^[-:]+|[-:]+$/g, '');
+    if (!cleaned) continue;
+    const glued = cleaned.match(/^(\d+(?:\.\d+)?)([a-zа-яё%]+)$/i);
+    if (glued) {
+      tokens.push(glued[1], glued[2]);
+    } else {
+      tokens.push(cleaned);
+    }
+  }
+
+  let hasByte = false;
+  let hasDuration = false;
+  let hasPercent = false;
+  let prevWasNumber = false;
+  let numericCount = 0;
+
+  for (let i = 0; i < tokens.length; i += 1) {
+    const tok = tokens[i];
+    if (SECTION_TELEMETRY_PROTECTED_TOKENS.has(tok)) return false;
+    if (/^\d+(?:\.\d+)?$/.test(tok)) {
+      prevWasNumber = true;
+      numericCount += 1;
+      continue;
+    }
+    if (tok === '%' && prevWasNumber) {
+      hasPercent = true;
+      prevWasNumber = false;
+      continue;
+    }
+    if (SECTION_TELEMETRY_BYTE_UNITS.has(tok) && prevWasNumber) {
+      hasByte = true;
+      prevWasNumber = false;
+      continue;
+    }
+    if (SECTION_TELEMETRY_DURATION_UNITS.has(tok) && prevWasNumber) {
+      hasDuration = true;
+      prevWasNumber = false;
+      continue;
+    }
+    if (SECTION_TELEMETRY_WORDS.has(tok)) {
+      hasTelemetryWord = true;
+      prevWasNumber = false;
+      continue;
+    }
+    return false;
+  }
+
+  if (hasByte || hasDuration || hasDate) return true;
+  if (hasTelemetryWord && (hasPercent || numericCount > 0 || hasTime)) {
+    return true;
+  }
+  return false;
+}
+
+function stripSectionServerTelemetry(value) {
+  if (
+    typeof main !== 'undefined' &&
+    main &&
+    typeof main.stripDynamicServerTelemetry === 'function'
+  ) {
+    return main.stripDynamicServerTelemetry(value);
+  }
+  const raw = `${value || ''}`.trim();
+  if (!raw) return '';
+  let result = raw;
+  let prev = '';
+  while (result !== prev) {
+    prev = result;
+    result = result.replace(/(\[[^[\]]*\]|\([^()]*\)|\{[^{}]*\})/g, (m) =>
+      isSectionTelemetrySegment(m) ? ' ' : m,
+    );
+    let tailChanged = true;
+    while (tailChanged) {
+      tailChanged = false;
+      const pipeMatch = result.match(
+        /^(.+?)\s*(?:\||•|·|;|—|–| - )\s*([^|•·;—–]+)$/,
+      );
+      if (pipeMatch) {
+        const head = pipeMatch[1].trim();
+        const tail = pipeMatch[2].trim();
+        if (head && tail && isSectionTelemetrySegment(tail)) {
+          result = head;
+          tailChanged = true;
+        }
+      }
+    }
+    result = result
+      .replace(/\s*(?:\||•|·|;|—|–|-)\s*(?:\||•|·|;|—|–)\s*/g, ' | ')
+      .replace(/^(?:\||•|·|;|—|–|-)+\s+/, '')
+      .replace(/\s+(?:\||•|·|;|—|–|-)+$/, '')
+      .replace(/[ \t]{2,}/g, ' ')
+      .trim();
+  }
+  return result || raw;
+}
+
+function serverFilterListMatches(filterList, candidates) {
+  if (!Array.isArray(filterList) || !filterList.length) return false;
+  const candList = (Array.isArray(candidates) ? candidates : [])
+    .map((v) => `${v || ''}`.trim())
+    .filter(Boolean);
+  if (!candList.length) return false;
+  const canonCandidates = candList.map((c) => stripSectionServerTelemetry(c));
+  for (let i = 0; i < filterList.length; i += 1) {
+    const rawFilter = `${filterList[i] || ''}`.trim();
+    if (!rawFilter) continue;
+    if (candList.includes(rawFilter)) return true;
+    const canonFilter = stripSectionServerTelemetry(rawFilter);
+    if (canonFilter && canonCandidates.includes(canonFilter)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function evaluateLiveServerFilterPreview(metadata, filterSpec) {
   const meta = plainObject(metadata);
   const namesMap = plainObject(meta.names);
@@ -1850,8 +2197,10 @@ function evaluateLiveServerFilterPreview(metadata, filterSpec) {
     const port = Number.parseInt(`${portsMap[tag] || ''}`, 10) || 0;
     const typeLabel = formatOutboundTypeLabel(protocol, transport);
     const nameWithType = typeLabel ? `${name} [${typeLabel}]` : name;
-    const count = (seenTypeCounts.get(nameWithType) || 0) + 1;
-    seenTypeCounts.set(nameWithType, count);
+    const canonNameWithType =
+      stripSectionServerTelemetry(nameWithType) || nameWithType;
+    const count = (seenTypeCounts.get(canonNameWithType) || 0) + 1;
+    seenTypeCounts.set(canonNameWithType, count);
     const indexedLabel =
       count > 1 ? `${nameWithType} (#${count})` : nameWithType;
 
@@ -1869,8 +2218,10 @@ function evaluateLiveServerFilterPreview(metadata, filterSpec) {
     const prefixedWithType = typeLabel
       ? `${prefixedName} [${typeLabel}]`
       : prefixedName;
-    const pCount = (seenPrefixedTypeCounts.get(prefixedWithType) || 0) + 1;
-    seenPrefixedTypeCounts.set(prefixedWithType, pCount);
+    const canonPrefixedWithType =
+      stripSectionServerTelemetry(prefixedWithType) || prefixedWithType;
+    const pCount = (seenPrefixedTypeCounts.get(canonPrefixedWithType) || 0) + 1;
+    seenPrefixedTypeCounts.set(canonPrefixedWithType, pCount);
     const prefixedIndexed =
       pCount > 1 ? `${prefixedWithType} (#${pCount})` : prefixedWithType;
 
@@ -1929,15 +2280,16 @@ function evaluateLiveServerFilterPreview(metadata, filterSpec) {
         return false;
       });
     const nameMatched =
-      nameFilter.includes(entry.name) ||
-      nameFilter.includes(entry.tag) ||
-      nameFilter.includes(entry.nameWithType) ||
-      nameFilter.includes(entry.label) ||
-      nameFilter.includes(entry.legacyLabel) ||
-      nameFilter.includes(entry.prefixedName) ||
-      nameFilter.includes(entry.prefixedWithType) ||
-      nameFilter.includes(entry.prefixedIndexed) ||
-      compiledRegexes.some((rx) => rx.test(entry.name));
+      serverFilterListMatches(nameFilter, [
+        entry.name,
+        entry.tag,
+        entry.nameWithType,
+        entry.label,
+        entry.legacyLabel,
+        entry.prefixedName,
+        entry.prefixedWithType,
+        entry.prefixedIndexed,
+      ]) || compiledRegexes.some((rx) => rx.test(entry.name));
     const countryMatched =
       Boolean(entry.country) && countryFilter.includes(entry.country);
     const hasPrefixFilter = prefixFilter.length > 0;
@@ -7831,15 +8183,8 @@ const LINKED_CONDITION_OPTION_KEYS = new Set([
   'preferred_by',
 ]);
 
-function getLinkedSectionConditionIds(section_id) {
-  if (!section_id || String(section_id).startsWith('cond_')) return [];
-  const ids = [];
-  const condId = `cond_${section_id}`;
-  if (uci.get(UCI_PACKAGE, condId, '.type') === 'condition') {
-    ids.push(condId);
-  }
-  const rawRefs = uci.get(UCI_PACKAGE, section_id, 'condition_refs');
-  const refs = Array.isArray(rawRefs)
+function parseConditionRefs(rawRefs) {
+  return Array.isArray(rawRefs)
     ? rawRefs.map((x) => String(x || '').trim()).filter(Boolean)
     : rawRefs
       ? String(rawRefs)
@@ -7847,17 +8192,64 @@ function getLinkedSectionConditionIds(section_id) {
           .split(/[\s,]+/)
           .filter(Boolean)
       : [];
+}
+
+function linkedSectionExists(id) {
+  if (!id) return false;
   if (
-    refs.length === 1 &&
-    !ids.includes(refs[0]) &&
-    uci.get(UCI_PACKAGE, refs[0], '.type') === 'condition'
+    uci.get(UCI_PACKAGE, id) ||
+    uci.get(UCI_PACKAGE, id, '.type') ||
+    uci.get(UCI_PACKAGE, id, '.name')
   ) {
-    const ctype = String(
-      uci.get(UCI_PACKAGE, refs[0], 'condition_type') || 'atomic',
-    ).toLowerCase();
-    if (ctype !== 'composite') ids.push(refs[0]);
+    return true;
   }
-  return ids;
+  const sections = uci.sections(UCI_PACKAGE, 'section') || [];
+  return sections.some((s) => s && s['.name'] === id);
+}
+
+function makeUniqueLinkedConditionId(baseId) {
+  if (!linkedSectionExists(baseId)) return baseId;
+  const firstCopy = `${baseId}_copy`;
+  if (!linkedSectionExists(firstCopy)) return firstCopy;
+  let idx = 2;
+  while (linkedSectionExists(`${baseId}_copy${idx}`)) {
+    idx += 1;
+  }
+  return `${baseId}_copy${idx}`;
+}
+
+function getLinkedSectionConditionIds(section_id) {
+  if (!section_id || String(section_id).startsWith('cond_')) return [];
+  if (
+    String(
+      uci.get(UCI_PACKAGE, section_id, 'condition_expression') || '',
+    ).trim()
+  ) {
+    return [];
+  }
+  const refs = parseConditionRefs(
+    uci.get(UCI_PACKAGE, section_id, 'condition_refs'),
+  );
+  if (refs.length > 0) {
+    if (
+      refs.length === 1 &&
+      uci.get(UCI_PACKAGE, refs[0], '.type') === 'condition'
+    ) {
+      const ctype = String(
+        uci.get(UCI_PACKAGE, refs[0], 'condition_type') || 'atomic',
+      ).toLowerCase();
+      if (ctype !== 'composite') return [refs[0]];
+    }
+    return [];
+  }
+  const condId = `cond_${section_id}`;
+  if (uci.get(UCI_PACKAGE, condId, '.type') === 'condition') {
+    const ctype = String(
+      uci.get(UCI_PACKAGE, condId, 'condition_type') || 'atomic',
+    ).toLowerCase();
+    if (ctype !== 'composite') return [condId];
+  }
+  return [];
 }
 
 function getLinkedSectionConditionId(section_id) {
@@ -7987,18 +8379,16 @@ function getSectionOrLinkedConditionOption(section_id, key) {
 function detachSharedLinkedConditionIds(section_id) {
   const condIds = getLinkedSectionConditionIds(section_id);
   if (!condIds.length) return condIds;
-  const allSections = uci.sections(UCI_PACKAGE, 'section') || [];
-  const allConds = uci.sections(UCI_PACKAGE, 'condition') || [];
+  const allSections = (uci.sections(UCI_PACKAGE, 'section') || []).filter(
+    (sec) => sec && sec['.type'] !== 'condition',
+  );
+  const allConds = (uci.sections(UCI_PACKAGE, 'condition') || []).filter(
+    (c) => c && (!c['.type'] || c['.type'] === 'condition'),
+  );
   let changedRefs = false;
-  const rawRefs = uci.get(UCI_PACKAGE, section_id, 'condition_refs');
-  const currentRefs = Array.isArray(rawRefs)
-    ? rawRefs.map((x) => String(x || '').trim()).filter(Boolean)
-    : rawRefs
-      ? String(rawRefs)
-          .trim()
-          .split(/[\s,]+/)
-          .filter(Boolean)
-      : [];
+  const currentRefs = parseConditionRefs(
+    uci.get(UCI_PACKAGE, section_id, 'condition_refs'),
+  );
   const nextRefs = [...currentRefs];
   let expr = String(
     uci.get(UCI_PACKAGE, section_id, 'condition_expression') || '',
@@ -8006,21 +8396,29 @@ function detachSharedLinkedConditionIds(section_id) {
   let exprChanged = false;
 
   const resultIds = condIds.map((condId) => {
+    const ownerCandidate = condId.startsWith('cond_') ? condId.slice(5) : '';
     const ownedByOtherName =
-      condId.startsWith('cond_') &&
+      Boolean(ownerCandidate) &&
       condId !== `cond_${section_id}` &&
-      Boolean(uci.get(UCI_PACKAGE, condId.slice(5)));
+      linkedSectionExists(ownerCandidate) &&
+      uci.get(UCI_PACKAGE, ownerCandidate, '.type') !== 'condition';
     const sharedWithOtherSection =
       ownedByOtherName ||
       allSections.some((sec) => {
         const sid = sec && sec['.name'];
         if (!sid || sid === section_id) return false;
+        const explicitRefs = parseConditionRefs(
+          sec.condition_refs !== undefined
+            ? sec.condition_refs
+            : uci.get(UCI_PACKAGE, sid, 'condition_refs'),
+        );
+        if (explicitRefs.includes(condId)) return true;
         return getLinkedSectionConditionIds(sid).includes(condId);
       });
     if (!sharedWithOtherSection) return condId;
 
     const sourceCond = allConds.find((c) => c && c['.name'] === condId);
-    const newCondId = makeUniqueSectionId(`cond_${section_id}`);
+    const newCondId = makeUniqueLinkedConditionId(`cond_${section_id}`);
     if (!uci.add(UCI_PACKAGE, 'condition', newCondId)) return condId;
 
     if (sourceCond) {
@@ -8030,11 +8428,15 @@ function detachSharedLinkedConditionIds(section_id) {
         uci.set(UCI_PACKAGE, newCondId, k, v);
       });
     }
-    const secLabel =
+    const secLabel = String(
       uci.get(UCI_PACKAGE, section_id, 'label') ||
-      uci.get(UCI_PACKAGE, section_id, 'name') ||
-      section_id;
-    uci.set(UCI_PACKAGE, newCondId, 'name', `${secLabel} Rules`);
+        uci.get(UCI_PACKAGE, section_id, 'name') ||
+        section_id,
+    );
+    const condName = secLabel.endsWith(' Rules')
+      ? secLabel
+      : `${secLabel} Rules`;
+    uci.set(UCI_PACKAGE, newCondId, 'name', condName);
     if (!uci.get(UCI_PACKAGE, newCondId, 'enabled')) {
       uci.set(UCI_PACKAGE, newCondId, 'enabled', '1');
     }
@@ -8043,13 +8445,21 @@ function detachSharedLinkedConditionIds(section_id) {
     if (refIdx >= 0) {
       nextRefs[refIdx] = newCondId;
       changedRefs = true;
-    } else if (!nextRefs.includes(newCondId)) {
+    } else if (nextRefs.length === 0) {
       nextRefs.push(newCondId);
       changedRefs = true;
     }
-    if (expr && expr.includes(condId)) {
-      expr = expr.split(condId).join(newCondId);
-      exprChanged = true;
+    if (expr) {
+      const escapedCondId = condId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const tokenRe = new RegExp(
+        `(^|[^A-Za-z0-9_])${escapedCondId}(?=$|[^A-Za-z0-9_])`,
+        'g',
+      );
+      const nextExpr = expr.replace(tokenRe, `$1${newCondId}`);
+      if (nextExpr !== expr) {
+        expr = nextExpr;
+        exprChanged = true;
+      }
     }
     return newCondId;
   });
@@ -8065,17 +8475,35 @@ function detachSharedLinkedConditionIds(section_id) {
 
 function syncLinkedConditionOption(section_id, key, value) {
   if (!LINKED_CONDITION_OPTION_KEYS.has(key)) return;
+  const previewIds = getLinkedSectionConditionIds(section_id);
+  if (!previewIds.length) return;
+
+  const isEmptyValue =
+    value === null ||
+    value === undefined ||
+    value === '' ||
+    (Array.isArray(value) && value.length === 0);
+  const firstExisting = uci.get(UCI_PACKAGE, previewIds[0], key);
+  const firstChanged = isEmptyValue
+    ? firstExisting !== undefined && firstExisting !== null
+    : Array.isArray(value)
+      ? !stringArraysEqual(normalizeOptionValues(firstExisting), value)
+      : String(
+          firstExisting !== undefined && firstExisting !== null
+            ? firstExisting
+            : '',
+        ) !== String(value);
+  const extraChanged = previewIds.slice(1).some((cid) => {
+    const existing = uci.get(UCI_PACKAGE, cid, key);
+    return existing !== undefined && existing !== null;
+  });
+  if (!firstChanged && !extraChanged) return;
+
   const condIds = detachSharedLinkedConditionIds(section_id);
   if (!condIds.length) return;
   condIds.forEach((condId, idx) => {
     const existing = uci.get(UCI_PACKAGE, condId, key);
-    if (
-      value === null ||
-      value === undefined ||
-      value === '' ||
-      (Array.isArray(value) && value.length === 0) ||
-      idx > 0
-    ) {
+    if (isEmptyValue || idx > 0) {
       if (existing !== undefined && existing !== null) {
         uci.unset(UCI_PACKAGE, condId, key);
       }
@@ -8083,7 +8511,10 @@ function syncLinkedConditionOption(section_id, key, value) {
       if (!stringArraysEqual(normalizeOptionValues(existing), value)) {
         uci.set(UCI_PACKAGE, condId, key, value);
       }
-    } else if (String(existing ?? '') !== String(value)) {
+    } else if (
+      String(existing !== undefined && existing !== null ? existing : '') !==
+      String(value)
+    ) {
       uci.set(UCI_PACKAGE, condId, key, value);
     }
   });
@@ -13444,9 +13875,7 @@ function createSectionContent(section) {
       }
 
       const ip = parts[0].trim();
-      const isIPv4 = /^(\d{1,3}\.){3}\d{1,3}$/.test(ip);
-      const isIPv6 = ip.indexOf(':') !== -1 && /^[0-9a-fA-F:]+$/.test(ip);
-      if (!isIPv4 && !isIPv6) {
+      if (!main.validateIPWithZone(ip).valid) {
         skippedInvalid++;
         continue;
       }
@@ -14859,10 +15288,14 @@ function createSectionContent(section) {
 
         const ep = getConfVal('Endpoint');
         if (ep) {
-          const i = ep.lastIndexOf(':');
-          if (i > 0) {
-            setVal('awg_server_address', ep.slice(0, i));
-            setVal('awg_server_port', ep.slice(i + 1));
+          const parsedEp = main.splitHostPort(ep);
+          if (parsedEp) {
+            setVal('awg_server_address', parsedEp.host);
+            if (parsedEp.port) {
+              setVal('awg_server_port', parsedEp.port);
+            }
+          } else {
+            setVal('awg_server_address', ep.replace(/^\[|\]$/g, ''));
           }
         }
 
@@ -20620,10 +21053,27 @@ async function performTraceRules(query, rulesetSnapshots) {
 
   // Strip protocol and port if user pasted a URL or domain:port
   if (query.match(/^https?:\/\//i)) {
-    query = query
-      .replace(/^https?:\/\//i, '')
-      .split('/')[0]
-      .split(':')[0];
+    query = query.replace(/^https?:\/\//i, '').split('/')[0];
+  }
+  // Strip port safely without breaking bare or bracketed IPv6 literals.
+  const parsedTraceHost =
+    typeof main !== 'undefined' && typeof main.splitHostPort === 'function'
+      ? main.splitHostPort(query)
+      : (() => {
+          const bracketMatch = query.match(/^\[([^\]]+)\](?::(\d+))?$/);
+          if (bracketMatch) {
+            return { host: bracketMatch[1] };
+          }
+          if (query.indexOf(':') !== query.lastIndexOf(':')) {
+            return { host: query };
+          }
+          const singleColon = query.match(/^([^:]+):(\d+)$/);
+          return singleColon ? { host: singleColon[1] } : null;
+        })();
+  if (parsedTraceHost) {
+    query = parsedTraceHost.host;
+  } else {
+    query = query.replace(/^\[|\]$/g, '');
   }
 
   const type = detectQueryType(query);

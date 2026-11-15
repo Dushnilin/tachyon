@@ -57,12 +57,14 @@ export function getUiMode(): TachyonUiMode {
     if (typeof localStorage !== 'undefined') {
       const val = localStorage.getItem(UI_MODE_STORAGE_KEY);
       if (val === 'advanced' || val === 'simple') return val;
+      if (val === 'basic') return 'simple';
     }
   } catch {
     // ignore
   }
-  const fromRouter = getRouterUiPrefs()?.ui_mode;
+  const fromRouter = getRouterUiPrefs()?.ui_mode as string | undefined;
   if (fromRouter === 'advanced' || fromRouter === 'simple') return fromRouter;
+  if (fromRouter === 'basic') return 'simple';
   return 'simple';
 }
 

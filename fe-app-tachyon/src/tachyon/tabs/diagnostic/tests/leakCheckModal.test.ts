@@ -632,3 +632,70 @@ describe('DNS Leak Plus', () => {
     );
   });
 });
+
+describe('IPv6 Leak Detection & Leak Guard', () => {
+  it('shows IPv6 Leak Guard badge when IPv6 egress is guarded', async () => {
+    const result = makeSuccessResult();
+    Object.assign(result.data.ip_leak, {
+      direct_ipv6: '2001:db8::1',
+      proxy_ipv6: '',
+      ipv6_leaked: false,
+      ipv6_leak_guard: true,
+    });
+    vi.spyOn(TachyonShellMethods, 'leakCheck').mockResolvedValue(result);
+
+    renderLeakCheckModal();
+    await vi.waitFor(() => {
+      const text = collectText(getModalContent());
+      expect(text).toContain('2001:db8::1');
+      expect(text).toContain('Guarded (Leak Guard)');
+      expect(text).toContain('IPv6 LEAK GUARD');
+    });
+  });
+
+  it('shows IPv6 LEAKED badge when IPv6 leaks direct WAN address', async () => {
+    const result = makeSuccessResult();
+    Object.assign(result.data.ip_leak, {
+      direct_ipv6: '2001:db8::1',
+      proxy_ipv6: '2001:db8::1',
+      ipv6_leaked: true,
+      ipv6_leak_guard: false,
+    });
+    vi.spyOn(TachyonShellMethods, 'leakCheck').mockResolvedValue(result);
+
+    renderLeakCheckModal();
+    await vi.waitFor(() => {
+      const text = collectText(getModalContent());
+      expect(text).toContain('IPv6 LEAKED');
+    });
+  });
+
+  it('supports top-level and ipv6_leak object fields from OpenWrt leak_check payload', async () => {
+    const result = makeSuccessResult();
+    Object.assign(result.data, {
+      direct_ipv6: '2001:db8::10',
+      proxy_ipv6: '2001:db8:99::10',
+      ipv6_leak_guard: false,
+      ipv6_leaked: false,
+      ipv6_effective_state: 'full',
+      ipv6_leak: {
+        direct_ipv6: '2001:db8::10',
+        proxy_ipv6: '2001:db8:99::10',
+        ipv6_leak_guard: false,
+        ipv6_leaked: false,
+        ipv6_effective_state: 'full',
+        wan6_available: true,
+        nft_leak_guard_present: false,
+      },
+    });
+    vi.spyOn(TachyonShellMethods, 'leakCheck').mockResolvedValue(result);
+
+    renderLeakCheckModal();
+    await vi.waitFor(() => {
+      const text = collectText(getModalContent());
+      expect(text).toContain('2001:db8::10');
+      expect(text).toContain('2001:db8:99::10');
+      expect(text).toContain('IPv6 TUNNELED');
+    });
+  });
+});

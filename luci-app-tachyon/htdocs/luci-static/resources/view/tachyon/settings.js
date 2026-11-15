@@ -42,6 +42,241 @@ function isSingBoxDuration(value) {
   return /^(?=.*[1-9])([0-9]+(?:\.[0-9]+)?(?:ns|us|ms|s|m|h|d))+$/.test(value);
 }
 
+let cachedIpv6RuntimeInfo = null;
+let ipv6RuntimeInfoPromise = null;
+
+function fetchIpv6RuntimeInfo() {
+  if (cachedIpv6RuntimeInfo) {
+    return Promise.resolve(cachedIpv6RuntimeInfo);
+  }
+  if (ipv6RuntimeInfoPromise) {
+    return ipv6RuntimeInfoPromise;
+  }
+  ipv6RuntimeInfoPromise = fs
+    .exec("/usr/bin/tachyon", ["get_system_info"])
+    .then((res) => {
+      if (res && res.code === 0 && res.stdout) {
+        try {
+          cachedIpv6RuntimeInfo = JSON.parse(res.stdout);
+          return cachedIpv6RuntimeInfo;
+        } catch (_e) {}
+      }
+      return null;
+    })
+    .catch(() => null)
+    .finally(() => {
+      ipv6RuntimeInfoPromise = null;
+    });
+  return ipv6RuntimeInfoPromise;
+}
+
+function readSectionSetting(section, section_id, key, fallback) {
+  if (section && typeof section.formvalue === "function") {
+    const formVal = section.formvalue(section_id, key);
+    if (formVal !== undefined && formVal !== null && formVal !== "") {
+      return String(formVal);
+    }
+  }
+  const uciVal = uci.get(UCI_PACKAGE, section_id, key);
+  if (uciVal !== undefined && uciVal !== null && uciVal !== "") {
+    return String(uciVal);
+  }
+  return fallback;
+}
+
+function updateDnsIpv6OnlyWarningElement(el, value) {
+  if (!el) return;
+  el.style.display = value === "ipv6_only" ? "block" : "none";
+}
+
+function normalizeIpv6ModeUi(value) {
+  const v = String(value || "")
+    .trim()
+    .toLowerCase();
+  if (
+    v === "off" ||
+    v === "ipv4_only" ||
+    v === "ipv4" ||
+    v === "0" ||
+    v === "false"
+  ) {
+    return "off";
+  }
+  if (v === "dual_stack" || v === "ipv4_ipv6" || v === "on" || v === "full") {
+    return "dual_stack";
+  }
+  if (v === "tunnel_over_v4" || v === "v6_over_v4") {
+    return "tunnel_over_v4";
+  }
+  return "auto";
+}
+
+function renderIpv6SummaryBannerContent(box, section, section_id) {
+  if (!box) return;
+  const ipv6Mode = normalizeIpv6ModeUi(
+    readSectionSetting(section, section_id, "ipv6_mode", "auto"),
+  );
+  const leakGuard =
+    readSectionSetting(section, section_id, "ipv6_leak_guard", "1") !== "0";
+  const fakeipEnabled =
+    readSectionSetting(section, section_id, "fakeip_enabled", "1") !== "0";
+  const fakeip6Range = readSectionSetting(
+    section,
+    section_id,
+    "fakeip_inet6_range",
+    "fc00::/18",
+  );
+  const dnsStrategy = readSectionSetting(
+    section,
+    section_id,
+    "dns_strategy",
+    "prefer_ipv4",
+  );
+
+  const modeLabels = {
+    off: _tr(
+      "Только IPv4 (без IPv6 на устройствах)",
+      "IPv4 Only (no IPv6 on LAN devices)",
+    ),
+    auto: _tr(
+      "IPv4 + IPv6: Авто (рекомендуется)",
+      "IPv4 + IPv6: Auto (Recommended)",
+    ),
+    dual_stack: _tr(
+      "IPv4 + IPv6: Двойной стек (Dual-Stack)",
+      "IPv4 + IPv6: Full Dual-Stack",
+    ),
+    tunnel_over_v4: _tr(
+      "IPv4 + IPv6: Через IPv4-туннель",
+      "IPv4 + IPv6: Over IPv4 Tunnel",
+    ),
+  };
+
+  while (box.firstChild) box.removeChild(box.firstChild);
+
+  const pills = E("div", {
+    style: "display:flex;flex-wrap:wrap;gap:6px;align-items:center;width:100%;",
+  });
+
+  pills.appendChild(
+    E(
+      "span",
+      {
+        class:
+          "tachyon-ipv6-status-pill " +
+          (ipv6Mode === "off"
+            ? "tachyon-ipv6-status-pill"
+            : "tachyon-ipv6-status-pill--ok"),
+      },
+      `IPv6: ${modeLabels[ipv6Mode] || ipv6Mode}`,
+    ),
+  );
+
+  pills.appendChild(
+    E(
+      "span",
+      {
+        class:
+          "tachyon-ipv6-status-pill " +
+          (leakGuard
+            ? "tachyon-ipv6-status-pill--ok"
+            : "tachyon-ipv6-status-pill--warn"),
+      },
+      leakGuard
+        ? _tr("Защита от утечек IPv6: Активна", "IPv6 Leak Guard: Active")
+        : _tr("Защита от утечек IPv6: Выкл", "IPv6 Leak Guard: Off"),
+    ),
+  );
+
+  pills.appendChild(
+    E(
+      "span",
+      {
+        class:
+          "tachyon-ipv6-status-pill " +
+          (fakeipEnabled
+            ? "tachyon-ipv6-status-pill--ok"
+            : "tachyon-ipv6-status-pill"),
+      },
+      fakeipEnabled
+        ? `FakeIP: IPv4 + IPv6 (${fakeip6Range})`
+        : _tr("FakeIP: Выкл", "FakeIP: Off"),
+    ),
+  );
+
+  const info = cachedIpv6RuntimeInfo;
+  const infoWan6Pd =
+    info && Array.isArray(info.wan6_pd) && info.wan6_pd.length > 0
+      ? String(info.wan6_pd[0] || "")
+      : "";
+  const infoWan6Label =
+    (info && (info.wan6_prefix || infoWan6Pd || info.wan_ipv6)) || "";
+  if (info && infoWan6Label) {
+    const wanText =
+      info.wan6_prefix || infoWan6Pd
+        ? `WAN6 PD: ${info.wan6_prefix || infoWan6Pd}`
+        : `WAN6: ${info.wan_ipv6}`;
+    pills.appendChild(
+      E(
+        "span",
+        { class: "tachyon-ipv6-status-pill tachyon-ipv6-status-pill--ok" },
+        wanText,
+      ),
+    );
+  } else if (info) {
+    pills.appendChild(
+      E(
+        "span",
+        { class: "tachyon-ipv6-status-pill" },
+        _tr(
+          "WAN6: не обнаружен (только IPv4)",
+          "WAN6: not detected (IPv4 only)",
+        ),
+      ),
+    );
+  }
+
+  box.appendChild(pills);
+
+  if (ipv6Mode !== "off" && dnsStrategy === "ipv6_only") {
+    box.appendChild(
+      E(
+        "div",
+        {
+          class: "tachyon-ipv6-warning-banner",
+          style: "width:100%;margin-top:4px;",
+        },
+        _tr(
+          "Внимание: в настройках DNS выбрана стратегия «Только DNS IPv6 (AAAA)». Сайты без AAAA-записей и ресурсы при отсутствии сквозного IPv6 перестанут открываться.",
+          'Warning: DNS strategy is set to "IPv6 DNS only (AAAA)". Destinations without AAAA records or end-to-end IPv6 will fail to open.',
+        ),
+      ),
+    );
+  } else if (ipv6Mode === "off" && !leakGuard) {
+    box.appendChild(
+      E(
+        "div",
+        {
+          class: "tachyon-ipv6-warning-banner",
+          style: "width:100%;margin-top:4px;",
+        },
+        _tr(
+          "В режиме «Только IPv4» устройства в LAN не получают IPv6 и работают строго по IPv4. Рекомендуется оставлять «Защиту от утечек IPv6» включённой.",
+          "In IPv4 Only mode, LAN devices receive no IPv6 and work strictly over IPv4. Keeping IPv6 Leak Guard enabled is recommended.",
+        ),
+      ),
+    );
+  }
+}
+
+function refreshIpv6SummaryBanner(section, section_id) {
+  if (typeof document === "undefined") return;
+  const boxes = document.querySelectorAll('[data-tachyon-ipv6-summary="1"]');
+  boxes.forEach((box) => {
+    renderIpv6SummaryBannerContent(box, section, section_id);
+  });
+}
+
 function latencyTestUrlChoices() {
   return Array.isArray(main.LATENCY_TEST_URL_OPTIONS)
     ? main.LATENCY_TEST_URL_OPTIONS
@@ -3646,20 +3881,227 @@ function createSettingsContent(section, capabilities) {
     return node;
   };
 
-  // ─── DNS Strategy ────────────────────────────────────────────────────────
+  // ─── DNS Strategy & FakeIP ───────────────────────────────────────────────
 
   o = section.taboption(
     "dns",
     form.ListValue,
     "dns_strategy",
-    _("DNS Strategy"),
+    _tr("Приоритет DNS (IPv4 / IPv6)", "DNS IPv4 / IPv6 Priority"),
+    _tr(
+      "Определяет приоритет DNS-запросов A (IPv4) и AAAA (IPv6). В режиме «Только IPv4 (без IPv6 на устройствах)» всегда используется только IPv4 (A).",
+      "Controls DNS resolution priority between A (IPv4) and AAAA (IPv6) records. In IPv4 Only mode, IPv4-only DNS (A) is always enforced.",
+    ),
   );
-  o.value("prefer_ipv4", _("Prefer IPv4"));
-  o.value("ipv4_only", _("IPv4 only"));
-  o.value("prefer_ipv6", _("Prefer IPv6"));
-  o.value("ipv6_only", _("IPv6 only"));
+  o.value("prefer_ipv4", _tr("Приоритет IPv4", "Prefer IPv4"));
+  o.value("prefer_ipv6", _tr("Приоритет IPv6", "Prefer IPv6"));
+  o.value("ipv4_only", _tr("Только DNS IPv4 (A)", "IPv4 DNS only (A)"));
+  o.value("ipv6_only", _tr("Только DNS IPv6 (AAAA)", "IPv6 DNS only (AAAA)"));
   o.default = "prefer_ipv4";
   o.rmempty = false;
+  o.depends("ipv6_mode", "auto");
+  o.depends("ipv6_mode", "dual_stack");
+  o.depends("ipv6_mode", "tunnel_over_v4");
+  // Keep user's saved dns_strategy if ipv6_mode is temporarily set to "off"
+  o.remove = function () {};
+  const dnsStrategyOrigRender = o.renderWidget;
+  o.renderWidget = function (section_id, option_index, cfgvalue) {
+    const node = dnsStrategyOrigRender.call(
+      this,
+      section_id,
+      option_index,
+      cfgvalue,
+    );
+    const val =
+      cfgvalue != null
+        ? String(cfgvalue)
+        : String(this.cfgvalue(section_id) || "prefer_ipv4");
+    const warn = E(
+      "div",
+      {
+        class: "tachyon-ipv6-warning-banner",
+        "data-tachyon-dns-ipv6-warning": "1",
+      },
+      _tr(
+        "Внимание: стратегия «Только DNS IPv6 (AAAA)» отключает DNS-запросы IPv4 (A). Ресурсы без AAAA-записей перестанут открываться при отсутствии полной IPv6-связности.",
+        'Warning: "IPv6 DNS only (AAAA)" disables IPv4 (A) DNS lookups. Resources without AAAA records will fail to open unless end-to-end IPv6 connectivity is available.',
+      ),
+    );
+    updateDnsIpv6OnlyWarningElement(warn, val);
+    if (node && typeof node.appendChild === "function") {
+      node.appendChild(warn);
+    }
+    return node;
+  };
+  o.onchange = function (_ev, section_id, value) {
+    if (typeof document !== "undefined") {
+      document
+        .querySelectorAll('[data-tachyon-dns-ipv6-warning="1"]')
+        .forEach((el) => updateDnsIpv6OnlyWarningElement(el, value));
+    }
+    refreshIpv6SummaryBanner(this.section, section_id);
+  };
+
+  const dnsStrategyLockedOpt = section.taboption(
+    "dns",
+    form.DummyValue,
+    "_dns_strategy_ipv4_locked",
+    _tr("Приоритет DNS (IPv4 / IPv6)", "DNS IPv4 / IPv6 Priority"),
+    _tr(
+      "Пока выбран режим IPv6 «Только IPv4 (без IPv6 на устройствах)», ядро всегда использует только IPv4-резолв (A).",
+      "While IPv6 mode is set to IPv4 Only (no IPv6 on LAN devices), the core always enforces IPv4-only DNS (A).",
+    ),
+  );
+  dnsStrategyLockedOpt.depends("ipv6_mode", "off");
+  dnsStrategyLockedOpt.rawhtml = true;
+  dnsStrategyLockedOpt.renderWidget = function () {
+    return E(
+      "div",
+      { class: "tachyon-ipv6-status-box" },
+      E(
+        "span",
+        { class: "tachyon-ipv6-status-pill" },
+        _tr(
+          "Только DNS IPv4 (A) — фиксировано в режиме «Только IPv4»",
+          "IPv4 DNS only (A) — locked in IPv4 Only mode",
+        ),
+      ),
+    );
+  };
+
+  o = section.taboption(
+    "dns",
+    form.Flag,
+    "fakeip_enabled",
+    _tr("Включить FakeIP", "Enable FakeIP"),
+    _tr(
+      "Выдаёт виртуальные IPv4/IPv6 адреса доменам для быстрой маршрутизации без задержки внешнего DNS. Выключение переводит DNS на прямой резолв.",
+      "Assigns virtual IPv4/IPv6 addresses to domains for fast routing without waiting on external DNS. Disabling falls back to direct DNS resolution.",
+    ),
+  );
+  o.default = "1";
+  o.rmempty = false;
+  o.onchange = function (_ev, section_id) {
+    refreshIpv6SummaryBanner(this.section, section_id);
+  };
+
+  o = section.taboption(
+    "dns",
+    form.Value,
+    "fakeip_inet4_range",
+    _tr("Диапазон FakeIP IPv4 (CIDR)", "FakeIP IPv4 Range (CIDR)"),
+    _tr(
+      "Подсеть IPv4 для виртуальных FakeIP-ответов (по умолчанию: 198.18.0.0/15). Не должна пересекаться с подсетью TUN IPv4.",
+      "IPv4 CIDR range reserved for FakeIP responses (default: 198.18.0.0/15). Must not overlap with the TUN IPv4 subnet.",
+    ),
+  );
+  o.depends("fakeip_enabled", "1");
+  o.default = "198.18.0.0/15";
+  o.placeholder = "198.18.0.0/15";
+  o.rmempty = false;
+  o.validate = function (section_id, value) {
+    const trimmed = String(value || "").trim();
+    if (!trimmed) {
+      return _("This field is required");
+    }
+    const res = main.validateCidr(trimmed, 4);
+    if (!res.valid) {
+      return res.message;
+    }
+    const tun4 = readSectionSetting(
+      this.section,
+      section_id,
+      "tun_inet4",
+      "172.19.0.1/30",
+    );
+    if (tun4 && main.cidrsOverlap(trimmed, tun4)) {
+      return _tr(
+        "Диапазон FakeIP IPv4 не должен пересекаться с подсетью TUN IPv4",
+        "FakeIP IPv4 range must not overlap with the TUN IPv4 subnet",
+      );
+    }
+    return true;
+  };
+
+  o = section.taboption(
+    "dns",
+    form.Value,
+    "fakeip_inet6_range",
+    _tr("Диапазон FakeIP IPv6 (CIDR)", "FakeIP IPv6 Range (CIDR)"),
+    _tr(
+      "Подсеть IPv6 для виртуальных FakeIP-ответов (по умолчанию: fc00::/18). Не должна пересекаться с подсетью TUN IPv6.",
+      "IPv6 CIDR range reserved for FakeIP responses (default: fc00::/18). Must not overlap with the TUN IPv6 subnet.",
+    ),
+  );
+  o.depends("fakeip_enabled", "1");
+  o.default = "fc00::/18";
+  o.placeholder = "fc00::/18";
+  o.rmempty = false;
+  o.onchange = function (_ev, section_id) {
+    refreshIpv6SummaryBanner(this.section, section_id);
+  };
+  o.validate = function (section_id, value) {
+    const trimmed = String(value || "").trim();
+    if (!trimmed) {
+      return _("This field is required");
+    }
+    const res = main.validateCidr(trimmed, 6);
+    if (!res.valid) {
+      return res.message;
+    }
+    const tun6 = readSectionSetting(
+      this.section,
+      section_id,
+      "tun_inet6",
+      "fdfe:dcba:9876::1/126",
+    );
+    if (tun6 && main.cidrsOverlap(trimmed, tun6)) {
+      return _tr(
+        "Диапазон FakeIP IPv6 не должен пересекаться с подсетью TUN IPv6",
+        "FakeIP IPv6 range must not overlap with the TUN IPv6 subnet",
+      );
+    }
+    return true;
+  };
+
+  o = section.taboption(
+    "dns",
+    form.DynamicList,
+    "fakeip_exclude",
+    _tr(
+      "Исключения FakeIP (домены / подсети)",
+      "FakeIP Exclude (Domains / Subnets)",
+    ),
+    _tr(
+      "Домены и подсети (IPv4/IPv6), для которых не выдаются адреса FakeIP (например: lan, 192.168.0.0/16, fe80::/10).",
+      "Domains or IPv4/IPv6 CIDRs excluded from FakeIP resolution (e.g. lan, 192.168.0.0/16, fe80::/10).",
+    ),
+  );
+  o.depends("fakeip_enabled", "1");
+  o.placeholder = "example.com, 192.168.0.0/16, fe80::/10";
+  o.rmempty = true;
+  o.validate = function (_section_id, value) {
+    const items = Array.isArray(value)
+      ? value
+      : value != null && `${value}`.trim() !== ""
+        ? [`${value}`]
+        : [];
+    for (const raw of items) {
+      const item = String(raw || "").trim();
+      if (!item) continue;
+      if (
+        !main.validateDomain(item).valid &&
+        !main.validateSubnet(item).valid &&
+        !main.validateIPWithZone(item).valid
+      ) {
+        return _tr(
+          `Некорректный домен или IP/CIDR: ${item}`,
+          `Invalid domain or IP/CIDR entry: ${item}`,
+        );
+      }
+    }
+    return true;
+  };
 
   o = section.taboption(
     "dns",
@@ -3722,6 +4164,94 @@ function createSettingsContent(section, capabilities) {
     "default_tunnel_section",
     capabilities,
   );
+
+  // ─── IPv6 Mode & Leak Protection ────────────────────────────────────────
+
+  o = section.taboption(
+    "network",
+    form.ListValue,
+    "ipv6_mode",
+    _tr("Режим IPv6", "IPv6 Mode"),
+    _tr(
+      "Только IPv4: полностью отключает выдачу IPv6 (RA/DHCPv6/ULA) на устройства в LAN — они работают строго по IPv4. Авто: включает IPv4 + IPv6 при наличии WAN6 провайдера и защищает от утечек без него. Двойной стек: нативный IPv4 + IPv6. Через IPv4-туннель: передаёт IPv6-трафик поверх IPv4-прокси.",
+      "IPv4 Only: completely disables IPv6 addressing (RA/DHCPv6/ULA) on LAN devices so clients work strictly over IPv4. Auto: enables IPv4 + IPv6 when ISP WAN6 is available and enforces leak guard otherwise. Full Dual-Stack: native IPv4 + IPv6. Over IPv4 Tunnel: encapsulates IPv6 traffic over IPv4 proxies.",
+    ),
+  );
+  o.value(
+    "off",
+    _tr(
+      "Только IPv4 (без IPv6 на устройствах)",
+      "IPv4 Only (no IPv6 on LAN devices)",
+    ),
+  );
+  o.value(
+    "auto",
+    _tr("IPv4 + IPv6: Авто (рекомендуется)", "IPv4 + IPv6: Auto (Recommended)"),
+  );
+  o.value(
+    "dual_stack",
+    _tr(
+      "IPv4 + IPv6: Двойной стек (Dual-Stack)",
+      "IPv4 + IPv6: Full Dual-Stack",
+    ),
+  );
+  o.value(
+    "tunnel_over_v4",
+    _tr("IPv4 + IPv6: Через IPv4-туннель", "IPv4 + IPv6: Over IPv4 Tunnel"),
+  );
+  o.default = "auto";
+  o.rmempty = false;
+  o.cfgvalue = function (section_id) {
+    const raw =
+      this.map?.data?.get?.(UCI_PACKAGE, section_id, "ipv6_mode") ??
+      uci.get(UCI_PACKAGE, section_id, "ipv6_mode");
+    return raw != null && raw !== "" ? normalizeIpv6ModeUi(raw) : "auto";
+  };
+  o.onchange = function (_ev, section_id) {
+    refreshIpv6SummaryBanner(this.section, section_id);
+  };
+
+  o = section.taboption(
+    "network",
+    form.Flag,
+    "ipv6_leak_guard",
+    _tr(
+      "Защита от утечек IPv6 (Leak Guard)",
+      "IPv6 Leak Protection (Leak Guard)",
+    ),
+    _tr(
+      "Блокирует незащищённый IPv6-трафик на границе WAN/LAN, если IPv6-туннелирование отключено или недоступно, предотвращая утечку адреса провайдера.",
+      "Drops or rejects unproxied IPv6 traffic across WAN/LAN boundaries when IPv6 proxying is disabled or unavailable.",
+    ),
+  );
+  o.default = "1";
+  o.rmempty = false;
+  o.onchange = function (_ev, section_id) {
+    refreshIpv6SummaryBanner(this.section, section_id);
+  };
+
+  const ipv6SummaryOpt = section.taboption(
+    "network",
+    form.DummyValue,
+    "_ipv6_simple_summary",
+    _tr("Статус IPv6 и FakeIP", "IPv6 & FakeIP Status"),
+  );
+  ipv6SummaryOpt.rawhtml = true;
+  ipv6SummaryOpt.renderWidget = function (section_id) {
+    const box = E("div", {
+      class: "tachyon-ipv6-status-box",
+      "data-tachyon-ipv6-summary": "1",
+    });
+    renderIpv6SummaryBannerContent(box, this.section, section_id);
+    if (!cachedIpv6RuntimeInfo) {
+      fetchIpv6RuntimeInfo().then((info) => {
+        if (info && box.isConnected) {
+          renderIpv6SummaryBannerContent(box, this.section, section_id);
+        }
+      });
+    }
+    return box;
+  };
 
   o = section.taboption(
     "network",
@@ -3855,6 +4385,72 @@ function createSettingsContent(section, capabilities) {
   o.depends("proxy_mode", "tun");
   o.placeholder = "5m";
   o.rmempty = true;
+
+  o = section.taboption(
+    "network",
+    form.Value,
+    "tun_inet4",
+    _tr("Адрес TUN IPv4 (CIDR)", "TUN IPv4 Address (CIDR)"),
+    _tr(
+      "Адрес и маска TUN-интерфейса для IPv4 (по умолчанию: 172.19.0.1/30). Не должен пересекаться с FakeIP IPv4.",
+      "IPv4 CIDR address for the TUN interface (default: 172.19.0.1/30). Must not overlap with FakeIP IPv4.",
+    ),
+  );
+  o.depends("proxy_mode", "tun");
+  o.placeholder = "172.19.0.1/30";
+  o.rmempty = true;
+  o.validate = function (section_id, value) {
+    const trimmed = String(value || "").trim();
+    if (!trimmed) return true;
+    const res = main.validateCidr(trimmed, 4);
+    if (!res.valid) return res.message;
+    const f4 = readSectionSetting(
+      this.section,
+      section_id,
+      "fakeip_inet4_range",
+      "198.18.0.0/15",
+    );
+    if (f4 && main.cidrsOverlap(trimmed, f4)) {
+      return _tr(
+        "Адрес TUN IPv4 не должен пересекаться с диапазоном FakeIP IPv4",
+        "TUN IPv4 address must not overlap with FakeIP IPv4 range",
+      );
+    }
+    return true;
+  };
+
+  o = section.taboption(
+    "network",
+    form.Value,
+    "tun_inet6",
+    _tr("Адрес TUN IPv6 (CIDR)", "TUN IPv6 Address (CIDR)"),
+    _tr(
+      "Адрес и маска TUN-интерфейса для IPv6 (по умолчанию: fdfe:dcba:9876::1/126). Не должен пересекаться с FakeIPv6 (fc00::/18).",
+      "IPv6 CIDR address for the TUN interface (default: fdfe:dcba:9876::1/126). Must not overlap with FakeIPv6 (fc00::/18).",
+    ),
+  );
+  o.depends("proxy_mode", "tun");
+  o.placeholder = "fdfe:dcba:9876::1/126";
+  o.rmempty = true;
+  o.validate = function (section_id, value) {
+    const trimmed = String(value || "").trim();
+    if (!trimmed) return true;
+    const res = main.validateCidr(trimmed, 6);
+    if (!res.valid) return res.message;
+    const f6 = readSectionSetting(
+      this.section,
+      section_id,
+      "fakeip_inet6_range",
+      "fc00::/18",
+    );
+    if (f6 && main.cidrsOverlap(trimmed, f6)) {
+      return _tr(
+        "Адрес TUN IPv6 не должен пересекаться с диапазоном FakeIP IPv6",
+        "TUN IPv6 address must not overlap with FakeIP IPv6 range",
+      );
+    }
+    return true;
+  };
 
   o = section.taboption(
     "network",

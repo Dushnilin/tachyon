@@ -74,6 +74,7 @@ import {
   ActiveRouteInfo,
 } from './activeRoute';
 import { ensureOutboundDisplayFlag } from '../../helpers/country';
+import { getIPv6RuntimeSnapshot } from '../../helpers/ipv6Summary';
 import {
   computeConnectionRates,
   computeTrafficRates,
@@ -1027,6 +1028,121 @@ function syncDashboardServiceAvailability() {
 
 // Handlers
 
+function parseJsonErrorPayload(raw: string): Record<string, any> | null {
+  const trimmed = raw.trim();
+  if (!trimmed.includes('{')) return null;
+  const candidates = [trimmed];
+  const match = trimmed.match(/(\{[\s\S]*\})/);
+  if (match && match[1] !== trimmed) {
+    candidates.push(match[1]);
+  }
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === 'object') {
+        return parsed as Record<string, any>;
+      }
+    } catch {
+      // ignore invalid JSON
+    }
+  }
+  return null;
+}
+
+function isGroupNotFoundIndicator(
+  errorCode: unknown,
+  text: unknown,
+  parsed: Record<string, any> | null,
+): boolean {
+  if (errorCode === 'group_not_found' || parsed?.error === 'group_not_found') {
+    return true;
+  }
+  const combined = [
+    typeof text === 'string' ? text : '',
+    typeof parsed?.message === 'string' ? parsed.message : '',
+    typeof parsed?.error === 'string' ? parsed.error : '',
+  ]
+    .join(' ')
+    .toLowerCase();
+  if (
+    combined.includes('group_not_found') ||
+    combined.includes('does not exist')
+  ) {
+    return true;
+  }
+  if (parsed && parsed.success === false && !parsed.message && !parsed.error) {
+    return true;
+  }
+  return false;
+}
+
+export function formatGroupSwitchError(resOrErr: any): string {
+  const notActiveMsg = _(
+    'Section is not active in the routing core yet — click Save & Apply first, or check section configuration.',
+  );
+  const fallbackMsg = _('Failed to switch proxy');
+  if (resOrErr == null) return fallbackMsg;
+
+  if (typeof resOrErr === 'string') {
+    const trimmed = resOrErr.trim();
+    if (!trimmed) return fallbackMsg;
+    const parsed = parseJsonErrorPayload(trimmed);
+    if (isGroupNotFoundIndicator(undefined, trimmed, parsed)) {
+      return notActiveMsg;
+    }
+    if (parsed) {
+      const detail =
+        typeof parsed.message === 'string' && parsed.message.trim()
+          ? parsed.message.trim()
+          : typeof parsed.error === 'string' && parsed.error.trim()
+            ? parsed.error.trim()
+            : '';
+      return detail || fallbackMsg;
+    }
+    return trimmed;
+  }
+
+  if (typeof resOrErr === 'object') {
+    const candidates = [
+      resOrErr.data && typeof resOrErr.data === 'object' ? resOrErr.data : null,
+      resOrErr,
+    ].filter(Boolean) as Record<string, any>[];
+
+    for (const obj of candidates) {
+      const msgStr = typeof obj.message === 'string' ? obj.message.trim() : '';
+      const errStr = typeof obj.error === 'string' ? obj.error.trim() : '';
+      const dataStr = typeof obj.data === 'string' ? obj.data.trim() : '';
+      for (const rawStr of [errStr, msgStr, dataStr]) {
+        const parsed = rawStr ? parseJsonErrorPayload(rawStr) : null;
+        if (isGroupNotFoundIndicator(obj.error, rawStr, parsed)) {
+          return notActiveMsg;
+        }
+        if (parsed) {
+          const detail =
+            typeof parsed.message === 'string' && parsed.message.trim()
+              ? parsed.message.trim()
+              : typeof parsed.error === 'string' && parsed.error.trim()
+                ? parsed.error.trim()
+                : '';
+          if (detail) return detail;
+        }
+      }
+      if (isGroupNotFoundIndicator(obj.error, msgStr || errStr, null)) {
+        return notActiveMsg;
+      }
+    }
+
+    for (const obj of candidates) {
+      const msgStr = typeof obj.message === 'string' ? obj.message.trim() : '';
+      if (msgStr) return msgStr;
+      const errStr = typeof obj.error === 'string' ? obj.error.trim() : '';
+      if (errStr) return errStr;
+    }
+  }
+
+  return fallbackMsg;
+}
+
 async function handleChooseOutbound(
   sectionName: string,
   selector: string,
@@ -1048,17 +1164,17 @@ async function handleChooseOutbound(
 
   try {
     const res = await TachyonShellMethods.setClashApiGroupProxy(selector, tag);
-    if (res && !(res as any).success && (res as any).error) {
+    const resAny = res as any;
+    const dataAny = resAny?.data as any;
+    if (resAny && (!resAny.success || (dataAny && dataAny.success === false))) {
       showToast(
-        (res as any).message ||
-          (res as any).error ||
-          _('Failed to switch proxy'),
+        formatGroupSwitchError(!resAny.success ? resAny : dataAny),
         'error',
       );
     }
     await fetchDashboardSections({ force: true });
   } catch (error: any) {
-    showToast(error?.message || _('Failed to switch proxy'), 'error');
+    showToast(formatGroupSwitchError(error), 'error');
   } finally {
     setSelectorSwitching(sectionName);
   }
@@ -5771,6 +5887,56 @@ export async function renderSystemServicesWidget() {
       ),
       attributes: {
         title: cpuTitleParts.join(' | '),
+      },
+    });
+  }
+
+  {
+    const ipv6Snap = getIPv6RuntimeSnapshot(store.get().diagnosticsSystemInfo);
+    const pillParts = [ipv6Snap.modeLabel];
+    if (ipv6Snap.wan6Label) {
+      pillParts.push(`WAN6 ${ipv6Snap.wan6Label}`);
+    } else if (ipv6Snap.fakeIpEnabled) {
+      pillParts.push(`FakeIPv6 ${ipv6Snap.fakeIp6Range}`);
+    }
+    if (ipv6Snap.leakGuardActive) {
+      pillParts.push('Leak Guard');
+    } else if (ipv6Snap.isWarning) {
+      pillParts.push(tr('Проверьте IPv6/DNS', 'Check IPv6/DNS'));
+    }
+
+    const ipv6PillStyle = ipv6Snap.isWarning
+      ? 'border-color: rgba(245, 158, 11, 0.45); background: rgba(245, 158, 11, 0.12); color: #f59e0b;'
+      : ipv6Snap.leakGuardActive ||
+          ipv6Snap.effectiveState === 'full' ||
+          ipv6Snap.effectiveState === 'tunnel_over_v4'
+        ? 'border-color: rgba(16, 185, 129, 0.45); background: rgba(16, 185, 129, 0.12); color: #10b981;'
+        : '';
+
+    const tooltipParts = [
+      `${tr('Режим', 'Mode')}: ${ipv6Snap.ipv6Mode} (${ipv6Snap.effectiveState})`,
+      `WAN6: ${ipv6Snap.wan6Label || tr('не обнаружен', 'not detected')}`,
+      `FakeIPv6: ${ipv6Snap.fakeIpEnabled ? ipv6Snap.fakeIp6Range : tr('выкл', 'off')}`,
+      `Leak Guard: ${ipv6Snap.leakGuardActive ? tr('вкл', 'on') : tr('выкл', 'off')}`,
+      `DNS: ${ipv6Snap.dnsStrategy}`,
+    ];
+    if (ipv6Snap.warningText) {
+      tooltipParts.push(ipv6Snap.warningText);
+    }
+
+    routingItems.push({
+      key: 'IPv6',
+      value: E(
+        'span',
+        {
+          class: 'tachyon-stat-pill tachyon-stat-pill--conns',
+          style: ipv6PillStyle,
+          'data-ipv6-telemetry': '1',
+        } as any,
+        pillParts.join(' · '),
+      ),
+      attributes: {
+        title: tooltipParts.join(' | '),
       },
     });
   }

@@ -866,8 +866,28 @@ function push_unique_str(arr, seen, val) {
     push(arr, val);
 }
 
-function normalize_amnezia_config_entry(raw_val, fallback_name) {
+function compact_vpn_uri(raw_val) {
     let val = trim(as_string(raw_val));
+    if (substr(val, 0, 6) != "vpn://")
+        return val;
+    let hash_pos = index(val, "#");
+    let head = hash_pos >= 0 ? substr(val, 0, hash_pos) : val;
+    let frag = hash_pos >= 0 ? trim(substr(val, hash_pos + 1)) : "";
+    head = replace(head, /[ \t\r\n]+/g, "");
+    return frag != "" ? (head + "#" + frag) : head;
+}
+
+function is_vpn_base64_continuation_line(tline) {
+    if (tline == "" || substr(tline, 0, 6) == "vpn://")
+        return false;
+    let first = substr(tline, 0, 1);
+    if (first == "[" || first == "#" || first == ";")
+        return false;
+    return match(tline, /^[A-Za-z0-9+\/_%-]+={0,2}(#.*)?$/) != null;
+}
+
+function normalize_amnezia_config_entry(raw_val, fallback_name) {
+    let val = compact_vpn_uri(raw_val);
     if (val == "")
         return "";
     if (substr(val, 0, 1) == "{")
@@ -910,12 +930,32 @@ function expand_amnezia_config_entries(raw_val, fallback_name) {
     }
     let vpn_links = [];
     let conf_lines = [];
+    let in_vpn = false;
+    let current_vpn_has_frag = false;
     for (let line in split(replace(text_body, /\r\n?/g, "\n"), "\n")) {
         let tline = trim(line);
-        if (substr(tline, 0, 6) == "vpn://")
-            push(vpn_links, tline);
-        else
+        if (substr(tline, 0, 6) == "vpn://") {
+            let norm_first = compact_vpn_uri(tline);
+            push(vpn_links, norm_first);
+            current_vpn_has_frag = index(norm_first, "#") >= 0;
+            in_vpn = !current_vpn_has_frag;
+        } else if (in_vpn && !current_vpn_has_frag && is_vpn_base64_continuation_line(tline)) {
+            let last_idx = length(vpn_links) - 1;
+            let frag_pos = index(tline, "#");
+            if (frag_pos >= 0) {
+                let tail_b64 = substr(tline, 0, frag_pos);
+                let tail_frag = trim(substr(tline, frag_pos + 1));
+                vpn_links[last_idx] = vpn_links[last_idx] + tail_b64 + (tail_frag != "" ? ("#" + tail_frag) : "");
+                current_vpn_has_frag = true;
+                in_vpn = false;
+            } else {
+                vpn_links[last_idx] = vpn_links[last_idx] + tline;
+            }
+        } else {
+            in_vpn = false;
+            current_vpn_has_frag = false;
             push(conf_lines, line);
+        }
     }
     if (length(vpn_links) == 0)
         return [ substr(val, 0, 1) == "{" ? val : normalize_amnezia_config_entry(val, eff_name) ];
@@ -2572,6 +2612,16 @@ function strip_server_filter_type_suffix(name) {
     return name;
 }
 
+let connections_urltest_loaded = false;
+let connections_urltest_mod = null;
+function get_urltest_module() {
+    if (!connections_urltest_loaded) {
+        connections_urltest_loaded = true;
+        try { connections_urltest_mod = require("tachyon_core.urltest"); } catch (e) {}
+    }
+    return connections_urltest_mod;
+}
+
 function expand_server_name_filter_candidates(srv_name) {
     srv_name = trim(as_string(srv_name));
     if (srv_name == "")
@@ -2580,12 +2630,27 @@ function expand_server_name_filter_candidates(srv_name) {
     let stripped = strip_server_filter_type_suffix(srv_name);
     if (stripped != "" && stripped != srv_name && index(out, stripped) < 0)
         push(out, stripped);
+    let ut = get_urltest_module();
+    if (ut != null && type(ut.strip_dynamic_server_telemetry) == "function") {
+        for (let cand in [ srv_name, stripped ]) {
+            if (cand != "") {
+                let canon = trim(ut.strip_dynamic_server_telemetry(cand));
+                if (canon != "" && index(out, canon) < 0)
+                    push(out, canon);
+            }
+        }
+    }
     if (substr(stripped, 0, 1) == "[") {
         let close_idx = index(stripped, "]");
         if (close_idx > 1) {
             let unprefixed = trim(substr(stripped, close_idx + 1));
             if (unprefixed != "" && index(out, unprefixed) < 0)
                 push(out, unprefixed);
+            if (ut != null && type(ut.strip_dynamic_server_telemetry) == "function") {
+                let unpfx_canon = trim(ut.strip_dynamic_server_telemetry(unprefixed));
+                if (unpfx_canon != "" && index(out, unpfx_canon) < 0)
+                    push(out, unpfx_canon);
+            }
         }
     }
     return out;
@@ -6287,14 +6352,32 @@ function probe_outbound_url(target_url, group_id, timeout_ms) {
         } else if (outbound_group_section(group_id) != null) {
             let gspec = outbound_group_filter_spec(group_id);
             if (gspec != null) {
+                let canon_name = function(val) {
+                    let s = trim(as_string(val));
+                    if (s == "")
+                        return "";
+                    if (runtime_urltest != null && type(runtime_urltest.strip_dynamic_server_telemetry) == "function")
+                        s = trim(runtime_urltest.strip_dynamic_server_telemetry(s));
+                    return lc(s);
+                };
                 let inc_c = {};
                 for (let c in (gspec.include_countries || [])) inc_c[uc(trim(as_string(c)))] = true;
                 let exc_c = {};
                 for (let c in (gspec.exclude_countries || [])) exc_c[uc(trim(as_string(c)))] = true;
                 let inc_o = {};
-                for (let o in (gspec.include_outbounds || [])) inc_o[lc(trim(as_string(o)))] = true;
+                for (let o in (gspec.include_outbounds || [])) {
+                    let ol = lc(trim(as_string(o)));
+                    if (ol != "") inc_o[ol] = true;
+                    let oc = canon_name(o);
+                    if (oc != "") inc_o[oc] = true;
+                }
                 let exc_o = {};
-                for (let o in (gspec.exclude_outbounds || [])) exc_o[lc(trim(as_string(o)))] = true;
+                for (let o in (gspec.exclude_outbounds || [])) {
+                    let ol = lc(trim(as_string(o)));
+                    if (ol != "") exc_o[ol] = true;
+                    let oc = canon_name(o);
+                    if (oc != "") exc_o[oc] = true;
+                }
                 let inc_p = {};
                 for (let p in (gspec.include_protocols || [])) inc_p[lc(trim(as_string(p)))] = true;
                 let has_inc_c = length(keys(inc_c)) > 0;
@@ -6303,7 +6386,39 @@ function probe_outbound_url(target_url, group_id, timeout_ms) {
                 let has_base_inc = has_inc_c || has_inc_o || has_inc_re;
                 let filtered = [];
                 for (let t in candidate_tags) {
-                    let tname = names_map[t] || t;
+                    let raw_tname = names_map[t] || t;
+                    let tname = trim(as_string(raw_tname));
+                    let tpfx = trim(as_string(prefixes_map[t] || ""));
+                    let tname_prefixed = (tpfx != "" && index(tname, "[" + tpfx + "]") != 0 && index(tname, tpfx + ": ") != 0)
+                        ? ("[" + tpfx + "] " + tname)
+                        : "";
+                    let name_matches_set = function(set_map) {
+                        if (set_map[lc(trim(as_string(t)))] == true ||
+                            set_map[lc(tname)] == true ||
+                            set_map[canon_name(tname)] == true)
+                            return true;
+                        if (tname_prefixed != "" &&
+                            (set_map[lc(tname_prefixed)] == true || set_map[canon_name(tname_prefixed)] == true))
+                            return true;
+                        if (tpfx != "") {
+                            let bare = "";
+                            if (index(tname, tpfx + ": ") == 0)
+                                bare = trim(substr(tname, length(tpfx) + 2));
+                            else if (index(tname, tpfx + " ") == 0)
+                                bare = trim(substr(tname, length(tpfx) + 1));
+                            else if (index(tname, "[" + tpfx + "]") == 0)
+                                bare = trim(substr(tname, length(tpfx) + 2));
+                            if (bare != "") {
+                                let bracketed = "[" + tpfx + "] " + bare;
+                                if (set_map[lc(bare)] == true ||
+                                    set_map[canon_name(bare)] == true ||
+                                    set_map[lc(bracketed)] == true ||
+                                    set_map[canon_name(bracketed)] == true)
+                                    return true;
+                            }
+                        }
+                        return false;
+                    };
                     let tc = countries_map[t] || "";
                     let tp = protocols_map[t] || "";
                     if (length(gspec.include_prefixes || []) > 0) {
@@ -6317,10 +6432,10 @@ function probe_outbound_url(target_url, group_id, timeout_ms) {
                         if (length(keys(inc_p)) > 0 && !inc_p[tp]) continue;
                         if (has_base_inc) {
                             let c_ok = has_inc_c && (inc_c[tc] == true);
-                            let o_ok = has_inc_o && (inc_o[lc(trim(as_string(t)))] == true || inc_o[lc(trim(as_string(tname)))] == true);
+                            let o_ok = has_inc_o && name_matches_set(inc_o);
                             let re_ok = false;
                             if (has_inc_re) {
-                                let matched_re = runtime_urltest.regex_matching_tag_array([ t ], { [t]: tname }, gspec.include_regex);
+                                let matched_re = runtime_urltest.regex_matching_tag_array([ t ], { [t]: raw_tname }, gspec.include_regex);
                                 re_ok = length(matched_re) > 0;
                             }
                             if (!(c_ok || o_ok || re_ok)) continue;
@@ -6328,9 +6443,9 @@ function probe_outbound_url(target_url, group_id, timeout_ms) {
                     }
                     if (gspec.mode == "exclude" || gspec.mode == "mixed") {
                         if (length(keys(exc_c)) > 0 && exc_c[tc]) continue;
-                        if (length(keys(exc_o)) > 0 && (exc_o[lc(trim(as_string(t)))] || exc_o[lc(trim(as_string(tname)))])) continue;
+                        if (length(keys(exc_o)) > 0 && name_matches_set(exc_o)) continue;
                         if (length(gspec.exclude_regex || []) > 0 && runtime_urltest != null) {
-                            let matched_re = runtime_urltest.regex_matching_tag_array([ t ], { [t]: tname }, gspec.exclude_regex);
+                            let matched_re = runtime_urltest.regex_matching_tag_array([ t ], { [t]: raw_tname }, gspec.exclude_regex);
                             if (length(matched_re) > 0) continue;
                         }
                     }

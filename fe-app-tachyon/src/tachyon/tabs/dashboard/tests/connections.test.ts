@@ -54,7 +54,7 @@ describe('dashboard connections', () => {
     });
   });
 
-  it('assigns router hostname to 127.0.0.1 and router WAN label to 95.165.105.233 when missing in hostnames', () => {
+  it('resolves localhost IPv4/IPv6 and dynamic router LAN/WAN IPv4/IPv6 addresses when missing in hostnames', () => {
     const rawConns = [
       {
         metadata: { sourceIP: '127.0.0.1' },
@@ -62,9 +62,24 @@ describe('dashboard connections', () => {
         download: 20,
       },
       {
-        metadata: { sourceIP: '95.165.105.233' },
+        metadata: { sourceIP: '::1' },
+        upload: 15,
+        download: 25,
+      },
+      {
+        metadata: { sourceIP: '203.0.113.10' },
         upload: 100,
         download: 200,
+      },
+      {
+        metadata: { sourceIP: '[2001:db8:1::1]' },
+        upload: 40,
+        download: 60,
+      },
+      {
+        metadata: { sourceIP: 'fd00::1' },
+        upload: 20,
+        download: 30,
       },
       {
         metadata: { sourceIP: '10.100.100.153' },
@@ -77,20 +92,40 @@ describe('dashboard connections', () => {
       ['10.100.100.153', '26:70:52:CD:8E:F9'],
     ]);
 
-    const result = aggregateClientConnections(rawConns, hostnames);
-    expect(result).toHaveLength(3);
+    const result = aggregateClientConnections(rawConns, hostnames, {
+      routerHostname: 'OpenWrt-Edge',
+      wanIps: ['203.0.113.10', '2001:db8:1::1'],
+      lanIps: ['192.168.1.1', 'fd00::1'],
+    });
+    expect(result).toHaveLength(6);
 
-    const localhostConn = result.find((c) => c.ip === '127.0.0.1');
-    expect(localhostConn?.name).toBe('Flint-2');
+    const localhostV4 = result.find((c) => c.ip === '127.0.0.1');
+    expect(localhostV4?.name).toBe('OpenWrt-Edge');
 
-    const wanConn = result.find((c) => c.ip === '95.165.105.233');
-    expect(wanConn?.name).toMatch(/Роутер \(WAN\)|Router \(WAN\)/);
+    const localhostV6 = result.find((c) => c.ip === '::1');
+    expect(localhostV6?.name).toBe('OpenWrt-Edge');
+
+    const wanV4 = result.find((c) => c.ip === '203.0.113.10');
+    expect(wanV4?.name).toMatch(/Роутер \(WAN\)|Router \(WAN\)/);
+
+    const wanV6 = result.find((c) => c.ip === '2001:db8:1::1');
+    expect(wanV6?.name).toMatch(/Роутер \(WAN\)|Router \(WAN\)/);
+
+    const lanV6 = result.find((c) => c.ip === 'fd00::1');
+    expect(lanV6?.name).toBe('OpenWrt-Edge');
 
     const macConn = result.find((c) => c.ip === '10.100.100.153');
     expect(macConn?.name).toBe('26:70:52:CD:8E:F9');
+
+    // Default fallback without explicit routerContext uses generic router label
+    const fallbackResult = aggregateClientConnections(
+      [{ metadata: { sourceIP: '::1' }, upload: 1, download: 2 }],
+      new Map(),
+    );
+    expect(fallbackResult[0].name).toMatch(/Роутер|Router/);
   });
 
-  it('aggregates top domains and filters out IP addresses', () => {
+  it('aggregates top domains and filters out IPv4/IPv6 addresses', () => {
     const rawConns = [
       {
         metadata: { host: 'youtube.com' },
@@ -114,6 +149,16 @@ describe('dashboard connections', () => {
       },
       {
         metadata: { host: '2606:4700::6810' }, // IPv6, should be skipped
+        upload: 10,
+        download: 10,
+      },
+      {
+        metadata: { host: '[2001:db8::1]' }, // bracketed IPv6, should be skipped
+        upload: 10,
+        download: 10,
+      },
+      {
+        metadata: { host: 'fe80::1%eth0' }, // zone-scoped link-local IPv6, should be skipped
         upload: 10,
         download: 10,
       },

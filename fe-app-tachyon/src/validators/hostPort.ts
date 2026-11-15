@@ -1,6 +1,52 @@
 import { validateDomain } from './validateDomain';
 import { isIPv4, isIPv6 } from './validateIp';
 
+export function formatHostForUri(host: string): string {
+  const normalized = unbracketHost(String(host || '').trim());
+  return isIPv6(normalized) ? `[${normalized}]` : normalized;
+}
+
+export function splitHostPort(
+  value: string,
+): { host: string; port?: string } | null {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  if (trimmed.startsWith('[')) {
+    const end = trimmed.indexOf(']');
+    if (end <= 1) {
+      return null;
+    }
+    const host = trimmed.slice(1, end);
+    if (!isIPv6(host) && !isValidHost(host)) {
+      return null;
+    }
+    const rest = trimmed.slice(end + 1);
+    if (!rest) {
+      return { host };
+    }
+    if (!rest.startsWith(':')) {
+      return null;
+    }
+    const port = rest.slice(1);
+    return port ? { host, port } : null;
+  }
+
+  const firstColon = trimmed.indexOf(':');
+  const lastColon = trimmed.lastIndexOf(':');
+  if (firstColon < 0) {
+    return isValidHost(trimmed) ? { host: trimmed } : null;
+  }
+  if (firstColon === lastColon) {
+    const host = trimmed.slice(0, firstColon);
+    const port = trimmed.slice(firstColon + 1);
+    return host && port && isValidHost(host) ? { host, port } : null;
+  }
+  return isIPv6(trimmed) ? { host: trimmed } : null;
+}
+
 export type ParsedHostPort = {
   host: string;
   port: string;

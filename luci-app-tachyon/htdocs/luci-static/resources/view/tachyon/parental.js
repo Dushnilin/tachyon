@@ -1501,10 +1501,7 @@ function createParentalContent(section) {
 function validateGuestDevice(_sectionId, value) {
   if (value === "" || value === null || value === undefined) return true;
   const v = String(value).trim();
-  const isMac = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/.test(v);
-  const isIpv4 = /^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/.test(v);
-  const isIpv6 = /^[0-9a-fA-F:]+(\/\d{1,3})?$/.test(v);
-  if (isMac || isIpv4 || isIpv6) return true;
+  if (main.validateSubnet(v).valid) return true;
   return _("Invalid IP or MAC address format");
 }
 
@@ -1595,6 +1592,18 @@ function createGuestModeContent(section) {
     _("Block Router Administration"),
     _(
       "Prevent guest devices from accessing router management services (LuCI Web UI, SSH, Clash API). DHCP and DNS remain accessible.",
+    ),
+  );
+  o.default = "1";
+  o.rmempty = false;
+
+  // Allow Proxied Routing
+  o = section.option(
+    form.Flag,
+    "allow_proxy",
+    _("Allow Proxied Routing"),
+    _(
+      "Allow guest devices to use configured proxy routing sections in TPROXY mode while keeping router administration blocked.",
     ),
   );
   o.default = "1";
