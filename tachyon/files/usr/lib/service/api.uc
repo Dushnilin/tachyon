@@ -529,16 +529,22 @@ function get_clash_connections() {
 }
 
 function get_clash_traffic() {
-    let args = [ "curl", "-s", "-m", "2", "--connect-timeout", "2" ];
+    let args = [ "curl", "-s", "-N", "-m", "2", "--connect-timeout", "2" ];
     for (let h in get_clash_auth_args()) push(args, h);
     push(args, get_clash_url("traffic"));
     let res = command_capture(command_from_args(args));
-    if (res && res.status == 0 && res.output != "") {
-        try {
-            let first_line = split(trim(res.output), "\n")[0];
-            return json(first_line);
+    if (res && (res.status == 0 || res.status == 28) && trim(res.output) != "") {
+        for (let raw_line in split(res.output, "\n")) {
+            let line = trim(as_string(raw_line || ""));
+            if (line == "")
+                continue;
+            try {
+                let parsed = json(line);
+                if (type(parsed) == "object")
+                    return parsed;
+            }
+            catch (e) {}
         }
-        catch (e) {}
     }
     return null;
 }

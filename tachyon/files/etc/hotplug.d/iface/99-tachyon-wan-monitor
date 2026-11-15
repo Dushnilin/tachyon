@@ -1,6 +1,72 @@
 #!/bin/sh
 # Hotplug handler for WAN retry on boot and interface state monitoring
 
+RELOAD_LOCK_DIR="${TACHYON_RELOAD_LOCK_DIR:-/var/run/tachyon.reload.lock}"
+HUP_LOCK_TIMEOUT="${TACHYON_HUP_LOCK_TIMEOUT:-10}"
+
+schedule_core_hup() {
+    sh -c '
+        delay="${1:-1}"
+        lock_dir="$2"
+        timeout_sec="${3:-10}"
+        [ "$delay" -gt 0 ] 2>/dev/null && sleep "$delay"
+        case "$timeout_sec" in ""|*[!0-9]*) timeout_sec=10 ;; esac
+        acquired=0
+        cleanup() {
+            if [ "$acquired" = "1" ]; then
+                acquired=0
+                rm -f "$lock_dir/pid" "$lock_dir/pid.tmp.$$" 2>/dev/null
+                rmdir "$lock_dir" 2>/dev/null
+            fi
+        }
+        trap cleanup EXIT
+        trap '\''cleanup; exit 130'\'' INT
+        trap '\''cleanup; exit 143'\'' TERM
+        elapsed=0
+        while ! mkdir "$lock_dir" 2>/dev/null; do
+            holder_pid=""
+            if [ -r "$lock_dir/pid" ]; then
+                read -r holder_pid <"$lock_dir/pid" 2>/dev/null || holder_pid=""
+            fi
+            case "$holder_pid" in
+                ""|*[!0-9]*)
+                    if [ "$elapsed" -ge 5 ] && [ ! -e "$lock_dir/pid" ]; then
+                        stale_dir="${lock_dir}.stale.$$.${elapsed}"
+                        if mv "$lock_dir" "$stale_dir" 2>/dev/null; then
+                            rm -rf "$stale_dir" 2>/dev/null
+                            continue
+                        fi
+                    fi
+                    ;;
+                *)
+                    if ! kill -0 "$holder_pid" 2>/dev/null; then
+                        stale_dir="${lock_dir}.stale.$$.${elapsed}"
+                        if mv "$lock_dir" "$stale_dir" 2>/dev/null; then
+                            rm -rf "$stale_dir" 2>/dev/null
+                            continue
+                        fi
+                    fi
+                    ;;
+            esac
+            if [ "$elapsed" -ge "$timeout_sec" ]; then
+                logger -t tachyon "[warn] skipping hotplug SIGHUP: reload lock busy ($lock_dir)" 2>/dev/null || true
+                exit 0
+            fi
+            sleep 1
+            elapsed=$((elapsed + 1))
+        done
+        acquired=1
+        pid_tmp="$lock_dir/pid.tmp.$$"
+        if ! { printf "%s\n" "$$" >"$pid_tmp" 2>/dev/null && mv -f "$pid_tmp" "$lock_dir/pid" 2>/dev/null; }; then
+            rm -f "$pid_tmp" 2>/dev/null
+            exit 1
+        fi
+        for p in $(pidof tachyon-core sing-box 2>/dev/null); do
+            kill -HUP "$p" 2>/dev/null
+        done
+    ' _ "${1:-1}" "$RELOAD_LOCK_DIR" "$HUP_LOCK_TIMEOUT" >/dev/null 2>&1 &
+}
+
 case "$INTERFACE" in
     wan*|wwan*|secondwan*|tethering*|lte*|modem*|pppoe*|usb*|*_6|6in4*|6to4*|he*|dslite*|v6*|ipv6*)
         mkdir -p /var/run/tachyon 2>/dev/null
@@ -14,12 +80,7 @@ case "$INTERFACE" in
                         echo "up" > "/var/run/tachyon/wan_transport_${INTERFACE}" 2>/dev/null
                         date +%s > /var/run/tachyon/wan-event.timestamp 2>/dev/null
                         /etc/init.d/tachyon retry_start_on_wan_up >/dev/null 2>&1 &
-                        (
-                            sleep 1
-                            for p in $(pidof tachyon-core sing-box 2>/dev/null); do
-                                kill -HUP "$p" 2>/dev/null
-                            done
-                        ) >/dev/null 2>&1 &
+                        schedule_core_hup 1
                         ;;
                 esac
                 ;;
@@ -28,12 +89,7 @@ case "$INTERFACE" in
                     wan*|wwan*|secondwan*|tethering*|lte*|modem*|pppoe*|usb*)
                         echo "down" > "/var/run/tachyon/wan_transport_${INTERFACE}" 2>/dev/null
                         date +%s > /var/run/tachyon/wan-event.timestamp 2>/dev/null
-                        (
-                            sleep 1
-                            for p in $(pidof tachyon-core sing-box 2>/dev/null); do
-                                kill -HUP "$p" 2>/dev/null
-                            done
-                        ) >/dev/null 2>&1 &
+                        schedule_core_hup 1
                         ;;
                 esac
                 ;;
@@ -125,12 +181,7 @@ done
 case "$INTERFACE" in
     wan*|wwan*|secondwan*|tethering*|lte*|modem*|pppoe*|usb*) ;;
     *)
-        (
-            sleep 1
-            for p in $(pidof tachyon-core sing-box 2>/dev/null); do
-                kill -HUP "$p" 2>/dev/null
-            done
-        ) >/dev/null 2>&1 &
+        schedule_core_hup 1
         ;;
 esac
 

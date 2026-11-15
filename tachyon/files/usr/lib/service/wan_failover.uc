@@ -34,11 +34,23 @@ let write_json_file = common.write_json_file;
 let read_json_file = common.read_json_file;
 
 const CONFIG_NAME = getenv("TACHYON_CONFIG_NAME") || "tachyon";
+const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
+const STATE_UC = LIB_DIR + "/service/state.uc";
+const RELOAD_LOCK_DIR = getenv("TACHYON_RELOAD_LOCK_DIR") || "/var/run/tachyon.reload.lock";
 const TACHYON_BIN = getenv("TACHYON_BIN") || "/usr/bin/tachyon";
 const STATE_FILE = getenv("TACHYON_WAN_FAILOVER_STATE_FILE") || "/var/run/tachyon/wan_failover_state.json";
 const WAN_EVENT_STAMP = getenv("TACHYON_WAN_EVENT_STAMP") || "/var/run/tachyon/wan-event.timestamp";
 const BACKUP_ACTIVE_METRIC = 5;
 const PRIMARY_DEMOTED_METRIC = 200;
+
+function self_pid() {
+    let pid = trim(as_string(fs.readlink("/proc/self") || ""));
+    if (pid != "" && match(pid, /^[0-9]+$/) != null)
+        return pid;
+    let status = fs.readfile("/proc/self/status") || "";
+    let m = match(status, /Pid:\s+([0-9]+)/);
+    return m ? m[1] : "1";
+}
 
 function log_message(message, level) {
     level = as_string(level || "info");
@@ -304,7 +316,7 @@ function touch_wan_event_stamp(now) {
     write_file(WAN_EVENT_STAMP, as_string(now) + "\n");
 }
 
-function signal_core_hup() {
+function send_core_hup_unlocked() {
     for (let proc_name in [ "tachyon-core", "sing-box" ]) {
         let out = trim(as_string(command_output_from_args([ "pgrep", "-x", proc_name ]) || ""));
         if (out == "")
@@ -315,6 +327,30 @@ function signal_core_hup() {
                 command_success_from_args([ "kill", "-HUP", clean_pid ]);
         }
     }
+}
+
+function signal_core_hup() {
+    let lock_timeout = trim(as_string(getenv("TACHYON_HUP_LOCK_TIMEOUT") || "10"));
+    if (match(lock_timeout, /^[0-9]+$/) == null)
+        lock_timeout = "10";
+    if (!command_success_from_args([
+        "ucode", "-L", LIB_DIR, STATE_UC,
+        "acquire-runtime-dir-lock-wait", RELOAD_LOCK_DIR, self_pid(), lock_timeout
+    ])) {
+        log_message("skipping SIGHUP: reload lock busy (" + RELOAD_LOCK_DIR + ")", "warn");
+        return false;
+    }
+    try {
+        send_core_hup_unlocked();
+    }
+    catch (e) {
+        log_message("failed while sending SIGHUP: " + as_string(e), "warn");
+    }
+    command_success_from_args([
+        "ucode", "-L", LIB_DIR, STATE_UC,
+        "release-runtime-dir-lock", RELOAD_LOCK_DIR
+    ]);
+    return true;
 }
 
 function send_notification(message) {
@@ -575,7 +611,8 @@ if ((sourcepath(1) != null && sourcepath(1) != "") || length(ARGV) == 0) {
         enabled,
         check,
         status_object,
-        status_json
+        status_json,
+        signal_core_hup
     };
 }
 

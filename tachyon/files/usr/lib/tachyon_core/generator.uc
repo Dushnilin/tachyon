@@ -1220,9 +1220,7 @@ function base_config(settings, service_address, runtime_context) {
     // run /usr/share/sing-box/cache.db, so this also matches what is deployed.
     let cache_path = option(settings, "cache_path", "/usr/share/tachyon-core/cache.db");
     if (turbo_cache && (cache_path == "" || cache_path == "/usr/share/tachyon-core/cache.db" ||
-                        cache_path == "/usr/share/sing-box/cache.db" ||
-                        cache_path == "/tmp/tachyon-core/cache.db" ||
-                        cache_path == "/tmp/sing-box/cache.db"))
+                        cache_path == "/usr/share/sing-box/cache.db"))
         cache_path = "/etc/tachyon-core/cache.db";
 
     // Say it out loud rather than degrading quietly: a deliberately volatile

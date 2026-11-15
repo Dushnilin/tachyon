@@ -1326,7 +1326,7 @@ function controller(bus, opts) {
         if (sub_url == "") return;
 
         let res = command_capture(
-            "curl -s -o /dev/null -w %{http_code} --connect-timeout 10 " + shell_quote(sub_url) + " 2>&1");
+            "curl -s -o /dev/null -w %{http_code} --connect-timeout 10 --max-time 15 " + shell_quote(sub_url) + " 2>&1");
         let code = int(res.output);
         if (res.status == 0 && code >= 200 && code < 400) {
             state.subscription_fail_streak = 0;

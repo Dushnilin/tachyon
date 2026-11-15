@@ -1621,6 +1621,24 @@ function heal_dns_stall(ev) {
     watch_recovery("dns", incident, "dns_stalled");
 }
 
+function has_active_section_failover_policy() {
+    let cfg = settings();
+    if (as_string(cfg.section_failover_enabled || "0") == "1")
+        return true;
+    if (fs.stat(getenv("TACHYON_FAILOVER_STATE_FILE") || "/etc/tachyon/failover_section") != null ||
+        fs.stat(getenv("TACHYON_SECTION_FAIL_STATE_FILE") || "/var/run/tachyon/section-fail-state.json") != null)
+        return true;
+    for (let s in uci_core.section_objects(CONFIG_NAME, "section")) {
+        let name = as_string(s[".name"] || "");
+        if (name == "" || !common.bool_option(s, "enabled", true))
+            continue;
+        let policy = lc(trim(as_string(s.fail_policy || "keep")));
+        if (policy == "block" || policy == "direct")
+            return true;
+    }
+    return false;
+}
+
 // Only a proxy that fails while the uplink itself works is worth restarting
 // over: when direct access is down too, the fault is upstream and a restart
 // would drop live connections for nothing.
@@ -1639,7 +1657,8 @@ function heal_proxy_connectivity(ev) {
     if (int(ev.payload.streak) < 2) return;
     if (suppressed_by_root_cause("heal_proxy_connectivity")) return;
 
-    bg_system("/usr/bin/tachyon failover_check");
+    if (has_active_section_failover_policy())
+        bg_system("/usr/bin/tachyon failover_check");
 
     let eng = active_engine_name();
     let proxy_addr = (ev.payload.host ? ev.payload.host : "127.0.0.1") + ":" + as_string(ev.payload.port);
@@ -1867,7 +1886,8 @@ function heal_proxy_health(ev) {
     if (fails < threshold) return;
     if (suppressed_by_root_cause("heal_proxy_health")) return;
 
-    bg_system("/usr/bin/tachyon failover_check");
+    if (has_active_section_failover_policy())
+        bg_system("/usr/bin/tachyon failover_check");
 
     let eng = active_engine_name();
     let incident = {
@@ -3617,9 +3637,11 @@ function check_tailscale_worker() {
     }
 }
 
-// Cross-section failover probe; the module self-gates on
-// settings.section_failover_enabled so this is a no-op by default.
+// Cross-section failover probe; skip spawning when disabled and no
+// section configures a fail_policy.
 function check_section_failover() {
+    if (!has_active_section_failover_policy())
+        return;
     command_status("/usr/bin/tachyon failover_check >/dev/null 2>&1");
 }
 
@@ -3675,7 +3697,11 @@ function trim_tmpfs_log(path) {
 
 function trim_runtime_logs() {
     let trimmed = 0;
-    let paths = [ "/tmp/tachyon-core/tachyon-core.log", "/tmp/tachyon-core/sing-box.log" ];
+    let paths = [
+        "/tmp/tachyon-core/tachyon-core.log",
+        "/tmp/tachyon-core/sing-box.log",
+        getenv("TACHYON_WATCHDOG_ERR_FILE") || "/tmp/tachyon_watchdog_worker.err"
+    ];
     for (let dir in TMPFS_LOG_PROVIDER_DIRS)
         for (let path in (fs.glob("/var/run/tachyon/" + dir + "/*.log") || []))
             push(paths, path);

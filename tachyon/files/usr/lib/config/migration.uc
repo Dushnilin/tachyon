@@ -1728,12 +1728,7 @@ function migrate_engine_identity(ctx) {
             continue;
         let value = option(settings, key, "");
         let updated = "";
-        if (key == "cache_path" && (value == "/tmp/sing-box/cache.db" ||
-                                    value == "/tmp/tachyon-core/cache.db" ||
-                                    value == "/usr/share/sing-box/cache.db")) {
-            updated = NEW_SHARE_DIR + "/cache.db";
-        }
-        else if (index(value, OLD_CONFIG_DIR + "/") == 0) {
+        if (index(value, OLD_CONFIG_DIR + "/") == 0) {
             updated = NEW_CONFIG_DIR + "/" + substr(value, length(OLD_CONFIG_DIR + "/"));
         }
         else if (index(value, OLD_SHARE_DIR + "/") == 0) {

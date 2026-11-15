@@ -127,7 +127,7 @@ function get_zapret2_lua_flags(args_str) {
 }
 
 function has_timeout() {
-    if (_has_timeout === null)
+    if (_has_timeout == null)
         _has_timeout = (system("command -v timeout >/dev/null 2>&1 || [ -x /usr/bin/timeout ]") == 0);
     return _has_timeout;
 }
@@ -142,7 +142,7 @@ function get_timeout_prefix(sec) {
 // forever on system()/pipe.read() wedges the whole fuzzer worker (deadline
 // checks in ucode never get to run), so every blocking call must carry a hard
 // wall-clock bound around the entire subshell.
-const _WATCHDOG_SUBSHELL = "( ( %s ) & _bp=$!; ( trap 'kill -9 $_bs 2>/dev/null; exit 0' TERM INT; sleep %d & _bs=$!; wait $_bs 2>/dev/null; kill -9 $_bp 2>/dev/null ) </dev/null >/dev/null 2>/dev/null & _bw=$!; wait $_bp 2>/dev/null; _rc=$?; kill -TERM $_bw 2>/dev/null; kill -9 $_bw 2>/dev/null; wait $_bw 2>/dev/null; exit $_rc )";
+const _WATCHDOG_SUBSHELL = "( ( %s ) & _bp=$!; ( trap 'kill -9 $_bs 2>/dev/null; exit 0' TERM INT; sleep %d & _bs=$!; wait $_bs 2>/dev/null; kill -STOP $_bp 2>/dev/null; pkill -9 -P $_bp 2>/dev/null; _kpids=\"$_bp\"; for _pass in 1 2; do _next=\"\"; for _cp in /proc/[0-9]*/stat; do [ -r \"$_cp\" ] || continue; IFS= read -r _line <\"$_cp\" 2>/dev/null || continue; _pid=\"${_cp#/proc/}\"; _pid=\"${_pid%%/stat}\"; case \" $_kpids$_next \" in *\" $_pid \"*) continue ;; esac; _tail=\"${_line##*) }\"; set -- $_tail; case \" $_kpids \" in *\" $2 \"*) _next=\"$_next $_pid\"; kill -STOP \"$_pid\" 2>/dev/null ;; esac; done; [ -n \"$_next\" ] || break; _kpids=\"$_kpids$_next\"; done; for _pid in $_kpids; do [ \"$_pid\" != \"$_bp\" ] && kill -9 \"$_pid\" 2>/dev/null; done; kill -9 $_bp 2>/dev/null ) </dev/null >/dev/null 2>/dev/null & _bw=$!; wait $_bp 2>/dev/null; _rc=$?; kill -TERM $_bw 2>/dev/null; kill -9 $_bw 2>/dev/null; wait $_bw 2>/dev/null; exit $_rc )";
 
 function run_bounded(cmd, sec) {
     sec = sec || 8;
@@ -177,7 +177,7 @@ function is_valid_public_ip(ip) {
 }
 
 function get_fuzzer_curl_dns_flags() {
-    if (_fuzzer_curl_dns_flags !== null)
+    if (_fuzzer_curl_dns_flags != null)
         return _fuzzer_curl_dns_flags;
     let uci_bootstrap = "77.88.8.8";
     try {

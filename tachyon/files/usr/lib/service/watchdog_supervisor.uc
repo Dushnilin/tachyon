@@ -12,7 +12,9 @@ const LIB_DIR = getenv("TACHYON_LIB") || "/usr/lib/tachyon";
 const PID_FILE = getenv("TACHYON_WATCHDOG_PID_FILE") || "/var/run/tachyon_watchdog.pid";
 const WATCHDOG_UC = LIB_DIR + "/service/watchdog.uc";
 const WORKER_UC = getenv("TACHYON_WATCHDOG_WORKER_UC") || WATCHDOG_UC;
-const WORKER_ERR_FILE = "/tmp/tachyon_watchdog_worker.err";
+const WORKER_ERR_FILE = getenv("TACHYON_WATCHDOG_ERR_FILE") || "/tmp/tachyon_watchdog_worker.err";
+const WORKER_ERR_MAX_BYTES = int(getenv("TACHYON_WATCHDOG_ERR_MAX_BYTES") || "65536");
+const WORKER_ERR_KEEP_BYTES = int(getenv("TACHYON_WATCHDOG_ERR_KEEP_BYTES") || "16384");
 const WORKER_RESTART_DELAY_MS = int(getenv("TACHYON_WATCHDOG_RESTART_DELAY_MS") || "5000");
 const WORKER_STABLE_SECONDS = int(getenv("TACHYON_WATCHDOG_STABLE_SECONDS") || "120");
 
@@ -48,7 +50,30 @@ function process_running(pid) {
     return fs.stat("/proc/" + pid) != null;
 }
 
+function trim_worker_err_file() {
+    let max_bytes = WORKER_ERR_MAX_BYTES > 0 ? WORKER_ERR_MAX_BYTES : 65536;
+    let keep_bytes = WORKER_ERR_KEEP_BYTES > 0 ? WORKER_ERR_KEEP_BYTES : 16384;
+    if (keep_bytes > max_bytes)
+        keep_bytes = max_bytes;
+    let st = fs.stat(WORKER_ERR_FILE);
+    if (st == null || st.type != "file" || st.size <= max_bytes)
+        return false;
+    let f = fs.open(WORKER_ERR_FILE, "r");
+    if (!f)
+        return false;
+    f.seek(-keep_bytes, 2);
+    let tail = f.read(keep_bytes);
+    f.close();
+    if (tail == null)
+        return false;
+    let nl = index(tail, "\n");
+    if (nl >= 0 && nl + 1 < length(tail))
+        tail = substr(tail, nl + 1);
+    return fs.writefile(WORKER_ERR_FILE, tail) != null;
+}
+
 function last_worker_error() {
+    trim_worker_err_file();
     let raw = trim(as_string(fs.readfile(WORKER_ERR_FILE) || ""));
     if (raw == "")
         return "";
@@ -68,15 +93,17 @@ function supervise() {
     let force_legacy = false;
 
     while (true) {
+        fs.writefile(WORKER_ERR_FILE, "");
         let spawn = (force_legacy ? "TACHYON_WATCHDOG_LEGACY=1 " : "") +
             command_from_args([ "ucode", "-L", LIB_DIR, WORKER_UC, "worker" ]);
-        command_status(common.background_command_with_pid(spawn, ">" + shell_quote(WORKER_ERR_FILE), ">" + shell_quote(PID_FILE)));
+        command_status(common.background_command_with_pid(spawn, ">>" + shell_quote(WORKER_ERR_FILE), ">" + shell_quote(PID_FILE)));
 
         let started = time();
         while (true) {
             let pid = trim(fs.readfile(PID_FILE) || "");
             if (pid == "" || !process_running(pid))
                 break;
+            trim_worker_err_file();
             sleep(1000);
         }
 
@@ -101,7 +128,7 @@ function supervise() {
 }
 
 if ((sourcepath(1) != null && sourcepath(1) != "") || ARGV[0] == null) {
-    return { supervise };
+    return { supervise, trim_worker_err_file };
 }
 
 exit(supervise());
