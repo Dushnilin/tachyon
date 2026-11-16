@@ -4,9 +4,9 @@
 # heal_oom() shrank GOMEMLIMIT and ran a full `tachyon restart` on any kernel
 # OOM line. On a router running the native core and a docker container, the
 # container hit its own memory-cgroup limit ("Memory cgroup out of memory:
-# Killed process ... (urusai)"); the healer restarted Tachyon, and with a
-# fail-closed section the LAN stayed blocked through the restart (~17 minutes
-# there, most of it the bypass pre-resolution stall). GOMEMLIMIT does nothing
+# Killed process ... (urusai)"); the healer restarted Tachyon for nothing.
+# The fail-closed gate did its job and kept the LAN closed while interception
+# was down (~17 minutes there, most of it the bypass pre-resolution stall). GOMEMLIMIT does nothing
 # for the native core, and the router never ran out of memory.
 #
 # The healer also reacted 16 ms before the kernel printed the victim, so the

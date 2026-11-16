@@ -2802,8 +2802,8 @@ function smart_detect_process_pending() {
 // core runs. The native core ignores GOMEMLIMIT, and an OOM inside a memory
 // cgroup (a container hitting its own limit) is not the router running out, so
 // those are reported without restarting anything: a router log had a docker
-// container's cgroup OOM turn into a full restart and ~17 minutes of a
-// fail-closed LAN.
+// container's cgroup OOM turn into a needless full restart, during which the
+// fail-closed gate (correctly) held the LAN closed for ~17 minutes.
 //
 // The arithmetic lives in service/oom_scale.uc so the floor rule can be exercised
 // directly: requiring watchdog.uc runs its subscriptions.

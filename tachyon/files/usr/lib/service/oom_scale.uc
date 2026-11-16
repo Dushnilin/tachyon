@@ -102,8 +102,9 @@ function oom_report(text) {
  *               cannot change its memory use; procd respawns it by itself.
  *   "report"  - a memory cgroup hit its own limit, or another process (or an
  *               unknown one) was killed next to the native core. Nothing of ours
- *               to fix, and a full restart only takes the LAN down while it
- *               runs - under a fail-closed section, for the whole start.
+ *               to fix, and a full restart drops interception for nothing -
+ *               under a fail-closed section the gate then rightly keeps the
+ *               LAN closed for the whole start.
  */
 function oom_response(report, go_core) {
     report = type(report) == "object" ? report : {};
