@@ -38,7 +38,9 @@ export const DOMAIN_LIST_OPTIONS = {
   cursor: 'Cursor, OpenCode, Windsurf и AI-кодинг',
   perplexity: 'Perplexity AI и AI-поиск',
   copilot: 'Microsoft & GitHub Copilot',
-  deepseek: 'DeepSeek, Kimi, Qwen и Manus',
+  deepseek: 'DeepSeek и Manus',
+  qwen: 'Qwen (Alibaba Cloud)',
+  kimi: 'Kimi (Moonshot AI)',
   midjourney: 'Midjourney, Flux и Civitai (AI-графика)',
   elevenlabs: 'ElevenLabs, Suno, Udio и Runway (AI-аудио/видео)',
   ai_video: 'Kling AI, Hailuo, Luma, Pika и HeyGen (AI-видео)',
@@ -48,6 +50,7 @@ export const DOMAIN_LIST_OPTIONS = {
   youtube_images: 'YouTube (только превью и аватарки без видео)',
   twitch: 'Twitch',
   twitch_ads: 'Twitch (без рекламы и 1080p+)',
+  kick: 'Kick',
   spotify: 'Spotify',
   soundcloud_music: 'SoundCloud, Deezer, Tidal и Genius',
   podcasts_radio: 'Подкасты, онлайн-радио и Audible',
@@ -118,6 +121,8 @@ export const DOMAIN_LIST_OPTIONS = {
   figma_adobe: 'Figma, Canva, Adobe Creative Cloud и Framer',
   gamedev_3d: '3D-графика, CAD и геймдев (Unity, Autodesk, Blender, Fab)',
   pkg_registries: 'Пакетные менеджеры (HashiCorp, npm, PyPI, Crates, Go)',
+  paas_db:
+    'PaaS и облачные БД (Vercel, Supabase, Fly.io, Render, Netlify, Heroku)',
   linux_repos: 'Репозитории и пакеты Linux (Flathub, Snap, PPA, AUR, Proxmox)',
   captcha_auth:
     'Капчи и единый вход SSO (Turnstile, reCAPTCHA, hCaptcha, Arkose)',
@@ -167,7 +172,8 @@ export const DOMAIN_LIST_OPTIONS = {
   telemetry_mobile_block: 'Телеметрия смартфонов и мобильных SDK (Block)',
   win_spy: 'Телеметрия Windows (Block)',
   xiaomi_smarttv_ads: 'Реклама Xiaomi HyperOS/MIUI и Smart TV (Block)',
-  et_spamhaus_block: 'Emerging Threats, Spamhaus DROP и Feodo C2 (Block)',
+  et_spamhaus_block:
+    'Emerging Threats, Spamhaus DROP и FireHOL Level 2 (Block)',
   hagezi_tif_ip_block:
     'HaGeZi Threat Intelligence IP и FireHOL Webclient (Block)',
   botnet_attackers_ip_block: 'IPsum, CINS Army и Binary Defense (Block)',
@@ -206,7 +212,7 @@ export const DOMAIN_LIST_HINTS: Record<string, string> = {
   captive_ntp_stun:
     '[Маршрут: Напрямую (Direct)] Системные домены проверки наличия интернета на iOS, Android, Windows и macOS (captive.apple.com, connectivitycheck.gstatic.com, msftconnecttest.com), серверы синхронизации точного времени NTP (pool.ntp.org, time.cloudflare.com — критично для запуска VLESS/Reality и WireGuard на роутерах без RTC!) и публичные STUN-серверы',
   ai_all:
-    '[Маршрут: Только в Прокси / VPN — геоблок по IP] Все зарубежные ИИ: OpenAI (ChatGPT, Sora), Claude, Gemini, Grok, Perplexity, Copilot, Cursor, Midjourney, ElevenLabs, Suno, DeepSeek, Hugging Face',
+    '[Маршрут: Только в Прокси / VPN — геоблок по IP] Все зарубежные ИИ: OpenAI (ChatGPT, Sora), Claude, Gemini, Grok, Perplexity, Copilot, Cursor, Midjourney, ElevenLabs, Suno, DeepSeek, Qwen, Kimi, Hugging Face',
   openai:
     '[Маршрут: Только в Прокси / VPN — геоблок по IP] ChatGPT, Sora, GPT API, o1/o3 и статика (chatgpt.com, openai.com, sora.com, oaistatic.com, oaiusercontent.com)',
   anthropic:
@@ -223,7 +229,9 @@ export const DOMAIN_LIST_HINTS: Record<string, string> = {
   copilot:
     '[Маршрут: Только в Прокси / VPN — геоблок по IP] Все домены автодополнения кода GitHub Copilot (githubcopilot.com, copilot-proxy.githubusercontent.com) и ассистента Microsoft Copilot в Windows, Edge и Office 365 (copilot.microsoft.com, sydney.bing.com)',
   deepseek:
-    '[Маршрут: В Прокси / VPN] Домены DeepSeek (deepseek.com, chat.deepseek.com, api.deepseek.com), Moonshot Kimi (kimi.ai), Alibaba Qwen Chat (chat.qwen.ai), MiniMax, Z.ai, Manus (manus.im) и Dify',
+    '[Маршрут: В Прокси / VPN] Домены DeepSeek (deepseek.com, chat.deepseek.com, api.deepseek.com), Manus (manus.im) и Dify',
+  qwen: '[Маршрут: В Прокси / VPN или Direct] Домены экосистемы ИИ Alibaba Cloud: qwen.ai, chat.qwen.ai, qwenlm.ai, tongyi.com, dashscope.aliyuncs.com и modelscope.cn',
+  kimi: '[Маршрут: В Прокси / VPN или Direct] Домены ИИ-ассистента Kimi и платформы Moonshot AI: kimi.com, kimi.ai, kimi.moonshot.cn и moonshot.cn',
   midjourney:
     '[Маршрут: Только в Прокси / VPN — геоблок по IP] Платформы генерации графики, дизайна и 3D: Midjourney (midjourney.com), Civitai (civitai.com), Black Forest Labs / Flux (bfl.ai), Leonardo.ai, Ideogram, Krea, Recraft, Magnific, Stability AI, ComfyUI Registry, OpenArt, Tripo3D и Meshy',
   elevenlabs:
@@ -242,6 +250,7 @@ export const DOMAIN_LIST_HINTS: Record<string, string> = {
     '[Маршрут: В Прокси / VPN или Desync] Стриминговая платформа, видеопотоки и чат (twitch.tv, ttvnw.net, jtvnw.net, live-video.net)',
   twitch_ads:
     '[Маршрут: Только в Прокси / VPN] Серверы манифестов качества видео и рекламы Twitch (usher.ttvnw.net, gql.twitch.tv) — отключает рекламу и разблокирует 1080p60/1440p без проксирования видеопотока',
+  kick: '[Маршрут: В Прокси / VPN или Direct] Домены стриминговой платформы Kick (kick.com, files.kick.com и CDN видеотрансляций)',
   spotify:
     '[Маршрут: Только в Прокси / VPN — геоблок по IP] Музыкальный стриминг, аудио-CDN и клиентские API (spotify.com, scdn.co, spotifycdn.com, akamaized.net)',
   soundcloud_music:
@@ -373,6 +382,8 @@ export const DOMAIN_LIST_HINTS: Record<string, string> = {
     '[Маршрут: Только в Прокси / VPN — геоблок по IP] Профессиональный софт для 3D-моделирования, рендера, CAD и разработки игр: Unity Engine, Unity Hub и Asset Store (unity.com, unity3d.com — закрыты для RU IP), Autodesk (AutoCAD, 3ds Max, Maya, Revit, Fusion 360 — autodesk.com), Chaos Group (V-Ray, Corona, Enscape), Maxon (Cinema 4D, Redshift, ZBrush), Blender, Godot, SideFX Houdini, Quixel Megascans / Fab.com, Sketchfab, ArtStation, Poly Haven и Printables',
   pkg_registries:
     '[Маршрут: В Прокси / VPN] Репозитории пакетов, библиотек и дистрибутивов: HashiCorp (Terraform, Vagrant, Vault — геоблок РФ), npm, Yarn, pnpm, Bun, Deno, jsDelivr, PyPI, Anaconda, PyTorch, Rust Crates.io, Go Proxy, NuGet, Packagist, Homebrew, GHCR, Quay.io, k8s.io, Arch, Alpine, Debian/Ubuntu и OpenWrt',
+  paas_db:
+    '[Маршрут: В Прокси / VPN] Домены облачных платформ развёртывания и управляемых баз данных с региональными ограничениями доступа: Vercel (vercel.com, vercel.app), Supabase (supabase.com, supabase.co), Fly.io (fly.io, fly.dev), Render (render.com, onrender.com), Netlify (netlify.com, netlify.app), Heroku (heroku.com), MongoDB Atlas (mongodb.com, mongodb.net), Redis Cloud и Railway / Neon',
   linux_repos:
     '[Маршрут: В Прокси / VPN] Пакетные репозитории, магазины приложений Linux и серверные дистрибутивы, которые ограничивают доступ с российских IP (Red Hat, Fedora, Canonical Launchpad) или тормозят из-за блокировок CDN (Flathub): Flathub / Flatpak (flathub.org), Snapcraft (snapcraft.io), Ubuntu / Launchpad PPA (launchpad.net), Arch Linux & AUR (archlinux.org), Proxmox VE (proxmox.com), Red Hat (redhat.com), Fedora, Debian, Alpine, Kali и NixOS',
   captcha_auth:
@@ -390,7 +401,7 @@ export const DOMAIN_LIST_HINTS: Record<string, string> = {
   smart_cars:
     '[Маршрут: Напрямую (Direct) или в китайский/целевой прокси] Серверы телематики, OTA-обновлений, мастер-аккаунтов и штатной навигации современных автомобилей: китайские электрокары и гибриды LiXiang / Li Auto (lixiang.com, chj.com), Zeekr (zeekrlife.com, zeekr.com), BYD, Voyah, Geely, Changan, Xiaomi SU7, NIO, XPeng, а также приложения и облака Tesla (tesla.com), BMW (MyBMW / ConnectedDrive) и Mercedes me. Позволяет на роутере в авто не пускать китайскую телематику в европейский VPN во избежание гео-блокировки экранов!',
   hodca:
-    '[Маршрут: В Прокси / VPN] Серверы проверки SSL-сертификатов (OCSP / CRL): DigiCert, Sectigo, Comodo, GlobalSign, Let’s Encrypt (устраняет долгую загрузку HTTPS из-за геоблока)',
+    '[Маршрут: В Прокси / VPN] Серверы проверки отзыва SSL-сертификатов (OCSP / CRL): DigiCert, Sectigo, GlobalSign, Entrust, Let’s Encrypt, Amazon Trust, IdenTrust и SSL.com (устраняет зависания HTTPS при региональных ограничениях OCSP)',
   doh_dot_dns:
     '[Маршрут: В Прокси / VPN (для обхода блокировки DoH) или Блокировать (Block — чтобы запретить устройствам обходить локальный DNS роутера)] Полная база публичных серверов DNS-over-HTTPS (DoH) и DNS-over-TLS (DoT), включая домены и IP-адреса резолверов Cloudflare (1.1.1.1, cloudflare-dns.com), Google (8.8.8.8, dns.google), Quad9 (9.9.9.9, dns.quad9.net), AdGuard DNS, NextDNS, OpenDNS, Control D и Mullvad DNS',
   cloudflare:
@@ -430,7 +441,7 @@ export const DOMAIN_LIST_HINTS: Record<string, string> = {
   ads_hagezi_pro:
     '[Маршрут: Блокировать (Block)] Комплексная фильтрация рекламных сетей, аналитики, трекеров и фишинга Hagezi Multi PRO',
   android_ads_block:
-    '[Маршрут: Блокировать (Block)] Вырезает полноэкранную видеорекламу между уровнями в мобильных играх и баннеры внутри бесплатных приложений на Android (AdAway Official + AdGuard Mobile Ads + все главные рекламные SDK: Google AdMob, Unity Ads, AppLovin MAX, IronSource LevelPlay, Vungle/Liftoff, Mintegral, Chartboost, Pangle, InMobi, AdColony, Tapjoy, Bigo Ads, BidMachine, Яндекс Реклама / Mobile Ads SDK и VK MyTarget)',
+    '[Маршрут: Блокировать (Block)] Вырезает полноэкранную видеорекламу между уровнями в мобильных играх и баннеры внутри бесплатных приложений на Android (StevenBlack Hosts + AdGuard Mobile Ads + все главные рекламные SDK: Google AdMob, Unity Ads, AppLovin MAX, IronSource LevelPlay, Vungle/Liftoff, Mintegral, Chartboost, Pangle, InMobi, AdColony, Tapjoy, Bigo Ads, BidMachine, Яндекс Реклама / Mobile Ads SDK и VK MyTarget)',
   gambling_block:
     '[Маршрут: Блокировать (Block)] Полная база онлайн-казино, нелегальных букмекеров, крипто-рулеток, слотов и их тысяч зеркал (Hagezi Gambling Medium + СНГ-казино: 1xBet, Melbet, Mostbet, Pin-Up, Vulkan, Vavada, Joycasino, Azino777, Stake, 1win, DragonMoney, Up-X и др.), агрессивно всплывающих на пиратских киносайтах',
   phishing_malware_block:
@@ -442,7 +453,7 @@ export const DOMAIN_LIST_HINTS: Record<string, string> = {
   xiaomi_smarttv_ads:
     '[Маршрут: Блокировать (Block)] Вырезает встроенную системную рекламу и телеметрию в прошивках Xiaomi / Poco / Redmi (MIUI и HyperOS: api.ad.xiaomi.com, tracking.miui.com, mistat.xiaomi.com), а также рекламные баннеры и ACR-слежку на телевизорах Samsung Smart TV (Tizen) и LG webOS',
   et_spamhaus_block:
-    '[Маршрут: Блокировать (Block)] Базовый исходящий IP-фильтр сетевых угроз без ложных срабатываний (аналог профилей threat, etcompromised, spamhaus, feodo и dshield в banIP): управляющие C2-серверы ботнетов Abuse.ch Feodo Tracker, скомпрометированные узлы Emerging Threats (ET Block & Compromised), похищенные подсети Spamhaus DROP / eDROP и активные сканеры SANS DShield.',
+    '[Маршрут: Блокировать (Block)] Базовый исходящий IP-фильтр сетевых угроз без ложных срабатываний (аналог профилей threat, etcompromised, spamhaus, firehol_level2 и dshield в banIP): атакующие и ботнет-адреса FireHOL Level 2, скомпрометированные узлы Emerging Threats (ET Block & Compromised), похищенные подсети Spamhaus DROP / eDROP и активные сканеры SANS DShield.',
   hagezi_tif_ip_block:
     '[Маршрут: Блокировать (Block)] Расширенный исходящий список опасных IP-адресов и подсетей (аналог профилей hagezi и webclient в banIP): серверы распространения вредоносного ПО, крипто-дрейнеров, троянов, командные узлы C2 и вредоносные веб-узлы по данным HaGeZi Threat Intelligence IP Feed и FireHOL Webclient. Блокирует прямое подключение по IP даже при обращениях мимо системного DNS.',
   botnet_attackers_ip_block:

@@ -11897,7 +11897,7 @@ var DOMAIN_LIST_HINTS = {
   captive_ntp_stun:
     '[Маршрут: Напрямую (Direct)] Системные проверки интернета (Captive Portal Apple/Android/Windows/Firefox), синхронизация времени NTP и STUN-серверы NAT',
   ai_all:
-    '[Маршрут: Только в Прокси / VPN — геоблок по IP] Все зарубежные ИИ: OpenAI (ChatGPT, Sora), Claude, Gemini, Grok, Perplexity, Copilot, Cursor, Midjourney, ElevenLabs, Suno, DeepSeek, Hugging Face',
+    '[Маршрут: Только в Прокси / VPN — геоблок по IP] Все зарубежные ИИ: OpenAI (ChatGPT, Sora), Claude, Gemini, Grok, Perplexity, Copilot, Cursor, Midjourney, ElevenLabs, Suno, DeepSeek, Qwen, Kimi, Hugging Face',
   openai:
     '[Маршрут: Только в Прокси / VPN — геоблок по IP] ChatGPT, Sora, GPT API, o1/o3 и статика (chatgpt.com, openai.com, sora.com, oaistatic.com, oaiusercontent.com)',
   anthropic:
@@ -11914,7 +11914,9 @@ var DOMAIN_LIST_HINTS = {
   copilot:
     '[Маршрут: Только в Прокси / VPN — геоблок по IP] Все домены автодополнения кода GitHub Copilot (githubcopilot.com, copilot-proxy.githubusercontent.com) и ассистента Microsoft Copilot в Windows, Edge и Office 365 (copilot.microsoft.com, sydney.bing.com)',
   deepseek:
-    '[Маршрут: В Прокси / VPN] Домены DeepSeek (deepseek.com, chat.deepseek.com, api.deepseek.com), Moonshot Kimi (kimi.ai), Alibaba Qwen Chat (chat.qwen.ai), MiniMax, Z.ai, Manus (manus.im) и Dify',
+    '[Маршрут: В Прокси / VPN] Домены DeepSeek (deepseek.com, chat.deepseek.com, api.deepseek.com), Manus (manus.im) и Dify',
+  qwen: '[Маршрут: В Прокси / VPN или Direct] Домены экосистемы ИИ Alibaba Cloud: qwen.ai, chat.qwen.ai, qwenlm.ai, tongyi.com, dashscope.aliyuncs.com и modelscope.cn',
+  kimi: '[Маршрут: В Прокси / VPN или Direct] Домены ИИ-ассистента Kimi и платформы Moonshot AI: kimi.com, kimi.ai, kimi.moonshot.cn и moonshot.cn',
   midjourney:
     '[Маршрут: Только в Прокси / VPN — геоблок по IP] Платформы генерации графики, дизайна и 3D: Midjourney (midjourney.com), Civitai (civitai.com), Black Forest Labs / Flux (bfl.ai), Leonardo.ai, Ideogram, Krea, Recraft, Magnific, Stability AI, ComfyUI Registry, OpenArt, Tripo3D и Meshy',
   elevenlabs:
@@ -11933,6 +11935,7 @@ var DOMAIN_LIST_HINTS = {
     '[Маршрут: В Прокси / VPN или Desync] Стриминговая платформа, видеопотоки и чат (twitch.tv, ttvnw.net, jtvnw.net, live-video.net)',
   twitch_ads:
     '[Маршрут: Только в Прокси / VPN] Серверы манифестов качества видео и рекламы Twitch (usher.ttvnw.net, gql.twitch.tv) — отключает рекламу и разблокирует 1080p60/1440p без проксирования видеопотока',
+  kick: '[Маршрут: В Прокси / VPN или Direct] Домены стриминговой платформы Kick (kick.com, files.kick.com и CDN видеотрансляций)',
   spotify:
     '[Маршрут: Только в Прокси / VPN — геоблок по IP] Музыкальный стриминг, аудио-CDN и клиентские API (spotify.com, scdn.co, spotifycdn.com, akamaized.net)',
   soundcloud_music:
@@ -12064,6 +12067,8 @@ var DOMAIN_LIST_HINTS = {
     '[Маршрут: Только в Прокси / VPN — геоблок по IP] Игровые движки, маркетплейсы ассетов и 3D-платформы: Unity (unity.com, assetstore.unity.com), Unreal Engine / Fab / Quixel, Blender, Godot, Maxon (Cinema 4D), Chaos (V-Ray), SideFX (Houdini), Sketchfab, PolyHaven и Itch.io',
   pkg_registries:
     '[Маршрут: В Прокси / VPN] Репозитории пакетов, библиотек и дистрибутивов: HashiCorp (Terraform, Vagrant, Vault — геоблок РФ), npm, Yarn, pnpm, Bun, Deno, jsDelivr, PyPI, Anaconda, PyTorch, Rust Crates.io, Go Proxy, NuGet, Packagist, Homebrew, GHCR, Quay.io, k8s.io, Arch, Alpine, Debian/Ubuntu и OpenWrt',
+  paas_db:
+    '[Маршрут: В Прокси / VPN] Домены облачных платформ развёртывания и управляемых баз данных с региональными ограничениями доступа: Vercel (vercel.com, vercel.app), Supabase (supabase.com, supabase.co), Fly.io (fly.io, fly.dev), Render (render.com, onrender.com), Netlify (netlify.com, netlify.app), Heroku (heroku.com), MongoDB Atlas (mongodb.com, mongodb.net), Redis Cloud и Railway / Neon',
   linux_repos:
     '[Маршрут: В Прокси / VPN или Direct] Официальные зеркала дистрибутивов Linux, роутерных ОС и репозиториев пакетов: OpenWrt, ImmortalWrt, Entware, Debian, Ubuntu, Arch, Fedora, Alpine, Proxmox, Flathub и Snapcraft',
   captcha_auth:
@@ -12133,7 +12138,7 @@ var DOMAIN_LIST_HINTS = {
   xiaomi_smarttv_ads:
     '[Маршрут: Блокировать (Block)] Вырезает встроенную системную рекламу и телеметрию в прошивках Xiaomi / Poco / Redmi (MIUI и HyperOS: api.ad.xiaomi.com, tracking.miui.com, mistat.xiaomi.com), а также рекламные баннеры и ACR-слежку на телевизорах Samsung Smart TV (Tizen) и LG webOS',
   et_spamhaus_block:
-    '[Маршрут: Блокировать (Block)] Базовый исходящий IP-фильтр сетевых угроз без ложных срабатываний (аналог профилей threat, etcompromised, spamhaus, feodo и dshield в banIP): управляющие C2-серверы ботнетов Abuse.ch Feodo Tracker, скомпрометированные узлы Emerging Threats (ET Block & Compromised), похищенные подсети Spamhaus DROP / eDROP и активные сканеры SANS DShield.',
+    '[Маршрут: Блокировать (Block)] Базовый исходящий IP-фильтр сетевых угроз без ложных срабатываний (аналог профилей threat, etcompromised, spamhaus, firehol_level2 и dshield в banIP): атакующие и ботнет-адреса FireHOL Level 2, скомпрометированные узлы Emerging Threats (ET Block & Compromised), похищенные подсети Spamhaus DROP / eDROP и активные сканеры SANS DShield.',
   hagezi_tif_ip_block:
     '[Маршрут: Блокировать (Block)] Расширенный исходящий список опасных IP-адресов и подсетей (аналог профилей hagezi и webclient в banIP): серверы распространения вредоносного ПО, крипто-дрейнеров, троянов, командные узлы C2 и вредоносные веб-узлы по данным HaGeZi Threat Intelligence IP Feed и FireHOL Webclient. Блокирует прямое подключение по IP даже при обращениях мимо системного DNS.',
   botnet_attackers_ip_block:

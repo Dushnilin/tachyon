@@ -79,6 +79,30 @@ assert_eq "https://github.com/Dushnilin/tachyon-lists/releases/latest/download/e
   "$(ucode -L "$TACHYON_LIB" -e 'let r = require("tachyon_core.rulesets"); print(r.fallback_community_url("et_spamhaus_block"));')" \
   "et_spamhaus_block fallback_community_url"
 
+assert_eq "https://github.com/Dushnilin/tachyon-lists/releases/latest/download/qwen.srs" \
+  "$(ucode -L "$TACHYON_LIB" -e 'let r = require("tachyon_core.rulesets"); print(r.fallback_community_url("qwen"));')" \
+  "qwen fallback_community_url"
+
+assert_eq "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/kick.srs" \
+  "$(ucode -L "$TACHYON_LIB" -e 'let r = require("tachyon_core.rulesets"); print(r.fallback_community_url("kick"));')" \
+  "kick fallback_community_url"
+
+assert_eq "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/vercel.srs" \
+  "$(ucode -L "$TACHYON_LIB" -e 'let r = require("tachyon_core.rulesets"); print(r.fallback_community_url("paas_db"));')" \
+  "paas_db fallback_community_url"
+
+assert_eq "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/youtube.srs" \
+  "$(ucode -L "$TACHYON_LIB" -e 'let r = require("tachyon_core.rulesets"); print(r.fallback_community_url("youtube"));')" \
+  "youtube fallback_community_url"
+
+assert_eq "https://raw.githubusercontent.com/legiz-ru/sb-rule-sets/main/no-russia-hosts.srs" \
+  "$(ucode -L "$TACHYON_LIB" -e 'let r = require("tachyon_core.rulesets"); print(r.fallback_community_url("geoblock"));')" \
+  "geoblock fallback_community_url"
+
+assert_eq "domains" \
+  "$(ucode -L "$TACHYON_LIB" -e 'let r = require("tachyon_core.rulesets"); print(r.community_kind("paas_db"));')" \
+  "paas_db community_kind"
+
 assert_eq "subnets" \
   "$(ucode -L "$TACHYON_LIB" -e 'let r = require("tachyon_core.rulesets"); print(r.community_kind("hagezi_tif_ip_block"));')" \
   "hagezi_tif_ip_block community_kind"
