@@ -499,7 +499,7 @@ function resolveSectionTelemetry(sid: string): {
     actionLabel = 'DNS';
     actionTone = 'dns';
   } else if (hasDpiSource) {
-    actionLabel = tr('Обход DPI (Desync)', 'DPI Desync');
+    actionLabel = tr('Десинхронизация (Desync)', 'Packet Desync');
     actionTone = 'dpi';
   } else {
     actionLabel = tr('Туннель / Прокси', 'Connection');
@@ -838,12 +838,12 @@ function getQuickCreateTemplates(
         id: 'dpi',
         icon: () => renderShieldIcon(20),
         title: tr(
-          'Обход DPI (Desync / Zapret2)',
-          'DPI Bypass (Desync / Zapret2)',
+          'Десинхронизация пакетов (Desync / Zapret2)',
+          'Packet Desync (Desync / Zapret2)',
         ),
         desc: tr(
-          'Обход замедления YouTube, Discord и Telegram без внешнего прокси-сервера',
-          'Bypass DPI throttling for YouTube, Discord, or Telegram without a proxy server',
+          'Фрагментация и коррекция рукопожатий YouTube, Discord и Telegram без внешнего прокси-сервера',
+          'Handshake desynchronization for YouTube, Discord, or Telegram without a proxy server',
         ),
         defaults: { enabled: '1', action: 'connection' },
       },
@@ -946,8 +946,8 @@ function getQuickCreateTemplates(
         icon: () => renderRocketIcon(20),
         title: 'FPTN VPN',
         desc: tr(
-          'Антицензурный VPN FPTN по токену доступа fptn://',
-          'FPTN anti-censorship VPN via fptn:// access token',
+          'Адаптивный VPN-туннель FPTN по токену доступа fptn://',
+          'FPTN adaptive VPN tunnel via fptn:// access token',
         ),
         defaults: { enabled: '1', source_type: 'fptn' },
       },
@@ -1314,8 +1314,8 @@ function getQuickCreateTemplates(
         icon: () => renderShieldIcon(20),
         title: 'Mieru (TCP / UDP Multi-Port)',
         desc: tr(
-          'Антицензурный мультипортовый протокол (2012-2022) с обфускацией и мультиплексированием',
-          'Censorship-resistant multi-port protocol (2012-2022) with AEAD obfuscation and multiplexing',
+          'Устойчивый мультипортовый протокол (2012-2022) с обфускацией и мультиплексированием',
+          'Resilient multi-port protocol (2012-2022) with AEAD obfuscation and multiplexing',
         ),
         defaults: {
           enabled: '1',
@@ -1742,7 +1742,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
       filters: [
         { id: 'all', label: tr('Все секции', 'All Sections') },
         { id: 'proxy', label: tr('Прокси / VPN', 'Proxy / VPN') },
-        { id: 'dpi', label: tr('Обход DPI (Desync)', 'DPI Desync') },
+        { id: 'dpi', label: tr('Десинхронизация (Desync)', 'Packet Desync') },
         { id: 'system', label: 'DNS / Bypass / Block' },
       ],
     },
@@ -1751,8 +1751,8 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
       title: tr('Настройки узлов и подписок', 'Nodes & Subscriptions Settings'),
       panelTitle: tr('Узлы и подписки', 'Nodes & Subscriptions'),
       subtitle: tr(
-        'Единый пул подписок, ссылок VLESS/Hysteria2, туннелей AmneziaWG/WARP и стратегий обхода DPI.',
-        'Unified pool of subscriptions, VLESS/Hysteria2 links, AmneziaWG/WARP tunnels, and DPI strategies.',
+        'Единый пул подписок, ссылок VLESS/Hysteria2, туннелей AmneziaWG/WARP и стратегий десинхронизации.',
+        'Unified pool of subscriptions, VLESS/Hysteria2 links, AmneziaWG/WARP tunnels, and packet desync strategies.',
       ),
       addLabel: `+ ${tr('Добавить источник', 'Add Source')}`,
       filters: [
@@ -4338,7 +4338,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
                   'span',
                   {
                     style:
-                      'margin-left: 6px; font-size: 11px; opacity: 0.75; text-decoration: underline; cursor: pointer; white-space: nowrap;',
+                      'margin-left: 6px; font-size: 11px; color: var(--tachyon-accent-text, var(--tachyon-accent, #3b82f6)); font-weight: 500; cursor: pointer; white-space: nowrap;',
                   },
                   tr('Ещё', 'Show more'),
                 )
@@ -5166,7 +5166,7 @@ export function mountTachyonStudioDeck(options: StudioDeckMountOptions): void {
             lvlRef === 'direct'
               ? 'Direct (WAN)'
               : lvlRef.startsWith('srv:')
-                ? `🎯 ${lvlRef.slice(4)}`
+                ? lvlRef.slice(4)
                 : uci.get(UCI_PACKAGE, lvlRef, 'name') ||
                   uci.get(UCI_PACKAGE, lvlRef, 'label') ||
                   lvlRef;

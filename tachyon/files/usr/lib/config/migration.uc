@@ -3354,6 +3354,13 @@ function migrate_relax_probe_intervals_v1(ctx) {
     }
 }
 
+function migrate_ensure_tcp_bbr_default(ctx) {
+    if (ctx.model && ctx.model.settings) {
+        if (trim(option(ctx.model.settings, "tcp_bbr", "")) == "")
+            set_option(ctx, ctx.model.settings, "tcp_bbr", "1");
+    }
+}
+
 const MIGRATIONS = [
     { id: "interface_sections", run: migrate_interface_sections },
     { id: "enable_component_checks", run: migrate_enable_component_checks },
@@ -3365,7 +3372,8 @@ const MIGRATIONS = [
     { id: "engine_identity_tachyon_core", run: migrate_engine_identity },
     { id: "modular_entities_v1", run: migrate_modular_entities_v1 },
     { id: "priority_levels_to_outbound_groups", run: migrate_priority_levels_to_outbound_groups },
-    { id: "relax_probe_intervals_v1", run: migrate_relax_probe_intervals_v1 }
+    { id: "relax_probe_intervals_v1", run: migrate_relax_probe_intervals_v1 },
+    { id: "ensure_tcp_bbr_default", run: migrate_ensure_tcp_bbr_default }
 ];
 
 

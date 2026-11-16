@@ -476,6 +476,7 @@ interface IRenderSectionsProps {
   hideSectionHeader?: boolean;
   nodesViewMode?: 'table' | 'tiles';
   onChangeNodesViewMode?: (mode: 'table' | 'tiles') => void;
+  showHidden?: boolean;
 }
 
 const CONNECTION_ACTION_LABELS: Record<string, string> = {
@@ -496,6 +497,17 @@ const CONNECTION_ACTION_LABELS: Record<string, string> = {
   fptn: 'FPTN',
   vpn: 'VPN',
 };
+
+function renderHiddenBadge() {
+  return E(
+    'span',
+    {
+      class: 'tachyon_dashboard-page__outbound-grid__item__hidden-badge',
+      title: _('Hidden on Dashboard while remaining active in routing'),
+    },
+    _('Hidden'),
+  );
+}
 
 function renderFailedState() {
   return E(
@@ -828,6 +840,7 @@ function renderSubscriptionMetadata(
                       },
                       _('Subscription'),
                     ),
+                metadata?.hidden ? renderHiddenBadge() : '',
                 typeof options?.groupCount === 'number'
                   ? E(
                       'span',
@@ -946,7 +959,7 @@ function renderSubscriptionMetadata(
                   'span',
                   {
                     style:
-                      'margin-left: 6px; font-size: 11px; opacity: 0.75; text-decoration: underline; cursor: pointer; white-space: nowrap;',
+                      'margin-left: 6px; font-size: 11px; color: var(--tachyon-accent-text, var(--tachyon-accent, #3b82f6)); font-weight: 500; cursor: pointer; white-space: nowrap;',
                   },
                   _('Show more'),
                 )
@@ -1626,6 +1639,7 @@ function renderDefaultState({
   sectionStats,
   hideSectionHeader,
   nodesViewMode,
+  showHidden = false,
 }: IRenderSectionsProps) {
   const isConnectionNode =
     !section.withTagSelect &&
@@ -1914,6 +1928,9 @@ function renderDefaultState({
       outboundSwitching
         ? 'tachyon_dashboard-page__outbound-grid__item--switching'
         : '',
+      outbound.hidden
+        ? 'tachyon_dashboard-page__outbound-grid__item--hidden'
+        : '',
     ]
       .filter(Boolean)
       .join(' ');
@@ -2127,6 +2144,7 @@ function renderDefaultState({
                       ),
                     ]
                   : []),
+                ...(outbound.hidden ? [renderHiddenBadge()] : []),
                 ...(pinnedDomains.length > 0
                   ? [
                       E(
@@ -2393,6 +2411,7 @@ function renderDefaultState({
             'tachyon-dashboard-nodes-table__row',
             outbound.selected ? 'is-selected' : '',
             canChooseOutbound ? 'is-selectable' : '',
+            outbound.hidden ? 'is-dashboard-hidden' : '',
           ]
             .filter(Boolean)
             .join(' '),
@@ -2437,6 +2456,7 @@ function renderDefaultState({
                     ),
                   ]
                 : []),
+              ...(outbound.hidden ? [renderHiddenBadge()] : []),
               ...(pinnedDomains.length > 0
                 ? [
                     E(
@@ -2741,8 +2761,13 @@ function renderDefaultState({
       });
     }
 
-    const outbounds = effectiveOutbounds;
-    const metadataList = section.subscriptionMetadata || [];
+    const outbounds = showHidden
+      ? effectiveOutbounds
+      : effectiveOutbounds.filter((ob) => !ob.hidden);
+    const rawMetadataList = section.subscriptionMetadata || [];
+    const metadataList = showHidden
+      ? rawMetadataList
+      : rawMetadataList.filter((m) => !m.hidden);
     const subSourceCount = section.subscriptionSourceCount || 0;
     const countryGrouping =
       section.dashboardSettings?.countryGrouping || 'chips';
@@ -2832,7 +2857,9 @@ function renderDefaultState({
 
     const hasSubTaggedOutbounds = subMap.size > 0;
     const hasMultipleSources =
-      subSourceCount > 1 ||
+      (!showHidden && rawMetadataList.some((m) => m.hidden)
+        ? Math.max(metadataList.length, subMap.size) > 1
+        : subSourceCount > 1) ||
       subMap.size > 1 ||
       (hasSubTaggedOutbounds && manualOutbounds.length > 0);
 

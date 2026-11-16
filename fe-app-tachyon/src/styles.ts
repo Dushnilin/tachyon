@@ -1785,8 +1785,8 @@ header .dropdown-menu {
 #modal_overlay .cbi-input-textarea:focus,
 .cbi-modal textarea:focus,
 .cbi-modal .cbi-input-textarea:focus {
-    border-color: var(--tachyon-accent, #6e78f5) !important;
-    box-shadow: 0 0 0 2px var(--tachyon-accent-soft, rgba(110, 120, 245, 0.14)) !important;
+    border-color: var(--tachyon-accent, #3b82f6) !important;
+    box-shadow: 0 0 0 2px var(--tachyon-accent-soft, rgba(59, 130, 246, 0.16)) !important;
 }
 
 .fkp-annotated-textarea {
@@ -2332,6 +2332,12 @@ header .dropdown-menu {
     background: color-mix(in srgb, var(--tachyon-accent) 10%, transparent);
 }
 
+.tachyon-routing-sections-block__filter-btn.is-active {
+    border-color: color-mix(in srgb, var(--tachyon-accent) 48%, transparent);
+    background: color-mix(in srgb, var(--tachyon-accent) 14%, transparent);
+    color: var(--tachyon-accent-text);
+}
+
 .tachyon-section-order-warning {
     display: flex;
     align-items: flex-start;
@@ -2729,6 +2735,20 @@ header .dropdown-menu {
     background: rgba(239, 68, 68, 0.14);
     color: #ef4444;
     border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.tachyon-routing-row__status-badge.is-hidden {
+    background: rgba(148, 163, 184, 0.16);
+    color: #64748b;
+    border: 1px dashed rgba(148, 163, 184, 0.45);
+}
+
+.tachyon-routing-row.is-dashboard-hidden,
+.tachyon-routing-matrix-card.is-dashboard-hidden,
+.tachyon-routing-compact-tile.is-dashboard-hidden,
+.tachyon-routing-bento-card.is-dashboard-hidden {
+    opacity: 0.72;
+    border-style: dashed;
 }
 
 .tachyon-routing-row__engine-badge {

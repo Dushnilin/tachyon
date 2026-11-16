@@ -919,6 +919,13 @@ function is_fakeip_enabled(settings) {
     return true;
 }
 
+function is_tcp_bbr_enabled(settings) {
+    settings = object_or_empty(settings);
+    if (trim(option(settings, "tcp_bbr", "")) != "")
+        return bool_option(settings, "tcp_bbr", true);
+    return true;
+}
+
 function ipv6_state_cache_path() {
     return getenv("TACHYON_IPV6_STATE_CACHE") || "/var/run/tachyon/ipv6-state.json";
 }
@@ -1335,6 +1342,7 @@ return {
     ipv6_supported,
     normalize_ipv6_mode,
     is_fakeip_enabled,
+    is_tcp_bbr_enabled,
     ipv6_state_cache_path,
     is_tmpfs_runtime_path,
     is_local_or_ula_v6,

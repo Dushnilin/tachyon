@@ -3613,6 +3613,20 @@ function createOutboundsContent(section) {
 
   o = section.taboption(
     "general",
+    form.Flag,
+    "hidden",
+    _("Hide on Dashboard"),
+    _(
+      "Hide this subscription or server on the Dashboard while keeping it active in routing",
+    ),
+  );
+  o.default = "0";
+  o.rmempty = false;
+  o.editable = true;
+  o.width = "6rem";
+
+  o = section.taboption(
+    "general",
     form.Value,
     "name",
     _("Connection Name"),

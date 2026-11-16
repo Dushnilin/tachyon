@@ -31,7 +31,8 @@ const appliedMigrations = [
   "engine_identity_tachyon_core",
   "modular_entities_v1",
   "priority_levels_to_outbound_groups",
-  "relax_probe_intervals_v1"
+  "relax_probe_intervals_v1",
+  "ensure_tcp_bbr_default"
 ];
 
 const conditions = [

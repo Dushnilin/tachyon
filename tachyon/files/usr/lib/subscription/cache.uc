@@ -1309,7 +1309,15 @@ function write_empty_outbound_metadata() {
     write_stdout_json({
         names: {},
         countries: {},
-        transports: {}
+        transports: {},
+        protocols: {},
+        securities: {},
+        prefixes: {},
+        ports: {},
+        details: {},
+        sources: {},
+        source_ids: {},
+        source_names: {}
     });
 }
 
@@ -1664,6 +1672,10 @@ function merge_section_outbound_metadata(result, cache, legacy_path) {
     let securities = object_or_empty(metadata.securities);
     let prefixes = object_or_empty(metadata.prefixes);
     let ports = object_or_empty(metadata.ports);
+    let details = object_or_empty(metadata.details);
+    let sources = object_or_empty(metadata.sources);
+    let source_ids = object_or_empty(metadata.source_ids);
+    let source_names = object_or_empty(metadata.source_names);
     let candidate_tags = array_or_empty(cache.urltestCandidateTags);
     let groups = object_or_empty(cache.urltestGroups);
     let priority_groups = object_or_empty(cache.priorityGroups);
@@ -1687,6 +1699,14 @@ function merge_section_outbound_metadata(result, cache, legacy_path) {
                 result.prefixes[tag] = prefixes[tag];
             if (ports[tag] != null)
                 result.ports[tag] = ports[tag];
+            if (details[tag] != null)
+                result.details[tag] = details[tag];
+            if (sources[tag] != null)
+                result.sources[tag] = sources[tag];
+            if (source_ids[tag] != null)
+                result.source_ids[tag] = source_ids[tag];
+            if (source_names[tag] != null)
+                result.source_names[tag] = source_names[tag];
         }
     }
     else {
@@ -1718,6 +1738,22 @@ function merge_section_outbound_metadata(result, cache, legacy_path) {
             if (!groups[tag] && !priority_groups[tag])
                 result.ports[tag] = prt;
         }
+        for (let tag, dtl in details) {
+            if (!groups[tag] && !priority_groups[tag])
+                result.details[tag] = dtl;
+        }
+        for (let tag, src in sources) {
+            if (!groups[tag] && !priority_groups[tag])
+                result.sources[tag] = src;
+        }
+        for (let tag, sid in source_ids) {
+            if (!groups[tag] && !priority_groups[tag])
+                result.source_ids[tag] = sid;
+        }
+        for (let tag, sname in source_names) {
+            if (!groups[tag] && !priority_groups[tag])
+                result.source_names[tag] = sname;
+        }
     }
 }
 
@@ -1729,7 +1765,11 @@ function get_outbound_metadata(cache_dir, section, legacy_path) {
         protocols: {},
         securities: {},
         prefixes: {},
-        ports: {}
+        ports: {},
+        details: {},
+        sources: {},
+        source_ids: {},
+        source_names: {}
     };
     let sec_str = trim(as_string(section));
     if (sec_str == "" || sec_str == "all") {

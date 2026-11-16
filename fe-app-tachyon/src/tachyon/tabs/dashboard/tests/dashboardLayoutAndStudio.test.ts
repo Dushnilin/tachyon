@@ -924,4 +924,115 @@ xiaomi.com`,
     expect(warnings[0].textContent).toContain('Block Telemetry');
     expect(warnings[0].textContent).toContain('Main Proxy');
   });
+
+  it('hides sections marked hidden until Show hidden is toggled (#405)', () => {
+    const sectionsWithHidden: any[] = [
+      {
+        code: 'sec_vis-out',
+        sectionName: 'sec_vis',
+        displayName: 'Visible Section',
+        action: 'connection',
+        withTagSelect: true,
+        outbounds: [
+          {
+            code: 'n1',
+            displayName: 'NL Node',
+            type: 'VLESS',
+            selected: true,
+            latency: 40,
+          },
+          {
+            code: 'n2',
+            displayName: 'Hidden Manual',
+            type: 'VLESS',
+            selected: false,
+            latency: 60,
+            hidden: true,
+          },
+        ],
+      },
+      {
+        code: 'sec_hid-out',
+        sectionName: 'sec_hid',
+        displayName: 'Secret Section',
+        action: 'connection',
+        withTagSelect: true,
+        hidden: true,
+        outbounds: [
+          {
+            code: 'n3',
+            displayName: 'DE Node',
+            type: 'VLESS',
+            selected: true,
+            latency: 55,
+          },
+        ],
+      },
+    ];
+
+    const onToggleShowHidden = vi.fn();
+    const commonProps = {
+      sections: sectionsWithHidden,
+      selectedSectionCode: '',
+      onSelectSection: vi.fn(),
+      getSectionStats: () => ({
+        download: 0,
+        upload: 0,
+        downloadSpeed: 0,
+        uploadSpeed: 0,
+        conns: 0,
+      }),
+      isTestingAllSections: false,
+      onTestAllSections: vi.fn(),
+      latencyFetchingSections: {},
+      onTestSectionLatency: vi.fn(),
+      onShowUrlTestInfo: vi.fn(),
+      onShowPriorityInfo: vi.fn(),
+      onToggleShowHidden,
+    };
+
+    const hiddenBlocks = renderOverviewMod.renderDashboardSectionsAndNodes({
+      ...commonProps,
+      showHidden: false,
+    });
+    const hiddenWrap = createDummyElement('div');
+    hiddenBlocks.forEach((b: any) => hiddenWrap.appendChild(b));
+
+    const visibleNames = hiddenWrap
+      .querySelectorAll('.tachyon-routing-row__name')
+      .map((n: any) => n.textContent);
+    expect(visibleNames).toEqual(['Visible Section']);
+
+    const toggleBtn = hiddenWrap
+      .querySelectorAll('.tachyon-routing-sections-block__filter-btn')
+      .find((b: any) => b.id === 'dashboard-toggle-hidden-button');
+    expect(toggleBtn).toBeTruthy();
+    expect(toggleBtn.textContent).toContain('(2)');
+    toggleBtn.click();
+    expect(onToggleShowHidden).toHaveBeenCalledTimes(1);
+
+    const revealedBlocks = renderOverviewMod.renderDashboardSectionsAndNodes({
+      ...commonProps,
+      showHidden: true,
+    });
+    const revealedWrap = createDummyElement('div');
+    revealedBlocks.forEach((b: any) => revealedWrap.appendChild(b));
+    const revealedNames = revealedWrap
+      .querySelectorAll('.tachyon-routing-row__name')
+      .map((n: any) => n.textContent);
+    expect(revealedNames).toEqual(['Visible Section', 'Secret Section']);
+
+    const onlyHiddenBlocks = renderOverviewMod.renderDashboardSectionsAndNodes({
+      ...commonProps,
+      sections: [sectionsWithHidden[1]],
+      showHidden: false,
+    });
+    const onlyHiddenWrap = createDummyElement('div');
+    onlyHiddenBlocks.forEach((b: any) => onlyHiddenWrap.appendChild(b));
+    const onlyHiddenBtn = onlyHiddenWrap
+      .querySelectorAll('.tachyon-routing-sections-block__filter-btn')
+      .find((b: any) => b.id === 'dashboard-toggle-hidden-button');
+    expect(onlyHiddenBtn).toBeTruthy();
+    expect(onlyHiddenBtn.textContent).toContain('(1)');
+  });
 });

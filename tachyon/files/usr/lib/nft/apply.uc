@@ -4425,13 +4425,79 @@ function ensure_bridge_netfilter_disabled() {
     return ok;
 }
 
+function tcp_avail_cc_has(path, algo) {
+    let data = fs.readfile(path);
+    if (data == null)
+        return false;
+    for (let token in split(trim(as_string(data)), /[ \t\r\n]+/)) {
+        if (token == algo)
+            return true;
+    }
+    return false;
+}
+
+function apply_tcp_bbr_tuning(settings) {
+    let enabled = common.is_tcp_bbr_enabled(settings);
+    let conf_override = as_string(getenv("TACHYON_SYSCTL_BBR_CONF") || "");
+    let conf_path = conf_override != "" ? conf_override : (is_sysctl_mock_env() ? "" : "/etc/sysctl.d/99-tachyon-bbr.conf");
+    let avail_path = as_string(getenv("TACHYON_PROC_TCP_AVAIL_CC") || "/proc/sys/net/ipv4/tcp_available_congestion_control");
+
+    if (!enabled) {
+        if (conf_path != "" && fs.stat(conf_path) != null)
+            fs.unlink(conf_path);
+        let cur_cc = read_sysctl_fast("net.ipv4.tcp_congestion_control");
+        if (cur_cc != "cubic" && (is_sysctl_mock_env() || fs.stat("/proc/sys/net/ipv4/tcp_congestion_control") != null))
+            run_args_quiet([ "sysctl", "-w", "net.ipv4.tcp_congestion_control=cubic" ]);
+        let cur_qdisc = read_sysctl_fast("net.core.default_qdisc");
+        if (cur_qdisc != "fq_codel" && (is_sysctl_mock_env() || fs.stat("/proc/sys/net/core/default_qdisc") != null))
+            run_args_quiet([ "sysctl", "-w", "net.core.default_qdisc=fq_codel" ]);
+        return;
+    }
+
+    let has_bbr = tcp_avail_cc_has(avail_path, "bbr");
+    if (!has_bbr) {
+        run_args_quiet([ "modprobe", "tcp_bbr" ]);
+        has_bbr = tcp_avail_cc_has(avail_path, "bbr");
+    }
+    if (!has_bbr) {
+        if (conf_path != "" && fs.stat(conf_path) != null)
+            fs.unlink(conf_path);
+        log_debug("TCP BBR kernel module unavailable; skipping kernel sysctl (userspace BBR remains active)");
+        return;
+    }
+
+    run_args_quiet([ "modprobe", "sch_fq" ]);
+    let cur_qdisc = read_sysctl_fast("net.core.default_qdisc");
+    let chosen_qdisc = "fq_codel";
+    if (cur_qdisc == "fq" || run_args_quiet([ "sysctl", "-w", "net.core.default_qdisc=fq" ])) {
+        chosen_qdisc = "fq";
+    } else if (cur_qdisc != "fq_codel") {
+        run_args_quiet([ "sysctl", "-w", "net.core.default_qdisc=fq_codel" ]);
+    }
+
+    let cur_cc = read_sysctl_fast("net.ipv4.tcp_congestion_control");
+    if (cur_cc != "bbr")
+        run_args_quiet([ "sysctl", "-w", "net.ipv4.tcp_congestion_control=bbr" ]);
+
+    if (conf_path != "") {
+        let slash = rindex(conf_path, "/");
+        if (slash > 0)
+            common.ensure_dir(substr(conf_path, 0, slash));
+        common.write_file(
+            conf_path,
+            "net.core.default_qdisc=" + chosen_qdisc + "\nnet.ipv4.tcp_congestion_control=bbr\n"
+        );
+    }
+}
+
 // TCP keepalive: detect dead connections in ~90s instead of kernel default (hours).
 // Conntrack: expire stale TCP entries in 10 min instead of 5 days.
 // Buffers & TCP fastopen: accelerate QUIC/Hysteria2 and reduce TLS handshake RTT.
 // In Tachyon Lite mode: aggressively cap conntrack table, UDP timeouts and
 // socket buffers to protect single-core MIPS/MIPSEL CPUs from SoftIRQ saturation.
 function apply_connection_tuning() {
-    let lite = lite_mode_enabled(null);
+    let settings = uci_settings();
+    let lite = lite_mode_enabled(settings);
     let sysctls = [
         [ "net.ipv4.tcp_keepalive_time", "60" ],
         [ "net.ipv4.tcp_keepalive_intvl", "10" ],
@@ -4472,6 +4538,8 @@ function apply_connection_tuning() {
     let wmem_max = int(read_sysctl_fast("net.core.wmem_max") || "0");
     if (lite ? (wmem_max > target_buf) : (wmem_max > 0 && wmem_max < target_buf))
         run_args_quiet([ "sysctl", "-w", "net.core.wmem_max=" + as_string(target_buf) ]);
+
+    apply_tcp_bbr_tuning(settings);
 
     if (ok)
         log_debug("Connection tuning applied (lite=" + (lite ? "1" : "0") + "): tcp_keepalive=60/10/3, tcp_fastopen=3, conntrack_established=600");
@@ -4770,6 +4838,8 @@ function nft_runtime_signature_from_settings_and_sections(settings, sections, sc
         body = signature_add_value(body, "settings.wifi_calling_direct", "1");
     if (bool_option(settings, "lite_mode", false))
         body = signature_add_value(body, "settings.lite_mode", "1");
+    if (!common.is_tcp_bbr_enabled(settings))
+        body = signature_add_value(body, "settings.tcp_bbr", "0");
     let fptn_sig_hosts = [];
     for (let sec in array_or_empty(sections)) {
         sec = object_or_empty(sec);

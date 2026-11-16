@@ -11,53 +11,98 @@ const EMPTY_SRS_PATH = "/usr/share/tachyon/rulesets/empty.srs";
 // Decoded length of the placeholder above. Derived so the two cannot drift.
 const EMPTY_SRS_SIZE = 17;
 
-const SRS_MAIN_URL = "https://github.com/itdoginfo/allow-domains/releases/latest/download";
 const SRS_ADS_HAGEZI_PRO_URL = "https://github.com/zxc-rv/ad-filter/releases/latest/download/adlist.srs";
-const SRS_SUPERCELL_URL = "https://raw.githubusercontent.com/ushan0v/sing-box-supercell-ruleset/main/supercell.srs";
-const SRS_GITHUB_URL = "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/github.srs";
-const SRS_TWITCH_URL = "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/twitch.srs";
-const SRS_GEOIP_RU_URL = "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/ru.srs";
-const SRS_GEOSITE_RU_URL = "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/category-ru.srs";
-const SRS_GEOIP_US_URL = "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/us.srs";
-const SRS_GEOIP_CN_URL = "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/cn.srs";
+const SRS_GEOBLOCK_URL = "https://raw.githubusercontent.com/legiz-ru/sb-rule-sets/main/no-russia-hosts.srs";
 const SRS_TACHYON_LISTS_BASE = "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/sing-box";
 const TRS_TACHYON_LISTS_BASE = "https://raw.githubusercontent.com/Dushnilin/tachyon-lists/main/release/tachyon";
 const SRS_TACHYON_LISTS_RELEASE_BASE = "https://github.com/Dushnilin/tachyon-lists/releases/latest/download";
 const SRS_ROSCOMVPN_GEOSITE_BASE = "https://raw.githubusercontent.com/hydraponique/roscomvpn-geosite/master/release/sing-box";
 const SRS_RUNETFREEDOM_GEOSITE_BASE = "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite";
+const SRS_RUNETFREEDOM_GEOIP_BASE = "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geoip";
+const SRS_METACUBEX_GEOSITE_BASE = "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite";
+const SRS_METACUBEX_GEOIP_BASE = "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip";
 
 const ROSCOMVPN_GEOSITE_MAP = {
     ru_whitelist: "whitelist",
-    ru_domains: "category-ru",
     push: "push",
-    roscomvpn_whitelist: "whitelist",
-    roscomvpn_geoblock: "category-geoblock-ru",
-    roscomvpn_ru: "category-ru",
-    roscomvpn_push: "push",
-    apple: "apple",
-    microsoft: "microsoft",
-    win_spy: "win-spy",
-    steam: "steam",
-    epicgames: "epicgames",
-    riot: "riot",
-    origin: "origin",
-    escapefromtarkov: "escapefromtarkov",
-    faceit: "faceit",
-    pinterest: "pinterest",
     torrent: "torrent",
     twitch_ads: "twitch-ads"
 };
 
+const METACUBEX_GEOSITE_MAP = {
+    ukraine_inside: "category-ru",
+    ru_domains: "category-ru",
+    geosite_ru: "category-ru",
+    steam_cdn: "category-game-platforms-download",
+    captive_ntp_stun: "category-ntp",
+    google_ai: "google-gemini",
+    youtube: "youtube",
+    twitch: "twitch",
+    kick: "kick",
+    tiktok: "tiktok",
+    hdrezka: "hdrezka",
+    anime: "anime",
+    pinterest: "pinterest",
+    tmdb_metadata: "tmdb",
+    streaming_west: "disney",
+    books_archives: "archive",
+    podcasts_radio: "pocketcasts",
+    discord: "discord",
+    meta: "facebook",
+    twitter: "twitter",
+    steam: "steam",
+    epicgames: "epicgames",
+    callofduty: "activision-blizzard",
+    riot: "riot",
+    roblox: "roblox",
+    supercell: "supercell",
+    escapefromtarkov: "escapefromtarkov",
+    faceit: "faceit",
+    netease_tencent_games: "netease",
+    japanese_publishers: "konami",
+    fighting_racing: "wbgames",
+    strategy_sim: "category-flight-simulator",
+    meta_quest: "oculus",
+    chess_boardgames: "chesscom",
+    gaming_mods_stats: "category-enhance-gaming",
+    apple: "apple",
+    microsoft: "microsoft",
+    google_play: "google-play",
+    github: "github",
+    hodca: "digicert",
+    paas_db: "vercel",
+    google_services: "google",
+    cloud_gaming_remote: "category-remote-control",
+    cloud_storage: "category-netdisk-!cn",
+    gamedev_3d: "unity",
+    security_passwords: "category-password-management",
+    smarthome_iot: "xiaomi-iot",
+    smarttv_apps: "samsung",
+    smart_cars: "category-automobile-cn",
+    linux_repos: "ubuntu",
+    doh_dot_dns: "category-doh",
+    news: "category-media-ru-blocked",
+    tor: "torproject",
+    porn: "category-porn",
+    travel_booking: "booking",
+    shopping_global: "amazon",
+    edtech_learning: "coursera",
+    win_spy: "win-spy"
+};
+
+const METACUBEX_GEOIP_MAP = {
+    cloudfront: "cloudfront"
+};
+
 const RUNETFREEDOM_GEOSITE_MAP = {
+    russia_inside: "geosite-ru-blocked",
+    block: "geosite-antifilter-download-community",
     ru_blocked: "geosite-ru-blocked",
     ru_blocked_all: "geosite-ru-blocked-all",
     antifilter: "geosite-antifilter-download-community",
-    ru_only_inside: "geosite-ru-available-only-inside",
-    runetfreedom_blocked: "geosite-ru-blocked",
-    runetfreedom_blocked_all: "geosite-ru-blocked-all",
-    antifilter_community: "geosite-antifilter-download-community",
     refilter: "geosite-refilter",
-    ru_available_only_inside: "geosite-ru-available-only-inside",
+    russia_outside: "geosite-ru-available-only-inside",
+    ru_only_inside: "geosite-ru-available-only-inside",
     ai_all: "geosite-category-ai-!cn",
     openai: "geosite-openai",
     anthropic: "geosite-anthropic",
@@ -84,6 +129,7 @@ const RUNETFREEDOM_GEOSITE_MAP = {
     ubisoft: "geosite-ubisoft",
     warthunder: "geosite-gaijin",
     blizzard: "geosite-blizzard",
+    origin: "geosite-ea",
     xbox: "geosite-xbox",
     playstation: "geosite-playstation",
     nintendo: "geosite-nintendo",
@@ -94,7 +140,6 @@ const RUNETFREEDOM_GEOSITE_MAP = {
     rockstar: "geosite-rockstar",
     pubg: "geosite-pubg",
     docker: "geosite-docker",
-    tor: "geosite-tor",
     fastly: "geosite-fastly",
     jetbrains: "geosite-jetbrains",
     gitlab_notion: "geosite-notion",
@@ -103,51 +148,11 @@ const RUNETFREEDOM_GEOSITE_MAP = {
     speedtest: "geosite-ookla-speedtest",
     crypto: "geosite-category-cryptocurrency",
     paypal_fintech: "geosite-paypal",
-    xiaomi_smarttv_ads: "geosite-xiaomi@ads",
-    belarus_inside: "geosite-refilter",
-    steam_cdn: "geosite-category-game-platforms-download",
-    captive_ntp_stun: "geosite-category-ntp",
-    ai_video: "geosite-elevenlabs",
-    ai_cloud_gpu: "geosite-poe",
-    youtube_images: "geosite-youtube",
-    tmdb_metadata: "geosite-tmdb",
-    streaming_west: "geosite-disney",
-    books_archives: "geosite-archive",
-    podcasts_radio: "geosite-pocketcasts",
-    discord_voice: "geosite-discord",
-    callofduty: "geosite-activision-blizzard",
-    game_backends: "geosite-unity",
-    cs2_dota2: "geosite-steam",
-    survival_coop: "geosite-category-games-!cn",
-    mmorpg: "geosite-category-games-!cn",
-    netease_tencent_games: "geosite-netease",
-    japanese_publishers: "geosite-konami",
-    fighting_racing: "geosite-wbgames",
-    strategy_sim: "geosite-category-flight-simulator",
-    meta_quest: "geosite-oculus",
-    chess_boardgames: "geosite-chesscom",
-    gaming_mods_stats: "geosite-category-enhance-gaming",
-    google_services: "geosite-google",
-    captcha_auth: "geosite-cloudflare",
-    cloud_gaming_remote: "geosite-category-remote-control",
-    cloud_storage: "geosite-category-netdisk-!cn",
-    gamedev_3d: "geosite-unity",
-    security_passwords: "geosite-category-password-management",
-    smarthome_iot: "geosite-xiaomi-iot",
-    smarttv_apps: "geosite-samsung",
-    smart_cars: "geosite-category-automobile-cn",
-    linux_repos: "geosite-ubuntu",
-    doh_dot_dns: "geosite-category-doh",
-    vps_clouds: "geosite-cloudflare",
-    travel_booking: "geosite-booking",
-    shopping_global: "geosite-amazon",
-    edtech_learning: "geosite-coursera",
-    freelance_remote: "geosite-linkedin",
-    sports_fitness: "geosite-strava",
-    android_ads_block: "geosite-category-ads-all",
-    gambling_block: "geosite-category-gambling",
-    phishing_malware_block: "geosite-category-ads-all",
-    telemetry_mobile_block: "geosite-xiaomi@ads"
+    xiaomi_smarttv_ads: "geosite-xiaomi@ads"
+};
+
+const RUNETFREEDOM_GEOIP_MAP = {
+    telegram: "geoip-telegram"
 };
 
 const COMMUNITY_SERVICES = {
@@ -232,6 +237,7 @@ const COMMUNITY_SERVICES = {
     pinterest: true,
     torrent: true,
     twitch_ads: true,
+    kick: true,
     runetfreedom_blocked: true,
     runetfreedom_blocked_all: true,
     antifilter_community: true,
@@ -245,6 +251,8 @@ const COMMUNITY_SERVICES = {
     perplexity: true,
     copilot: true,
     deepseek: true,
+    qwen: true,
+    kimi: true,
     midjourney: true,
     elevenlabs: true,
     huggingface: true,
@@ -280,6 +288,7 @@ const COMMUNITY_SERVICES = {
     gitlab_notion: true,
     figma_adobe: true,
     pkg_registries: true,
+    paas_db: true,
     captcha_auth: true,
     cloud_gaming_remote: true,
     cloud_storage: true,
@@ -418,6 +427,7 @@ const COMMUNITY_DOMAIN_SERVICES = {
     pinterest: true,
     torrent: true,
     twitch_ads: true,
+    kick: true,
     runetfreedom_blocked: true,
     runetfreedom_blocked_all: true,
     antifilter_community: true,
@@ -431,6 +441,8 @@ const COMMUNITY_DOMAIN_SERVICES = {
     perplexity: true,
     copilot: true,
     deepseek: true,
+    qwen: true,
+    kimi: true,
     midjourney: true,
     elevenlabs: true,
     huggingface: true,
@@ -465,6 +477,7 @@ const COMMUNITY_DOMAIN_SERVICES = {
     gitlab_notion: true,
     figma_adobe: true,
     pkg_registries: true,
+    paas_db: true,
     captcha_auth: true,
     cloud_gaming_remote: true,
     cloud_storage: true,
@@ -610,32 +623,33 @@ function fallback_community_url(name) {
     name = as_string(name);
     if (should_compact_huge_ruleset(name))
         name = "ru_blocked";
+    name = TACHYON_LISTS_ALIAS_MAP[name] || name;
     if (name == "ads_hagezi_pro")
         return SRS_ADS_HAGEZI_PRO_URL;
-    if (name == "supercell")
-        return SRS_SUPERCELL_URL;
-    if (name == "github")
-        return SRS_GITHUB_URL;
-    if (name == "twitch")
-        return SRS_TWITCH_URL;
-    if (name == "geosite_ru")
-        return SRS_GEOSITE_RU_URL;
+    if (name == "geoblock")
+        return SRS_GEOBLOCK_URL;
     if (ROSCOMVPN_GEOSITE_MAP[name] != null)
         return SRS_ROSCOMVPN_GEOSITE_BASE + "/" + ROSCOMVPN_GEOSITE_MAP[name] + ".srs";
+    if (METACUBEX_GEOSITE_MAP[name] != null)
+        return SRS_METACUBEX_GEOSITE_BASE + "/" + METACUBEX_GEOSITE_MAP[name] + ".srs";
+    if (METACUBEX_GEOIP_MAP[name] != null)
+        return SRS_METACUBEX_GEOIP_BASE + "/" + METACUBEX_GEOIP_MAP[name] + ".srs";
     if (RUNETFREEDOM_GEOSITE_MAP[name] != null)
         return SRS_RUNETFREEDOM_GEOSITE_BASE + "/" + RUNETFREEDOM_GEOSITE_MAP[name] + ".srs";
+    if (RUNETFREEDOM_GEOIP_MAP[name] != null)
+        return SRS_RUNETFREEDOM_GEOIP_BASE + "/" + RUNETFREEDOM_GEOIP_MAP[name] + ".srs";
     if (TACHYON_LISTS_RELEASE_FALLBACK_SERVICES[name] === true)
         return SRS_TACHYON_LISTS_RELEASE_BASE + "/" + name + ".srs";
 
     let geoip_match = match(name, /^geoip_([a-z]{2})$/);
     if (geoip_match)
-        return "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/" + geoip_match[1] + ".srs";
+        return SRS_METACUBEX_GEOIP_BASE + "/" + geoip_match[1] + ".srs";
 
     let geosite_match = match(name, /^geosite_([a-z]{2})$/);
     if (geosite_match)
-        return "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/" + geosite_match[1] + ".srs";
+        return SRS_METACUBEX_GEOSITE_BASE + "/" + geosite_match[1] + ".srs";
 
-    return SRS_MAIN_URL + "/" + name + ".srs";
+    return SRS_TACHYON_LISTS_RELEASE_BASE + "/" + name + ".srs";
 }
 
 function community_url(name) {

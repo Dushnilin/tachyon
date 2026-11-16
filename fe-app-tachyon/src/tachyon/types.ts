@@ -368,7 +368,10 @@ export namespace Tachyon {
     urlTestInfo?: UrlTestInfo;
     priorityInfo?: PriorityInfo;
     sourceGroup?: string;
+    sourceId?: string;
+    sourceName?: string;
     sourceTitle?: string;
+    hidden?: boolean;
   }
 
   export interface UrlTestMember {
@@ -463,6 +466,7 @@ export namespace Tachyon {
     subscriptionSourceCount?: number;
     subscriptionMetadata?: SubscriptionMetadata[];
     serviceStatus?: ServiceStatus;
+    hidden?: boolean;
     // sing-box rejected this section at start and the runtime quarantined it;
     // the section is not loaded and the reason is shown on the dashboard card.
     configError?: string;
@@ -513,6 +517,8 @@ export namespace Tachyon {
     fileName?: string;
     sourceIndex?: number;
     sourceSection?: string;
+    sourceId?: string;
+    hidden?: boolean;
   }
 
   type RuleAction =
@@ -730,6 +736,7 @@ export namespace Tachyon {
     multi_url_strategy?: string;
     idle_timeout?: string;
     interrupt_exist_connections?: '0' | '1';
+    hidden?: '0' | '1';
     pin_dashboard?: '0' | '1';
     filter_mode?: 'disabled' | 'exclude' | 'include' | 'mixed';
     include_countries?: string[];
@@ -1004,6 +1011,8 @@ export namespace Tachyon {
     details?: Record<string, string>;
     prefixes?: Record<string, string>;
     sources?: Record<string, string>;
+    source_ids?: Record<string, string>;
+    source_names?: Record<string, string>;
   }
 
   export interface GetSingBoxStatus {

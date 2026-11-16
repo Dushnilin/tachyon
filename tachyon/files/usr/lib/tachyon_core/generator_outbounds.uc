@@ -481,7 +481,8 @@ function urltest_leaf_candidate_outbound(outbound) {
             return true;
         return !is_dummy_outbound_server(outbound.endpoint || outbound.server, outbound.server_port);
     }
-    if (is_dummy_outbound_server(outbound.server, outbound.server_port))
+    let check_port = outbound_has_port_ranges(outbound) ? null : outbound.server_port;
+    if (is_dummy_outbound_server(outbound.server, check_port))
         return false;
     return true;
 }
@@ -3690,6 +3691,12 @@ function add_mieru_outbound(config, section) {
     let multiplexing = option(section, "mieru_multiplexing", "");
     if (multiplexing != "")
         outbound.multiplexing = multiplexing;
+    let handshake_mode = trim(option(section, "mieru_handshake_mode", ""));
+    if (handshake_mode != "")
+        outbound.handshake_mode = handshake_mode;
+    let traffic_pattern = trim(option(section, "mieru_traffic_pattern", ""));
+    if (traffic_pattern != "")
+        outbound.traffic_pattern = traffic_pattern;
     let detour = outbound_detour_tag_for_section(section);
     if (detour != "") outbound.detour = detour;
     push(config.outbounds, outbound);

@@ -845,6 +845,8 @@ export interface RenderDashboardSectionsAndNodesProps {
   renderSectionAccordionContent?: (
     section: Tachyon.OutboundGroup,
   ) => HTMLElement;
+  showHidden?: boolean;
+  onToggleShowHidden?: () => void;
 }
 
 export interface SectionEngineMeta {
@@ -1712,8 +1714,8 @@ export function resolveSectionEngineMeta(
           'Zapret2',
           'dpi',
           tr(
-            'Обход DPI через Zapret2 (nfqws2 + Lua-стратегии)',
-            'DPI bypass via Zapret2 (nfqws2 + Lua strategies)',
+            'Десинхронизация через Zapret2 (nfqws2 + Lua-стратегии)',
+            'Packet desync via Zapret2 (nfqws2 + Lua strategies)',
           ),
           () => renderZapIcon(11),
         );
@@ -1722,7 +1724,10 @@ export function resolveSectionEngineMeta(
         pushBadge(
           'Zapret',
           'dpi',
-          tr('Обход DPI через Zapret (nfqws)', 'DPI bypass via Zapret (nfqws)'),
+          tr(
+            'Десинхронизация через Zapret (nfqws)',
+            'Packet desync via Zapret (nfqws)',
+          ),
           () => renderZapIcon(11),
         );
         break;
@@ -1731,8 +1736,8 @@ export function resolveSectionEngineMeta(
           'ByeDPI',
           'dpi',
           tr(
-            'Обход DPI через ByeDPI (ciadpi SOCKS5)',
-            'DPI bypass via ByeDPI (ciadpi SOCKS5)',
+            'Десинхронизация через ByeDPI (ciadpi SOCKS5)',
+            'Packet desync via ByeDPI (ciadpi SOCKS5)',
           ),
           () => renderZapIcon(11),
         );
@@ -2240,7 +2245,10 @@ function getSectionVisualMeta(section: Tachyon.OutboundGroup): {
     return {
       color: calmColor,
       bg: calmBg,
-      subtitle: tr('Обход DPI и модификация пакетов', 'DPI bypass & desync'),
+      subtitle: tr(
+        'Модификация пакетов и десинхронизация',
+        'Packet desync & modification',
+      ),
       iconNodes: [
         svgEl('path', { d: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z' }),
       ],
@@ -2453,7 +2461,7 @@ export function resolveSectionCategory(
     return 'dns';
   }
 
-  // 3. Обход DPI (DPI Bypass)
+  // 3. Десинхронизация пакетов (Packet Desync)
   const isDpi =
     DPI_ENGINES.has(action) ||
     DPI_ENGINES.has(primaryEngine) ||
@@ -2591,6 +2599,78 @@ function navigateToRoutingSectionsTab() {
   }
 }
 
+function renderEyeIcon(size = 12, active = false): SVGElement {
+  return svgEl(
+    'svg',
+    {
+      width: String(size),
+      height: String(size),
+      viewBox: '0 0 24 24',
+      fill: 'none',
+      stroke: 'currentColor',
+      'stroke-width': '2',
+      'stroke-linecap': 'round',
+      'stroke-linejoin': 'round',
+      'aria-hidden': 'true',
+    },
+    active
+      ? [
+          svgEl('path', {
+            d: 'M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94',
+          }),
+          svgEl('path', {
+            d: 'M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19',
+          }),
+          svgEl('line', { x1: '1', y1: '1', x2: '23', y2: '23' }),
+        ]
+      : [
+          svgEl('path', {
+            d: 'M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z',
+          }),
+          svgEl('circle', { cx: '12', cy: '12', r: '3' }),
+        ],
+  );
+}
+
+export function countHiddenDashboardItems(
+  sections: Tachyon.OutboundGroup[],
+): number {
+  let count = 0;
+  for (const section of sections || []) {
+    if (section.hidden) {
+      count += 1;
+      continue;
+    }
+    const hiddenSubKeys = new Set<string>();
+    for (const meta of section.subscriptionMetadata || []) {
+      if (!meta.hidden) continue;
+      if (meta.sourceIndex) {
+        hiddenSubKeys.add(`sub:${meta.sourceIndex}`);
+      } else if (meta.sourceId) {
+        hiddenSubKeys.add(`id:${meta.sourceId}`);
+      } else {
+        count += 1;
+      }
+    }
+    count += hiddenSubKeys.size;
+    const countedSourceKeys = new Set<string>();
+    for (const ob of section.outbounds || []) {
+      if (!ob.hidden) continue;
+      if (ob.sourceGroup && hiddenSubKeys.has(ob.sourceGroup)) continue;
+      const key = ob.sourceId
+        ? `id:${ob.sourceId}`
+        : ob.sourceGroup && ob.sourceGroup.startsWith('sub:')
+          ? ob.sourceGroup
+          : `ob:${ob.code}`;
+      if (!countedSourceKeys.has(key)) {
+        countedSourceKeys.add(key);
+        count += 1;
+      }
+    }
+  }
+  return count;
+}
+
 export function renderDashboardSectionsAndNodes(
   props: RenderDashboardSectionsAndNodesProps,
 ): HTMLElement[] {
@@ -2609,16 +2689,23 @@ export function renderDashboardSectionsAndNodes(
     expandedSections,
     onToggleExpandSection,
     renderSectionAccordionContent,
+    showHidden = false,
+    onToggleShowHidden,
   } = props;
 
   if (!sections || sections.length === 0) {
     return [];
   }
 
+  const hiddenCount = countHiddenDashboardItems(sections);
+
   // Фильтруем категории секций по пользовательским настройкам Дашборда
   const typeFilter = getDashboardSectionTypeFilter();
 
   const routingSections = sections.filter((s) => {
+    if (!showHidden && s.hidden) {
+      return false;
+    }
     const engineMeta = resolveSectionEngineMeta(s);
     const category = resolveSectionCategory(s, engineMeta);
 
@@ -2642,7 +2729,8 @@ export function renderDashboardSectionsAndNodes(
 
   if (
     (!routingSections || routingSections.length === 0) &&
-    misorderedPolicyIssues.length === 0
+    misorderedPolicyIssues.length === 0 &&
+    hiddenCount === 0
   ) {
     return [];
   }
@@ -2801,6 +2889,22 @@ export function renderDashboardSectionsAndNodes(
         b.icon ? [b.icon(), E('span', {}, b.label)] : b.label,
       ),
     );
+    const allBadgeNodes = section.hidden
+      ? [
+          E(
+            'span',
+            {
+              class: 'tachyon-routing-row__status-badge is-hidden',
+              title: tr(
+                'Скрыта на Дашборде (активна в маршрутизации)',
+                'Hidden on Dashboard (active in routing)',
+              ),
+            },
+            tr('Скрыто', 'Hidden'),
+          ),
+          ...badgeNodes,
+        ]
+      : badgeNodes;
 
     const iconBoxNode = E(
       'div',
@@ -2847,6 +2951,7 @@ export function renderDashboardSectionsAndNodes(
               'tachyon-routing-matrix-card',
               isRowSelected ? 'is-selected' : '',
               isExpanded ? 'is-expanded' : '',
+              section.hidden ? 'is-dashboard-hidden' : '',
               section.configError ? 'has-error' : '',
             ]
               .filter(Boolean)
@@ -2874,7 +2979,7 @@ export function renderDashboardSectionsAndNodes(
                     section.displayName,
                   ),
                   statusIndicatorNode,
-                  ...badgeNodes,
+                  ...allBadgeNodes,
                 ]),
                 E('div', { class: 'tachyon-routing-matrix-card__node' }, [
                   ...renderFlagEmojis(activeInfo.serverName),
@@ -2930,6 +3035,7 @@ export function renderDashboardSectionsAndNodes(
               'tachyon-routing-compact-tile',
               isRowSelected ? 'is-selected' : '',
               isExpanded ? 'is-expanded' : '',
+              section.hidden ? 'is-dashboard-hidden' : '',
               section.configError ? 'has-error' : '',
             ]
               .filter(Boolean)
@@ -2961,7 +3067,7 @@ export function renderDashboardSectionsAndNodes(
                 E(
                   'div',
                   { class: 'tachyon-routing-compact-tile__badges' },
-                  badgeNodes,
+                  allBadgeNodes,
                 ),
               ]),
               latencyBtnNode,
@@ -3002,6 +3108,7 @@ export function renderDashboardSectionsAndNodes(
               'tachyon-routing-bento-card',
               isRowSelected ? 'is-selected' : '',
               isExpanded ? 'is-expanded' : '',
+              section.hidden ? 'is-dashboard-hidden' : '',
               section.configError ? 'has-error' : '',
             ]
               .filter(Boolean)
@@ -3029,7 +3136,7 @@ export function renderDashboardSectionsAndNodes(
                     section.displayName,
                   ),
                   statusIndicatorNode,
-                  ...badgeNodes,
+                  ...allBadgeNodes,
                 ]),
                 E(
                   'div',
@@ -3120,6 +3227,7 @@ export function renderDashboardSectionsAndNodes(
               : '',
             isRowSelected ? 'is-selected' : '',
             isExpanded ? 'is-expanded' : '',
+            section.hidden ? 'is-dashboard-hidden' : '',
             section.configError ? 'has-error' : '',
           ]
             .filter(Boolean)
@@ -3152,7 +3260,7 @@ export function renderDashboardSectionsAndNodes(
                   section.displayName,
                 ),
                 statusIndicatorNode,
-                ...badgeNodes,
+                ...allBadgeNodes,
                 ...(section.configError
                   ? [
                       E(
@@ -3474,6 +3582,48 @@ export function renderDashboardSectionsAndNodes(
             E('span', {}, tr('Типы секций', 'Section Types')),
           ],
         ),
+        ...(hiddenCount > 0 || showHidden
+          ? [
+              E(
+                'button',
+                {
+                  type: 'button',
+                  id: 'dashboard-toggle-hidden-button',
+                  class: [
+                    'tachyon-routing-sections-block__filter-btn',
+                    showHidden ? 'is-active' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' '),
+                  'aria-pressed': showHidden ? 'true' : 'false',
+                  title: showHidden
+                    ? tr(
+                        'Спрятать скрытые секции, подписки и серверы',
+                        'Hide hidden sections, subscriptions, and servers',
+                      )
+                    : tr(
+                        'Показать скрытые секции, подписки и серверы',
+                        'Show hidden sections, subscriptions, and servers',
+                      ),
+                  click: () => {
+                    onToggleShowHidden?.();
+                  },
+                } as any,
+                [
+                  renderEyeIcon(12, showHidden),
+                  E(
+                    'span',
+                    {},
+                    showHidden
+                      ? tr('Спрятать скрытые', 'Hide hidden')
+                      : hiddenCount > 0
+                        ? `${tr('Показать скрытые', 'Show hidden')} (${hiddenCount})`
+                        : tr('Показать скрытые', 'Show hidden'),
+                  ),
+                ],
+              ),
+            ]
+          : []),
         proxySections.length > 0
           ? E(
               'button',

@@ -41,9 +41,14 @@ export function parseCommunityHint(rawHint: string): ParsedCommunityHint {
   ) {
     routeKind = 'direct';
     routeShort = 'Direct';
-  } else if (lower.includes('обход dpi') || lower.includes('zapret')) {
+  } else if (
+    lower.includes('десинхронизац') ||
+    lower.includes('desync') ||
+    lower.includes('обход dpi') ||
+    lower.includes('zapret')
+  ) {
     routeKind = 'dpi';
-    routeShort = 'VPN / DPI';
+    routeShort = 'VPN / Desync';
   } else if (
     lower.includes('прокси') ||
     lower.includes('vpn') ||
@@ -101,6 +106,8 @@ export const COMMUNITY_LIST_SUPERSETS: Readonly<
     'perplexity',
     'copilot',
     'deepseek',
+    'qwen',
+    'kimi',
     'midjourney',
     'elevenlabs',
     'ai_video',
@@ -239,6 +246,8 @@ export const COMMUNITY_LIST_CATEGORIES: CommunityListCategory[] = [
       'perplexity',
       'copilot',
       'deepseek',
+      'qwen',
+      'kimi',
       'midjourney',
       'elevenlabs',
       'ai_video',
@@ -267,6 +276,7 @@ export const COMMUNITY_LIST_CATEGORIES: CommunityListCategory[] = [
       'linkedin',
       'twitch',
       'twitch_ads',
+      'kick',
       'spotify',
       'soundcloud_music',
       'podcasts_radio',
@@ -343,6 +353,7 @@ export const COMMUNITY_LIST_CATEGORIES: CommunityListCategory[] = [
       'figma_adobe',
       'gamedev_3d',
       'pkg_registries',
+      'paas_db',
       'linux_repos',
       'apple',
       'microsoft',

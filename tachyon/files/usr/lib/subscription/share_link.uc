@@ -506,6 +506,8 @@ function serialize_mieru(outbound) {
     add_query(params, "protocol", uc(as_string(outbound.transport || "TCP")));
     if (as_string(outbound.multiplexing || "") != "")
         add_query(params, "multiplexing", outbound.multiplexing);
+    if (as_string(outbound.handshake_mode || "") != "")
+        add_query(params, "handshake-mode", outbound.handshake_mode);
     if (as_string(outbound.traffic_pattern || "") != "")
         add_query(params, "traffic-pattern", outbound.traffic_pattern);
     let userinfo = uri_encode(outbound.username) + ":" + uri_encode(outbound.password);
