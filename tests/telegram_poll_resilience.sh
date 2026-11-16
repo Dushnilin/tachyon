@@ -80,6 +80,19 @@ exit 28
 STUB
 chmod 0755 "$WORK_DIR/bin/curl"
 
+# get_proxy_args() takes the fallback_socks route only while no core process runs
+# (core_binary_running(): pidof tachyon-core || pidof sing-box). The suite runs
+# in parallel and other tests start stand-in binaries under those names; when one
+# was alive, this test took the "core up, mixed port dead" branch - a direct
+# getUpdates with the full timeout=25 / -m 35 - and failed at random in CI with
+# "direct fallback for getUpdates must cap timeout=5 and -m 15". The host's
+# process table is not part of what this test checks, so pidof is stubbed.
+cat >"$WORK_DIR/bin/pidof" <<'STUB'
+#!/bin/sh
+exit 1
+STUB
+chmod 0755 "$WORK_DIR/bin/pidof"
+
 cat >"$WORK_DIR/verify_poll_resilience.uc" <<'UC'
 let fs = require("fs");
 let transport = require("service.telegram.transport");
