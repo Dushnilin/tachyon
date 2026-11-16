@@ -479,8 +479,12 @@ function classify_log_line(line, plus_mode) {
     let is_netlink_warning = (index(line_lower, "netlink") >= 0 || index(line_lower, "nlbwmon") >= 0);
 
     // Terminal, as in the original: no further classification after an OOM.
+    // go_runtime: the Go runtime's own "fatal error: ... out of memory", i.e. a
+    // Go core died of memory - the one case GOMEMLIMIT is about.
     if (is_oom && !is_netlink_warning)
-        return [ { type: EV.OOM_DETECTED, payload: {} } ];
+        return [ { type: EV.OOM_DETECTED, payload: {
+            go_runtime: index(line_lower, "fatal error:") >= 0 && index(line_lower, "out of memory") >= 0
+        } } ];
 
     let facts = [];
 
@@ -579,7 +583,7 @@ function controller(bus, opts) {
                 if (state.syslog_start_time > 0 && (now - state.syslog_start_time > 3) &&
                     (now - state.last_oom_time > 60)) {
                     state.last_oom_time = now;
-                    bus.emit(EV.OOM_DETECTED, {});
+                    bus.emit(EV.OOM_DETECTED, fact.payload || {});
                     push(published, EV.OOM_DETECTED);
                 }
                 continue;

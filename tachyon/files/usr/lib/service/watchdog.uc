@@ -2798,7 +2798,12 @@ function smart_detect_process_pending() {
 
 // ─── OOM response ─────────────────────────────────────────────────────────────
 // Shrinks the GOMEMLIMIT scale by 20% per OOM, floored at 0.2 so sing-box is
-// never starved into permanent failure, then restarts to apply it.
+// never starved into permanent failure, then restarts to apply it - when a Go
+// core runs. The native core ignores GOMEMLIMIT, and an OOM inside a memory
+// cgroup (a container hitting its own limit) is not the router running out, so
+// those are reported without restarting anything: a router log had a docker
+// container's cgroup OOM turn into a full restart and ~17 minutes of a
+// fail-closed LAN.
 //
 // The arithmetic lives in service/oom_scale.uc so the floor rule can be exercised
 // directly: requiring watchdog.uc runs its subscriptions.
@@ -2809,7 +2814,65 @@ let oom_scale_at_floor = oom_scale.oom_scale_at_floor;
 let next_oom_scale = oom_scale.next_oom_scale;
 let last_oom_floor_notice_time = 0;
 
+// The syslog line that raises the event is the report's first; the victim comes
+// last and may not be printed yet, so the kernel log is polled briefly for it.
+const OOM_REPORT_WAIT_MS = 3000;
+const OOM_REPORT_POLL_MS = 200;
+
+function read_oom_report() {
+    let report = oom_scale.oom_report(command_output_from_args([ "dmesg" ]));
+    for (let waited = 0; !report.complete && waited < OOM_REPORT_WAIT_MS; waited += OOM_REPORT_POLL_MS) {
+        sleep(OOM_REPORT_POLL_MS);
+        report = oom_scale.oom_report(command_output_from_args([ "dmesg" ]));
+    }
+    return report;
+}
+
+// True when a sing-box (Go) build is the installed core. Process names cannot
+// tell: every variant is installed as /usr/bin/tachyon-core. The variant state
+// components/action.uc writes is what the generator trusts too. If it cannot
+// be read, keep the old cure rather than guess "native".
+function installed_core_is_go() {
+    try {
+        return !require("tachyon_core.variant_state").is_tachyon_core();
+    } catch (e) {
+        return true;
+    }
+}
+
+function oom_victim_label(report) {
+    let name = replace(as_string(report.victim || ""), /[^A-Za-z0-9._:\/-]/g, "");
+    return name != "" ? name : "не определён";
+}
+
 function heal_oom(ev) {
+    let payload = (type(ev) == "object" && type(ev.payload) == "object") ? ev.payload : {};
+    let report = read_oom_report();
+    let go_core = payload.go_runtime == true || installed_core_is_go();
+    let response = oom_scale.oom_response(report, go_core);
+    let victim = oom_victim_label(report);
+
+    // GOMEMLIMIT only bounds a Go core, and a full restart drops interception
+    // until start rebuilds it - minutes under a fail-closed hold. Both are kept
+    // for the case they can help; everything else is reported, not "healed".
+    if (response == "respawn") {
+        log_message("OOM killed " + victim + "; procd respawns it. Not restarting Tachyon: the native core ignores GOMEMLIMIT", "err");
+        send_telegram_notification("🚨 *Watchdog:* OOM убил ядро `" + victim + "`. procd перезапустит его сам; Tachyon целиком не перезапускается (GOMEMLIMIT на нативное ядро не действует).", "oom_respawn", 600);
+        return;
+    }
+    if (response != "shrink") {
+        let scope = report.memcg ? "inside a memory cgroup (a container or a service with its own limit)"
+            : (report.complete ? "outside Tachyon" : "(kernel report not complete; victim unknown)");
+        log_message("OOM killed " + victim + " " + scope + "; not restarting Tachyon", "warn");
+        let text = "⚠️ *Watchdog:* OOM: ядро убило процесс `" + victim + "`. Ядро Tachyon не затронуто, Tachyon не перезапускается.";
+        if (report.memcg)
+            text = "⚠️ *Watchdog:* OOM внутри cgroup (контейнер или служба со своим лимитом памяти): убит процесс `" + victim + "`. Память роутера не исчерпана, Tachyon не перезапускается.";
+        else if (!report.complete)
+            text = "⚠️ *Watchdog:* OOM на роутере, но жертву по журналу ядра определить не удалось. Tachyon не перезапускается; если ядро упало, его перезапустит procd.";
+        send_telegram_notification(text, "oom_report", 600);
+        return;
+    }
+
     // At the floor there is nothing left to lower, so the restart used to apply the
     // new value re-applied the same one - and restarting every service under memory
     // pressure is what produced the next OOM. A router could sit in that loop
@@ -2827,7 +2890,7 @@ function heal_oom(ev) {
         return;
     }
 
-    log_message("OOM event detected from syslog! Reducing GOMEMLIMIT scaling...", "err");
+    log_message("OOM event detected from syslog (killed: " + victim + ") with a Go core running! Reducing GOMEMLIMIT scaling...", "err");
     send_telegram_notification("🚨 *Watchdog:* Обнаружено событие OOM (Out Of Memory)! Уменьшаю GOMEMLIMIT и перезапускаю службы...");
     let scale = read_oom_scale();
     let scale_path = oom_scale_path();
