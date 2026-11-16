@@ -250,23 +250,30 @@ function child_item_sort(left, right) {
     return 0;
 }
 
-function child_items(parent, type_name) {
-    let result = [];
-    for (let child in object_or_empty(object_or_empty(get_item_sections())[type_name]).list || [])
-        if (option(child, "section", "") == section_name(parent))
-            push(result, child);
-    sort(result, child_item_sort);
-    return result;
+function child_items_by_owner(type_name, owner_key, owner_value) {
+    let items = object_or_empty(get_item_sections())[type_name];
+    if (items == null)
+        return [];
+
+    // Build each owner index only when that lookup is first used.
+    let by_owner = (items.by_owner ??= {});
+    let owners = by_owner[owner_key];
+    if (owners == null) {
+        owners = by_owner[owner_key] = {};
+        for (let child in items.list || []) {
+            let key = sprintf("%J", option(child, owner_key, ""));
+            push(owners[key] ??= [], child);
+        }
+        for (let children in values(owners))
+            if (length(children) > 1)
+                sort(children, child_item_sort);
+    }
+    // Some callers apply a different sort to the returned list.
+    return slice(owners[sprintf("%J", as_string(owner_value))] || []);
 }
 
-function child_items_by_owner(type_name, owner_key, owner_value) {
-    owner_value = as_string(owner_value);
-    let result = [];
-    for (let child in object_or_empty(object_or_empty(get_item_sections())[type_name]).list || [])
-        if (option(child, owner_key, "") == owner_value)
-            push(result, child);
-    sort(result, child_item_sort);
-    return result;
+function child_items(parent, type_name) {
+    return child_items_by_owner(type_name, "section", section_name(parent));
 }
 
 function child_item_by_value(parent, type_name, value_key, value) {
@@ -6384,6 +6391,9 @@ function probe_outbound_url(target_url, group_id, timeout_ms) {
                 let has_inc_o = length(keys(inc_o)) > 0;
                 let has_inc_re = length(gspec.include_regex || []) > 0 && runtime_urltest != null;
                 let has_base_inc = has_inc_c || has_inc_o || has_inc_re;
+                let has_exc_re = length(gspec.exclude_regex || []) > 0 && runtime_urltest != null;
+                let inc_regex = null;
+                let exc_regex = null;
                 let filtered = [];
                 for (let t in candidate_tags) {
                     let raw_tname = names_map[t] || t;
@@ -6435,8 +6445,8 @@ function probe_outbound_url(target_url, group_id, timeout_ms) {
                             let o_ok = has_inc_o && name_matches_set(inc_o);
                             let re_ok = false;
                             if (has_inc_re) {
-                                let matched_re = runtime_urltest.regex_matching_tag_array([ t ], { [t]: raw_tname }, gspec.include_regex);
-                                re_ok = length(matched_re) > 0;
+                                inc_regex ??= runtime_urltest.compile_filter_regexes(gspec.include_regex);
+                                re_ok = runtime_urltest.matches_filter_regex(inc_regex, t, raw_tname);
                             }
                             if (!(c_ok || o_ok || re_ok)) continue;
                         }
@@ -6444,9 +6454,9 @@ function probe_outbound_url(target_url, group_id, timeout_ms) {
                     if (gspec.mode == "exclude" || gspec.mode == "mixed") {
                         if (length(keys(exc_c)) > 0 && exc_c[tc]) continue;
                         if (length(keys(exc_o)) > 0 && name_matches_set(exc_o)) continue;
-                        if (length(gspec.exclude_regex || []) > 0 && runtime_urltest != null) {
-                            let matched_re = runtime_urltest.regex_matching_tag_array([ t ], { [t]: raw_tname }, gspec.exclude_regex);
-                            if (length(matched_re) > 0) continue;
+                        if (has_exc_re) {
+                            exc_regex ??= runtime_urltest.compile_filter_regexes(gspec.exclude_regex);
+                            if (runtime_urltest.matches_filter_regex(exc_regex, t, raw_tname)) continue;
                         }
                     }
                     push(filtered, t);

@@ -371,11 +371,8 @@ function countries_from_flag_names(names) {
     return result;
 }
 
-function regex_matching_tag_array(tags, names, regexes) {
-    tags = array_or_empty(tags);
-    names = object_or_empty(names);
+function compile_filter_regexes(regexes) {
     regexes = array_or_empty(regexes);
-    
     let compiled = [];
     for (let pattern in regexes) {
         let pat_str = as_string(pattern);
@@ -392,20 +389,30 @@ function regex_matching_tag_array(tags, names, regexes) {
             }
         }
     }
-    
+    return compiled;
+}
+
+function matches_filter_regex(compiled, tag, name) {
+    if (length(compiled) == 0)
+        return false;
+
+    name = name == null || as_string(name) == "" ? tag : as_string(name);
+    for (let re in compiled)
+        if (match(name, re) != null)
+            return true;
+    return false;
+}
+
+function regex_matching_tag_array(tags, names, regexes) {
+    let compiled = compile_filter_regexes(regexes);
     let result = [];
-    for (let tag in tags) {
-        let name = names[tag];
-        name = name == null || as_string(name) == "" ? tag : as_string(name);
+    if (length(compiled) == 0)
+        return result;
 
-        for (let re in compiled) {
-            if (match(name, re) != null) {
-                push(result, tag);
-                break;
-            }
-        }
-    }
-
+    names = object_or_empty(names);
+    for (let tag in array_or_empty(tags))
+        if (matches_filter_regex(compiled, tag, names[tag]))
+            push(result, tag);
     return result;
 }
 
@@ -749,11 +756,46 @@ function name_filter_contains(values, needle) {
     return false;
 }
 
+function prepare_name_filter(values) {
+    values = array_or_empty(values);
+    if (length(values) == 0)
+        return null;
+
+    let exact = {};
+    for (let value in values) {
+        // The regular comparison supports mixed types, and object keys
+        // cannot distinguish strings after an embedded NUL.
+        if (type(value) != "string" || index(value, "\x00") >= 0)
+            return (needle, exact_only) => exact_only
+                ? contains(values, needle) : name_filter_contains(values, needle);
+        exact[value] = true;
+    }
+
+    let normalized = null;
+    return function(needle, exact_only) {
+        if (type(needle) != "string" || index(needle, "\x00") >= 0)
+            return exact_only ? contains(values, needle) : name_filter_contains(values, needle);
+        if (exact[needle])
+            return true;
+        if (exact_only)
+            return false;
+        let canon = strip_dynamic_server_telemetry(needle);
+        if (canon == "")
+            return false;
+        if (normalized == null) {
+            normalized = {};
+            for (let value in values)
+                normalized[strip_dynamic_server_telemetry(value)] = true;
+        }
+        return exact[canon] || normalized[canon] == true;
+    };
+}
+
 function filter_array(mode, tags, names, countries, name_filter, regex_tags, country_filter) {
     tags = array_or_empty(tags);
     names = object_or_empty(names);
     countries = object_or_empty(countries);
-    name_filter = array_or_empty(name_filter);
+    let matches_name = prepare_name_filter(name_filter);
     regex_tags = array_or_empty(regex_tags);
     country_filter = array_or_empty(country_filter);
     let result = [];
@@ -761,8 +803,7 @@ function filter_array(mode, tags, names, countries, name_filter, regex_tags, cou
     for (let tag in tags) {
         let name = as_string(names[tag] || tag);
         let country = uc(as_string(countries[tag] || ""));
-        let matched = name_filter_contains(name_filter, name) ||
-            contains(name_filter, tag) ||
+        let matched = (matches_name != null && (matches_name(name) || matches_name(tag, true))) ||
             (country != "" && contains(country_filter, country)) ||
             contains(regex_tags, tag);
 
@@ -795,8 +836,11 @@ return {
     normalized_country_list,
     countries_from_flag_names,
     regex_matching_tag_array,
+    compile_filter_regexes,
+    matches_filter_regex,
     strip_dynamic_server_telemetry,
     name_filter_contains,
+    prepare_name_filter,
     filter_array,
     filter_mode
 };

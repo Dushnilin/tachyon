@@ -490,38 +490,32 @@ function tag_prefixed_name_with_type(tag, names, metadata) {
     return label != "" ? (base + " [" + label + "]") : base;
 }
 
-function server_name_filter_contains(name_filter, candidate) {
-    if (array_contains(name_filter, candidate))
-        return true;
-    return runtime_urltest.name_filter_contains(name_filter, candidate);
-}
-
-function tag_name_filter_matches(tag, names, name_filter, regex_set, metadata, name_with_type_indexed, prefixed_with_type_indexed, is_first_for_type, is_first_for_prefixed_type) {
+function tag_name_filter_matches(tag, names, matches_name, regex_set, metadata, name_with_type_indexed, prefixed_with_type_indexed, is_first_for_type, is_first_for_prefixed_type) {
     if (regex_set && regex_set[tag])
         return true;
-    if (type(name_filter) != "array" || length(name_filter) == 0)
+    if (matches_name == null)
         return false;
     let name = tag_display_name(tag, names);
-    if (server_name_filter_contains(name_filter, name) || array_contains(name_filter, tag))
+    if (matches_name(name) || matches_name(tag, true))
         return true;
     let name_with_type = tag_display_name_with_type(tag, names, metadata);
-    if (name_with_type != name && (is_first_for_type != false) && server_name_filter_contains(name_filter, name_with_type))
+    if (name_with_type != name && (is_first_for_type != false) && matches_name(name_with_type))
         return true;
     let badge = tag_source_badge(tag, name, metadata);
     if (badge != "") {
         let b_name = "[" + badge + "] " + name;
         let b_with_type = tag_prefixed_name_with_type(tag, names, metadata);
-        if (server_name_filter_contains(name_filter, b_name) ||
-            ((is_first_for_prefixed_type != false) && server_name_filter_contains(name_filter, b_with_type)) ||
-            server_name_filter_contains(name_filter, badge + ": " + name) ||
-            server_name_filter_contains(name_filter, badge + " " + name))
+        if (matches_name(b_name) ||
+            ((is_first_for_prefixed_type != false) && matches_name(b_with_type)) ||
+            matches_name(badge + ": " + name) ||
+            matches_name(badge + " " + name))
             return true;
     }
     let stored_prefix = trim(as_string(object_or_empty(object_or_empty(metadata).prefixes)[tag] || ""));
     if (stored_prefix != "") {
-        if (server_name_filter_contains(name_filter, stored_prefix + ": " + name) ||
-            server_name_filter_contains(name_filter, stored_prefix + " " + name) ||
-            server_name_filter_contains(name_filter, "[" + stored_prefix + "] " + name))
+        if (matches_name(stored_prefix + ": " + name) ||
+            matches_name(stored_prefix + " " + name) ||
+            matches_name("[" + stored_prefix + "] " + name))
             return true;
         let unprefixed = "";
         if (index(name, stored_prefix + ": ") == 0)
@@ -530,37 +524,37 @@ function tag_name_filter_matches(tag, names, name_filter, regex_set, metadata, n
             unprefixed = trim(substr(name, length(stored_prefix) + 1));
         if (unprefixed != "") {
             let bracketed = "[" + stored_prefix + "] " + unprefixed;
-            if (server_name_filter_contains(name_filter, unprefixed) ||
-                server_name_filter_contains(name_filter, bracketed) ||
-                server_name_filter_contains(name_filter, stored_prefix + ": " + unprefixed) ||
-                server_name_filter_contains(name_filter, stored_prefix + " " + unprefixed))
+            if (matches_name(unprefixed) ||
+                matches_name(bracketed) ||
+                matches_name(stored_prefix + ": " + unprefixed) ||
+                matches_name(stored_prefix + " " + unprefixed))
                 return true;
             let proto = object_or_empty(object_or_empty(metadata).protocols)[tag];
             let trans = object_or_empty(object_or_empty(metadata).transports)[tag];
             let label = format_outbound_type_label(proto, trans);
             if (label != "" &&
-                (server_name_filter_contains(name_filter, unprefixed + " [" + label + "]") ||
-                 server_name_filter_contains(name_filter, bracketed + " [" + label + "]")))
+                (matches_name(unprefixed + " [" + label + "]") ||
+                 matches_name(bracketed + " [" + label + "]")))
                 return true;
         }
     }
-    if (name_with_type_indexed != null && server_name_filter_contains(name_filter, name_with_type_indexed))
+    if (name_with_type_indexed != null && matches_name(name_with_type_indexed))
         return true;
-    if (prefixed_with_type_indexed != null && server_name_filter_contains(name_filter, prefixed_with_type_indexed))
+    if (prefixed_with_type_indexed != null && matches_name(prefixed_with_type_indexed))
         return true;
     let source_name = trim(as_string(object_or_empty(object_or_empty(metadata).source_names)[tag] || ""));
     if (source_name != "" && source_name != name) {
-        if (server_name_filter_contains(name_filter, source_name))
+        if (matches_name(source_name))
             return true;
         let proto = object_or_empty(object_or_empty(metadata).protocols)[tag];
         let trans = object_or_empty(object_or_empty(metadata).transports)[tag];
         let label = format_outbound_type_label(proto, trans);
-        if (label != "" && server_name_filter_contains(name_filter, source_name + " [" + label + "]"))
+        if (label != "" && matches_name(source_name + " [" + label + "]"))
             return true;
         if (stored_prefix != "") {
             let b_src = "[" + stored_prefix + "] " + source_name;
-            if (server_name_filter_contains(name_filter, b_src) ||
-                (label != "" && server_name_filter_contains(name_filter, b_src + " [" + label + "]")))
+            if (matches_name(b_src) ||
+                (label != "" && matches_name(b_src + " [" + label + "]")))
                 return true;
         }
     }
@@ -663,13 +657,13 @@ function urltest_matching_candidate_outbounds(urltest_candidate_tags, names, cou
 
     let seen_type_counts = {};
     let seen_prefixed_type_counts = {};
-    let has_name_filter = length(array_or_empty(name_filter)) > 0;
+    let matches_name = runtime_urltest.prepare_name_filter(name_filter);
     for (let tag in array_or_empty(urltest_candidate_tags)) {
         let name_with_type_indexed = null;
         let prefixed_with_type_indexed = null;
         let is_first_type = false;
         let is_first_pref_type = false;
-        if (has_name_filter) {
+        if (matches_name != null) {
             let name_with_type = tag_display_name_with_type(tag, names, metadata);
             let name_with_type_key = runtime_urltest.strip_dynamic_server_telemetry(name_with_type);
             seen_type_counts[name_with_type_key] = (seen_type_counts[name_with_type_key] || 0) + 1;
@@ -685,7 +679,7 @@ function urltest_matching_candidate_outbounds(urltest_candidate_tags, names, cou
             is_first_pref_type = (p_count == 1);
         }
 
-        let base_matches = tag_name_filter_matches(tag, names, name_filter, regex_set, metadata, name_with_type_indexed, prefixed_with_type_indexed, is_first_type, is_first_pref_type) ||
+        let base_matches = tag_name_filter_matches(tag, names, matches_name, regex_set, metadata, name_with_type_indexed, prefixed_with_type_indexed, is_first_type, is_first_pref_type) ||
             tag_country_filter_matches(tag, countries, country_filter);
         let matches = additional_set[tag] || base_matches;
         if (proxy_parameters_enabled && proxy_parameters_operator == "or") {
@@ -896,7 +890,7 @@ function filter_tags_by_group_spec(candidate_tags, spec, state) {
     let countries = country_metadata_for_method(as_string(spec.country_mode || "flag_emoji"), state || {});
 
     let inc_countries = runtime_urltest.normalized_country_list(spec.include_countries);
-    let inc_names = array_or_empty(spec.include_outbounds);
+    let inc_names = runtime_urltest.prepare_name_filter(spec.include_outbounds);
     let inc_regex = array_or_empty(spec.include_regex);
     let inc_regex_set = regex_match_set(all_tags, names, inc_regex);
     let inc_params = spec.include_proxy_parameters == true && (
@@ -907,7 +901,7 @@ function filter_tags_by_group_spec(candidate_tags, spec, state) {
     );
 
     let has_inc_country = length(inc_countries) > 0;
-    let has_inc_name_regex = length(inc_names) > 0 || length(inc_regex) > 0;
+    let has_inc_name_regex = inc_names != null || length(inc_regex) > 0;
     let has_inc_base = has_inc_country || has_inc_name_regex;
     let any_inc_category = has_inc_base || inc_params;
 
@@ -922,7 +916,7 @@ function filter_tags_by_group_spec(candidate_tags, spec, state) {
 
     let exc_prefixes = array_or_empty(spec.exclude_prefixes);
     let exc_countries = runtime_urltest.normalized_country_list(spec.exclude_countries);
-    let exc_names = array_or_empty(spec.exclude_outbounds);
+    let exc_names = runtime_urltest.prepare_name_filter(spec.exclude_outbounds);
     let exc_regex = array_or_empty(spec.exclude_regex);
     let exc_regex_set = regex_match_set(all_tags, names, exc_regex);
     let exc_params = spec.exclude_proxy_parameters == true && (
@@ -936,8 +930,8 @@ function filter_tags_by_group_spec(candidate_tags, spec, state) {
     let seen_type_counts = {};
     let seen_prefixed_type_counts = {};
     let intersect_country_and_name = false;
-    let has_inc_names_only = length(inc_names) > 0;
-    let need_indexed_type_names = has_inc_names_only || length(exc_names) > 0;
+    let has_inc_names_only = inc_names != null;
+    let need_indexed_type_names = has_inc_names_only || exc_names != null;
     if (has_inc_country && has_inc_name_regex) {
         let pre_type_counts = {};
         let pre_prefixed_counts = {};
@@ -1011,7 +1005,7 @@ function filter_tags_by_group_spec(candidate_tags, spec, state) {
                 is_excluded = true;
             if (!is_excluded && length(exc_countries) > 0 && tag_country_filter_matches(t, countries, exc_countries))
                 is_excluded = true;
-            if (!is_excluded && (length(exc_names) > 0 || length(exc_regex) > 0) &&
+            if (!is_excluded && (exc_names != null || length(exc_regex) > 0) &&
                 tag_name_filter_matches(t, names, exc_names, exc_regex_set, metadata, name_with_type_indexed, prefixed_with_type_indexed, is_first_type, is_first_pref_type))
                 is_excluded = true;
             if (!is_excluded && exc_params && proxy_parameter_filter_matches_any(
