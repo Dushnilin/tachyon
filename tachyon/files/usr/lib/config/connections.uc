@@ -250,23 +250,30 @@ function child_item_sort(left, right) {
     return 0;
 }
 
-function child_items(parent, type_name) {
-    let result = [];
-    for (let child in object_or_empty(object_or_empty(get_item_sections())[type_name]).list || [])
-        if (option(child, "section", "") == section_name(parent))
-            push(result, child);
-    sort(result, child_item_sort);
-    return result;
+function child_items_by_owner(type_name, owner_key, owner_value) {
+    let items = object_or_empty(get_item_sections())[type_name];
+    if (items == null)
+        return [];
+
+    // Build each owner index only when that lookup is first used.
+    let by_owner = (items.by_owner ??= {});
+    let owners = by_owner[owner_key];
+    if (owners == null) {
+        owners = by_owner[owner_key] = {};
+        for (let child in items.list || []) {
+            let key = sprintf("%J", option(child, owner_key, ""));
+            push(owners[key] ??= [], child);
+        }
+        for (let children in values(owners))
+            if (length(children) > 1)
+                sort(children, child_item_sort);
+    }
+    // Some callers apply a different sort to the returned list.
+    return slice(owners[sprintf("%J", as_string(owner_value))] || []);
 }
 
-function child_items_by_owner(type_name, owner_key, owner_value) {
-    owner_value = as_string(owner_value);
-    let result = [];
-    for (let child in object_or_empty(object_or_empty(get_item_sections())[type_name]).list || [])
-        if (option(child, owner_key, "") == owner_value)
-            push(result, child);
-    sort(result, child_item_sort);
-    return result;
+function child_items(parent, type_name) {
+    return child_items_by_owner(type_name, "section", section_name(parent));
 }
 
 function child_item_by_value(parent, type_name, value_key, value) {

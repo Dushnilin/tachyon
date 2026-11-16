@@ -60,6 +60,45 @@ let index = connections.item_index_from_cursor(cursor, "tachyon");
 assert(index.subscription_url.by_name.sub1.url == "https://example.com/sub.txt", "parse subscription URL");
 assert(index.urltest.by_name.group1.ports[0] == "80", "parse urltest group ports");
 
+// Exercise owner lookups through the fixture and cursor indexes.
+let a = { ".name": "a" };
+let b = { ".name": "b" };
+let children = [
+    { ".name": "missing", section: "a" },
+    { ".name": "second", section: "a", order: "5" },
+    { ".name": "first", section: "a", order: "1" },
+    { ".name": "tied", section: "a", order: "5" },
+    { ".name": "unowned" }
+];
+let levels = [
+    { ".name": "z", group: "pg", order: "1" },
+    { ".name": "y", group: "pg", order: "1" }
+];
+connections.set_item_sections_from_data({ urltest: children, priority_level: levels });
+let expected = slice(children, 0, 4);
+sort(expected, (left, right) => int(left.order || "99") - int(right.order || "99"));
+assert(join(",", connections.urltests(a)) == join(",", map(expected, (child) => child[".name"])),
+    "numeric, tied and missing order");
+assert(join(",", connections.urltests({})) == "unowned", "empty owner");
+assert(length(connections.urltests(b)) == 0, "owner without children");
+assert(join(",", connections.priority_levels("pg")) == "y,z", "priority tie sorts by name");
+
+children[1].section = "b";
+children[2].order = "9";
+splice(children, 0, 1);
+push(children, { ".name": "added", section: "a", order: "0" });
+connections.set_item_sections_from_cursor({
+    foreach: function(config, type_name, callback) {
+        if (type_name == "urltest")
+            for (let child in children)
+                callback(child);
+    }
+}, "tachyon");
+assert(join(",", connections.urltests(a)) == "added,tied,first", "index rebuild after edit, add and delete");
+assert(join(",", connections.urltests(b)) == "second", "index rebuild after changing owner");
+connections.set_item_sections(null);
+assert(length(connections.urltests(a)) == 0, "null invalidates cursor owner lookups");
+
 // geoip_country_list and geoip_country_mode tests
 let geo_res = connections.geoip_country_list({ geoip_country: [ "ru", "de", "ru" ] });
 assert(geo_res[0] == "ru" && geo_res[1] == "de" && length(geo_res) == 2, "geoip list de-duplicate");
