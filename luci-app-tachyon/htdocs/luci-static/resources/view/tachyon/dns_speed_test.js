@@ -497,17 +497,45 @@ function createController() {
       const alwaysEnabled = Boolean(opts && opts.alwaysEnabled);
       // LuCI registers the lists while the form is still detached. Replace a
       // rerender of the same field, but keep the other off-document lists.
-      listEntries = listEntries.filter(
-        (entry) =>
-          entry.node &&
-          entry.node !== node &&
-          (!node.id || entry.node.id !== node.id),
-      );
-      listEntries.push({ node, alwaysEnabled });
+      const keptEntries = [];
+      for (const entry of listEntries) {
+        if (!entry.node) {
+          entry.cleanup?.();
+          continue;
+        }
+        if (entry.node.isConnected) entry.wasConnected = true;
+        const staleDetached = entry.wasConnected && !entry.node.isConnected;
+        const isReplaced =
+          entry.node === node || (node.id && entry.node.id === node.id);
+        if (staleDetached || isReplaced) {
+          entry.cleanup?.();
+        } else {
+          keptEntries.push(entry);
+        }
+      }
+      listEntries = keptEntries;
       node.classList.add("tachyon-dns-speed-list");
-      node.addEventListener("cbi-dynlist-change", updateRows);
-      new MutationObserver(() => updateRows()).observe(node, {
+      const onChange = () => updateRows();
+      node.addEventListener("cbi-dynlist-change", onChange);
+      const observer =
+        typeof MutationObserver === "function"
+          ? new MutationObserver(() => updateRows())
+          : null;
+      observer?.observe(node, {
         childList: true,
+      });
+      listEntries.push({
+        node,
+        alwaysEnabled,
+        wasConnected: Boolean(node.isConnected),
+        cleanup: () => {
+          if (typeof node.removeEventListener === "function") {
+            node.removeEventListener("cbi-dynlist-change", onChange);
+          }
+          if (observer && typeof observer.disconnect === "function") {
+            observer.disconnect();
+          }
+        },
       });
       updateControls();
       updateRows();

@@ -547,6 +547,7 @@ export namespace Tachyon {
     | 'trusttunnel'
     | 'openconnect'
     | 'tewfai'
+    | 'csqtt'
     | 'desync'
     | 'openvpn'
     | 'dns'
@@ -619,6 +620,13 @@ export namespace Tachyon {
     warp_flow_community_lists?: string[];
     warp_flow_remote_domain_list?: string[];
     warp_flow_qwdtt_mode?: string;
+    wdtt_native?: '0' | '1';
+    peer?: string;
+    qwdtt_mode?: string;
+    csqtt_server?: string;
+    csqtt_server_port?: string;
+    csqtt_password?: string;
+    csqtt_uri?: string;
 
     olcrtc_provider?: string;
     olcrtc_transport?: string;

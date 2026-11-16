@@ -30,6 +30,7 @@ const TMP_RULESET_FOLDER = getenv("TMP_RULESET_FOLDER") || TMP_SING_BOX_FOLDER +
 const TMP_SUBSCRIPTION_FOLDER = getenv("TMP_SUBSCRIPTION_FOLDER") || TMP_SING_BOX_FOLDER + "/subscriptions";
 const RUNTIME_STATE_DIR = getenv("TACHYON_RUNTIME_STATE_DIR") || "/var/run/tachyon";
 const LIST_UPDATE_STATE_FILE = getenv("TACHYON_LIST_UPDATE_STATE_FILE") || RUNTIME_STATE_DIR + "/list-update.timestamp";
+const LIST_UPDATE_BACKOFF_FILE = getenv("TACHYON_LIST_UPDATE_BACKOFF_FILE") || RUNTIME_STATE_DIR + "/list-update.backoff";
 const LIST_UPDATE_PID_FILE = getenv("TACHYON_LIST_UPDATE_PID_FILE") || "/var/run/tachyon_list_update.pid";
 const LIST_UPDATE_STATUS_FILE = getenv("TACHYON_LIST_UPDATE_STATUS_FILE") || RUNTIME_STATE_DIR + "/list-update.status";
 const SUBSCRIPTION_UPDATE_STATE_DIR = getenv("TACHYON_SUBSCRIPTION_UPDATE_STATE_DIR") || RUNTIME_STATE_DIR + "/subscription-update";
@@ -636,7 +637,12 @@ function settings_update_interval(settings) {
     if (!bool_option(settings, "list_update_enabled", true))
         return "";
 
-    let value = option(settings, "update_interval", "1d");
+    if (trim(as_string(option(settings, "list_update_interval", ""))) == "0")
+        return "";
+
+    let value = trim(option(settings, "update_interval", "1d"));
+    if (value == "0")
+        return "";
     return value != "" ? value : "1d";
 }
 
@@ -1499,6 +1505,29 @@ function subscription_job_output_path_from_state(path) {
     return path + ".out";
 }
 
+function job_dir_old_files(dir) {
+    let entries = fs.lsdir(dir);
+    if (type(entries) != "array")
+        return [];
+    let out = [];
+    let now = time();
+    for (let name in entries) {
+        if (name == "." || name == "..")
+            continue;
+        let full = dir + "/" + name;
+        let st = fs.stat(full);
+        if (st != null && st.type == "file")
+            push(out, { name: name, path: full, age: now - int(st.mtime || 0) });
+    }
+    return out;
+}
+
+function filename_ends_with(name, suffix) {
+    let nlen = length(name);
+    let slen = length(suffix);
+    return nlen >= slen && substr(name, nlen - slen) == suffix;
+}
+
 function remove_subscription_job_state(path) {
     remove_file(path);
     remove_file(as_string(path) + ".pid");
@@ -1514,27 +1543,15 @@ function subscription_job_running_is(path, expected) {
 function subscription_cleanup_jobs() {
     ensure_dir(SUBSCRIPTION_JOB_DIR);
 
-    command_success_from_args([
-        "find",
-        SUBSCRIPTION_JOB_DIR,
-        "-type", "f",
-        "-name", "*.out",
-        "-mmin", "+" + as_string(SUBSCRIPTION_JOB_ORPHAN_OUTPUT_TTL_MINUTES),
-        "-delete"
-    ]);
-
-    let old = command_output_from_args([
-        "find",
-        SUBSCRIPTION_JOB_DIR,
-        "-type", "f",
-        "-name", "*.json",
-        "-mmin", "+" + as_string(SUBSCRIPTION_JOB_FINISHED_TTL_MINUTES)
-    ]);
-
-    for (let path in split(old, "\n")) {
-        path = trim(as_string(path));
-        if (path != "" && subscription_job_running_is(path, false))
-            remove_subscription_job_state(path);
+    let orphan_ttl = int(SUBSCRIPTION_JOB_ORPHAN_OUTPUT_TTL_MINUTES) * 60;
+    let finished_ttl = int(SUBSCRIPTION_JOB_FINISHED_TTL_MINUTES) * 60;
+    for (let entry in job_dir_old_files(SUBSCRIPTION_JOB_DIR)) {
+        if (filename_ends_with(entry.name, ".out") && entry.age >= orphan_ttl) {
+            remove_file(entry.path);
+        } else if (filename_ends_with(entry.name, ".json") && entry.age >= finished_ttl) {
+            if (subscription_job_running_is(entry.path, false))
+                remove_subscription_job_state(entry.path);
+        }
     }
 }
 
@@ -1952,10 +1969,15 @@ function component_job_output_path_from_state(path) {
 
 function remove_component_job_state(path) {
     let output_path = component_job_output_path_from_state(path);
+    let stem = as_string(path);
+    if (length(stem) >= 5 && substr(stem, length(stem) - 5) == ".json")
+        stem = substr(stem, 0, length(stem) - 5);
     remove_file(path);
     remove_file(as_string(path) + ".pid");
     remove_file(output_path);
+    remove_file(output_path + ".stderr");
     remove_file(output_path + ".json");
+    remove_file(stem + ".log");
 }
 
 function component_job_running_is(path, expected) {
@@ -2047,59 +2069,25 @@ function component_cleanup_jobs() {
         }
     }
 
-    command_success_from_args([
-        "find",
-        COMPONENT_JOB_DIR,
-        "-type", "f",
-        "-name", "*.out",
-        "-mmin", "+" + as_string(COMPONENT_JOB_ORPHAN_OUTPUT_TTL_MINUTES),
-        "-delete"
-    ]);
-    command_success_from_args([
-        "find",
-        COMPONENT_JOB_DIR,
-        "-type", "f",
-        "-name", "*.out.stderr",
-        "-mmin", "+" + as_string(COMPONENT_JOB_ORPHAN_OUTPUT_TTL_MINUTES),
-        "-delete"
-    ]);
-    command_success_from_args([
-        "find",
-        COMPONENT_JOB_DIR,
-        "-type", "f",
-        "-name", "*.log",
-        "-mmin", "+" + as_string(COMPONENT_JOB_ORPHAN_OUTPUT_TTL_MINUTES),
-        "-delete"
-    ]);
-    command_success_from_args([
-        "find",
-        COMPONENT_JOB_DIR,
-        "-type", "f",
-        "-name", "*.out.json",
-        "-mmin", "+" + as_string(COMPONENT_JOB_ORPHAN_OUTPUT_TTL_MINUTES),
-        "-delete"
-    ]);
-    command_success_from_args([
-        "find",
-        COMPONENT_JOB_DIR,
-        "-type", "f",
-        "-name", "*.json.*",
-        "-mmin", "+10",
-        "-delete"
-    ]);
-
-    let old = command_output_from_args([
-        "find",
-        COMPONENT_JOB_DIR,
-        "-type", "f",
-        "-name", "*.json",
-        "-mmin", "+" + as_string(COMPONENT_JOB_FINISHED_TTL_MINUTES)
-    ]);
-
-    for (let path in split(old, "\n")) {
-        path = trim(as_string(path));
-        if (path != "" && component_job_running_is(path, false))
-            remove_component_job_state(path);
+    let orphan_ttl = int(COMPONENT_JOB_ORPHAN_OUTPUT_TTL_MINUTES) * 60;
+    let finished_ttl = int(COMPONENT_JOB_FINISHED_TTL_MINUTES) * 60;
+    let orphan_globs = [ "*.out", "*.out.stderr", "*.log", "*.out.json" ];
+    for (let entry in job_dir_old_files(COMPONENT_JOB_DIR)) {
+        let is_orphan_ext = false;
+        for (let pat in orphan_globs) {
+            if (filename_ends_with(entry.name, substr(pat, 1))) {
+                is_orphan_ext = true;
+                break;
+            }
+        }
+        if (is_orphan_ext && entry.age >= orphan_ttl) {
+            remove_file(entry.path);
+        } else if (index(entry.name, ".json.") >= 0 && entry.age >= 600) {
+            remove_file(entry.path);
+        } else if (filename_ends_with(entry.name, ".json") && entry.age >= finished_ttl) {
+            if (component_job_running_is(entry.path, false))
+                remove_component_job_state(entry.path);
+        }
     }
 }
 
@@ -2742,19 +2730,117 @@ function service_proxy_address(settings, purpose) {
         SB_SERVICE_MIXED_INBOUND_ADDRESS + ":" + service_proxy_port_for_purpose(purpose) : "";
 }
 
+let _mirror_fail_counts = {};
+let _preferred_mirror_host = "";
+let _batch_network_fail_streak = 0;
+let _batch_download_aborted = false;
+let _download_batch_had_network_failures = false;
+
+function reset_download_batch_state() {
+    _mirror_fail_counts = {};
+    _preferred_mirror_host = "";
+    _batch_network_fail_streak = 0;
+    _batch_download_aborted = false;
+    _download_batch_had_network_failures = false;
+}
+
+function list_update_backoff_seconds(streak) {
+    let s = int(streak || 1);
+    if (s < 1) s = 1;
+    let shift = s - 1;
+    if (shift > 4) shift = 4;
+    let delay = 3600 * (1 << shift);
+    return delay > 86400 ? 86400 : delay;
+}
+
+function read_list_update_backoff() {
+    let raw = trim(as_string(fs.readfile(LIST_UPDATE_BACKOFF_FILE) || ""));
+    if (raw == "")
+        return null;
+    let parts = split(raw, "\t");
+    let ts = int(parts[0] || "0");
+    let streak = int(parts[1] || "1");
+    if (ts <= 0)
+        return null;
+    if (streak < 1)
+        streak = 1;
+    return { ts: ts, streak: streak, reason: as_string(parts[2] || "") };
+}
+
+function write_list_update_backoff(now, reason) {
+    ensure_dir(RUNTIME_STATE_DIR);
+    let prev = read_list_update_backoff();
+    let streak = prev ? (prev.streak + 1) : 1;
+    write_file(LIST_UPDATE_BACKOFF_FILE, as_string(now) + "\t" + as_string(streak) + "\t" + as_string(reason || "network") + "\n");
+    return streak;
+}
+
+function clear_list_update_backoff() {
+    remove_file(LIST_UPDATE_BACKOFF_FILE);
+}
+
+function list_update_in_backoff(now) {
+    let info = read_list_update_backoff();
+    if (!info)
+        return false;
+    let wait_sec = list_update_backoff_seconds(info.streak);
+    let elapsed = int(now) - info.ts;
+    return elapsed >= 0 && elapsed < wait_sec;
+}
+
 function download_to_file(url, filepath, proxy_address, allow_empty) {
     let core_url_mod = core_url_module_or_null();
-    let candidates = core_url_mod && type(core_url_mod.download_candidates) == "function" ? core_url_mod.download_candidates(url) : [ url ];
+    let raw_candidates = core_url_mod && type(core_url_mod.download_candidates) == "function" ? core_url_mod.download_candidates(url) : [ url ];
     let existing_stat = fs.stat(filepath);
     // mktemp creates an empty placeholder, not a usable download fallback.
     let had_existing = existing_stat != null && int(existing_stat.size || 0) > 0;
-    let existing_backup = had_existing ? fs.readfile(filepath) : null;
+    let backup_path = as_string(filepath) + ".dlbak";
+    remove_file(backup_path);
+    if (had_existing && !fs.rename(filepath, backup_path))
+        had_existing = false;
+
+    function finish_download_ok() {
+        remove_file(backup_path);
+        return true;
+    }
+
+    if (_batch_download_aborted) {
+        if (had_existing && fs.rename(backup_path, filepath))
+            return true;
+        remove_file(backup_path);
+        remove_file(filepath);
+        return false;
+    }
+
+    function candidate_host(candidate_url) {
+        if (core_url_mod && type(core_url_mod.host) == "function")
+            return lc(as_string(core_url_mod.host(candidate_url)));
+        return "";
+    }
+
+    let candidates = [];
+    if (length(raw_candidates) > 0)
+        push(candidates, raw_candidates[0]);
+    if (_preferred_mirror_host != "" && length(raw_candidates) > 1) {
+        for (let i = 1; i < length(raw_candidates); i++) {
+            if (candidate_host(raw_candidates[i]) == _preferred_mirror_host)
+                push(candidates, raw_candidates[i]);
+        }
+        for (let i = 1; i < length(raw_candidates); i++) {
+            if (candidate_host(raw_candidates[i]) != _preferred_mirror_host)
+                push(candidates, raw_candidates[i]);
+        }
+    } else {
+        for (let i = 1; i < length(raw_candidates); i++)
+            push(candidates, raw_candidates[i]);
+    }
 
     // download_one: try url via the given proxy (or direct if proxy=="")
     function download_one(target_url, proxy_addr) {
         remove_file(filepath);
         if (command_exists("curl")) {
             let max_dns_tries = as_string(proxy_addr) == "" ? (1 + length(CURL_DOH_FALLBACK_URLS)) : 1;
+            let last_rc = 1;
             for (let dns_try = 0; dns_try < max_dns_tries; dns_try++) {
                 remove_file(filepath);
                 let curl_args = [ "curl", "--connect-timeout", "3", "-m", "10", "-y", "5", "-Y", "32768", "-fsSL" ];
@@ -2769,10 +2855,11 @@ function download_to_file(url, filepath, proxy_address, allow_empty) {
                 push(curl_args, target_url, "-o", filepath);
                 let cap = common.command_capture(command_from_args(curl_args));
                 let rc = cap == null ? 1 : int(cap.status);
+                last_rc = rc;
                 if (rc == 0 && (allow_empty ? file_exists_value(filepath) : file_nonempty(filepath))) {
                     if (active_doh != "")
                         _curl_working_doh_url = active_doh;
-                    return true;
+                    return { ok: true, rc: 0 };
                 }
                 // Retry via fallback DoH resolvers only when host resolution failed (exit 6)
                 // or when a previously cached DoH endpoint timed out before connecting.
@@ -2781,53 +2868,90 @@ function download_to_file(url, filepath, proxy_address, allow_empty) {
                 if (active_doh != "" && _curl_working_doh_url == active_doh)
                     _curl_working_doh_url = "";
             }
-            return false;
+            return { ok: false, rc: last_rc };
         } else {
             let command = command_from_args([ "wget", "-q", "-T", "15", "-O", filepath, target_url ]);
             if (as_string(proxy_addr) != "")
                 command = "http_proxy=" + shell_quote("http://" + as_string(proxy_addr)) +
                     " https_proxy=" + shell_quote("http://" + as_string(proxy_addr)) + " " + command;
-            return command_success(command) && (allow_empty ? file_exists_value(filepath) : file_nonempty(filepath));
+            let wok = command_success(command) && (allow_empty ? file_exists_value(filepath) : file_nonempty(filepath));
+            return { ok: wok, rc: wok ? 0 : 1 };
         }
     }
 
+    let saw_http_only = false;
+
     // 1. Through the configured proxy section first if available
     if (as_string(proxy_address) != "") {
-        if (download_one(url, proxy_address)) {
+        let pres = download_one(url, proxy_address);
+        if (pres.ok) {
+            _batch_network_fail_streak = 0;
             log_message("Successfully downloaded " + as_string(url) + " via proxy section", "info");
-            return true;
+            return finish_download_ok();
         }
+        if (pres.rc == 22) saw_http_only = true;
         log_message("Download via proxy section failed for " + as_string(url) + "; retrying direct and mirrors", "warn");
     }
 
     for (let i = 0; i < length(candidates); i++) {
         let candidate = candidates[i];
-        let label = i == 0 ? "" : " via mirror " + candidate;
+        let is_mirror = (i > 0);
+        let chost = candidate_host(candidate);
+        if (is_mirror && chost != "" && (_mirror_fail_counts[chost] || 0) >= 2)
+            continue;
+
+        let label = !is_mirror ? "" : " via mirror " + candidate;
 
         // 2. Direct fallback
-        if (download_one(candidate, "")) {
+        let dres = download_one(candidate, "");
+        if (dres.ok) {
+            _batch_network_fail_streak = 0;
+            if (is_mirror && chost != "")
+                _preferred_mirror_host = chost;
             if (candidate != url)
                 log_message("Successfully downloaded " + as_string(url) + label, "info");
-            return true;
+            return finish_download_ok();
         }
+        if (dres.rc == 22) saw_http_only = true;
 
         // 3. Through the configured proxy section for mirrors if direct failed
-        if (as_string(proxy_address) != "" && i > 0) {
+        let mirror_transport_failed = (dres.rc != 22);
+        if (as_string(proxy_address) != "" && is_mirror) {
             log_message("Download direct failed for " + as_string(candidate) + "; retrying via proxy section", "warn");
-            if (download_one(candidate, proxy_address)) {
+            let mres = download_one(candidate, proxy_address);
+            if (mres.ok) {
+                _batch_network_fail_streak = 0;
+                if (chost != "")
+                    _preferred_mirror_host = chost;
                 log_message("Successfully downloaded " + as_string(url) + label + " (via proxy section)", "info");
-                return true;
+                return finish_download_ok();
+            }
+            if (mres.rc == 22) {
+                saw_http_only = true;
+                mirror_transport_failed = false;
             }
             log_message("Download via proxy section also failed for " + as_string(candidate), "warn");
+        }
+
+        if (is_mirror && chost != "" && mirror_transport_failed)
+            _mirror_fail_counts[chost] = (_mirror_fail_counts[chost] || 0) + 1;
+    }
+
+    if (!saw_http_only) {
+        _batch_network_fail_streak++;
+        _download_batch_had_network_failures = true;
+        if (_batch_network_fail_streak >= 3) {
+            _batch_download_aborted = true;
+            log_message("Multiple consecutive list downloads failed across origin and mirrors; aborting remaining remote fetches and using cached lists", "warn");
         }
     }
 
     remove_file(filepath);
-    if (had_existing && existing_backup != null) {
-        write_file(filepath, existing_backup);
+    if (had_existing && fs.rename(backup_path, filepath)) {
         log_message("Failed to download " + as_string(url) + " (tried direct and mirrors); keeping existing cached file on disk", "warn");
         return true;
     }
+    remove_file(backup_path);
 
     return false;
 }
@@ -4320,6 +4444,7 @@ function list_update() {
     if (!list_update_pid_begin())
         exit(0);
 
+    reset_download_batch_state();
     update_list_status(true, null, "starting", "Starting lists update");
 
     let settings = uci_settings();
@@ -4327,6 +4452,7 @@ function list_update() {
     list_update_local_rulesets_fp_before = local_rulesets_fingerprint(sing_box_config_path_initial);
     let proxy_address = service_proxy_address(settings, "lists");
     if (!dns_probe_passed(proxy_address)) {
+        write_list_update_backoff(now_seconds(), "dns_probe_failed");
         update_list_status(false, false, "error", "DNS probe failed");
         list_update_pid_end();
         exit(0);
@@ -4451,10 +4577,18 @@ function list_update() {
     if (ok) {
         write_list_update_timestamp(now_seconds());
         try { require("service.config_plan").refresh_conflict_diagnostics(); } catch (e) {}
-        log_message("Lists update completed successfully", "info");
-        update_list_status(false, true, "done", "Lists and rule sets successfully updated");
+        if (_download_batch_had_network_failures) {
+            write_list_update_backoff(now_seconds(), "remote_unreachable");
+            log_message("Lists update finished using cached lists after remote download failures", "warn");
+            update_list_status(false, true, "cached", "Remote list sources unreachable; using cached lists");
+        } else {
+            clear_list_update_backoff();
+            log_message("Lists update completed successfully", "info");
+            update_list_status(false, true, "done", "Lists and rule sets successfully updated");
+        }
     }
     else {
+        write_list_update_backoff(now_seconds(), "failed");
         log_message("Lists update failed", "info");
         update_list_status(false, false, "failed", "Lists update failed");
     }
@@ -4516,6 +4650,12 @@ function list_update_status() {
 }
 
 function list_update_if_due() {
+    let now = now_seconds();
+    if (list_update_in_backoff(now)) {
+        log_message("Skipping scheduled list update during failure backoff; cached lists active", "debug");
+        exit(0);
+    }
+
     let interval = settings_update_interval(uci_settings());
     if (interval == "")
         exit(1);
@@ -4526,7 +4666,7 @@ function list_update_if_due() {
         exit(1);
     }
 
-    let status = update_due_status(now_seconds(), file_first_line_value(LIST_UPDATE_STATE_FILE), seconds);
+    let status = update_due_status(now, file_first_line_value(LIST_UPDATE_STATE_FILE), seconds);
     if (status == 0)
         list_update();
     if (status == 1)

@@ -316,9 +316,9 @@ function compatible_subscription_outbounds(outbounds, section_name) {
 function sanitize_wdtt_outbound(obj) {
     if (type(obj) != "object" || lc(as_string(obj.type || "")) != "wdtt")
         return obj;
-    // tachyon-core v0.5.2 validate::WDTT_OUT_FIELDS omits srtp_mode and vk_token.
+    // tachyon-core <= 0.5.7 validate::WDTT_OUT_FIELDS omits srtp_mode and vk_token.
     let ver = trim(as_string(variant_state.read_version_state() || ""));
-    if (ver == "" || !core_profile.reaches_triple(ver, "0.5.3")) {
+    if (ver == "" || !core_profile.reaches_triple(ver, "0.5.8")) {
         delete obj.srtp_mode;
         delete obj.vk_token;
     }
@@ -2377,12 +2377,39 @@ function find_existing_desync_outbound(existing_list, sig) {
     return null;
 }
 
+function outbound_detour_tag_for_section(section) {
+    if (!bool_option(section, "outbound_detour_enabled", false))
+        return "";
+
+    let detour_section = option(section, "outbound_detour_section", "");
+    if (detour_section == "")
+        return "";
+    // A deferred or quarantined detour target contributes no outbound at all;
+    // emitting its tag anyway would leave a dangling detour and take the whole
+    // config down at sing-box check time.
+    if (ctx.deferred_sections && ctx.deferred_sections[detour_section])
+        return "";
+    if (ctx.routes && type(ctx.routes.enabled_sections) == "function") {
+        for (let s in ctx.routes.enabled_sections()) {
+            if (as_string(s[".name"]) == detour_section && option(s, "action", "") == "group")
+                return ctx.routes.urltest_outbound_tag(detour_section, "urltest");
+        }
+    }
+    return outbound_tag(detour_section);
+}
+
 function prepare_json_connection_outbounds(section, taken, existing_outbounds) {
     let items = connections.outbound_jsons(section);
     let prepared = [];
     let outbounds = [];
     let tag_map = {};
     let legacy_tags = [];
+    let desync_by_sig = {};
+    for (let existing in array_or_empty(existing_outbounds)) {
+        let sig = desync_outbound_signature(existing);
+        if (sig != "" && desync_by_sig[sig] == null)
+            desync_by_sig[sig] = existing;
+    }
 
     for (let i = 0; i < length(items); i++) {
         let outbound = parse_outbound_json(items[i]);
@@ -2395,7 +2422,7 @@ function prepare_json_connection_outbounds(section, taken, existing_outbounds) {
         ensure_explicit_outbound_supported(outbound, "JSON outbound", display_name != "" ? display_name : legacy_tag);
 
         let desync_sig = desync_outbound_signature(outbound);
-        let existing_desync = find_existing_desync_outbound(existing_outbounds, desync_sig) || find_existing_desync_outbound(outbounds, desync_sig);
+        let existing_desync = desync_sig != "" ? desync_by_sig[desync_sig] : null;
         let src_id = (connections && connections.source_id_for_manual_item)
             ? connections.source_id_for_manual_item(section, items[i])
             : "";
@@ -2423,14 +2450,32 @@ function prepare_json_connection_outbounds(section, taken, existing_outbounds) {
         outbound.tag = tag_name;
         if (src_id != "" && src_id != "manual" && connections && connections.outbound_source_section) {
             let json_src_obj = connections.outbound_source_section(src_id);
-            let json_bind_iface = json_src_obj != null ? trim(option(json_src_obj, "bind_interface", "")) : "";
-            if (json_bind_iface != "" && lc(as_string(outbound.type || "")) != "desync" &&
-                !subscription_group_outbound(outbound) &&
+            if (json_src_obj != null) {
+                let json_detour = outbound_detour_tag_for_section(json_src_obj);
+                if (json_detour != "" && as_string(outbound.detour || "") == "") {
+                    outbound.detour = json_detour;
+                    delete outbound.bind_interface;
+                }
+                let json_bind_iface = trim(option(json_src_obj, "bind_interface", ""));
+                if (json_bind_iface != "" && lc(as_string(outbound.type || "")) != "desync" &&
+                    !subscription_group_outbound(outbound) &&
+                    as_string(outbound.detour || "") == "" && as_string(outbound.bind_interface || "") == "") {
+                    outbound.bind_interface = json_bind_iface;
+                }
+            }
+            let out_type = lc(as_string(outbound.type || ""));
+            if (out_type != "" && out_type != "selector" && out_type != "urltest" &&
+                out_type != "dns" && out_type != "block" && out_type != "direct" &&
+                out_type != "desync" && !subscription_group_outbound(outbound) &&
                 as_string(outbound.detour || "") == "" && as_string(outbound.bind_interface || "") == "") {
-                outbound.bind_interface = json_bind_iface;
+                let sec_detour = outbound_detour_tag_for_section(section);
+                if (sec_detour != "")
+                    outbound.detour = sec_detour;
             }
         }
         push(outbounds, outbound);
+        if (desync_sig != "" && desync_by_sig[desync_sig] == null)
+            desync_by_sig[desync_sig] = outbound;
         push(prepared, {
             outbound,
             displayName: display_name != "" ? display_name : "JSON outbound " + (i + 1),
@@ -2457,7 +2502,7 @@ function add_connection_json_outbounds(config, state, section, taken, selector_t
             else if (outbound.type == "tailscale")
                 add_imported_tailscale_endpoint(config, outbound);
             else
-                push(config.outbounds, outbound);
+                push(config.outbounds, lc(as_string(outbound.type || "")) == "wdtt" ? sanitize_wdtt_outbound(outbound) : outbound);
         }
         if (index(selector_tags, tag_name) < 0)
             push(selector_tags, tag_name);
@@ -2581,27 +2626,6 @@ function add_connection_inline_uci_outbound(config, state, section, taken, selec
     if (urltest_leaf_candidate_outbound(outbound))
         push(urltest_candidate_tags, tag_name);
     runtime_subscription.remember_outbound_metadata(state, tag_name, display_name, outbound);
-}
-
-function outbound_detour_tag_for_section(section) {
-    if (!bool_option(section, "outbound_detour_enabled", false))
-        return "";
-
-    let detour_section = option(section, "outbound_detour_section", "");
-    if (detour_section == "")
-        return "";
-    // A deferred or quarantined detour target contributes no outbound at all;
-    // emitting its tag anyway would leave a dangling detour and take the whole
-    // config down at sing-box check time.
-    if (ctx.deferred_sections && ctx.deferred_sections[detour_section])
-        return "";
-    if (ctx.routes && type(ctx.routes.enabled_sections) == "function") {
-        for (let s in ctx.routes.enabled_sections()) {
-            if (as_string(s[".name"]) == detour_section && option(s, "action", "") == "group")
-                return ctx.routes.urltest_outbound_tag(detour_section, "urltest");
-        }
-    }
-    return outbound_tag(detour_section);
 }
 
 function apply_section_detour_to_outbound_slice(items, start_index, detour_tag) {
@@ -3004,6 +3028,8 @@ function add_connection_dpi_sources(config, state, section, taken, selector_tags
             state.outboundMetadata.sources[tag_name] = src_id;
             state.outboundMetadata.source_ids[tag_name] = src_id;
         } else if (stype == "wdtt") {
+            if (connections && connections.is_native_wdtt_source && connections.is_native_wdtt_source(src))
+                continue;
             let idx = enabled_action_index(dpi_sections(), section, "wdtt");
             if (idx <= 0)
                 idx = 1;

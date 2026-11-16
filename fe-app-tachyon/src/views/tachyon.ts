@@ -1338,6 +1338,7 @@ const EntryPoint = {
             'masque',
             'tewfai',
             'csqtt',
+            'wdtt',
             'trusttunnel',
             'openconnect',
             'shadowtls',
@@ -1488,7 +1489,12 @@ const EntryPoint = {
                 Object.keys(sec).forEach((k) => {
                   if (
                     k.startsWith(`${sAct}_`) ||
-                    (sAct === 'warp' && k.startsWith('awg_'))
+                    (sAct === 'warp' && k.startsWith('awg_')) ||
+                    (sAct === 'wdtt' &&
+                      (k.startsWith('warp_flow_') ||
+                        k === 'peer' ||
+                        k === 'password' ||
+                        k === 'qwdtt_mode'))
                   ) {
                     if (
                       sec[k] !== undefined &&

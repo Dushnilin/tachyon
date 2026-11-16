@@ -247,20 +247,33 @@ function read_state() {
 }
 
 function write_state(state) {
+    let dir = common.parent_dir(STATE_FILE);
+    if (dir != "")
+        common.ensure_dir(dir);
+    let body = sprintf("%J", state);
+    if (fs.readfile(STATE_FILE) == body)
+        return;
     let tmp = STATE_FILE + ".tmp." + int(time());
-    if (!fs.writefile(tmp, sprintf("%J", state))) {
+    if (!fs.writefile(tmp, body)) {
+        try { fs.unlink(tmp); } catch (e) {}
         log_message("failed to write state file", "warn");
         return;
     }
-    command_status(command_from_args([ "mv", "-f", tmp, STATE_FILE ]) + " 2>/dev/null");
+    if (fs.rename(tmp, STATE_FILE) == null) {
+        try { fs.unlink(tmp); } catch (e) {}
+        log_message("failed to replace state file", "warn");
+    }
 }
 
-function device_active(ident) {
+function device_active(ident, active_set) {
     if (!ident || trim(as_string(ident)) == "")
         return false;
+    let key = lc(trim(as_string(ident)));
+    if (type(active_set) == "object")
+        return active_set[key] == true;
     for (let line in split(command_output_from_args([ "ip", "neigh", "show" ]), "\n")) {
         line = as_string(line);
-        if (index(lc(line), ident) < 0)
+        if (index(lc(line), key) < 0)
             continue;
         if (match(line, /(REACHABLE|STALE|DELAY|PROBE|PERMANENT)/) != null)
             return true;
@@ -270,7 +283,8 @@ function device_active(ident) {
 
 function send_notification(message) {
     let tcfg = object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
-    if (as_string(tcfg.enabled || "0") != "1" || !tcfg.bot_token || !tcfg.admin_ids)
+    if (as_string(tcfg.enabled || "0") != "1" || !tcfg.bot_token || !tcfg.admin_ids ||
+        as_string(tcfg.notify_parental || "1") == "0")
         return;
     system(common.background_command(TACHYON_BIN + " telegram send " + shell_quote(message)));
 }
@@ -502,6 +516,12 @@ function tick() {
         state = { day: today, devices: {}, guest_devices: {} };
     let devices = object_or_empty(state.devices);
     let guest_devices = object_or_empty(state.guest_devices);
+    let active_neighbors = all_active_neighbors();
+    let active_neighbor_set = {};
+    for (let neigh in active_neighbors) {
+        if (neigh.ip) active_neighbor_set[lc(neigh.ip)] = true;
+        if (neigh.mac) active_neighbor_set[lc(neigh.mac)] = true;
+    }
 
     // 1. Parental Control schedules
     for (let schedule in schedules) {
@@ -514,7 +534,7 @@ function tick() {
             if (was_blocked) {
                 if (minutes < schedule.minutes) {
                     // Quota was increased by administrator: unblock device!
-                    let is_active = device_active(ident);
+                    let is_active = device_active(ident, active_neighbor_set);
                     if (is_active)
                         minutes++;
                     let is_blocked = minutes >= schedule.minutes;
@@ -527,7 +547,7 @@ function tick() {
                 } else {
                     devices[ident] = { minutes, blocked: true };
                 }
-            } else if (device_active(ident)) {
+            } else if (device_active(ident, active_neighbor_set)) {
                 minutes++;
                 let is_blocked = minutes >= schedule.minutes;
                 devices[ident] = { minutes, blocked: is_blocked };
@@ -567,8 +587,7 @@ function tick() {
             for (let dev in gm_cfg.trusted_devices)
                 trusted_set[lc(trim(as_string(dev)))] = true;
 
-            let neighbors = all_active_neighbors();
-            for (let neigh in neighbors) {
+            for (let neigh in active_neighbors) {
                 let is_trusted = trusted_set[neigh.ip] || (neigh.mac != null && trusted_set[neigh.mac]);
                 if (!is_trusted) {
                     let ident = neigh.mac || neigh.ip;
@@ -581,7 +600,7 @@ function tick() {
                 if (dev == "") continue;
                 let ident = lc(dev);
                 let is_mac = match(ident, MAC_RE) != null;
-                push(target_guests, { ident, is_mac, active: device_active(ident) });
+                push(target_guests, { ident, is_mac, active: device_active(ident, active_neighbor_set) });
             }
         }
 

@@ -23,7 +23,7 @@ function save(path, item) {
     if (stage == "") return false;
     if (!common.write_file(stage, sprintf("%J", item)) ||
         !fs.chmod(stage, 0600) ||
-        !common.command_success_from_args([ "mv", "-f", stage, path ])) {
+        !fs.rename(stage, path)) {
         fs.unlink(stage);
         return false;
     }
@@ -105,6 +105,11 @@ function drain(token) {
             continue;
         }
         item.attempts = int(item.attempts || 0) + 1;
+        let err_code = int(result?.error_code || 0);
+        if (item.attempts >= 12 || err_code == 400 || err_code == 403 || err_code == 404) {
+            fs.unlink(path);
+            continue;
+        }
         let delay = min(900, 60 * (1 << min(item.attempts - 1, 4)));
         let retry_after = int(result?.parameters?.retry_after || 0);
         item.next_try = time() + max(delay, retry_after);

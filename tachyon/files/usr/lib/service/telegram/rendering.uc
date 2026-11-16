@@ -96,7 +96,32 @@ let setting_schema = {
         route_router_traffic_section: "route_router_traffic_section",
         shutdown_correctly: "shutdown_correctly",
         smart_detect: "smart_detect",
-        smart_detect_sections: "smart_detect_sections"
+        smart_detect_mode: "smart_detect_mode",
+        smart_detect_expand_to_root: "smart_detect_expand_to_root",
+        smart_detect_sections: "smart_detect_sections",
+        qos_priority_engine: "qos_priority_engine",
+        tcp_bbr: "tcp_bbr",
+        fakeip_enabled: "fakeip_enabled",
+        ipv6_leak_guard: "ipv6_leak_guard",
+        dns_intercept_all: "dns_intercept_all",
+        dns_local_cache: "dns_local_cache",
+        webrtc_leak_protect: "webrtc_leak_protect",
+        game_console_optimizer: "game_console_optimizer",
+        wifi_calling_direct: "wifi_calling_direct",
+        wan_failover_enabled: "wan_failover_enabled",
+        eco_mode: "eco_mode",
+        enable_watchdog: "enable_watchdog",
+        enable_ai_doctor: "enable_ai_doctor",
+        ai_proxy_health_enabled: "ai_proxy_health_enabled",
+        ai_dns_continuous_enabled: "ai_dns_continuous_enabled",
+        emergency_direct_bypass: "emergency_direct_bypass",
+        component_auto_update_enabled: "component_auto_update_enabled",
+        enable_yacd_wan_access: "enable_yacd_wan_access",
+        tun_gso: "tun_gso",
+        tun_endpoint_independent_nat: "tun_endpoint_independent_nat",
+        selector_auto_failover: "selector_auto_failover",
+        smart_queue: "smart_queue",
+        direct_bypass_enabled: "direct_bypass_enabled"
     },
     telegram: {
         enabled: "enabled",
@@ -104,6 +129,7 @@ let setting_schema = {
         bot_token: "bot_token",
         admin_ids: "admin_ids",
         poll_interval: "poll_interval",
+        bot_proxy_section: "bot_proxy_section",
         notify_crash: "notify_crash",
         notify_restart: "notify_restart",
         notify_server_switch: "notify_server_switch",
@@ -111,6 +137,12 @@ let setting_schema = {
         notify_cert: "notify_cert",
         notify_dns_leak: "notify_dns_leak",
         notify_auto_update: "notify_auto_update",
+        notify_smart_detect: "notify_smart_detect",
+        notify_failover: "notify_failover",
+        notify_wan: "notify_wan",
+        notify_update_available: "notify_update_available",
+        notify_parental: "notify_parental",
+        notify_route_alert: "notify_route_alert",
         daily_report_enabled: "daily_report_enabled",
         daily_report_hour: "daily_report_hour",
         quiet_hours_enabled: "quiet_hours_enabled",
@@ -236,6 +268,56 @@ function get_schema_label(stype, key, custom_t) {
     return t(key);
 }
 
+let NOTIFICATION_KEYS = [
+    "notify_smart_detect",
+    "notify_crash",
+    "notify_restart",
+    "notify_server_switch",
+    "notify_failover",
+    "notify_wan",
+    "notify_dns_leak",
+    "notify_subscription",
+    "notify_update_available",
+    "notify_auto_update",
+    "notify_parental",
+    "notify_cert",
+    "notify_route_alert"
+];
+
+let TOGGLE_FEATURE_SPEC = [
+    { key: "smart_detect", group: "core", reload: "none" },
+    { key: "smart_detect_expand_to_root", group: "core", reload: "none" },
+    { key: "qos_priority_engine", group: "core", reload: "firewall" },
+    { key: "tcp_bbr", group: "core", reload: "reload" },
+    { key: "eco_mode", group: "core", reload: "none" },
+    { key: "enable_yacd", group: "core", reload: "reload" },
+    { key: "enable_watchdog", group: "core", reload: "watchdog" },
+    { key: "wan_failover_enabled", group: "core", reload: "none" },
+    { key: "list_update_enabled", group: "core", reload: "reload" },
+    { key: "component_update_check_enabled", group: "core", reload: "reload" },
+    { key: "component_auto_update_enabled", group: "core", reload: "reload" },
+    { key: "enable_ai_doctor", group: "core", reload: "none" },
+    { key: "fakeip_enabled", group: "net", reload: "reload" },
+    { key: "block_doh", group: "net", reload: "reload" },
+    { key: "dns_intercept_all", group: "net", reload: "reload" },
+    { key: "dns_local_cache", group: "net", reload: "reload" },
+    { key: "dns_detour_enabled", group: "net", reload: "reload" },
+    { key: "ipv6_leak_guard", group: "net", reload: "reload" },
+    { key: "webrtc_leak_protect", group: "net", reload: "firewall" },
+    { key: "route_router_traffic", group: "net", reload: "reload" },
+    { key: "isolate_p2p", group: "net", reload: "reload" },
+    { key: "game_console_optimizer", group: "net", reload: "firewall" },
+    { key: "wifi_calling_direct", group: "net", reload: "firewall" },
+    { key: "direct_bypass_enabled", group: "net", reload: "reload" },
+    { key: "tun_gso", group: "net", reload: "reload" },
+    { key: "tun_endpoint_independent_nat", group: "net", reload: "reload" },
+    { key: "selector_auto_failover", group: "net", reload: "reload" },
+    { key: "smart_queue", group: "net", reload: "firewall" },
+    { key: "ai_proxy_health_enabled", group: "watchdog", reload: "none" },
+    { key: "ai_dns_continuous_enabled", group: "watchdog", reload: "none" },
+    { key: "emergency_direct_bypass", group: "watchdog", reload: "none" }
+];
+
 function is_boolean_key(key) {
     // disable_quic is a three-mode value (off/tunneled/all), not a flag: a
     // checkbox would render both new modes as "off" and a toggle would erase
@@ -244,14 +326,59 @@ function is_boolean_key(key) {
              "download_via_proxy_enabled", "show_dashboard_metadata", "prefix_nodes",
              "include_urltest_groups", "hide_urltest_group_outbounds", "hide_detour_outbounds",
              "dns_detour_enabled", "enable_output_network_interface", "enable_badwan_interface_monitoring",
-             "enable_yacd", "block_doh", "list_update_enabled", "component_update_check_enabled",
-             "download_lists_via_proxy", "download_components_via_proxy", "dont_touch_dhcp",
+             "enable_yacd", "enable_yacd_wan_access", "block_doh", "list_update_enabled", "component_update_check_enabled",
+             "component_auto_update_enabled", "download_lists_via_proxy", "download_components_via_proxy", "dont_touch_dhcp",
              "isolate_p2p", "exclude_ntp", "route_router_traffic", "shutdown_correctly", "smart_detect",
+             "smart_detect_expand_to_root", "qos_priority_engine", "tcp_bbr", "fakeip_enabled",
+             "ipv6_leak_guard", "dns_intercept_all", "dns_local_cache", "webrtc_leak_protect",
+             "game_console_optimizer", "wifi_calling_direct", "wan_failover_enabled", "eco_mode",
+             "enable_watchdog", "enable_ai_doctor", "ai_proxy_health_enabled", "ai_dns_continuous_enabled",
+             "emergency_direct_bypass", "tun_gso", "tun_endpoint_independent_nat",
+             "selector_auto_failover", "smart_queue", "direct_bypass_enabled", "notify",
              "notify_crash", "notify_restart", "notify_server_switch", "notify_subscription", "notify_cert", "notify_dns_leak",
-             "notify_auto_update",
+             "notify_auto_update", "notify_smart_detect", "notify_failover", "notify_wan",
+             "notify_update_available", "notify_parental", "notify_route_alert",
              "daily_report_enabled", "quiet_hours_enabled", "match_all"];
     for (let x in b) if (x == key) return true;
     return false;
+}
+
+function bool_default_for_key(stype, key) {
+    for (let nk in NOTIFICATION_KEYS) {
+        if (key == nk) return true;
+    }
+    if (stype == "settings") {
+        let def_true = [
+            "qos_priority_engine", "tcp_bbr", "fakeip_enabled", "ipv6_leak_guard",
+            "list_update_enabled", "component_update_check_enabled",
+            "smart_detect_expand_to_root", "enable_watchdog", "ai_proxy_health_enabled",
+            "ai_dns_continuous_enabled", "emergency_direct_bypass", "tun_auto_route",
+            "ai_reload_dedup_enabled", "ai_metrics_enabled", "ai_smart_cooldowns_enabled",
+            "ai_config_validation_enabled", "ai_graceful_degradation_enabled",
+            "ai_persistent_smart_detect", "ai_adaptive_intervals_enabled",
+            "ai_anomaly_detection_enabled", "enable_rag"
+        ];
+        for (let k in def_true) {
+            if (key == k) return true;
+        }
+    }
+    if (stype == "profile" && key == "enabled") return true;
+    if (stype == "schedule" && key == "enabled") return true;
+    return false;
+}
+
+function effective_bool_value(section_obj, stype, key) {
+    let raw = section_obj ? section_obj[key] : null;
+    if (raw == "1" || raw == "true") return true;
+    if (raw == "0" || raw == "false") return false;
+    return bool_default_for_key(stype, key);
+}
+
+function toggle_feature_reload_mode(key) {
+    for (let item in TOGGLE_FEATURE_SPEC) {
+        if (item.key == key) return item.reload;
+    }
+    return null;
 }
 
 function is_list_key(key) {
@@ -892,7 +1019,12 @@ return {
     format_bytes,
     setting_schema,
     get_schema_label,
+    NOTIFICATION_KEYS,
+    TOGGLE_FEATURE_SPEC,
     is_boolean_key,
+    bool_default_for_key,
+    effective_bool_value,
+    toggle_feature_reload_mode,
     is_list_key,
     safe_exec_patterns,
     parse_command_words,

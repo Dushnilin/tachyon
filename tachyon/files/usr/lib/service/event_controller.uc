@@ -415,14 +415,19 @@ function smart_detect_extract_domain(line) {
 const TRACE_HOST_TTL = 300;
 const TRACE_HOSTS_MAX = 256;
 let trace_hosts = {};
+let trace_hosts_last_prune = 0;
 
 function remember_trace_host(trace, host) {
     if (trace == null || host == null) return;
     let now = time();
     trace_hosts[trace] = { host: host, at: now };
-    if (length(keys(trace_hosts)) > TRACE_HOSTS_MAX) trace_hosts = {};
-    for (let key in keys(trace_hosts)) {
-        if (now - trace_hosts[key].at > TRACE_HOST_TTL) delete trace_hosts[key];
+    if (now - trace_hosts_last_prune >= 30 || length(trace_hosts) > TRACE_HOSTS_MAX) {
+        trace_hosts_last_prune = now;
+        for (let key in keys(trace_hosts)) {
+            if (now - trace_hosts[key].at > TRACE_HOST_TTL) delete trace_hosts[key];
+        }
+        if (length(trace_hosts) > TRACE_HOSTS_MAX)
+            trace_hosts = { [trace]: { host: host, at: now } };
     }
 }
 
@@ -440,17 +445,24 @@ function remember_trace_host(trace, host) {
 // The netlink/nlbwmon discrimination is preserved: misreading a netlink
 // warning as OOM would shrink GOMEMLIMIT for nothing.
 let plus_trace_hosts = {};
+let plus_trace_last_prune = 0;
 function classify_plus_log_line(line) {
     let trace = smart_detect.parse_trace(line);
     let candidate = smart_plus.log_candidate(line);
-    let text = lc(as_string(line));
-    let destination = match(text, /(outbound connection to|open connection to) ([a-z0-9.-]+):([0-9]+)/);
-    if (trace && destination) {
-        if (length(plus_trace_hosts) >= 256) plus_trace_hosts = {};
-        plus_trace_hosts[trace] = { domain: destination[2], port: destination[3], at: time() };
+    let now = time();
+    if (trace && index(line, "connection to ") >= 0) {
+        let text = lc(as_string(line));
+        let destination = match(text, /(outbound connection to|open connection to) ([a-z0-9.-]+):([0-9]+)/);
+        if (destination)
+            plus_trace_hosts[trace] = { domain: destination[2], port: destination[3], at: now };
     }
-    for (let key in keys(plus_trace_hosts))
-        if (time() - plus_trace_hosts[key].at > 300) delete plus_trace_hosts[key];
+    if (now - plus_trace_last_prune >= 30 || length(plus_trace_hosts) >= 256) {
+        plus_trace_last_prune = now;
+        for (let key in keys(plus_trace_hosts))
+            if (now - plus_trace_hosts[key].at > 300) delete plus_trace_hosts[key];
+        if (length(plus_trace_hosts) >= 256)
+            plus_trace_hosts = {};
+    }
     if (!candidate && trace && plus_trace_hosts[trace]) {
         let dest = plus_trace_hosts[trace];
         candidate = smart_plus.log_candidate(line, dest);
@@ -741,6 +753,7 @@ function controller(bus, opts) {
     }
 
     self.set_tick_context = function(ctx) { current_tick_ctx = ctx; };
+    self.get_tick_context = function() { return current_tick_ctx; };
     self.clear_tick_context = function() { current_tick_ctx = null; };
 
     // ── Probe: sing-box liveness ──────────────────────────────────────────────

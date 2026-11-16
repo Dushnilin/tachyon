@@ -62,6 +62,9 @@ let format_bytes = rendering.format_bytes;
 let escape_html = rendering.escape_html;
 let get_schema_label = rendering.get_schema_label;
 let is_boolean_key = rendering.is_boolean_key;
+let NOTIFICATION_KEYS = rendering.NOTIFICATION_KEYS;
+let effective_bool_value = rendering.effective_bool_value;
+let toggle_feature_reload_mode = rendering.toggle_feature_reload_mode;
 let is_list_key = rendering.is_list_key;
 let cidr_match_v4 = rendering.cidr_match_v4;
 let build_label = rendering.build_label;
@@ -89,6 +92,10 @@ let backup_extract_dir = rendering.backup_extract_dir;
 let config_sane_preview = rendering.config_sane_preview;
 
 let view_settings_menu = commands.view_settings_menu;
+let view_notifications = commands.view_notifications;
+let view_toggles = commands.view_toggles;
+let view_profiles = commands.view_profiles;
+let view_schedules = commands.view_schedules;
 let view_set_list = commands.view_set_list;
 let view_set_cat = commands.view_set_cat;
 let view_set_arr = commands.view_set_arr;
@@ -137,18 +144,139 @@ let view_qos = commands.view_qos;
 
 let t = i18n.bind("en");
 
-function handle_set_tog(token, chat_id, msg_id, stype, sname, key, page) {
+function refresh_uci() {
     let c = uci_core.cursor();
-    c.load(CONFIG_NAME);
-    let s = c.get_all(CONFIG_NAME, sname);
+    if (c) {
+        try { c.unload(CONFIG_NAME); } catch (e) {}
+        try { c.load(CONFIG_NAME); } catch (e) {}
+    }
+}
+
+function handle_set_tog(token, chat_id, msg_id, stype, sname, key, page) {
+    refresh_uci();
+    let s = uci_core.get_all(CONFIG_NAME, sname);
     if (!s) return;
-    let b = (s[key] == "1" || s[key] == "true");
-    c.set(CONFIG_NAME, sname, key, b ? "0" : "1");
-    c.commit(CONFIG_NAME);
+    let b = effective_bool_value(s, stype, key);
+    uci_core.set(CONFIG_NAME, sname, key, b ? "0" : "1");
+    uci_core.commit(CONFIG_NAME);
     if (key == "enabled") {
         command_status(command_from_args(["/usr/bin/tachyon", "reload", "force"]));
     }
     return view_set_cat(token, chat_id, msg_id, stype, sname, page);
+}
+
+function is_allowed_notif_key(key) {
+    if (key == "daily_report_enabled" || key == "quiet_hours_enabled") return true;
+    for (let nk in NOTIFICATION_KEYS) {
+        if (nk == key) return true;
+    }
+    return false;
+}
+
+function handle_notif_toggle(token, chat_id, msg_id, key, from_view) {
+    if (!is_allowed_notif_key(key)) return view_notifications(token, chat_id, msg_id);
+    refresh_uci();
+    if (!uci_core.get_all(CONFIG_NAME, "telegram"))
+        uci_core.set(CONFIG_NAME, "telegram", "telegram");
+    let s = uci_core.get_all(CONFIG_NAME, "telegram");
+    let cur = effective_bool_value(s, "telegram", key);
+    uci_core.set(CONFIG_NAME, "telegram", key, cur ? "0" : "1");
+    uci_core.commit(CONFIG_NAME);
+    if (from_view == "watchdog")
+        return view_watchdog(token, chat_id, msg_id);
+    return view_notifications(token, chat_id, msg_id);
+}
+
+function handle_notif_all(token, chat_id, msg_id, val) {
+    let target_val = (val == "0") ? "0" : "1";
+    refresh_uci();
+    if (!uci_core.get_all(CONFIG_NAME, "telegram"))
+        uci_core.set(CONFIG_NAME, "telegram", "telegram");
+    for (let nk in NOTIFICATION_KEYS) {
+        uci_core.set(CONFIG_NAME, "telegram", nk, target_val);
+    }
+    uci_core.commit(CONFIG_NAME);
+    return view_notifications(token, chat_id, msg_id);
+}
+
+function apply_toggle_reload(mode, enabled_now) {
+    if (mode == "firewall") {
+        command_status(common.background_command(command_from_args(["/usr/bin/tachyon", "reload_firewall"])));
+    } else if (mode == "reload") {
+        command_status(common.background_command(command_from_args(["/usr/bin/tachyon", "reload"])));
+    } else if (mode == "watchdog") {
+        let wd_cmd = enabled_now ? "watchdog_start" : "watchdog_stop";
+        command_status(common.background_command(command_from_args(["/usr/bin/tachyon", wd_cmd])));
+    }
+}
+
+function handle_feature_toggle(token, chat_id, msg_id, group, key) {
+    let reload_mode = toggle_feature_reload_mode(key);
+    if (reload_mode == null) {
+        return (group == "watchdog") ? view_watchdog(token, chat_id, msg_id) : view_toggles(token, chat_id, msg_id, group);
+    }
+    refresh_uci();
+    let s = uci_core.get_all(CONFIG_NAME, "settings");
+    if (s) {
+        let cur = effective_bool_value(s, "settings", key);
+        let nxt = cur ? "0" : "1";
+        uci_core.set(CONFIG_NAME, "settings", key, nxt);
+        uci_core.commit(CONFIG_NAME);
+        apply_toggle_reload(reload_mode, !cur);
+    }
+    if (group == "watchdog")
+        return view_watchdog(token, chat_id, msg_id);
+    return view_toggles(token, chat_id, msg_id, group);
+}
+
+function handle_sd_mode_toggle(token, chat_id, msg_id) {
+    refresh_uci();
+    let s = uci_core.get_all(CONFIG_NAME, "settings");
+    if (s) {
+        let nxt = (option(s, "smart_detect_mode", "default") == "plus") ? "default" : "plus";
+        uci_core.set(CONFIG_NAME, "settings", "smart_detect_mode", nxt);
+        uci_core.commit(CONFIG_NAME);
+    }
+    return view_toggles(token, chat_id, msg_id, "core");
+}
+
+function handle_quic_cycle(token, chat_id, msg_id) {
+    refresh_uci();
+    let s = uci_core.get_all(CONFIG_NAME, "settings");
+    if (s) {
+        let cur = option(s, "disable_quic", "0");
+        let nxt = (cur == "0" || cur == "") ? "tunneled" : ((cur == "tunneled") ? "all" : "0");
+        uci_core.set(CONFIG_NAME, "settings", "disable_quic", nxt);
+        uci_core.commit(CONFIG_NAME);
+        apply_toggle_reload("reload", nxt != "0");
+    }
+    return view_toggles(token, chat_id, msg_id, "net");
+}
+
+function handle_profile_toggle(token, chat_id, msg_id, pname) {
+    refresh_uci();
+    let p = uci_core.get_all(CONFIG_NAME, pname);
+    if (p && p[".type"] == "profile") {
+        let cur = effective_bool_value(p, "profile", "enabled");
+        uci_core.set(CONFIG_NAME, pname, "enabled", cur ? "0" : "1");
+        uci_core.commit(CONFIG_NAME);
+        apply_toggle_reload("firewall", !cur);
+    }
+    return view_profiles(token, chat_id, msg_id);
+}
+
+function handle_schedule_toggle(token, chat_id, msg_id, sname, field) {
+    let key = (field == "notify") ? "notify" : "enabled";
+    refresh_uci();
+    let sc = uci_core.get_all(CONFIG_NAME, sname);
+    if (sc && sc[".type"] == "schedule") {
+        let cur = (key == "notify") ? (option(sc, "notify", "0") == "1") : effective_bool_value(sc, "schedule", "enabled");
+        uci_core.set(CONFIG_NAME, sname, key, cur ? "0" : "1");
+        uci_core.commit(CONFIG_NAME);
+        if (key == "enabled")
+            apply_toggle_reload("reload", !cur);
+    }
+    return view_schedules(token, chat_id, msg_id);
 }
 
 function handle_set_del(token, chat_id, msg_id, stype, sname) {
@@ -798,6 +926,38 @@ function dispatch_command(token, chat_id, text, msg_id) {
     }
     if (cmd == "/qos") return view_qos(token, chat_id, msg_id);
     if (cmd == "/qos_toggle") return handle_qos_toggle(token, chat_id, msg_id);
+    if (cmd == "/notifications" || cmd == "/notify") return view_notifications(token, chat_id, msg_id);
+    if (match(cmd, /^\/notif_tog /)) {
+        let parts = split(trim(substr(cmd, 11)), " ");
+        if (length(parts) >= 1)
+            return handle_notif_toggle(token, chat_id, msg_id, parts[0], parts[1] || "");
+    }
+    if (match(cmd, /^\/notif_all /)) {
+        return handle_notif_all(token, chat_id, msg_id, trim(substr(cmd, 11)));
+    }
+    if (cmd == "/toggles" || cmd == "/features") return view_toggles(token, chat_id, msg_id, "core");
+    if (match(cmd, /^\/(toggles|features) /)) {
+        let grp = trim(replace(cmd, /^\/(toggles|features)[ \t]+/, ""));
+        return view_toggles(token, chat_id, msg_id, grp);
+    }
+    if (match(cmd, /^\/tog /)) {
+        let parts = split(trim(substr(cmd, 5)), " ");
+        if (length(parts) >= 2)
+            return handle_feature_toggle(token, chat_id, msg_id, parts[0], parts[1]);
+    }
+    if (cmd == "/tog_sd_mode") return handle_sd_mode_toggle(token, chat_id, msg_id);
+    if (cmd == "/tog_quic") return handle_quic_cycle(token, chat_id, msg_id);
+    if (cmd == "/profiles") return view_profiles(token, chat_id, msg_id);
+    if (match(cmd, /^\/prof_tog /)) {
+        return handle_profile_toggle(token, chat_id, msg_id, trim(substr(cmd, 10)));
+    }
+    if (cmd == "/schedules") return view_schedules(token, chat_id, msg_id);
+    if (match(cmd, /^\/sched_tog /)) {
+        return handle_schedule_toggle(token, chat_id, msg_id, trim(substr(cmd, 11)), "enabled");
+    }
+    if (match(cmd, /^\/sched_notif /)) {
+        return handle_schedule_toggle(token, chat_id, msg_id, trim(substr(cmd, 13)), "notify");
+    }
 
     if (cmd == "/speed") return exec_speedtest(token, chat_id, msg_id);
     if (cmd == "/ping") return view_ping(token, chat_id, msg_id);
@@ -1276,6 +1436,13 @@ function dispatch_command(token, chat_id, text, msg_id) {
 
 return {
     handle_set_tog,
+    handle_notif_toggle,
+    handle_notif_all,
+    handle_feature_toggle,
+    handle_sd_mode_toggle,
+    handle_quic_cycle,
+    handle_profile_toggle,
+    handle_schedule_toggle,
     handle_set_del,
     handle_fptn_token_update,
     handle_switch,

@@ -5001,7 +5001,6 @@ async function fetchConnections() {
 let connectionsRenderFrame: number | null = null;
 let connectionsWidgetHovered = false;
 let connectionsHoverDeferredTimer: ReturnType<typeof setTimeout> | null = null;
-let connectionsWidgetListenersAttached = false;
 
 function isConnectionsHoverActive(container: HTMLElement): boolean {
   if (connectionsWidgetHovered) {
@@ -5026,7 +5025,8 @@ function isConnectionsHoverActive(container: HTMLElement): boolean {
 }
 
 function attachConnectionsWidgetHoverListeners(container: HTMLElement) {
-  if (connectionsWidgetListenersAttached) return;
+  if (container.dataset.tachyonHoverBound === '1') return;
+  container.dataset.tachyonHoverBound = '1';
   container.addEventListener('mouseenter', () => {
     connectionsWidgetHovered = true;
   });
@@ -5038,7 +5038,6 @@ function attachConnectionsWidgetHoverListeners(container: HTMLElement) {
     }
     scheduleConnectionsWidgetRender();
   });
-  connectionsWidgetListenersAttached = true;
 }
 
 function scheduleConnectionsWidgetRender() {
@@ -7074,7 +7073,6 @@ function onPageUnmount() {
     connectionsHoverDeferredTimer = null;
   }
   connectionsWidgetHovered = false;
-  connectionsWidgetListenersAttached = false;
   if (sectionsRenderFrame !== null) {
     if (typeof cancelAnimationFrame !== 'undefined') {
       cancelAnimationFrame(sectionsRenderFrame);

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   getConfigSections: vi.fn(),
   getClashApiProxies: vi.fn(),
+  getWdttStatus: vi.fn(),
   canUseDirectClashApi: vi.fn(),
   fsRead: vi.fn(),
 }));
@@ -14,6 +15,7 @@ vi.mock('../getConfigSections', () => ({
 vi.mock('../../shell', () => ({
   TachyonShellMethods: {
     getClashApiProxies: mocks.getClashApiProxies,
+    getWdttStatus: mocks.getWdttStatus,
   },
 }));
 
@@ -144,6 +146,7 @@ describe('getDashboardSections', () => {
     resetDirectClashApiState();
     mocks.getConfigSections.mockReset();
     mocks.getClashApiProxies.mockReset();
+    mocks.getWdttStatus.mockReset();
     mocks.canUseDirectClashApi.mockReset();
     mocks.fsRead.mockReset();
     mocks.fsRead.mockRejectedValue(new Error('cache miss'));
@@ -2422,5 +2425,147 @@ describe('getDashboardSections', () => {
     expect(
       mixed?.subscriptionMetadata?.find((m) => m.sourceIndex === 2)?.hidden,
     ).toBeUndefined();
+  });
+
+  it('hydrates connection sections with source_type=csqtt and native source_type=wdtt, and renders standalone action=csqtt', async () => {
+    mocks.getConfigSections.mockResolvedValue([
+      {
+        '.name': 'Main_Route',
+        '.type': 'section',
+        enabled: '1',
+        action: 'connection',
+        label: 'Main Route',
+        section_selection_mode: 'priority_failover',
+        outbound_source_refs: ['src_csqtt', 'src_wdtt_native', 'src_tt'],
+      },
+      {
+        '.name': 'Legacy_WDTT_Pool',
+        '.type': 'section',
+        enabled: '1',
+        action: 'connection',
+        label: 'Legacy WDTT',
+        outbound_source_refs: ['src_wdtt_legacy'],
+      },
+      {
+        '.name': 'Direct_CSQTT',
+        '.type': 'section',
+        enabled: '1',
+        action: 'csqtt',
+        label: 'Direct CSQTT',
+        csqtt_server: 'vk.example.com',
+        csqtt_server_port: '46000',
+      },
+      {
+        '.name': 'src_csqtt',
+        '.type': 'outbound_source',
+        enabled: '1',
+        name: 'CSQTT Primary',
+        source_type: 'csqtt',
+        csqtt_server: 'vk.example.com',
+      },
+      {
+        '.name': 'src_wdtt_native',
+        '.type': 'outbound_source',
+        enabled: '1',
+        name: 'WDTT Native',
+        source_type: 'wdtt',
+        wdtt_native: '1',
+        warp_flow_uri: 'csqtt://connect?v=2&host=example.com',
+      },
+      {
+        '.name': 'src_wdtt_legacy',
+        '.type': 'outbound_source',
+        enabled: '1',
+        name: 'WDTT Legacy',
+        source_type: 'wdtt',
+        peer: 'example.com:46000',
+      },
+      {
+        '.name': 'src_tt',
+        '.type': 'outbound_source',
+        enabled: '1',
+        name: 'TrustTunnel Backup',
+        source_type: 'trusttunnel',
+        server: 'tt.example.com',
+      },
+    ]);
+
+    mocks.getWdttStatus.mockResolvedValue({
+      success: true,
+      data: {
+        configured: true,
+        ready: true,
+        conflict: false,
+      },
+    });
+
+    mocks.getClashApiProxies.mockResolvedValue({
+      success: true,
+      data: {
+        proxies: {
+          'Main_Route-out': proxy('Selector', {
+            name: 'Main_Route-out',
+            now: 'CSQTT Primary',
+            all: ['CSQTT Primary', 'WDTT Native', 'TrustTunnel Backup'],
+          }),
+          'CSQTT Primary': proxy('wdtt', {
+            name: 'CSQTT Primary',
+            history: [{ time: '2026-11-16T00:00:00Z', delay: 42 }],
+          }),
+          'WDTT Native': proxy('wdtt', {
+            name: 'WDTT Native',
+            history: [{ time: '2026-11-16T00:00:00Z', delay: 55 }],
+          }),
+          'TrustTunnel Backup': proxy('trusttunnel', {
+            name: 'TrustTunnel Backup',
+            history: [{ time: '2026-11-16T00:00:00Z', delay: 80 }],
+          }),
+          'Direct_CSQTT-out': proxy('wdtt', {
+            name: 'Direct_CSQTT-out',
+            history: [{ time: '2026-11-16T00:00:00Z', delay: 33 }],
+          }),
+        },
+      },
+    });
+
+    const result = await getDashboardSections();
+    expect(result.success).toBe(true);
+
+    const mainRoute = result.data.find((s) => s.sectionName === 'Main_Route');
+    expect(mainRoute).toBeDefined();
+    expect(mainRoute?.action).toBe('connection');
+    expect(mainRoute?.outbounds.map((o) => [o.displayName, o.type])).toEqual([
+      ['CSQTT Primary', 'WDTT'],
+      ['WDTT Native', 'WDTT'],
+      ['TrustTunnel Backup', 'TrustTunnel'],
+    ]);
+
+    // When Clash API has no proxy entry yet, direct csqtt outbound_source falls back to ACTION_DISPLAY_NAMES['csqtt'] = 'CSQTT'
+    mocks.getClashApiProxies.mockResolvedValueOnce({
+      success: true,
+      data: { proxies: {} },
+    });
+    const fallbackResult = await getDashboardSections();
+    const fallbackMain = fallbackResult.data.find(
+      (s) => s.sectionName === 'Main_Route',
+    );
+    expect(fallbackMain?.outbounds[0]?.displayName).toBe('CSQTT Primary');
+    expect(fallbackMain?.outbounds[0]?.type).toBe('CSQTT');
+
+    const legacyWdtt = result.data.find(
+      (s) => s.sectionName === 'Legacy_WDTT_Pool',
+    );
+    expect(legacyWdtt).toBeDefined();
+    expect(legacyWdtt?.action).toBe('wdtt');
+    expect(legacyWdtt?.serviceStatus?.serviceType).toBe('wdtt');
+
+    const directCsqtt = result.data.find(
+      (s) => s.sectionName === 'Direct_CSQTT',
+    );
+    expect(directCsqtt).toBeDefined();
+    expect(directCsqtt?.action).toBe('csqtt');
+    expect(directCsqtt?.outbounds[0]?.displayName).toBe('Direct CSQTT');
+    expect(directCsqtt?.outbounds[0]?.type).toBe('CSQTT');
+    expect(directCsqtt?.outbounds[0]?.latency).toBe(33);
   });
 });

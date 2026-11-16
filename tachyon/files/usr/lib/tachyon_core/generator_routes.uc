@@ -1854,7 +1854,11 @@ function add_group_urltest_outbounds(config, sections) {
             push(selector_outbounds, t);
         for (let t in priority_tags)
             push(selector_outbounds, t);
-        let selector_default = length(urltest_tags) > 0 ? urltest_tags[0] : priority_tags[0];
+        let sel_mode = lc(trim(option(section, "section_selection_mode", "auto")));
+        let is_priority_failover_mode = (sel_mode == "priority_failover" || sel_mode == "priority" || sel_mode == "failover");
+        let selector_default = (length(priority_tags) > 0 && is_priority_failover_mode)
+            ? priority_tags[0]
+            : (length(urltest_tags) > 0 ? urltest_tags[0] : priority_tags[0]);
         let persistent_selector_file = getenv("TACHYON_PERSISTENT_SELECTOR_STATE_FILE") || "/etc/tachyon/selector_state.json";
         let saved_selector_state = read_json_file(persistent_selector_file);
         if (type(saved_selector_state) == "object" && as_string(saved_selector_state[selector_tag]) != "") {
@@ -3957,6 +3961,7 @@ function section_is_dns_block_eligible(section) {
     if (length(list_option(section, "ports")) > 0 ||
         trim(option(section, "ports_text", "")) != "" ||
         length(list_option(section, "protocol")) > 0 ||
+        length(list_option(section, "excluded_protocol")) > 0 ||
         length(connections.dscp_list(section)) > 0 ||
         length(connections.geoip_country_list(section)) > 0)
         return false;
@@ -4399,36 +4404,28 @@ function add_excluded_ips_rule(config, section) {
     push(config.route.rules, route_rule);
 }
 
-function add_excluded_protocol_rule(config, section) {
+function build_excluded_protocol_subrules(section) {
     let excluded = section_leaf_list_option(section, "excluded_protocol");
     if (length(excluded) == 0)
-        return;
+        return [];
 
     let l4_nets = [];
     let l7_protos = [];
     for (let p in excluded) {
         let lp = lc(trim(as_string(p)));
-        if (lp == "tcp" || lp == "udp" || lp == "icmp")
-            push(l4_nets, lp);
-        else if (lp != "")
+        if (lp == "tcp" || lp == "udp" || lp == "icmp") {
+            if (index(l4_nets, lp) < 0)
+                push(l4_nets, lp);
+        } else if (lp != "" && index(l7_protos, lp) < 0) {
             push(l7_protos, lp);
+        }
     }
-    if (length(l4_nets) > 0) {
-        push(config.route.rules, {
-            action: "route",
-            inbound: tproxy_inbound_matcher(),
-            outbound: runtime_constants.DIRECT_OUTBOUND_TAG,
-            network: single_or_array(l4_nets)
-        });
-    }
-    if (length(l7_protos) > 0) {
-        push(config.route.rules, {
-            action: "route",
-            inbound: tproxy_inbound_matcher(),
-            outbound: runtime_constants.DIRECT_OUTBOUND_TAG,
-            protocol: single_or_array(l7_protos)
-        });
-    }
+    let subs = [];
+    if (length(l4_nets) > 0)
+        push(subs, { invert: true, network: single_or_array(l4_nets) });
+    if (length(l7_protos) > 0)
+        push(subs, { invert: true, protocol: single_or_array(l7_protos) });
+    return subs;
 }
 
 function add_protocol_matchers(rule, section) {
@@ -4642,7 +4639,13 @@ function add_combined_route_for_clause(config, section) {
     // match the DPI rule afterwards.
     let dns_non_domain_query_tags = [];
     let section_name = section[".name"];
-    let inv_subrules = build_inverted_subrules(config, section_name, section.__inverted_conditions);
+    let base_inv_subrules = build_inverted_subrules(config, section_name, section.__inverted_conditions);
+    let exc_proto_subrules = build_excluded_protocol_subrules(section);
+    let inv_subrules = [];
+    for (let sub in base_inv_subrules)
+        push(inv_subrules, sub);
+    for (let sub in exc_proto_subrules)
+        push(inv_subrules, sub);
 
 
     let include_community_subnets = bool_option(section, "community_subnets", true);
@@ -4869,7 +4872,7 @@ function add_combined_route_for_clause(config, section) {
                 fallback_rule.network_interface_address != null ||
                 fallback_rule.preferred_by != null ||
                 fallback_rule.time_window != null ||
-                (fallback_rule.__inv_subrules != null && length(fallback_rule.__inv_subrules) > 0);
+                length(base_inv_subrules) > 0;
             if (has_any_matcher)
                 push_section_route_rule(config, fallback_rule, target.outbound, excluded_cidrs);
         }
@@ -5069,7 +5072,6 @@ function add_combined_route_for_clause(config, section) {
 }
 
 function add_combined_route_for_section(config, section) {
-    add_excluded_protocol_rule(config, section);
     add_fully_routed_ips_rule(config, section);
     add_server_domain_rules_for_section(config, section);
     for (let clause in connections.section_effective_clauses(section))

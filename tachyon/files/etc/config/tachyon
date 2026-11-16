@@ -313,6 +313,12 @@ config telegram 'telegram'
         option notify_cert '1'
         option notify_dns_leak '1'
         option notify_auto_update '1'
+        option notify_smart_detect '1'
+        option notify_failover '1'
+        option notify_wan '1'
+        option notify_update_available '1'
+        option notify_parental '1'
+        option notify_route_alert '1'
         #option language 'ru'
         # language: auto-detected from LuCI if not set.
         # Values: ru (default), en

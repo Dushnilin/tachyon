@@ -47,7 +47,10 @@ let escape_html = rendering.escape_html;
 let utf8_prefix = rendering.utf8_prefix;
 let setting_schema = rendering.setting_schema;
 let get_schema_label = rendering.get_schema_label;
+let NOTIFICATION_KEYS = rendering.NOTIFICATION_KEYS;
+let TOGGLE_FEATURE_SPEC = rendering.TOGGLE_FEATURE_SPEC;
 let is_boolean_key = rendering.is_boolean_key;
+let effective_bool_value = rendering.effective_bool_value;
 let is_list_key = rendering.is_list_key;
 let cidr_match_v4 = rendering.cidr_match_v4;
 let build_label = rendering.build_label;
@@ -78,9 +81,163 @@ let t = function(key, ...args) {
     return get_t()(key, ...args);
 };
 
+function refresh_uci() {
+    let c = uci_core.cursor();
+    if (c) {
+        try { c.unload(CONFIG_NAME); } catch (e) {}
+        try { c.load(CONFIG_NAME); } catch (e) {}
+    }
+}
+
+function view_notifications(token, chat_id, msg_id) {
+    refresh_uci();
+    let s = object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
+
+    let text = "🔔 <b>" + t("notif_title") + "</b>\n\n" + t("notif_hint");
+    let keyboard = [];
+    for (let nk in NOTIFICATION_KEYS) {
+        let on = effective_bool_value(s, "telegram", nk);
+        push(keyboard, [{
+            text: (on ? "✅ " : "❌ ") + t(nk),
+            callback_data: "/notif_tog " + nk
+        }]);
+    }
+
+    let daily_on = effective_bool_value(s, "telegram", "daily_report_enabled");
+    let qh_on = effective_bool_value(s, "telegram", "quiet_hours_enabled");
+    push(keyboard, [
+        { text: (daily_on ? "✅ " : "❌ ") + t("daily_report_enabled"), callback_data: "/notif_tog daily_report_enabled" },
+        { text: (qh_on ? "✅ " : "❌ ") + t("quiet_hours_enabled"), callback_data: "/notif_tog quiet_hours_enabled" }
+    ]);
+    push(keyboard, [
+        { text: t("notif_enable_all"), callback_data: "/notif_all 1" },
+        { text: t("notif_disable_all"), callback_data: "/notif_all 0" }
+    ]);
+    push(keyboard, [
+        { text: t("menu_quiet_hours"), callback_data: "/qh" },
+        { text: t("nav_settings"), callback_data: "/settings" }
+    ]);
+    push(keyboard, [{ text: t("nav_menu"), callback_data: "/menu" }]);
+
+    if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
+    else send_message(token, chat_id, text, "HTML", keyboard);
+}
+
+function view_toggles(token, chat_id, msg_id, group) {
+    group = (group == "net") ? "net" : "core";
+    refresh_uci();
+    let s = object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
+
+    let text = "🎛 <b>" + t("toggles_title") + "</b>\n\n" + t("toggles_hint");
+    let keyboard = [
+        [
+            { text: (group == "core" ? "• " : "") + t("toggles_tab_core"), callback_data: "/toggles core" },
+            { text: (group == "net" ? "• " : "") + t("toggles_tab_net"), callback_data: "/toggles net" }
+        ]
+    ];
+
+    for (let item in TOGGLE_FEATURE_SPEC) {
+        if (item.group != group) continue;
+        let on = effective_bool_value(s, "settings", item.key);
+        push(keyboard, [{
+            text: (on ? "✅ " : "❌ ") + t(item.key),
+            callback_data: "/tog " + group + " " + item.key
+        }]);
+    }
+
+    if (group == "core") {
+        let sd_mode = option(s, "smart_detect_mode", "default") == "plus" ? "plus" : "default";
+        push(keyboard, [{
+            text: "🔄 " + t("smart_detect_mode") + ": " + sd_mode,
+            callback_data: "/tog_sd_mode"
+        }]);
+    } else {
+        let qmode = option(s, "disable_quic", "0");
+        let qlabel = (qmode == "1" || qmode == "all") ? "all" : (qmode == "tunneled" ? "tunneled" : "off");
+        push(keyboard, [{
+            text: "🔄 " + t("disable_quic") + ": " + qlabel,
+            callback_data: "/tog_quic"
+        }]);
+    }
+
+    push(keyboard, [
+        { text: t("menu_profiles"), callback_data: "/profiles" },
+        { text: t("menu_schedules"), callback_data: "/schedules" }
+    ]);
+    push(keyboard, [
+        { text: t("menu_guest"), callback_data: "/guest" },
+        { text: t("menu_notifications"), callback_data: "/notifications" }
+    ]);
+    push(keyboard, [{ text: t("nav_menu"), callback_data: "/menu" }]);
+
+    if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
+    else send_message(token, chat_id, text, "HTML", keyboard);
+}
+
+function view_profiles(token, chat_id, msg_id) {
+    refresh_uci();
+    let profiles = uci_core.section_objects(CONFIG_NAME, "profile");
+    let text = "👨‍👩‍👧‍👦 <b>" + t("profiles_title") + "</b>\n\n";
+    let keyboard = [];
+    if (length(profiles) == 0) {
+        text += "<i>" + t("profiles_empty") + "</i>";
+    } else {
+        for (let p in profiles) {
+            let pname = p[".name"];
+            let on = effective_bool_value(p, "profile", "enabled");
+            let avatar = trim(as_string(p.avatar || ""));
+            let label = as_string(p.label || pname);
+            let title = (avatar != "" ? avatar + " " : "") + label;
+            push(keyboard, [{
+                text: (on ? "✅ " : "❌ ") + title,
+                callback_data: cb_data(["/prof_tog", pname])
+            }]);
+        }
+    }
+    push(keyboard, [
+        { text: t("menu_toggles"), callback_data: "/toggles" },
+        { text: t("nav_settings"), callback_data: "/settings" }
+    ]);
+    push(keyboard, [{ text: t("nav_menu"), callback_data: "/menu" }]);
+    if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
+    else send_message(token, chat_id, text, "HTML", keyboard);
+}
+
+function view_schedules(token, chat_id, msg_id) {
+    refresh_uci();
+    let schedules = uci_core.section_objects(CONFIG_NAME, "schedule");
+    let text = "⏰ <b>" + t("schedules_title") + "</b>\n\n";
+    let keyboard = [];
+    if (length(schedules) == 0) {
+        text += "<i>" + t("schedules_empty") + "</i>";
+    } else {
+        for (let sc in schedules) {
+            let sname = sc[".name"];
+            let on = effective_bool_value(sc, "schedule", "enabled");
+            let n_on = option(sc, "notify", "0") == "1";
+            let label = as_string(sc.label || sname);
+            push(keyboard, [
+                { text: (on ? "✅ " : "❌ ") + label, callback_data: cb_data(["/sched_tog", sname]) },
+                { text: n_on ? "🔔" : "🔕", callback_data: cb_data(["/sched_notif", sname]) }
+            ]);
+        }
+    }
+    push(keyboard, [
+        { text: t("menu_toggles"), callback_data: "/toggles" },
+        { text: t("nav_settings"), callback_data: "/settings" }
+    ]);
+    push(keyboard, [{ text: t("nav_menu"), callback_data: "/menu" }]);
+    if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
+    else send_message(token, chat_id, text, "HTML", keyboard);
+}
+
 function view_settings_menu(token, chat_id, msg_id) {
     let text = "⚙️ <b>" + t("menu_all_settings") + "</b>\n\n" + t("menu_choose_cat");
     let keyboard = [
+        [
+            { text: t("menu_toggles"), callback_data: "/toggles" },
+            { text: t("menu_notifications"), callback_data: "/notifications" }
+        ],
         [{ text: t("menu_global"), callback_data: "/set_cat settings settings" }],
         [{ text: t("menu_telegram"), callback_data: "/set_cat telegram telegram" }],
         [{ text: t("menu_router_name"), callback_data: "/name" }],
@@ -98,6 +255,10 @@ function view_settings_menu(token, chat_id, msg_id) {
         ],
         [{ text: t("menu_subscriptions"), callback_data: "/set_list subscription_url" }],
         [{ text: t("menu_dns_presets"), callback_data: "/dns_presets" }],
+        [
+            { text: t("menu_profiles"), callback_data: "/profiles" },
+            { text: t("menu_schedules"), callback_data: "/schedules" }
+        ],
         [{ text: t("menu_quiet_hours"), callback_data: "/qh" }],
         [{ text: t("menu_guest"), callback_data: "/guest" }],
         [{ text: t("menu_language"), callback_data: "/lang" }],
@@ -143,9 +304,8 @@ function view_set_list(token, chat_id, msg_id, stype) {
 function view_set_cat(token, chat_id, msg_id, stype, sname, page) {
     if (!page) page = 0;
     else page = int(page);
-    let c = uci_core.cursor();
-    c.load(CONFIG_NAME);
-    let s = c.get_all(CONFIG_NAME, sname);
+    refresh_uci();
+    let s = uci_core.get_all(CONFIG_NAME, sname);
     if (!s) return view_settings_menu(token, chat_id, msg_id);
     
     let text = "⚙️ <b>" + t("section_edit") + ":</b> <code>" + escape_html(sname) + "</code> (" + stype + ")\n\n";
@@ -176,7 +336,7 @@ function view_set_cat(token, chat_id, msg_id, stype, sname, page) {
         let k = keys[i];
         let label = get_schema_label(stype, k);
         if (is_boolean_key(k)) {
-            let b = (s[k] == "1" || s[k] == "true");
+            let b = effective_bool_value(s, stype, k);
             push(keyboard, [{ text: (b ? "✅ " : "❌ ") + label, callback_data: "/set_tog " + stype + " " + sname + " " + k + " " + page }]);
         } else if (is_list_key(k) || type(s[k]) == "array") {
             let cnt = length(common.list_option(s, k));
@@ -298,6 +458,10 @@ function view_menu(token, chat_id, msg_id) {
         [
             { text: t("menu_heal"), callback_data: "/heal" },
             { text: t("menu_qos"), callback_data: "/qos" }
+        ],
+        [
+            { text: t("menu_toggles"), callback_data: "/toggles" },
+            { text: t("menu_notifications"), callback_data: "/notifications" }
         ],
         [
             { text: t("menu_all_settings"), callback_data: "/settings" },
@@ -1760,6 +1924,10 @@ function view_help(token, chat_id, msg_id) {
         "/close_connections — Закрыть все соединения\n" +
         "/check_updates — Проверить обновления\n\n" +
         "<b>" + t("help_settings_section") + "</b>\n" +
+        "/toggles — " + t("cmd_toggles") + "\n" +
+        "/notifications — " + t("cmd_notifications") + "\n" +
+        "/profiles — " + t("cmd_profiles") + "\n" +
+        "/schedules — " + t("cmd_schedules") + "\n" +
         "/settings — Все настройки\n" +
         "/name — " + t("cmd_name") + "\n" +
         "/dns_presets — DNS пресеты\n" +
@@ -2072,9 +2240,13 @@ function view_devices(token, chat_id, msg_id) {
 
 function view_watchdog(token, chat_id, msg_id) {
     let running = api.process_running_by_pidfile("/var/run/tachyon_watchdog.pid");
+    refresh_uci();
+    let s = object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
+    let tcfg = object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
     let text = "🐕 <b>Watchdog Tachyon</b>\n\n" +
-               t("status") + ": <code>" + (running ? t("status_running") : t("status_stopped")) + "</code>";
-               
+               t("status") + ": <code>" + (running ? t("status_running") : t("status_stopped")) + "</code>\n" +
+               t("wd_settings_header");
+
     let keyboard = [];
     if (running) {
         push(keyboard, [{ text: "⏹️ Остановить Watchdog", callback_data: "/wd_stop" }]);
@@ -2082,8 +2254,30 @@ function view_watchdog(token, chat_id, msg_id) {
     } else {
         push(keyboard, [{ text: "▶️ Запустить Watchdog", callback_data: "/wd_start" }]);
     }
+
+    let wd_keys = [
+        "enable_watchdog",
+        "smart_detect",
+        "ai_proxy_health_enabled",
+        "ai_dns_continuous_enabled",
+        "emergency_direct_bypass",
+        "enable_ai_doctor"
+    ];
+    for (let k in wd_keys) {
+        let on = effective_bool_value(s, "settings", k);
+        push(keyboard, [{
+            text: (on ? "✅ " : "❌ ") + t(k),
+            callback_data: "/tog watchdog " + k
+        }]);
+    }
+    let sd_notif = effective_bool_value(tcfg, "telegram", "notify_smart_detect");
+    push(keyboard, [{
+        text: (sd_notif ? "✅ " : "❌ ") + t("notify_smart_detect") + " (" + t("menu_notifications") + ")",
+        callback_data: "/notif_tog notify_smart_detect watchdog"
+    }]);
+    push(keyboard, [{ text: t("menu_notifications"), callback_data: "/notifications" }]);
     push(keyboard, [{ text: "⬅️ " + t("nav_back"), callback_data: "/menu" }]);
-    
+
     if (msg_id) edit_message(token, chat_id, msg_id, text, "HTML", keyboard);
     else send_message(token, chat_id, text, "HTML", keyboard);
 }
@@ -2149,6 +2343,10 @@ function view_qos(token, chat_id, msg_id) {
 
 return {
     view_settings_menu,
+    view_notifications,
+    view_toggles,
+    view_profiles,
+    view_schedules,
     view_set_list,
     view_set_cat,
     view_set_arr,

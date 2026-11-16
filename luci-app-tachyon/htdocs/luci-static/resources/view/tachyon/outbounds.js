@@ -57,6 +57,7 @@ const PROTOCOL_CHOICES = [
   "warp",
   "tewfai",
   "csqtt",
+  "wdtt",
   "tailscale",
   "tor",
   "desync",
@@ -1423,12 +1424,24 @@ function summarizeOutboundSource(sectionId) {
     const label = preset === "auto" ? "Adaptive 2.0" : preset;
     return `Desync (${label}${fooling ? ", " + fooling : ""})`;
   }
+  if (stype === "wdtt") {
+    const peer = String(uci.get(UCI_PACKAGE, sectionId, "peer") || "").trim();
+    const nativeFlag =
+      uci.get(UCI_PACKAGE, sectionId, "wdtt_native") === "1" ? " [Native]" : "";
+    const detail = peer
+      ? `: ${peer}`
+      : uci.get(UCI_PACKAGE, sectionId, "warp_flow_uri")
+        ? " (URI)"
+        : "";
+    return `WDTT${nativeFlag}${detail}${prefixTag}`;
+  }
   const srv =
     uci.get(UCI_PACKAGE, sectionId, "server") ||
     uci.get(UCI_PACKAGE, sectionId, `${stype}_server`) ||
     "";
   const port =
     uci.get(UCI_PACKAGE, sectionId, "server_port") ||
+    uci.get(UCI_PACKAGE, sectionId, `${stype}_server_port`) ||
     uci.get(UCI_PACKAGE, sectionId, `${stype}_port`) ||
     "";
   return `${stype.toUpperCase()}${srv ? `: ${srv}${port ? ":" + port : ""}` : ""}${prefixTag}`;
@@ -3370,11 +3383,29 @@ const PREFIX_COLOR_PRESETS = [
   { label: _("Dark"), bg: "#1e293b", color: "#f8fafc" },
 ];
 
-const WDTT_DEFAULT_NFQWS2_OPT =
-  "--filter-tcp=443 --filter-l7=tls --payload=tls_client_hello --lua-desync=fake:blob=fake_default_tls:tcp_md5 --lua-desync=multisplit:pos=1,midsld --new --filter-udp=443 --filter-l7=quic --payload=quic_initial --lua-desync=fake:blob=fake_default_quic:repeats=6";
-
 const OLCRTC_DEFAULT_NFQWS2_OPT =
   "--filter-udp=50000-65535 --filter-l7=stun,discord --lua-desync=fake:repeats=6 --new --filter-tcp=443 --filter-l7=tls --payload=tls_client_hello --lua-desync=fake:blob=fake_default_tls:tcp_md5 --lua-desync=multidisorder:pos=1,midsld";
+
+function getOutboundOptionSourceType(optionInstance, sectionId) {
+  let raw = "";
+  try {
+    if (
+      optionInstance &&
+      optionInstance.section &&
+      typeof optionInstance.section.formvalue === "function"
+    ) {
+      raw = String(
+        optionInstance.section.formvalue(sectionId, "source_type") || "",
+      );
+    }
+  } catch {
+    // Fallback to UCI value when formvalue is unavailable
+  }
+  if (!raw) {
+    raw = String(uci.get(UCI_PACKAGE, sectionId, "source_type") || "");
+  }
+  return raw.trim().toLowerCase();
+}
 
 function setModalFieldValue(sectionRef, sectionId, optName, value) {
   uci.set(UCI_PACKAGE, sectionId, optName, value);
@@ -3672,7 +3703,7 @@ function createOutboundsContent(section) {
   o.value("zapret", _("Zapret (nfqws DPI Desync)"));
   o.value("byedpi", _("ByeDPI (ciadpi SOCKS5 Desync)"));
   o.value("desync", _("Desync (Built-in TCP/UDP DPI Fragmentation)"));
-  o.value("wdtt", _("WDTT (nfqws2 Preset)"));
+  o.value("wdtt", _("WDTT (Native / qwdtt)"));
   o.value("olcrtc", _("OlcRTC (Discord / WebRTC nfqws2)"));
   o.value("tor", _("Tor Network (SOCKS5)"));
   o.value("tailscale", _("Tailscale Mesh VPN"));
@@ -3718,6 +3749,49 @@ function createOutboundsContent(section) {
     if (st !== "interface" && st !== "tailscale") {
       uci.unset(UCI_PACKAGE, sectionId, "interface_name");
       uci.unset(UCI_PACKAGE, sectionId, "interface");
+    }
+    if (st !== "csqtt") {
+      [
+        "csqtt_server",
+        "csqtt_server_port",
+        "csqtt_port",
+        "csqtt_password",
+        "csqtt_mode",
+        "csqtt_obfs",
+        "csqtt_raw_port",
+        "csqtt_wg_port",
+        "csqtt_local_port",
+        "csqtt_hashes",
+        "csqtt_workers",
+        "csqtt_turn_transport",
+        "csqtt_turn_server",
+        "csqtt_turn_urls",
+        "csqtt_turn_username",
+        "csqtt_turn_password",
+        "csqtt_vk_auth_mode",
+        "csqtt_vk_cookie",
+        "csqtt_vk_client_ids",
+        "csqtt_mtu",
+        "csqtt_device_id",
+        "csqtt_chunk1",
+        "csqtt_wg_private_key",
+        "csqtt_wg_peer_public_key",
+        "csqtt_wg_address",
+        "csqtt_uri",
+      ].forEach((k) => uci.unset(UCI_PACKAGE, sectionId, k));
+    }
+    if (st !== "wdtt") {
+      [
+        "wdtt_native",
+        "peer",
+        "qwdtt_mode",
+        "wdtt_workers",
+        "wdtt_mtu",
+        "warp_flow_device_id",
+      ].forEach((k) => uci.unset(UCI_PACKAGE, sectionId, k));
+      if (st !== "csqtt") {
+        uci.unset(UCI_PACKAGE, sectionId, "warp_flow_uri");
+      }
     }
   };
 
@@ -5593,12 +5667,86 @@ function createOutboundsContent(section) {
   o.modalonly = true;
   o.placeholder = "example.com";
   directProtoTypes.forEach((t) => o.depends("source_type", t));
+  o.load = function (sectionId) {
+    if (getOutboundOptionSourceType(this, sectionId) === "csqtt") {
+      return String(
+        uci.get(UCI_PACKAGE, sectionId, "csqtt_server") ||
+          uci.get(UCI_PACKAGE, sectionId, "server") ||
+          "",
+      );
+    }
+    return String(uci.get(UCI_PACKAGE, sectionId, "server") || "");
+  };
+  o.cfgvalue = function (sectionId) {
+    return this.load(sectionId);
+  };
+  o.write = function (sectionId, value) {
+    const val = String(value || "").trim();
+    if (getOutboundOptionSourceType(this, sectionId) === "csqtt") {
+      if (val) {
+        uci.set(UCI_PACKAGE, sectionId, "server", val);
+        uci.set(UCI_PACKAGE, sectionId, "csqtt_server", val);
+      } else {
+        uci.unset(UCI_PACKAGE, sectionId, "server");
+        uci.unset(UCI_PACKAGE, sectionId, "csqtt_server");
+      }
+      return;
+    }
+    if (val) uci.set(UCI_PACKAGE, sectionId, "server", val);
+    else uci.unset(UCI_PACKAGE, sectionId, "server");
+  };
+  o.remove = function (sectionId) {
+    uci.unset(UCI_PACKAGE, sectionId, "server");
+    if (getOutboundOptionSourceType(this, sectionId) === "csqtt") {
+      uci.unset(UCI_PACKAGE, sectionId, "csqtt_server");
+    }
+  };
 
   o = section.taboption("general", form.Value, "server_port", _("Server Port"));
   o.modalonly = true;
   o.default = "443";
   o.placeholder = "443, 2000-2010";
   directProtoTypes.forEach((t) => o.depends("source_type", t));
+  o.load = function (sectionId) {
+    if (getOutboundOptionSourceType(this, sectionId) === "csqtt") {
+      return String(
+        uci.get(UCI_PACKAGE, sectionId, "csqtt_server_port") ||
+          uci.get(UCI_PACKAGE, sectionId, "csqtt_port") ||
+          uci.get(UCI_PACKAGE, sectionId, "server_port") ||
+          "46000",
+      );
+    }
+    const stored = uci.get(UCI_PACKAGE, sectionId, "server_port");
+    return stored != null && stored !== ""
+      ? String(stored)
+      : String(this.default || "443");
+  };
+  o.cfgvalue = function (sectionId) {
+    return this.load(sectionId);
+  };
+  o.write = function (sectionId, value) {
+    const val = String(value || "").trim();
+    if (getOutboundOptionSourceType(this, sectionId) === "csqtt") {
+      uci.unset(UCI_PACKAGE, sectionId, "csqtt_port");
+      if (val) {
+        uci.set(UCI_PACKAGE, sectionId, "server_port", val);
+        uci.set(UCI_PACKAGE, sectionId, "csqtt_server_port", val);
+      } else {
+        uci.unset(UCI_PACKAGE, sectionId, "server_port");
+        uci.unset(UCI_PACKAGE, sectionId, "csqtt_server_port");
+      }
+      return;
+    }
+    if (val) uci.set(UCI_PACKAGE, sectionId, "server_port", val);
+    else uci.unset(UCI_PACKAGE, sectionId, "server_port");
+  };
+  o.remove = function (sectionId) {
+    uci.unset(UCI_PACKAGE, sectionId, "server_port");
+    if (getOutboundOptionSourceType(this, sectionId) === "csqtt") {
+      uci.unset(UCI_PACKAGE, sectionId, "csqtt_server_port");
+      uci.unset(UCI_PACKAGE, sectionId, "csqtt_port");
+    }
+  };
   o.validate = function (_sectionId, value) {
     const raw = `${value || ""}`.trim();
     if (!raw) return true;
@@ -5644,6 +5792,41 @@ function createOutboundsContent(section) {
   o.modalonly = true;
   o.password = true;
   directProtoTypes.forEach((t) => o.depends("source_type", t));
+  o.depends("source_type", "wdtt");
+  o.load = function (sectionId) {
+    if (getOutboundOptionSourceType(this, sectionId) === "csqtt") {
+      return String(
+        uci.get(UCI_PACKAGE, sectionId, "csqtt_password") ||
+          uci.get(UCI_PACKAGE, sectionId, "password") ||
+          "",
+      );
+    }
+    return String(uci.get(UCI_PACKAGE, sectionId, "password") || "");
+  };
+  o.cfgvalue = function (sectionId) {
+    return this.load(sectionId);
+  };
+  o.write = function (sectionId, value) {
+    const val = String(value || "").trim();
+    if (getOutboundOptionSourceType(this, sectionId) === "csqtt") {
+      if (val) {
+        uci.set(UCI_PACKAGE, sectionId, "password", val);
+        uci.set(UCI_PACKAGE, sectionId, "csqtt_password", val);
+      } else {
+        uci.unset(UCI_PACKAGE, sectionId, "password");
+        uci.unset(UCI_PACKAGE, sectionId, "csqtt_password");
+      }
+      return;
+    }
+    if (val) uci.set(UCI_PACKAGE, sectionId, "password", val);
+    else uci.unset(UCI_PACKAGE, sectionId, "password");
+  };
+  o.remove = function (sectionId) {
+    uci.unset(UCI_PACKAGE, sectionId, "password");
+    if (getOutboundOptionSourceType(this, sectionId) === "csqtt") {
+      uci.unset(UCI_PACKAGE, sectionId, "csqtt_password");
+    }
+  };
 
   o = section.taboption(
     "general",
@@ -6115,6 +6298,27 @@ function createOutboundsContent(section) {
 
   o = section.taboption(
     "general",
+    form.Value,
+    "csqtt_wg_port",
+    _("WireGuard Port (wg mode, optional)"),
+  );
+  o.modalonly = true;
+  o.datatype = "port";
+  o.placeholder = "56000";
+  o.depends("source_type", "csqtt");
+
+  o = section.taboption(
+    "general",
+    form.Value,
+    "csqtt_local_port",
+    _("Local UDP Port (optional)"),
+  );
+  o.modalonly = true;
+  o.datatype = "port";
+  o.depends("source_type", "csqtt");
+
+  o = section.taboption(
+    "general",
     form.DynamicList,
     "csqtt_hashes",
     _("Peer Hashes / Keys"),
@@ -6155,9 +6359,41 @@ function createOutboundsContent(section) {
 
   o = section.taboption(
     "general",
+    form.DynamicList,
+    "csqtt_turn_urls",
+    _("TURN URLs (optional)"),
+  );
+  o.modalonly = true;
+  o.placeholder = "turn:turn.example.com:3478?transport=udp";
+  o.depends("source_type", "csqtt");
+
+  o = section.taboption(
+    "general",
+    form.Value,
+    "csqtt_turn_username",
+    _("TURN Username (optional)"),
+  );
+  o.modalonly = true;
+  o.depends("source_type", "csqtt");
+
+  o = section.taboption(
+    "general",
+    form.Value,
+    "csqtt_turn_password",
+    _("TURN Password (optional)"),
+  );
+  o.modalonly = true;
+  o.password = true;
+  o.depends("source_type", "csqtt");
+
+  o = section.taboption(
+    "general",
     form.ListValue,
     "csqtt_vk_auth_mode",
     _("VK Auth Mode"),
+    _(
+      "VK anonymous token endpoints may require captcha or cookies under rate-limiting. For higher reliability, supply VK Cookie in cookie mode, configure a custom TURN server/URLs, or use wg / raw direct UDP mode.",
+    ),
   );
   o.modalonly = true;
   o.value("", _("Default"));
@@ -6170,10 +6406,42 @@ function createOutboundsContent(section) {
   o.value("telemost", "telemost");
   o.depends("source_type", "csqtt");
 
+  o = section.taboption(
+    "general",
+    form.Value,
+    "csqtt_vk_cookie",
+    _("VK Cookie (for cookie auth mode)"),
+    _(
+      "VK session Cookie header value used when VK Auth Mode is cookie (or auto-detected when non-empty).",
+    ),
+  );
+  o.modalonly = true;
+  o.password = true;
+  o.depends("source_type", "csqtt");
+
+  o = section.taboption(
+    "general",
+    form.DynamicList,
+    "csqtt_vk_client_ids",
+    _("VK Client IDs (optional)"),
+  );
+  o.modalonly = true;
+  o.depends("source_type", "csqtt");
+
   o = section.taboption("general", form.Value, "csqtt_mtu", _("MTU"));
   o.modalonly = true;
   o.datatype = "uinteger";
   o.placeholder = "1350";
+  o.depends("source_type", "csqtt");
+
+  o = section.taboption(
+    "general",
+    form.Flag,
+    "csqtt_chunk1",
+    _("Chunk1 Framing (chunk1)"),
+  );
+  o.modalonly = true;
+  o.default = "0";
   o.depends("source_type", "csqtt");
 
   o = section.taboption(
@@ -6188,12 +6456,91 @@ function createOutboundsContent(section) {
   o = section.taboption(
     "general",
     form.Value,
+    "csqtt_wg_private_key",
+    _("WireGuard Private Key (wg mode, optional)"),
+  );
+  o.modalonly = true;
+  o.password = true;
+  o.depends("source_type", "csqtt");
+
+  o = section.taboption(
+    "general",
+    form.Value,
+    "csqtt_wg_peer_public_key",
+    _("WireGuard Peer Public Key (wg mode, optional)"),
+  );
+  o.modalonly = true;
+  o.depends("source_type", "csqtt");
+
+  o = section.taboption(
+    "general",
+    form.Value,
+    "csqtt_wg_address",
+    _("WireGuard Tunnel Address (wg mode, optional)"),
+  );
+  o.modalonly = true;
+  o.placeholder = "10.66.0.2/32";
+  o.depends("source_type", "csqtt");
+
+  o = section.taboption(
+    "general",
+    form.Value,
     "csqtt_uri",
     _("CSQTT / WDTT URI (optional override)"),
   );
   o.modalonly = true;
   o.placeholder = "csqtt://... or qwdtt://...";
   o.depends("source_type", "csqtt");
+
+  // WDTT (Native tachyon-core or qwdtt client)
+  o = section.taboption(
+    "general",
+    form.Flag,
+    "wdtt_native",
+    _("Use Native Core Engine (tachyon-core)"),
+    _(
+      "Run WDTT natively inside tachyon-core using the URI below instead of the external qwdtt client.",
+    ),
+  );
+  o.modalonly = true;
+  o.default = "0";
+  o.depends("source_type", "wdtt");
+
+  o = section.taboption(
+    "general",
+    form.Value,
+    "warp_flow_uri",
+    _("WDTT / CSQTT URI"),
+    _("Connection URI (wdtt://..., csqtt://..., or qwdtt://...)."),
+  );
+  o.modalonly = true;
+  o.placeholder = "wdtt://... or csqtt://...";
+  o.depends("source_type", "wdtt");
+
+  o = section.taboption(
+    "general",
+    form.Value,
+    "peer",
+    _("Peer (host:port)"),
+    _("Remote endpoint in HOST:PORT format for qwdtt client."),
+  );
+  o.modalonly = true;
+  o.placeholder = "example.com:46000";
+  o.depends("source_type", "wdtt");
+
+  o = section.taboption(
+    "general",
+    form.ListValue,
+    "qwdtt_mode",
+    _("QWDTT Mode"),
+  );
+  o.modalonly = true;
+  o.default = "socks";
+  o.value("", _("Default"));
+  o.value("socks", "socks (SOCKS5)");
+  o.value("rawtun", "rawtun");
+  o.value("vpn", "vpn");
+  o.depends("source_type", "wdtt");
 
   // ── 9. Network Interface / Tailscale / Tor / JSON ─────────────────────────
   o = section.taboption(
@@ -6572,20 +6919,19 @@ function createOutboundsContent(section) {
   o.modalonly = true;
   o.depends("source_type", "outbound_json");
 
-  // ── 10. DPI Desync Sources (Zapret2, Zapret, ByeDPI, Native Desync, WDTT, OlcRTC)
+  // ── 10. DPI Desync Sources (Zapret2, Zapret, ByeDPI, Native Desync, OlcRTC)
   o = section.taboption(
     "general",
     form.TextValue,
     "nfqws2_opt",
     _("NFQWS2 Strategy"),
-    _("Command-line strategy arguments for nfqws2 (zapret2 / wdtt / olcrtc)."),
+    _("Command-line strategy arguments for nfqws2 (zapret2 / olcrtc)."),
   );
   o.modalonly = true;
   o.rows = 6;
   o.wrap = "soft";
   o.default = ZAPRET2_DEFAULT_NFQWS2_OPT;
   o.depends("source_type", "zapret2");
-  o.depends("source_type", "wdtt");
   o.depends("source_type", "olcrtc");
   function syncStrategyToReferencingSections(sourceId, optionKey, val) {
     const sections = uci.sections(UCI_PACKAGE, "section") || [];
@@ -6604,7 +6950,6 @@ function createOutboundsContent(section) {
     const existing = uci.get(UCI_PACKAGE, sectionId, "nfqws2_opt");
     if (existing) return existing;
     const stype = uci.get(UCI_PACKAGE, sectionId, "source_type");
-    if (stype === "wdtt") return WDTT_DEFAULT_NFQWS2_OPT;
     if (stype === "olcrtc") return OLCRTC_DEFAULT_NFQWS2_OPT;
     return ZAPRET2_DEFAULT_NFQWS2_OPT;
   };
@@ -6658,7 +7003,6 @@ function createOutboundsContent(section) {
   o.default = "0";
   o.depends("source_type", "zapret2");
   o.depends("source_type", "zapret");
-  o.depends("source_type", "wdtt");
   o.depends("source_type", "olcrtc");
 
   o = section.taboption(

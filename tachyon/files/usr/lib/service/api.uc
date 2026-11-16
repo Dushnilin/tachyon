@@ -15,19 +15,31 @@ let core_binary_running = common.core_binary_running;
 let command_from_args = common.command_from_args;
 let command_output = common.command_output;
 
-function read_active_core_config() {
+let cached_clash_path = "";
+let cached_clash_mtime = null;
+let cached_clash_size = null;
+let cached_clash_info = null;
+
+function resolve_active_core_config_path() {
     let cfg_path = uci_core.get(CONFIG_NAME, "settings", "config_path");
-    if (cfg_path && cfg_path != "") {
-        let d = fs.readfile(cfg_path);
-        if (d) return d;
-    }
-    return fs.readfile("/etc/tachyon-core/config.json") || fs.readfile("/etc/sing-box/config.json");
+    if (cfg_path && cfg_path != "" && fs.stat(cfg_path) != null)
+        return cfg_path;
+    if (fs.stat("/etc/tachyon-core/config.json") != null)
+        return "/etc/tachyon-core/config.json";
+    if (fs.stat("/etc/sing-box/config.json") != null)
+        return "/etc/sing-box/config.json";
+    return "";
 }
 
-// Helper to get clash url
-function get_clash_url(endpoint) {
-    let host = "127.0.0.1:9090"; // default fallback
-    let config_data = read_active_core_config();
+function get_clash_client_info() {
+    let cfg_path = resolve_active_core_config_path();
+    let st = cfg_path != "" ? fs.stat(cfg_path) : null;
+    if (st && cached_clash_path == cfg_path && cached_clash_mtime == st.mtime && cached_clash_size == st.size && cached_clash_info != null)
+        return cached_clash_info;
+
+    let host = "127.0.0.1:9090";
+    let secret = "";
+    let config_data = cfg_path != "" ? fs.readfile(cfg_path) : null;
     if (config_data) {
         try {
             let sb_cfg = json(config_data);
@@ -36,32 +48,32 @@ function get_clash_url(endpoint) {
                 let parts = split(ext, ":");
                 let ip = (length(parts) > 1) ? parts[0] : "";
                 let port = (length(parts) > 1) ? parts[length(parts) - 1] : "9090";
-                if (ip == "0.0.0.0" || ip == "") {
-                    host = "127.0.0.1:" + port;
-                } else {
-                    host = ext;
-                }
+                host = (ip == "0.0.0.0" || ip == "") ? ("127.0.0.1:" + port) : ext;
             }
-        }
-        catch (e) {
-            // Falls through to the default host below. The clash API is optional
-            // and every caller already treats an unreachable one as "no data".
-        }
+            let cfg_secret = sb_cfg.experimental?.clash_api?.secret;
+            if (cfg_secret && cfg_secret != "")
+                secret = cfg_secret;
+        } catch (e) {}
     }
-    return "http://" + host + "/" + endpoint;
+    let info = { host: host, secret: secret };
+    if (st) {
+        cached_clash_path = cfg_path;
+        cached_clash_mtime = st.mtime;
+        cached_clash_size = st.size;
+        cached_clash_info = info;
+    }
+    return info;
+}
+
+// Helper to get clash url
+function get_clash_url(endpoint) {
+    return "http://" + get_clash_client_info().host + "/" + endpoint;
 }
 
 function get_clash_secret() {
-    let config_data = read_active_core_config();
-    if (config_data) {
-        try {
-            let sb_cfg = json(config_data);
-            let secret = sb_cfg.experimental?.clash_api?.secret;
-            if (secret && secret != "")
-                return secret;
-        }
-        catch (e) {}
-    }
+    let secret = get_clash_client_info().secret;
+    if (secret != "")
+        return secret;
     let uci_secret = uci_core.get(CONFIG_NAME, "settings", "yacd_secret_key");
     if (uci_secret && uci_secret != "")
         return uci_secret;

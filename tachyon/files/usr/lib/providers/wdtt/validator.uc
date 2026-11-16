@@ -1,4 +1,5 @@
 let common = require("core.common");
+let core_url = require("core.url");
 let fs = require("fs");
 
 let as_string = common.as_string;
@@ -24,29 +25,7 @@ const WDTT_COMMUNITY_LISTS = [
 ];
 
 function url_decode(value) {
-    let result = "";
-    let len = length(value);
-    let i = 0;
-    while (i < len) {
-        if (value[i] == '%' && i + 2 < len) {
-            let hex = substr(value, i + 1, 2);
-            let code = hexdec(hex);
-            if (code != null)
-                result += chr(code);
-            else
-                result += '%';
-            i += 3;
-        }
-        else if (value[i] == '+') {
-            result += ' ';
-            i += 1;
-        }
-        else {
-            result += value[i];
-            i += 1;
-        }
-    }
-    return result;
+    return core_url.decode(value);
 }
 
 function parse_query_string(query) {

@@ -242,17 +242,23 @@ esac
     TACHYON_BIN="$(command -v tachyon 2>/dev/null || echo /usr/bin/tachyon)"
     [ -x "$TACHYON_BIN" ] || TACHYON_BIN="/usr/bin/tachyon"
 
+    NOTIFY_WAN="$(uci -q get tachyon.telegram.notify_wan)"
+
     if [ "$CURRENT_STATE" = "up" ]; then
         if [ "$PREV_STATE" = "down" ]; then
             echo "up" > "$STATE_FILE"
-            "$TACHYON_BIN" telegram send "🟢 Интерфейс *${INTERFACE}* поднялся!"
+            if [ "$NOTIFY_WAN" != "0" ]; then
+                "$TACHYON_BIN" telegram send "🟢 Интерфейс *${INTERFACE}* поднялся!"
+            fi
         elif [ -z "$PREV_STATE" ]; then
             echo "up" > "$STATE_FILE"
         fi
     elif [ "$CURRENT_STATE" = "down" ]; then
         if [ "$PREV_STATE" = "up" ]; then
             echo "down" > "$STATE_FILE"
-            "$TACHYON_BIN" telegram send "⚠️ Интерфейс *${INTERFACE}* упал!"
+            if [ "$NOTIFY_WAN" != "0" ]; then
+                "$TACHYON_BIN" telegram send "⚠️ Интерфейс *${INTERFACE}* упал!"
+            fi
         elif [ -z "$PREV_STATE" ]; then
             echo "down" > "$STATE_FILE"
         fi

@@ -1532,10 +1532,21 @@ export function openConnectionWizardModal(
   let csqttHashes = '';
   let csqttWorkers = '';
   let csqttVkAuthMode = '';
+  let csqttVkCookie = '';
+  let csqttVkClientIds = '';
   let csqttTurnTransport = '';
   let csqttTurnServer = '';
+  let csqttTurnUrls = '';
+  let csqttTurnUsername = '';
+  let csqttTurnPassword = '';
   let csqttMtu = '';
   let csqttDeviceId = '';
+  let csqttChunk1 = false;
+  let csqttWgPort = '';
+  let csqttLocalPort = '';
+  let csqttWgPrivateKey = '';
+  let csqttWgPeerPublicKey = '';
+  let csqttWgAddress = '';
 
   // ShadowTLS
   let shadowtlsVersion = '3';
@@ -4438,6 +4449,71 @@ export function openConnectionWizardModal(
               E(
                 'label',
                 { class: 'tachyon-wizard__label' },
+                tr('URL-ы TURN (через запятую)', 'TURN URLs (comma-separated)'),
+              ),
+              E('input', {
+                type: 'text',
+                class: 'cbi-input-text tachyon-wizard__input',
+                placeholder: 'turn:turn.example.com:3478?transport=udp',
+                value: csqttTurnUrls,
+                input: (ev: Event) => {
+                  csqttTurnUrls = (ev.target as HTMLInputElement).value;
+                },
+              } as any),
+            ]),
+            E('div', { class: 'tachyon-wizard__field' }, [
+              E(
+                'label',
+                { class: 'tachyon-wizard__label' },
+                tr('Device ID (необязательно)', 'Device ID (optional)'),
+              ),
+              E('input', {
+                type: 'text',
+                class: 'cbi-input-text tachyon-wizard__input',
+                value: csqttDeviceId,
+                input: (ev: Event) => {
+                  csqttDeviceId = (ev.target as HTMLInputElement).value;
+                },
+              } as any),
+            ]),
+          ]),
+          E('div', { class: 'tachyon-wizard__row-2col' }, [
+            E('div', { class: 'tachyon-wizard__field' }, [
+              E(
+                'label',
+                { class: 'tachyon-wizard__label' },
+                tr('Логин TURN (необязательно)', 'TURN Username (optional)'),
+              ),
+              E('input', {
+                type: 'text',
+                class: 'cbi-input-text tachyon-wizard__input',
+                value: csqttTurnUsername,
+                input: (ev: Event) => {
+                  csqttTurnUsername = (ev.target as HTMLInputElement).value;
+                },
+              } as any),
+            ]),
+            E('div', { class: 'tachyon-wizard__field' }, [
+              E(
+                'label',
+                { class: 'tachyon-wizard__label' },
+                tr('Пароль TURN (необязательно)', 'TURN Password (optional)'),
+              ),
+              E('input', {
+                type: 'password',
+                class: 'cbi-input-text tachyon-wizard__input',
+                value: csqttTurnPassword,
+                input: (ev: Event) => {
+                  csqttTurnPassword = (ev.target as HTMLInputElement).value;
+                },
+              } as any),
+            ]),
+          ]),
+          E('div', { class: 'tachyon-wizard__row-2col' }, [
+            E('div', { class: 'tachyon-wizard__field' }, [
+              E(
+                'label',
+                { class: 'tachyon-wizard__label' },
                 tr('Режим авторизации VK', 'VK Auth Mode'),
               ),
               E(
@@ -4473,17 +4549,145 @@ export function openConnectionWizardModal(
               E(
                 'label',
                 { class: 'tachyon-wizard__label' },
-                tr('Device ID (необязательно)', 'Device ID (optional)'),
+                tr('VK Cookie (для режима cookie)', 'VK Cookie (cookie mode)'),
+              ),
+              E('input', {
+                type: 'password',
+                class: 'cbi-input-text tachyon-wizard__input',
+                placeholder: 'remixdsid=...; remixsid=...',
+                value: csqttVkCookie,
+                input: (ev: Event) => {
+                  csqttVkCookie = (ev.target as HTMLInputElement).value;
+                },
+              } as any),
+            ]),
+          ]),
+          E('div', { class: 'tachyon-wizard__row-2col' }, [
+            E('div', { class: 'tachyon-wizard__field' }, [
+              E(
+                'label',
+                { class: 'tachyon-wizard__label' },
+                tr(
+                  'VK Client IDs (через запятую)',
+                  'VK Client IDs (comma-separated)',
+                ),
               ),
               E('input', {
                 type: 'text',
                 class: 'cbi-input-text tachyon-wizard__input',
-                value: csqttDeviceId,
+                value: csqttVkClientIds,
                 input: (ev: Event) => {
-                  csqttDeviceId = (ev.target as HTMLInputElement).value;
+                  csqttVkClientIds = (ev.target as HTMLInputElement).value;
                 },
               } as any),
             ]),
+            E('div', { class: 'tachyon-wizard__field' }, [
+              E(
+                'label',
+                { class: 'tachyon-wizard__label' },
+                tr('Порт WireGuard / Локальный порт', 'WG Port / Local Port'),
+              ),
+              E('div', { style: 'display:flex;gap:8px;' }, [
+                E('input', {
+                  type: 'text',
+                  class: 'cbi-input-text tachyon-wizard__input',
+                  placeholder: '56000',
+                  value: csqttWgPort,
+                  input: (ev: Event) => {
+                    csqttWgPort = (ev.target as HTMLInputElement).value;
+                  },
+                } as any),
+                E('input', {
+                  type: 'text',
+                  class: 'cbi-input-text tachyon-wizard__input',
+                  placeholder: tr('Локальный', 'Local'),
+                  value: csqttLocalPort,
+                  input: (ev: Event) => {
+                    csqttLocalPort = (ev.target as HTMLInputElement).value;
+                  },
+                } as any),
+              ]),
+            ]),
+          ]),
+          E('div', { class: 'tachyon-wizard__row-2col' }, [
+            E('div', { class: 'tachyon-wizard__field' }, [
+              E(
+                'label',
+                { class: 'tachyon-wizard__label' },
+                tr(
+                  'Приватный ключ WireGuard (режим wg)',
+                  'WireGuard Private Key (wg mode)',
+                ),
+              ),
+              E('input', {
+                type: 'password',
+                class: 'cbi-input-text tachyon-wizard__input',
+                value: csqttWgPrivateKey,
+                input: (ev: Event) => {
+                  csqttWgPrivateKey = (ev.target as HTMLInputElement).value;
+                },
+              } as any),
+            ]),
+            E('div', { class: 'tachyon-wizard__field' }, [
+              E(
+                'label',
+                { class: 'tachyon-wizard__label' },
+                tr(
+                  'Публичный ключ пира WireGuard (режим wg)',
+                  'WireGuard Peer Public Key (wg mode)',
+                ),
+              ),
+              E('input', {
+                type: 'text',
+                class: 'cbi-input-text tachyon-wizard__input',
+                value: csqttWgPeerPublicKey,
+                input: (ev: Event) => {
+                  csqttWgPeerPublicKey = (ev.target as HTMLInputElement).value;
+                },
+              } as any),
+            ]),
+          ]),
+          E('div', { class: 'tachyon-wizard__row-2col' }, [
+            E('div', { class: 'tachyon-wizard__field' }, [
+              E(
+                'label',
+                { class: 'tachyon-wizard__label' },
+                tr(
+                  'Адрес туннеля WireGuard (режим wg)',
+                  'WireGuard Tunnel Address (wg mode)',
+                ),
+              ),
+              E('input', {
+                type: 'text',
+                class: 'cbi-input-text tachyon-wizard__input',
+                placeholder: '10.66.0.2/32',
+                value: csqttWgAddress,
+                input: (ev: Event) => {
+                  csqttWgAddress = (ev.target as HTMLInputElement).value;
+                },
+              } as any),
+            ]),
+            E(
+              'label',
+              {
+                class: 'tachyon-wizard__toggle-row',
+                style: 'align-self:end;margin-bottom:6px;',
+              },
+              [
+                E('input', {
+                  type: 'checkbox',
+                  checked: csqttChunk1 ? true : undefined,
+                  change: (ev: Event) => {
+                    csqttChunk1 = (ev.target as HTMLInputElement).checked;
+                  },
+                } as any),
+                E(
+                  'span',
+                  {},
+                  tr('Фрейминг Chunk1 (chunk1)', 'Chunk1 Framing (chunk1)'),
+                ),
+              ],
+            ),
           ]),
         );
       } else if (customProto === 'shadowtls') {
@@ -7772,6 +7976,26 @@ export function openConnectionWizardModal(
               csqttVkAuthMode,
             );
           }
+          if (csqttVkCookie.trim()) {
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              'csqtt_vk_cookie',
+              csqttVkCookie.trim(),
+            );
+          }
+          const vkClientIdsList = csqttVkClientIds
+            .split(',')
+            .map((id) => id.trim())
+            .filter(Boolean);
+          if (vkClientIdsList.length > 0) {
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              'csqtt_vk_client_ids',
+              vkClientIdsList,
+            );
+          }
           if (csqttTurnTransport) {
             uciObj.set(
               TACHYON_UCI_PACKAGE,
@@ -7788,6 +8012,34 @@ export function openConnectionWizardModal(
               csqttTurnServer.trim(),
             );
           }
+          const turnUrlsList = csqttTurnUrls
+            .split(',')
+            .map((u) => u.trim())
+            .filter(Boolean);
+          if (turnUrlsList.length > 0) {
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              'csqtt_turn_urls',
+              turnUrlsList,
+            );
+          }
+          if (csqttTurnUsername.trim()) {
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              'csqtt_turn_username',
+              csqttTurnUsername.trim(),
+            );
+          }
+          if (csqttTurnPassword.trim()) {
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              'csqtt_turn_password',
+              csqttTurnPassword.trim(),
+            );
+          }
           if (csqttMtu.trim()) {
             uciObj.set(
               TACHYON_UCI_PACKAGE,
@@ -7796,12 +8048,55 @@ export function openConnectionWizardModal(
               csqttMtu.trim(),
             );
           }
+          if (csqttChunk1) {
+            uciObj.set(TACHYON_UCI_PACKAGE, srcId, 'csqtt_chunk1', '1');
+          }
           if (csqttDeviceId.trim()) {
             uciObj.set(
               TACHYON_UCI_PACKAGE,
               srcId,
               'csqtt_device_id',
               csqttDeviceId.trim(),
+            );
+          }
+          if (csqttWgPort.trim()) {
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              'csqtt_wg_port',
+              csqttWgPort.trim(),
+            );
+          }
+          if (csqttLocalPort.trim()) {
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              'csqtt_local_port',
+              csqttLocalPort.trim(),
+            );
+          }
+          if (csqttWgPrivateKey.trim()) {
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              'csqtt_wg_private_key',
+              csqttWgPrivateKey.trim(),
+            );
+          }
+          if (csqttWgPeerPublicKey.trim()) {
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              'csqtt_wg_peer_public_key',
+              csqttWgPeerPublicKey.trim(),
+            );
+          }
+          if (csqttWgAddress.trim()) {
+            uciObj.set(
+              TACHYON_UCI_PACKAGE,
+              srcId,
+              'csqtt_wg_address',
+              csqttWgAddress.trim(),
             );
           }
         } else if (customProto === 'shadowtls') {

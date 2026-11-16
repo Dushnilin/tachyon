@@ -831,17 +831,45 @@ export function installModalHeaderCloseEnhancements(): void {
   scanOverlay();
 
   if (typeof MutationObserver === 'function' && document.body) {
-    const observer = new MutationObserver(() => {
+    let scanScheduled = false;
+    const scheduleScan = () => {
+      if (scanScheduled) return;
+      scanScheduled = true;
+      const run = () => {
+        scanScheduled = false;
+        if (document.body?.classList.contains('modal-overlay-active')) {
+          scanOverlay();
+        }
+      };
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(run);
+      } else {
+        setTimeout(run, 16);
+      }
+    };
+
+    const bodyObserver = new MutationObserver(() => {
       if (document.body.classList.contains('modal-overlay-active')) {
-        scanOverlay();
+        scheduleScan();
       }
     });
-    observer.observe(document.body, {
+    bodyObserver.observe(document.body, {
       attributes: true,
       attributeFilter: ['class'],
       childList: true,
-      subtree: true,
     });
+
+    const overlayRoot = document.getElementById('modal_overlay');
+    if (overlayRoot) {
+      const overlayObserver = new MutationObserver(() => {
+        if (document.body.classList.contains('modal-overlay-active')) {
+          scheduleScan();
+        }
+      });
+      overlayObserver.observe(overlayRoot, {
+        childList: true,
+      });
+    }
   }
 
   document.addEventListener('keydown', (ev: KeyboardEvent) => {

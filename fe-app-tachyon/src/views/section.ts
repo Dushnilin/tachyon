@@ -1162,14 +1162,7 @@ function readSingleSectionCacheMetadata(targetId) {
 
 function resolveEffectiveSectionOutboundSourceIds(section_id) {
   const targetId = section_id || 'Main';
-  const dpiTypes = new Set([
-    'zapret',
-    'zapret2',
-    'byedpi',
-    'desync',
-    'wdtt',
-    'olcrtc',
-  ]);
+  const dpiTypes = new Set(['zapret', 'zapret2', 'byedpi', 'desync', 'olcrtc']);
   const isNonDpiSource = (srcObj) => {
     if (!srcObj || srcObj.enabled === '0') return false;
     const stype = String(srcObj.source_type || 'subscription')
@@ -3702,11 +3695,7 @@ function currentDraftOutboundNames(section_id) {
       `${uci.get(UCI_PACKAGE, sid, 'source_type') || 'subscription'}`
         .trim()
         .toLowerCase();
-    if (
-      ['zapret', 'zapret2', 'byedpi', 'desync', 'wdtt', 'olcrtc'].includes(
-        stype,
-      )
-    ) {
+    if (['zapret', 'zapret2', 'byedpi', 'desync', 'olcrtc'].includes(stype)) {
       return;
     }
     const rawLinks = [
@@ -3802,14 +3791,7 @@ function currentSectionPriorityTierChoices(section_id, selectedValues = []) {
     result.push({ value: v, label: `${label || v}`.trim() });
   };
 
-  const dpiTypes = new Set([
-    'zapret',
-    'zapret2',
-    'byedpi',
-    'desync',
-    'wdtt',
-    'olcrtc',
-  ]);
+  const dpiTypes = new Set(['zapret', 'zapret2', 'byedpi', 'desync', 'olcrtc']);
 
   const secGroupRefs = new Set(
     currentSourceOptionValues(section_id, 'outbound_group_refs'),
@@ -7990,8 +7972,6 @@ function getActionOptionLabel(action) {
       return 'TrustTunnel';
     case 'tewfai':
       return 'TewFai';
-    case 'csqtt':
-      return 'CSQTT';
     case 'hosts':
       return _('Hosts');
     case 'outbound':
@@ -16792,6 +16772,29 @@ function createSectionContent(section) {
 
   o = section.taboption(
     'settings',
+    form.Value,
+    'csqtt_wg_port',
+    _('WireGuard Port (wg mode, optional)'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.datatype = 'port';
+  o.placeholder = '56000';
+  o.depends('action', 'csqtt');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'csqtt_local_port',
+    _('Local UDP Port (optional)'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.datatype = 'port';
+  o.depends('action', 'csqtt');
+
+  o = section.taboption(
+    'settings',
     form.DynamicList,
     'csqtt_hashes',
     _('Peer Hashes / Keys'),
@@ -16834,9 +16837,43 @@ function createSectionContent(section) {
 
   o = section.taboption(
     'settings',
+    form.DynamicList,
+    'csqtt_turn_urls',
+    _('TURN URLs (optional)'),
+  );
+  o.modalonly = true;
+  o.placeholder = 'turn:turn.example.com:3478?transport=udp';
+  o.depends('action', 'csqtt');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'csqtt_turn_username',
+    _('TURN Username (optional)'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends('action', 'csqtt');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'csqtt_turn_password',
+    _('TURN Password (optional)'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.password = true;
+  o.depends('action', 'csqtt');
+
+  o = section.taboption(
+    'settings',
     form.ListValue,
     'csqtt_vk_auth_mode',
     _('VK Auth Mode'),
+    _(
+      'VK anonymous token endpoints may require captcha or cookies under rate-limiting. For higher reliability, supply VK Cookie in cookie mode, configure a custom TURN server/URLs, or use wg / raw direct UDP mode.',
+    ),
   );
   o.modalonly = true;
   o.value('', _('Default'));
@@ -16849,11 +16886,44 @@ function createSectionContent(section) {
   o.value('telemost', 'telemost');
   o.depends('action', 'csqtt');
 
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'csqtt_vk_cookie',
+    _('VK Cookie (for cookie auth mode)'),
+    _(
+      'VK session Cookie header value used when VK Auth Mode is cookie (or auto-detected when non-empty).',
+    ),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.password = true;
+  o.depends('action', 'csqtt');
+
+  o = section.taboption(
+    'settings',
+    form.DynamicList,
+    'csqtt_vk_client_ids',
+    _('VK Client IDs (optional)'),
+  );
+  o.modalonly = true;
+  o.depends('action', 'csqtt');
+
   o = section.taboption('settings', form.Value, 'csqtt_mtu', _('MTU'));
   o.modalonly = true;
   o.rmempty = true;
   o.datatype = 'uinteger';
   o.placeholder = '1350';
+  o.depends('action', 'csqtt');
+
+  o = section.taboption(
+    'settings',
+    form.Flag,
+    'csqtt_chunk1',
+    _('Chunk1 Framing (chunk1)'),
+  );
+  o.modalonly = true;
+  o.default = '0';
   o.depends('action', 'csqtt');
 
   o = section.taboption(
@@ -16864,6 +16934,38 @@ function createSectionContent(section) {
   );
   o.modalonly = true;
   o.rmempty = true;
+  o.depends('action', 'csqtt');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'csqtt_wg_private_key',
+    _('WireGuard Private Key (wg mode, optional)'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.password = true;
+  o.depends('action', 'csqtt');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'csqtt_wg_peer_public_key',
+    _('WireGuard Peer Public Key (wg mode, optional)'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.depends('action', 'csqtt');
+
+  o = section.taboption(
+    'settings',
+    form.Value,
+    'csqtt_wg_address',
+    _('WireGuard Tunnel Address (wg mode, optional)'),
+  );
+  o.modalonly = true;
+  o.rmempty = true;
+  o.placeholder = '10.66.0.2/32';
   o.depends('action', 'csqtt');
 
   o = section.taboption(
@@ -17531,7 +17633,7 @@ function createSectionContent(section) {
     'outbound_source_refs',
     _('Connections from Pool (in Priority Order)'),
     _(
-      'Select any connections from the Connections Pool (Zapret2, Zapret, ByeDPI, Desync, Subscriptions, AmneziaWG, FPTN, OpenVPN, WARP, etc.). Order matters: the 2nd item is used as failover when the 1st fails.',
+      'Select any connections from the Connections Pool (Zapret2, Zapret, ByeDPI, Desync, CSQTT/WDTT, Subscriptions, AmneziaWG, FPTN, OpenVPN, WARP, etc.). Order matters: the 2nd item is used as failover when the 1st fails. Routing sections are evaluated top-to-bottom (first-match-wins): if a standalone CSQTT/WDTT section is enabled above Main_Route with overlapping conditions, it will intercept traffic before Main_Route.',
     ),
   );
   o.modalonly = true;
@@ -18196,7 +18298,7 @@ function createSectionContent(section) {
     'section_selection_mode',
     _('Multi-Connection Selection Mode'),
     _(
-      'How multiple connections or balancers in this section interact: Priority Failover switches to the next connection only if the higher-priority one fails.',
+      'How multiple connections or balancers in this section interact: Priority Failover switches to the next connection only if the higher-priority one fails (recommended when chaining heterogeneous transports such as CSQTT/WDTT -> TrustTunnel).',
     ),
   );
   o.modalonly = true;
@@ -18738,6 +18840,7 @@ function createSectionContent(section) {
   o.depends('action', 'connection');
   o.depends('action', 'fptn');
   o.depends('action', 'awg');
+  o.depends('action', 'csqtt');
   o.modalonly = true;
   o.write = function (section_id, value) {
     if (value === '1') {
@@ -18775,6 +18878,7 @@ function createSectionContent(section) {
   o.depends({ action: 'connection', outbound_detour_enabled: '1' });
   o.depends({ action: 'fptn', outbound_detour_enabled: '1' });
   o.depends({ action: 'awg', outbound_detour_enabled: '1' });
+  o.depends({ action: 'csqtt', outbound_detour_enabled: '1' });
   o.modalonly = true;
   o.load = function (section_id) {
     refreshOutboundDetourSectionOptionValues(this, section_id);

@@ -295,7 +295,7 @@ function apply_selections(state, selections) {
         log_message("switched " + item.kind + " DNS to priority " + as_string(selected.index + 1) + " (" + values[selected.index] + ", " + selected.reason + ")", "info");
 
         let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
-        if (tcfg.enabled == "1" && tcfg.bot_token && tcfg.admin_ids) {
+        if (tcfg.enabled == "1" && tcfg.bot_token && tcfg.admin_ids && tcfg.notify_dns_leak != "0") {
             let is_isp = false;
             let is_explicit_fallback = false;
             let cfg = settings();
@@ -496,6 +496,7 @@ function worker() {
     if (sleep_interval < 2) sleep_interval = 2;
 
     let last_log_trim = 0;
+    let last_gc = 0;
 
     while (true) {
         if (my_pid != "") {
@@ -510,6 +511,13 @@ function worker() {
             trim_runtime_logs();
             last_log_trim = now;
         }
+        if (now - last_gc >= 300) {
+            last_gc = now;
+            if (type(gc) == "function")
+                gc();
+        }
+        if (type(uci_core.reload) == "function")
+            uci_core.reload(CONFIG_NAME);
         let current_cfg = settings();
         if (!runtime_dns.state_matches(runtime_dns.state_template(current_cfg), state))
             return 0;
@@ -597,6 +605,10 @@ function stop_runtime() {
     if (process_running(pid))
         command_success_from_args([ "kill", "-9", pid ]);
     remove_file(PID_FILE);
+    for (let stale in (fs.glob(STATE_FILE + ".candidate.*") || []))
+        remove_file(stale);
+    for (let stale in (fs.glob(STATE_FILE + ".tmp.*") || []))
+        remove_file(stale);
     command_status(common.kill_matching_command("-F " + shell_quote(DNS_FAILOVER_UC + " worker")));
     system(common.kill_matching_command("dig.*" + runtime_dns.DNS_HEALTH_ADDRESS));
     return 0;

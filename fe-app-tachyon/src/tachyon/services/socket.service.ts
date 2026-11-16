@@ -195,17 +195,27 @@ class SocketManager {
     this.reconnectAttempts.delete(url);
 
     const ws = this.sockets.get(url);
+    this.sockets.delete(url);
+    this.listeners.delete(url);
+    this.errorListeners.delete(url);
+    this.connected.delete(url);
     if (ws) {
-      ws.close();
-      this.sockets.delete(url);
-      this.listeners.delete(url);
-      this.errorListeners.delete(url);
-      this.connected.delete(url);
+      try {
+        ws.close();
+      } catch {
+        // Ignore already-closed sockets
+      }
     }
   }
 
   disconnectAll(): void {
-    for (const url of this.sockets.keys()) {
+    const urls = new Set<string>([
+      ...this.sockets.keys(),
+      ...this.reconnectTimers.keys(),
+      ...this.listeners.keys(),
+      ...this.errorListeners.keys(),
+    ]);
+    for (const url of urls) {
       this.disconnect(url);
     }
   }

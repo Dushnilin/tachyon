@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: TACHYON\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-16 08:46+0300\n"
-"PO-Revision-Date: 2026-11-16 08:46+0300\n"
+"POT-Creation-Date: 2026-11-16 19:01+0300\n"
+"PO-Revision-Date: 2026-11-16 19:01+0300\n"
 "Last-Translator: Dushnilin\n"
 "Language-Team: none\n"
 "Language: ru\n"
@@ -989,6 +989,9 @@ msgstr "Авто (кооперация с SQM/CAKE)"
 msgid "Auto (domain pool / ClientHello clone)"
 msgstr "Авто (пул доменов / клонирование ClientHello)"
 
+msgid "Auto (follow LuCI)"
+msgstr ""
+
 msgid "Auto (from server link)"
 msgstr "Авто (из ссылки сервера)"
 
@@ -1400,6 +1403,9 @@ msgstr "Bootstrap DNS"
 msgid "Bootstrap DNS Servers"
 msgstr "Bootstrap DNS-серверы"
 
+msgid "Bot Language"
+msgstr ""
+
 msgid "Bot Status"
 msgstr "Статус бота"
 
@@ -1775,6 +1781,9 @@ msgstr "Выберите, какие серверы из добавленных 
 msgid "Chrome (Recommended for REALITY + ML-KEM)"
 msgstr "Chrome (рекомендуется для REALITY + ML-KEM)"
 
+msgid "Chunk1 Framing (chunk1)"
+msgstr "Фрейминг Chunk1 (chunk1)"
+
 msgid "Cipher"
 msgstr "Шифр"
 
@@ -2015,8 +2024,8 @@ msgstr "Аргументы командной строки стратегии д
 msgid "Command-line strategy arguments for nfqws (zapret)."
 msgstr "Аргументы командной строки стратегии для nfqws (zapret)."
 
-msgid "Command-line strategy arguments for nfqws2 (zapret2 / wdtt / olcrtc)."
-msgstr "Аргументы командной строки стратегии для nfqws2 (zapret2 / wdtt / olcrtc)."
+msgid "Command-line strategy arguments for nfqws2 (zapret2 / olcrtc)."
+msgstr ""
 
 msgid "Community Lists"
 msgstr "Community-списки"
@@ -2179,6 +2188,9 @@ msgstr "Название подключения"
 
 msgid "Connection Path"
 msgstr "Маршрут соединения"
+
+msgid "Connection URI (wdtt://..., csqtt://..., or qwdtt://...)."
+msgstr ""
 
 msgid "Connection URL"
 msgstr "URL подключения"
@@ -2705,8 +2717,14 @@ msgstr "DSCP-метки (QoS)"
 msgid "Daily Quota"
 msgstr "Дневная квота"
 
+msgid "Daily Report Hour (0-23)"
+msgstr ""
+
 msgid "Daily Screen Time Quota (minutes)"
 msgstr "Дневная квота экранного времени (минуты)"
+
+msgid "Daily Status Report"
+msgstr ""
 
 msgid "Daily Time Limit (minutes)"
 msgstr "Дневной лимит времени (минуты)"
@@ -3542,6 +3560,9 @@ msgstr "Введите корректное время в формате ЧЧ:М
 msgid "Enter a whole number of minutes between 0 and 1440"
 msgstr "Введите целое число минут от 0 до 1440"
 
+msgid "Enter an hour from 0 to 23"
+msgstr ""
+
 msgid "Enter the API token obtained from @BotFather."
 msgstr "Введите токен API, полученный от @BotFather."
 
@@ -4151,6 +4172,9 @@ msgstr "Резервные DNS серверы должны быть обычны
 msgid "Fallback DNS servers must be plain UDP (IP or hostname). Path-style DoH (e.g. domain/path) is not allowed here."
 msgstr "Резервные DNS серверы должны быть обычными UDP (IP или hostname). Формат DoH с путём (например, domain/path) здесь недопустим."
 
+msgid "Fallback SOCKS5 Proxy"
+msgstr ""
+
 msgid "Fallback internet interface (e.g. wan2, wwan, usb, tethering) activated when the primary WAN fails."
 msgstr "Резервный интернет-интерфейс (например, wan2, wwan, usb, tethering), активируемый при отказе основного WAN."
 
@@ -4736,6 +4760,15 @@ msgstr "Hosts"
 msgid "Hosts Lists Update Interval"
 msgstr "Интервал обновления списков Hosts"
 
+msgid "Hour of the day to send the daily report (default: 8)."
+msgstr ""
+
+msgid "Hour when quiet hours begin (default: 23)."
+msgstr ""
+
+msgid "Hour when quiet hours end (default: 7)."
+msgstr ""
+
 msgid "How combined latency is calculated across multiple URLs when selecting the best server. Note: background probe count scales with URL count (N servers × M URLs); if no server passes 100% of URLs, automatic partial-match Fallback is activated."
 msgstr "Способ расчёта итоговой задержки по нескольким URL при выборе лучшего сервера. Примечание: число фоновых проверок растёт пропорционально числу ссылок (N серверов × M ссылок); если ни один сервер не проходит 100% проверок, автоматически включается резервный режим частичного совпадения (Fallback)."
 
@@ -4745,8 +4778,8 @@ msgstr "Сколько часов хранить метрики (по умолч
 msgid "How member conditions are combined."
 msgstr "Способ логического объединения дочерних условий."
 
-msgid "How multiple connections or balancers in this section interact: Priority Failover switches to the next connection only if the higher-priority one fails."
-msgstr "Как работают несколько подключений или балансировщиков в секции: в режиме приоритета 2-е подключение включается только при отказе 1-го."
+msgid "How multiple connections or balancers in this section interact: Priority Failover switches to the next connection only if the higher-priority one fails (recommended when chaining heterogeneous transports such as CSQTT/WDTT -> TrustTunnel)."
+msgstr ""
 
 msgid "How multiple selected Conditions work together inside this section."
 msgstr "Как несколько выбранных условий объединяются внутри этой секции (И / ИЛИ / НЕ)."
@@ -5804,6 +5837,9 @@ msgstr "ЛОКАЛЬНАЯ СЕТЬ (LAN)"
 msgid "Language for AI Doctor diagnosis responses"
 msgstr "Язык ответов диагностики ИИ-доктора"
 
+msgid "Language for Telegram bot replies and notifications."
+msgstr ""
+
 msgid "Language updated. Reloading page..."
 msgstr "Язык обновлён. Перезагрузка страницы..."
 
@@ -6002,6 +6038,9 @@ msgstr "Загрузка версий..."
 msgid "Loading..."
 msgstr "Загрузка..."
 
+msgid "Local"
+msgstr "Локальный"
+
 msgid "Local (LAN IPv6)"
 msgstr "Локальный (LAN IPv6)"
 
@@ -6031,6 +6070,9 @@ msgstr "Локальный IPv4 адрес туннеля"
 
 msgid "Local Tunnel IPv4 CIDR / MTU"
 msgstr "Локальный IPv4 адрес туннеля / MTU"
+
+msgid "Local UDP Port (optional)"
+msgstr ""
 
 msgid "Local hostname"
 msgstr "Локальное имя хоста"
@@ -7067,6 +7109,9 @@ msgstr "Опция \"%s\" содержит недопустимое значен
 msgid "Optional HTTP/HTTPS URLs probed through this section's outbound/strategy (e.g. https://i.ytimg.com/generate_204). Leave empty to use the global latency test URL. Note: HTTP/HTTPS probes do not validate UDP game traffic or Discord voice."
 msgstr "Необязательные URL HTTP/HTTPS для проверки через прокси/стратегию этой секции (например, https://i.ytimg.com/generate_204). Оставьте пустым для использования глобального URL проверки задержки. Примечание: HTTP/HTTPS-проверки не проверяют игровой трафик UDP и голосовые каналы Discord."
 
+msgid "Optional SOCKS5 proxy address (host:port, for example 127.0.0.1:1080) used when connecting to Telegram API."
+msgstr ""
+
 msgid "Optional UDP port to expose this endpoint as a Tailscale peer relay server."
 msgstr "Необязательный UDP-порт для работы этого узла в роли ретранслятора Tailscale peer relay."
 
@@ -7390,6 +7435,9 @@ msgstr "Полезный груз (I4)"
 
 msgid "Payload (I5)"
 msgstr "Полезный груз (I5)"
+
+msgid "Peer (host:port)"
+msgstr ""
 
 msgid "Peer Hashes (comma-separated)"
 msgstr "Хеши / Ключи узлов (через запятую)"
@@ -7922,6 +7970,9 @@ msgstr "Алгоритм QUIC Congestion Control & Потоки"
 msgid "QUOTA • TRAFFIC CAP"
 msgstr "QUOTA • ПО КВОТЕ ТРАФИКА"
 
+msgid "QWDTT Mode"
+msgstr ""
+
 msgid "QoS Priority Engine (DSCP)"
 msgstr "Движок приоритета QoS (DSCP)"
 
@@ -7957,6 +8008,15 @@ msgstr "Быстрое создание своего VPN / Прокси серв
 
 msgid "Quick setup for outbound routing & traffic optimization"
 msgstr "Быстрая настройка исходящего маршрута и оптимизации доставки трафика"
+
+msgid "Quiet Hours"
+msgstr ""
+
+msgid "Quiet Hours End (0-23)"
+msgstr ""
+
+msgid "Quiet Hours Start (0-23)"
+msgstr ""
 
 msgid "Quota"
 msgstr "Лимит"
@@ -8203,6 +8263,9 @@ msgstr "Перезагрузка..."
 
 msgid "Remote Hosts Lists"
 msgstr "Удалённые списки Hosts"
+
+msgid "Remote endpoint in HOST:PORT format for qwdtt client."
+msgstr ""
 
 msgid "Remote or local sing-box rule-set URLs or paths (domains only)."
 msgstr "Удалённые URL или локальные пути к наборам правил sing-box (только домены)."
@@ -8681,6 +8744,9 @@ msgstr "Запустить ИИ-доктора"
 msgid "Run Diagnostic"
 msgstr "Запустить диагностику"
 
+msgid "Run WDTT natively inside tachyon-core using the URI below instead of the external qwdtt client."
+msgstr ""
+
 msgid "Run doctor repair"
 msgstr "Запустить восстановление"
 
@@ -8990,8 +9056,8 @@ msgstr "Выберите промежуточную секцию"
 msgid "Select and order the sections through which blocked domains are tested. Checked sections are tried top-to-bottom."
 msgstr "Выберите и упорядочите секции, через которые тестируются заблокированные домены. Отмеченные секции проверяются сверху вниз."
 
-msgid "Select any connections from the Connections Pool (Zapret2, Zapret, ByeDPI, Desync, Subscriptions, AmneziaWG, FPTN, OpenVPN, WARP, etc.). Order matters: the 2nd item is used as failover when the 1st fails."
-msgstr "Выберите любые подключения из «Пула подключений» (Zapret2, Zapret, ByeDPI, Desync, подписки, AmneziaWG, FPTN, OpenVPN, WARP и др.). Порядок задаёт приоритет: 2-е сработает только после отказа 1-го и т.д."
+msgid "Select any connections from the Connections Pool (Zapret2, Zapret, ByeDPI, Desync, CSQTT/WDTT, Subscriptions, AmneziaWG, FPTN, OpenVPN, WARP, etc.). Order matters: the 2nd item is used as failover when the 1st fails. Routing sections are evaluated top-to-bottom (first-match-wins): if a standalone CSQTT/WDTT section is enabled above Main_Route with overlapping conditions, it will intercept traffic before Main_Route."
+msgstr ""
 
 msgid "Select any existing router interface or preset (e.g. wg0, awg0, tun0, tailscale0, wan, eth0, br-lan)."
 msgstr "Выберите любой существующий сетевой интерфейс роутера или готовый пресет (например: wg0, awg0, tun0, tailscale0, wan, eth0, br-lan)."
@@ -9148,6 +9214,9 @@ msgstr "Отправлять уведомление в Telegram при авто�
 
 msgid "Send a Telegram notification when proxy subscriptions are successfully updated."
 msgstr "Отправлять уведомление в Telegram при успешном обновлении подписок прокси."
+
+msgid "Send a daily summary of system health and proxy status to Telegram."
+msgstr ""
 
 msgid "Send custom x-device-os, x-ver-os, x-device-model, and x-device-locale headers."
 msgstr "Отправлять пользовательские заголовки x-device-os, x-ver-os, x-device-model и x-device-locale."
@@ -9974,6 +10043,9 @@ msgstr "Поддержать проект на CloudTips"
 msgid "Supported"
 msgstr "Поддерживается"
 
+msgid "Suppress non-critical Telegram notifications during the configured night window."
+msgstr ""
+
 msgid "Sweden (se)"
 msgstr "Швеция (se)"
 
@@ -10178,11 +10250,23 @@ msgstr "TTL должен быть положительным числом"
 msgid "TTL value cannot be empty"
 msgstr "Значение TTL не может быть пустым"
 
+msgid "TURN Password (optional)"
+msgstr "Пароль TURN (необязательно)"
+
 msgid "TURN Server (optional)"
 msgstr "Сервер TURN (необязательно)"
 
 msgid "TURN Transport"
 msgstr "Транспорт TURN"
+
+msgid "TURN URLs (comma-separated)"
+msgstr "URL-ы TURN (через запятую)"
+
+msgid "TURN URLs (optional)"
+msgstr ""
+
+msgid "TURN Username (optional)"
+msgstr "Логин TURN (необязательно)"
 
 msgid "Table"
 msgstr "Таблица"
@@ -11237,6 +11321,9 @@ msgstr "Использовать DNS провайдера с порта WAN"
 msgid "Use ISP DNS servers from WAN port"
 msgstr "Брать DNS-серверы провайдера с WAN-порта (ISP DNS)"
 
+msgid "Use Native Core Engine (tachyon-core)"
+msgstr ""
+
 msgid "Use QUIC (HTTP/3)"
 msgstr "Использовать QUIC (HTTP/3)"
 
@@ -11347,6 +11434,24 @@ msgstr "Имя пользователя для авторизации auth-user-
 
 msgid "VK Auth Mode"
 msgstr "Режим авторизации VK"
+
+msgid "VK Client IDs (comma-separated)"
+msgstr "VK Client IDs (через запятую)"
+
+msgid "VK Client IDs (optional)"
+msgstr ""
+
+msgid "VK Cookie (cookie mode)"
+msgstr "VK Cookie (для режима cookie)"
+
+msgid "VK Cookie (for cookie auth mode)"
+msgstr ""
+
+msgid "VK anonymous token endpoints may require captcha or cookies under rate-limiting. For higher reliability, supply VK Cookie in cookie mode, configure a custom TURN server/URLs, or use wg / raw direct UDP mode."
+msgstr ""
+
+msgid "VK session Cookie header value used when VK Auth Mode is cookie (or auto-detected when non-empty)."
+msgstr ""
 
 msgid "VLESS flow"
 msgstr "VLESS flow"
@@ -11489,8 +11594,11 @@ msgstr "Конфигурация WARP успешно сгенерирована 
 msgid "WARP generation failed: %s"
 msgstr "Ошибка генерации WARP: %s"
 
-msgid "WDTT (nfqws2 Preset)"
-msgstr "WDTT (пресет nfqws2)"
+msgid "WDTT (Native / qwdtt)"
+msgstr ""
+
+msgid "WDTT / CSQTT URI"
+msgstr ""
 
 msgid "WDTT Auto Update"
 msgstr "Автообновление WDTT"
@@ -11539,6 +11647,9 @@ msgstr "URI подключения WDTT (wdtt://...)"
 
 msgid "WEIGHTED • SMOOTH WRR"
 msgstr "WEIGHTED • ВЗВЕШЕННЫЙ 1/RTT²"
+
+msgid "WG Port / Local Port"
+msgstr "Порт WireGuard / Локальный порт"
 
 msgid "WHEP"
 msgstr "WHEP"
@@ -11644,6 +11755,27 @@ msgstr "Виджеты и виды"
 
 msgid "Winning Section (Exact Match)"
 msgstr "Победившая секция (точное совпадение)"
+
+msgid "WireGuard Peer Public Key (wg mode)"
+msgstr "Публичный ключ пира WireGuard (режим wg)"
+
+msgid "WireGuard Peer Public Key (wg mode, optional)"
+msgstr ""
+
+msgid "WireGuard Port (wg mode, optional)"
+msgstr ""
+
+msgid "WireGuard Private Key (wg mode)"
+msgstr "Приватный ключ WireGuard (режим wg)"
+
+msgid "WireGuard Private Key (wg mode, optional)"
+msgstr ""
+
+msgid "WireGuard Tunnel Address (wg mode)"
+msgstr "Адрес туннеля WireGuard (режим wg)"
+
+msgid "WireGuard Tunnel Address (wg mode, optional)"
+msgstr ""
 
 msgid "WireGuard private key from your Cloudflare WARP account"
 msgstr "Приватный ключ WireGuard из вашего аккаунта Cloudflare WARP"
@@ -12352,6 +12484,18 @@ msgstr "🇱🇻 Латвия (lv)"
 
 msgid "🇵🇱 Poland (pl)"
 msgstr "🇵🇱 Польша (pl)"
+
+msgid "Command-line strategy arguments for nfqws2 (zapret2 / wdtt / olcrtc)."
+msgstr "Аргументы командной строки стратегии для nfqws2 (zapret2 / wdtt / olcrtc)."
+
+msgid "How multiple connections or balancers in this section interact: Priority Failover switches to the next connection only if the higher-priority one fails."
+msgstr "Как работают несколько подключений или балансировщиков в секции: в режиме приоритета 2-е подключение включается только при отказе 1-го."
+
+msgid "Select any connections from the Connections Pool (Zapret2, Zapret, ByeDPI, Desync, Subscriptions, AmneziaWG, FPTN, OpenVPN, WARP, etc.). Order matters: the 2nd item is used as failover when the 1st fails."
+msgstr "Выберите любые подключения из «Пула подключений» (Zapret2, Zapret, ByeDPI, Desync, подписки, AmneziaWG, FPTN, OpenVPN, WARP и др.). Порядок задаёт приоритет: 2-е сработает только после отказа 1-го и т.д."
+
+msgid "WDTT (nfqws2 Preset)"
+msgstr "WDTT (пресет nfqws2)"
 
 msgid "Bypass DPI throttling for YouTube, Discord, or Telegram without a proxy server"
 msgstr "Обход замедления YouTube, Discord и Telegram без внешнего прокси-сервера"

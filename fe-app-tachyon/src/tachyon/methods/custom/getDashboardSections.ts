@@ -481,19 +481,25 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
       });
     });
 
+    const isNativeWdttSource = (src: Tachyon.ConfigSection) =>
+      (src.source_type || '').toLowerCase() === 'wdtt' &&
+      (src.wdtt_native === '1' ||
+        Boolean((src.warp_flow_uri || src.csqtt_uri || '').trim()));
     const serviceSourceTypes = new Set([
       'zapret',
       'zapret2',
       'byedpi',
       'desync',
-      'wdtt',
       'olcrtc',
     ]);
+    const isServiceSource = (src: Tachyon.ConfigSection) => {
+      const st = (src.source_type || '').toLowerCase();
+      if (serviceSourceTypes.has(st)) return true;
+      if (st === 'wdtt') return !isNativeWdttSource(src);
+      return false;
+    };
     const allSourcesAreService =
-      effectiveSources.length > 0 &&
-      effectiveSources.every((src) =>
-        serviceSourceTypes.has((src.source_type || '').toLowerCase()),
-      );
+      effectiveSources.length > 0 && effectiveSources.every(isServiceSource);
 
     const seenSubUrls = new Set<string>();
     const extraProxyLinks: string[] = [];
@@ -696,8 +702,10 @@ function hydrateConfigSections(configSections: Tachyon.ConfigSection[]) {
           'shadowtls',
           'trusttunnel',
           'tewfai',
+          'csqtt',
           'openvpn',
         ].includes(stype) ||
+        isNativeWdttSource(src) ||
         (stype === 'desync' && !allSourcesAreService)
       ) {
         if (next.action !== stype) {
@@ -1277,6 +1285,7 @@ const SINGLE_ENDPOINT_ACTIONS = new Set([
   'tewfai',
   'trusttunnel',
   'shadowtls',
+  'csqtt',
 ]);
 
 const ACTION_DISPLAY_NAMES: Record<string, string> = {
@@ -1293,6 +1302,8 @@ const ACTION_DISPLAY_NAMES: Record<string, string> = {
   tewfai: 'TewFai',
   trusttunnel: 'TrustTunnel',
   shadowtls: 'ShadowTLS',
+  csqtt: 'CSQTT',
+  wdtt: 'WDTT',
   desync: 'Native Desync',
   fptn: 'FPTN',
 };
@@ -2163,6 +2174,8 @@ function dashboardOutboundType(
   if (proto === 'masque') return 'MASQUE';
   if (proto === 'openconnect') return 'OpenConnect';
   if (proto === 'tewfai') return 'TewFai';
+  if (proto === 'csqtt') return 'CSQTT';
+  if (proto === 'wdtt') return 'WDTT';
   if (proto === 'warp') return 'WARP';
   if (proto === 'openvpn' || proto === 'openvpn-client') return 'OpenVPN';
   if (proto === 'tailscale') return 'Tailscale';

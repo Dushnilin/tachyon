@@ -679,7 +679,7 @@ function harden_config_mode(package_name) {
     let path = "/etc/config/" + as_string(package_name);
     if (fs.stat(path) == null)
         return;
-    system("chmod 0600 " + common.shell_quote(path) + " 2>/dev/null");
+    try { fs.chmod(path, 0600); } catch (e) {}
 }
 
 function rename(p1, p2, p3) {
@@ -839,10 +839,23 @@ function section_objects(package_name, type_name) {
     return result;
 }
 
+function reload(package_name) {
+    package_name = as_string(package_name);
+    if (fixture_enabled())
+        return true;
+    delete loaded_packages[package_name];
+    let c = cursor();
+    if (c == null)
+        return false;
+    try { c.unload(package_name); } catch (e) {}
+    return load(package_name);
+}
+
 return {
     available,
     cursor,
     load,
+    reload,
     get,
     get_all,
     exists,

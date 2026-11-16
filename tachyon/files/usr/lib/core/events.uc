@@ -169,17 +169,22 @@ function journal(opts) {
             start_idx = total_lines - target_keep;
         }
 
-        let kept = [];
-        for (let i = start_idx; i < total_lines; i++) {
-            push(kept, lines[i]);
+        // Accumulate from tail in O(N) instead of O(N^2) shift() + join()
+        let selected_rev = [];
+        let total_bytes = 0;
+        for (let i = total_lines - 1; i >= start_idx; i--) {
+            let entry_len = length(lines[i]) + 1;
+            if (length(selected_rev) > 0 && total_bytes + entry_len > max_bytes)
+                break;
+            push(selected_rev, lines[i]);
+            total_bytes += entry_len;
         }
 
-        // Also ensure byte size fits max_bytes
-        let compact_text = join("\n", kept) + "\n";
-        while (length(compact_text) > max_bytes && length(kept) > 1) {
-            shift(kept);
-            compact_text = join("\n", kept) + "\n";
+        let kept = [];
+        for (let i = length(selected_rev) - 1; i >= 0; i--) {
+            push(kept, selected_rev[i]);
         }
+        let compact_text = length(kept) > 0 ? (join("\n", kept) + "\n") : "";
 
         let tmp_file = sprintf("%s.tmp.%d", file_path, now_ms());
         let res = fs.writefile(tmp_file, compact_text);
@@ -485,6 +490,14 @@ function bus(opts) {
                 counters.suppressed++;
                 return -1;
             }
+        }
+        if (length(keys(last_emit)) > 256) {
+            for (let k in keys(last_emit)) {
+                if (stamp - int(last_emit[k] || 0) > 3600000)
+                    delete last_emit[k];
+            }
+            if (length(keys(last_emit)) > 512)
+                last_emit = {};
         }
         last_emit[dedup_key] = stamp;
 

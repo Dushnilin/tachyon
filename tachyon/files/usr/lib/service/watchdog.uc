@@ -188,6 +188,10 @@ function write_state_file(path, value, description) {
 }
 
 
+function notify_enabled(tcfg, key) {
+    return tcfg && tcfg.enabled == "1" && tcfg.bot_token && tcfg.admin_ids && tcfg[key] != "0";
+}
+
 function send_telegram_notification(message, cooldown_key, cooldown_seconds, smart_entries) {
     let now = time();
     if (cooldown_key != null && cooldown_key != "") {
@@ -343,7 +347,7 @@ function check_auto_resume_pause() {
         log_message("Pause expired, auto-resuming Tachyon...", "info");
         command_status("/usr/bin/tachyon start > /dev/null 2>&1");
         let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
-        if (tcfg.enabled == "1" && tcfg.bot_token && tcfg.admin_ids) {
+        if (notify_enabled(tcfg, "notify_restart")) {
             send_telegram_notification("▶️ Прокси возобновлён (пауза истекла).");
         }
         return false;
@@ -499,7 +503,7 @@ function smart_detect_apply_plus_domains(entries) {
     for (let entry in added)
         log_message("Smart Detect Plus: " + entry.domain + " → " + entry.section, "info");
     let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
-    if (length(added) && tcfg.enabled == "1" && tcfg.bot_token && tcfg.admin_ids) {
+    if (length(added) && tcfg.enabled == "1" && tcfg.bot_token && tcfg.admin_ids && tcfg.notify_smart_detect != "0") {
         let lines = [];
         for (let entry in added)
             push(lines, "🔍 *Smart Detect*: `" + (entry.source_domain || entry.domain) +
@@ -562,20 +566,17 @@ function smart_detect_apply_domains(entries) {
     command_status("/usr/bin/tachyon reload > /dev/null 2>&1");
 
     let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
-    if (tcfg.enabled == "1" && tcfg.bot_token && tcfg.admin_ids) {
+    for (let entry in written)
+        log_message("Smart Detect: adding " + entry.domain + " to section " + entry.section, "info");
+    if (tcfg.enabled == "1" && tcfg.bot_token && tcfg.admin_ids && tcfg.notify_smart_detect != "0") {
         let lines = [];
         for (let entry in written) {
-            log_message("Smart Detect: adding " + entry.domain + " to section " + entry.section, "info");
             push(lines, "`" + entry.domain + "` → *" + entry.section + "*");
         }
         send_telegram_notification(
             "🔍 *Smart Detect*: недоступно напрямую, работает через прокси.\n" +
             join("\n", lines), null, null, written
         );
-    }
-    else {
-        for (let entry in written)
-            log_message("Smart Detect: adding " + entry.domain + " to section " + entry.section, "info");
     }
     return written;
 }
@@ -1124,8 +1125,11 @@ function trigger_emergency_failsafe(reason, details, operator) {
     restore_emergency_runtime();
 
     // 3. Dispatch telegram alert
-    let tg_msg = sprintf("🚨 *[Tachyon Аварийный Failsafe]*\n⚠️ Все уровни восстановления исчерпаны (%s)!\nВключен аварийный прямой доступ в сеть (Failsafe Direct) для предотвращения отключения интернета.", reason);
-    send_telegram_notification(tg_msg, "emergency_failsafe_" + as_string(reason), 1800);
+    let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
+    if (notify_enabled(tcfg, "notify_crash")) {
+        let tg_msg = sprintf("🚨 *[Tachyon Аварийный Failsafe]*\n⚠️ Все уровни восстановления исчерпаны (%s)!\nВключен аварийный прямой доступ в сеть (Failsafe Direct) для предотвращения отключения интернета.", reason);
+        send_telegram_notification(tg_msg, "emergency_failsafe_" + as_string(reason), 1800);
+    }
 
     // 4. Report via ai_heal_report
     ai_heal_report("emergency_failsafe", sprintf("Все уровни восстановления исчерпаны (%s)", reason), "Аварийный обход (Failsafe Direct) активирован", "failed");
@@ -1798,7 +1802,7 @@ function heal_wan_and_gateway(ev) {
     }
 
     let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
-    if (tcfg.notify_crash != "0") {
+    if (notify_enabled(tcfg, "notify_wan")) {
         send_telegram_notification("⚠️ *Watchdog:* WAN/Gateway проблема. Попытка обновления сетевого интерфейса...", "heal_wan_and_gateway", 600);
     }
     // Claimed before the interface goes down, not after: ifdown itself is what
@@ -1823,7 +1827,7 @@ function note_wan_recovered(ev) {
 
 function heal_subscriptions(ev) {
     let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
-    if (tcfg.notify_crash != "0") {
+    if (notify_enabled(tcfg, "notify_subscription")) {
         send_telegram_notification("⚠️ *Watchdog:* Подписка недоступна (HTTP " + int(ev.payload.code) + "). Обновите подписку вручную.", "heal_subscriptions", 1800);
     }
 }
@@ -2268,7 +2272,7 @@ function heal_core_stopped(ev) {
     log_message(sprintf("%s is stopped (%s). Restarting Tachyon...", eng, as_string(ev.payload.reason || "health check")), "warn");
     increment_reconnect_count();
     let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
-    if (tcfg.notify_crash != "0") {
+    if (notify_enabled(tcfg, "notify_restart")) {
         send_telegram_notification(sprintf("⚠️ *Watchdog:* %s остановлен. Перезапускаю службы Tachyon...", eng));
     }
     // This healer sends its own notification above and deliberately did not file
@@ -2375,7 +2379,7 @@ function get_clash_auth_args() {
 // window on urltest.switched, so a burst of log lines still costs one poll.
 function notify_urltest_switch(ev) {
     let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
-    if (tcfg.enabled != "1" || tcfg.notify_crash == "0") return;
+    if (!notify_enabled(tcfg, "notify_server_switch")) return;
 
     let args = [ "curl", "-s", "-m", "5" ];
     for (let h in get_clash_auth_args()) push(args, h);
@@ -2428,8 +2432,8 @@ function smart_detect_direct_curl_argv() {
 let cached_observe_dns = null;
 let cached_observe_dns_mtime = 0;
 let cached_observe_dns_path = "";
-function smart_detect_observe_dns() {
-    let ctx = controller.create_tick_context();
+function smart_detect_observe_dns(tick_ctx) {
+    let ctx = tick_ctx || (controller.get_tick_context ? controller.get_tick_context() : null) || controller.create_tick_context();
     let cfg_path = as_string(ctx.settings.config_path || "/etc/tachyon-core/config.json");
     let engine = "tachyon-core";
     try { engine = require("core.engine").get_active(); } catch (e) {}
@@ -2617,6 +2621,14 @@ function smart_detect_process_pending() {
             delete smart_detect_streaks[dom];
         }
     }
+    let streak_cutoff = now - 1800;
+    for (let dom in keys(smart_detect_streaks)) {
+        let entry = smart_detect_streaks[dom];
+        if (!entry || int(entry.first_fail || 0) < streak_cutoff || pending_smart_domains[dom] == null)
+            delete smart_detect_streaks[dom];
+    }
+    if (length(keys(smart_detect_streaks)) > 256)
+        smart_detect_streaks = {};
 
     let domain_list = keys(pending_smart_domains);
     if (length(domain_list) == 0) return;
@@ -2793,7 +2805,10 @@ function smart_detect_process_pending() {
     for (let k in keys(seen)) {
         if (seen[k] >= cutoff) clean[k] = seen[k];
     }
-    fs.writefile(SMART_DETECT_SEEN_FILE, sprintf("%J", clean));
+    if (type(common.write_json_file) == "function")
+        common.write_json_file(SMART_DETECT_SEEN_FILE, clean);
+    else
+        fs.writefile(SMART_DETECT_SEEN_FILE, sprintf("%J", clean));
 }
 
 // ─── OOM response ─────────────────────────────────────────────────────────────
@@ -2822,13 +2837,19 @@ function heal_oom(ev) {
         let floor_now = time();
         if (floor_now - last_oom_floor_notice_time >= 3600) {
             last_oom_floor_notice_time = floor_now;
-            send_telegram_notification("OOM repeats and GOMEMLIMIT is already at its minimum. Restarting services no longer helps, so it has been stopped - free memory or lower the load.");
+            let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
+            if (notify_enabled(tcfg, "notify_crash")) {
+                send_telegram_notification("OOM repeats and GOMEMLIMIT is already at its minimum. Restarting services no longer helps, so it has been stopped - free memory or lower the load.");
+            }
         }
         return;
     }
 
     log_message("OOM event detected from syslog! Reducing GOMEMLIMIT scaling...", "err");
-    send_telegram_notification("🚨 *Watchdog:* Обнаружено событие OOM (Out Of Memory)! Уменьшаю GOMEMLIMIT и перезапускаю службы...");
+    let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
+    if (notify_enabled(tcfg, "notify_crash")) {
+        send_telegram_notification("🚨 *Watchdog:* Обнаружено событие OOM (Out Of Memory)! Уменьшаю GOMEMLIMIT и перезапускаю службы...");
+    }
     let scale = read_oom_scale();
     let scale_path = oom_scale_path();
     let new_scale = next_oom_scale(scale);
@@ -2883,10 +2904,16 @@ function setup_honeypot_listener() {
             // uloop timer (the whole watchdog) frozen behind it. uloop is
             // level-triggered, so it calls back again for anything still
             // pending. Honeypot writers send one short line per hit.
-            uloop.handle(fifo_fd.fileno(), function(events) {
+            let h = null;
+            h = uloop.handle(fifo_fd.fileno(), function(events) {
                 let line = fifo_fd.read("line");
-                if (line != null)
-                    controller.handle_honeypot_line(line);
+                if (line == null) {
+                    if (h) try { h.delete(); } catch (e) {}
+                    h = null;
+                    try { fifo_fd.close(); } catch (e) {}
+                    return;
+                }
+                controller.handle_honeypot_line(line);
             }, uloop.ULOOP_READ);
             return fifo_fd;
         } catch (e) {
@@ -2925,7 +2952,7 @@ function recover_oom_scale(ev) {
     write_state_file(scale_path, sprintf("%.2f", new_scale), "GOMEMLIMIT scale");
 }
 
-function setup_syslog_listener() {
+function setup_syslog_listener(on_restart) {
     if (!uloop) return null;
     controller.set_syslog_start(time());
     // Kill orphaned logread -f processes from previous watchdog instances.
@@ -2945,13 +2972,23 @@ function setup_syslog_listener() {
         // timer on a quiet router. logread emits a line per write(), so a line
         // that shares a stdio buffer with its predecessor is picked up on the
         // next event - a delay of one syslog line, not a loss.
-        uloop.handle(log_pipe.fileno(), function(events) {
+        let h = null;
+        h = uloop.handle(log_pipe.fileno(), function(events) {
             let line = log_pipe.read("line");
-            if (line != null)
-                controller.handle_log_line(trim(as_string(line)));
+            if (line == null) {
+                if (h) try { h.delete(); } catch (e) {}
+                h = null;
+                try { log_pipe.close(); } catch (e) {}
+                if (!watchdog_shutting_down && type(on_restart) == "function")
+                    uloop.timer(3000, on_restart);
+                return;
+            }
+            controller.handle_log_line(trim(as_string(line)));
         }, uloop.ULOOP_READ);
     } catch (e) {
         log_message("Failed to register syslog listener: " + as_string(e), "warn");
+        try { log_pipe.close(); } catch (e2) {}
+        return null;
     }
     return log_pipe;
 }
@@ -3285,7 +3322,13 @@ function worker() {
         }
     }
 
-    let log_pipe = setup_syslog_listener();
+    let log_pipe = null;
+    let restart_syslog_listener = null;
+    restart_syslog_listener = function() {
+        if (watchdog_shutting_down) return;
+        log_pipe = setup_syslog_listener(restart_syslog_listener);
+    };
+    log_pipe = setup_syslog_listener(restart_syslog_listener);
     let ubus_conn = setup_ubus_listener();
     let current_ctx = null;
 
@@ -3481,7 +3524,10 @@ function check_mixed_proxy_port() {
         let now = time();
         if (now - mixed_port_last_notify >= 3600) {
             mixed_port_last_notify = now;
-            send_telegram_notification(sprintf("⚠️ Порт %s не слушается при работающем %s. Рестарт не помог — проверьте конфигурацию ядра (лог %s), раздел диагностики покажет детали.", join(", ", ports), eng, eng));
+            let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
+            if (notify_enabled(tcfg, "notify_crash")) {
+                send_telegram_notification(sprintf("⚠️ Порт %s не слушается при работающем %s. Рестарт не помог — проверьте конфигурацию ядра (лог %s), раздел диагностики покажет детали.", join(", ", ports), eng, eng));
+            }
         }
     }
 }
@@ -3633,7 +3679,10 @@ function check_tailscale_worker() {
     let now = time();
     if (now - tailscale_last_alert >= 3600) {
         tailscale_last_alert = now;
-        send_telegram_notification("🛰 *Watchdog:* Native Tailscale was down, restarting the service.");
+        let tcfg = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
+        if (notify_enabled(tcfg, "notify_restart")) {
+            send_telegram_notification("🛰 *Watchdog:* Native Tailscale was down, restarting the service.");
+        }
     }
 }
 
@@ -3772,6 +3821,12 @@ function perform_slow_checks() {
     safe_call(reap_dead_jobs, "reap_dead_jobs");
     safe_call(trim_runtime_logs, "trim_runtime_logs");
     safe_call(check_watchdog_outdated, "check_watchdog_outdated");
+    let heal_cutoff = time() - 7200;
+    for (let name in keys(empty_section_heal_state)) {
+        if (int(empty_section_heal_state[name]?.last_ts || 0) < heal_cutoff)
+            delete empty_section_heal_state[name];
+    }
+    if (type(gc) == "function") gc();
 }
 
 let last_keepalive_write = 0;
@@ -3876,8 +3931,8 @@ let last_keepalive_write = 0;
         }
     }
 
-    if (honeypot_fd) honeypot_fd.close();
-    if (log_pipe) log_pipe.close();
+    if (honeypot_fd) try { honeypot_fd.close(); } catch (e) {}
+    if (log_pipe) try { log_pipe.close(); } catch (e) {}
     // Shutdown path: a connection already torn down by the peer throws here, and
     // there is nothing left to salvage either way.
     if (ubus_conn) try { ubus_conn.close(); } catch (e) {}

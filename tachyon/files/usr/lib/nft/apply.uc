@@ -5408,9 +5408,16 @@ function nft_populate_runtime_set_for_section(section, deferred_sections, table,
                         try { dobj = json(ddata); } catch (e) {}
                         if (type(dobj) == "object" && type(dobj.rules) == "array") {
                             for (let r in dobj.rules) {
+                                if (length(bypass_domains) >= 64) break;
                                 if (type(r) != "object") continue;
-                                for (let d in array_or_empty(r.domain)) add_bypass_dom(d);
-                                for (let d in array_or_empty(r.domain_suffix)) add_bypass_dom(d);
+                                for (let d in array_or_empty(r.domain)) {
+                                    if (length(bypass_domains) >= 64) break;
+                                    add_bypass_dom(d);
+                                }
+                                for (let d in array_or_empty(r.domain_suffix)) {
+                                    if (length(bypass_domains) >= 64) break;
+                                    add_bypass_dom(d);
+                                }
                             }
                         }
                     } else if (match(dpath, /\.(lst|txt)$/) != null) {

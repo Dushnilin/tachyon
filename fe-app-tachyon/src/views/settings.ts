@@ -6691,6 +6691,7 @@ function createTelegramStatusWidget() {
       if (tgVisibilityObserver) tgVisibilityObserver.disconnect();
       return;
     }
+    if (typeof document !== 'undefined' && document.hidden) return;
     refreshStatus(false);
   }, 10000);
 
@@ -6923,6 +6924,96 @@ function createTelegramContent(section) {
   o.rmempty = false;
 
   o = section.option(
+    form.Flag,
+    'notify_smart_detect',
+    _tr('Уведомления Smart Detect', 'Notify on Smart Detect'),
+    _tr(
+      'Отправлять сообщение в Telegram при автоматическом добавлении домена через Smart Detect.',
+      'Send a Telegram notification when Smart Detect automatically adds a domain.',
+    ),
+  );
+  o.depends('enabled', '1');
+  o.retain = true;
+  o.default = '1';
+  o.rmempty = false;
+
+  o = section.option(
+    form.Flag,
+    'notify_failover',
+    _tr(
+      'Уведомления Failover и Fail Policy',
+      'Notify on Failover & Fail Policy',
+    ),
+    _tr(
+      'Отправлять сообщение при переключении активной секции или срабатывании политики отказа.',
+      'Send a Telegram notification on section failover switches or fail policy transitions.',
+    ),
+  );
+  o.depends('enabled', '1');
+  o.retain = true;
+  o.default = '1';
+  o.rmempty = false;
+
+  o = section.option(
+    form.Flag,
+    'notify_wan',
+    _tr('Уведомления WAN и интерфейсов', 'Notify on WAN & Interfaces'),
+    _tr(
+      'Отправлять сообщение при изменении состояния интерфейсов WAN, WAN Failover и попытках восстановления шлюза.',
+      'Send a Telegram notification on WAN interface up/down events, WAN Failover, and gateway recovery.',
+    ),
+  );
+  o.depends('enabled', '1');
+  o.retain = true;
+  o.default = '1';
+  o.rmempty = false;
+
+  o = section.option(
+    form.Flag,
+    'notify_update_available',
+    _tr('Уведомления о доступных обновлениях', 'Notify on Available Updates'),
+    _tr(
+      'Отправлять сообщение в Telegram при обнаружении новых версий компонентов.',
+      'Send a Telegram notification when component updates become available.',
+    ),
+  );
+  o.depends('enabled', '1');
+  o.retain = true;
+  o.default = '1';
+  o.rmempty = false;
+
+  o = section.option(
+    form.Flag,
+    'notify_parental',
+    _tr('Уведомления квот и расписаний', 'Notify on Quotas & Schedules'),
+    _tr(
+      'Отправлять сообщения при превышении квот устройств, гостевого режима и срабатывании расписаний.',
+      'Send Telegram notifications for device/guest quota events and schedule activity.',
+    ),
+  );
+  o.depends('enabled', '1');
+  o.retain = true;
+  o.default = '1';
+  o.rmempty = false;
+
+  o = section.option(
+    form.Flag,
+    'notify_route_alert',
+    _tr(
+      'Уведомления о сбоях связи с API бота',
+      'Notify on Bot API Route Alerts',
+    ),
+    _tr(
+      'Отправлять предупреждение при повторяющихся ошибках соединения с Telegram Bot API.',
+      'Send a warning when Telegram Bot API polling fails repeatedly.',
+    ),
+  );
+  o.depends('enabled', '1');
+  o.retain = true;
+  o.default = '1';
+  o.rmempty = false;
+
+  o = section.option(
     form.ListValue,
     'bot_proxy_section',
     _('Proxy Section for Bot'),
@@ -6959,6 +7050,168 @@ function createTelegramContent(section) {
   };
   o.remove = function () {
     uci.unset(UCI_PACKAGE, 'telegram', 'bot_proxy_section');
+  };
+
+  o = section.option(
+    form.ListValue,
+    'language',
+    _('Bot Language'),
+    _('Language for Telegram bot replies and notifications.'),
+  );
+  o.depends('enabled', '1');
+  o.retain = true;
+  o.default = '';
+  o.rmempty = true;
+  o.value('', _('Auto (follow LuCI)'));
+  o.value('en', 'English');
+  o.value('ru', 'Русский');
+  o.write = function (section_id, value) {
+    const val = value ? `${value}`.trim() : '';
+    if (val) {
+      uci.set(UCI_PACKAGE, section_id, 'language', val);
+    } else {
+      uci.unset(UCI_PACKAGE, section_id, 'language');
+    }
+  };
+  o.remove = function (section_id) {
+    uci.unset(UCI_PACKAGE, section_id, 'language');
+  };
+
+  o = section.option(
+    form.Value,
+    'fallback_socks',
+    _('Fallback SOCKS5 Proxy'),
+    _(
+      'Optional SOCKS5 proxy address (host:port, for example 127.0.0.1:1080) used when connecting to Telegram API.',
+    ),
+  );
+  o.depends('enabled', '1');
+  o.retain = true;
+  o.placeholder = '127.0.0.1:1080';
+  o.rmempty = true;
+  o.write = function (section_id, value) {
+    const val = value ? `${value}`.trim() : '';
+    if (val) {
+      uci.set(UCI_PACKAGE, section_id, 'fallback_socks', val);
+    } else {
+      uci.unset(UCI_PACKAGE, section_id, 'fallback_socks');
+    }
+  };
+  o.remove = function (section_id) {
+    uci.unset(UCI_PACKAGE, section_id, 'fallback_socks');
+  };
+
+  const validateHourOption = (value: string) => {
+    const raw = value ? `${value}`.trim() : '';
+    if (!raw) return true;
+    if (!/^[0-9]+$/.test(raw)) return _('Enter an hour from 0 to 23');
+    const num = parseInt(raw, 10);
+    if (isNaN(num) || num < 0 || num > 23) {
+      return _('Enter an hour from 0 to 23');
+    }
+    return true;
+  };
+
+  o = section.option(
+    form.Flag,
+    'daily_report_enabled',
+    _('Daily Status Report'),
+    _('Send a daily summary of system health and proxy status to Telegram.'),
+  );
+  o.depends('enabled', '1');
+  o.retain = true;
+  o.default = '0';
+  o.rmempty = false;
+
+  o = section.option(
+    form.Value,
+    'daily_report_hour',
+    _('Daily Report Hour (0-23)'),
+    _('Hour of the day to send the daily report (default: 8).'),
+  );
+  o.depends({ enabled: '1', daily_report_enabled: '1' });
+  o.retain = true;
+  o.default = '8';
+  o.placeholder = '8';
+  o.rmempty = true;
+  o.validate = function (_section_id, value) {
+    return validateHourOption(value);
+  };
+  o.write = function (section_id, value) {
+    const val = value ? `${value}`.trim() : '';
+    if (val && val !== '8') {
+      uci.set(UCI_PACKAGE, section_id, 'daily_report_hour', val);
+    } else {
+      uci.unset(UCI_PACKAGE, section_id, 'daily_report_hour');
+    }
+  };
+  o.remove = function (section_id) {
+    uci.unset(UCI_PACKAGE, section_id, 'daily_report_hour');
+  };
+
+  o = section.option(
+    form.Flag,
+    'quiet_hours_enabled',
+    _('Quiet Hours'),
+    _(
+      'Suppress non-critical Telegram notifications during the configured night window.',
+    ),
+  );
+  o.depends('enabled', '1');
+  o.retain = true;
+  o.default = '0';
+  o.rmempty = false;
+
+  o = section.option(
+    form.Value,
+    'quiet_hours_start',
+    _('Quiet Hours Start (0-23)'),
+    _('Hour when quiet hours begin (default: 23).'),
+  );
+  o.depends({ enabled: '1', quiet_hours_enabled: '1' });
+  o.retain = true;
+  o.default = '23';
+  o.placeholder = '23';
+  o.rmempty = true;
+  o.validate = function (_section_id, value) {
+    return validateHourOption(value);
+  };
+  o.write = function (section_id, value) {
+    const val = value ? `${value}`.trim() : '';
+    if (val && val !== '23') {
+      uci.set(UCI_PACKAGE, section_id, 'quiet_hours_start', val);
+    } else {
+      uci.unset(UCI_PACKAGE, section_id, 'quiet_hours_start');
+    }
+  };
+  o.remove = function (section_id) {
+    uci.unset(UCI_PACKAGE, section_id, 'quiet_hours_start');
+  };
+
+  o = section.option(
+    form.Value,
+    'quiet_hours_end',
+    _('Quiet Hours End (0-23)'),
+    _('Hour when quiet hours end (default: 7).'),
+  );
+  o.depends({ enabled: '1', quiet_hours_enabled: '1' });
+  o.retain = true;
+  o.default = '7';
+  o.placeholder = '7';
+  o.rmempty = true;
+  o.validate = function (_section_id, value) {
+    return validateHourOption(value);
+  };
+  o.write = function (section_id, value) {
+    const val = value ? `${value}`.trim() : '';
+    if (val && val !== '7') {
+      uci.set(UCI_PACKAGE, section_id, 'quiet_hours_end', val);
+    } else {
+      uci.unset(UCI_PACKAGE, section_id, 'quiet_hours_end');
+    }
+  };
+  o.remove = function (section_id) {
+    uci.unset(UCI_PACKAGE, section_id, 'quiet_hours_end');
   };
 
   // ── Telegram API Connection Test ──────────────────────────────────────────

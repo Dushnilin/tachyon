@@ -2843,6 +2843,54 @@ function validate_modular_entities(sections, context) {
         current_validating_section = "";
     }
 
+    let broken_sources = {};
+    for (let src in sections_by_type("outbound_source")) {
+        if (!bool_option(src, "enabled", true))
+            continue;
+        let sname = section_name(src);
+        let stype = lc(trim(option(src, "source_type", "")));
+        if (stype != "csqtt" && stype != "wdtt")
+            continue;
+        current_validating_section = runtime_quarantine_mode ? sname : "";
+        try {
+            let uri = trim(option(src, "csqtt_uri", option(src, "warp_flow_uri", "")));
+            let srv = trim(option(src, "csqtt_server", option(src, "server", "")));
+            if (stype == "csqtt") {
+                if (uri == "" && srv == "")
+                    fail_validation("CSQTT outbound source '" + sname + "' requires a server address or link URI. Aborted.");
+                if (srv != "" && option(src, "csqtt_password", option(src, "password", "")) == "")
+                    fail_validation("CSQTT outbound source '" + sname + "' requires a password. Aborted.");
+                if (srv == "" && uri != "") {
+                    let parsed_uri = wdtt_validator().parse_wdtt_uri(uri);
+                    if (!parsed_uri.valid)
+                        fail_validation("Invalid CSQTT URI in outbound source '" + sname + "': " + (parsed_uri.message || parsed_uri.reason || "invalid URI") + ". Aborted.");
+                }
+            } else {
+                let links = connections.whitespace_list_value(src, "subscription_links");
+                let peer = trim(option(src, "wdtt_peer", option(src, "peer", "")));
+                if (uri == "" && srv == "" && peer == "" && length(links) == 0)
+                    fail_validation("WDTT outbound source '" + sname + "' requires a URI, server address, or subscription link. Aborted.");
+                if (srv != "" && option(src, "csqtt_password", option(src, "password", "")) == "")
+                    fail_validation("WDTT outbound source '" + sname + "' requires a password. Aborted.");
+                if (srv == "" && uri != "") {
+                    let parsed_uri = wdtt_validator().parse_wdtt_uri(uri);
+                    if (!parsed_uri.valid)
+                        fail_validation("Invalid WDTT URI in outbound source '" + sname + "': " + (parsed_uri.message || parsed_uri.reason || "invalid URI") + ". Aborted.");
+                }
+                let device_id = trim(option(src, "warp_flow_device_id", ""));
+                if (device_id != "" && !wdtt_validator().validate_device_id(device_id))
+                    fail_validation("Invalid WDTT device ID '" + device_id + "' in outbound source '" + sname + "'. Aborted.");
+            }
+        } catch (e) {
+            current_validating_section = "";
+            if (index(as_string(e), "__TACHYON_QUARANTINE__") < 0)
+                die(e);
+            broken_sources[sname] = runtime_quarantined_sections[sname] || ("Outbound source '" + sname + "' is invalid");
+            delete runtime_quarantined_sections[sname];
+        }
+        current_validating_section = "";
+    }
+
     let broken_groups = {};
     for (let group in sections_by_type("outbound_group")) {
         let gname = section_name(group);
@@ -2852,6 +2900,12 @@ function validate_modular_entities(sections, context) {
                     broken_groups[gname] = "Outbound group '" + gname + "' references missing outbound source '" + sref + "'.";
                 } else {
                     fail_validation("Outbound group '" + gname + "' references missing outbound source '" + sref + "'. Aborted.");
+                }
+            } else if (broken_sources[sref] != null) {
+                if (runtime_quarantine_mode) {
+                    broken_groups[gname] = "Outbound group '" + gname + "' uses invalid outbound source '" + sref + "': " + broken_sources[sref];
+                } else {
+                    fail_validation("Outbound group '" + gname + "' uses invalid outbound source '" + sref + "': " + broken_sources[sref] + " Aborted.");
                 }
             }
         }
@@ -2874,6 +2928,8 @@ function validate_modular_entities(sections, context) {
             for (let sref in connections.section_outbound_source_refs(section)) {
                 if (connections.outbound_source_section(sref) == null)
                     fail_validation("Rule '" + name + "' references missing outbound source '" + sref + "'. Aborted.");
+                if (broken_sources[sref] != null)
+                    fail_validation("Rule '" + name + "' uses invalid outbound source '" + sref + "': " + broken_sources[sref] + " Aborted.");
             }
             for (let gref in connections.section_outbound_group_refs(section)) {
                 if (connections.outbound_group_section(gref) == null)
@@ -3291,8 +3347,36 @@ function validate_section_action_variant_support(ctx, sing_box_version) {
                 }
             }
 
-            if ((action == "csqtt" || (action == "wdtt" && bool_option(section, "wdtt_native", false))) &&
-                !core_profile().supports_protocol(sing_box_version, sing_box_core_marker(ctx), "wdtt")) {
+            let uses_native_wdtt = (action == "csqtt") ||
+                (action == "wdtt" && bool_option(section, "wdtt_native", false));
+            if (!uses_native_wdtt && (connections.is_connections_action(action) || action == "group")) {
+                for (let src in connections.section_effective_outbound_sources(section)) {
+                    let stype = lc(trim(option(src, "source_type", "")));
+                    if (stype == "csqtt" || (stype == "wdtt" && connections.is_native_wdtt_source(src))) {
+                        uses_native_wdtt = true;
+                        break;
+                    }
+                }
+                if (!uses_native_wdtt) {
+                    for (let raw_url in connections.connection_urls(section)) {
+                        if (match(lc(trim(as_string(raw_url))), /^(csqtt|wdtt|qwdtt):\/\//) != null) {
+                            uses_native_wdtt = true;
+                            break;
+                        }
+                    }
+                }
+                if (!uses_native_wdtt) {
+                    for (let raw_json in connections.outbound_jsons(section)) {
+                        let parsed_out = outbound_json_object(raw_json);
+                        if (parsed_out != null && lc(as_string(parsed_out.type || "")) == "wdtt") {
+                            uses_native_wdtt = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (uses_native_wdtt &&
+                !core_profile().supports_protocol("wdtt", sing_box_version, sing_box_core_marker(ctx))) {
                 fail_requirement("Section '" + name + "' uses CSQTT / WDTT v3, which requires tachyon-core. Switch the core to tachyon-core or change the action. Aborted.", "fatal");
             }
 
@@ -3318,7 +3402,7 @@ function validate_section_action_variant_support(ctx, sing_box_version) {
         current_validating_section = name;
         try {
             let srv_proto = as_string(option(server, "protocol", "vless"));
-            if (srv_proto == "wdtt" && !core_profile().supports_protocol(sing_box_version, sing_box_core_marker(ctx), "wdtt"))
+            if (srv_proto == "wdtt" && !core_profile().supports_inbound("wdtt", sing_box_version, sing_box_core_marker(ctx)))
                 fail_requirement("Server '" + name + "' uses CSQTT / WDTT v3, which requires tachyon-core. Switch the core to tachyon-core or select another protocol. Aborted.", "fatal");
             if (srv_proto == "mtproto" && sing_box_is_tachyon_core(ctx, sing_box_version) && match(as_string(sing_box_version), /^v?0\.0\./) != null)
                 fail_requirement("Server '" + name + "' uses MTProto, but tachyon-core does not implement MTProto yet. Use sing-box-extended or select another protocol. Aborted.", "fatal");
@@ -3540,7 +3624,11 @@ function context_from_json(value, defaults) {
         zapret2_route_mark_base: context_override_value(value, defaults, "zapret2_route_mark_base"),
         zapret2_queue_range_size: context_override_value(value, defaults, "zapret2_queue_range_size"),
         nft_fakeip_mark: context_override_value(value, defaults, "nft_fakeip_mark"),
-        nft_outbound_mark: context_override_value(value, defaults, "nft_outbound_mark")
+        nft_outbound_mark: context_override_value(value, defaults, "nft_outbound_mark"),
+        sing_box_required_version: context_override_value(value, defaults, "sing_box_required_version"),
+        sing_box_variant_state_file: context_override_value(value, defaults, "sing_box_variant_state_file"),
+        sing_box_version_state_file: context_override_value(value, defaults, "sing_box_version_state_file"),
+        sing_box_managed_service_marker: context_override_value(value, defaults, "sing_box_managed_service_marker")
     };
 }
 

@@ -1220,25 +1220,14 @@ function main() {
     let stdin = fs.open("/dev/stdin", "r");
     if (!stdin) return;
 
-    let tty_check = fs.popen("test -t 0", "r");
-    let is_tty = tty_check ? (tty_check.close() == 0) : false;
-
-    if (!is_tty) {
-        // Pipe mode: read all, split by newline
-        let data = stdin.read("all");
-        stdin.close();
-        if (data == null) return;
-        for (let line in split(as_string(data), "\n"))
-            process_line(line);
-    } else {
-        // Interactive mode: line by line
-        while (true) {
-            let line = stdin.read("line");
-            if (line == null) break;
-            process_line(as_string(line));
-        }
-        stdin.close();
+    // Read JSON-RPC requests line-by-line in all modes so long-lived pipes do not
+    // block waiting for EOF or buffer the entire stream in memory.
+    while (true) {
+        let line = stdin.read("line");
+        if (line == null) break;
+        process_line(as_string(line));
     }
+    stdin.close();
 }
 
 main();

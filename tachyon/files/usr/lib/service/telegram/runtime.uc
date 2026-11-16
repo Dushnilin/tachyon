@@ -212,6 +212,7 @@ function is_component_auto_update_active(comp_name) {
 }
 
 function check_notified_updates(token, admin_ids) {
+    if (settings().notify_update_available == "0") return;
     let out = command_output_from_args(["/usr/bin/tachyon", "component_update_check_cache"]);
     if (!out || out == "") return;
     try {
@@ -297,6 +298,7 @@ function check_notified_updates(token, admin_ids) {
 function notify_updates_cli() {
     let cfg = settings();
     if (cfg.enabled != "1" || !cfg.bot_token || !cfg.admin_ids) return 0;
+    if (cfg.notify_update_available == "0") return 0;
     check_notified_updates(cfg.bot_token, cfg.admin_ids);
     return 0;
 }
@@ -467,7 +469,7 @@ function check_blocked_activity(cfg) {
             continue;
         current[label] = total;
         let prev = int(previous[label] || "0");
-        if (total > prev) {
+        if (total > prev && cfg.notify_parental != "0") {
             let delta = total - prev;
             let admins = split(cfg.admin_ids || "", /,/);
             for (let admin in admins) {
@@ -540,6 +542,7 @@ function sync_offset_for_bot(token) {
 }
 
 let chat_admin_cache = {};
+const CHAT_ADMIN_CACHE_MAX = 128;
 
 function is_chat_admin_cached(token, chat_id, user_id) {
     if (!token || !chat_id || !user_id) return false;
@@ -550,6 +553,13 @@ function is_chat_admin_cached(token, chat_id, user_id) {
     let cached = chat_admin_cache[cache_key];
     if (cached && (now - cached.time) < 300)
         return cached.is_admin;
+
+    for (let k in keys(chat_admin_cache)) {
+        if ((now - int(chat_admin_cache[k]?.time || 0)) >= 300)
+            delete chat_admin_cache[k];
+    }
+    if (length(keys(chat_admin_cache)) >= CHAT_ADMIN_CACHE_MAX)
+        chat_admin_cache = {};
 
     let res = tg_request(token, "getChatMember", { chat_id: chat_num, user_id: int(user_id) });
     let status = res?.ok ? res.result?.status : null;
@@ -575,9 +585,9 @@ function process_updates(token, admin_ids) {
         if (error_code == 429) {
             let params = object_or_empty(res.parameters);
             let retry_after = int(params.retry_after || 0);
-            if (retry_after > 0 && retry_after <= 60)
-                sleep(retry_after * 1000);
-        } else if (error_code == 409) {
+            let wait_sec = retry_after > 0 ? min(retry_after, 120) : 10;
+            sleep(wait_sec * 1000);
+        } else {
             sleep(10000);
         }
         command_success_from_args(["logger", "-t", "tachyon-telegram",
@@ -1052,8 +1062,10 @@ function worker() {
                 last_job_check = now;
             }
 
-            if (now - last_log_check > 3600) {
+            if (now - last_log_check >= 300) {
                 rotate_log_if_needed();
+                if (type(gc) == "function")
+                    gc();
                 last_log_check = now;
             }
             notifications.drain(cfg.bot_token);
@@ -1110,7 +1122,7 @@ function start_runtime() {
     write_heartbeat();
     let command = common.background_command_with_pid(
         command_from_args([ "ucode", "-L", LIB_DIR, LIB_DIR + "/service/telegram.uc", "worker" ]),
-        ">/var/log/tachyon_telegram.log", ">" + shell_quote(PID_FILE));
+        ">>/var/log/tachyon_telegram.log", ">" + shell_quote(PID_FILE));
     return command_status(command);
 }
 

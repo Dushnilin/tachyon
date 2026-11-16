@@ -154,7 +154,11 @@ function write_wdtt_hashes_file(hashes_value) {
 function qwdtt_hashes_list(section) {
     let hashes = [];
     let links = list_option(section, "subscription_links");
-    let wdtt_link = first_wdtt_link(links);
+    if (length(links) == 0)
+        links = list_option(section, "warp_flow_subscription_links");
+    let wdtt_link = trim(option(section, "warp_flow_uri", ""));
+    if (wdtt_link == "")
+        wdtt_link = first_wdtt_link(links);
     if (wdtt_link != "") {
         let parsed = wdtt_validator.parse_wdtt_uri(wdtt_link);
         if (parsed.valid && parsed.hashes != "") {
@@ -185,26 +189,30 @@ function qwdtt_hashes_list(section) {
 
 function write_qwdtt_json_config(section, name) {
     let links = list_option(section, "subscription_links");
-    let wdtt_link = first_wdtt_link(links);
+    if (length(links) == 0)
+        links = list_option(section, "warp_flow_subscription_links");
+    let wdtt_link = trim(option(section, "warp_flow_uri", ""));
+    if (wdtt_link == "")
+        wdtt_link = first_wdtt_link(links);
     let parsed = null;
     if (wdtt_link != "")
         parsed = wdtt_validator.parse_wdtt_uri(wdtt_link);
 
-    let peer = option(section, "peer", "");
+    let peer = option(section, "peer", option(section, "wdtt_peer", ""));
     if (peer == "" && parsed != null && parsed.valid)
         peer = parsed.peer;
     if (peer == "")
         peer = cfg.default_peer;
 
-    let password = option(section, "password", "");
+    let password = option(section, "password", option(section, "wdtt_password", ""));
     if (password == "" && parsed != null && parsed.valid)
         password = parsed.pass;
 
-    let device_id = option(section, "device_id", "");
+    let device_id = option(section, "device_id", option(section, "warp_flow_device_id", ""));
     if (device_id == "")
         device_id = lan_mac_address();
 
-    let workers = option(section, "workers", "");
+    let workers = option(section, "workers", option(section, "wdtt_workers", option(section, "warp_flow_workers", "")));
     if (workers == "" && parsed != null && parsed.valid && parsed.workers != "")
         workers = parsed.workers;
     if (workers == "")
@@ -215,7 +223,7 @@ function write_qwdtt_json_config(section, name) {
     if (hashes_file != "" && length(hashes) == 0)
         write_wdtt_hashes_file([]);
 
-    let qwdtt_mode = option(section, "qwdtt_mode", "rawtun");
+    let qwdtt_mode = option(section, "qwdtt_mode", option(section, "warp_flow_qwdtt_mode", "rawtun"));
 
     let config = {
         peer: peer,
@@ -264,26 +272,30 @@ function write_qwdtt_json_config(section, name) {
 
 function write_wdtt_uci_config(section) {
     let links = list_option(section, "subscription_links");
-    let wdtt_link = first_wdtt_link(links);
+    if (length(links) == 0)
+        links = list_option(section, "warp_flow_subscription_links");
+    let wdtt_link = trim(option(section, "warp_flow_uri", ""));
+    if (wdtt_link == "")
+        wdtt_link = first_wdtt_link(links);
     let parsed = null;
     if (wdtt_link != "")
         parsed = wdtt_validator.parse_wdtt_uri(wdtt_link);
 
-    let peer = option(section, "peer", "");
+    let peer = option(section, "peer", option(section, "wdtt_peer", ""));
     if (peer == "" && parsed != null && parsed.valid)
         peer = parsed.peer;
     if (peer == "")
         peer = cfg.default_peer;
 
-    let password = option(section, "password", "");
+    let password = option(section, "password", option(section, "wdtt_password", ""));
     if (password == "" && parsed != null && parsed.valid)
         password = parsed.pass;
 
-    let device_id = option(section, "device_id", "");
+    let device_id = option(section, "device_id", option(section, "warp_flow_device_id", ""));
     if (device_id == "")
         device_id = lan_mac_address();
 
-    let workers = option(section, "workers", "");
+    let workers = option(section, "workers", option(section, "wdtt_workers", option(section, "warp_flow_workers", "")));
     if (workers == "" && parsed != null && parsed.valid && parsed.workers != "")
         workers = parsed.workers;
     if (workers == "")
@@ -300,7 +312,7 @@ function write_wdtt_uci_config(section) {
         "uci set wdtt.settings.workers='" + workers + "'",
         "uci set wdtt.settings.max_hashes='" + option(section, "max_hashes", cfg.default_max_hashes) + "'",
         "uci set wdtt.settings.mode='" + option(section, "mode", cfg.default_mode) + "'",
-        "uci set wdtt.settings.mtu='" + option(section, "mtu", cfg.default_mtu) + "'",
+        "uci set wdtt.settings.mtu='" + option(section, "mtu", option(section, "wdtt_mtu", option(section, "warp_flow_mtu", cfg.default_mtu))) + "'",
         "uci set wdtt.settings.refresh='" + option(section, "refresh", cfg.default_refresh) + "'",
         "uci set wdtt.settings.auto_update='" + (bool_option(section, "auto_update", true) ? "1" : "0") + "'",
         "uci set wdtt.settings.block_doh='" + (bool_option(section, "block_doh", false) ? "1" : "0") + "'",
@@ -537,6 +549,9 @@ function wdtt_captcha_submit(token) {
     write_json({ success: true, path: token_file });
     return true;
 }
+
+if ((sourcepath(1) != null && sourcepath(1) != "") || ARGV[0] == null)
+    return { qwdtt_hashes_list, write_qwdtt_json_config, write_wdtt_uci_config };
 
 let mode = as_string(ARGV[0]);
 if (mode == "start-runtime")

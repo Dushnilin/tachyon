@@ -355,7 +355,8 @@ function signal_core_hup() {
 
 function send_notification(message) {
     let tcfg = object_or_empty(uci_core.get_all(CONFIG_NAME, "telegram"));
-    if (as_string(tcfg.enabled || "0") != "1" || !tcfg.bot_token || !tcfg.admin_ids)
+    if (as_string(tcfg.enabled || "0") != "1" || !tcfg.bot_token || !tcfg.admin_ids ||
+        as_string(tcfg.notify_wan || "1") == "0")
         return;
     if (TACHYON_BIN != "/usr/bin/tachyon" || getenv("TACHYON_WAN_FAILOVER_SYNC_NOTIFY") == "1") {
         command_success_from_args([ TACHYON_BIN, "telegram", "send", as_string(message) ]);

@@ -143,45 +143,73 @@ function in_quiet_hours(cfg) {
     }
 }
 
+let cached_mixed_proxy_path = "";
+let cached_mixed_proxy_mtime = null;
+let cached_mixed_proxy_size = null;
+let cached_mixed_proxy_info = null;
+
 function get_mixed_proxy_info() {
     let settings_data = common.object_or_empty(uci_core.get_all(CONFIG_NAME, "settings"));
     let config_path = trim(as_string(settings_data.config_path || "")) || "/etc/tachyon-core/config.json";
+    let st = fs.stat(config_path);
+    if (!st)
+        return null;
+    if (cached_mixed_proxy_path == config_path &&
+        cached_mixed_proxy_mtime == st.mtime &&
+        cached_mixed_proxy_size == st.size)
+        return cached_mixed_proxy_info;
+
     let data = fs.readfile(config_path);
     if (data == null) return null;
     let parsed;
     try { parsed = json(data); } catch (e) { return null; }
     if (parsed == null || parsed.inbounds == null) return null;
 
+    let info = null;
     for (let inbound in parsed.inbounds) {
         if (inbound.tag == "service-mixed-in" && inbound.listen_port != null) {
             let port = int(inbound.listen_port, 10);
             if (port > 0) {
                 let host = as_string(inbound.listen || "127.0.0.1");
                 if (host == "0.0.0.0" || host == "::" || host == "") host = "127.0.0.1";
-                return { host: host, port: port, tag: inbound.tag };
+                info = { host: host, port: port, tag: inbound.tag };
+                break;
             }
         }
     }
-    for (let inbound in parsed.inbounds) {
-        if ((inbound.type == "mixed" || inbound.type == "http") && inbound.listen_port != null) {
-            let listen = as_string(inbound.listen || "");
-            if (listen == "127.0.0.1" || listen == "0.0.0.0" || listen == "::" || listen == "") {
+    if (!info) {
+        for (let inbound in parsed.inbounds) {
+            if ((inbound.type == "mixed" || inbound.type == "http") && inbound.listen_port != null) {
+                let listen = as_string(inbound.listen || "");
+                if (listen == "127.0.0.1" || listen == "0.0.0.0" || listen == "::" || listen == "") {
+                    let port = int(inbound.listen_port, 10);
+                    if (port > 0) {
+                        info = { host: "127.0.0.1", port: port, tag: inbound.tag };
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    if (!info) {
+        for (let inbound in parsed.inbounds) {
+            if ((inbound.type == "mixed" || inbound.type == "http") && inbound.listen_port != null) {
                 let port = int(inbound.listen_port, 10);
-                if (port > 0) return { host: "127.0.0.1", port: port, tag: inbound.tag };
+                if (port > 0) {
+                    let host = as_string(inbound.listen || "127.0.0.1");
+                    if (host == "0.0.0.0" || host == "::" || host == "") host = "127.0.0.1";
+                    info = { host: host, port: port, tag: inbound.tag };
+                    break;
+                }
             }
         }
     }
-    for (let inbound in parsed.inbounds) {
-        if ((inbound.type == "mixed" || inbound.type == "http") && inbound.listen_port != null) {
-            let port = int(inbound.listen_port, 10);
-            if (port > 0) {
-                let host = as_string(inbound.listen || "127.0.0.1");
-                if (host == "0.0.0.0" || host == "::" || host == "") host = "127.0.0.1";
-                return { host: host, port: port, tag: inbound.tag };
-            }
-        }
-    }
-    return null;
+
+    cached_mixed_proxy_path = config_path;
+    cached_mixed_proxy_mtime = st.mtime;
+    cached_mixed_proxy_size = st.size;
+    cached_mixed_proxy_info = info;
+    return info;
 }
 
 function get_mixed_port() {
@@ -302,8 +330,10 @@ function tg_request(token, method, payload) {
     // by an intermediate hop while short requests through the proxy succeed.
     if (method == "getUpdates" && length(proxy_args) > 0) {
         let probe = tg_request_via(token, "getMe", {}, proxy_args);
-        if (probe != null && probe.ok === true)
+        if (probe != null && probe.ok === true) {
+            sleep(2000);
             return { ok: true, result: [] };
+        }
     }
 
     if (direct_fallback_enabled() && length(proxy_args) > 0) {
@@ -388,6 +418,7 @@ function route_alert_recent() {
 function alert_route_failure(attempt, proxy_alive) {
     let t = get_t();
     let cfg = settings();
+    if (cfg.notify_route_alert == "0") return false;
     if (in_quiet_hours(cfg)) return false;
     if (route_alert_recent()) return true;
     let token = trim(as_string(cfg.bot_token || ""));
@@ -474,6 +505,10 @@ function register_bot_commands(token) {
         { command: "sections",  description: t("cmd_sections") },
         { command: "instances", description: t("cmd_instances") },
         { command: "guest",     description: t("cmd_guest") },
+        { command: "toggles",   description: t("cmd_toggles") },
+        { command: "notifications", description: t("cmd_notifications") },
+        { command: "profiles",  description: t("cmd_profiles") },
+        { command: "schedules", description: t("cmd_schedules") },
         { command: "speed",     description: t("cmd_speed") },
         { command: "ping",      description: t("cmd_ping") },
         { command: "test",      description: t("cmd_test") },

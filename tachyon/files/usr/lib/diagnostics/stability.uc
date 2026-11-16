@@ -409,7 +409,7 @@ function get_daemon_uptimes() {
 
 // --- Memory & Resource Pressure ---
 
-function get_memory_pressure() {
+function get_memory_pressure(daemon_uptimes) {
     let meminfo = safe_read_file("/proc/meminfo");
     let total = 0;
     let free = 0;
@@ -446,10 +446,12 @@ function get_memory_pressure() {
     else if (used_pct >= 75) pressure = "warning";
 
     // VmRSS per daemon (de-duplicating shared RssFile across multi-worker daemons)
-    let daemons = get_relevant_daemons();
+    let daemons = type(daemon_uptimes) == "object" ? keys(daemon_uptimes) : get_relevant_daemons();
     let daemon_rss = {};
     for (let d in daemons) {
-        let pids = get_daemon_pids(d);
+        let pids = (type(daemon_uptimes) == "object" && type(daemon_uptimes[d]?.pids) == "array")
+            ? map(daemon_uptimes[d].pids, function(p) { return as_string(p); })
+            : get_daemon_pids(d);
         if (length(pids) > 0) {
             let sum_anon = 0;
             let max_file = 0;
@@ -490,7 +492,7 @@ function get_memory_pressure() {
 
 // --- File Descriptors & Orphan Detection ---
 
-function get_fd_stats() {
+function get_fd_stats(daemon_uptimes) {
     let fnr = safe_read_file("/proc/sys/fs/file-nr");
     let parts = split(fnr, /[ \t]+/);
     let allocated = 0;
@@ -500,10 +502,12 @@ function get_fd_stats() {
         max = int(parts[2]) || 0;
     }
 
-    let daemons = get_relevant_daemons();
+    let daemons = type(daemon_uptimes) == "object" ? keys(daemon_uptimes) : get_relevant_daemons();
     let daemon_fds = {};
     for (let d in daemons) {
-        let pids = get_daemon_pids(d);
+        let pids = (type(daemon_uptimes) == "object" && type(daemon_uptimes[d]?.pids) == "array")
+            ? map(daemon_uptimes[d].pids, function(p) { return as_string(p); })
+            : get_daemon_pids(d);
         if (length(pids) > 0) {
             let fds = 0;
             for (let pid in pids) {
@@ -792,8 +796,8 @@ function get_stability_report() {
     cached_proc_map = null;
     let sys_uptime = get_system_uptime();
     let daemons = get_daemon_uptimes();
-    let memory = get_memory_pressure();
-    let fd_stats = get_fd_stats();
+    let memory = get_memory_pressure(daemons);
+    let fd_stats = get_fd_stats(daemons);
     let orphans = get_orphan_processes();
     let incidents = analyze_incidents_and_logs();
     let jobs = get_jobs_metrics();
